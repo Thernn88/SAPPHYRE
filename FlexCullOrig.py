@@ -15,8 +15,11 @@ def folder_check(output_path, input_path):
     output_nt_path = os.path.join(output_path,'nt')
     if not os.path.exists(output_nt_path):
         os.mkdir(output_nt_path)
-
+    # some versions of linux use dev, some use run
+    # whatever it is, we really want the speed from a memfs
     tmp_path = '/run/shm'
+    if not os.path.exists(tmp_path):
+        tmp_path = '/dev/shm'
 
     if not os.path.exists(tmp_path):
         tmp_path = os.path.join(input_path,'tmp')
@@ -126,14 +129,10 @@ def main(aa_input,nt_input,output,amt_matches,aa_file,tmp_path):
 
     references,candidates,raw_references = parse_fasta(gene_content)
 
-    character_at_each_pos = {}
+    range_value = len(references[0][1])
+    character_at_each_pos = {key: [] for key in range(range_value)}
+    _ = [character_at_each_pos[idx].append(sequence[idx]) for _,sequence in references for idx in range(range_value)]
 
-    for header,sequence in references:
-        for i,char in enumerate(sequence):
-            if i not in character_at_each_pos:
-                character_at_each_pos[i] = []
-            character_at_each_pos[i].append(char)
-    
     log = ['Gene,Header,Cull To Start,Cull To End,Data Length,Data Removed\n']
     out_lines = raw_references.copy()
     follow_through = {}
@@ -279,6 +278,7 @@ def consolidate(log_paths: list) -> str:
 def run_command(arg_tuple: tuple) -> None:
     aa_input,nt_input,output,matches,aa_file,tmp_path = arg_tuple
     main(aa_input,nt_input,output,matches,aa_file,tmp_path)
+
 
 if __name__ == '__main__':
     start = time()
