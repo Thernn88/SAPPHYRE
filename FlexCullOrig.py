@@ -1,8 +1,8 @@
 import argparse
 import os
-from shutil import rmtree
 from multiprocessing.pool import Pool
 from time import time
+
 
 def folder_check(output_path, input_path):
     if not os.path.exists(output_path):
@@ -25,6 +25,7 @@ def folder_check(output_path, input_path):
 
     return tmp_path
 
+
 def deinterleave(fasta_lines: list) -> str:
     result = []
     this_out = list()
@@ -40,12 +41,17 @@ def deinterleave(fasta_lines: list) -> str:
         result.append(''.join(this_out))
     return result
 
+
 def make_nt(aa_file_name: str) -> str:
-    '''Converts AA file name to NT file name'''
+    """
+    Converts AA file name to NT file name
+    """
     return aa_file_name.replace(".aa.", ".nt.")
 
 def is_reference_header(header: str) -> bool:
-    ''''Returns true if header has only three fields'''
+    """
+    Returns true if header has only three fields
+    """
     fields = header.split('|')
 
     if len(fields) == 3:
@@ -99,15 +105,24 @@ def consolidate(log_paths: list) -> str:
     return consolidated_log_out
 
 
-
 def run_command(arg_tuple: tuple) -> None:
     aa_input,nt_input,output,matches,aa_file,tmp_path = arg_tuple
     main(aa_input,nt_input,output,matches,aa_file,tmp_path)
 
 
 def main(aa_input,nt_input,output,amt_matches,aa_file,tmp_path):
+    # passed variable
+    ## args.aa => aa_input
+    ## args.nt => nt_input
+    ## args.output => output
+    ## args.matches => amt_matches
+    ## gene => aa_file
+    ## tmp_path => tmp_path
+
+    gene_content = None
     gene_path = os.path.join(aa_input,aa_file)
-    gene_content = open(gene_path).read()
+    with open(gene_path) as in_file:
+        gene_content = in_file.read()  # this is `.aa` file we have opened
 
     references,candidates,raw_references = parse_fasta(gene_content)
 
