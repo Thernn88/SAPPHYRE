@@ -42,12 +42,7 @@ def deinterleave(fasta_lines: list) -> str:
 
 def make_nt(aa_file_name: str) -> str:
     '''Converts AA file name to NT file name'''
-    
-    file_parts = aa_file_name.split('.')
-    file_parts[file_parts.index('aa')] = 'nt'
-    file_name = '.'.join(file_parts)
-
-    return file_name
+    return aa_file_name.replace(".aa.", ".nt.")
 
 def is_reference_header(header: str) -> bool:
     ''''Returns true if header has only three fields'''
