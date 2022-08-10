@@ -53,31 +53,34 @@ def is_reference_header(header: str) -> bool:
     else:
         return False
 
+
 def parse_fasta(fasta_content: str) -> tuple:
-    '''Parses fasta file into header and sequences'''
+    """
+    Parses fasta file into header and sequences
+    """
     references = []
     candidates = []
     raw_references = []
+    is_reference_header = lambda header: header.count("|") == 2
 
     lines = fasta_content.split('\n')
-    while '' in lines:
-        lines.remove('')
-
+    lines = list(filter(None, lines))
     lines = deinterleave(lines)
-
-    for i in range(0,len(lines),2):
+    print(len(lines))
+    for i in range(0, len(lines), 2):
         header = lines[i]
-        seq = lines[i+1]
+        seq = lines[i + 1]
 
         if is_reference_header(header):
-            references.append((header,seq))
+            references.append((header, seq))
 
-            raw_references.append(header+'\n')
-            raw_references.append(seq+'\n')
+            raw_references.extend([header + '\n', seq + '\n'])
+
         else:
-            candidates.append((header,seq))
+            candidates.append((header, seq))
 
-    return references,candidates,raw_references
+    return references, candidates, raw_references
+
 
 def main(aa_input,nt_input,output,amt_matches,aa_file,tmp_path):
     gene_path = os.path.join(aa_input,aa_file)
