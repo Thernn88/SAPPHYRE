@@ -311,10 +311,7 @@ if __name__ == '__main__':
     file_inputs = [gene for gene in os.listdir(aa_path) if '.aa' in gene]
 
     if args.processes:
-        arguments = list()
-        for gene in file_inputs:
-            arguments.append((aa_path,nt_path,output_path,args.matches,gene,tmp_path))
-
+        arguments = [(args.aa,args.nt,args.output,args.matches,gene,tmp_path) for gene in file_inputs]
         with Pool(args.processes) as pool:
             pool.map(run_command, arguments, chunksize=1)
     else:
