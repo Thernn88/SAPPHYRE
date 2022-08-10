@@ -82,6 +82,23 @@ def parse_fasta(fasta_content: str) -> tuple:
     return references, candidates, raw_references
 
 
+def consolidate(log_paths: list) -> str:
+    """
+    Consolidates each individual gene log to global log.
+    """
+
+    consolidated_log_out = []
+
+    for i,log_path in enumerate(log_paths):
+        log_lines = open(log_path).readlines()
+        if i != 0:
+            log_lines = log_lines[1:]
+
+        consolidated_log_out.extend(log_lines)
+
+    return consolidated_log_out
+
+
 def main(aa_input,nt_input,output,amt_matches,aa_file,tmp_path):
     gene_path = os.path.join(aa_input,aa_file)
     gene_content = open(gene_path).read()
