@@ -99,6 +99,12 @@ def consolidate(log_paths: list) -> str:
     return consolidated_log_out
 
 
+
+def run_command(arg_tuple: tuple) -> None:
+    aa_input,nt_input,output,matches,aa_file,tmp_path = arg_tuple
+    main(aa_input,nt_input,output,matches,aa_file,tmp_path)
+
+
 def main(aa_input,nt_input,output,amt_matches,aa_file,tmp_path):
     gene_path = os.path.join(aa_input,aa_file)
     gene_content = open(gene_path).read()
