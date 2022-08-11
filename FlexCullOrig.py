@@ -51,7 +51,6 @@ def make_nt(aa_file_name: str) -> str:
     """
     return aa_file_name.replace(".aa.", ".nt.")
 
-
 def is_reference_header(header: str) -> bool:
     """
     Returns true if header has only three fields
@@ -309,8 +308,7 @@ if __name__ == '__main__':
 
     tmp_path = folder_check(output_path, args.input)
 
-    file_inputs = [gene for gene in os.listdir(args.aa)]
-
+    file_inputs = [gene for gene in os.listdir(aa_path) if '.aa' in gene]
 
     if args.processes:
         arguments = [(args.aa,args.nt,args.output,args.matches,gene,tmp_path) for gene in file_inputs]
@@ -318,12 +316,12 @@ if __name__ == '__main__':
             pool.map(run_command, arguments, chunksize=1)
     else:
         for gene in file_inputs:
-            main(args.aa,args.nt,args.output,args.matches,gene,tmp_path)
-
+            main(aa_path,nt_path,output_path,args.matches,gene,tmp_path)
+            
     logs = [os.path.join(tmp_path,log) for log in os.listdir(tmp_path)]
     log_global = consolidate(logs)
     log_global.sort()
-    log_out = os.path.join(args.output,'Culls.csv')
+    log_out = os.path.join(output_path,'Culls.csv')
     open(log_out,'w').writelines(log_global)
 
     time_taken = time()
