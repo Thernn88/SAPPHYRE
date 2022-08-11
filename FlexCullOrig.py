@@ -4,29 +4,27 @@ from multiprocessing.pool import Pool
 from time import time
 
 
-def folder_check(args):
-    output_path = args.output # default variable trimmed
-
+def folder_check(output_path, input_path):
     if not os.path.exists(output_path):
         os.mkdir(output_path)
 
-
-    output_aa_path = output_path + '/aa'
-
+    output_aa_path = os.path.join(output_path,'aa')
     if not os.path.exists(output_aa_path):
         os.mkdir(output_aa_path)
 
-    output_nt_path = output_path + '/nt'
-
+    output_nt_path = os.path.join(output_path,'nt')
     if not os.path.exists(output_nt_path):
         os.mkdir(output_nt_path)
-
+    # some versions of linux use dev, some use run
+    # whatever it is, we really want the speed from a memfs
     tmp_path = '/run/shm'
     if not os.path.exists(tmp_path):
-        if os.path.exists('/dev/shm'):
-            tmp_path = '/dev/shm'
-        else:
-            os.mkdir(tmp_path)
+        tmp_path = '/dev/shm'
+
+    if not os.path.exists(tmp_path):
+        tmp_path = os.path.join(input_path,'tmp')
+        if not os.path.exists(tmp_path):
+                os.mkdir(tmp_path)
 
     return tmp_path
 
@@ -286,21 +284,30 @@ def run_command(arg_tuple: tuple) -> None:
 if __name__ == '__main__':
     start = time()
     parser = argparse.ArgumentParser()
+    parser.add_argument('-i', '--input', type=str, default='taxa',
+        help='Taxa input path.')
     parser.add_argument('-o','--output',type=str,default='trimmed',
         help='Output Directory.')
-    parser.add_argument('-aa','--aa',type=str,default='aa',
+    parser.add_argument('-aa','--aa',type=str,default='mafft',
         help='AA Folder Name.')
-    parser.add_argument('-nt','--nt',type=str,default='nt',
+    parser.add_argument('-nt','--nt',type=str,default='nt_aligned',
         help='NT Folder Name.')
     parser.add_argument('-m','--matches',type=int,default=4,
         help='Amount of nucleotides that have to match reference.')
-    parser.add_argument('-bp','--bp',type=int,default=30,
+    parser.add_argument('-bp','--bp',type=int,default=15,
         help='Minimum bp after cull.')
     parser.add_argument('-p', '--processes', type=int, default=2,
         help='Number of threads used to call processes.')
     args = parser.parse_args()
+    allowed_extensions = ['fa','fas','fasta']
 
-    tmp_path = folder_check(args)
+    
+
+    aa_path = os.path.join(args.input,'clean',args.aa)
+    nt_path = os.path.join(args.input,'clean',args.nt)
+    output_path = os.path.join(args.input,'clean',args.output)
+
+    tmp_path = folder_check(output_path, args.input)
 
     file_inputs = [gene for gene in os.listdir(args.aa)]
 
