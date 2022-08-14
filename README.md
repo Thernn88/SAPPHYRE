@@ -11,7 +11,7 @@ Data Generation Scripts in order of use
 
 Post-Processing Scripts in order of use
 
-	super_copy.py
+	ccc_super.py
 
 	CleanTaxa.py
 
