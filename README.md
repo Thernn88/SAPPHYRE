@@ -13,8 +13,6 @@ Post-Processing Scripts in order of use
 
 	ccc_super.py
 
-	CleanTaxa.py
-
 	mafft_new.py
 
 	nt_batch_new.py
