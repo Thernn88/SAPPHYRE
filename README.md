@@ -13,11 +13,11 @@ Post-Processing Scripts in order of use
 
 	ccc_super.py
 
-	mafft_new.py
+	mafft.py
 
-	nt_batch_new.py
+	nt_batch.py
 
-	FlexCullOriginal.py
+	FlexCull.py
 
 	OutlierCheck.py
 	
