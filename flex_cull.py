@@ -35,6 +35,9 @@ def folder_check(output_target_path: str, input_target_path: str) -> str:
     target_tmp_path = "/run/shm"
 
     if not os.path.exists(target_tmp_path):
+        target_tmp_path = '/dev/shm'
+
+    if not os.path.exists(target_tmp_path):
         target_tmp_path = os.path.join(input_target_path, "tmp")
         if not os.path.exists(target_tmp_path):
             os.mkdir(target_tmp_path)
@@ -55,7 +58,8 @@ def deinterleave(fasta_lines: list) -> str:
             result.append(line)
             this_out = []
         else:
-            this_out.append(line.strip())
+            if line != "":
+                this_out.append(line.strip())
 
     if this_out:
         result.append("".join(this_out))
@@ -67,21 +71,7 @@ def make_nt(aa_file_name: str) -> str:
     """
     Converts AA file name to NT file name
     """
-    file_parts = aa_file_name.split(".")
-    file_parts[file_parts.index("aa")] = "nt"
-    file_name = ".".join(file_parts)
-
-    return file_name
-
-
-def is_reference_header(header: str) -> bool:
-    """
-    Returns true if header has only three fields
-    """
-    fields = header.split("|")
-
-    return len(fields) == 3
-
+    return aa_file_name.replace(".aa.", ".nt.")
 
 def parse_fasta(fasta_path: str) -> tuple:
     """
@@ -90,6 +80,7 @@ def parse_fasta(fasta_path: str) -> tuple:
     references = []
     candidates = []
     raw_references = []
+    is_reference_header = lambda header: header.count("|") == 2
 
     lines = []
     with open(fasta_path, encoding="UTF-8") as fasta_io:
@@ -104,8 +95,7 @@ def parse_fasta(fasta_path: str) -> tuple:
         if is_reference_header(header):
             references.append((header.rstrip(), seq.rstrip()))
 
-            raw_references.append(header)
-            raw_references.append(seq + "\n")
+            raw_references.extend([header + "\n", seq + "\n"])
 
         else:
             candidates.append((header.strip(), seq.rstrip()))
@@ -427,6 +417,13 @@ if __name__ == "__main__":
                         available_tmp_path,
                         args.debug,
                     )
+
+            if args.debug:
+                logs = [os.path.join(available_tmp_path, log_present) for log_present in os.listdir(available_tmp_path)]
+                log_global = consolidate(logs)
+                log_global.sort()
+                log_out = os.path.join(output_path,'Culls.csv')
+                open(log_out,'w').writelines(log_global)
 
             time_taken = time()
             time_taken = time_taken - start
