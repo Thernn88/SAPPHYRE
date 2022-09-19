@@ -1,25 +1,30 @@
+"""
+Outlier Check
+
+PyLint 8.99/10
+"""
+
 import argparse
-from copy import deepcopy
 import os
+from copy import deepcopy
 from statistics import mean
 from multiprocessing.pool import Pool
-import numpy as np
-import blosum_distance as bd
 from itertools import combinations
 from time import time
+import numpy as np
+import blosum_distance as bd
 
-class Record():
-
+class Record:
     def __init__(self, head, seq, raw_seq=None):
         self.id = head
         self.sequence = seq
-        if raw_seq == None:
+        if raw_seq is None:
             self.raw = seq
         else:
             self.raw = raw_seq
-    
+
     def __hash__(self):
-        return hash(self.id+self.sequence)
+        return hash(self.id + self.sequence)
 
     def __str__(self):
         return self.sequence
@@ -30,12 +35,12 @@ def taxa_sort(lines: list) -> list:
     Iterates over a list of candidates and creates Records. Sorts by
     taxa, then makes a fasta list. Returns the list.
     """
-    records = list()
+    records = []
     for i in range(0, len(lines), 2):
-        specimen = Record(lines[i], lines[i+1])
+        specimen = Record(lines[i], lines[i + 1])
         records.append(specimen)
-    records.sort(key=lambda x: (x.id.split('|')[2],x.id.split('|')[3]))
-    output = list()
+    records.sort(key=lambda x: (x.id.split("|")[2], x.id.split("|")[3]))
+    output = []
     for record in records:
         output.append(record.id)
         output.append(record.sequence)
@@ -46,10 +51,10 @@ def original_sort(headers, lines) -> list:
     """
     Returns candidate sequences to their original order.
     """
-    output = list()
-    record_dict = dict()
+    output = []
+    record_dict = {}
     for i in range(0, len(lines), 2):
-        record_dict[lines[i]] = lines[i+1]
+        record_dict[lines[i]] = lines[i + 1]
     for header in headers:
         sequence = record_dict.get(header, False)
         if sequence:
@@ -61,13 +66,13 @@ def original_sort(headers, lines) -> list:
 def folder_check(path: str) -> None:
     if not os.path.exists(path):
         os.mkdir(path)
-    aa_folder = os.path.join(path, 'aa')
+    aa_folder = os.path.join(path, "aa")
     if not os.path.exists(aa_folder):
         os.mkdir(aa_folder)
-    nt_folder = os.path.join(path, 'nt')
+    nt_folder = os.path.join(path, "nt")
     if not os.path.exists(nt_folder):
         os.mkdir(nt_folder)
-    logs_folder = os.path.join(path, 'logs')
+    logs_folder = os.path.join(path, "logs")
     if not os.path.exists(logs_folder):
         os.mkdir(logs_folder)
 
@@ -77,7 +82,7 @@ def is_reference_header(header: str) -> bool:
     Counts the | pipe characters in a string. If two are found, returns true.
     Otherwise returns false.
     """
-    result = header.count('|') == 2
+    result = header.count("|") == 2
     return result
 
 
@@ -86,7 +91,7 @@ def get_headers(lines: list) -> list:
     Returns a list of every other line in the provided argument. Used to get
     header names from a list of sequences.
     """
-    result = list()
+    result = []
     for i in range(0, len(lines), 2):
         result.append(lines[i])
     return result
@@ -98,14 +103,14 @@ def split_sequences(lines: list, excluded: set) -> tuple:
     The first returned list is the reference sequences found, the second returned list
     is the candidate sequences found.
     """
-    bad_names = {'bombyx_mori', 'danaus_plexippus'}
-    references = list()
-    candidates = list()
+    bad_names = {"bombyx_mori", "danaus_plexippus"}
+    references = []
+    candidates = []
     for i in range(0, len(lines), 2):
         header = lines[i]
-        sequence = lines[i+1]
+        sequence = lines[i + 1]
         if is_reference_header(header):
-            if header.split('|')[1].lower() in bad_names:
+            if header.split("|")[1].lower() in bad_names:
                 excluded.add(header.strip())
             references.append(header.strip())
             references.append(sequence.strip())
@@ -115,22 +120,22 @@ def split_sequences(lines: list, excluded: set) -> tuple:
     return references, candidates
 
 
-def make_indices(sequence: str, gap_character='-') -> tuple:
+def make_indices(sequence: str, gap_character="-") -> tuple:
     """
     Finds the index of the first and last non-gap bp in a sequence.
     Returns the start value and the end values + 1 as a tuple.
     """
     start = None
     end = None
-    for i,character in enumerate(sequence):
+    for i, character in enumerate(sequence):
         if character != gap_character:
             start = i
             break
-    for i in range(len(sequence)-1, -1, -1):
+    for i in range(len(sequence) - 1, -1, -1):
         if sequence[i] != gap_character:
-            end = i+1
+            end = i + 1
             break
-    if start == None or end == None:
+    if start is None or end is None:
         raise ValueError()
     return start, end
 
@@ -142,7 +147,7 @@ def sequence_has_data(sequence: str) -> bool:
     """
     result = False
     for character in sequence:
-        if character != '-':
+        if character != "-":
             result = True
             break
     return result
@@ -153,10 +158,10 @@ def constrain_data_lines(lines: list, start: int, end: int) -> tuple:
     Given a start and end value, iterates over the list of sequences and
     trims the non-header lines to given values. No return, mutates the original data.
     """
-    full = list()
-    heads = list()
+    full = []
+    heads = []
     for i in range(0, len(lines), 2):
-        newline = lines[i+1][start:end]
+        newline = lines[i + 1][start:end]
         if sequence_has_data(newline):
             full.append(lines[i])
             full.append(newline)
@@ -170,9 +175,9 @@ def convert_to_record_objects(lines: list) -> list:
     from the biopython module. This allows us to make a MultipleSequenceAlignment
     object later.
     """
-    result = list()
+    result = []
     for i in range(0, len(lines), 2):
-        record_object = Record(lines[i], lines[i+1])
+        record_object = Record(lines[i], lines[i + 1])
         result.append(record_object)
     return result
 
@@ -185,16 +190,15 @@ def find_index_groups(references: list, candidates: list) -> tuple:
     candidates with identical indices, and the other dictionary stores
     the ref set after constraining to those indices.
     """
-    candidate_dict = dict()
+    candidate_dict = {}
     for i in range(0, len(candidates), 2):
-        header = candidates[i]
-        sequence = candidates[i+1]
+        sequence = candidates[i + 1]
         raw_seq = sequence
         index_tuple = make_indices(sequence)
         start, stop = index_tuple
-        lines = [candidates[i], candidates[i+1]]
+        lines = [candidates[i], candidates[i + 1]]
         lines, _ = constrain_data_lines(lines, start, stop)
-        cand_seq = Record(lines[0],lines[1],raw_seq)
+        cand_seq = Record(lines[0], lines[1], raw_seq)
         made_already = candidate_dict.get(index_tuple, False)
         if not made_already:
             seq_set = set()
@@ -204,13 +208,13 @@ def find_index_groups(references: list, candidates: list) -> tuple:
             made_already.add(cand_seq)
             candidate_dict[index_tuple] = made_already
     # after processing candidates, make appropriate ref sets
-    reference_dict = dict()
-    raw_ref_dict = dict()
+    reference_dict = {}
+    raw_ref_dict = {}
     for key in candidate_dict:
         start, stop = key
         ref_lines = deepcopy(references)
         raw_ref_dict[key] = ref_lines
-        ref_lines, ref_headers = constrain_data_lines(ref_lines, start, stop)
+        ref_lines, _ = constrain_data_lines(ref_lines, start, stop)
         reference_dict[key] = ref_lines
     return reference_dict, candidate_dict
 
@@ -242,68 +246,78 @@ def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
     Returns the distances as list. Used to avoid recalculating the ref distances
     for any given candidate index.
     """
-    result = list()
+    result = []
     for ref in refs:
         result.append(bd.blosum62_distance(str(candidate), str(ref)))
     result.append(0.0)
     return result
 
 
-def compare_means(references: list, candidates: list, threshold: float,excluded_headers: set, keep_refs: bool, sort: str) -> tuple:
+def compare_means(
+    references: list,
+    candidates: list,
+    threshold: float,
+    excluded_headers: set,
+    keep_refs: bool,
+    sort: str,
+) -> tuple:
     """
     For each candidate record, finds the index of the first non-gap bp and makes
     matching cuts in the reference sequences. Afterwards finds the mean of the trimmed
     data.
     """
-    regulars = list()
-    outliers = list()
+    regulars = []
+    outliers = []
     if keep_refs:
         for line in references:
             regulars.append(line)
     ref_dict, candidates_dict = find_index_groups(references, candidates)
-    to_add_later =list()
-    for index_pair in ref_dict:
+    to_add_later = []
+    for index_pair, current_refs in ref_dict.items():
         # start, stop = index_pair
-        current_refs = ref_dict[index_pair]
         candidates_at_index = candidates_dict[index_pair]
         # first we have to calculate the reference distances to make the ref mean
         convert_to_record_objects(current_refs)
-        ref_alignments = [seq for seq in convert_to_record_objects(current_refs) if seq.id not in excluded_headers]
-        ref_distances = list()
+        ref_alignments = [
+            seq
+            for seq in convert_to_record_objects(current_refs)
+            if seq.id not in excluded_headers
+        ]
+        ref_distances = []
         for seq1, seq2 in combinations(ref_alignments, 2):
             ref1 = str(seq1)
             ref2 = str(seq2)
             ref_distances.append(bd.blosum62_distance(ref1, ref2))
         # First quartile (Q1)
         try:
-            Q1 = np.percentile(ref_distances, 25, method = 'midpoint')
+            Q1 = np.percentile(ref_distances, 25, method="midpoint")
         except IndexError:
             Q1 = 0.0
         # Third quartile (Q3)
         try:
-            Q3 = np.percentile(ref_distances, 75, method = 'midpoint')
+            Q3 = np.percentile(ref_distances, 75, method="midpoint")
         except IndexError:
             Q3 = 0.0
         # Interquartile range (IQR)
         IQR = Q3 - Q1
-        upper_bound = Q3 + (threshold * IQR) + .02
-        intermediate_list = list()
+        upper_bound = Q3 + (threshold * IQR) + 0.02
+        intermediate_list = []
         for candidate in candidates_at_index:
             candidate_distances = candidate_pairwise_calls(candidate, ref_alignments)
             mean_distance = mean(candidate_distances)
             header = candidate.id
             raw_sequence = candidate.raw
-            grade = 'Fail'
+            grade = "Fail"
             if mean_distance <= upper_bound:
-                if sort == 'original':
+                if sort == "original":
                     to_add_later.append(header)
                     to_add_later.append(raw_sequence)
-                elif sort == 'cluster':
+                elif sort == "cluster":
                     intermediate_list.append(header)
                     intermediate_list.append(raw_sequence)
-                grade = 'Pass'
+                grade = "Pass"
             outliers.append((header, mean_distance, upper_bound, grade, IQR))
-        if sort == 'cluster':
+        if sort == "cluster":
             intermediate_list = taxa_sort(intermediate_list)
             to_add_later.extend(intermediate_list)
     return regulars, to_add_later, outliers
@@ -311,11 +325,11 @@ def compare_means(references: list, candidates: list, threshold: float,excluded_
 
 def make_nt_name(path: str) -> str:
     folder, name = os.path.split(path)
-    fields = name.split('.')
-    name, ext = fields[0], fields[-1]
-    name = name + '.nt.'
-    top_level = '/'.join(folder.split('/')[:-1])
-    nt_folder = os.path.join(top_level, 'nt')
+    fields = name.split(".")
+    name = fields[0]
+    name = name + ".nt."
+    top_level = "/".join(folder.split("/")[:-1])
+    nt_folder = os.path.join(top_level, "nt")
     result = os.path.join(nt_folder, name)
     return result, name, top_level
 
@@ -324,33 +338,33 @@ def make_nt_folder(path: str) -> str:
     head, tail = os.path.split(path)
     possible = os.listdir(head)
     result = None
-    if tail == 'mafft' and 'nt_aligned' in possible:
-        result = os.path.join(head, 'nt_aligned')
-    elif tail == 'aa' and 'nt' in possible:
-        result = os.path.join(head, 'nt')
-    if result == None:
+    if tail == "mafft" and "nt_aligned" in possible:
+        result = os.path.join(head, "nt_aligned")
+    elif tail == "aa" and "nt" in possible:
+        result = os.path.join(head, "nt")
+    if result is None:
         raise ValueError("no valid nt folder found in input")
     return result
 
 
 def make_nt_out_folder(output: str, path: str) -> str:
-    head, tail = os.path.split(path)
+    _, tail = os.path.split(path)
     return os.path.join(output, tail)
 
 
 def deinterleave(fasta_lines: list) -> list:
     result = []
-    this_out = list()
+    this_out = []
     for line in fasta_lines:
-        if line[0] == '>':
+        if line[0] == ">":
             if this_out:
-                result.append(''.join(this_out))
+                result.append("".join(this_out))
             result.append(line)
-            this_out = list()
+            this_out = []
         else:
             this_out.append(line.strip())
-    if this_out != list():
-        result.append(''.join(this_out))
+    if this_out:
+        result.append("".join(this_out))
     return result
 
 
@@ -361,33 +375,30 @@ def delete_empty_columns(raw_fed_sequences: list) -> list:
     """
     result = []
     sequences = []
-    raw_sequences = [i.replace('\n','') for i in raw_fed_sequences]
-
-    while '' in raw_sequences:
-        raw_sequences.remove('')
+    raw_sequences = [i.replace("\n", "") for i in raw_fed_sequences if i.replace("\n", "") != ""]
 
     for i in range(0, len(raw_sequences), 2):
-        sequences.append(raw_sequences[i+1])
-    min_length = float('inf')
+        sequences.append(raw_sequences[i + 1])
+    min_length = float("inf")
     for seq in sequences:
         min_length = min(len(seq), min_length)
-    # max_length = float('-inf')
+
     positions_to_keep = []
-    if sequences != []:
+    if sequences:
         for i in range(len(sequences[0])):
             for sequence in sequences:
-                if sequence[i] != '-':
+                if sequence[i] != "-":
                     positions_to_keep.append(i)
                     break
         for i in range(0, len(raw_sequences), 2):
-            result.append(raw_sequences[i]+'\n')
+            result.append(raw_sequences[i] + "\n")
             try:
-                sequence = [raw_sequences[i+1][x] for x in positions_to_keep]
+                sequence = [raw_sequences[i + 1][x] for x in positions_to_keep]
             except IndexError:
                 print(sequence)
-            sequence.append('\n')
-            sequence = ''.join(sequence)
-        
+            sequence.append("\n")
+            sequence = "".join(sequence)
+
             result.append(sequence)
 
     return result
@@ -399,86 +410,89 @@ def remove_excluded_sequences(lines: list, excluded: set) -> list:
     returns a list of all valid headers and sequences. Use before the delete_column
     call in the nt portion.
     """
-    output = list()
+    output = []
     for i in range(0, len(lines), 2):
         if lines[i].strip() not in excluded:
             output.append(lines[i])
-            output.append(lines[i+1])
+            output.append(lines[i + 1])
     return output
 
 
-def main_process(args_input, nt_input, args_output, args_threshold, args_references, sort: str, nt_output_path: str):
-    if not args_references:
-        keep_refs = True
-    else:
-        keep_refs = False
+def main_process(
+    args_input,
+    nt_input,
+    args_output,
+    args_threshold,
+    args_references,
+    sort: str,
+    nt_output_path: str,
+):
+
+    keep_refs = not args_references
 
     file_input = args_input
     filename = os.path.basename(file_input)
-    name = filename.split('.')[0]
-    threshold = args_threshold/100
-    aa_output = os.path.join(args_output, 'aa')
+    name = filename.split(".")[0]
+    threshold = args_threshold / 100
+    aa_output = os.path.join(args_output, "aa")
     aa_output = os.path.join(aa_output, filename)
 
-    outliers_csv = os.path.join(args_output+'/logs', 'outliers_'+name+'.csv')
-    outliers_csv = open(outliers_csv, 'w+')
+    outliers_csv = os.path.join(args_output, "logs", "outliers_" + name + ".csv")
+    with open(outliers_csv, "w+", encoding = "UTF-8") as outliers_csv:
+        lines = []
+        with open(file_input, encoding = "UTF-8") as fasta_in:
+            lines = fasta_in.readlines()
+            lines = deinterleave(lines)
 
-    lines = list()
-    with open(file_input) as f:
-        lines = f.readlines()
-        lines = deinterleave(lines)
-        # print(file_input)
-    to_be_excluded = set()
-    reference_sequences, candidate_sequences = split_sequences(lines, to_be_excluded)
-    candidate_headers = [header for header in candidate_sequences if header[0] == '>']
-    raw_regulars, to_add, outliers = compare_means(reference_sequences, candidate_sequences, threshold, to_be_excluded, keep_refs, sort)
-    if sort == 'original':
-        to_add = original_sort(candidate_headers, to_add)
-
-    for line in to_add:
-        raw_regulars.append(line)
-
-
-    regulars = delete_empty_columns(raw_regulars)
-
-    if len(to_add) > 0:  # If candidate added to fasta
-        aa_output = open(aa_output,'w+')
-        aa_output.writelines(regulars)
         to_be_excluded = set()
-        for outlier in outliers:
-            header, distance, ref_dist, grade, iqr = outlier
-            if grade == 'Fail':
-                to_be_excluded.add(header)
+        reference_sequences, candidate_sequences = split_sequences(lines, to_be_excluded)
+        candidate_headers = [header for header in candidate_sequences if header[0] == ">"]
+        raw_regulars, to_add, outliers = compare_means(
+            reference_sequences,
+            candidate_sequences,
+            threshold,
+            to_be_excluded,
+            keep_refs,
+            sort,
+        )
+        if sort == "original":
+            to_add = original_sort(candidate_headers, to_add)
 
-            header = header[1:]
-            result = [header, str(distance), str(ref_dist),str(iqr), grade]
-            outliers_csv.write(','.join(result)+'\n')
-        nt_file = filename.replace(".aa.", ".nt.")
-        nt_input_path = os.path.join(nt_input, nt_file)
-        if not os.path.exists(nt_output_path):
-            os.mkdir(nt_output_path)
-        nt_output_path = os.path.join(nt_output_path, nt_file)
-        # nt_input_path, nt_filename, top_level_folder = make_nt_name(args_input)
-        # nt_output_path = os.path.join(args_output, 'nt')
-        # allowed_extensions = {'fa', 'fas', 'fasta'}
-        # for ext in allowed_extensions:
-        #     nt_ext_name = nt_filename+ext
-        #     nt_trial_path = nt_input_path+ext
-        #     if os.path.exists(nt_trial_path):
-        #         nt_input_path = nt_trial_path
-        #         nt_output_path = os.path.join(nt_output_path, nt_ext_name)
-        #         break
-        # print(nt_input_path)
-        nt_output_handle = open(nt_output_path,'w+')
-        with open(nt_input_path) as f:
-            lines = f.readlines()
-            de_lines = deinterleave(lines)
-            non_empty_lines = remove_excluded_sequences(de_lines, to_be_excluded)
-            non_empty_lines = delete_empty_columns(non_empty_lines)
-        for i in range(0, len(non_empty_lines), 2):
-            nt_output_handle.write(non_empty_lines[i])
-            nt_output_handle.write(non_empty_lines[i+1])
-        nt_output_handle.close()
+        for line in to_add:
+            raw_regulars.append(line)
+
+        regulars = delete_empty_columns(raw_regulars)
+
+        if len(to_add) > 0:  # If candidate added to fasta
+            with open(aa_output, "w+", encoding = "UTF-8") as aa_output:
+                aa_output.writelines(regulars)
+
+            to_be_excluded = set()
+            for outlier in outliers:
+                header, distance, ref_dist, grade, iqr = outlier
+                if grade == "Fail":
+                    to_be_excluded.add(header)
+
+                header = header[1:]
+                result = [header, str(distance), str(ref_dist), str(iqr), grade]
+                outliers_csv.write(",".join(result) + "\n")
+
+            nt_file = filename.replace(".aa.", ".nt.")
+            nt_input_path = os.path.join(nt_input, nt_file)
+            if not os.path.exists(nt_output_path):
+                os.mkdir(nt_output_path)
+            nt_output_path = os.path.join(nt_output_path, nt_file)
+
+            with open(nt_output_path, "w+", encoding = "UTF-8") as nt_output_handle:
+                with open(nt_input_path, encoding = "UTF-8") as nt_input_handle:
+                    lines = nt_input_handle.readlines()
+                    de_lines = deinterleave(lines)
+                    non_empty_lines = remove_excluded_sequences(de_lines, to_be_excluded)
+                    non_empty_lines = delete_empty_columns(non_empty_lines)
+
+                for i in range(0, len(non_empty_lines), 2):
+                    nt_output_handle.write(non_empty_lines[i])
+                    nt_output_handle.write(non_empty_lines[i + 1])
 
 
 def run_command(arg_tuple: tuple) -> None:
@@ -486,76 +500,118 @@ def run_command(arg_tuple: tuple) -> None:
     main_process(input, nt_input, output, threshold, references_args, sort, nt)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     start = time()
     parser = argparse.ArgumentParser()
-    #parser.add_argument('-aa', '--aa_input', default='aa', help="Source of AA files")
-    #parser.add_argument('-nt', '--nt_input', default=False,
-    #                    help="Path to nt files. Will autodetect if not set.")
-    parser.add_argument('-i', '--input', default='Taxa', help="Path to taxa")
-    parser.add_argument('-o', '--output', default='outlier', help="Output folder")
-    parser.add_argument('-p', '--processes', type=int, default=0,
-                        help='Number of threads used to call processes.')
-    parser.add_argument('-t', '--threshold', type=int, default=50,
-                        help='Greater than reference mean to be counted as an outlier. Default is 2x.')
-    parser.add_argument('--no-references', action='store_true',
-                        help='Disable output of reference sequences')
-    parser.add_argument('-s', '--sort', choices=['cluster', 'original'], default='original',
-                        help="Sort candidate output by cluster and taxa, or preserver original order.")
+
+    parser.add_argument("-i", "--input", default="Taxa", help="Path to taxa")
+    parser.add_argument("-o", "--output", default="outlier", help="Output folder")
+    parser.add_argument(
+        "-p",
+        "--processes",
+        type=int,
+        default=0,
+        help="Number of threads used to call processes.",
+    )
+    parser.add_argument(
+        "-t",
+        "--threshold",
+        type=int,
+        default=50,
+        help="Greater than reference mean to be counted as an outlier. Default is 2x.",
+    )
+    parser.add_argument(
+        "--no-references",
+        action="store_true",
+        help="Disable output of reference sequences",
+    )
+    parser.add_argument(
+        "-s",
+        "--sort",
+        choices=["cluster", "original"],
+        default="original",
+        help="Sort candidate output by cluster and taxa, or preserver original order.",
+    )
     args = parser.parse_args()
-    allowed_extensions = {'fa', 'fas', 'fasta'}
+    allowed_extensions = {"fa", "fas", "fasta"}
 
     for taxa in os.listdir(args.input):
-        print('Doing taxa {}'.format(taxa))
-        taxa_path = os.path.join(args.input,taxa)
+        print(f"Doing taxa {taxa}")
+        taxa_path = os.path.join(args.input, taxa)
 
-        wanted_aa_path = os.path.join(taxa_path, 'trimmed','aa')
+        wanted_aa_path = os.path.join(taxa_path, "trimmed", "aa")
         if os.path.exists(wanted_aa_path):
             aa_input = wanted_aa_path
-            nt_input = os.path.join(taxa_path, 'trimmed','nt')
+            nt_input = os.path.join(taxa_path, "trimmed", "nt")
         else:
-            aa_input = os.path.join(taxa_path, 'mafft')
-            nt_input = os.path.join(taxa_path, 'nt_aligned')
+            aa_input = os.path.join(taxa_path, "mafft")
+            nt_input = os.path.join(taxa_path, "nt_aligned")
 
         if os.path.exists(aa_input):
-            file_inputs = [os.path.join(aa_input,gene) for gene in os.listdir(os.path.join(aa_input)) if '.aa' in gene and gene.split('.')[-1] in allowed_extensions]
-            output_path = os.path.join(taxa_path,args.output)
-            nt_output_path = os.path.join(output_path,'nt')
+            file_inputs = [
+                os.path.join(aa_input, gene)
+                for gene in os.listdir(os.path.join(aa_input))
+                if ".aa" in gene and gene.split(".")[-1] in allowed_extensions
+            ]
+            output_path = os.path.join(taxa_path, args.output)
+            nt_output_path = os.path.join(output_path, "nt")
             folder_check(output_path)
-            #nt_folder = args.nt_input
-            #if not nt_folder:
+            # nt_folder = args.nt_input
+            # if not nt_folder:
             #    nt_folder = make_nt_folder(args.aa_input)
 
             if args.processes:
-                arguments = list()
+                arguments = []
                 for gene in file_inputs:
-                    arguments.append((gene,nt_input,output_path,args.threshold,args.no_references, args.sort, nt_output_path))
+                    arguments.append(
+                        (
+                            gene,
+                            nt_input,
+                            output_path,
+                            args.threshold,
+                            args.no_references,
+                            args.sort,
+                            nt_output_path,
+                        )
+                    )
 
                 with Pool(args.processes) as pool:
                     pool.map(run_command, arguments, chunksize=1)
             else:
                 for gene in file_inputs:
                     print(gene)
-                    main_process(gene,nt_input,output_path,args.threshold,args.no_references, args.sort, nt_output_path)
+                    main_process(
+                        gene,
+                        nt_input,
+                        output_path,
+                        args.threshold,
+                        args.no_references,
+                        args.sort,
+                        nt_output_path,
+                    )
 
-            log_folder_path = os.path.join(output_path, 'logs')
-            global_csv_path = os.path.join(log_folder_path, 'outliers_global.csv')
+            log_folder_path = os.path.join(output_path, "logs")
+            global_csv_path = os.path.join(log_folder_path, "outliers_global.csv")
 
-            logs = [x for x in os.listdir(log_folder_path) if 'outliers_' in x and 'global' not in x]
-            with open(global_csv_path, 'w') as global_csv:
-                global_csv.write('Gene,Header,Mean_Dist,Ref_Mean,IQR\n')
+            logs = [
+                x
+                for x in os.listdir(log_folder_path)
+                if "outliers_" in x and "global" not in x
+            ]
+            with open(global_csv_path, "w", encoding = "UTF-8") as global_csv:
+                global_csv.write("Gene,Header,Mean_Dist,Ref_Mean,IQR\n")
                 for log in logs:
                     log_file_path = os.path.join(log_folder_path, log)
-                    with open(log_file_path) as log_f:
+                    with open(log_file_path, encoding = "UTF-8") as log_f:
                         for line in log_f:
-                            if line.strip().split(',')[-1] == 'Fail':
+                            if line.strip().split(",")[-1] == "Fail":
                                 global_csv.write(line)
-                                if line[-1] != '\n':
-                                    global_csv.write('\n')
+                                if line[-1] != "\n":
+                                    global_csv.write("\n")
             time_taken = time()
-            time_taken = time_taken-start
+            time_taken = round(time_taken - start)
 
-            print('Finished in {} seconds'.format(round(time_taken)))
-            #open('runtime.txt','w').writelines('Finished in {} seconds'.format(round(time_taken)))
+            print(f"Finished in {time_taken} seconds")
+
         else:
-            print("Can't find aa folder for taxa {}".format(taxa))
+            print(f"Can't find aa folder for taxa {taxa}")
