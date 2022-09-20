@@ -9,33 +9,37 @@ import json
 import wrap_rocks
 
 def do(gene, tmp_path, this_gene_sequences, blast_path, blast_db_path, blast_minimum_score, blast_minimum_evalue):
-	blast_file_name = '{gene}.blast'.format(gene=gene)
+	blast_file_name = f'{gene}.blast'
 	this_blast_path = os.path.join(blast_path,blast_file_name)
 	result = this_blast_path + ".done"
 
-	if not os.path.exists(this_blast_path + ".done"):
-		target_tmp_path = os.path.join(tmp_path,gene+'.fa')
-		this_tmp_out = []
+	if not os.path.exists(result):
+		if not os.path.exists(this_blast_path):
+			target_tmp_path = os.path.join(tmp_path,gene+'.fa')
+			this_tmp_out = []
 
-		for target,header,sequence in this_gene_sequences:
-			this_tmp_out.append('>'+target+'\n')
-			this_tmp_out.append(sequence+'\n')
+			for this_hmm_hit in this_gene_sequences.values():
+				target = this_hmm_hit["target_with_id"]
+				sequence = this_hmm_hit["hmm_sequence"]
+				this_tmp_out.append('>'+target+'\n')
+				this_tmp_out.append(sequence+'\n')
 
-		open(target_tmp_path,'w').writelines(this_tmp_out)
+			open(target_tmp_path,'w').writelines(this_tmp_out)
 
-		open(this_blast_path,'w').write('')
+			open(this_blast_path,'w').write('')
 
-		cmd = "blastp -outfmt '7 qseqid sseqid evalue bitscore qstart qend' -evalue '{evalue_threshold}' -threshold '{score_threshold}' -num_threads '{num_threads}' -db '{db}' -query '{queryfile}' -out '{outfile}'"
-		cmd = cmd.format(evalue_threshold = .00001,
-							score_threshold = 40,
-							num_threads = 1,
-							db = blast_db_path,
-							queryfile = target_tmp_path,
-							outfile = this_blast_path)
-		os.system(cmd)
-		
+			cmd = "blastp -outfmt '7 qseqid sseqid evalue bitscore qstart qend' -evalue '{evalue_threshold}' -threshold '{score_threshold}' -num_threads '{num_threads}' -db '{db}' -query '{queryfile}' -out '{outfile}'"
+			cmd = cmd.format(evalue_threshold = .00001,
+								score_threshold = 40,
+								num_threads = 2,
+								db = blast_db_path,
+								queryfile = target_tmp_path,
+								outfile = this_blast_path)
+			os.system(cmd)
+			os.remove(target_tmp_path)
+			
 		os.rename(this_blast_path, result)
-		os.remove(target_tmp_path)
+		
 
 	gene_out = {}
 	this_return = []
@@ -52,11 +56,7 @@ def do(gene, tmp_path, this_gene_sequences, blast_path, blast_db_path, blast_min
 					except: #Undefined
 						log_evalue = '-999'
 
-					gene,hmmsearch_id = hashes_to_gene_and_id[gene][query_id]
-
-					hmmsearch_id = str(hmmsearch_id)
-
-					query_id = query_id.split('_hmmstart')[0]
+					query_id,hmmsearch_id = query_id.split('_hmmid')
 
 					this_out = {'target':int(subject_id),
 								'score':float(bit_score),
@@ -78,11 +78,11 @@ def do(gene, tmp_path, this_gene_sequences, blast_path, blast_db_path, blast_min
 
 			this_return.append((key, data, len(this_out_results)))
 
-	print('Blasted:',gene)	
-	
-	return this_return
+		print('Blasted:',gene)	
+		
+		return this_return
 
-if __name__ == '__main__':
+def main():
 	start = time()
 	parser = argparse.ArgumentParser()
 	parser.add_argument('-i','--input',type=str, default='Syrphidae/orthograph_results/Acroceridae/SRR6453524.fa',
@@ -105,13 +105,9 @@ if __name__ == '__main__':
 
 	print('Grabbing HMM data from db.')
 
-	minimum_score = args.hmm_minimum_score
-
 	input_path = args.input
 	orthoset = args.orthoset
 	orthosets_dir = args.orthoset_input
-
-	orthoset_db_path = os.path.join(orthosets_dir,orthoset+'.sqlite')
 
 	#make dirs
 	blast_path = os.path.join(input_path,'blast')
@@ -135,8 +131,7 @@ if __name__ == '__main__':
 	db_path = os.path.join(input_path,'rocksdb')
 	db = wrap_rocks.RocksDB(db_path)
 
-	gene_to_hashes = {}
-	hashes_to_gene_and_id = {}
+	gene_to_hits = {}
 
 	grab_hmm_start = time()
 
@@ -149,28 +144,23 @@ if __name__ == '__main__':
 		hmm_object = json.loads(hmm_json)
 
 		header = hmm_object['header'].strip()
-		sequence = hmm_object['hmm_sequence']
-
 		gene = hmm_object['gene']
-		hmm_start = hmm_object['hmm_start']
-		hmm_end = hmm_object['hmm_end']
-		
+		hmm_object["target_with_id"] = header+f'_hmmid{hmm_id}'
 
-		target_with_coords = header+'_hmmstart{}_hmmend{}'.format(str(hmm_start),str(hmm_end))
+		if gene not in gene_to_hits:
+			gene_to_hits[gene] = {}
 
-		if gene not in gene_to_hashes:
-			gene_to_hashes[gene] = []
-			hashes_to_gene_and_id[gene] = {}
+		gene_to_hits[gene][hmm_id] = hmm_object
 
-		hashes_to_gene_and_id[gene][target_with_coords] = (gene,hmm_id)
-
-		gene_to_hashes[gene].append((target_with_coords,header,sequence))
-
-	genes = list(gene_to_hashes.keys())
+	genes = list(gene_to_hits.keys())
 
 	print('Grabbed HMM Data. Took: {:.2f}s. Grabbed {} rows.'.format(time()-grab_hmm_start,len(global_hmm_object)))
 
+	del global_hmm_object_raw
+	del global_hmm_object
+
 	num_threads = args.processes
+
 	if num_threads > 1:
 		num_threads = math.floor(num_threads / 2)
 
@@ -179,11 +169,11 @@ if __name__ == '__main__':
 	#Run
 	if num_threads == 1:
 		for gene in genes:
-			to_write.append(do(gene, tmp_path, gene_to_hashes[gene], blast_path, blast_db_path, args.blast_minimum_score, args.blast_minimum_evalue))
+			to_write.append(do(gene, tmp_path, gene_to_hits[gene], blast_path, blast_db_path, args.blast_minimum_score, args.blast_minimum_evalue))
 	else:										
 		arguments = list()
 		for gene in genes:
-			arguments.append((gene, tmp_path, gene_to_hashes[gene],blast_path,blast_db_path, args.blast_minimum_score, args.blast_minimum_evalue))
+			arguments.append((gene, tmp_path, gene_to_hits[gene],blast_path,blast_db_path, args.blast_minimum_score, args.blast_minimum_evalue))
 
 		with Pool(num_threads) as pool:
 			to_write = pool.starmap(do, arguments, chunksize=1)
@@ -199,3 +189,6 @@ if __name__ == '__main__':
 			i += count
 	
 	print('Done. Took {:.2f}s. Writing {} results took {:.2f}s.'.format(time()-start,i,time()-write_start))
+
+if __name__ == "__main__":
+	main()
