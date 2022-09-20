@@ -69,16 +69,20 @@ def clone_and_clean_files(
                 header = lines[i]
                 sequence = lines[i + 1]
 
-                header_gene, taxa_id, node, coords, frame, taxa = header.split("|")
-
-                if sequence_is_reference(header):
-                    new_header = "".join(
-                        [header_gene, "|", taxa_id, "|", node]
-                    )  # its faster to change a list
-                    if new_header in already_written:
-                        continue
-                    already_written.add(new_header)
-                else:
+                if end_of_references is False:
+                    if sequence_is_reference(header):
+                        header_gene, taxa_name, taxa_id, identifier = header.split("|")
+                        new_header = "|".join(
+                            [header_gene, taxa_id, node, identifier]
+                        )  # its faster to change a list
+                        if new_header in already_written:
+                            continue
+                        already_written.add(new_header)
+                    else:
+                        end_of_references = True
+                
+                if end_of_references is True:
+                    header_gene, taxa, taxa_id, node, _, frame = header.split("|")
                     if not taxa_id[-1].isnumeric() and taxa_id[-2] == "_":
                         taxa_id = taxa_id[:-2]
 
@@ -110,7 +114,8 @@ def clone_and_clean_files(
                         anti_dupe_tags[gene][node][i] = header_addition
 
                         new_header.append(header_addition)
-                    new_header = "".join(new_header)
+
+                        new_header = "".join(new_header)
 
                     output.write(new_header)
                     output.write("\n")
@@ -136,22 +141,28 @@ def clone_and_clean_files(
         nt_new_file_path = os.path.join(out_dir_clean_nt, fasta)
 
         headers = [line.split("|")[2] for line in lines if ">" in line]
+
+        end_of_references = False
         with open(nt_new_file_path, "w", encoding="UTF-8") as output:
             already_written = set()
             for i in range(0, len(lines), 2):
                 header = lines[i]
                 sequence = lines[i + 1]
 
-                header_gene, taxa_id, node, _, frame, taxa = header.split("|")
+                if end_of_references is False:
+                    if sequence_is_reference(header):
+                        header_gene, taxa_name, taxa_id, identifier = header.split("|")
+                        new_header = "|".join(
+                            [header_gene, taxa_name, taxa_id, identifier]
+                        )  # Format reference header
+                        if new_header in already_written:
+                            continue
+                        already_written.add(new_header)
+                    else:
+                        end_of_references = True
                 
-                if sequence_is_reference(header):
-                    new_header = "".join(
-                        [header_gene, "|", taxa_id, "|", node]
-                    )  # Format reference header
-                    if new_header in already_written:
-                        continue
-                    already_written.add(new_header)
-                else:
+                if end_of_references is True:
+                    header_gene, taxa, taxa_id, node, _, frame = header.split("|")
                     if not taxa_id[-1].isnumeric() and taxa_id[-2] == "_":
                         taxa_id = taxa_id[:-2]
 
@@ -169,6 +180,7 @@ def clone_and_clean_files(
                         new_header.append(rev_f_tags[gene][node][i])
                         new_header.append(anti_dupe_tags[gene][node][i])
                     new_header = "".join(new_header)
+                    
                 output.write(new_header)
                 output.write("\n")
                 output.write(sequence)
