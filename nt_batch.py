@@ -51,13 +51,14 @@ def align_references(aa_path: str, nt_path: str) -> None:
                 header = lines[i]
                 seq = lines[i + 1]
 
-                if header[-1] == '.':
-                    fields = header.split("|")
-                    nt_references[fields[1]] = (header, seq)
-                else:
-                    end_of_references = True
+                if end_of_references is False:
+                    if header[-1] == '.':
+                        fields = header.split("|")
+                        nt_references[fields[1]] = (header, seq)
+                    else:
+                        end_of_references = True
 
-                if end_of_references:
+                if end_of_references is True:
                     nt_out_lines.append(header)
                     nt_out_lines.append(seq)
 
