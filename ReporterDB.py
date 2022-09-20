@@ -607,9 +607,7 @@ def print_unmerged_sequences(
     result = []
     kicks_result = set()
     for i, hit in enumerate(hits):
-        this_hdr, tmp_rf = get_rf(hit["header"])
-
-        rf = tmp_rf if type != "nt" else "."
+        this_hdr, rf = get_rf(hit["header"])
 
         start = (
             hit["extended_orf_aa_start_on_transcript"]
