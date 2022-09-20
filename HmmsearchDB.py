@@ -493,7 +493,7 @@ def search_prot(
     score,
     ovw,
     prog="hmmsearch",
-    threads=2,
+    threads=1,
 ) -> str:
     if os.path.exists(domtbl_path) and not ovw:
         # always overwrite the empty domtbl files
@@ -642,9 +642,7 @@ def main(argv):
     min_overlap_internal = args.min_overlap_internal
 
     num_threads = args.processes
-    if num_threads > 1:
-        num_threads = math.floor(num_threads / 2)
-
+   
     if os.path.exists("/run/shm"):
         in_ram = "/run/shm"
     else:
