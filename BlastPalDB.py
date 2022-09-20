@@ -3,12 +3,11 @@ import math
 from multiprocessing.pool import Pool
 import argparse
 from time import time,sleep
-import sys
 from shutil import rmtree
 import json
 import wrap_rocks
 
-def do(gene, tmp_path, this_gene_sequences, blast_path, blast_db_path, blast_minimum_score, blast_minimum_evalue):
+def do(gene, tmp_path, this_gene_sequences, blast_path, blast_db_path, blast_minimum_score, blast_minimum_evalue, prog = 'blastp', evalue_threshold = .00001, score_threshold = 40, num_threads = 1):
 	blast_file_name = f'{gene}.blast'
 	this_blast_path = os.path.join(blast_path,blast_file_name)
 	result = this_blast_path + ".done"
@@ -16,30 +15,26 @@ def do(gene, tmp_path, this_gene_sequences, blast_path, blast_db_path, blast_min
 	if not os.path.exists(result):
 		if not os.path.exists(this_blast_path):
 			target_tmp_path = os.path.join(tmp_path,gene+'.fa')
-			this_tmp_out = []
 
-			for this_hmm_hit in this_gene_sequences.values():
-				target = this_hmm_hit["target_with_id"]
-				sequence = this_hmm_hit["hmm_sequence"]
-				this_tmp_out.append('>'+target+'\n')
-				this_tmp_out.append(sequence+'\n')
+			with open(target_tmp_path,'w') as target_handle:
+				for target, sequence in this_gene_sequences:
+					target_handle.write('>'+target+'\n'+sequence+'\n')
 
-			open(target_tmp_path,'w').writelines(this_tmp_out)
+			if os.path.exists(this_blast_path):
+				open(this_blast_path,'w').write('')
 
-			open(this_blast_path,'w').write('')
-
-			cmd = "blastp -outfmt '7 qseqid sseqid evalue bitscore qstart qend' -evalue '{evalue_threshold}' -threshold '{score_threshold}' -num_threads '{num_threads}' -db '{db}' -query '{queryfile}' -out '{outfile}'"
-			cmd = cmd.format(evalue_threshold = .00001,
-								score_threshold = 40,
-								num_threads = 2,
-								db = blast_db_path,
-								queryfile = target_tmp_path,
-								outfile = this_blast_path)
+			cmd = "{prog} -outfmt '7 qseqid sseqid evalue bitscore qstart qend' -evalue '{evalue_threshold}' -threshold '{score_threshold}' -num_threads '{num_threads}' -db '{db}' -query '{queryfile}' -out '{outfile}'"
+			cmd = cmd.format(prog = prog,
+						     evalue_threshold = evalue_threshold,
+							 score_threshold = score_threshold,
+							 num_threads = num_threads,
+							 db = blast_db_path,
+							 queryfile = target_tmp_path,
+							 outfile = this_blast_path)
 			os.system(cmd)
 			os.remove(target_tmp_path)
 			
 		os.rename(this_blast_path, result)
-		
 
 	gene_out = {}
 	this_return = []
@@ -47,8 +42,9 @@ def do(gene, tmp_path, this_gene_sequences, blast_path, blast_db_path, blast_min
 	this_content = open(result).read()
 	if this_content != '':
 		for line in this_content.split('\n'):
-			if len(line.split('\t')) == 6:
-				query_id, subject_id, evalue, bit_score, q_start, q_end = line.split('\t')
+			fields = line.split('\t')
+			if len(fields) == 6:
+				query_id, subject_id, evalue, bit_score, q_start, q_end = fields
 
 				if float(bit_score) >= blast_minimum_score and float(evalue) <= blast_minimum_evalue:
 					try:
@@ -91,15 +87,13 @@ def main():
 		help='Path to directory of Orthosets folder')
 	parser.add_argument('-o','--orthoset',type=str, default='Ortholog_set_Mecopterida_v4',
 		help='Orthoset')	
-	parser.add_argument('-hs', '--hmm_minimum_score', type=float, default=40.0,
-		help='Minimum score filter in hmm grab.')
 	parser.add_argument('-bs', '--blast_minimum_score', type=float, default=40.0,
 		help='Minimum score filter in blast.')
 	parser.add_argument('-be', '--blast_minimum_evalue', type=float, default=0.00001,
 		help='Minimum evalue filter in blast.')
 	parser.add_argument('-ovw', '--overwrite', action="store_true",
 		help='Overwrite existing blast results.')
-	parser.add_argument('-p', '--processes', type=int, default=4,
+	parser.add_argument('-p', '--processes', type=int, default=1,
 		help='Number of threads used to call processes.')
 	args = parser.parse_args()
 
@@ -145,12 +139,11 @@ def main():
 
 		header = hmm_object['header'].strip()
 		gene = hmm_object['gene']
-		hmm_object["target_with_id"] = header+f'_hmmid{hmm_id}'
 
 		if gene not in gene_to_hits:
-			gene_to_hits[gene] = {}
+			gene_to_hits[gene] = []
 
-		gene_to_hits[gene][hmm_id] = hmm_object
+		gene_to_hits[gene].append((header+f'_hmmid{hmm_id}', hmm_object['hmm_sequence']))
 
 	genes = list(gene_to_hits.keys())
 
