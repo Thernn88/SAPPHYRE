@@ -3,6 +3,7 @@ import math
 from multiprocessing.pool import Pool
 import argparse
 from time import time,sleep
+import subprocess
 from shutil import rmtree
 import json
 import wrap_rocks
@@ -35,6 +36,7 @@ def do(gene, tmp_path, this_gene_sequences, blast_path, blast_db_path, blast_min
 			os.remove(target_tmp_path)
 			
 		os.rename(this_blast_path, result)
+		
 
 	gene_out = {}
 	this_return = []
@@ -154,8 +156,8 @@ def main():
 
 	num_threads = args.processes
 
-	if num_threads > 1:
-		num_threads = math.floor(num_threads / 2)
+	# if num_threads > 1:
+	# 	num_threads = math.floor(num_threads / 2)
 
 	to_write = []
 
