@@ -55,10 +55,8 @@ def is_reference(header: str) -> bool:
     """
     Counts pipes and returns true if header has only 2 pipes.
     """
-    result = False
-    if header.count("|") == 2:
-        result = True
-    return result
+
+    return header[-1] == '.'
 
 
 def parse_fasta(text_input: str) -> list:
@@ -69,23 +67,25 @@ def parse_fasta(text_input: str) -> list:
 
     references = []
     candidates = []
-    result = []
 
     while "" in lines:
         lines.remove("") # Remove blank lines
 
+    end_of_references = False
     for i in range(0, len(lines), 2):
         header = lines[i]
         sequence = lines[i + 1]
 
-        if is_reference(header):
-            references.append((header, sequence))
-        else:
+        if end_of_references is False:
+            if is_reference(header):
+                references.append((header, sequence))
+            else:
+                end_of_references = True
+
+        if end_of_references is True:
             candidates.append((header, sequence))
 
-        result.append((header, sequence))
-
-    return result, references, candidates
+    return references, candidates
 
 
 def format_taxa(raw_taxa: str) -> str:
@@ -293,7 +293,7 @@ def main(
                 fasta_text = nt_in.read()
             gene = make_nt_name(gene)
 
-        _, references, candidates = parse_fasta(fasta_text)
+        references, candidates = parse_fasta(fasta_text)
 
         gene_out = []
         comparison_sequences = {}
@@ -314,6 +314,7 @@ def main(
                 base_header = this_sequences[0][2]
 
                 this_gene, this_taxa, this_taxa_id, node = base_header.split("|")
+                
                 # Formats base header taxa to match every component's formatted taxa
                 formatted_taxa_id = format_taxa(this_taxa_id)
                 base_header = "|".join([this_gene, taxa, formatted_taxa_id, node])
