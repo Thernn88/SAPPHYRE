@@ -67,14 +67,14 @@ def clone_and_clean_files(
         with open(aa_new_file_path, "w", encoding="UTF-8") as output:
             already_written = set()
             for i in range(0, len(lines), 2):
-                header = lines[i]
-                sequence = lines[i + 1]
+                header = lines[i].strip()
+                sequence = lines[i + 1].strip()
 
                 if end_of_references is False:
                     if sequence_is_reference(header):
                         header_gene, taxa_name, taxa_id, identifier = header.split("|")
                         new_header = "|".join(
-                            [header_gene, taxa_id, node, identifier]
+                            [header_gene, taxa_name, taxa_id, identifier]
                         )  # its faster to change a list
                         if new_header in already_written:
                             continue
@@ -116,7 +116,7 @@ def clone_and_clean_files(
 
                         new_header.append(header_addition)
 
-                        new_header = "".join(new_header)
+                    new_header = "".join(new_header)
 
                     output.write(new_header)
                     output.write("\n")
@@ -147,8 +147,8 @@ def clone_and_clean_files(
         with open(nt_new_file_path, "w", encoding="UTF-8") as output:
             already_written = set()
             for i in range(0, len(lines), 2):
-                header = lines[i]
-                sequence = lines[i + 1]
+                header = lines[i].strip()
+                sequence = lines[i + 1].strip()
 
                 if end_of_references is False:
                     if sequence_is_reference(header):
