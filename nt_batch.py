@@ -32,8 +32,8 @@ def align_references(aa_path: str, nt_path: str) -> None:
         for line in aa_file:
             if line != "":
                 if ">" in line:
-                    fields = line.split("|")
-                    if len(fields) <= 3:
+                    if line[-1] == '.':
+                        fields = line.split("|")
                         order.append(fields[1]) # Save order of reference taxa name
                     else:
                         break
@@ -45,18 +45,21 @@ def align_references(aa_path: str, nt_path: str) -> None:
         content = nt_file.read()
         lines = content.split("\n")
 
+        end_of_references = False
         for i in range(0, len(lines), 2):
             if lines[i] != "":
                 header = lines[i]
                 seq = lines[i + 1]
 
-                fields = header.split("|")
-                if len(fields) > 3:
+                if header[-1] == '.':
+                    fields = header.split("|")
+                    nt_references[fields[1]] = (header, seq)
+                else:
+                    end_of_references = True
+
+                if end_of_references:
                     nt_out_lines.append(header)
                     nt_out_lines.append(seq)
-
-                else:
-                    nt_references[fields[1]] = (header, seq)
 
     to_add = []
 
