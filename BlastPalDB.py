@@ -27,7 +27,7 @@ def do(gene, tmp_path, this_gene_sequences, blast_path, blast_db_path, blast_min
 			cmd = cmd.format(prog = prog,
 						     evalue_threshold = evalue_threshold,
 							 score_threshold = score_threshold,
-							 num_threads = num_threads,
+							 num_threads = 2,
 							 db = blast_db_path,
 							 queryfile = target_tmp_path,
 							 outfile = this_blast_path)
