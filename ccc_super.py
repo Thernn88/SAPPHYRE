@@ -63,6 +63,7 @@ def clone_and_clean_files(
             anti_dupe_tags[gene] = {}
 
         headers = [line.split("|")[2] for line in lines if line[0] == ">"]
+        end_of_references = False
         with open(aa_new_file_path, "w", encoding="UTF-8") as output:
             already_written = set()
             for i in range(0, len(lines), 2):

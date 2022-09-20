@@ -79,11 +79,9 @@ def folder_check(path: str) -> None:
 
 def is_reference_header(header: str) -> bool:
     """
-    Counts the | pipe characters in a string. If two are found, returns true.
-    Otherwise returns false.
+    Returns True if the reference header identifier is present in the header
     """
-    result = header.count("|") == 2
-    return result
+    return header[-1] == '.'
 
 
 def get_headers(lines: list) -> list:
@@ -106,17 +104,26 @@ def split_sequences(lines: list, excluded: set) -> tuple:
     bad_names = {"bombyx_mori", "danaus_plexippus"}
     references = []
     candidates = []
+
+    end_of_references = False
     for i in range(0, len(lines), 2):
-        header = lines[i]
-        sequence = lines[i + 1]
-        if is_reference_header(header):
-            if header.split("|")[1].lower() in bad_names:
-                excluded.add(header.strip())
-            references.append(header.strip())
-            references.append(sequence.strip())
-        else:
-            candidates.append(header.strip())
-            candidates.append(sequence.strip())
+        header = lines[i].strip()
+        sequence = lines[i + 1].strip()
+
+        if end_of_references is False:
+            if is_reference_header(header):
+                if header.split("|")[1].lower() in bad_names:
+                    excluded.add(header)
+
+                references.append(header)
+                references.append(sequence)
+            else:
+                end_of_references = True
+
+        if end_of_references is True:
+            candidates.append(header)
+            candidates.append(sequence)
+
     return references, candidates
 
 
