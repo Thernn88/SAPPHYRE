@@ -722,6 +722,13 @@ def main(argv):
             sequence = "".join(sequence_components)
             prot_file_hande.write(f">{header}\n{sequence}\n")
 
+    # save the sequence dict for later.
+    sequence_dict_location = os.path.join(temp_dir, "SeqDict.tmp")
+    with open(sequence_dict_location, "w") as seq_dict_handle:
+        json.dump(sequence_dict, seq_dict_handle)
+
+    del sequence_dict
+
     print('De-interleaved and read prot file in {:.2f}s'.format(time()-start))
 
     arg_tuples = list()
@@ -736,6 +743,11 @@ def main(argv):
         hmm_results = search_pool.starmap(hmm_search, arg_tuples)
     end = time()
     print("Search time: {:.2f}".format(end - start))
+
+    with open(sequence_dict_location) as seq_dict_handle:
+        sequence_dict = json.load(seq_dict_handle)
+
+    os.remove(sequence_dict_location)
 
     filter_start = time()
 
