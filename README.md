@@ -2,11 +2,13 @@
 
 Data Generation Scripts in order of use
 
-	Hmmsearch.py
+	PrepareDB.py
 
-	BlastPal.py
+	HmmsearchDB.py
 
-	Reporter.py
+	BlastPalDB.py
+
+	ReporterDB.py
 
 
 Post-Processing Scripts in order of use
