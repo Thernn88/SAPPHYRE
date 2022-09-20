@@ -571,22 +571,19 @@ def get_ortholog_group(orthoset_id, orthoid, orthoset_db_con):
 
     return rows
 
+def format_candidate_header(gene, taxa_name, taxa_id, sequence_id, coords, frame):
+    return header_seperator.join([gene, taxa_name, taxa_id, sequence_id, coords, frame])
 
-def format_transcript_header(hdr, start, end, rf, reftax):
-    return header_seperator.join([hdr, f"{start}-{end}".replace(".0", ""), rf, reftax])
-
-
-def format_header(orthoid, reftaxon, taxon, header):
-    return header_seperator.join([orthoid, taxon, header])
-
+def format_reference_header(gene, taxa_name, taxa_id, identifier = '.'):
+    return header_seperator.join([gene, taxa_name, taxa_id, identifier])
 
 def print_core_sequences(orthoid, core_sequences):
     core_sequences = sorted(core_sequences)
 
     result = []
     for core in core_sequences:
-        transcript_header = format_transcript_header(core[1], 1, len(core[2]), ".", ".")
-        header = format_header(orthoid, ".", core[0], transcript_header)
+        header = format_reference_header(orthoid, core[0], core[1])
+
         sequence = core[2]
 
         result.append(">" + header + "\n")
@@ -625,11 +622,7 @@ def print_unmerged_sequences(
             else hit["orf_aa_end_on_transcript"]
         )
 
-        transcript_hdr = format_transcript_header(
-            this_hdr, round(start), round(end), rf, hit["reftaxon"]
-        )
-
-        hdr = format_header(orthoid, hit["reftaxon"], species_name, transcript_hdr)
+        header = format_candidate_header(orthoid, hit["reftaxon"], species_name, this_hdr, f'{round(start)}-{round(end)}', rf)
 
         if type == "nt":
             seq = (
@@ -644,17 +637,15 @@ def print_unmerged_sequences(
                 else hit["orf_aa_sequence"]
             )
 
-        constant_header = "|".join(hdr.split("|")[:4])
-
         if type == "aa":
             if len(seq) - seq.count("-") > minimum_seq_data_length:
-                result.append(">" + hdr + "\n")
+                result.append(">" + header + "\n")
                 result.append(seq + "\n")
             else:
                 kicks_result.add(i)
         elif type == "nt":
             if i not in kicks:
-                result.append(">" + hdr + "\n")
+                result.append(">" + header + "\n")
                 result.append(seq + "\n")
 
     return kicks_result, result
@@ -1007,9 +998,9 @@ def exonerate_gene_multi(
         kicks, output = print_unmerged_sequences(
             output_sequences, orthoid, "aa", min_length, species_name, kicks=set()
         )
-        this_aa_out.extend(output)
-
+        
         if output:
+            this_aa_out.extend(output)
             open(this_aa_path, "w").writelines(this_aa_out)
 
             this_out = [orthoid]
