@@ -26,7 +26,7 @@ def get_filenames(folder: str) -> list:
 
 def sequence_is_reference(header):
     """
-    Returns True if last character of header is .
+    Returns True if the reference header identifier is present in the header
     """
     return header[-1] == "."
 

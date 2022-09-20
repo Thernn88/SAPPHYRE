@@ -53,7 +53,7 @@ def make_nt_name(file_name: str) -> str:
 
 def is_reference(header: str) -> bool:
     """
-    Counts pipes and returns true if header has only 2 pipes.
+    Returns True if the reference header identifier is present in the header
     """
 
     return header[-1] == '.'
