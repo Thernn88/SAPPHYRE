@@ -81,9 +81,9 @@ def do(gene, tmp_path, this_gene_sequences, blast_path, blast_db_path, blast_min
 def main():
 	start = time()
 	parser = argparse.ArgumentParser()
-	parser.add_argument('-i','--input',type=str, default='Syrphidae/orthograph_results/Acroceridae/SRR6453524.fa',
+	parser.add_argument('-i','--input',type=str, default='PhyMMR/Acroceridae/SRR6453524.fa',
 		help='Path to directory of Input folder')
-	parser.add_argument('-oi','--orthoset_input',type=str, default='Syrphidae/orthosets',
+	parser.add_argument('-oi','--orthoset_input',type=str, default='PhyMMR/orthosets',
 		help='Path to directory of Orthosets folder')
 	parser.add_argument('-o','--orthoset',type=str, default='Ortholog_set_Mecopterida_v4',
 		help='Orthoset')	

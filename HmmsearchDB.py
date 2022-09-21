@@ -547,14 +547,14 @@ def main(argv):
     parser.add_argument(
         "-i",
         "--input",
-        default="Syrphidae/orthograph_results/Acroceridae/SRR6453524.fa",
+        default="PhyMMR/Acroceridae/SRR6453524.fa",
         help="Path to input directory.",
     )
     parser.add_argument(
         "-oi",
         "--orthoset_input",
         type=str,
-        default="Syrphidae/orthosets",
+        default="PhyMMR/orthosets",
         help="Path to directory of Orthosets folder",
     )
     parser.add_argument(
