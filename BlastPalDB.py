@@ -154,9 +154,6 @@ def main():
 
 	num_threads = args.processes
 
-	if num_threads > 1:
-		num_threads = math.floor(num_threads / 2)
-
 	to_write = []
 
 	#Run
