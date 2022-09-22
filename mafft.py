@@ -61,19 +61,39 @@ parser.add_argument('-i', '--input', type=str, default='Parent',
                     help='Path to parent folder for input')
 parser.add_argument('-p', '--processes', type=int, default=0,
                     help='Number of threads used to call processes.')
+parser.add_argument(
+    "-oi",
+    "--orthoset_input",
+    type=str,
+    default="orthosets",
+    help="Path to directory of Orthosets folder",
+)
+parser.add_argument(
+    "-o",
+    "--orthoset",
+    type=str,
+    required=True,
+    help="Orthoset",
+)
 args = parser.parse_args()
+
+mafft_folder = 'mafft'
+aa_folder = 'aa'
+aln_folder = 'aln'
+
+aln_path = os.path.join(args.orthoset_input, args.orthoset, aln_folder)
 
 for taxa in os.listdir(args.input):
     print('Doing taxa {}'.format(taxa))
-    mafft_path = os.path.join(args.input,taxa,'mafft')
-    aa_path = os.path.join(args.input,taxa,'aa')
+    mafft_path = os.path.join(args.input, taxa, mafft_folder)
+    aa_path = os.path.join(args.input, taxa, aa_folder)
     if os.path.exists(aa_path):
         if not os.path.exists(mafft_path): os.mkdir(mafft_path)
 
         genes = [gene.split('.')[0] for gene in os.listdir(aa_path) if '.aa' in gene]
 
-        #command = 'mafft --anysymbol --auto --thread -1 --addfragments aa/{0}.aa.fa aln/{0}.aln.fa > mafft/{0}.aa.fa'
-        command = 'mafft-linsi --anysymbol --addfragments {2}/{1}/aa/{0}.aa.fa --thread -1 aln/{0}.aln.fa > {2}/{1}/mafft/{0}.aa.fa'
+        #command = 'mafft --anysymbol --auto --thread -1 --addfragments {2}/{1}/aa/{0}.aa.fa --thread -1 '+aln_path+'/{0}.aln.fa > {2}/{1}/mafft/{0}.aa.fa'
+        command = 'mafft-linsi --anysymbol --addfragments {2}/{1}/aa/{0}.aa.fa --thread -1 '+aln_path+'/{0}.aln.fa > {2}/{1}/mafft/{0}.aa.fa'
 
 
         if args.processes:
