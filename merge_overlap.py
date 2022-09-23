@@ -8,7 +8,8 @@ import os
 from multiprocessing.pool import Pool
 from time import time
 from typing import Union
-
+import wrap_rocks
+import json
 
 def make_seq_dict(sequences: list, trailing_end: int) -> dict:
     """
@@ -254,7 +255,7 @@ def calculate_split(sequence_a: str, sequence_b: str, comparison_sequence: str) 
     return highest_scoring_pos + overlap_start
 
 
-def directory_check(target_output_path) -> None:
+def directory_check(target_output_path) -> str:
     """
     Creates necessary directories for merge output.
     """
@@ -268,12 +269,24 @@ def directory_check(target_output_path) -> None:
     if not os.path.exists(nt_merged):
         os.mkdir(nt_merged)
 
+    if os.path.exists("/run/shm"):
+        tmp_path = "/run/shm"
+    elif os.path.exists("/dev/shm"):
+        tmp_path = "/dev/shm"
+    else:
+        tmp_path = os.path.join(target_output_path, "tmp")
+        if not os.path.exists(tmp_path):
+            os.mkdir(tmp_path)
+    
+    return tmp_path
+
 
 def main(
     gene,
     output_dir,
     aa_path,
     nt_path,
+    dupe_tmp_file,
     fallback_taxa,
     debug,
     majority,
@@ -283,6 +296,9 @@ def main(
     Merge main loop. Opens fasta file, parses sequences and merges based on taxa
     """
     already_calculated_splits = {}
+
+    with open(dupe_tmp_file) as dupe_tmp_in:
+        dupe_counts = json.load(dupe_tmp_in)
 
     for protein in ["aa", "nt"]:
         if protein == "aa":
@@ -319,9 +335,11 @@ def main(
                 formatted_taxa_id = format_taxa(this_taxa_id)
                 base_header = "|".join([this_gene, taxa, formatted_taxa_id, node])
 
-                consists_of = [
-                    (sequence[2], sequence[3]) for sequence in this_sequences
-                ]
+                consists_of = []
+                
+                for sequence in this_sequences:
+                    count = 1 if sequence not in dupe_counts else dupe_counts[sequence]
+                    consists_of.append((sequence[2], sequence[3], count))
 
                 # Gets last pipe of each component of a merge
                 stitch = "&&".join(
@@ -499,13 +517,13 @@ def main(
                     for i, char in enumerate(new_merge):
                         candidate_characters = []
                         candidate_sequence = []
-                        for header, sequence in consists_of:
+                        for header, sequence, count in consists_of:
                             if header not in start_ends:
                                 start_ends[header] = get_start_end(sequence)
                             start, end = start_ends[header]
 
                             if start <= i <= end:
-                                candidate_characters.append(sequence[i])
+                                candidate_characters.extend([sequence[i]] * count)
                                 candidate_sequence.append(header)
 
                         mr_won = False
@@ -535,14 +553,14 @@ def main(
                         adjusted_i = range(0, length, 3)[i]
                         candidate_characters = []
                         candidate_sequence = []
-                        for header, sequence in consists_of:
+                        for header, sequence, count in consists_of:
                             if header not in start_ends:
                                 start_ends[header] = get_start_end(sequence)
                             start, end = start_ends[header]
 
                             if start <= adjusted_i <= end:
-                                candidate_characters.append(
-                                    sequence[adjusted_i : adjusted_i + 3]
+                                candidate_characters.extend(
+                                    [sequence[adjusted_i : adjusted_i + 3]] * count
                                 )
                                 candidate_sequence.append(header)
 
@@ -591,7 +609,7 @@ def main(
                     # If debug enabled add each component under final merge
                     gene_out.append(">" + this_taxa_id + "|MajorityRulesAssigned")
                     gene_out.append("".join(majority_assignments))
-                    for header, sequence in consists_of:
+                    for header, sequence, _ in consists_of:
                         this_taxa_id = header.split("|")[-2]
                         last_pipe = this_taxa_id + "|" + header.split("|")[-1]
                         gene_out.append(">" + last_pipe)
@@ -616,12 +634,13 @@ def run_command(arg_tuple: tuple) -> None:
         aa_path,
         nt_path,
         comparison,
-        debug,
+        debug, 
+        dupe_tmp_file,
         majority,
         majority_count,
     ) = arg_tuple
     main(
-        gene, output_dir, aa_path, nt_path, comparison, debug, majority, majority_count
+        gene, output_dir, aa_path, nt_path, comparison, debug, dupe_tmp_file, majority, majority_count
     )
 
 
@@ -679,7 +698,7 @@ if __name__ == "__main__":
         help="Number of threads used to call processes.",
     )
 
-    args = parser.parse_args()
+    args = parser.parse_args()    
 
     for taxa in os.listdir(args.input):
         print(f"Doing taxa, {taxa}")
@@ -689,7 +708,15 @@ if __name__ == "__main__":
         nt_input = os.path.join(input_path, args.nt_input)
 
         if os.path.exists(aa_input):
-            directory_check(taxa_path)
+            tmp_dir = directory_check(taxa_path)
+
+            dupe_tmp_file = os.path.join(tmp_dir, "DupeSeqs.tmp")
+
+            rocks_db_path = os.path.join(taxa_path, "rocksdb")
+            rocksdb_db = wrap_rocks.RocksDB(rocks_db_path)
+
+            with open(dupe_tmp_file) as dupe_tmp_out:
+                dupe_tmp_out.write(rocksdb_db.get('getall:dupes'))
 
             file_inputs = []
             for item in os.listdir(aa_input):
@@ -707,6 +734,7 @@ if __name__ == "__main__":
                             taxa_path,
                             target_aa_path,
                             target_nt_path,
+                            dupe_tmp_file,
                             args.comparison,
                             args.debug,
                             args.majority,
@@ -725,6 +753,7 @@ if __name__ == "__main__":
                         taxa_path,
                         target_aa_path,
                         target_nt_path,
+                        dupe_tmp_file,
                         args.comparison,
                         args.debug,
                         args.majority,
@@ -733,5 +762,8 @@ if __name__ == "__main__":
 
             timed = round(time() - start_time)
             print(f"Finished in {timed} seconds")
+
+            if os.path.exists(dupe_tmp_file):
+                os.remove(dupe_tmp_file)
         else:
             print(f"Can't find aa folder for taxa, {taxa}")
