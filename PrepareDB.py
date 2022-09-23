@@ -53,6 +53,12 @@ def main(argv):
         help="Max sequences per prepared batch in db. Default: 1 million.",
     )
     parser.add_argument(
+        "-k",
+        "--keep_prepared",
+        action="store_true",
+        help="Writes the prepared input fasta into the output taxa directory.",
+    )
+    parser.add_argument(
         "-v", 
         "--verbose", 
         default=0, 
@@ -85,10 +91,7 @@ def main(argv):
     for file in os.listdir(args.input):
         if os.path.isfile(os.path.join(args.input, file)) and file.split('.')[-1] in allowed_filetypes:
             taxa = file.split('.')[0]
-            # if taxa[-1].isnumeric() and taxa[-2] == 'R' and taxa[-3] == '_': # Contains "_R#"
-            #     formatted_taxa = taxa[:-3]+'.fa'
-            # else:
-            #     formatted_taxa = file
+
             formatted_taxa = truncate_taxa(taxa, extension='.fa')
 
             if formatted_taxa in taxa_runs:
@@ -125,83 +128,92 @@ def main(argv):
         dupes = 0
         prepared_component_all = []
         sequence_count = 0
+        this_index = 1
+
+        if args.keep_prepared is True:
+            fa_file_out = open(prepared_file_destination, "w", encoding="UTF-8")
 
         if args.verbose >= 1:
             print("Formatting input sequences and inserting into database")
-        with open(
-            prepared_file_destination, "w", encoding="UTF-8"
-        ) as fa_file_out:
-            for file in components:
-                fa_file_directory = os.path.join(args.input, file)
-                if ".fa" in file:
-                    with open(fa_file_directory, encoding="UTF-8") as fa_file_in:
-                        lines = fa_file_in.readlines()
+        for file in components:
+            fa_file_directory = os.path.join(args.input, file)
+            if ".fa" in file:
+                with open(fa_file_directory, encoding="UTF-8") as fa_file_in:
+                    lines = fa_file_in.readlines()
 
-                        if lines[-1] == "\n": lines = lines[:-1]
+                    if lines[-1] == "\n": lines = lines[:-1]
 
-                        sequence_count += int(len(lines) / 2)
+                    sequence_count += int(len(lines) / 2)
 
-                        for_loop_range = (
-                            tqdm(range(0, len(lines), 2))
-                            if args.verbose != 0
-                            else range(0, len(lines), 2)
-                        )
+                    for_loop_range = (
+                        tqdm(range(0, len(lines), 2))
+                        if args.verbose != 0
+                        else range(0, len(lines), 2)
+                    )
+                    
+                    for i in for_loop_range:
+                        seq = lines[i+1].strip()
+
+                        # Check for dupe, if so save how many times that sequence occured
+                        seq_hash = hash(seq)
+                        if seq_hash in dupe_set:
+                            if seq_hash in duplicates:
+                                duplicates[seq_hash] += 1
+                            else:
+                                duplicates[seq_hash] = 2
+                            dupes += 1
+                            continue
+                        else:
+                            dupe_set.add(seq_hash)
+
+                        # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
+                        # sequence so we don't have to rev-comp this unique sequence again
+                        if seq in rev_comp_save:
+                            rev_seq = rev_comp_save[seq]
+                        else:
+                            rev_seq = rev_comp(seq)
+                            rev_comp_save[seq] = rev_seq
+
+                        # Check for revcomp dupe, if so save how many times that sequence occured
+                        seq_hash = hash(rev_seq)
+                        if seq_hash in dupe_set:
+                            if seq_hash in duplicates:
+                                duplicates[seq_hash] += 1
+                            else:
+                                duplicates[seq_hash] = 2
+                            dupes += 1
+                            continue
+                        else:
+                            dupe_set.add(seq_hash)
+
+                        length = len(seq) + 1
+                        header = f">NODE_{this_index}_length_{length}"
+
+                        this_index += 1
                         
-                        for i in for_loop_range:
-                            header = lines[i].strip()
-                            seq = lines[i+1].strip()
+                        # If no dupe, write to prepared file and db
+                        line = header+'\n'+seq+'\n'
 
-                            # Check for dupe, if so save how many times that sequence occured
-                            seq_hash = hash(seq)
-                            if seq_hash in dupe_set:
-                                if seq_hash in duplicates:
-                                    duplicates[seq_hash] += 1
-                                else:
-                                    duplicates[seq_hash] = 2
-                                dupes += 1
-                                continue
-                            else:
-                                dupe_set.add(seq_hash)
-
-                            # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
-                            # sequence so we don't have to rev-comp this unique sequence again
-                            if seq in rev_comp_save:
-                                rev_seq = rev_comp_save[seq]
-                            else:
-                                rev_seq = rev_comp(seq)
-                                rev_comp_save[seq] = rev_seq
-
-                            # Check for revcomp dupe, if so save how many times that sequence occured
-                            seq_hash = hash(rev_seq)
-                            if seq_hash in dupe_set:
-                                if seq_hash in duplicates:
-                                    duplicates[seq_hash] += 1
-                                else:
-                                    duplicates[seq_hash] = 2
-                                dupes += 1
-                                continue
-                            else:
-                                dupe_set.add(seq_hash)
-                            
-                            # If no dupe, write to prepared file and db
-                            line = header+'\n'+seq+'\n'
-
+                        if args.keep_prepared is True:
                             fa_file_out.write(line)
 
-                            # Save prepared file lines in a list to ration into the db
-                            prepared_component_all.append(line)
+                        # Save prepared file lines in a list to ration into the db
+                        prepared_component_all.append(line)
 
-                            # Get rid of space and > in header (blast/hmmer doesn't like it)
-                            preheader = header.replace(" ", "|").replace(">", "") # pre-hash header
-                            
-                            # Data that will be stored in the database
-                            data = f"{preheader}\n{seq}"
+                        # Get rid of space and > in header (blast/hmmer doesn't like it)
+                        preheader = header.replace(" ", "|").replace(">", "") # pre-hash header
+                        
+                        # Data that will be stored in the database
+                        data = f"{preheader}\n{seq}"
 
-                            # Hash the header
-                            header = hashlib.sha256(preheader.encode()).hexdigest()
+                        # Hash the header
+                        key = hashlib.sha256(preheader.encode()).hexdigest()
 
-                            # Write to rocksdb
-                            db.put(header, data)
+                        # Write to rocksdb
+                        db.put(key, data)
+
+        if args.keep_prepared is True:
+            fa_file_out.close()
 
         if args.verbose != 0:
             print(
