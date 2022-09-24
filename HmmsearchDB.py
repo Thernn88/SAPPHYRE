@@ -539,6 +539,8 @@ def hmm_search(
     hits = search_prot(prot, domtbl_path, hmm_file, evalue, score, ovw)
     return hits
 
+def de_interleave_record(s):
+    return s.split('\n',1)
 
 def main(argv):
     global db_conn
@@ -704,22 +706,16 @@ def main(argv):
     sequence_dict = {}
     start = time()
     with open(protfile) as prot_file_handle:
-        for line in prot_file_handle:
-            line = line.strip().replace(" ", "|")
-            if line != "":
-                if '>' in line:
-                    this_header = line.strip('>')
-                else:
-                    if not this_header in sequence_dict:
-                        sequence_dict[this_header] = [line]
-                    else:
-                        sequence_dict[this_header].append(line)
-    
-    with open(protfile, "w") as prot_file_hande:
-        for header, sequence_components in sequence_dict.items():
-            sequence = "".join(sequence_components)
-            prot_file_hande.write(f">{header}\n{sequence}\n")
+        content = prot_file_handle.read().strip().replace(' ','|')
 
+        records = content.split('>')[1:]
+        records = map(de_interleave_record, records)
+        for header,sequence in records:
+            sequence_dict[header] = sequence
+
+    with open(protfile, 'w') as prot_file_ovw:
+        prot_file_ovw.write(content)
+    
     # save the sequence dict for later.
     sequence_dict_location = os.path.join(temp_dir, "SeqDict.tmp")
     with open(sequence_dict_location, "w") as seq_dict_handle:
@@ -727,7 +723,7 @@ def main(argv):
 
     del sequence_dict
 
-    print('De-interleaved and read prot file in {:.2f}s'.format(time()-start))
+    print('Cleaned and read prot file in {:.2f}s'.format(time()-start))
 
     arg_tuples = list()
     for hmm in hmm_list:
