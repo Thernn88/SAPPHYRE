@@ -12,7 +12,7 @@ def do(gene, tmp_path, this_gene_sequences, blast_path, blast_db_path, blast_min
 	this_blast_path = os.path.join(blast_path,blast_file_name)
 	result = this_blast_path + ".done"
 
-	if not os.path.exists(result):
+	if not os.path.exists(result) or os.path.getsize(result) == 0:
 		if not os.path.exists(this_blast_path):
 			target_tmp_path = os.path.join(tmp_path,gene+'.fa')
 
@@ -74,9 +74,9 @@ def do(gene, tmp_path, this_gene_sequences, blast_path, blast_db_path, blast_min
 
 			this_return.append((key, data, len(this_out_results)))
 
-		print('Blasted:',gene)	
+	print('Blasted:',gene)	
 		
-		return this_return
+	return this_return
 
 def main():
 	start = time()
