@@ -120,49 +120,21 @@ def get_orthologs_for_set_hashref(set_id, orthoset_db_con):
 
     return result
 
-
-def load_hmmsearch(ids):
-    result = []
-    for id in ids:
-        row = rocksdb_db.get("hmmsearch:{}".format(id))
-
-        this_json = json.loads(row)
-        this_json["hmmsearch_id"] = id
-
-        result.append(this_json)
-    return result
-
-
 def get_scores_list(score_threshold, min_length, num_threads):
-    rows = rocksdb_db.get("hmmsearch:all")
-    rows = json.loads(rows)
-
-    amount_of_rows_per_thread = math.ceil(len(rows) / num_threads)
-    split_rows = [
-        (rows[i : i + amount_of_rows_per_thread],)
-        for i in range(0, len(rows), amount_of_rows_per_thread)
-    ]
-
-    with Pool(num_threads) as pool:
-        json_data = pool.starmap(load_hmmsearch, split_rows, chunksize=1)
+    batches = rocksdb_db.get("hmmbatch:all")
+    batches = batches.split(',')
 
     score_based_results = {}
     ufr_out = [["Gene", "Hash", "Header", "Score", "Start", "End"]]
 
-    count_in = 0
-
-    a = time()
-    for packet in json_data:
-        for this_row in packet:
+    for batch_i in batches:
+        batch_rows = rocksdb_db.get(f"hmmbatch:{batch_i}")
+        batch_rows = json.loads(batch_rows)
+        for this_row in batch_rows:
             orthoid = this_row["gene"]
 
             header = this_row["header"].strip()
             this_row["header"] = header
-
-            # this_row['header'] = '_'.join(this_row['header'].split('_')[:-1])+' '+this_row['header'].split('_')[-1]
-            this_row["uuid"] = this_row["header"] + "{}{}".format(
-                this_row["hmm_start"], this_row["hmm_end"]
-            )
 
             env_start = this_row["env_start"]
             env_end = this_row["env_end"]
@@ -1070,7 +1042,7 @@ def reciprocal_search(
             if orthoid not in list_of_wanted_orthoids:
                 continue
 
-        result_hmmsearch_id = result["hmmsearch_id"]
+        result_hmmsearch_id = result["hmm_id"]
 
         blast_results = get_blastresults_for_hmmsearch_id(result_hmmsearch_id)
 

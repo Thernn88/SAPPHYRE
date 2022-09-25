@@ -633,10 +633,18 @@ def main(argv):
         default=0.9,
         help="Internal Minimum Overlap Adjustment",
     )
+    parser.add_argument(
+        "-m",
+        "--max_hmm_batch_size",
+        default=250000, 
+        type=int, 
+        help="Max hits per hmmsearch batch in db. Default: 500 thousand.",
+    )
     parser.add_argument("-d", "--debug", type=int, default=0, help="Verbose debug.")
 
     args = parser.parse_args()
 
+    MAX_HMM_BATCH_SIZE = args.max_hmm_batch_size
     debug = args.debug != 0
     score_diff_multi = args.score_diff_multi
     min_overlap_multi = args.min_overlap_multi
@@ -738,10 +746,8 @@ def main(argv):
     end = time()
     print("Search time: {:.2f}".format(end - start))
 
-    with open(sequence_dict_location) as seq_dict_handle:
-        sequence_dict = json.load(seq_dict_handle)
-
-    os.remove(sequence_dict_location)
+    if os.path.exists(protfile):
+        os.remove(protfile)
 
     filter_start = time()
 
@@ -934,36 +940,65 @@ def main(argv):
 
     print('Done! Filtering took {:.2f}s'.format(time() - filter_start))
 
-    done_hmm = set()
-    global_hmm_obj = []
+    # Grab that seq dict
+    with open(sequence_dict_location) as seq_dict_handle:
+        sequence_dict = json.load(seq_dict_handle)
 
+    os.remove(sequence_dict_location)
+
+    # Seperate hmm hits into seperate levels
+    global_hmm_obj_recipe = []
+    current_batch = []
+    current_hit_count = 1
     hit_id = 0
+    batch_i= 0 
     for gene in transcripts_mapped_to:
         for hit in transcripts_mapped_to[gene]:
-            hit["hmm_sequence"] = "".join(sequence_dict[hit["header"]])
             hit_id += 1
+            hit["hmm_sequence"] = "".join(sequence_dict[hit["header"]])
+            hit["hmm_id"] = hit_id
+            if current_hit_count >= MAX_HMM_BATCH_SIZE:
+                data = json.dumps(current_batch)
+                del current_batch
 
-            key = f"hmmsearch:{hit_id}"
-            data = json.dumps(hit)
+                key = f'hmmbatch:{batch_i}'
 
-            done_hmm.add(key)
-            db_conn.put(key, data)
-            global_hmm_obj.append(hit_id)
+                global_hmm_obj_recipe.append(str(batch_i))
+
+                batch_i += 1
+
+                db_conn.put(key, data)
+
+                del data
+                current_batch = []
+                current_hit_count = 1
+
+            current_batch.append(hit)
+            current_hit_count += 1
+
+    if current_batch:
+        data = json.dumps(current_batch)
+        key = f'hmmbatch:{batch_i}'
+
+        global_hmm_obj_recipe.append(str(batch_i))
+
+        db_conn.put(key, data)
+
+    del current_batch
 
     # insert key to grab all hmm objects into the database
 
-    key = "hmmsearch:all"
-    data = json.dumps(global_hmm_obj)
+    key = 'hmmbatch:all'
+    data = ','.join(global_hmm_obj_recipe)
 
     db_conn.put(key, data)
 
     db_end = time()
-    print("Inserted {} in {:.2f} seconds. Kicked {} hits during filtering".format(len(global_hmm_obj), db_end - end, count-len(global_hmm_obj)))
+    print("Inserted {} hits over {} batch(es) in {:.2f} seconds. Kicked {} hits during filtering".format(total_hits, len(global_hmm_obj_recipe), db_end - end, count-total_hits))
     print("Took {:.2f}s overall".format(time() - global_start))
     print("Cleaning temp files. Closing DB.")
     clear_command = f'rm {os.path.join(temp_dir,"*")}'
     os.system(clear_command)
-
 
 if __name__ == "__main__":
     main(argv)

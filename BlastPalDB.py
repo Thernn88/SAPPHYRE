@@ -129,28 +129,31 @@ def main():
 
 	grab_hmm_start = time()
 
-	global_hmm_object_raw = db.get('hmmsearch:all')
-	global_hmm_object = json.loads(global_hmm_object_raw)
+	global_hmm_object_raw = db.get('hmmbatch:all')
+	global_hmm_batches = global_hmm_object_raw.split(',')
+	hit_count = 0
 
-	for hmm_id in global_hmm_object:
-		key = 'hmmsearch:'+str(hmm_id)
+	for batch_i in global_hmm_batches:
+		key = f'hmmbatch:{batch_i}'
 		hmm_json = db.get(key)
-		hmm_object = json.loads(hmm_json)
+		hmm_hits = json.loads(hmm_json)
 
-		header = hmm_object['header'].strip()
-		gene = hmm_object['gene']
+		for hmm_object in hmm_hits:
+			hit_count += 1
+			hmm_id = hmm_object['hmm_id']
+			header = hmm_object['header'].strip()
+			gene = hmm_object['gene']
 
-		if gene not in gene_to_hits:
-			gene_to_hits[gene] = []
+			if gene not in gene_to_hits:
+				gene_to_hits[gene] = []
 
-		gene_to_hits[gene].append((header+f'_hmmid{hmm_id}', hmm_object['hmm_sequence']))
+			gene_to_hits[gene].append((header+f'_hmmid{hmm_id}', hmm_object['hmm_sequence']))
 
 	genes = list(gene_to_hits.keys())
 
-	print('Grabbed HMM Data. Took: {:.2f}s. Grabbed {} rows.'.format(time()-grab_hmm_start,len(global_hmm_object)))
+	print('Grabbed HMM Data. Took: {:.2f}s. Grabbed {} hits.'.format(time()-grab_hmm_start, hit_count))
 
 	del global_hmm_object_raw
-	del global_hmm_object
 
 	num_threads = args.processes
 
