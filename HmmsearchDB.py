@@ -743,7 +743,8 @@ def main(argv):
     hmm_results = list()  # list of lists containing Hit objects
     with Pool(num_threads) as search_pool:
         hmm_results = search_pool.starmap(hmm_search, arg_tuples)
-    print("Search time: {:.2f}".format(time() - start))
+    end = time()
+    print("Search time: {:.2f}".format(end - start))
 
     if os.path.exists(protfile):
         os.remove(protfile)
@@ -944,8 +945,6 @@ def main(argv):
         sequence_dict = json.load(seq_dict_handle)
 
     os.remove(sequence_dict_location)
-
-    end = time()
 
     # Seperate hmm hits into seperate levels
     global_hmm_obj_recipe = []
