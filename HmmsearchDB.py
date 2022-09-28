@@ -143,30 +143,25 @@ def internal_filter_gene(this_gene_hits, gene, min_overlap_internal, score_diff_
     this_gene_passes = this_gene_hits.copy()
 
     for hit_a in descending_hits:
-        for hit_b in ascending_hits:
-            if not hit_b['uuid'] in already_passed: #Not removed yet
-                if hit_a != hit_b:
-                    if get_baseheader(hit_a['header']) != get_baseheader(hit_b['header']): #Not the same sequence
-                        if hit_a['score'] > hit_b['score']:
-                            rangeA = range(hit_a['hmm_start'], hit_a['hmm_end'] + 1)  # Adjusted for range starting at 0
-                            rangeB = range(hit_b['hmm_start'], hit_b['hmm_end'] + 1)
+        for hit_b in filter(lambda x: not x['uuid'] in already_passed and hit_a != x and get_baseheader(hit_a['header']) != get_baseheader(x['header']), ascending_hits):
+            if hit_a['score'] > hit_b['score']:
+                rangeA = range(hit_a['hmm_start'], hit_a['hmm_end'] + 1)  # Adjusted for range starting at 0
+                rangeB = range(hit_b['hmm_start'], hit_b['hmm_end'] + 1)
 
-                            overlap = set(rangeA).intersection(set(rangeB))
-                            amount_of_overlap = len(overlap)
-                            percentage_of_overlap = amount_of_overlap / len(rangeB)
-                            percentage_of_overlap = int(percentage_of_overlap * coeff)
-                            if percentage_of_overlap >= min_overlap_internal:
-                                score_difference = get_difference(hit_a['score'], hit_b['score'])
-                                score_difference = int(score_difference * coeff)
-                                if score_difference >= score_diff_internal:
-                                    #removed_hits.add(hit_b['uuid'])
-                                    descending_hits.remove(hit_b)
-                                    ascending_hits.remove(hit_b)
-                                    this_gene_passes.remove(hit_b)
-                                    if filter_verbose: 
-                                        filtered_sequences_log.append([hit_b['gene'],hit_b['header'],str(hit_b['score']),str(hit_b['hmm_start']),str(hit_b['hmm_end']),'Internal Overlapped with Lowest Score',hit_a['gene'],hit_a['header'],str(hit_a['score']),str(hit_a['hmm_start']),str(hit_a['hmm_end'])])
-                                else:
-                                    already_passed.add(hit_b['uuid'])
+                overlap = set(rangeA).intersection(set(rangeB))
+                amount_of_overlap = len(overlap)
+                percentage_of_overlap = amount_of_overlap / len(rangeB)
+                percentage_of_overlap = int(percentage_of_overlap * coeff)
+                if (percentage_of_overlap >= min_overlap_internal):
+                    if int(get_difference(hit_a['score'], hit_b['score']) * coeff) >= score_diff_internal:
+                        #removed_hits.add(hit_b['uuid'])
+                        descending_hits.remove(hit_b)
+                        ascending_hits.remove(hit_b)
+                        this_gene_passes.remove(hit_b)
+                        if filter_verbose: 
+                            filtered_sequences_log.append([hit_b['gene'],hit_b['header'],str(hit_b['score']),str(hit_b['hmm_start']),str(hit_b['hmm_end']),'Internal Overlapped with Lowest Score',hit_a['gene'],hit_a['header'],str(hit_a['score']),str(hit_a['hmm_start']),str(hit_a['hmm_end'])])
+                    else:
+                        already_passed.add(hit_b['uuid'])
     
     this_out_data = {'Passes':this_gene_passes, 'Log':filtered_sequences_log, 'gene':gene}
 
