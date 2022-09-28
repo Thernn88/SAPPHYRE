@@ -128,9 +128,6 @@ def get_difference(scoreA, scoreB):
         return 0
 
 def internal_filter_gene(this_gene_hits, gene, min_overlap_internal, score_diff_internal, filter_verbose,internal_verbose):
-    coeff = 1000000  # multiplier to enlarge floats and hopefully reduce error
-    min_overlap_internal = int(min_overlap_internal*coeff)
-    score_diff_internal = int(score_diff_internal*coeff)
     if internal_verbose:
         T_internal_start = time()
         print('Checking for internal dupes in {}.'.format(gene))
@@ -151,9 +148,8 @@ def internal_filter_gene(this_gene_hits, gene, min_overlap_internal, score_diff_
                 overlap = set(rangeA).intersection(set(rangeB))
                 amount_of_overlap = len(overlap)
                 percentage_of_overlap = amount_of_overlap / len(rangeB)
-                percentage_of_overlap = int(percentage_of_overlap * coeff)
                 if (percentage_of_overlap >= min_overlap_internal):
-                    if int(get_difference(hit_a['score'], hit_b['score']) * coeff) >= score_diff_internal:
+                    if get_difference(hit_a['score'], hit_b['score']) >= score_diff_internal:
                         #removed_hits.add(hit_b['uuid'])
                         descending_hits.remove(hit_b)
                         ascending_hits.remove(hit_b)
@@ -214,9 +210,6 @@ def multi_filter_dupes(
     score_diff_multi,
     multi_verbose,
 ):
-    coeff = 1000000  # multiplier to enlarge floats and hopefully reduce error
-    score_diff_multi = int(score_diff_multi * coeff)
-    min_overlap_multi = int(min_overlap_multi * coeff)
     if multi_verbose:
         T_multi_check = time()
         print("Checking for multi-gene dupes in {}".format(header))
@@ -279,11 +272,9 @@ def multi_filter_dupes(
             overlap = set(rangeA).intersection(set(rangeB))
             amount_of_overlap = len(overlap)
             percentage_of_overlap = amount_of_overlap / len(rangeA)
-            percentage_of_overlap = int(percentage_of_overlap * coeff)
 
             if percentage_of_overlap >= min_overlap_multi:
                 score_difference = get_difference(master["score"], candidate["score"])
-                score_difference = int(score_difference * coeff)
                 if score_difference >= score_diff_multi:
                     kick_happend = True
                     this_hits.remove(candidate)
@@ -318,7 +309,7 @@ def multi_filter_dupes(
                 rangeB = range(candidate["env_start"], candidate["env_end"] + 1)
                 overlap = set(rangeA).intersection(set(rangeB))
                 amount_of_overlap = len(overlap)
-                percentage_of_overlap = int((coeff * amount_of_overlap) / len(rangeA))
+                percentage_of_overlap = amount_of_overlap / len(rangeA)
                 if percentage_of_overlap >= min_overlap_multi:
                     kick_happend = True
                     this_hits.remove(candidate)
