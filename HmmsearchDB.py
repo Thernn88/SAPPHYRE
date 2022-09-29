@@ -140,22 +140,23 @@ def internal_filter_gene(this_gene_hits, gene, min_overlap_internal, score_diff_
     filtered_sequences_log = []
 
     for i,hit_a in enumerate(this_gene_hits):
-        if hit_a is not None:
-            for j in range(len(this_gene_hits)-1, i, -1):
-                hit_b = this_gene_hits[j]
-                if hit_b is not None:
-                    if get_baseheader(hit_a['header']) != get_baseheader(hit_b['header']):
-                        if get_difference(hit_a['score'], hit_b['score']) < score_diff_internal:
-                            break
+        if not hit_a:
+            continue
+        for j in range(len(this_gene_hits)-1, i, -1):
+            hit_b = this_gene_hits[j]
+            if hit_b:
+                if get_baseheader(hit_a['header']) != get_baseheader(hit_b['header']):
+                    if get_difference(hit_a['score'], hit_b['score']) < score_diff_internal:
+                        break
                     
-                        amount_of_overlap = get_overlap(hit_a['hmm_start'], hit_a['hmm_end'], hit_b['hmm_start'], hit_b['hmm_end'])
-                        distance = (hit_b['hmm_end'] - hit_b['hmm_start']) + 1 # Inclusive
-                        percentage_of_overlap = amount_of_overlap / distance
+                    amount_of_overlap = get_overlap(hit_a['hmm_start'], hit_a['hmm_end'], hit_b['hmm_start'], hit_b['hmm_end'])
+                    distance = (hit_b['hmm_end'] - hit_b['hmm_start']) + 1 # Inclusive
+                    percentage_of_overlap = amount_of_overlap / distance
 
-                        if (percentage_of_overlap >= min_overlap_internal):
-                            this_gene_hits[j] = None
-                            if filter_verbose: 
-                                filtered_sequences_log.append([hit_b['gene'],hit_b['header'],str(hit_b['score']),str(hit_b['hmm_start']),str(hit_b['hmm_end']),'Internal Overlapped with Lowest Score',hit_a['gene'],hit_a['header'],str(hit_a['score']),str(hit_a['hmm_start']),str(hit_a['hmm_end'])])
+                    if (percentage_of_overlap >= min_overlap_internal):
+                        this_gene_hits[j] = None
+                        if filter_verbose: 
+                            filtered_sequences_log.append([hit_b['gene'],hit_b['header'],str(hit_b['score']),str(hit_b['hmm_start']),str(hit_b['hmm_end']),'Internal Overlapped with Lowest Score',hit_a['gene'],hit_a['header'],str(hit_a['score']),str(hit_a['hmm_start']),str(hit_a['hmm_end'])])
 
     this_out_data = {'Passes':[i for i in this_gene_hits if i is not None], 'Log':filtered_sequences_log, 'gene':gene}
 
