@@ -138,6 +138,7 @@ def main(argv):
         for file in components:
             fa_file_directory = os.path.join(args.input, file)
             if ".fa" in file:
+                #Need to push modified external which will remove the need for newline removal. ToDo.
                 with open(fa_file_directory, encoding="UTF-8") as fa_file_in:
                     lines = fa_file_in.readlines()
 
@@ -200,7 +201,7 @@ def main(argv):
                         # Save prepared file lines in a list to ration into the db
                         prepared_component_all.append(line)
 
-                        # Get rid of space and > in header (blast/hmmer doesn't like it)
+                        # Get rid of space and > in header (blast/hmmer doesn't like it) Need to push modified external to remove this. ToDo.
                         preheader = header.replace(" ", "|").replace(">", "") # pre-hash header
                         
                         # Data that will be stored in the database

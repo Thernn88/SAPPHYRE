@@ -624,7 +624,7 @@ def main(
             output_file.write("\n".join(gene_out))
 
 
-def run_command(arg_tuple: tuple) -> None:
+def run_command(*arg_tuple) -> None:
     """
     Calls the main() function parallel in each thread
     """

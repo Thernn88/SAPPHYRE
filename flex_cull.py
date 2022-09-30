@@ -44,29 +44,6 @@ def folder_check(output_target_path: str, input_target_path: str) -> str:
 
     return target_tmp_path
 
-
-def deinterleave(fasta_lines: list) -> str:
-    """
-    Returns string of de-interleaved sequences
-    """
-    result = []
-    this_out = []
-    for line in fasta_lines:
-        if line[0] == ">":
-            if this_out:
-                result.append("".join(this_out))
-            result.append(line)
-            this_out = []
-        else:
-            if line != "":
-                this_out.append(line.strip())
-
-    if this_out:
-        result.append("".join(this_out))
-
-    return result
-
-
 def make_nt(aa_file_name: str) -> str:
     """
     Converts AA file name to NT file name
@@ -85,8 +62,6 @@ def parse_fasta(fasta_path: str) -> tuple:
     lines = []
     with open(fasta_path, encoding="UTF-8") as fasta_io:
         lines = list(fasta_io)
-
-    lines = deinterleave(lines)
 
     for i in range(0, len(lines), 2):
         header = lines[i]
