@@ -11,6 +11,11 @@ from tqdm import tqdm
 import math
 
 
+def printv(msg, verbosity):
+    if verbosity:
+        print(msg)
+
+
 def truncate_taxa(header: str, extension=None) -> str:
     """
     Given a fasta header, checks the end for problematic tails.
@@ -20,10 +25,10 @@ def truncate_taxa(header: str, extension=None) -> str:
     # search for _# and _R#, where # is digits
     result = header
     m = re.search(r"_R?\d+$", header)
-    if m is not None:
+    if m:
         tail_length = m.end()-m.start()
         result = result[0:-tail_length]
-    if extension is not None:
+    if extension:
         result = result + extension
     return result
 
@@ -75,14 +80,10 @@ def main(argv):
     secondary_directory = os.path.join(core_directory, os.path.basename(args.input))
 
     # Create necessary directories
-    if args.verbose != 0:
-        print("Creating directories")
+    printv("Creating directories", args.verbose)
 
-    if not os.path.exists(core_directory):
-        os.mkdir(core_directory)
-
-    if not os.path.exists(secondary_directory):
-        os.mkdir(secondary_directory)
+    os.makedirs(core_directory, exist_ok=True)
+    os.makedirs(secondary_directory, exist_ok=True)
 
     taxa_runs = {}
     rev_comp_save = {}
@@ -94,32 +95,25 @@ def main(argv):
 
             formatted_taxa = truncate_taxa(taxa, extension='.fa')
 
-            if formatted_taxa in taxa_runs:
-                taxa_runs[formatted_taxa].append(file)
-            else:
-                taxa_runs[formatted_taxa] = [file]
+            taxa_runs.setdefault(formatted_taxa, [])
+            taxa_runs[formatted_taxa].append(file)
     
     for formatted_taxa_out, components in taxa_runs.items():
         taxa_start = time()
-        if args.verbose != 0:
-            print(f"Preparing {formatted_taxa_out}")
+        printv(f"Preparing {formatted_taxa_out}", args.verbose)
 
         taxa_destination_directory = os.path.join(secondary_directory, formatted_taxa_out)
         rocksdb_path = os.path.join(taxa_destination_directory, rocksdb_folder_name)
 
-        if args.clear_database:
-            if os.path.exists(rocksdb_path):
-                if args.verbose != 0:
-                    print("Clearing old database")
-                rmtree(rocksdb_path)
+        if args.clear_database and os.path.exists(rocksdb_path):
+            printv("Clearing old database", args.verbose)
+            rmtree(rocksdb_path)
 
-        if args.verbose >= 1:
-            print("Creating rocksdb database")
+        printv("Creating rocksdb database", args.verbose)
 
         db = wrap_rocks.RocksDB(rocksdb_path)
 
-        if not os.path.exists(taxa_destination_directory):
-                os.mkdir(taxa_destination_directory)
+        os.makedirs(taxa_destination_directory, exist_ok=True)
 
         prepared_file_destination = os.path.join(taxa_destination_directory, formatted_taxa_out)
         
@@ -130,11 +124,10 @@ def main(argv):
         sequence_count = 0
         this_index = 1
 
-        if args.keep_prepared is True:
+        if args.keep_prepared:
             fa_file_out = open(prepared_file_destination, "w", encoding="UTF-8")
 
-        if args.verbose >= 1:
-            print("Formatting input sequences and inserting into database")
+        printv("Formatting input sequences and inserting into database", args.verbose)
         for file in components:
             fa_file_directory = os.path.join(args.input, file)
             if ".fa" in file:
@@ -148,7 +141,7 @@ def main(argv):
 
                     for_loop_range = (
                         tqdm(range(0, len(lines), 2))
-                        if args.verbose != 0
+                        if args.verbose
                         else range(0, len(lines), 2)
                     )
                     
@@ -213,18 +206,17 @@ def main(argv):
                         # Write to rocksdb
                         db.put(key, data)
 
-        if args.keep_prepared is True:
+        if args.keep_prepared:
             fa_file_out.close()
 
-        if args.verbose != 0:
-            print(
-                "Inserted {} sequences for {} found {} dupes.\n".format(sequence_count-dupes, formatted_taxa, dupes)
-            )
+        printv(
+            "Inserted {} sequences for {} found {} dupes.\n".format(sequence_count-dupes, formatted_taxa, dupes),
+            args.verbose
+        )
 
         del dupe_set # Clear mem
 
-        if args.verbose != 0:
-            print("Storing prepared file in database")
+        printv("Storing prepared file in database", args.verbose)
         
         # Figure out how many levels are needed to split sequence_count into MAX_PREPARED_LEVEL_SIZE sized chunks 
         prepared_file_levels = math.ceil(sequence_count / MAX_PREPARED_LEVEL_SIZE)
@@ -255,10 +247,7 @@ def main(argv):
 
         db.put(key, data)
 
-        if args.verbose != 0:
-            print(
-                "Took {:.2f}s for {}".format(time() - taxa_start, file)
-            )
+        printv("Took {:.2f}s for {}".format(time() - taxa_start, file), args.verbose)
 
     print("Finished took {:.2f}s overall.".format(time() - global_start))
 
