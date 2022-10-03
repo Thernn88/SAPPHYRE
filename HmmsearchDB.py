@@ -12,8 +12,9 @@ from tqdm import tqdm
 
 class Hit:
     __slots__ = (
-        "target",
-        "query",
+        "header",
+        "base_header",
+        "gene",
         "evalue",
         "score",
         "hmm_start",
@@ -22,6 +23,9 @@ class Hit:
         "ali_end",
         "env_start",
         "env_end",
+        "uuid",
+        "hmm_sequence",
+        "hmm_id",
     )
 
     def __init__(
@@ -37,22 +41,26 @@ class Hit:
         env_start,
         env_end,
     ):
-        self.target = target
-        self.query = query
-        self.evalue = evalue
-        self.score = score
-        self.hmm_start = hmm_start
-        self.hmm_end = hmm_end
-        self.ali_start = ali_start
-        self.ali_end = ali_end
-        self.env_start = env_start
-        self.env_end = env_end
+        self.header = str(target).replace(">", "").replace(" ", "|")
+        self.base_header = self.header.split('|')[0].strip()
+        self.gene = str(query)
+        self.evalue = float(evalue)
+        self.score = float(score)
+        self.hmm_start = int(hmm_start)
+        self.hmm_end = int(hmm_end)
+        self.ali_start = int(ali_start)
+        self.ali_end = int(ali_end)
+        self.env_start = int(env_start)
+        self.env_end = int(env_end)
+        self.uuid = None
+        self.hmm_sequence = None
+        self.hmm_id = None
 
     def __str__(self):
         return "\t".join(
             [
-                self.target,
-                self.query,
+                self.header,
+                self.gene,
                 self.evalue,
                 self.score,
                 self.hmm_start,
@@ -63,20 +71,6 @@ class Hit:
                 self.env_end,
             ]
         )
-
-    def to_json(self):
-        return {
-            "header": self.target,
-            "gene": self.query,
-            "score": self.score,
-            "hmm_evalue": self.evalue,
-            "hmm_start": self.hmm_start,
-            "hmm_end": self.hmm_end,
-            "ali_start": self.ali_start,
-            "ali_end": self.ali_end,
-            "env_start": self.env_start,
-            "env_end": self.env_end,
-        }
 
     def list_values(self, species_id):
         """
@@ -89,8 +83,8 @@ class Hit:
             log_evalue = math.log(e_float)
         return [
             str(species_id),
-            self.query,
-            self.target,
+            self.gene,
+            self.header,
             self.score,
             str(e_float),
             str(log_evalue),
@@ -102,12 +96,22 @@ class Hit:
             self.env_end,
         ]
 
-def get_baseheader(header):
-    """
-    Returns header content before first whitespace.
-    """
-    baseheader = header.split("|")[0].strip()
-    return baseheader
+    def to_json(self):
+        return {
+            "header": self.header,
+            "gene": self.gene,
+            "score": self.score,
+            "hmm_evalue": self.evalue,
+            "hmm_start": self.hmm_start,
+            "hmm_end": self.hmm_end,
+            "ali_start": self.ali_start,
+            "ali_end": self.ali_end,
+            "env_start": self.env_start,
+            "env_end": self.env_end,
+            "uuid": self.uuid,
+            "hmm_id": self.hmm_id,
+            "hmm_sequence": self.hmm_sequence
+        }
 
 def get_difference(scoreA, scoreB):
     """
@@ -135,7 +139,7 @@ def get_overlap(a_start, a_end, b_start, b_end):
     return 0 if amount < 0 else amount
 
 def internal_filter_gene(this_gene_hits, gene, min_overlap_internal, score_diff_internal, filter_verbose):
-    this_gene_hits.sort(key=lambda hit: hit['score'], reverse=True)
+    this_gene_hits.sort(key=lambda hit: hit.score, reverse=True)
 
     filtered_sequences_log = []
 
@@ -145,18 +149,19 @@ def internal_filter_gene(this_gene_hits, gene, min_overlap_internal, score_diff_
         for j in range(len(this_gene_hits)-1, i, -1):
             hit_b = this_gene_hits[j]
             if hit_b:
-                if get_baseheader(hit_a['header']) != get_baseheader(hit_b['header']):
-                    if get_difference(hit_a['score'], hit_b['score']) < score_diff_internal:
+                if hit_a.base_header != hit_b.base_header:
+                    #print(hit_a.base_header, hit_b.base_header, (hit_a.score / hit_b.score) if hit_b.score != 0 else 0)
+                    if ((hit_a.score / hit_b.score) if hit_b.score != 0 else 0) < score_diff_internal:
                         break
                     
-                    amount_of_overlap = get_overlap(hit_a['hmm_start'], hit_a['hmm_end'], hit_b['hmm_start'], hit_b['hmm_end'])
-                    distance = (hit_b['hmm_end'] - hit_b['hmm_start']) + 1 # Inclusive
+                    amount_of_overlap = get_overlap(hit_a.hmm_start, hit_a.hmm_end, hit_b.hmm_start, hit_b.hmm_end)
+                    distance = (hit_b.hmm_end - hit_b.hmm_start) + 1 # Inclusive
                     percentage_of_overlap = amount_of_overlap / distance
 
                     if (percentage_of_overlap >= min_overlap_internal):
                         this_gene_hits[j] = None
                         if filter_verbose: 
-                            filtered_sequences_log.append([hit_b['gene'],hit_b['header'],str(hit_b['score']),str(hit_b['hmm_start']),str(hit_b['hmm_end']),'Internal Overlapped with Lowest Score',hit_a['gene'],hit_a['header'],str(hit_a['score']),str(hit_a['hmm_start']),str(hit_a['hmm_end'])])
+                            filtered_sequences_log.append([hit_b.gene,hit_b.header,str(hit_b.score),str(hit_b.hmm_start),str(hit_b.hmm_end),'Internal Overlapped with Lowest Score',hit_a.gene,hit_a.header,str(hit_a.score),str(hit_a.hmm_start),str(hit_a.hmm_end)])
 
     this_out_data = {'Passes':[i for i in this_gene_hits if i is not None], 'Log':filtered_sequences_log, 'gene':gene}
 
@@ -164,14 +169,14 @@ def internal_filter_gene(this_gene_hits, gene, min_overlap_internal, score_diff_
 
 def run_internal_filter(
     this_gene_transcripts,
-    orthoid,
+    gene,
     min_overlap_internal,
     score_diff_internal,
     filter_verbose,
 ):
     return internal_filter_gene(
         this_gene_transcripts,
-        orthoid,
+        gene,
         min_overlap_internal,
         score_diff_internal,
         filter_verbose,
@@ -200,7 +205,7 @@ def multi_filter_dupes(
     filtered_sequences_log = []
     this_kicks = []
 
-    this_hits.sort(key=lambda data: (data["score"], data["gene"]), reverse = True)
+    this_hits.sort(key=lambda data: (data.score, data.gene), reverse = True)
 
     while kick_happend:
         kick_happend = False
@@ -208,37 +213,37 @@ def multi_filter_dupes(
         master = this_hits[0]
         candidates = this_hits[1:]
 
-        master_env_start = master["env_start"]
-        master_env_end = master["env_end"]
+        master_env_start = master.env_start
+        master_env_end = master.env_end
 
         for candidate in candidates:
-            if candidate["gene"] == master["gene"]:  # From same gene = Pseudomaster
+            if candidate.gene == master.gene:  # From same gene = Pseudomaster
                 # Remove
                 this_hits.remove(candidate)
                 this_kicks.append(candidate)
                 if filter_verbose:
                     filtered_sequences_log.append(
                         [
-                            candidate["gene"],
-                            candidate["header"],
-                            str(candidate["score"]),
-                            str(candidate["hmm_start"]),
-                            str(candidate["hmm_end"]),
+                            candidate.gene,
+                            candidate.header,
+                            str(candidate.score),
+                            str(candidate.hmm_start),
+                            str(candidate.hmm_end),
                             "Pseudomaster",
-                            master["gene"],
-                            master["header"],
-                            str(master["score"]),
-                            str(master["hmm_start"]),
-                            str(master["hmm_end"]),
+                            master.gene,
+                            master.header,
+                            str(master.score),
+                            str(master.hmm_start),
+                            str(master.hmm_end),
                         ]
                     )
                 candidates.remove(candidate)
                 # Extend master range
                 kick_happend = True
-                if candidate["env_start"] < master_env_start:
-                    master_env_start = candidate["env_start"]
-                if candidate["env_end"] > master_env_start:
-                    master_env_end = candidate["env_end"]
+                if candidate.env_start < master_env_start:
+                    master_env_start = candidate.env_start
+                if candidate.env_end > master_env_start:
+                    master_env_end = candidate.env_end
             else:
                 break
 
@@ -246,11 +251,11 @@ def multi_filter_dupes(
 
         for candidate in candidates:
             distance = (master_env_end - master_env_start) + 1 # Inclusive
-            amount_of_overlap = get_overlap(master_env_start, master_env_end, candidate["env_start"], candidate["env_end"])
+            amount_of_overlap = get_overlap(master_env_start, master_env_end, candidate.env_start, candidate.env_end)
             percentage_of_overlap = amount_of_overlap / distance
 
             if percentage_of_overlap >= min_overlap_multi:
-                score_difference = get_difference(master["score"], candidate["score"])
+                score_difference = get_difference(master.score, candidate.score)
                 if score_difference >= score_diff_multi:
                     kick_happend = True
                     this_hits.remove(candidate)
@@ -258,17 +263,17 @@ def multi_filter_dupes(
                     if filter_verbose:
                         filtered_sequences_log.append(
                             [
-                                candidate["gene"],
-                                candidate["header"],
-                                str(candidate["score"]),
-                                str(candidate["env_start"]),
-                                str(candidate["env_end"]),
+                                candidate.gene,
+                                candidate.header,
+                                str(candidate.score),
+                                str(candidate.env_start),
+                                str(candidate.env_end),
                                 "Multi Overlapped with Lowest Score",
-                                master["gene"],
-                                master["header"],
-                                str(master["score"]),
-                                str(master["env_start"]),
-                                str(master["env_end"]),
+                                master.gene,
+                                master.header,
+                                str(master.score),
+                                str(master.env_start),
+                                str(master.env_end),
                             ]
                         )
                 else:
@@ -280,7 +285,7 @@ def multi_filter_dupes(
         ):  # Remove all overlapping candidates if it's score is a miniscule difference of the masters
             for candidate in candidates:
                 distance = (master_env_end - master_env_start) + 1 # Inclusive
-                amount_of_overlap = get_overlap(master_env_start, master_env_end, candidate["env_start"], candidate["env_end"])
+                amount_of_overlap = get_overlap(master_env_start, master_env_end, candidate.env_start, candidate.env_end)
                 percentage_of_overlap = amount_of_overlap / distance
                 if percentage_of_overlap >= min_overlap_multi:
                     kick_happend = True
@@ -289,17 +294,17 @@ def multi_filter_dupes(
                     if filter_verbose:
                         filtered_sequences_log.append(
                             [
-                                candidate["gene"],
-                                candidate["header"],
-                                str(candidate["score"]),
-                                str(candidate["hmm_start"]),
-                                str(candidate["hmm_end"]),
+                                candidate.gene,
+                                candidate.header,
+                                str(candidate.score),
+                                str(candidate.hmm_start),
+                                str(candidate.hmm_end),
                                 "Multi Overlapped with Miniscule Score",
-                                master["gene"],
-                                master["header"],
-                                str(master["score"]),
-                                str(master["hmm_start"]),
-                                str(master["hmm_end"]),
+                                master.gene,
+                                master.header,
+                                str(master.score),
+                                str(master.hmm_start),
+                                str(master.hmm_end),
                             ]
                         )
 
@@ -707,47 +712,47 @@ def main(argv):
     header_based_results = {}
     count = 0
 
+    # Disperse hits into genes
     for hit_group in hmm_results:
         for hit in hit_group:
             count += 1
-            this_orthoid = hit.query
-            if this_orthoid not in gene_based_results:
-                gene_based_results[this_orthoid] = []
+            this_gene = hit.gene
+            if this_gene not in gene_based_results:
+                gene_based_results[this_gene] = []
 
-            this_hit_data = hit.to_json()
-            this_hit_data["uuid"] = this_hit_data["header"] + f"_hit_{count}"
+            hit.uuid = hit.header + f"_hit_{count}"
 
-            gene_based_results[this_orthoid].append(this_hit_data)
+            gene_based_results[this_gene].append(hit)
 
     print(f"Filtering {count} hits.")
 
     print('Filtering multi-gene dupes')
 
-    for orthoid in gene_based_results:
-        for hit in gene_based_results[orthoid]:
-            if "revcomp" in hit["header"]:
-                base_header = get_baseheader(hit["header"])
+    for gene in gene_based_results:
+        for hit in gene_based_results[gene]:
+            if "revcomp" in hit.header:
+                base_header = hit.base_header
                 raw_length = int(base_header.split("_length_")[1]) / 3
                 length = math.floor(raw_length)
 
-                new_env_start = length - int(hit["env_end"])
-                new_env_end = length - int(hit["env_start"])
-                hit["env_start"] = new_env_start
-                hit["env_end"] = new_env_end
+                new_env_start = length - int(hit.env_end)
+                new_env_end = length - int(hit.env_start)
+                hit.env_start = new_env_start
+                hit.env_end = new_env_end
 
-            if hit["header"] not in f_duplicates:
-                f_duplicates[hit["header"]] = []
-            if hit["header"] not in header_based_results:
-                header_based_results[hit["header"]] = []
+            if hit.header not in f_duplicates:
+                f_duplicates[hit.header] = []
+            if hit.header not in header_based_results:
+                header_based_results[hit.header] = []
 
-            f_duplicates[hit["header"]].append(hit)
-            header_based_results[hit["header"]].append(hit)
+            f_duplicates[hit.header].append(hit)
+            header_based_results[hit.header].append(hit)
 
     headers = list(f_duplicates.keys())
     for header in headers:
         if len(f_duplicates[header]) > 1:
             unique_genes = list(
-                dict.fromkeys([i["gene"] for i in f_duplicates[header]])
+                dict.fromkeys([i.gene for i in f_duplicates[header]])
             )
             if len(unique_genes) <= 1:  # But the same gene
                 f_duplicates.pop(header)
@@ -771,7 +776,7 @@ def main(argv):
             )
 
             filtered_sequences_log.extend(data["Log"])
-            header_based_results[data["Remaining"][0]["header"]] = data["Remaining"]
+            header_based_results[data["Remaining"][0].header] = data["Remaining"]
 
     else:
         arguments = list()
@@ -796,28 +801,30 @@ def main(argv):
             for hit in data["Remaining"]:
                 hits_to_add.append(hit)
 
-            header_based_results[data["Remaining"][0]["header"]] = hits_to_add
+            header_based_results[data["Remaining"][0].header] = hits_to_add
+
+    print('Multi: {:.2f}'.format(time()-filter_start))
 
     transcripts_mapped_to = {}
 
 
     for header in header_based_results:
         for match in header_based_results[header]:
-            if match["gene"] not in transcripts_mapped_to:
-                transcripts_mapped_to[match["gene"]] = []
-            transcripts_mapped_to[match["gene"]].append(match)
+            if match.gene not in transcripts_mapped_to:
+                transcripts_mapped_to[match.gene] = []
+            transcripts_mapped_to[match.gene].append(match)
 
     print('Doing internal filtering')
 
     total_hits = 0
     if num_threads == 1:
         internal_data = []
-        for orthoid in transcripts_mapped_to:
-            this_gene_transcripts = transcripts_mapped_to[orthoid]
+        for gene in transcripts_mapped_to:
+            this_gene_transcripts = transcripts_mapped_to[gene]
             internal_data.append(
                 internal_filter_gene(
                     this_gene_transcripts,
-                    orthoid,
+                    gene,
                     min_overlap_internal,
                     score_diff_internal,
                     filter_verbose,
@@ -826,12 +833,12 @@ def main(argv):
 
     else:
         arguments = list()
-        for orthoid in transcripts_mapped_to:
-            this_gene_transcripts = transcripts_mapped_to[orthoid]
+        for gene in transcripts_mapped_to:
+            this_gene_transcripts = transcripts_mapped_to[gene]
             arguments.append(
                 (
                     this_gene_transcripts,
-                    orthoid,
+                    gene,
                     min_overlap_internal,
                     score_diff_internal,
                     filter_verbose,
@@ -840,35 +847,14 @@ def main(argv):
         with Pool(num_threads) as pool:
             internal_data = pool.starmap(run_internal_filter, arguments, chunksize=1)
 
-
     transcripts_mapped_to = {}
-    duplicates = {}
-    total_kicks = 0
-
     for data in internal_data:
         gene = data["gene"]
-        if gene not in duplicates.keys():
-            duplicates[gene] = set()
 
-        transcripts_mapped_to[gene] = []
+        if gene not in transcripts_mapped_to:
+            transcripts_mapped_to[gene] = []
 
-        for this_match in data["Passes"]:
-            if this_match["uuid"] in duplicates[gene]:
-                filtered_sequences_log.append(
-                    [
-                        this_match["gene"],
-                        this_match["header"],
-                        str(this_match["score"]),
-                        str(this_match["hmm_start"]),
-                        str(this_match["hmm_end"]),
-                        "Duplicate UUID",
-                    ]
-                )
-                continue
-            else:
-                duplicates[gene].add(this_match["uuid"])
-            transcripts_mapped_to[gene].append(this_match)
-
+        transcripts_mapped_to[gene] = data["Passes"]
         total_hits += len(data["Passes"])
         filtered_sequences_log.extend(data["Log"])
 
@@ -899,8 +885,8 @@ def main(argv):
     for gene in transcripts_mapped_to:
         for hit in transcripts_mapped_to[gene]:
             hit_id += 1
-            hit["hmm_sequence"] = "".join(sequence_dict[hit["header"]])
-            hit["hmm_id"] = hit_id
+            hit.hmm_sequence = "".join(sequence_dict[hit.header])
+            hit.hmm_id = hit_id
             if current_hit_count >= MAX_HMM_BATCH_SIZE:
                 data = json.dumps(current_batch)
                 del current_batch
@@ -917,7 +903,7 @@ def main(argv):
                 current_batch = []
                 current_hit_count = 1
 
-            current_batch.append(hit)
+            current_batch.append(hit.to_json())
             current_hit_count += 1
 
     if current_batch:
