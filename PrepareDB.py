@@ -82,7 +82,6 @@ def main(argv):
     # Create necessary directories
     printv("Creating directories", args.verbose)
 
-    os.makedirs(core_directory, exist_ok=True)
     os.makedirs(secondary_directory, exist_ok=True)
 
     taxa_runs = {}
