@@ -147,6 +147,14 @@ def main(argv):
                     for i in for_loop_range:
                         seq = lines[i+1].strip()
 
+                        # Trim trailing and leading Ns
+                        if seq[0] == 'N' or seq[-1] == 'N':
+                            seq = seq.strip('N')
+
+                        # Kick sequence if N is still present
+                        if 'N' in seq:
+                            continue
+
                         # Check for dupe, if so save how many times that sequence occured
                         seq_hash = hash(seq)
                         if seq_hash in dupe_set:
