@@ -66,16 +66,16 @@ class Hit:
 
     def to_json(self):
         return {
-            "header": str(self.target).replace(">", "").replace(" ", "|"),
+            "header": self.target,
             "gene": self.query,
-            "score": float(self.score),
-            "hmm_evalue": float(self.evalue),
-            "hmm_start": int(self.hmm_start),
-            "hmm_end": int(self.hmm_end),
-            "ali_start": int(self.ali_start),
-            "ali_end": int(self.ali_end),
-            "env_start": int(self.env_start),
-            "env_end": int(self.env_end),
+            "score": self.score,
+            "hmm_evalue": self.evalue,
+            "hmm_start": self.hmm_start,
+            "hmm_end": self.hmm_end,
+            "ali_start": self.ali_start,
+            "ali_end": self.ali_end,
+            "env_start": self.env_start,
+            "env_end": self.env_end,
         }
 
     def list_values(self, species_id):
