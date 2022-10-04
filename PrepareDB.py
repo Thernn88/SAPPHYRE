@@ -37,6 +37,21 @@ def rev_comp(seq):
     complement = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A'}
     return "".join(complement.get(base, base) for base in reversed(seq))
 
+def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
+    if 'N' in parent_sequence:
+        # Get N indices and start and end of sequence
+        indices = [0] + [i for i, ltr in enumerate(parent_sequence) if ltr == "N"] + [len(parent_sequence)]
+
+        for i in range(0, len(indices)-1):
+            start = indices[i]
+            end = indices[i+1]
+
+            length = (end - start) + 1
+            if length >= MINIMUM_SEQUENCE_LENGTH:
+                raw_seq = parent_sequence[start:end].strip('N')
+                yield raw_seq
+    else:
+        yield parent_sequence
 
 def main(argv):
     global_start = time()
@@ -49,6 +64,13 @@ def main(argv):
         "--clear_database",
         action="store_true",
         help="Overwrite existing rocksdb database.",
+    )
+    parser.add_argument(
+        "-ml",
+        "--minimum_sequence_length",
+        default=90, 
+        type=int, 
+        help="Minimum input sequence length.",
     )
     parser.add_argument(
         "-m",
@@ -72,6 +94,7 @@ def main(argv):
     args = parser.parse_args()
 
     MAX_PREPARED_LEVEL_SIZE = args.max_prepared_batch_size
+    MINIMUM_SEQUENCE_LENGTH = args.minimum_sequence_length
 
     allowed_filetypes = ['fa', 'fas', 'fasta']
 
@@ -120,7 +143,6 @@ def main(argv):
         dupe_set = set()
         dupes = 0
         prepared_component_all = []
-        sequence_count = 0
         this_index = 1
 
         if args.keep_prepared:
@@ -136,8 +158,6 @@ def main(argv):
 
                     if lines[-1] == "\n": lines = lines[:-1]
 
-                    sequence_count += int(len(lines) / 2)
-
                     for_loop_range = (
                         tqdm(range(0, len(lines), 2))
                         if args.verbose
@@ -145,79 +165,75 @@ def main(argv):
                     )
                     
                     for i in for_loop_range:
-                        seq = lines[i+1].strip()
+                        parent_seq = lines[i+1].strip()
 
-                        # Trim trailing and leading Ns
-                        if seq[0] == 'N' or seq[-1] == 'N':
-                            seq = seq.strip('N')
+                        if len(parent_seq) >= MINIMUM_SEQUENCE_LENGTH:
+                            for seq in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH):
+                                # Check for dupe, if so save how many times that sequence occured
+                                seq_hash = hash(seq)
+                                if seq_hash in dupe_set:
+                                    if seq_hash in duplicates:
+                                        duplicates[seq_hash] += 1
+                                    else:
+                                        duplicates[seq_hash] = 2
+                                    dupes += 1
+                                    continue
+                                else:
+                                    dupe_set.add(seq_hash)
 
-                        # Kick sequence if N is still present
-                        if 'N' in seq:
-                            continue
+                                # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
+                                # sequence so we don't have to rev-comp this unique sequence again
+                                if seq in rev_comp_save:
+                                    rev_seq = rev_comp_save[seq]
+                                else:
+                                    rev_seq = rev_comp(seq)
+                                    rev_comp_save[seq] = rev_seq
 
-                        # Check for dupe, if so save how many times that sequence occured
-                        seq_hash = hash(seq)
-                        if seq_hash in dupe_set:
-                            if seq_hash in duplicates:
-                                duplicates[seq_hash] += 1
-                            else:
-                                duplicates[seq_hash] = 2
-                            dupes += 1
-                            continue
-                        else:
-                            dupe_set.add(seq_hash)
+                                # Check for revcomp dupe, if so save how many times that sequence occured
+                                seq_hash = hash(rev_seq)
+                                if seq_hash in dupe_set:
+                                    if seq_hash in duplicates:
+                                        duplicates[seq_hash] += 1
+                                    else:
+                                        duplicates[seq_hash] = 2
+                                    dupes += 1
+                                    continue
+                                else:
+                                    dupe_set.add(seq_hash)
 
-                        # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
-                        # sequence so we don't have to rev-comp this unique sequence again
-                        if seq in rev_comp_save:
-                            rev_seq = rev_comp_save[seq]
-                        else:
-                            rev_seq = rev_comp(seq)
-                            rev_comp_save[seq] = rev_seq
+                                length = len(seq)
+                                header = f">NODE_{this_index}_length_{length}"
 
-                        # Check for revcomp dupe, if so save how many times that sequence occured
-                        seq_hash = hash(rev_seq)
-                        if seq_hash in dupe_set:
-                            if seq_hash in duplicates:
-                                duplicates[seq_hash] += 1
-                            else:
-                                duplicates[seq_hash] = 2
-                            dupes += 1
-                            continue
-                        else:
-                            dupe_set.add(seq_hash)
+                                this_index += 1
+                                
+                                # If no dupe, write to prepared file and db
+                                line = header+'\n'+seq+'\n'
 
-                        length = len(seq) + 1
-                        header = f">NODE_{this_index}_length_{length}"
+                                if args.keep_prepared is True:
+                                    fa_file_out.write(line)
 
-                        this_index += 1
-                        
-                        # If no dupe, write to prepared file and db
-                        line = header+'\n'+seq+'\n'
+                                # Save prepared file lines in a list to ration into the db
+                                prepared_component_all.append(line)
 
-                        if args.keep_prepared is True:
-                            fa_file_out.write(line)
+                                # Get rid of space and > in header (blast/hmmer doesn't like it) Need to push modified external to remove this. ToDo.
+                                preheader = header.replace(" ", "|").replace(">", "") # pre-hash header
+                                
+                                # Data that will be stored in the database
+                                data = f"{preheader}\n{seq}"
 
-                        # Save prepared file lines in a list to ration into the db
-                        prepared_component_all.append(line)
+                                # Hash the header
+                                key = hashlib.sha256(preheader.encode()).hexdigest()
 
-                        # Get rid of space and > in header (blast/hmmer doesn't like it) Need to push modified external to remove this. ToDo.
-                        preheader = header.replace(" ", "|").replace(">", "") # pre-hash header
-                        
-                        # Data that will be stored in the database
-                        data = f"{preheader}\n{seq}"
-
-                        # Hash the header
-                        key = hashlib.sha256(preheader.encode()).hexdigest()
-
-                        # Write to rocksdb
-                        db.put(key, data)
+                                # Write to rocksdb
+                                db.put(key, data)
 
         if args.keep_prepared:
             fa_file_out.close()
 
+        sequence_count = (this_index - 1)
+
         printv(
-            "Inserted {} sequences for {} found {} dupes.\n".format(sequence_count-dupes, formatted_taxa, dupes),
+            "Inserted {} sequences for {} found {} dupes.\n".format(sequence_count, formatted_taxa, dupes),
             args.verbose
         )
 
