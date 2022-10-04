@@ -73,6 +73,8 @@ class Hit:
             ]
         )
 
+    def __repr__(self) -> str:
+        return f"{self.header} {self.score}"
     def list_values(self, species_id):
         """
         Given a species_id, returns a list of values suitable for the
@@ -163,7 +165,6 @@ def internal_filter_gene(this_gene_hits, gene, min_overlap_internal, score_diff_
                             filtered_sequences_log.append([hit_b.gene,hit_b.header,str(hit_b.score),str(hit_b.hmm_start),str(hit_b.hmm_end),'Internal Overlapped with Lowest Score',hit_a.gene,hit_a.header,str(hit_a.score),str(hit_a.hmm_start),str(hit_a.hmm_end)])
 
     this_out_data = {'Passes':[i for i in this_gene_hits if i is not None], 'Log':filtered_sequences_log, 'gene':gene}
-
     return this_out_data
 
 def multi_filter_dupes(
@@ -181,12 +182,15 @@ def multi_filter_dupes(
         kick_happend = False
 
         master = this_hits[0]
-        candidates = [i for i in this_hits[1:] if i is not None]
+        # candidates = [i for i in this_hits[1:] if i is not None]
+        candidates = [i for i in this_hits[1:]]
 
         master_env_start = master.env_start
         master_env_end = master.env_end
 
         for i, candidate in enumerate(candidates, 1):
+            if candidate is None:  # guard statement
+                continue
             if candidate.gene == master.gene:  # From same gene = Pseudomaster
                 # Remove
                 if filter_verbose:
@@ -207,7 +211,7 @@ def multi_filter_dupes(
                     )
 
                 this_hits[i] = None
-                candidates[i] = None
+                candidates[i-1] = None
                 # Extend master range
                 kick_happend = True
                 if candidate.env_start < master_env_start:
@@ -888,7 +892,7 @@ def main(argv):
                     filter_verbose,
                 )
             )
-
+            x = 5
     else:
         arguments = list()
         for gene in transcripts_mapped_to:
@@ -941,7 +945,7 @@ def main(argv):
     current_batch = []
     current_hit_count = 1
     hit_id = 0
-    batch_i= 0 
+    batch_i= 0
     for gene in transcripts_mapped_to:
         for hit in transcripts_mapped_to[gene]:
             hit_id += 1
