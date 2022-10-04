@@ -75,9 +75,9 @@ def main(argv):
     parser.add_argument(
         "-m",
         "--max_prepared_batch_size",
-        default=1000000, 
+        default=100000, 
         type=int, 
-        help="Max sequences per prepared batch in db. Default: 1 million.",
+        help="Max sequences per prepared batch in db. Default: 100 thousand.",
     )
     parser.add_argument(
         "-k",
@@ -144,6 +144,8 @@ def main(argv):
         dupes = 0
         prepared_component_all = []
         this_index = 1
+        component_i = 0
+        prepared_recipe = []
 
         if args.keep_prepared:
             fa_file_out = open(prepared_file_destination, "w", encoding="UTF-8")
@@ -215,6 +217,19 @@ def main(argv):
                                 # Save prepared file lines in a list to ration into the db
                                 prepared_component_all.append(line)
 
+                                if len(prepared_component_all) >= MAX_PREPARED_LEVEL_SIZE:
+                                    this_batch = "".join(prepared_component_all)
+
+                                    del prepared_component_all
+                                    prepared_component_all = []
+                                    component_i += 1
+
+                                    key = f"prepared:{component_i}"
+
+                                    db.put(key, this_batch)
+
+                                    prepared_recipe.append(key)
+
                                 # Get rid of space and > in header (blast/hmmer doesn't like it) Need to push modified external to remove this. ToDo.
                                 preheader = header.replace(" ", "|").replace(">", "") # pre-hash header
                                 
@@ -240,19 +255,11 @@ def main(argv):
         del dupe_set # Clear mem
 
         printv("Storing prepared file in database", args.verbose)
-        
-        # Figure out how many levels are needed to split sequence_count into MAX_PREPARED_LEVEL_SIZE sized chunks 
-        prepared_file_levels = math.ceil(sequence_count / MAX_PREPARED_LEVEL_SIZE)
-        sequences_per_level = math.ceil(sequence_count / prepared_file_levels)
-        prepared_recipe = []
 
-        # Grab the chunks of the prepared file lines and store in db
-        for i in range(0, prepared_file_levels):
-            start_index = i * sequences_per_level
-            end_index = (i + 1) * sequences_per_level
-
-            this_batch = "".join(prepared_component_all[start_index:end_index])
-            key = f"prepared:{i}"
+        if len(prepared_component_all) != 0:
+            this_batch = "".join(prepared_component_all)
+            prepared_component_all = []
+            key = f"prepared:{component_i}"
 
             db.put(key, this_batch)
 
