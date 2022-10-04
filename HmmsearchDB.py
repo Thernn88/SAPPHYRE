@@ -293,11 +293,19 @@ def internal_multi_filter(this_gene_hits, minimum_overlap_multi_internal, filter
             )
 
     for b_header in base_headers:
-        bh_hits = [(i,hit) for i,hit in enumerate(this_gene_hits) if hit and hit.base_header == b_header]
+        bh_hits = [i for i,hit in enumerate(this_gene_hits) if hit and hit.base_header == b_header]
 
-        for hit_a_tuple, hit_b_tuple in itertools.combinations(bh_hits, 2):
-            _, hit_a = hit_a_tuple
-            hit_b_index, hit_b = hit_b_tuple
+        for hit_a_index, hit_b_index in itertools.combinations(bh_hits, 2):
+            hit_a = this_gene_hits[hit_a_index]
+
+            if not hit_a:
+                continue
+
+            hit_b = this_gene_hits[hit_b_index]
+
+            if not hit_b:
+                continue
+            
             overlap_amount = get_overlap(hit_a.ali_start, hit_a.ali_end, hit_b.ali_start, hit_b.ali_end)
             distance = (hit_b.ali_end - hit_b.ali_start) + 1
 
