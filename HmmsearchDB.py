@@ -1,4 +1,5 @@
 import argparse
+import itertools
 import math
 from multiprocessing.pool import Pool
 import os
@@ -139,8 +140,6 @@ def get_overlap(a_start, a_end, b_start, b_end):
     return 0 if amount < 0 else amount
 
 def internal_filter_gene(this_gene_hits, gene, min_overlap_internal, score_diff_internal, filter_verbose):
-    this_gene_hits.sort(key=lambda hit: hit.score, reverse=True)
-
     filtered_sequences_log = []
 
     for i,hit_a in enumerate(this_gene_hits):
@@ -167,34 +166,6 @@ def internal_filter_gene(this_gene_hits, gene, min_overlap_internal, score_diff_
 
     return this_out_data
 
-def run_internal_filter(
-    this_gene_transcripts,
-    gene,
-    min_overlap_internal,
-    score_diff_internal,
-    filter_verbose,
-):
-    return internal_filter_gene(
-        this_gene_transcripts,
-        gene,
-        min_overlap_internal,
-        score_diff_internal,
-        filter_verbose,
-    )
-
-def run_multi_filter(
-    this_hits,
-    filter_verbose,
-    min_overlap_multi,
-    score_diff_multi,
-):
-    return multi_filter_dupes(
-        this_hits,
-        filter_verbose,
-        min_overlap_multi,
-        score_diff_multi,
-    )
-
 def multi_filter_dupes(
     this_hits,
     filter_verbose,
@@ -203,7 +174,6 @@ def multi_filter_dupes(
 ):
     kick_happend = True
     filtered_sequences_log = []
-    this_kicks = []
 
     this_hits.sort(key=lambda data: (data.score, data.gene), reverse = True)
 
@@ -211,16 +181,14 @@ def multi_filter_dupes(
         kick_happend = False
 
         master = this_hits[0]
-        candidates = this_hits[1:]
+        candidates = [i for i in this_hits[1:] if i is not None]
 
         master_env_start = master.env_start
         master_env_end = master.env_end
 
-        for candidate in candidates:
+        for i, candidate in enumerate(candidates, 1):
             if candidate.gene == master.gene:  # From same gene = Pseudomaster
                 # Remove
-                this_hits.remove(candidate)
-                this_kicks.append(candidate)
                 if filter_verbose:
                     filtered_sequences_log.append(
                         [
@@ -237,7 +205,9 @@ def multi_filter_dupes(
                             str(master.hmm_end),
                         ]
                     )
-                candidates.remove(candidate)
+
+                this_hits[i] = None
+                candidates[i] = None
                 # Extend master range
                 kick_happend = True
                 if candidate.env_start < master_env_start:
@@ -249,71 +219,100 @@ def multi_filter_dupes(
 
         miniscule_score = False
 
-        for candidate in candidates:
-            distance = (master_env_end - master_env_start) + 1 # Inclusive
-            amount_of_overlap = get_overlap(master_env_start, master_env_end, candidate.env_start, candidate.env_end)
-            percentage_of_overlap = amount_of_overlap / distance
+        for i, candidate in enumerate(candidates, 1):
+            if candidate:
+                distance = (master_env_end - master_env_start) + 1 # Inclusive
+                amount_of_overlap = get_overlap(master_env_start, master_env_end, candidate.env_start, candidate.env_end)
+                percentage_of_overlap = amount_of_overlap / distance
 
-            if percentage_of_overlap >= min_overlap_multi:
-                score_difference = get_difference(master.score, candidate.score)
-                if score_difference >= score_diff_multi:
-                    kick_happend = True
-                    this_hits.remove(candidate)
-                    this_kicks.append(candidate)
-                    if filter_verbose:
-                        filtered_sequences_log.append(
-                            [
-                                candidate.gene,
-                                candidate.header,
-                                str(candidate.score),
-                                str(candidate.env_start),
-                                str(candidate.env_end),
-                                "Multi Overlapped with Lowest Score",
-                                master.gene,
-                                master.header,
-                                str(master.score),
-                                str(master.env_start),
-                                str(master.env_end),
-                            ]
-                        )
-                else:
-                    miniscule_score = True
-                    break
+                if percentage_of_overlap >= min_overlap_multi:
+                    score_difference = get_difference(master.score, candidate.score)
+                    if score_difference >= score_diff_multi:
+                        kick_happend = True
+                        this_hits[i] = None
+                        if filter_verbose:
+                            filtered_sequences_log.append(
+                                [
+                                    candidate.gene,
+                                    candidate.header,
+                                    str(candidate.score),
+                                    str(candidate.env_start),
+                                    str(candidate.env_end),
+                                    "Multi Overlapped with Lowest Score",
+                                    master.gene,
+                                    master.header,
+                                    str(master.score),
+                                    str(master.env_start),
+                                    str(master.env_end),
+                                ]
+                            )
+                    else:
+                        miniscule_score = True
+                        break
 
         if (
             miniscule_score
         ):  # Remove all overlapping candidates if it's score is a miniscule difference of the masters
-            for candidate in candidates:
-                distance = (master_env_end - master_env_start) + 1 # Inclusive
-                amount_of_overlap = get_overlap(master_env_start, master_env_end, candidate.env_start, candidate.env_end)
-                percentage_of_overlap = amount_of_overlap / distance
-                if percentage_of_overlap >= min_overlap_multi:
-                    kick_happend = True
-                    this_hits.remove(candidate)
-                    this_kicks.append(candidate)
-                    if filter_verbose:
-                        filtered_sequences_log.append(
-                            [
-                                candidate.gene,
-                                candidate.header,
-                                str(candidate.score),
-                                str(candidate.hmm_start),
-                                str(candidate.hmm_end),
-                                "Multi Overlapped with Miniscule Score",
-                                master.gene,
-                                master.header,
-                                str(master.score),
-                                str(master.hmm_start),
-                                str(master.hmm_end),
-                            ]
-                        )
-
+            for i,candidate in enumerate(candidates, 1):
+                if candidate:
+                    distance = (master_env_end - master_env_start) + 1 # Inclusive
+                    amount_of_overlap = get_overlap(master_env_start, master_env_end, candidate.env_start, candidate.env_end)
+                    percentage_of_overlap = amount_of_overlap / distance
+                    if percentage_of_overlap >= min_overlap_multi:
+                        kick_happend = True
+                        this_hits[i] = None
+                        if filter_verbose:
+                            filtered_sequences_log.append(
+                                [
+                                    candidate.gene,
+                                    candidate.header,
+                                    str(candidate.score),
+                                    str(candidate.hmm_start),
+                                    str(candidate.hmm_end),
+                                    "Multi Overlapped with Miniscule Score",
+                                    master.gene,
+                                    master.header,
+                                    str(master.score),
+                                    str(master.hmm_start),
+                                    str(master.hmm_end),
+                                ]
+                            )
     multi_data = {
-        "Kicks": this_kicks,
         "Log": filtered_sequences_log,
-        "Remaining": this_hits,
+        "Remaining": [i for i in this_hits if i is not None],
     }
     return multi_data
+
+def internal_multi_filter(this_gene_hits, minimum_overlap_multi_internal, filter_verbose, gene):
+    this_gene_hits.sort(key=lambda hit: hit.score, reverse=True)
+
+    filtered_sequences_log = []
+
+    base_headers = list(
+                dict.fromkeys([i.base_header for i in this_gene_hits])
+            )
+
+    for b_header in base_headers:
+        bh_hits = [(i,hit) for i,hit in enumerate(this_gene_hits) if hit and hit.base_header == b_header]
+
+        for hit_a_tuple, hit_b_tuple in itertools.combinations(bh_hits, 2):
+            _, hit_a = hit_a_tuple
+            hit_b_index, hit_b = hit_b_tuple
+            overlap_amount = get_overlap(hit_a.ali_start, hit_a.ali_end, hit_b.ali_start, hit_b.ali_end)
+            distance = (hit_b.ali_end - hit_b.ali_start) + 1
+
+            overlap_percent = overlap_amount / distance
+
+            if overlap_percent > minimum_overlap_multi_internal:
+                
+                this_gene_hits[hit_b_index] = None
+                if filter_verbose: 
+                    filtered_sequences_log.append([hit_b.gene,hit_b.header,str(hit_b.score),str(hit_b.ali_start),str(hit_b.ali_end),'Internal Multi Overlapped with Lowest Score',hit_a.gene,hit_a.header,str(hit_a.score),str(hit_a.ali_start),str(hit_a.ali_end)])
+
+    this_out_data = {'Passes':[i for i in this_gene_hits if i is not None], 'Log':filtered_sequences_log, 'Gene':gene}
+
+    return this_out_data
+
 
 def get_hmm_name(hmmfile: str) -> str:
     """
@@ -577,6 +576,13 @@ def main(argv):
         help="Multi-gene Minimum Overlap Adjustment",
     )
     parser.add_argument(
+        "-momi",
+        "--minimum_overlap_internal_multi",
+        type=float,
+        default=0.5,
+        help="Internal Multi Minimum Overlap Adjustment",
+    )##
+    parser.add_argument(
         "-sdi",
         "--score_diff_internal",
         type=float,
@@ -726,7 +732,7 @@ def main(argv):
 
     print(f"Filtering {count} hits.")
 
-    print('Filtering multi-gene dupes')
+    print('Doing multi-gene dupe filter')
 
     for gene in gene_based_results:
         for hit in gene_based_results[gene]:
@@ -792,7 +798,7 @@ def main(argv):
             )
 
         with Pool(num_threads) as pool:
-            multi_data = pool.starmap(run_multi_filter, arguments, chunksize=1)
+            multi_data = pool.starmap(multi_filter_dupes, arguments, chunksize=1)
 
         for data in multi_data:
             filtered_sequences_log.extend(data["Log"])
@@ -803,7 +809,8 @@ def main(argv):
 
             header_based_results[data["Remaining"][0].header] = hits_to_add
 
-    print('Multi: {:.2f}'.format(time()-filter_start))
+    print('Done! Took {:.2f}s'.format(time()-filter_start))
+    internal_multi_start = time()
 
     transcripts_mapped_to = {}
 
@@ -813,6 +820,49 @@ def main(argv):
             if match.gene not in transcripts_mapped_to:
                 transcripts_mapped_to[match.gene] = []
             transcripts_mapped_to[match.gene].append(match)
+
+    print('Doing internal multi filtering')
+
+    if num_threads == 1:
+        internal_multi_data = []
+        for gene in transcripts_mapped_to:
+            this_gene_transcripts = transcripts_mapped_to[gene]
+            internal_multi_data.append(#
+                internal_multi_filter(
+                    this_gene_transcripts,
+                    args.minimum_overlap_internal_multi,
+                    filter_verbose,
+                    gene,
+                )
+            )
+
+    else:
+        arguments = list()
+        for gene in transcripts_mapped_to:
+            this_gene_transcripts = transcripts_mapped_to[gene]
+            arguments.append(
+                (
+                    this_gene_transcripts,
+                    args.minimum_overlap_internal_multi,
+                    filter_verbose,
+                    gene,
+                )
+            )
+        with Pool(num_threads) as pool:
+            internal_multi_data = pool.starmap(internal_multi_filter, arguments, chunksize=1)
+
+    transcripts_mapped_to = {}
+    for data in internal_multi_data:
+        gene = data["Gene"]
+
+        if gene not in transcripts_mapped_to:
+            transcripts_mapped_to[gene] = []
+
+        transcripts_mapped_to[gene] = data["Passes"]
+        filtered_sequences_log.extend(data["Log"])
+
+    print('Done! Took {:.2f}s'.format(time()-internal_multi_start))
+    internal_start = time()
 
     print('Doing internal filtering')
 
@@ -845,7 +895,7 @@ def main(argv):
                 )
             )
         with Pool(num_threads) as pool:
-            internal_data = pool.starmap(run_internal_filter, arguments, chunksize=1)
+            internal_data = pool.starmap(internal_filter_gene, arguments, chunksize=1)
 
     transcripts_mapped_to = {}
     for data in internal_data:
@@ -864,9 +914,11 @@ def main(argv):
 
     if debug:
         filtered_sequences_log_path = os.path.join(args.input, "filtered-hits.csv")
-        open(filtered_sequences_log_path, "w").writelines(filtered_sequences_log_out)
+        with open(filtered_sequences_log_path, "w") as f_log_out:
+            f_log_out.writelines(filtered_sequences_log_out)
 
-    print('Done! Filtering took {:.2f}s'.format(time() - filter_start))
+    print('Done! Took {:.2f}s'.format(time()-internal_start))
+    print('Filtering took {:.2f}s'.format(time() - filter_start))
 
     # Grab that seq dict
     with open(sequence_dict_location) as seq_dict_handle:
