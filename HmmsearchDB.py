@@ -378,8 +378,6 @@ def make_temp_protfile(
     prepared_name = ortholog + "_prep.tmp"
     prepared_path = os.path.join(temp, prepared_name)
 
-    open(prot_path,"w")
-
     start = time()
 
     recipe = db_conn.get("getall:prepared").split(',')
