@@ -48,7 +48,9 @@ def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
 
             length = (end - start) + 1
             if length >= MINIMUM_SEQUENCE_LENGTH:
-                raw_seq = parent_sequence[start:end].strip('N')
+                # raw_seq = parent_sequence[start:end].strip('N')
+                # yield raw_seq
+                raw_seq = parent_sequence[start+1:end]
                 yield raw_seq
     else:
         yield parent_sequence
