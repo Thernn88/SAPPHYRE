@@ -290,39 +290,41 @@ def multi_filter_dupes(
     }
     return multi_data
 
-def internal_multi_filter(this_gene_hits, minimum_overlap_multi_internal, filter_verbose, gene):
+def internal_multi_filter(flagged_headers, this_gene_hits, minimum_overlap_multi_internal, filter_verbose, gene):
     this_gene_hits.sort(key=lambda hit: hit.score, reverse=True)
+
+    bh_based_results = {}
+    for i,hit in enumerate(this_gene_hits): #Iterate once and make hashmap
+        if not hit.base_header in bh_based_results:
+            bh_based_results[hit.base_header] = [i]
+        else:
+            bh_based_results[hit.base_header].append(i)
 
     filtered_sequences_log = []
 
-    base_headers = list(
-                dict.fromkeys([i.base_header for i in this_gene_hits])
-            )
+    for b_header in flagged_headers:
+        if b_header in bh_based_results: # Not kicked during multi
+            bh_hits = bh_based_results[b_header]
 
-    for b_header in base_headers:
-        bh_hits = [i for i,hit in enumerate(this_gene_hits) if hit and hit.base_header == b_header]
+            for hit_a_index, hit_b_index in itertools.combinations(bh_hits, 2):
+                hit_a = this_gene_hits[hit_a_index]
+                if not hit_a:
+                    continue
 
-        for hit_a_index, hit_b_index in itertools.combinations(bh_hits, 2):
-            hit_a = this_gene_hits[hit_a_index]
-
-            if not hit_a:
-                continue
-
-            hit_b = this_gene_hits[hit_b_index]
-
-            if not hit_b:
-                continue
-            
-            overlap_amount = get_overlap(hit_a.ali_start, hit_a.ali_end, hit_b.ali_start, hit_b.ali_end)
-            distance = (hit_b.ali_end - hit_b.ali_start) + 1
-
-            overlap_percent = overlap_amount / distance
-
-            if overlap_percent > minimum_overlap_multi_internal:
+                hit_b = this_gene_hits[hit_b_index]
+                if not hit_b:
+                    continue
                 
-                this_gene_hits[hit_b_index] = None
-                if filter_verbose: 
-                    filtered_sequences_log.append([hit_b.gene,hit_b.header,str(hit_b.score),str(hit_b.ali_start),str(hit_b.ali_end),'Internal Multi Overlapped with Lowest Score',hit_a.gene,hit_a.header,str(hit_a.score),str(hit_a.ali_start),str(hit_a.ali_end)])
+                overlap_amount = get_overlap(hit_a.ali_start, hit_a.ali_end, hit_b.ali_start, hit_b.ali_end)
+                distance = (hit_b.ali_end - hit_b.ali_start) + 1
+
+                overlap_percent = overlap_amount / distance
+
+                if overlap_percent > minimum_overlap_multi_internal:
+                    
+                    this_gene_hits[hit_b_index] = None
+                    if filter_verbose: 
+                        filtered_sequences_log.append([hit_b.gene,hit_b.header,str(hit_b.score),str(hit_b.ali_start),str(hit_b.ali_end),'Internal Multi Overlapped with Lowest Score',hit_a.gene,hit_a.header,str(hit_a.score),str(hit_a.ali_start),str(hit_a.ali_end)])
 
     this_out_data = {'Passes':[i for i in this_gene_hits if i is not None], 'Log':filtered_sequences_log, 'Gene':gene}
 
@@ -720,12 +722,13 @@ def main(argv):
     print('Doing multi-gene dupe filter')
 
     print('Searching for dupes')
-    required_internal_multi_genes = []
+    required_internal_multi_genes = {}
     rimg_set = set()
 
     for gene in gene_based_results:
         this_gene_baseheaders = set()
-        requires_internal_multi_filter = False
+        requires_internal_multi_filter = {}
+        this_requires = False
 
         for hit in gene_based_results[gene]:
             if "revcomp" in hit.header:
@@ -745,13 +748,14 @@ def main(argv):
             if hit.base_header not in this_gene_baseheaders:
                 this_gene_baseheaders.add(hit.base_header)
             else:
-                requires_internal_multi_filter = True
+                requires_internal_multi_filter[hit.base_header] = True # As a dict to avoid dupe headers
+                this_requires = True
 
             f_duplicates[hit.header].append(hit)
             header_based_results[hit.header].append(hit)
 
-        if requires_internal_multi_filter:
-            required_internal_multi_genes.append(gene)
+        if this_requires:
+            required_internal_multi_genes[gene] = list(requires_internal_multi_filter.keys())
             rimg_set.add(gene) # Used for internal sort
 
     headers = list(f_duplicates.keys())
@@ -830,8 +834,10 @@ def main(argv):
         for gene in required_internal_multi_genes:
             if gene in transcripts_mapped_to:
                 this_gene_transcripts = transcripts_mapped_to[gene]
+                check_headers = required_internal_multi_genes[gene]
                 internal_multi_data.append(#
                     internal_multi_filter(
+                        check_headers,
                         this_gene_transcripts,
                         args.minimum_overlap_internal_multi,
                         filter_verbose,
@@ -844,8 +850,10 @@ def main(argv):
         for gene in required_internal_multi_genes:
             if gene in transcripts_mapped_to:
                 this_gene_transcripts = transcripts_mapped_to[gene]
+                check_headers = required_internal_multi_genes[gene]
                 arguments.append(
                     (
+                        check_headers,
                         this_gene_transcripts,
                         args.minimum_overlap_internal_multi,
                         filter_verbose,
