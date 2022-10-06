@@ -77,13 +77,6 @@ def folder_check(path: str) -> None:
         os.mkdir(logs_folder)
 
 
-def is_reference_header(header: str) -> bool:
-    """
-    Returns True if the reference header identifier is present in the header
-    """
-    return header[-1] == '.'
-
-
 def get_headers(lines: list) -> list:
     """
     Returns a list of every other line in the provided argument. Used to get
@@ -111,7 +104,8 @@ def split_sequences(lines: list, excluded: set) -> tuple:
         sequence = lines[i + 1].strip()
 
         if end_of_references is False:
-            if is_reference_header(header):
+            # The reference header identifier is present in the header
+            if header[-1] == '.':
                 if header.split("|")[1].lower() in bad_names:
                     excluded.add(header)
 
@@ -147,19 +141,6 @@ def make_indices(sequence: str, gap_character="-") -> tuple:
     return start, end
 
 
-def sequence_has_data(sequence: str) -> bool:
-    """
-    Returns True if the string contains a non-gap character.
-    Otherwise, returns False.
-    """
-    result = False
-    for character in sequence:
-        if character != "-":
-            result = True
-            break
-    return result
-
-
 def constrain_data_lines(lines: list, start: int, end: int) -> tuple:
     """
     Given a start and end value, iterates over the list of sequences and
@@ -169,7 +150,8 @@ def constrain_data_lines(lines: list, start: int, end: int) -> tuple:
     heads = []
     for i in range(0, len(lines), 2):
         newline = lines[i + 1][start:end]
-        if sequence_has_data(newline):
+        # Do work if the string contains a non-gap character.
+        if any(character != "-" for character in newline):
             full.append(lines[i])
             full.append(newline)
             heads.append(lines[i])
@@ -182,11 +164,7 @@ def convert_to_record_objects(lines: list) -> list:
     from the biopython module. This allows us to make a MultipleSequenceAlignment
     object later.
     """
-    result = []
-    for i in range(0, len(lines), 2):
-        record_object = Record(lines[i], lines[i + 1])
-        result.append(record_object)
-    return result
+    return [Record(lines[i], lines[i + 1]) for i in range(0, len(lines), 2)]
 
 
 def find_index_groups(references: list, candidates: list) -> tuple:
@@ -284,7 +262,6 @@ def compare_means(
         # start, stop = index_pair
         candidates_at_index = candidates_dict[index_pair]
         # first we have to calculate the reference distances to make the ref mean
-        convert_to_record_objects(current_refs)
         ref_alignments = [
             seq
             for seq in convert_to_record_objects(current_refs)
@@ -330,18 +307,7 @@ def compare_means(
     return regulars, to_add_later, outliers
 
 
-def make_nt_name(path: str) -> str:
-    folder, name = os.path.split(path)
-    fields = name.split(".")
-    name = fields[0]
-    name = name + ".nt."
-    top_level = "/".join(folder.split("/")[:-1])
-    nt_folder = os.path.join(top_level, "nt")
-    result = os.path.join(nt_folder, name)
-    return result, name, top_level
-
-
-def make_nt_folder(path: str) -> str:
+def make_nt_folder(path: str) -> str:  # FIXME: not used anywhere (but in a comment)
     head, tail = os.path.split(path)
     possible = os.listdir(head)
     result = None
@@ -354,7 +320,7 @@ def make_nt_folder(path: str) -> str:
     return result
 
 
-def make_nt_out_folder(output: str, path: str) -> str:
+def make_nt_out_folder(output: str, path: str) -> str:  # FIXME: not used anywhere
     _, tail = os.path.split(path)
     return os.path.join(output, tail)
 
@@ -470,7 +436,7 @@ def main_process(
 
         regulars = delete_empty_columns(raw_regulars)
 
-        if len(to_add) > 0:  # If candidate added to fasta
+        if to_add:  # If candidate added to fasta
             with open(aa_output, "w+", encoding = "UTF-8") as aa_output:
                 aa_output.writelines(regulars)
 
