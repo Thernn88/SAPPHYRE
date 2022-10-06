@@ -4,7 +4,7 @@ Requirements
 	
 	Externals
 	Mafft v7.510+ https://mafft.cbrc.jp/alignment/software/ - Currently requires make.
-	Exonerate - 2.4.0 https://github.com/nathanweeks/exonerate - sudo apt install exonerate
+	Exonerate - 2.4.0 https://github.com/nathanweeks/exonerate - custom build for modified fastatranslate
 	HMMer - 3.3+ https://github.com/EddyRivasLab/hmmer - sudo apt install Hmmer
 	SQLite3 - sudo apt install sqlite3 (Will be removed later.)
 	Perl - sudo apt install perl (Will be removed later.)
