@@ -7,8 +7,8 @@ PrepareDB.py
 HmmsearchDB.py
   1. Refactor Multi-Gene Filter
   2. Refactor Internal-Multi Filter
-  3. Explore potential doing prot file creation in chunks. This would involve splitting input.fa into chunks, doing parallel fastatranslate calls, and then combining the multiple outputs.
-  
+  3. Explore potential for chunked prot-file creation. This would involve splitting input.fa into chunks, doing parallel fastatranslate calls, and then combining the multiple outputs.
+      a. Alternative: rewrite fastatranslate in Rust so that it can thread and handle this internally.
 BlastPalDB.py
   1. Bicobus Style Review
   
