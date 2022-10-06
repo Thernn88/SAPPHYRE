@@ -46,7 +46,7 @@ def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
             start = indices[i]
             end = indices[i+1]
 
-            length = (end - start) + 1
+            length = end - start
             if length >= MINIMUM_SEQUENCE_LENGTH:
                 # raw_seq = parent_sequence[start:end].strip('N')
                 # yield raw_seq
