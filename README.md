@@ -4,8 +4,9 @@ Requirements
 	
 	Externals
 	Mafft v7.510+ https://mafft.cbrc.jp/alignment/software/ - Currently requires make.
-	Exonerate - Custom - a custom build to utilize modified fastatranslate. Fastatranslate is planed to be replaced with a rust module w/ thread capabilities.
+	Exonerate - Custom - a custom build to utilize modified fastatranslate. Fastatranslate is planned to be replaced with a rust module w/ thread capabilities.
 	HMMer - 3.3+ https://github.com/EddyRivasLab/hmmer - sudo apt install Hmmer
+	Blast - NCBI-Blast 2.2.28+ ftp://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/ or sudo apt install ncbi-blast+
 	SQLite3 - sudo apt install sqlite3 (Will be removed later.)
 	Perl - sudo apt install perl (Will be removed later.)
 	
