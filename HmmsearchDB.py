@@ -828,28 +828,30 @@ def main(argv):
     if num_threads == 1:
         internal_multi_data = []
         for gene in required_internal_multi_genes:
-            this_gene_transcripts = transcripts_mapped_to[gene]
-            internal_multi_data.append(#
-                internal_multi_filter(
-                    this_gene_transcripts,
-                    args.minimum_overlap_internal_multi,
-                    filter_verbose,
-                    gene,
+            if gene in transcripts_mapped_to:
+                this_gene_transcripts = transcripts_mapped_to[gene]
+                internal_multi_data.append(#
+                    internal_multi_filter(
+                        this_gene_transcripts,
+                        args.minimum_overlap_internal_multi,
+                        filter_verbose,
+                        gene,
+                    )
                 )
-            )
 
     else:
         arguments = list()
         for gene in required_internal_multi_genes:
-            this_gene_transcripts = transcripts_mapped_to[gene]
-            arguments.append(
-                (
-                    this_gene_transcripts,
-                    args.minimum_overlap_internal_multi,
-                    filter_verbose,
-                    gene,
+            if gene in transcripts_mapped_to:
+                this_gene_transcripts = transcripts_mapped_to[gene]
+                arguments.append(
+                    (
+                        this_gene_transcripts,
+                        args.minimum_overlap_internal_multi,
+                        filter_verbose,
+                        gene,
+                    )
                 )
-            )
         with Pool(num_threads) as pool:
             internal_multi_data = pool.starmap(internal_multi_filter, arguments, chunksize=1)
 
