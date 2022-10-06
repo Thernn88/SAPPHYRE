@@ -141,7 +141,10 @@ def get_overlap(a_start, a_end, b_start, b_end):
 
     return 0 if amount < 0 else amount
 
-def internal_filter_gene(this_gene_hits, gene, min_overlap_internal, score_diff_internal, filter_verbose):
+def internal_filter_gene(this_gene_hits, gene, min_overlap_internal, score_diff_internal, filter_verbose, requires_sort):
+    if requires_sort:
+        this_gene_hits.sort(key=lambda hit: hit.score, reverse=True)
+
     filtered_sequences_log = []
 
     for i,hit_a in enumerate(this_gene_hits):
@@ -164,7 +167,7 @@ def internal_filter_gene(this_gene_hits, gene, min_overlap_internal, score_diff_
                         if filter_verbose: 
                             filtered_sequences_log.append([hit_b.gene,hit_b.header,str(hit_b.score),str(hit_b.hmm_start),str(hit_b.hmm_end),'Internal Overlapped with Lowest Score',hit_a.gene,hit_a.header,str(hit_a.score),str(hit_a.hmm_start),str(hit_a.hmm_end)])
 
-    this_out_data = {'Passes':[i for i in this_gene_hits if i is not None], 'Log':filtered_sequences_log, 'gene':gene}
+    this_out_data = {'Passes':[i for i in this_gene_hits if i is not None], 'Log':filtered_sequences_log, 'Gene':gene}
     return this_out_data
 
 def multi_filter_dupes(
@@ -681,31 +684,6 @@ def main(argv):
     protfile = make_temp_protfile(
         num_threads, ortholog, temp_dir, args.remake_protfile, specimen_type=1
     )
-
-    # clean prot file and store a hashmap of sequences for later use in filtering
-
-    sequence_dict = {}
-    start = time()
-    with open(protfile) as prot_file_handle:
-        content = prot_file_handle.read().strip().replace(' ','|')
-
-        records = content.split('>')[1:]
-        records = map(de_interleave_record, records)
-        for header,sequence in records:
-            sequence_dict[header] = sequence
-
-    with open(protfile, 'w') as prot_file_ovw:
-        prot_file_ovw.write(content)
-    
-    # save the sequence dict for later.
-    sequence_dict_location = os.path.join(temp_dir, "SeqDict.tmp")
-    with open(sequence_dict_location, "w") as seq_dict_handle:
-        json.dump(sequence_dict, seq_dict_handle)
-
-    del sequence_dict
-
-    print('Cleaned and read prot file in {:.2f}s'.format(time()-start))
-
     arg_tuples = list()
     for hmm in hmm_list:
         arg_tuples.append(
@@ -717,9 +695,6 @@ def main(argv):
     with Pool(num_threads) as search_pool:
         hmm_results = search_pool.starmap(hmm_search, arg_tuples)
     print("Search time: {:.2f}".format(time() - start))
-
-    if os.path.exists(protfile):
-        os.remove(protfile)
 
     filter_start = time()
 
@@ -744,7 +719,14 @@ def main(argv):
 
     print('Doing multi-gene dupe filter')
 
+    print('Searching for dupes')
+    required_internal_multi_genes = []
+    rimg_set = set()
+
     for gene in gene_based_results:
+        this_gene_baseheaders = set()
+        requires_internal_multi_filter = False
+
         for hit in gene_based_results[gene]:
             if "revcomp" in hit.header:
                 base_header = hit.base_header
@@ -760,9 +742,17 @@ def main(argv):
                 f_duplicates[hit.header] = []
             if hit.header not in header_based_results:
                 header_based_results[hit.header] = []
+            if hit.base_header not in this_gene_baseheaders:
+                this_gene_baseheaders.add(hit.base_header)
+            else:
+                requires_internal_multi_filter = True
 
             f_duplicates[hit.header].append(hit)
             header_based_results[hit.header].append(hit)
+
+        if requires_internal_multi_filter:
+            required_internal_multi_genes.append(gene)
+            rimg_set.add(gene) # Used for internal sort
 
     headers = list(f_duplicates.keys())
     for header in headers:
@@ -777,6 +767,8 @@ def main(argv):
 
     for header_left in f_duplicates:
         header_based_results[header_left] = []
+
+    print('Filtering dupes (Search took {:.2f}s)'.format(time()-filter_start))
 
     filter_verbose = debug
     filtered_sequences_log = []
@@ -835,7 +827,7 @@ def main(argv):
 
     if num_threads == 1:
         internal_multi_data = []
-        for gene in transcripts_mapped_to:
+        for gene in required_internal_multi_genes:
             this_gene_transcripts = transcripts_mapped_to[gene]
             internal_multi_data.append(#
                 internal_multi_filter(
@@ -848,7 +840,7 @@ def main(argv):
 
     else:
         arguments = list()
-        for gene in transcripts_mapped_to:
+        for gene in required_internal_multi_genes:
             this_gene_transcripts = transcripts_mapped_to[gene]
             arguments.append(
                 (
@@ -861,12 +853,8 @@ def main(argv):
         with Pool(num_threads) as pool:
             internal_multi_data = pool.starmap(internal_multi_filter, arguments, chunksize=1)
 
-    transcripts_mapped_to = {}
     for data in internal_multi_data:
         gene = data["Gene"]
-
-        if gene not in transcripts_mapped_to:
-            transcripts_mapped_to[gene] = []
 
         transcripts_mapped_to[gene] = data["Passes"]
         filtered_sequences_log.extend(data["Log"])
@@ -881,6 +869,7 @@ def main(argv):
         internal_data = []
         for gene in transcripts_mapped_to:
             this_gene_transcripts = transcripts_mapped_to[gene]
+            sort = gene not in rimg_set
             internal_data.append(
                 internal_filter_gene(
                     this_gene_transcripts,
@@ -888,6 +877,7 @@ def main(argv):
                     min_overlap_internal,
                     score_diff_internal,
                     filter_verbose,
+                    sort
                 )
             )
             x = 5
@@ -895,6 +885,7 @@ def main(argv):
         arguments = list()
         for gene in transcripts_mapped_to:
             this_gene_transcripts = transcripts_mapped_to[gene]
+            sort = gene not in rimg_set
             arguments.append(
                 (
                     this_gene_transcripts,
@@ -902,6 +893,7 @@ def main(argv):
                     min_overlap_internal,
                     score_diff_internal,
                     filter_verbose,
+                    sort
                 )
             )
         with Pool(num_threads) as pool:
@@ -909,7 +901,7 @@ def main(argv):
 
     transcripts_mapped_to = {}
     for data in internal_data:
-        gene = data["gene"]
+        gene = data["Gene"]
 
         if gene not in transcripts_mapped_to:
             transcripts_mapped_to[gene] = []
@@ -930,11 +922,26 @@ def main(argv):
     print('Done! Took {:.2f}s'.format(time()-internal_start))
     print('Filtering took {:.2f}s'.format(time() - filter_start))
 
-    # Grab that seq dict
-    with open(sequence_dict_location) as seq_dict_handle:
-        sequence_dict = json.load(seq_dict_handle)
+    # Grab the seq dict
+    sequence_dict = {}
+    start = time()
+    header = None
+    with open(protfile) as prot_file_handle:
+        for raw_line in prot_file_handle:
+            line = raw_line.strip()
+            if header:
+                sequence_dict[header] = line
+                header = None
+            else:
+                if line[0] == '>':
+                    if ' ' in line: #                                    TODO : REMOVE THIS
+                        raise Exception('Space detected in prot file') # TODO : REMOVE THIS
+                    header = line[1:]
+    
+    if os.path.exists(protfile):
+        os.remove(protfile)
 
-    os.remove(sequence_dict_location)
+    print('Read prot file in {:.2f}s'.format(time()-start))
 
     end = time()
 
@@ -967,6 +974,8 @@ def main(argv):
 
             current_batch.append(hit.to_json())
             current_hit_count += 1
+
+    del sequence_dict
 
     if current_batch:
         data = json.dumps(current_batch)
