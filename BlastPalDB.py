@@ -22,7 +22,7 @@ class GeneConfig:  # FIXME: I am not certain about types.
 
     def __post_init__(self):
         self.blast_file_path = os.path.join(self.blast_path, f"{self.gene}.blast")
-        self.blast_file_done = f"{self.blash_file_path}.done"
+        self.blast_file_done = f"{self.blast_file_path}.done"
         self.fa_file = os.path.join(self.tmp_path, f"{self.gene}.fa")
 
 
@@ -37,27 +37,27 @@ def do(
         not os.path.exists(gene_conf.blast_file_done)
         or os.path.getsize(gene_conf.blast_file_done) == 0
     ):
-        if not os.path.exists(gene_conf.blast_file_path):
-            with open(gene_conf.fa_file, "w") as target_handle:
-                for target, sequence in gene_conf.gene_sequences:
-                    target_handle.write(">" + target + "\n" + sequence + "\n")
+        print("Blasted:", gene_conf.gene)
+        with open(gene_conf.fa_file, "w") as target_handle:
+            for target, sequence in gene_conf.gene_sequences:
+                target_handle.write(">" + target + "\n" + sequence + "\n")
 
-            cmd = (
-                "{prog} -outfmt '7 qseqid sseqid evalue bitscore qstart qend' "
-                "-evalue '{evalue_threshold}' -threshold '{score_threshold}' "
-                "-num_threads '{num_threads}' -db '{db}' -query '{queryfile}' "
-                "-out '{outfile}'".format(
-                    prog=prog,
-                    evalue_threshold=evalue_threshold,
-                    score_threshold=score_threshold,
-                    num_threads=2,
-                    db=gene_conf.blast_db_path,
-                    queryfile=gene_conf.fa_file,
-                    outfile=gene_conf.blast_path,
-                )
+        cmd = (
+            "{prog} -outfmt '7 qseqid sseqid evalue bitscore qstart qend' "
+            "-evalue '{evalue_threshold}' -threshold '{score_threshold}' "
+            "-num_threads '{num_threads}' -db '{db}' -query '{queryfile}' "
+            "-out '{outfile}'".format(
+                prog=prog,
+                evalue_threshold=evalue_threshold,
+                score_threshold=score_threshold,
+                num_threads=2,
+                db=gene_conf.blast_db_path,
+                queryfile=gene_conf.fa_file,
+                outfile=gene_conf.blast_path,
             )
-            os.system(cmd)
-            os.remove(gene_conf.fa_file)
+        )
+        os.system(cmd)
+        os.remove(gene_conf.fa_file)
 
         os.rename(gene_conf.blast_path, gene_conf.blast_file_done)
 
@@ -102,7 +102,7 @@ def do(
 
         this_return.append((key, data, len(this_out_results)))
 
-    print("Blasted:", gene_conf.gene)
+    
 
     return this_return
 
@@ -238,7 +238,7 @@ def main():
         ]
     else:
         arguments = [
-            GeneConfig(
+            (GeneConfig(
                 gene=gene,
                 tmp_path=tmp_path,
                 gene_sequence=gene_to_hits[gene],
@@ -246,7 +246,7 @@ def main():
                 blast_db_path=blast_db_path,
                 blast_minimum_score=args.blast_minimum_score,
                 blast_minimum_evalue=args.blast_minimum_evalue,
-            )
+            ),)
             for gene in genes
         ]
 
