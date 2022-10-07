@@ -2,12 +2,13 @@ import argparse
 import json
 import math
 import os
+import wrap_rocks
 from dataclasses import dataclass
 from multiprocessing.pool import Pool
 from shutil import rmtree
 from time import time
 
-import wrap_rocks
+
 
 class Result:
     __slots__ = (
