@@ -1,11 +1,13 @@
-import os
-import math
-from multiprocessing.pool import Pool
 import argparse
-from time import time,sleep
-from shutil import rmtree
 import json
+import math
+import os
+from multiprocessing.pool import Pool
+from shutil import rmtree
+from time import time
+
 import wrap_rocks
+
 
 def do(gene, tmp_path, this_gene_sequences, blast_path, blast_db_path, blast_minimum_score, blast_minimum_evalue, prog = 'blastp', evalue_threshold = .00001, score_threshold = 40, num_threads = 1):
 	blast_file_name = f'{gene}.blast'
