@@ -19,7 +19,7 @@ ReporterDB.py
   3. Reciprocal-filter refactor.
   
 Mafft.py
-  1. Before passing a gene.fa input to Mafft, delete references, but store header names. Replace the headers of the references grabbed from the aln folder with saved headers. (2x speedup for Mafft.py)
+  1. Create no_ref files on /run/shm memory rather than hdd
   
 Pal2Nal.py (LOW PRIORITY)
   1. Full blown rewrite. Python version is at least 4x slower than Perl version. (A lot of poor design decisions in Pal2Nal.py) Perhaps rewrite in Golang or Rust? 
