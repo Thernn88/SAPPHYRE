@@ -4,63 +4,60 @@ from multiprocessing.pool import ThreadPool
 from threading import Lock
 from time import time
 
-start = time()
-
-def deinterleave(fasta_lines: list) -> str:
-    result = []
-    this_out = list()
-    for line in fasta_lines:
-        if line != '':
-            if line[0] == '>':
-                if this_out:
-                    result.append(''.join(this_out))
-                result.append(line)
-                this_out = list()
-            else:
-                this_out.append(line.strip())
-    if this_out != list():
-        result.append(''.join(this_out))
-    return result
-
-def delete_no_pipe_headers(content: str) -> str:
-    lines = content.split('\n')
-    lines = deinterleave(lines)
-
-    result = []
-
-    for i in range(0,len(lines),2):
-        header = lines[i]
-        seq = lines[i+1]
-
-        if '|' in header:
-            result.append(header)
-            result.append(seq)
-
-    result = '\n'.join(result)
-
-    return result
-
 def run_command(arg_tuple: tuple) -> None:
-    string, taxa, mafft_path, parent, gene, lock = arg_tuple
-    with lock:
+    string, gene_file, result_file, gene, lock = arg_tuple
+    if lock is not None:
+        with lock:
+            print(gene)
+    else:
         print(gene)
-    command = string.format(gene, taxa, parent)
+
+    ref_og_hashmap = {}
+
+    tmp_gene_file = gene_file + "_no_ref.tmp"
+    with open(tmp_gene_file, "w") as fp_out, open(gene_file) as fp_in:
+        for line in fp_in:
+            if line[0] == ">" and line[-2] == ".":
+                ref_og_hashmap[line.split("|")[2]] = line
+                next(fp_in)  # Skip this line and next line
+            else:
+                fp_out.write(line)
+
+    command = string.format(tmp_gene_file, result_file, gene)
     os.system(command)
 
-    file = gene+'.aa.fa'
-    path = os.path.join(mafft_path,file)
+    os.remove(tmp_gene_file)
 
-    content = open(path).read()
+    # Overwrite reference headers with original headers
+    non_ref_found = False
+    with open(result_file, "r+") as fp_out:
+        out = []
+        for line in fp_out:
+            if line[0] == ">" and not non_ref_found:
+                if "|" in line:
+                    non_ref_found = True
+                    out.append(line)
+                else:
+                    out.append(ref_og_hashmap[line[1:].strip()])
+            else:
+                out.append(line)
 
-    out_content = delete_no_pipe_headers(content)
+        fp_out.seek(0)
+        fp_out.writelines(out)
+        fp_out.truncate()
 
-    open(path,'w').write(out_content)
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-i', '--input', type=str, default='Parent',
-                    help='Path to parent folder for input')
-parser.add_argument('-p', '--processes', type=int, default=0,
-                    help='Number of threads used to call processes.')
+parser.add_argument(
+    "-i", "--input", type=str, default="Parent", help="Path to parent folder for input"
+)
+parser.add_argument(
+    "-p",
+    "--processes",
+    type=int,
+    default=0,
+    help="Number of threads used to call processes.",
+)
 parser.add_argument(
     "-oi",
     "--orthoset_input",
@@ -69,54 +66,49 @@ parser.add_argument(
     help="Path to directory of Orthosets folder",
 )
 parser.add_argument(
-    "-o",
-    "--orthoset",
-    type=str,
-    required=True,
-    help="Orthoset",
+    "-o", "--orthoset", type=str, default="Ortholog_set_Mecopterida_v4", help="Orthoset"
 )
 args = parser.parse_args()
 
-mafft_folder = 'mafft'
-aa_folder = 'aa'
-aln_folder = 'aln'
+mafft_folder = "mafft"
+aa_folder = "aa"
+aln_folder = "aln"
 
 aln_path = os.path.join(args.orthoset_input, args.orthoset, aln_folder)
 
 for taxa in os.listdir(args.input):
-    print('Doing taxa {}'.format(taxa))
+    start = time()
+    print("Doing taxa {}".format(taxa))
     mafft_path = os.path.join(args.input, taxa, mafft_folder)
     aa_path = os.path.join(args.input, taxa, aa_folder)
     if os.path.exists(aa_path):
-        if not os.path.exists(mafft_path): os.mkdir(mafft_path)
+        if not os.path.exists(mafft_path):
+            os.mkdir(mafft_path)
 
-        genes = [gene.split('.')[0] for gene in os.listdir(aa_path) if '.aa' in gene]
+        genes = [gene.split(".")[0] for gene in os.listdir(aa_path) if ".aa" in gene]
 
-        #command = 'mafft --anysymbol --auto --thread -1 --addfragments {2}/{1}/aa/{0}.aa.fa --thread -1 '+aln_path+'/{0}.aln.fa > {2}/{1}/mafft/{0}.aa.fa'
-        command = 'mafft-linsi --anysymbol --addfragments {2}/{1}/aa/{0}.aa.fa --thread -1 '+aln_path+'/{0}.aln.fa > {2}/{1}/mafft/{0}.aa.fa'
-
+        # command = 'mafft --anysymbol --auto --quiet --thread -1  --addfragments {0} --thread -1 '+aln_path+'/{2}.aln.fa > {1}'
+        command = (
+            "mafft-linsi --anysymbol --quiet --linelength -1 --addfragments {0} --thread -1 "
+            + aln_path
+            + "/{2}.aln.fa > {1}"
+        )
 
         if args.processes:
             arguments = list()
             lock = Lock()
             for gene in genes:
-                arguments.append((command, taxa, mafft_path, args.input, gene, lock))
+                gene_file = os.path.join(aa_path, gene + ".aa.fa")
+                result_file = os.path.join(mafft_path, gene + ".aa.fa")
+                arguments.append((command, gene_file, result_file, gene, lock))
             with ThreadPool(args.processes) as pool:
                 pool.map(run_command, arguments, chunksize=1)
         else:
             for gene in genes:
-                print(gene)
-                os.system(command.format(gene, taxa, args.input))
+                gene_file = os.path.join(aa_path, gene + ".aa.fa")
+                result_file = os.path.join(mafft_path, gene + ".aa.fa")
+                run_command((command, gene_file, result_file, gene, None))
 
-                file = gene+'.aa.fa'
-                path = os.path.join(mafft_path,file)
-
-                content = open(path).read()
-
-                out_content = delete_no_pipe_headers(content)
-
-                open(path,'w').write(out_content)
-
-        print('Took {:.2f}s'.format(time()-start))
+        print("Took {:.2f}s".format(time() - start))
     else:
         print("Can't find aa folder for taxa {}".format(taxa))
