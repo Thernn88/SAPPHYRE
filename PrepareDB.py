@@ -56,6 +56,7 @@ def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
         yield parent_sequence
 
 def main(argv):
+    total_time = 0
     global_start = time()
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -151,7 +152,6 @@ def main(argv):
 
         if args.keep_prepared:
             fa_file_out = open(prepared_file_destination, "w", encoding="UTF-8")
-
         printv("Formatting input sequences and inserting into database", args.verbose)
         for file in components:
             fa_file_directory = os.path.join(args.input, file)
@@ -172,8 +172,14 @@ def main(argv):
                         parent_seq = lines[i+1].strip()
 
                         if len(parent_seq) >= MINIMUM_SEQUENCE_LENGTH:
-                            for seq in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH):
+                            trim_start = time()
+                            gen_object = N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH)
+                            trim_end = time()
+                            total_time += trim_end - trim_start
+                            # for seq in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH):
+                            for seq in gen_object:
                                 # Check for dupe, if so save how many times that sequence occured
+                                seq_start = time()
                                 seq_hash = hash(seq)
                                 if seq_hash in dupe_set:
                                     if seq_hash in duplicates:
@@ -212,7 +218,8 @@ def main(argv):
                                 
                                 # If no dupe, write to prepared file and db
                                 line = header+'\n'+seq+'\n'
-
+                                seq_end = time()
+                                total_time += seq_end - seq_start
                                 if args.keep_prepared is True:
                                     fa_file_out.write(line)
 
@@ -246,7 +253,6 @@ def main(argv):
 
         if args.keep_prepared:
             fa_file_out.close()
-
         sequence_count = (this_index - 1)
 
         printv(
@@ -282,6 +288,7 @@ def main(argv):
         printv("Took {:.2f}s for {}".format(time() - taxa_start, file), args.verbose)
 
     print("Finished took {:.2f}s overall.".format(time() - global_start))
+    print(f"N_trim/Dedup time: {total_time}")
 
 
 if __name__ == "__main__":
