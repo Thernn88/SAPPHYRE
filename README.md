@@ -17,6 +17,7 @@ Requirements
 			numpy - 1.22+ Required
 			blosum_distance
 			itertools
+			bio
 			
 	Installing custom exonerate. 
 		PreReqs
