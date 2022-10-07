@@ -67,7 +67,7 @@ def do(
     ):
         print("Blasted:", gene_conf.gene)
         with open(gene_conf.fa_file, "w") as target_handle:
-            for target, sequence in gene_conf.gene_sequences:
+            for target, sequence in gene_conf.gene_sequence:
                 target_handle.write(">" + target + "\n" + sequence + "\n")
 
         cmd = (
