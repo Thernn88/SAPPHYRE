@@ -731,9 +731,6 @@ def exonerate_gene_multi(
 ):
     T_gene_start = time()
 
-    summary_out_path = os.path.join(tmp_path, "{}-summary.txt".format(orthoid))
-    summary_out_log = []
-
     nt_table = {
         "TTT": "F",
         "TCT": "S",
@@ -982,8 +979,6 @@ def exonerate_gene_multi(
                 )
                 this_out.append("{}[{} aa]".format(hit["header"], length))
 
-            summary_out_log.append("\t".join(this_out))
-
             core_sequences_nt = get_ortholog_group_nucleotide(
                 orthoset_id, orthoid, orthoset_db_con
             )
@@ -997,21 +992,7 @@ def exonerate_gene_multi(
             )
             this_nt_out.extend(output)
 
-            orthoid_summary_out = []
-            for hit in output_sequences:
-                if "orf_aa_sequence" in hit:
-                    if hit["orf_aa_sequence"] != None:
-                        header = hit["header"]
-                        length = (
-                            len(hit["extended_orf_aa_sequence"])
-                            if "extended_orf_aa_sequence" in hit
-                            else len(hit["orf_aa_sequence"])
-                        )
-                        orthoid_summary_out.append((header, length))
-
             open(this_nt_path, "w").writelines(this_nt_out)
-
-    open(summary_out_path, "w").write("\n".join(summary_out_log))
 
     if exonerate_verbose:
         print(
@@ -1308,7 +1289,6 @@ if __name__ == "__main__":
     transcripts_mapped_to = {}
 
     reciprocal_verbose = 4 in verbose
-    brh_path = os.path.join(input_path, "best-reciprocal-hits.txt")
     filtered_sequences_log = []
 
     arguments = list()
@@ -1328,10 +1308,11 @@ if __name__ == "__main__":
     with Pool(num_threads) as pool:
         reciprocal_data = pool.starmap(reciprocal_search, arguments, chunksize=1)
 
-    brh_file_out = []
+    brh_count = 0
 
     for data in reciprocal_data:
         filtered_sequences_log.extend(data["Kicks"])
+        brh_count += len(data["Results"])
         for this_match in data["Results"]:
             orthoid = this_match["gene"]
 
@@ -1343,41 +1324,17 @@ if __name__ == "__main__":
 
             transcripts_mapped_to[orthoid].append(this_match)
 
-            brh_file_out.append(
-                "\t".join(
-                    [
-                        this_match["gene"],
-                        this_match["header"],
-                        str(this_match["ali_start"]),
-                        str(this_match["ali_end"]),
-                        str(this_match["score"]),
-                        str(this_match["hmm_evalue"]),
-                        str(this_match["hmm_start"]),
-                        str(this_match["hmm_end"]),
-                    ]
-                )
-                + "\n"
-            )
-
-    brh_file_out.sort()
-    open(brh_path, "w").writelines(brh_file_out)
 
     if 2 in verbose:
         T_internal_search = time()
         print(
             "Reciprocal check done, found {} reciprocal hits. Elapsed time {:.2f}s. Took {:.2f}s. Exonerating genes.".format(
-                len(brh_file_out), time() - T_global_start, time() - T_reciprocal_search
+                brh_count, time() - T_global_start, time() - T_reciprocal_search
             )
         )
 
-    # Clear summary files
-    for item in os.listdir(tmp_path):
-        item_path = os.path.join(tmp_path, item)
-        if "-summary.txt" in item:
-            os.remove(item_path)
 
     exonerate_verbose = 3 in verbose
-    summary_file_out = []
     T_exonerate_genes = time()
 
     # Disperse into reftaxons
@@ -1421,17 +1378,6 @@ if __name__ == "__main__":
             )
         with Pool(num_threads) as pool:
             pool.map(run_exonerate, arguments, chunksize=1)
-
-    summary_file_out = []
-    for item in os.listdir(tmp_path):
-        item_path = os.path.join(tmp_path, item)
-        if "-summary.txt" in item:
-            item_content = open(item_path).read()
-            summary_file_out.append(item_content)
-            os.remove(item_path)
-
-    summary_file_path = os.path.join(input_path, "summary.txt")
-    open(summary_file_path, "w").write("\n".join(summary_file_out))
 
     if 1 in verbose:
         print(
