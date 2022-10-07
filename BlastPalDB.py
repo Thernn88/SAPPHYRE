@@ -1,8 +1,8 @@
 import argparse
-from dataclasses import dataclass
 import json
 import math
 import os
+from dataclasses import dataclass
 from multiprocessing.pool import Pool
 from shutil import rmtree
 from time import time
