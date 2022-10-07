@@ -64,44 +64,43 @@ def do(
     gene_out = {}
     this_return = []
 
-    this_content = open(gene_conf.blast_file_done).read()
-    if this_content != "":
-        for line in this_content.split("\n"):
+    with open(gene_conf.blast_file_done, "r") as fp:
+        for line in fp:
+            if line == "\n" or line[0] == "#":
+                continue
             fields = line.split("\t")
-            if len(fields) == 6:
-                query_id, subject_id, evalue, bit_score, q_start, q_end = fields
 
-                if (
-                    float(bit_score) >= gene_conf.blast_minimum_score
-                    and float(evalue) <= gene_conf.blast_minimum_evalue
-                ):
-                    try:
-                        log_evalue = str(math.log(float(evalue)))
-                    except:  # Undefined
-                        log_evalue = "-999"
+            query_id, subject_id, evalue, bit_score, q_start, q_end = fields
+            if (
+                float(bit_score) >= gene_conf.blast_minimum_score
+                and float(evalue) <= gene_conf.blast_minimum_evalue
+            ):
+                try:
+                    log_evalue = str(math.log(float(evalue)))
+                except ValueError:  # evaluate is 0, math domain error
+                    log_evalue = "-999"
 
-                    query_id, hmmsearch_id = query_id.split("_hmmid")
+                query_id, hmmsearch_id = query_id.split("_hmmid")
 
-                    this_out = {
-                        "target": int(subject_id),
-                        "score": float(bit_score),
-                        "evalue": float(evalue),
-                        "log_evalue": float(log_evalue),
-                        "blast_start": int(q_start),
-                        "blast_end": int(q_end),
-                    }
+                this_out = {
+                    "target": int(subject_id),
+                    "score": float(bit_score),
+                    "evalue": float(evalue),
+                    "log_evalue": float(log_evalue),
+                    "blast_start": int(q_start),
+                    "blast_end": int(q_end),
+                }
 
-                    if hmmsearch_id not in gene_out:
-                        gene_out[hmmsearch_id] = []
-                    gene_out[hmmsearch_id].append(this_out)
+                gene_out.setdefault(hmmsearch_id, [])
+                gene_out[hmmsearch_id].append(this_out)
 
-        for hmmsearch_id in gene_out:
-            this_out_results = gene_out[hmmsearch_id]
-            key = "blastfor:{}".format(hmmsearch_id)
+    for hmmsearch_id in gene_out:
+        this_out_results = gene_out[hmmsearch_id]
+        key = "blastfor:{}".format(hmmsearch_id)
 
-            data = json.dumps(this_out_results)
+        data = json.dumps(this_out_results)
 
-            this_return.append((key, data, len(this_out_results)))
+        this_return.append((key, data, len(this_out_results)))
 
     print("Blasted:", gene_conf.gene)
 
