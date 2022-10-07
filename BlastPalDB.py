@@ -9,6 +9,36 @@ from time import time
 
 import wrap_rocks
 
+class Result:
+    __slots__ = (
+        "query_id", 
+        "target", 
+        "evalue", 
+        "log_evalue", 
+        "score", 
+        "blast_start", 
+        "blast_end"
+    )
+
+    def __init__(self, query_id, subject_id, evalue, bit_score, q_start, q_end):
+        self.query_id = str(query_id)
+        self.target = int(subject_id)
+        self.evalue = float(evalue)
+        self.log_evalue = math.log(self.evalue) if self.evalue != 0 else -999.0
+        self.score = float(bit_score)
+        self.blast_start = int(q_start)
+        self.blast_end = int(q_end)
+
+    def to_json(self):
+        return {
+                    "target": self.target,
+                    "score": self.score,
+                    "evalue": self.evalue,
+                    "log_evalue": self.log_evalue,
+                    "blast_start": self.blast_start,
+                    "blast_end": self.blast_end
+                }
+
 
 @dataclass
 class GeneConfig:  # FIXME: I am not certain about types.
@@ -29,9 +59,6 @@ class GeneConfig:  # FIXME: I am not certain about types.
 def do(
     gene_conf: GeneConfig,
     prog="blastp",
-    evalue_threshold=0.00001,
-    score_threshold=40,
-    num_threads=1,
 ):
     if (
         not os.path.exists(gene_conf.blast_file_done)
@@ -48,8 +75,8 @@ def do(
             "-num_threads '{num_threads}' -db '{db}' -query '{queryfile}' "
             "-out '{outfile}'".format(
                 prog=prog,
-                evalue_threshold=evalue_threshold,
-                score_threshold=score_threshold,
+                evalue_threshold=gene_conf.blast_minimum_evalue,
+                score_threshold=gene_conf.blast_minimum_score,
                 num_threads=2,
                 db=gene_conf.blast_db_path,
                 queryfile=gene_conf.fa_file,
@@ -70,29 +97,16 @@ def do(
                 continue
             fields = line.split("\t")
 
-            query_id, subject_id, evalue, bit_score, q_start, q_end = fields
+            this_result = Result(*fields)
+            # Although we have a threshold in the Blast call. Some still get through.
             if (
-                float(bit_score) >= gene_conf.blast_minimum_score
-                and float(evalue) <= gene_conf.blast_minimum_evalue
+                this_result.score >= gene_conf.blast_minimum_score
+                and this_result.evalue <= gene_conf.blast_minimum_evalue
             ):
-                try:
-                    log_evalue = str(math.log(float(evalue)))
-                except ValueError:  # evaluate is 0, math domain error
-                    log_evalue = "-999"
-
-                query_id, hmmsearch_id = query_id.split("_hmmid")
-
-                this_out = {
-                    "target": int(subject_id),
-                    "score": float(bit_score),
-                    "evalue": float(evalue),
-                    "log_evalue": float(log_evalue),
-                    "blast_start": int(q_start),
-                    "blast_end": int(q_end),
-                }
+                _, hmmsearch_id = this_result.query_id.split("_hmmid")
 
                 gene_out.setdefault(hmmsearch_id, [])
-                gene_out[hmmsearch_id].append(this_out)
+                gene_out[hmmsearch_id].append(this_result.to_json())
 
     for hmmsearch_id in gene_out:
         this_out_results = gene_out[hmmsearch_id]
@@ -101,9 +115,7 @@ def do(
         data = json.dumps(this_out_results)
 
         this_return.append((key, data, len(this_out_results)))
-
     
-
     return this_return
 
 
@@ -219,6 +231,7 @@ def main():
 
     del global_hmm_object_raw
 
+    blast_start = time()
     num_threads = args.processes
     # Run
     if num_threads == 1:
@@ -253,7 +266,11 @@ def main():
         with Pool(num_threads) as pool:
             to_write = pool.starmap(do, arguments, chunksize=1)
 
-    print("Writing to DB.")
+    print(
+        "Got Blast Results. Took: {:.2f}s. Writing to DB.".format(
+            time() - blast_start
+        )
+    )
 
     write_start = time()
 
