@@ -213,13 +213,13 @@ def main(argv):
 
                                 length = len(seq)
                                 header = f">NODE_{this_index}_length_{length}"
-
+                                seq_end = time()
+                                total_time += seq_end - seq_start
                                 this_index += 1
                                 
                                 # If no dupe, write to prepared file and db
                                 line = header+'\n'+seq+'\n'
-                                seq_end = time()
-                                total_time += seq_end - seq_start
+
                                 if args.keep_prepared is True:
                                     fa_file_out.write(line)
 
