@@ -9,6 +9,7 @@ from shutil import rmtree
 import hashlib
 from tqdm import tqdm
 import math
+from Bio.Seq import Seq
 
 
 def printv(msg, verbosity):
@@ -34,8 +35,7 @@ def truncate_taxa(header: str, extension=None) -> str:
 
 
 def rev_comp(seq):
-    complement = {'A': 'T', 'C': 'G', 'G': 'C', 'T': 'A'}
-    return "".join(complement.get(base, base) for base in reversed(seq))
+    return Seq(seq).reverse_complement()
 
 def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
     if 'N' in parent_sequence:
@@ -211,6 +211,7 @@ def main(argv):
                                     continue
                                 else:
                                     dupe_set.add(seq_hash)
+                                
 
                                 length = len(seq)
                                 header = f">NODE_{this_index}_length_{length}"

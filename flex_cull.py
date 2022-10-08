@@ -21,16 +21,10 @@ def folder_check(output_target_path: str, input_target_path: str) -> str:
 
     Returns path to tmp folder
     """
-    if not os.path.exists(output_target_path):
-        os.mkdir(output_target_path)
-
     output_aa_path = os.path.join(output_target_path, "aa")
-    if not os.path.exists(output_aa_path):
-        os.mkdir(output_aa_path)
-
     output_nt_path = os.path.join(output_target_path, "nt")
-    if not os.path.exists(output_nt_path):
-        os.mkdir(output_nt_path)
+    os.makedirs(output_aa_path, exist_ok=True)
+    os.makedirs(output_nt_path, exist_ok=True)
 
     target_tmp_path = "/run/shm"
 
@@ -39,8 +33,7 @@ def folder_check(output_target_path: str, input_target_path: str) -> str:
 
     if not os.path.exists(target_tmp_path):
         target_tmp_path = os.path.join(input_target_path, "tmp")
-        if not os.path.exists(target_tmp_path):
-            os.mkdir(target_tmp_path)
+        os.makedirs(target_tmp_path, exist_ok=True)
 
     return target_tmp_path
 

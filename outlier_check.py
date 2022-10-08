@@ -64,18 +64,13 @@ def original_sort(headers, lines) -> list:
 
 
 def folder_check(path: str) -> None:
-    if not os.path.exists(path):
-        os.mkdir(path)
-    aa_folder = os.path.join(path, "aa")
-    if not os.path.exists(aa_folder):
-        os.mkdir(aa_folder)
-    nt_folder = os.path.join(path, "nt")
-    if not os.path.exists(nt_folder):
-        os.mkdir(nt_folder)
-    logs_folder = os.path.join(path, "logs")
-    if not os.path.exists(logs_folder):
-        os.mkdir(logs_folder)
 
+    aa_folder = os.path.join(path, "aa")
+    nt_folder = os.path.join(path, "nt")
+    logs_folder = os.path.join(path, "logs")
+    os.makedirs(aa_folder, exist_ok=True)
+    os.makedirs(nt_folder, exist_ok=True)
+    os.makedirs(logs_folder, exist_ok=True)
 
 def get_headers(lines: list) -> list:
     """
