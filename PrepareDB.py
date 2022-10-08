@@ -56,7 +56,8 @@ def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
         yield parent_sequence
 
 def main(argv):
-    total_time = 0
+    trim_time = 0
+    dedup_time = 0
     global_start = time()
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -175,7 +176,7 @@ def main(argv):
                             trim_start = time()
                             gen_object = N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH)
                             trim_end = time()
-                            total_time += trim_end - trim_start
+                            trim_time = trim_end - trim_start
                             # for seq in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH):
                             for seq in gen_object:
                                 # Check for dupe, if so save how many times that sequence occured
@@ -214,7 +215,7 @@ def main(argv):
                                 length = len(seq)
                                 header = f">NODE_{this_index}_length_{length}"
                                 seq_end = time()
-                                total_time += seq_end - seq_start
+                                dedup_time += seq_end - seq_start
                                 this_index += 1
                                 
                                 # If no dupe, write to prepared file and db
@@ -288,7 +289,8 @@ def main(argv):
         printv("Took {:.2f}s for {}".format(time() - taxa_start, file), args.verbose)
 
     print("Finished took {:.2f}s overall.".format(time() - global_start))
-    print(f"N_trim/Dedup time: {total_time}")
+    print(f"N_trim time: {trim_time}")
+    print(f"Dedupe time: {dedup_time}")
 
 
 if __name__ == "__main__":
