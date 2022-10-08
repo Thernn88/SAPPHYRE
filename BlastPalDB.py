@@ -2,23 +2,23 @@ import argparse
 import json
 import math
 import os
+import sqlite3
 import wrap_rocks
 from dataclasses import dataclass
 from multiprocessing.pool import Pool
 from shutil import rmtree
 from time import time
 
-
-
 class Result:
     __slots__ = (
-        "query_id", 
+        "query_id",
         "target", 
         "evalue", 
         "log_evalue", 
         "score", 
         "blast_start", 
-        "blast_end"
+        "blast_end",
+        "reftaxon"
     )
 
     def __init__(self, query_id, subject_id, evalue, bit_score, q_start, q_end):
@@ -29,6 +29,7 @@ class Result:
         self.score = float(bit_score)
         self.blast_start = int(q_start)
         self.blast_end = int(q_end)
+        self.reftaxon = None
 
     def to_json(self):
         return {
@@ -37,15 +38,16 @@ class Result:
                     "evalue": self.evalue,
                     "log_evalue": self.log_evalue,
                     "blast_start": self.blast_start,
-                    "blast_end": self.blast_end
+                    "blast_end": self.blast_end,
+                    "reftaxon": self.reftaxon
                 }
-
 
 @dataclass
 class GeneConfig:  # FIXME: I am not certain about types.
     gene: str
     tmp_path: str
-    gene_sequence: str
+    gene_sequence: list
+    ref_names: dict
     blast_path: str
     blast_db_path: str
     blast_minimum_score: float
@@ -99,15 +101,19 @@ def do(
             fields = line.split("\t")
 
             this_result = Result(*fields)
-            # Although we have a threshold in the Blast call. Some still get through.
-            if (
-                this_result.score >= gene_conf.blast_minimum_score
-                and this_result.evalue <= gene_conf.blast_minimum_evalue
-            ):
-                _, hmmsearch_id = this_result.query_id.split("_hmmid")
 
-                gene_out.setdefault(hmmsearch_id, [])
-                gene_out[hmmsearch_id].append(this_result.to_json())
+            if this_result.target in gene_conf.ref_names: # Hit target not valid
+                this_result.reftaxon = gene_conf.ref_names[this_result.target]
+
+                # Although we have a threshold in the Blast call. Some still get through.
+                if (
+                    this_result.score >= gene_conf.blast_minimum_score
+                    and this_result.evalue <= gene_conf.blast_minimum_evalue
+                ):
+                    _, hmmsearch_id = this_result.query_id.split("_hmmid")
+
+                    gene_out.setdefault(hmmsearch_id, [])
+                    gene_out[hmmsearch_id].append(this_result.to_json())
 
     for hmmsearch_id in gene_out:
         this_out_results = gene_out[hmmsearch_id]
@@ -119,6 +125,55 @@ def do(
     
     return this_return
 
+def get_set_id(orthoset_db_con, orthoset):
+    """
+    Retrieves orthoset id from orthoset db
+    """
+    orthoset_id = None
+
+    orthoset_db_cur = orthoset_db_con.cursor()
+    rows = orthoset_db_cur.execute("SELECT * FROM orthograph_set_details;")
+
+    for row in rows:
+        id, name, description = row
+
+        if name == orthoset:
+            orthoset_id = id
+
+    if orthoset_id == None:
+        raise Exception("Orthoset {} id cant be retrieved".format(orthoset))
+    else:
+        return orthoset_id
+
+def get_ref_taxon_for_genes(set_id, orthoset_db_con):
+    result = {}
+    query = f'''SELECT DISTINCT
+        orthograph_taxa.name,
+        orthograph_orthologs.ortholog_gene_id,
+        orthograph_aaseqs.id
+        FROM orthograph_orthologs
+        INNER JOIN orthograph_sequence_pairs
+            ON orthograph_orthologs.sequence_pair = orthograph_sequence_pairs.id
+        INNER JOIN orthograph_aaseqs
+            ON orthograph_sequence_pairs.aa_seq = orthograph_aaseqs.id
+        INNER JOIN orthograph_set_details
+            ON orthograph_orthologs.setid = orthograph_set_details.id
+        INNER JOIN orthograph_taxa
+            ON orthograph_aaseqs.taxid = orthograph_taxa.id
+        WHERE orthograph_set_details.id = "{set_id}"'''
+
+    orthoset_db_cur = orthoset_db_con.cursor()
+    rows = orthoset_db_cur.execute(query)
+
+    for row in rows:
+        name, gene, id = row
+        
+        if gene not in result:
+            result[gene] = {id:name}
+        else:
+            result[gene][id] = name
+
+    return result
 
 def main():
     start = time()
@@ -173,7 +228,7 @@ def main():
     )
     args = parser.parse_args()
 
-    print("Grabbing HMM data from db.")
+    print("Grabbing Reference data from SQL.")
 
     input_path = args.input
     orthoset = args.orthoset
@@ -193,7 +248,17 @@ def main():
         tmp_path = os.path.join(input_path, "tmp")
         os.makedirs(tmp_path, exist_ok=True)
 
+    # grab gene reftaxon
+    orthoset_db_path = os.path.join(orthosets_dir, orthoset + ".sqlite")
+    orthoset_db_con = sqlite3.connect(orthoset_db_path)
+
+    orthoset_id = get_set_id(orthoset_db_con, orthoset)
+
+    ref_taxon = get_ref_taxon_for_genes(orthoset_id, orthoset_db_con)
+
     blast_db_path = os.path.join(orthosets_dir, orthoset, "blast", orthoset)
+
+    print("Grabbing HMM data from db.")
 
     db_path = os.path.join(input_path, "rocksdb")
     db = wrap_rocks.RocksDB(db_path)
@@ -235,13 +300,14 @@ def main():
     blast_start = time()
     num_threads = args.processes
     # Run
-    if num_threads == 1:
+    if num_threads <= 1:
         to_write = [
             do(
                 GeneConfig(
                     gene=gene,
                     tmp_path=tmp_path,
                     gene_sequence=gene_to_hits[gene],
+                    ref_names = ref_taxon[gene],
                     blast_path=blast_path,
                     blast_db_path=blast_db_path,
                     blast_minimum_score=args.blast_minimum_score,
@@ -256,6 +322,7 @@ def main():
                 gene=gene,
                 tmp_path=tmp_path,
                 gene_sequence=gene_to_hits[gene],
+                ref_names = ref_taxon[gene],
                 blast_path=blast_path,
                 blast_db_path=blast_db_path,
                 blast_minimum_score=args.blast_minimum_score,
