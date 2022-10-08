@@ -95,31 +95,6 @@ def get_taxa_in_set(set_id, orthoset_db_con):
 
     return reference_taxa
 
-
-def get_orthologs_for_set_hashref(set_id, orthoset_db_con):
-    result = set()
-    # TODO: MAKE ALL THESE VARIABLES
-    query = f'''SELECT DISTINCT
-        {orthoset_orthologs}.ortholog_gene_id,
-        {orthoset_aaseqs}.id 
-        FROM {orthoset_orthologs} 
-        INNER JOIN {orthoset_seqpairs} 
-            ON {orthoset_orthologs}.sequence_pair = {orthoset_seqpairs}.id
-        INNER JOIN {orthoset_aaseqs}
-            ON {orthoset_seqpairs}.aa_seq = {orthoset_aaseqs}.id
-        INNER JOIN {orthoset_set_details} 
-            ON {orthoset_orthologs}.setid = {orthoset_set_details}.id
-        WHERE {orthoset_set_details}.id = "{set_id}"'''
-
-    orthoset_db_cur = orthoset_db_con.cursor()
-    rows = orthoset_db_cur.execute(query)
-
-    for row in rows:
-        gene, id = row
-        result.add(id)
-
-    return result
-
 def get_scores_list(score_threshold, min_length, num_threads):
     batches = rocksdb_db.get("hmmbatch:all")
     batches = batches.split(',')
@@ -181,7 +156,6 @@ def get_blastresults_for_hmmsearch_id(hmmsearch_id):
 
     db_entry = rocksdb_db.get(key)
 
-    # TODO: CHECK IF ITS POSSIBLE FOR NO BLAST RESULTS OR IF THIS IS A BLAST BUG - THIS IS POSSIBLE
     if db_entry == None:
         return []
     else:
@@ -202,29 +176,26 @@ def get_reftaxon_name(hit_id, orthoset_db_path):
 
 
 def is_reciprocal_match(
-    blast_results, orthoset_db_path, reference_taxa, aaseqs_in_orthoid=None
+    blast_results, reference_taxa
 ):
     reftaxon_count = {ref_taxa: 0 for ref_taxa in reference_taxa}
 
-    for i, result in enumerate(blast_results):
-        if aaseqs_in_orthoid != None:
-            if not result["target"] in aaseqs_in_orthoid:
-                continue
+    for result in blast_results:
+        if "reftaxon" in result: # Reran invalid hits will not contain this
+            reftaxon = result["reftaxon"]
+            match = result
 
-        reftaxon = get_reftaxon_name(result["target"], orthoset_db_path)
-        match = result
+            if reftaxon in reftaxon_count:
+                reftaxon_count[reftaxon] = 1
 
-        if reftaxon in reftaxon_count:
-            reftaxon_count[reftaxon] = 1
-
-            if strict_search_mode:
-                total_count = sum(
-                    [reftaxon_count[reftaxon] for reftaxon in reference_taxa]
-                )
-                if total_count == len(reference_taxa):
+                if strict_search_mode:
+                    total_count = sum(
+                        [reftaxon_count[reftaxon] for reftaxon in reference_taxa]
+                    )
+                    if total_count == len(reference_taxa):
+                        return match
+                else:
                     return match
-            else:
-                return match
     return None
 
 
@@ -1004,10 +975,8 @@ def exonerate_gene_multi(
 def reciprocal_search(
     hmmresults,
     list_of_wanted_orthoids,
-    orthoset_db_path,
     reference_taxa,
     score,
-    aaseqs_in_orthoid,
     reciprocal_verbose,
 ):
     if reciprocal_verbose:
@@ -1027,10 +996,8 @@ def reciprocal_search(
 
         blast_results = get_blastresults_for_hmmsearch_id(result_hmmsearch_id)
 
-        blast_results = [i for i in blast_results if i["target"] in aaseqs_in_orthoid]
-
         this_match = is_reciprocal_match(
-            blast_results, orthoset_db_path, reference_taxa
+            blast_results, reference_taxa
         )
 
         if this_match == None:
@@ -1235,20 +1202,10 @@ if __name__ == "__main__":
     reference_taxa = get_taxa_in_set(orthoset_id, orthoset_db_con)
 
     if 2 in verbose:
-        T_blast_aaseqs = time()
-        print(
-            "Got referenca taxa in set. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing blast hit aa seqs".format(
-                time() - T_global_start, time() - T_reference_taxa
-            )
-        )
-
-    aaseqs_in_orthoid = get_orthologs_for_set_hashref(orthoset_id, orthoset_db_con)
-
-    if 2 in verbose:
         T_hmmresults = time()
         print(
-            "Got blast hit aa seqs. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing hmmresults.".format(
-                time() - T_global_start, time() - T_blast_aaseqs
+            "Got referenca taxa in set. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing hmmresults".format(
+                time() - T_global_start, time() - T_reference_taxa
             )
         )
 
@@ -1298,10 +1255,8 @@ if __name__ == "__main__":
             (
                 hmmresults,
                 list_of_wanted_orthoids,
-                orthoset_db_path,
                 reference_taxa,
                 score,
-                aaseqs_in_orthoid,
                 reciprocal_verbose,
             )
         )
