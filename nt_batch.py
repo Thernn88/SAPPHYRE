@@ -30,6 +30,7 @@ def align_references(aa_path: str, nt_path: str) -> None:
     order = []
     with open(aa_path, encoding = "UTF-8") as aa_file:
         for line in aa_file:
+            line = line.strip()
             if line != "":
                 if ">" in line:
                     if line[-1] == '.':
@@ -41,8 +42,8 @@ def align_references(aa_path: str, nt_path: str) -> None:
     nt_references = {}
     nt_out_lines = []
 
-    with open(nt_path, encoding = "UTF-8") as nt_file:
-        content = nt_file.read()
+    with open(nt_path, 'r+', encoding = "UTF-8") as fp:
+        content = fp.read()
         lines = content.split("\n")
 
         end_of_references = False
@@ -59,20 +60,24 @@ def align_references(aa_path: str, nt_path: str) -> None:
                         end_of_references = True
 
                 if end_of_references is True:
-                    nt_out_lines.append(header)
-                    nt_out_lines.append(seq)
+                    nt_out_lines.append(header+'\n')
+                    nt_out_lines.append(seq+'\n')
 
-    to_add = []
+        
 
-    for taxa_name in order:
-        header, seq = nt_references[taxa_name]
-        to_add.append(header)
-        to_add.append(seq)
+        to_add = []
 
-    nt_out_lines = to_add + nt_out_lines
+        for taxa_name in order:
+            header, seq = nt_references[taxa_name]
+            to_add.append(header+'\n')
+            to_add.append(seq+'\n')
 
-    with open(nt_path, "w", encoding = "UTF-8") as nt_out:
-        nt_out.write("\n".join(nt_out_lines))
+        nt_out_lines = to_add + nt_out_lines
+
+        fp.seek(0)
+        fp.writelines(nt_out_lines)
+        fp.truncate()
+
 
 
 parser = argparse.ArgumentParser()
