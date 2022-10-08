@@ -57,23 +57,24 @@ def parse_fasta(fasta_path: str) -> tuple:
     references = []
     candidates = []
     raw_references = []
-    is_reference_header = lambda header: header.count("|") == 2
 
     lines = []
     with open(fasta_path, encoding="UTF-8") as fasta_io:
-        lines = list(fasta_io)
+        lines = fasta_io.readlines()
 
     for i in range(0, len(lines), 2):
-        header = lines[i]
-        seq = lines[i + 1]
+        header = lines[i].strip()
+        seq = lines[i + 1].strip()
 
-        if is_reference_header(header):
-            references.append((header.rstrip(), seq.rstrip()))
+        if header[-1] == '.': #Is reference
+            references.append((header, seq))
 
-            raw_references.extend([header + "\n", seq + "\n"])
+            raw_references.append(header+"\n"+seq+"\n")
 
         else:
-            candidates.append((header.strip(), seq.rstrip()))
+            candidates.append((header, seq))
+
+    raw_references = "".join(raw_references)
 
     return references, candidates, raw_references
 
@@ -91,6 +92,9 @@ def main(
     FlexCull main function. Culls input aa and nt using specified amount of matches
     """
     gene_path = os.path.join(aa_input, aa_file)
+    this_gene = aa_file.split(".")[0]
+
+    print(this_gene)
 
     references, candidates, raw_references = parse_fasta(gene_path)
 
@@ -103,24 +107,28 @@ def main(
     for _, sequence in references:
         max_ref_length = max(max_ref_length, len(sequence))
     all_dashes_by_index = [True] * max_ref_length
-
+    
     for header, sequence in references:
         for i, char in enumerate(sequence):
             if i not in character_at_each_pos:
-                character_at_each_pos[i] = []
-            character_at_each_pos[i].append(char)
-
+                character_at_each_pos[i] = {char}
+            else:
+                character_at_each_pos[i].add(char)
             #  if char isnt a hyphen, this positions can't be all dashes
             if char != "-":
                 all_dashes_by_index[i] = False
-
+                
     if debug:
         log = ["Gene,Header,Cull To Start,Cull To End,Data Length,Data Removed\n"]
 
-    out_lines = raw_references.copy()
     follow_through = {}
     offset = amt_matches - 1
-    print(len(candidates))
+
+    aa_out_path = os.path.join(output, "aa", aa_file)
+    aa_out = open(aa_out_path, "w", encoding="UTF-8")
+
+    aa_out.write(raw_references)
+
     for header, sequence in candidates:
         gene = header.split("|")[0].replace(">", "")
 
@@ -133,27 +141,28 @@ def main(
 
         data_length = 0
 
+        sequence_length = len(sequence)
+
         for i, char in enumerate(sequence):
-            all_dashes_at_position = not all_dashes_by_index[i]
-            if i == len(sequence) - offset:
+            all_dashes_at_position = all_dashes_by_index[i]
+            if i == sequence_length - offset:
                 kick = True
                 break
 
-            if all_dashes_at_position and char != "-":
-                # Don't allow cull to point of all dashes
-                this_matches = char in character_at_each_pos[i]
+            # Don't allow cull to point of all dashes
+            if not all_dashes_at_position and char != "-":
+                if not char in character_at_each_pos[i]:
+                    continue
             else:
-                this_matches = False
+                continue
 
-            matches = [this_matches]
+            pass_all = True
             for match_i in range(1, amt_matches):
-                character_matches_ref = (
-                    sequence[i + match_i] in character_at_each_pos[i + match_i]
-                )
-                matches.append(character_matches_ref)
+                if (not sequence[i + match_i] in character_at_each_pos[i + match_i]):
+                    pass_all = False
+                    break
 
-            if sum(matches) == len(matches):
-                # If all points checked match
+            if pass_all:
                 cull_start = i
                 break
 
@@ -161,56 +170,52 @@ def main(
             # If not kicked from Cull Start Calc. Continue
             cull_end = None
             for i_raw, char in enumerate(sequence):
-                all_dashes_at_position = not all_dashes_by_index[i]
-                i = len(sequence) - 1 - i_raw  # Start from end
+                all_dashes_at_position = all_dashes_by_index[i]
+                i = sequence_length - 1 - i_raw  # Start from end
                 if i < cull_start + offset:
                     kick = True
                     break
 
-                if all_dashes_at_position and char != "-":
+                if not all_dashes_at_position and char != "-":
                     # Don't allow cull to point of all dashes
-                    this_matches = char in character_at_each_pos[i]
+                    if not char in character_at_each_pos[i]:
+                        continue
                 else:
-                    this_matches = False
+                    continue
 
-                matches = [this_matches]
+                pass_all = True
                 for match_i in range(1, amt_matches):
-                    character_matches_ref = (
-                        sequence[i - match_i] in character_at_each_pos[i - match_i]
-                    )
+                    if (not sequence[i - match_i] in character_at_each_pos[i - match_i]):
+                        pass_all = False
+                        break
 
-                    matches.append(character_matches_ref)
-
-                if sum(matches) == len(matches):
-                    # If all points checked match
-                    cull_end = i + 1
+                if pass_all:
+                    cull_end = i + 1 #Inclusive
                     break
 
         if not kick:  # If also passed Cull End Calc. Finish
-            out_line = "-" * cull_start  # Cull start
-            out_line += sequence[cull_start:cull_end]  # Add Culled Sequence
-
-            characters_till_end = len(sequence) - len(out_line)
-            out_line += (
-                "-" * characters_till_end
-            )  # Add dashes till reached input distance
+            
+            out_line = ("-" * cull_start) + sequence[cull_start:cull_end] 
+            
+            characters_till_end = sequence_length - len(out_line)
+            out_line += ("-" * characters_till_end)
 
             # The cull replaces data positions with dashes to maintain the same alignment
             # while removing the bad data
 
-            removed_section = sequence[:cull_start] + sequence[cull_end:]
-            data_removed = len(removed_section) - removed_section.count("-")
-
             data_length = cull_end - cull_start
+            out_line = "".join(out_line)
             bp_after_cull = len(out_line) - out_line.count("-")
 
             if bp_after_cull >= args.bp:
                 follow_through[gene][header] = False, cull_start, cull_end
 
-                out_lines.append(header + "\n")
-                out_lines.append(out_line + "\n")
+                aa_out.write(header + "\n")
+                aa_out.write(out_line + "\n")
 
                 if debug:
+                    removed_section = sequence[:cull_start] + sequence[cull_end:]
+                    data_removed = len(removed_section) - removed_section.count("-")
                     log.append(
                         gene
                         + ","
@@ -242,11 +247,7 @@ def main(
             if debug:
                 log.append(gene + "," + header + ",Kicked,Zero Data After Cull,0,\n")
 
-    aa_out_path = os.path.join(output, "aa", aa_file)
-    with open(aa_out_path, "w", encoding="UTF-8") as aa_out:
-        aa_out.writelines(out_lines)
-
-    this_gene = aa_file.split(".")[0]
+    aa_out.close()
 
     if debug:
         log_out_path = os.path.join(tmp_path, this_gene + ".csv")
@@ -258,33 +259,27 @@ def main(
     # gene_content = open(gene_path).read()
 
     references, candidates, raw_references = parse_fasta(gene_path)
-    out_lines = raw_references.copy()
-    for header, sequence in candidates:
-        gene = header.split("|")[0].replace(">", "")
-
-        kick, cull_start, cull_end = follow_through[gene][header]
-
-        if not kick:
-            cull_start_adjusted = cull_start * 3
-            cull_end_adjusted = cull_end * 3
-
-            out_line = "-" * cull_start_adjusted  # Cull start
-            out_line += sequence[
-                cull_start_adjusted:cull_end_adjusted
-            ]  # Add Culled Sequence
-
-            characters_till_end = len(sequence) - len(out_line)
-            out_line += (
-                "-" * characters_till_end
-            )  # Add dashes till reached input distance
-
-            out_lines.append(header + "\n")
-            out_lines.append(out_line + "\n")
-
     nt_out_path = os.path.join(output, "nt", nt_file_name)
     with open(nt_out_path, "w", encoding="UTF-8") as nt_out:
-        nt_out.writelines(out_lines)
+        nt_out.write(raw_references)
+        for header, sequence in candidates:
+            gene = header.split("|")[0].replace(">", "")
 
+            kick, cull_start, cull_end = follow_through[gene][header]
+
+            if not kick:
+                cull_start_adjusted = cull_start * 3
+                cull_end_adjusted = cull_end * 3
+
+                out_line = ("-" * cull_start_adjusted) + sequence[cull_start_adjusted:cull_end_adjusted]
+
+                characters_till_end = len(sequence) - len(out_line)
+                out_line += (
+                    "-" * characters_till_end
+                )  # Add dashes till reached input distance
+
+                nt_out.write(header + "\n")
+                nt_out.write(out_line + "\n")
 
 def consolidate(log_paths: list) -> str:
     """Consolidates each individual gene log to
@@ -403,6 +398,6 @@ if __name__ == "__main__":
             time_taken = time()
             time_taken = time_taken - start
 
-            print(f"Finished in {time_taken} seconds")
+            print("Done! Took {:.2f}s overall.".format(time_taken))
         else:
             print(f"Can't find aa and nt folder for taxa {taxa}")
