@@ -9,6 +9,7 @@ from time import time
 import wrap_rocks
 import json
 from tqdm import tqdm
+from Bio.SeqIO.FastaIO import SimpleFastaParser
 
 
 class Hit:
@@ -937,16 +938,9 @@ def main(argv):
     start = time()
     header = None
     with open(protfile) as prot_file_handle:
-        for raw_line in prot_file_handle:
-            line = raw_line.strip()
-            if header:
-                sequence_dict[header] = line
-                header = None
-            else:
-                if line[0] == '>':
-                    if ' ' in line: #                                    TODO : REMOVE THIS
-                        raise Exception('Space detected in prot file') # TODO : REMOVE THIS
-                    header = line[1:]
+        fasta_file = SimpleFastaParser(prot_file_handle)
+        for header, sequence in fasta_file:
+            sequence_dict[header] = sequence
     
     if os.path.exists(protfile):
         os.remove(protfile)
