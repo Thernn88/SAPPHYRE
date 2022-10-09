@@ -11,12 +11,10 @@ HmmsearchDB.py
       a. Alternative: rewrite fastatranslate in Rust so that it can thread and handle this internally.
   
 ReporterDB.py
-  1. Remove best-reciprocal-hits.txt & summary.txt and related code.
-  2. Refactor exonerate section. Bottleneck possibly caused by python code.
-  3. Reciprocal-filter refactor.
+  1. Refactor exonerate section. Bottleneck possibly caused by python code.
+  2. Reciprocal-filter refactor.
   
 Mafft.py
-  1. Create no_ref files on /run/shm memory rather than hdd
   
 Pal2Nal.py (LOW PRIORITY)
   1. Full blown rewrite. Python version is at least 4x slower than Perl version. (A lot of poor design decisions in Pal2Nal.py) Perhaps rewrite in Golang or Rust? 
