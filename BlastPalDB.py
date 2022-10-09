@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from multiprocessing.pool import Pool
 from shutil import rmtree
 from time import time
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
+from Bio.SeqIO.FastaIO import FastaWriter
 
 class Result:
     __slots__ = (
@@ -46,7 +49,7 @@ class Result:
 class GeneConfig:  # FIXME: I am not certain about types.
     gene: str
     tmp_path: str
-    gene_sequence: list
+    gene_sequences: list
     ref_names: dict
     blast_path: str
     blast_db_path: str
@@ -68,9 +71,9 @@ def do(
         or os.path.getsize(gene_conf.blast_file_done) == 0
     ):
         print("Blasted:", gene_conf.gene)
-        with open(gene_conf.fa_file, "w") as target_handle:
-            for target, sequence in gene_conf.gene_sequence:
-                target_handle.write(">" + target + "\n" + sequence + "\n")
+        with open(gene_conf.fa_file, "w") as fp:
+            fw = FastaWriter(fp)
+            fw.write_file(gene_conf.gene_sequences)
 
         cmd = (
             "{prog} -outfmt '7 qseqid sseqid evalue bitscore qstart qend' "
@@ -83,13 +86,13 @@ def do(
                 num_threads=2,
                 db=gene_conf.blast_db_path,
                 queryfile=gene_conf.fa_file,
-                outfile=gene_conf.blast_path,
+                outfile=gene_conf.blast_file_path,
             )
         )
         os.system(cmd)
         os.remove(gene_conf.fa_file)
 
-        os.rename(gene_conf.blast_path, gene_conf.blast_file_done)
+        os.rename(gene_conf.blast_file_path, gene_conf.blast_file_done)
 
     gene_out = {}
     this_return = []
@@ -276,9 +279,7 @@ def main():
             gene = hmm_object["gene"]
 
             gene_to_hits.setdefault(gene, [])
-            gene_to_hits[gene].append(
-                (header + f"_hmmid{hmm_id}", hmm_object["hmm_sequence"])
-            )
+            gene_to_hits[gene].append(SeqRecord(Seq(hmm_object["hmm_sequence"]), id=header + f"_hmmid{hmm_id}", description=""))
 
     genes = list(gene_to_hits.keys())
 
@@ -299,7 +300,7 @@ def main():
                 GeneConfig(
                     gene=gene,
                     tmp_path=tmp_path,
-                    gene_sequence=gene_to_hits[gene],
+                    gene_sequences=gene_to_hits[gene],
                     ref_names = ref_taxon[gene],
                     blast_path=blast_path,
                     blast_db_path=blast_db_path,
@@ -314,7 +315,7 @@ def main():
             (GeneConfig(
                 gene=gene,
                 tmp_path=tmp_path,
-                gene_sequence=gene_to_hits[gene],
+                gene_sequences=gene_to_hits[gene],
                 ref_names = ref_taxon[gene],
                 blast_path=blast_path,
                 blast_db_path=blast_db_path,
