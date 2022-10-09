@@ -9,7 +9,8 @@ from shutil import rmtree
 import hashlib
 from tqdm import tqdm
 import math
-from Bio.Seq import Seq
+#from Bio.Seq import Seq
+import blosum_distance
 
 
 def printv(msg, verbosity):
@@ -35,7 +36,7 @@ def truncate_taxa(header: str, extension=None) -> str:
 
 
 def rev_comp(seq):
-    return Seq(seq).reverse_complement()
+    return blosum_distance.bio_revcomp(seq)
 
 def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
     if 'N' in parent_sequence:
@@ -157,7 +158,6 @@ def main(argv):
         for file in components:
             fa_file_directory = os.path.join(args.input, file)
             if ".fa" in file:
-                #Need to push modified external which will remove the need for newline removal. ToDo.
                 with open(fa_file_directory, encoding="UTF-8") as fa_file_in:
                     lines = fa_file_in.readlines()
 
