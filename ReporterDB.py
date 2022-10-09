@@ -331,17 +331,14 @@ def fastaify(headers, sequences, input_path, tmp_path):
     return path
 
 
-def translate_cdna(cdna_seq, nt_table):
+def translate_cdna(cdna_seq):
     if cdna_seq == None:
         return None
 
     if len(cdna_seq) % 3 != 0:
         print("WARNING: NT Sequence length is not divisable by 3")
 
-    split_seq = [cdna_seq[x : x + 3] for x in range(0, len(cdna_seq), 3)]
-    translation = "".join([nt_table[i] for i in split_seq])
-
-    return translation
+    return str(Seq(cdna_seq).translate())
 
 
 def parse_nodes(lines):
@@ -640,7 +637,7 @@ def get_difference(scoreA, scoreB):
 
 def get_baseheader(header):
     """
-    Returns header content before first whitespace.
+    Returns header content before first pipe.
     """
     baseheader = header.split("|")[0].strip()
     return baseheader
@@ -648,7 +645,7 @@ def get_baseheader(header):
 
 def get_translate(header):
     """
-    Returns header content before first whitespace.
+    Returns header content of second pipe.
     """
     translate = header.split("|")[1]
     return translate
@@ -700,73 +697,6 @@ def exonerate_gene_multi(
     exonerate_verbose,
 ):
     T_gene_start = time()
-
-    nt_table = {
-        "TTT": "F",
-        "TCT": "S",
-        "TAT": "Y",
-        "TGT": "C",
-        "TTC": "F",
-        "TCC": "S",
-        "TAC": "Y",
-        "TGC": "C",
-        "TTA": "L",
-        "TCA": "S",
-        "TAA": "*",
-        "TGA": "*",
-        "TTG": "L",
-        "TCG": "S",
-        "TAG": "*",
-        "TGG": "W",
-        "CTT": "L",
-        "CCT": "P",
-        "CAT": "H",
-        "CGT": "R",
-        "CTC": "L",
-        "CCC": "P",
-        "CAC": "H",
-        "CGC": "R",
-        "CTA": "L",
-        "CCA": "P",
-        "CAA": "Q",
-        "CGA": "R",
-        "CTG": "L",
-        "CCG": "P",
-        "CAG": "Q",
-        "CGG": "R",
-        "ATT": "I",
-        "ACT": "T",
-        "AAT": "N",
-        "AGT": "S",
-        "ATC": "I",
-        "ACC": "T",
-        "AAC": "N",
-        "AGC": "S",
-        "ATA": "I",
-        "ACA": "T",
-        "AAA": "K",
-        "AGA": "R",
-        "ATG": "M",
-        "ACG": "T",
-        "AAG": "K",
-        "AGG": "R",
-        "GTT": "V",
-        "GCT": "A",
-        "GAT": "D",
-        "GGT": "G",
-        "GTC": "V",
-        "GCC": "A",
-        "GAC": "D",
-        "GGC": "G",
-        "GTA": "V",
-        "GCA": "A",
-        "GAA": "E",
-        "GGA": "G",
-        "GTG": "V",
-        "GCG": "A",
-        "GAG": "E",
-        "GGG": "G",
-    }
 
     orthoset_db_con = sqlite3.connect(orthoset_db_path)
 
@@ -840,7 +770,7 @@ def exonerate_gene_multi(
                     orf_aa_end,
                 ) = matching_alignment[0]
 
-                orf_aa_sequence = translate_cdna(orf_cdna_sequence, nt_table)
+                orf_aa_sequence = translate_cdna(orf_cdna_sequence)
 
                 hit["orf_aa_sequence"] = orf_aa_sequence
                 hit["orf_cdna_sequence"] = orf_cdna_sequence
@@ -890,7 +820,7 @@ def exonerate_gene_multi(
                             ) / 3 + 1
                             # assert extended_orf_aa_end_on_transcript.is_integer()
                             extended_orf_aa_sequence = translate_cdna(
-                                extended_orf_cdna_sequence, nt_table
+                                extended_orf_cdna_sequence
                             )
 
                             hit["extended_orf_aa_sequence"] = extended_orf_aa_sequence
