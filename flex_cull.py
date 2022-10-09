@@ -7,7 +7,7 @@ import argparse
 import os
 from multiprocessing.pool import Pool
 from time import time
-
+from Bio import AlignIO
 
 def folder_check(output_target_path: str, input_target_path: str) -> str:
     """
@@ -51,21 +51,20 @@ def parse_fasta(fasta_path: str) -> tuple:
     candidates = []
     raw_references = []
 
-    lines = []
     with open(fasta_path, encoding="UTF-8") as fasta_io:
-        lines = fasta_io.readlines()
+        fasta_file = AlignIO.parse(fasta_io, "fasta")
+        for seq_record in fasta_file:
+            for seq in seq_record:
+                header = seq.name
+                sequence = str(seq.seq)
 
-    for i in range(0, len(lines), 2):
-        header = lines[i].strip()
-        seq = lines[i + 1].strip()
+                if header[-1] == '.': #Is reference
+                    references.append((header, sequence))
 
-        if header[-1] == '.': #Is reference
-            references.append((header, seq))
+                    raw_references.append(header+"\n"+sequence+"\n")
 
-            raw_references.append(header+"\n"+seq+"\n")
-
-        else:
-            candidates.append((header, seq))
+                else:
+                    candidates.append((header, sequence))
 
     raw_references = "".join(raw_references)
 
@@ -118,9 +117,9 @@ def main(
     offset = amt_matches - 1
 
     aa_out_path = os.path.join(output, "aa", aa_file)
-    aa_out = open(aa_out_path, "w", encoding="UTF-8")
+    aa_out = [raw_references]
 
-    aa_out.write(raw_references)
+    
 
     for header, sequence in candidates:
         gene = header.split("|")[0].replace(">", "")
@@ -162,9 +161,13 @@ def main(
         if not kick:
             # If not kicked from Cull Start Calc. Continue
             cull_end = None
-            for i_raw, char in enumerate(sequence):
-                all_dashes_at_position = all_dashes_by_index[i]
+            for i_raw in range(len(sequence)):
                 i = sequence_length - 1 - i_raw  # Start from end
+
+                char = sequence[i]
+
+                all_dashes_at_position = all_dashes_by_index[i]
+                
                 if i < cull_start + offset:
                     kick = True
                     break
@@ -187,7 +190,6 @@ def main(
                     break
 
         if not kick:  # If also passed Cull End Calc. Finish
-            
             out_line = ("-" * cull_start) + sequence[cull_start:cull_end] 
             
             characters_till_end = sequence_length - len(out_line)
@@ -203,8 +205,8 @@ def main(
             if bp_after_cull >= args.bp:
                 follow_through[gene][header] = False, cull_start, cull_end
 
-                aa_out.write(header + "\n")
-                aa_out.write(out_line + "\n")
+                aa_out.append(header + "\n")
+                aa_out.append(out_line + "\n")
 
                 if debug:
                     removed_section = sequence[:cull_start] + sequence[cull_end:]
@@ -240,7 +242,11 @@ def main(
             if debug:
                 log.append(gene + "," + header + ",Kicked,Zero Data After Cull,0,\n")
 
-    aa_out.close()
+    if len(aa_out) == 1:
+        return None #Only refs
+
+    with open(aa_out_path, "w", encoding="UTF-8") as fp:
+        fp.write("".join(aa_out))
 
     if debug:
         log_out_path = os.path.join(tmp_path, this_gene + ".csv")
