@@ -9,14 +9,12 @@ from shutil import rmtree
 import hashlib
 from tqdm import tqdm
 import math
-#from Bio.Seq import Seq
+from Bio.SeqIO.FastaIO import SimpleFastaParser
 import blosum_distance
-
 
 def printv(msg, verbosity):
     if verbosity:
         print(msg)
-
 
 def truncate_taxa(header: str, extension=None) -> str:
     """
@@ -34,7 +32,6 @@ def truncate_taxa(header: str, extension=None) -> str:
         result = result + extension
     return result
 
-
 def rev_comp(seq):
     return blosum_distance.bio_revcomp(seq)
 
@@ -49,8 +46,6 @@ def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
 
             length = end - start
             if length >= MINIMUM_SEQUENCE_LENGTH:
-                # raw_seq = parent_sequence[start:end].strip('N')
-                # yield raw_seq
                 raw_seq = parent_sequence[start+1:end]
                 yield raw_seq
     else:
@@ -156,102 +151,95 @@ def main(argv):
             fa_file_out = open(prepared_file_destination, "w", encoding="UTF-8")
         printv("Formatting input sequences and inserting into database", args.verbose)
         for file in components:
+            if ".fa" not in file:
+                continue
+
             fa_file_directory = os.path.join(args.input, file)
-            if ".fa" in file:
-                with open(fa_file_directory, encoding="UTF-8") as fa_file_in:
-                    lines = fa_file_in.readlines()
 
-                    if lines[-1] == "\n": lines = lines[:-1]
+            fasta_file = SimpleFastaParser(open(fa_file_directory, encoding="UTF-8"))
 
-                    for_loop_range = (
-                        tqdm(range(0, len(lines), 2))
-                        if args.verbose
-                        else range(0, len(lines), 2)
-                    )
-                    
-                    for i in for_loop_range:
-                        parent_seq = lines[i+1].strip()
+            for header, parent_seq in tqdm(fasta_file) if args.verbose else fasta_file:
+                parent_seq = parent_seq.upper()
+                if len(parent_seq) >= MINIMUM_SEQUENCE_LENGTH:
+                    trim_start = time()
+                    gen_object = N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH)
+                    trim_end = time()
+                    trim_time = trim_end - trim_start
+                    # for seq in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH):
+                    for seq in gen_object:
+                        # Check for dupe, if so save how many times that sequence occured
+                        seq_start = time()
+                        seq_hash = hash(seq)
+                        if seq_hash in dupe_set:
+                            if seq_hash in duplicates:
+                                duplicates[seq_hash] += 1
+                            else:
+                                duplicates[seq_hash] = 2
+                            dupes += 1
+                            continue
+                        else:
+                            dupe_set.add(seq_hash)
 
-                        if len(parent_seq) >= MINIMUM_SEQUENCE_LENGTH:
-                            trim_start = time()
-                            gen_object = N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH)
-                            trim_end = time()
-                            trim_time = trim_end - trim_start
-                            # for seq in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH):
-                            for seq in gen_object:
-                                # Check for dupe, if so save how many times that sequence occured
-                                seq_start = time()
-                                seq_hash = hash(seq)
-                                if seq_hash in dupe_set:
-                                    if seq_hash in duplicates:
-                                        duplicates[seq_hash] += 1
-                                    else:
-                                        duplicates[seq_hash] = 2
-                                    dupes += 1
-                                    continue
-                                else:
-                                    dupe_set.add(seq_hash)
+                        # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
+                        # sequence so we don't have to rev-comp this unique sequence again
+                        if seq in rev_comp_save:
+                            rev_seq = rev_comp_save[seq]
+                        else:
+                            rev_seq = rev_comp(seq)
+                            rev_comp_save[seq] = rev_seq
 
-                                # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
-                                # sequence so we don't have to rev-comp this unique sequence again
-                                if seq in rev_comp_save:
-                                    rev_seq = rev_comp_save[seq]
-                                else:
-                                    rev_seq = rev_comp(seq)
-                                    rev_comp_save[seq] = rev_seq
+                        # Check for revcomp dupe, if so save how many times that sequence occured
+                        seq_hash = hash(rev_seq)
+                        if seq_hash in dupe_set:
+                            if seq_hash in duplicates:
+                                duplicates[seq_hash] += 1
+                            else:
+                                duplicates[seq_hash] = 2
+                            dupes += 1
+                            continue
+                        else:
+                            dupe_set.add(seq_hash)
+                        
 
-                                # Check for revcomp dupe, if so save how many times that sequence occured
-                                seq_hash = hash(rev_seq)
-                                if seq_hash in dupe_set:
-                                    if seq_hash in duplicates:
-                                        duplicates[seq_hash] += 1
-                                    else:
-                                        duplicates[seq_hash] = 2
-                                    dupes += 1
-                                    continue
-                                else:
-                                    dupe_set.add(seq_hash)
-                                
+                        length = len(seq)
+                        header = f">NODE_{this_index}_length_{length}"
+                        seq_end = time()
+                        dedup_time += seq_end - seq_start
+                        this_index += 1
+                        
+                        # If no dupe, write to prepared file and db
+                        line = header+'\n'+seq+'\n'
 
-                                length = len(seq)
-                                header = f">NODE_{this_index}_length_{length}"
-                                seq_end = time()
-                                dedup_time += seq_end - seq_start
-                                this_index += 1
-                                
-                                # If no dupe, write to prepared file and db
-                                line = header+'\n'+seq+'\n'
+                        if args.keep_prepared is True:
+                            fa_file_out.write(line)
 
-                                if args.keep_prepared is True:
-                                    fa_file_out.write(line)
+                        # Save prepared file lines in a list to ration into the db
+                        prepared_component_all.append(line)
 
-                                # Save prepared file lines in a list to ration into the db
-                                prepared_component_all.append(line)
+                        if len(prepared_component_all) >= MAX_PREPARED_LEVEL_SIZE:
+                            this_batch = "".join(prepared_component_all)
 
-                                if len(prepared_component_all) >= MAX_PREPARED_LEVEL_SIZE:
-                                    this_batch = "".join(prepared_component_all)
+                            del prepared_component_all
+                            prepared_component_all = []
+                            component_i += 1
 
-                                    del prepared_component_all
-                                    prepared_component_all = []
-                                    component_i += 1
+                            key = f"prepared:{component_i}"
 
-                                    key = f"prepared:{component_i}"
+                            db.put(key, this_batch)
 
-                                    db.put(key, this_batch)
+                            prepared_recipe.append(key)
 
-                                    prepared_recipe.append(key)
+                        # Get rid of space and > in header (blast/hmmer doesn't like it) Need to push modified external to remove this. ToDo.
+                        preheader = header.replace(" ", "|").replace(">", "") # pre-hash header
+                        
+                        # Data that will be stored in the database
+                        data = f"{preheader}\n{seq}"
 
-                                # Get rid of space and > in header (blast/hmmer doesn't like it) Need to push modified external to remove this. ToDo.
-                                preheader = header.replace(" ", "|").replace(">", "") # pre-hash header
-                                
-                                # Data that will be stored in the database
-                                data = f"{preheader}\n{seq}"
+                        # Hash the header
+                        key = hashlib.sha256(preheader.encode()).hexdigest()
 
-                                # Hash the header
-                                key = hashlib.sha256(preheader.encode()).hexdigest()
-
-                                # Write to rocksdb
-                                db.put(key, data)
+                        # Write to rocksdb
+                        db.put(key, data)
 
         if args.keep_prepared:
             fa_file_out.close()
