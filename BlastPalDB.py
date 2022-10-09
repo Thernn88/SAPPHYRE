@@ -129,21 +129,14 @@ def get_set_id(orthoset_db_con, orthoset):
     """
     Retrieves orthoset id from orthoset db
     """
-    orthoset_id = None
 
     orthoset_db_cur = orthoset_db_con.cursor()
-    rows = orthoset_db_cur.execute("SELECT * FROM orthograph_set_details;")
+    rows = orthoset_db_cur.execute(f'SELECT id FROM orthograph_set_details WHERE name = "{orthoset}";')
 
     for row in rows:
-        id, name, description = row
+        return row[0]
 
-        if name == orthoset:
-            orthoset_id = id
-
-    if orthoset_id == None:
-        raise Exception("Orthoset {} id cant be retrieved".format(orthoset))
-    else:
-        return orthoset_id
+    raise Exception("Orthoset {} id cant be retrieved".format(orthoset))
 
 def get_ref_taxon_for_genes(set_id, orthoset_db_con):
     result = {}
