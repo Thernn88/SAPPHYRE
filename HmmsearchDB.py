@@ -3,6 +3,7 @@ import itertools
 import math
 from multiprocessing.pool import Pool
 import os
+import re
 import subprocess
 from sys import argv
 from time import time
@@ -116,6 +117,28 @@ class Hit:
             "hmm_id": self.hmm_id,
             "hmm_sequence": self.hmm_sequence
         }
+
+
+def header_length_decrement(header: str) -> str:
+    """
+    Emergency fix to account for the index error in PrepareDB,
+    which increased reported length by 1.
+    'NODE_883844_length_300|[translate(1)]' => 'NODE_883844_length_299|[translate(1)]'
+    """
+    has_newline = False
+    if header[-1] == '\n':
+        has_newline = True
+        fields = header.rstrip().split('_')
+    else:
+        fields = header.split('_')
+    fields[3] = fields[3].split('|')
+    fields[3][0] = str(int(fields[3][0]) - 1)
+    fields[3] = '|'.join(fields[3])
+    result = '_'.join(fields)
+    if has_newline:
+        result += '\n'
+    return result
+
 
 def get_difference(scoreA, scoreB):
     """
@@ -958,7 +981,17 @@ def main(argv):
     for gene in transcripts_mapped_to:
         for hit in transcripts_mapped_to[gene]:
             hit_id += 1
-            hit.hmm_sequence = "".join(sequence_dict[hit.header])
+            try:
+                hit.hmm_sequence = "".join(sequence_dict[hit.header])
+            except KeyError:
+                try:
+                    #print(f"decementing header: {hit.header}")
+                    hit.header = header_length_decrement(hit.header)
+                    hit.hmm_sequence = "".join(sequence_dict[header])
+                    #print(f"decremented header: {hit.header}")
+                except KeyError:
+                    print('dun goofed')
+                    raise KeyError(hit.header)
             hit.hmm_id = hit_id
             if current_hit_count >= MAX_HMM_BATCH_SIZE:
                 data = json.dumps(current_batch)
