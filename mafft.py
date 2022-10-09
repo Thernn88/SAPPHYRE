@@ -5,7 +5,7 @@ from threading import Lock
 from time import time
 
 def run_command(arg_tuple: tuple) -> None:
-    string, gene_file, result_file, gene, lock = arg_tuple
+    string, gene_file, result_file, gene, temp_folder, lock = arg_tuple
     if lock is not None:
         with lock:
             print(gene)
@@ -14,7 +14,7 @@ def run_command(arg_tuple: tuple) -> None:
 
     ref_og_hashmap = {}
 
-    tmp_gene_file = gene_file + "_no_ref.tmp"
+    tmp_gene_file = os.path.join(temp_folder,gene+'.tmp')
     with open(tmp_gene_file, "w") as fp_out, open(gene_file) as fp_in:
         for line in fp_in:
             if line[0] == ">" and line[-2] == ".":
@@ -76,6 +76,20 @@ aln_folder = "aln"
 
 aln_path = os.path.join(args.orthoset_input, args.orthoset, aln_folder)
 
+if os.path.exists("/run/shm"):
+    tmp_dir = "/run/shm"
+elif os.path.exists("/dev/shm"):
+    tmp_dir = "/dev/shm"
+else:
+    tmp_dir = args.input
+
+temp_folder = os.path.join(tmp_dir, "tmp")
+delete_on_exit = False
+if not os.path.exists(temp_folder):
+    delete_on_exit = True
+    os.makedirs(temp_folder, exist_ok=True)
+
+
 for taxa in os.listdir(args.input):
     start = time()
     print("Doing taxa {}".format(taxa))
@@ -100,15 +114,18 @@ for taxa in os.listdir(args.input):
             for gene in genes:
                 gene_file = os.path.join(aa_path, gene + ".aa.fa")
                 result_file = os.path.join(mafft_path, gene + ".aa.fa")
-                arguments.append((command, gene_file, result_file, gene, lock))
+                arguments.append((command, gene_file, result_file, gene, temp_folder, lock))
             with ThreadPool(args.processes) as pool:
                 pool.map(run_command, arguments, chunksize=1)
         else:
             for gene in genes:
                 gene_file = os.path.join(aa_path, gene + ".aa.fa")
                 result_file = os.path.join(mafft_path, gene + ".aa.fa")
-                run_command((command, gene_file, result_file, gene, None))
+                run_command((command, gene_file, result_file, gene, temp_folder, None))
 
         print("Took {:.2f}s".format(time() - start))
     else:
         print("Can't find aa folder for taxa {}".format(taxa))
+
+if delete_on_exit:
+    os.remove(temp_folder)
