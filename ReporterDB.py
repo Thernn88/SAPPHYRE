@@ -10,6 +10,7 @@ from multiprocessing.pool import Pool
 import shutil
 import uuid
 import json
+import blosum_distance
 
 T_global_start = time()
 
@@ -255,9 +256,7 @@ def get_reference_sequence(hit_id, orthoset_db_con):
 
 
 def reverse_complement(nt_seq):
-    seq = Seq(nt_seq)
-    return str(seq.reverse_complement())
-
+    return blosum_distance.bio_revcomp(nt_seq)
 
 def get_nucleotide_transcript_for(header):
     base_header = get_baseheader(header).strip()
