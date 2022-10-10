@@ -10,15 +10,16 @@ from time import time
 from typing import Union
 import wrap_rocks
 import json
+from Bio.Seq import Seq
 
-def make_seq_dict(sequences: list, trailing_end: int) -> dict:
+def make_seq_dict(sequences: list, data_region: tuple) -> dict:
     """
     Creates a dictionary of each sequence present at each coordinate of a list of sequences
     """
 
     seq_dict = {}
 
-    for i in range(trailing_end):
+    for i in range(data_region[0], data_region[1] + 1): # exclusive, so add 1
         seq_dict[i] = []
 
     for sequence in sequences:
@@ -88,33 +89,6 @@ def parse_fasta(text_input: str) -> list:
 
     return references, candidates
 
-
-def format_taxa(raw_taxa: str) -> str:
-    """
-    Formats rerun taxas to origianl taxa.
-    """
-
-    if "R" in raw_taxa.split("_")[-1]:
-
-        after_r = raw_taxa.split("_")[-1].replace("R", "")
-        character_after_r = after_r[0]
-        if character_after_r.isdigit():
-            print("_R Triggered. Comment line 87 to disable this")
-            # If _R# in header name strip
-            formatted_taxa = "_".join(raw_taxa.split("_")[:-1])
-    else:
-        taxa_min = formatted_taxa.count("_") > 2 or formatted_taxa.count("_") == 1
-        if formatted_taxa.split("_")[-1].isdigit() and taxa_min:
-            # If character after last underscore is digit and header consists of
-            # 1 or more than 2 headers
-
-            # Strip last underscore
-            formatted_taxa = "_".join(formatted_taxa.split("_")[:-1])
-            print("_# Triggered. Comment line 93 to disable this")
-
-    return formatted_taxa
-
-
 def get_start_end(sequence: str) -> tuple:
     """
     Returns index of first and last none dash character in sequence.
@@ -131,37 +105,13 @@ def get_start_end(sequence: str) -> tuple:
             break
     return (start, end)
 
-
-def disperse_into_individual_taxa(sequence_pair: list) -> dict:
-    """
-    Splits list of (header,sequence) into taxa based dict.
-    """
-
-    result = {}
-
-    for header, sequence in sequence_pair:
-        original_taxa = header.split("|")[2]
-        taxa_formatted = format_taxa(original_taxa)
-
-        if taxa_formatted not in result:
-            result[taxa_formatted] = []
-
-        start, end = get_start_end(sequence)
-
-        this_object = (start, end, header, sequence)
-
-        result[taxa_formatted].append(this_object)
-
-    return result
-
-
 def expand_region(original: tuple, expansion: tuple) -> tuple:
     """
     Expands two (start, end) tuples to cover the entire region
     """
 
     start = original[0]
-    if expansion[0] > start:
+    if expansion[0] < start:
         start = expansion[0]
 
     end = original[1]
@@ -174,6 +124,8 @@ def expand_region(original: tuple, expansion: tuple) -> tuple:
 def disperse_into_overlap_groups(taxa_pair: list) -> dict:
     """
     Splits list of (header,sequence) into overlap based groups.
+
+    Returns (overlap region, sequences in overlap region)
     """
 
     result = []
@@ -186,19 +138,17 @@ def disperse_into_overlap_groups(taxa_pair: list) -> dict:
 
         if current_region is None or find_overlap((start, end), current_region) is None:
             if current_group:
-                result.append(current_group)
+                result.append((current_region, current_group))
 
+            current_region = (start, end)
             current_group = [this_object]
         else:
             current_group.append(this_object)
-
-        if current_region is not None:
             current_region = expand_region(current_region, (start, end))
-        else:
-            current_region = (start, end)
+
 
     if current_group:
-        result.append(current_group)
+        result.append((current_region, current_group))
 
     return result
 
@@ -210,7 +160,7 @@ def find_overlap(tuple_a: tuple, tuple_b: tuple) -> Union[tuple, None]:
     start = max(tuple_a[0], tuple_b[0])
     end = min(tuple_a[1], tuple_b[1])
     if end - start < 0:
-        return None, None
+        return None
     return start, end
 
 
@@ -295,7 +245,10 @@ def main(
     """
     Merge main loop. Opens fasta file, parses sequences and merges based on taxa
     """
+    print(gene)
     already_calculated_splits = {}
+
+    
 
     with open(dupe_tmp_file) as dupe_tmp_in:
         dupe_counts = json.load(dupe_tmp_in)
@@ -319,312 +272,348 @@ def main(
             this_taxa = header.split("|")[1]
             comparison_sequences[this_taxa] = sequence
 
-        overlap_regions_to_sequences = disperse_into_individual_taxa(candidates)
+        sequenecs_to_merge = []
+        for header, sequence in candidates:
+            start, end = get_start_end(sequence)
 
-        for this_overlap_sequences in overlap_regions_to_sequences.values():
-            this_overlap_sequences.sort(key=lambda x: x[0])
+            this_object = (start, end, header, sequence)
+            sequenecs_to_merge.append(this_object)
 
-            overlap_groups = disperse_into_overlap_groups(this_overlap_sequences)
+        sequenecs_to_merge.sort(key = lambda x : x [0])
 
-            for this_sequences in overlap_groups:
-                base_header = this_sequences[0][2]
+        overlap_groups = disperse_into_overlap_groups(sequenecs_to_merge)
 
-                this_gene, this_taxa, this_taxa_id, node = base_header.split("|")
+        for overlap_region, this_sequences in overlap_groups:
+
+            # Use the header of the sequence that starts first as the base
+            base_header = this_sequences[0][2]
+
+            this_gene, this_taxa, this_taxa_id, node, coords, frame = base_header.split("|")
+            base_header = "|".join([this_gene, this_taxa, this_taxa_id, node])
+
+            # Create a list of each header and sequence that is present in this overlap region
+            consists_of = []
+            
+            for sequence in this_sequences:
+                # If the sequence had a dupe removed during dataset preperation dedupe
+                # add 1 to it's MR count.
+                count = 1 if sequence not in dupe_counts else dupe_counts[sequence]
                 
-                # Formats base header taxa to match every component's formatted taxa
-                formatted_taxa_id = format_taxa(this_taxa_id)
-                base_header = "|".join([this_gene, taxa, formatted_taxa_id, node])
+                consists_of.append((sequence[2], sequence[3], count))
 
-                consists_of = []
-                
-                for sequence in this_sequences:
-                    count = 1 if sequence not in dupe_counts else dupe_counts[sequence]
-                    consists_of.append((sequence[2], sequence[3], count))
+            # Gets last pipe of each component of a merge
+            stitch = "&&".join(
+                [sequence[2].split("|")[3] for sequence in this_sequences[1:]]
+            )
 
-                # Gets last pipe of each component of a merge
-                stitch = "&&".join(
-                    [sequence[2].split("|")[-1] for sequence in this_sequences[1:]]
-                )
+            
+            if stitch != "":
+                final_header = f"{base_header}&&{stitch}"
+            else:  # If only single component aka no merge occurs don't change header
+                final_header = base_header
 
-                if stitch != "":
-                    final_header = base_header + "&&" + stitch
-                else:  # No merge occurs
-                    final_header = base_header
+            # The overlap region is the first and last index of data
+            data_start, data_end = overlap_region
 
-                trailing_end = len(this_sequences[-1][3])
+            # As the fasta is aligned the trailing end of all sequences can be assumed to be the same as the length of the last sequence
+            trailing_end = len(this_sequences[-1][3])
 
-                new_merge = []
+            # Add gap characters until the first data index
+            new_merge = ["-"] * data_start
 
-                current_point_seqs = make_seq_dict(this_sequences, trailing_end)
+            # Create a hashmap of the headers present at every position in the range of
+            # the overlap region
+            current_point_seqs = make_seq_dict(this_sequences, overlap_region)
 
-                for cursor in range(trailing_end):
 
-                    sequences_at_current_point = current_point_seqs[cursor]
-                    if len(sequences_at_current_point) == 0:
-                        new_merge.append("-")
-                    elif len(sequences_at_current_point) == 1:
-                        new_merge.append(sequences_at_current_point[0][1][cursor])
-                    elif len(sequences_at_current_point) > 1:
+            for cursor in range(data_start, data_end+1):
+                # Grab the sequences present at this current index
+                sequences_at_current_point = current_point_seqs[cursor]
+                amount_of_sequences = len(sequences_at_current_point)
 
-                        splits = int(len(sequences_at_current_point) / 2)
-                        taxas_of_split = [
-                            header.split("|")[1]
-                            for (header, sequence) in sequences_at_current_point
+                if amount_of_sequences == 1:
+                    # If there's only one sequence just add the character present at that point
+                    new_merge.append(sequences_at_current_point[0][1][cursor])
+
+                elif amount_of_sequences > 1:
+                    # If there is more than one sequence at this current index
+                    splits = amount_of_sequences - 1
+
+                    # Grab most occuring taxon
+                    taxons_of_split = [
+                        header.split("|")[1]
+                        for (header, _) in sequences_at_current_point
+                    ]
+
+                    most_occuring = most_common_element_with_count(taxons_of_split)
+                    if most_occuring[1] == 1:  # No taxa occurs more than once
+                        comparison_taxa = fallback_taxa
+                    else:
+                        comparison_taxa = most_occuring[0]
+
+                    # Grab the reference sequence for the mode taxon
+                    comparison_sequence = comparison_sequences.get(
+                        comparison_taxa, comparison_sequences[fallback_taxa]
+                    )
+
+                    # Set next character to the first possible sequence.
+
+                    next_character = sequences_at_current_point[0][1][
+                        cursor
+                    ] 
+
+                    # For every 
+                    for split_count in range(splits):
+                        header_a, sequence_a = sequences_at_current_point[
+                            split_count
+                        ]
+                        header_b, sequence_b = sequences_at_current_point[
+                            split_count + 1
                         ]
 
-                        most_occuring = most_common_element_with_count(taxas_of_split)
-                        if most_occuring[1] == 1:  # No taxa occurs more than once
-                            comparison_taxa = fallback_taxa
-                        else:
-                            comparison_taxa = most_occuring[0]
+                        split_key = header_a + header_b
 
-                        comparison_sequence = comparison_sequences.get(
-                            comparison_taxa, comparison_sequences[fallback_taxa]
-                        )
-
-                        this_splits_headers = []
-                        this_splits_sequences = []
-
-                        for split_count in range(splits):
-                            header_a, sequence_a = sequences_at_current_point[
-                                split_count
-                            ]
-                            header_b, sequence_b = sequences_at_current_point[
-                                split_count + 1
-                            ]
-
-                            split_key = header_a + header_b
-
-                            this_splits_headers.append((header_a, header_b))
-                            this_splits_sequences.append((sequence_a, sequence_b))
-
-                        next_character = this_splits_sequences[0][0][
-                            cursor
-                        ]  # Add from sequence A if cursor is not past any split position
-
-                        for i, pair in enumerate(this_splits_headers):
-                            header_a, header_b = pair
-                            sequence_a, sequence_b = this_splits_sequences[i]
-
-                            split_key = header_a + header_b
-
-                            if protein == "aa":
-                                if split_key in already_calculated_splits:
-                                    split_position = already_calculated_splits[
-                                        split_key
-                                    ]
-                                else:
-                                    split_position = calculate_split(
-                                        sequence_a, sequence_b, comparison_sequence
-                                    )
-                                    already_calculated_splits[
-                                        split_key
-                                    ] = split_position
-
-                            elif protein == "nt":
-                                split_position = (
-                                    already_calculated_splits[split_key] * 3
+                        if protein == "aa":
+                            if split_key in already_calculated_splits:
+                                split_position = already_calculated_splits[
+                                    split_key
+                                ]
+                            else:
+                                split_position = calculate_split(
+                                    sequence_a, sequence_b, comparison_sequence
                                 )
+                                already_calculated_splits[
+                                    split_key
+                                ] = split_position
 
-                            if cursor >= split_position:
-                                # Iterate over each split if cursor is past calculated split
-                                # position add from sequence B. We only want to add from one
-                                # sequence out of every possible split so we calculate which
-                                # sequence to add from here then add the character to the
-                                # final merge in the next line.
-                                next_character = sequence_b[cursor]
-
-                        new_merge.append(next_character)
-
-                # Doing MR Outlier Check
-                #
-                # Each position of the new merge is checked with each position of overlapping
-                # candidates at that point. If majority (args.majority percent) of characters
-                # are the same but differ from the character chosen in the merge it will replace
-                # it with the majority rules letter.
-
-                dna_codons = {
-                    "GCT": "A",
-                    "GCC": "A",
-                    "GCA": "A",
-                    "GCG": "A",
-                    "TGT": "C",
-                    "TGC": "C",
-                    "GAT": "D",
-                    "GAC": "D",
-                    "GAA": "E",
-                    "GAG": "E",
-                    "TTT": "F",
-                    "TTC": "F",
-                    "GGT": "G",
-                    "GGC": "G",
-                    "GGA": "G",
-                    "GGG": "G",
-                    "CAT": "H",
-                    "CAC": "H",
-                    "ATA": "I",
-                    "ATT": "I",
-                    "ATC": "I",
-                    "AAA": "K",
-                    "AAG": "K",
-                    "TTA": "L",
-                    "TTG": "L",
-                    "CTT": "L",
-                    "CTC": "L",
-                    "CTA": "L",
-                    "CTG": "L",
-                    "ATG": "M",
-                    "AAT": "N",
-                    "AAC": "N",
-                    "CCT": "P",
-                    "CCC": "P",
-                    "CCA": "P",
-                    "CCG": "P",
-                    "CAA": "Q",
-                    "CAG": "Q",
-                    "CGT": "R",
-                    "CGC": "R",
-                    "CGA": "R",
-                    "CGG": "R",
-                    "AGA": "R",
-                    "AGG": "R",
-                    "TCT": "S",
-                    "TCC": "S",
-                    "TCA": "S",
-                    "TCG": "S",
-                    "AGT": "S",
-                    "AGC": "S",
-                    "ACT": "T",
-                    "ACC": "T",
-                    "ACA": "T",
-                    "ACG": "T",
-                    "GTT": "V",
-                    "GTC": "V",
-                    "GTA": "V",
-                    "GTG": "V",
-                    "TGG": "W",
-                    "TAT": "Y",
-                    "TAC": "Y",
-                    "TAA": "*",
-                    "TAG": "*",
-                    "TGA": "*",
-                    "---": "---",
-                }
-
-                if protein == "aa":
-                    majority_assignments = []  # Used for debug log
-                    start_ends = {}
-                    for i, char in enumerate(new_merge):
-                        candidate_characters = []
-                        candidate_sequence = []
-                        for header, sequence, count in consists_of:
-                            if header not in start_ends:
-                                start_ends[header] = get_start_end(sequence)
-                            start, end = start_ends[header]
-
-                            if start <= i <= end:
-                                candidate_characters.extend([sequence[i]] * count)
-                                candidate_sequence.append(header)
-
-                        mr_won = False
-                        if len(candidate_characters) >= minimum_mr_amount:
-                            (
-                                mode_cand_character,
-                                mode_count,
-                            ) = most_common_element_with_count(candidate_characters)
-                            perc_appearing = mode_count / len(candidate_characters)
-                            if perc_appearing >= majority:
-                                if mode_cand_character != char:
-                                    new_merge[i] = mode_cand_character
-                                    majority_assignments.append(mode_cand_character)
-                                    mr_won = True
-                        if not mr_won:
-                            majority_assignments.append("-")
-                    new_merge = "".join(new_merge)
-
-                elif protein == "nt":
-                    candidate_sequence = {}
-                    new_merge = "".join(new_merge)
-                    length = len(new_merge)
-                    new_merge = [new_merge[i : i + 3] for i in range(0, length, 3)]
-                    majority_assignments = []  # Used for debug log
-                    start_ends = {}
-                    for i, char in enumerate(new_merge):
-                        adjusted_i = range(0, length, 3)[i]
-                        candidate_characters = []
-                        candidate_sequence = []
-                        for header, sequence, count in consists_of:
-                            if header not in start_ends:
-                                start_ends[header] = get_start_end(sequence)
-                            start, end = start_ends[header]
-
-                            if start <= adjusted_i <= end:
-                                candidate_characters.extend(
-                                    [sequence[adjusted_i : adjusted_i + 3]] * count
-                                )
-                                candidate_sequence.append(header)
-
-                        mr_won = False
-
-                        if len(candidate_characters) >= minimum_mr_amount:
-
-                            translated_characters = [
-                                dna_codons[i] for i in candidate_characters
-                            ]
-
-                            (
-                                most_occuring_translated_char,
-                                translated_char_count,
-                            ) = most_common_element_with_count(translated_characters)
-
-                            perc_appearing = translated_char_count / len(
-                                translated_characters
+                        elif protein == "nt":
+                            split_position = (
+                                already_calculated_splits[split_key] * 3
                             )
-                            candidate_characters = [
-                                i
-                                for i in candidate_characters
-                                if dna_codons[i] == most_occuring_translated_char
+
+                        if cursor >= split_position:
+                            # Iterate over each split if cursor is past calculated split
+                            # position add from sequence B. We only want to add from one
+                            # sequence out of every possible split so we calculate which
+                            # sequence to add from here then add the character to the
+                            # final merge in the next line.
+                            next_character = sequence_b[cursor]
+
+                    new_merge.append(next_character)
+
+            new_merge.extend(["-"] * (trailing_end - data_end))
+
+            # Doing MR Outlier Check
+            #
+            # Each position of the new merge is checked with each position of overlapping
+            # candidates at that point. If majority (args.majority percent) of characters
+            # are the same but differ from the character chosen in the merge it will replace
+            # it with the majority rules letter.
+
+            dna_codons = {
+                "GCT": "A",
+                "GCC": "A",
+                "GCA": "A",
+                "GCG": "A",
+                "TGT": "C",
+                "TGC": "C",
+                "GAT": "D",
+                "GAC": "D",
+                "GAA": "E",
+                "GAG": "E",
+                "TTT": "F",
+                "TTC": "F",
+                "GGT": "G",
+                "GGC": "G",
+                "GGA": "G",
+                "GGG": "G",
+                "CAT": "H",
+                "CAC": "H",
+                "ATA": "I",
+                "ATT": "I",
+                "ATC": "I",
+                "AAA": "K",
+                "AAG": "K",
+                "TTA": "L",
+                "TTG": "L",
+                "CTT": "L",
+                "CTC": "L",
+                "CTA": "L",
+                "CTG": "L",
+                "ATG": "M",
+                "AAT": "N",
+                "AAC": "N",
+                "CCT": "P",
+                "CCC": "P",
+                "CCA": "P",
+                "CCG": "P",
+                "CAA": "Q",
+                "CAG": "Q",
+                "CGT": "R",
+                "CGC": "R",
+                "CGA": "R",
+                "CGG": "R",
+                "AGA": "R",
+                "AGG": "R",
+                "TCT": "S",
+                "TCC": "S",
+                "TCA": "S",
+                "TCG": "S",
+                "AGT": "S",
+                "AGC": "S",
+                "ACT": "T",
+                "ACC": "T",
+                "ACA": "T",
+                "ACG": "T",
+                "GTT": "V",
+                "GTC": "V",
+                "GTA": "V",
+                "GTG": "V",
+                "TGG": "W",
+                "TAT": "Y",
+                "TAC": "Y",
+                "TAA": "*",
+                "TAG": "*",
+                "TGA": "*",
+                "---": "---",
+            }
+
+            if protein == "aa":
+                if debug:
+                    majority_assignments = ['-' * data_start]  # Used for debug log
+                start_ends = {}
+                for i in range(data_start, data_end+1):
+                    char = new_merge[i]
+                    candidate_characters = {}
+                    total_characters = 0
+                    mode = -999
+                    mode_char = None
+                    for header, sequence, count in consists_of:
+                        if header not in start_ends:
+                            start_ends[header] = get_start_end(sequence)
+                        start, end = start_ends[header]
+
+                        if start <= i <= end:
+                            total_characters += count
+                            this_char = sequence[i]
+                            this_count = (candidate_characters[this_char] + 1) if this_char in candidate_characters else count
+                            candidate_characters[this_char] = this_count
+                            if this_count > mode:
+                                mode_char = this_char
+                                mode = this_count
+
+                    mr_won = False
+                    if total_characters >= minimum_mr_amount:
+                        perc_appearing = mode / total_characters
+                        if perc_appearing >= majority:
+                            if mode_char != char:
+                                new_merge[i] = mode_char
+                                if debug:
+                                    majority_assignments.append(mode_char)
+                                mr_won = True
+                    if not mr_won:
+                        if debug:
+                            majority_assignments.append("-")
+                if debug:
+                    majority_assignments.append("-" * (trailing_end - data_end))
+            elif protein == "nt":
+                length = len(new_merge)
+                new_merge = ["".join(new_merge[i : i + 3]) for i in range(0, length, 3)]
+                
+                start_ends = {}
+                
+                triplet_data_start = int(data_start / 3)
+                triplet_data_end = int(data_end / 3)
+
+                if debug:
+                    majority_assignments = ["---" * triplet_data_start]  # Used for debug log
+
+                for raw_i in range(triplet_data_start, triplet_data_end+1):
+                    i = (raw_i * 3) 
+                    char = new_merge[raw_i]
+                    
+                    candidate_characters = []
+                    total_characters = 0
+                    
+
+                    for header, sequence, count in consists_of:
+                        if header not in start_ends:
+                            start_ends[header] = get_start_end(sequence)
+                        start, end = start_ends[header]
+
+                        if start <= i <= end:
+                            this_char = sequence[i : i + 3]
+                            total_characters += count
+
+                            candidate_characters.append(this_char)        
+
+                    mr_won = False
+
+                    if total_characters >= minimum_mr_amount:
+                        # Translate all NT triplets into AA
+                        translated_characters = [
+                            dna_codons[j] for j in candidate_characters
+                        ]
+
+                        # Figure out what AA occurs the most
+                        (
+                            most_occuring_translated_char,
+                            translated_char_count,
+                        ) = most_common_element_with_count(translated_characters)
+
+                        #Check to see if its majority
+                        perc_appearing = translated_char_count / total_characters
+
+                        if perc_appearing >= majority:
+                            # Grab all the NT that map to that AA that triggered majority
+                            candidate_chars_mapping_to_same_dna = [
+                                j
+                                for j in candidate_characters
+                                if dna_codons[j] == most_occuring_translated_char
                             ]
 
+                            # Grab the most occuring NT that maps to that AA from the current seq
                             (
                                 mode_cand_raw_character,
                                 _,
-                            ) = most_common_element_with_count(candidate_characters)
+                            ) = most_common_element_with_count(candidate_chars_mapping_to_same_dna)
+                            if mode_cand_raw_character != char:
 
-                            if perc_appearing >= majority:
-                                if mode_cand_raw_character != char:
-
-                                    new_merge[i] = mode_cand_raw_character
+                                new_merge[raw_i] = mode_cand_raw_character
+                                if debug:
                                     majority_assignments.append(mode_cand_raw_character)
 
-                                    mr_won = True
-                        if not mr_won:
+                                mr_won = True
+                    if not mr_won:
+                        if debug:
                             majority_assignments.append("---")
-                    new_merge = "".join(new_merge)
-
-                gene_out.append(final_header)
-                gene_out.append("".join(new_merge))
-
                 if debug:
-                    # If debug enabled add each component under final merge
-                    gene_out.append(">" + this_taxa_id + "|MajorityRulesAssigned")
-                    gene_out.append("".join(majority_assignments))
-                    for header, sequence, _ in consists_of:
-                        this_taxa_id = header.split("|")[-2]
-                        last_pipe = this_taxa_id + "|" + header.split("|")[-1]
-                        gene_out.append(">" + last_pipe)
-                        gene_out.append(sequence)
+                    majority_assignments.append("---" * (length - data_end))  # Used for debug log
+
+            new_merge = Seq("").join(new_merge)
+
+            gene_out.append(final_header)
+            gene_out.append(str(new_merge))
+
+            if debug:
+                # If debug enabled add each component under final merge
+                gene_out.append(">" + this_taxa_id + "|MajorityRulesAssigned")
+                gene_out.append("".join(majority_assignments))
+                for header, sequence, _ in consists_of:
+                    node, _, frame = header.split('|')[3:]
+                    gene_out.append(f">{node}|{frame}")
+                    gene_out.append(sequence)
 
         if protein == "aa":
             output_path = os.path.join(output_dir, "aa_merged", gene)
         else:
             output_path = os.path.join(output_dir, "nt_merged", gene)
 
-        with open(output_path, "w", encoding="UTF-8") as output_file:
-            output_file.write("\n".join(gene_out))
+        with open(output_path, "w", encoding="UTF-8") as fp:
+            fp.write("\n".join(gene_out))
 
 
-def run_command(*arg_tuple) -> None:
+def run_command(arg_tuple) -> None:
     """
     Calls the main() function parallel in each thread
     """
@@ -715,7 +704,7 @@ if __name__ == "__main__":
             rocks_db_path = os.path.join(taxa_path, "rocksdb")
             rocksdb_db = wrap_rocks.RocksDB(rocks_db_path)
 
-            with open(dupe_tmp_file) as dupe_tmp_out:
+            with open(dupe_tmp_file, 'w') as dupe_tmp_out:
                 dupe_tmp_out.write(rocksdb_db.get('getall:dupes'))
 
             file_inputs = []
@@ -745,7 +734,6 @@ if __name__ == "__main__":
                     pool.map(run_command, arguments, chunksize=1)
             else:
                 for target_gene in file_inputs:
-                    print(target_gene)
                     target_aa_path = os.path.join(aa_input, target_gene)
                     target_nt_path = os.path.join(nt_input, make_nt_name(target_gene))
                     main(
