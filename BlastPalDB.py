@@ -233,7 +233,8 @@ def main():
     # make dirs
     blast_path = os.path.join(input_path, "blast")
     if args.overwrite:
-        rmtree(blast_path)
+        if os.path.exists(blast_path):
+            rmtree(blast_path)
     os.makedirs(blast_path, exist_ok=True)
 
     if os.path.exists("/run/shm"):
