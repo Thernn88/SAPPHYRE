@@ -199,13 +199,12 @@ def main(
             # while removing the bad data
 
             data_length = cull_end - cull_start
-            out_line = "".join(out_line)
             bp_after_cull = len(out_line) - out_line.count("-")
 
             if bp_after_cull >= args.bp:
                 follow_through[gene][header] = False, cull_start, cull_end
 
-                aa_out.append(header + "\n")
+                aa_out.append(">" + header + "\n")
                 aa_out.append(out_line + "\n")
 
                 if debug:
@@ -277,7 +276,7 @@ def main(
                     "-" * characters_till_end
                 )  # Add dashes till reached input distance
 
-                nt_out.write(header + "\n")
+                nt_out.write(">" + header + "\n")
                 nt_out.write(out_line + "\n")
 
 def consolidate(log_paths: list) -> str:
