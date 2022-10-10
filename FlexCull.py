@@ -61,7 +61,7 @@ def parse_fasta(fasta_path: str) -> tuple:
                 if header[-1] == '.': #Is reference
                     references.append((header, sequence))
 
-                    raw_references.append(header+"\n"+sequence+"\n")
+                    raw_references.append(">"+header+"\n"+sequence+"\n")
 
                 else:
                     candidates.append((header, sequence))
