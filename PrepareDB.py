@@ -140,7 +140,7 @@ def main(argv):
         prepared_file_destination = os.path.join(taxa_destination_directory, formatted_taxa_out)
         
         duplicates = {}
-        dupe_set = set()
+        transcript_mapped_to = {}
         dupes = 0
         prepared_component_all = []
         this_index = 1
@@ -160,6 +160,7 @@ def main(argv):
 
             for header, parent_seq in tqdm(fasta_file) if args.verbose else fasta_file:
                 parent_seq = parent_seq.upper()
+                
                 if len(parent_seq) >= MINIMUM_SEQUENCE_LENGTH:
                     trim_start = time()
                     gen_object = N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH)
@@ -167,18 +168,22 @@ def main(argv):
                     trim_time = trim_end - trim_start
                     # for seq in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH):
                     for seq in gen_object:
+                        length = len(seq)
+                        header = f"NODE_{this_index}_length_{length}"
+
                         # Check for dupe, if so save how many times that sequence occured
                         seq_start = time()
-                        seq_hash = hash(seq)
-                        if seq_hash in dupe_set:
-                            if seq_hash in duplicates:
-                                duplicates[seq_hash] += 1
+
+                        if seq in transcript_mapped_to:
+                            original_header = transcript_mapped_to[rev_seq]
+                            if original_header in duplicates:
+                                duplicates[original_header] += 1
                             else:
-                                duplicates[seq_hash] = 2
+                                duplicates[original_header] = 2
                             dupes += 1
                             continue
                         else:
-                            dupe_set.add(seq_hash)
+                            transcript_mapped_to[seq] = header
 
                         # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
                         # sequence so we don't have to rev-comp this unique sequence again
@@ -189,26 +194,25 @@ def main(argv):
                             rev_comp_save[seq] = rev_seq
 
                         # Check for revcomp dupe, if so save how many times that sequence occured
-                        seq_hash = hash(rev_seq)
-                        if seq_hash in dupe_set:
-                            if seq_hash in duplicates:
-                                duplicates[seq_hash] += 1
+                        if rev_seq in transcript_mapped_to:
+                            original_header = transcript_mapped_to[rev_seq]
+                            if original_header in duplicates:
+                                duplicates[original_header] += 1
                             else:
-                                duplicates[seq_hash] = 2
+                                duplicates[original_header] = 2
                             dupes += 1
                             continue
                         else:
-                            dupe_set.add(seq_hash)
-                        
+                            transcript_mapped_to[rev_seq] = header
 
-                        length = len(seq)
-                        header = f">NODE_{this_index}_length_{length}"
+                        
+                        
                         seq_end = time()
                         dedup_time += seq_end - seq_start
                         this_index += 1
                         
                         # If no dupe, write to prepared file and db
-                        line = header+'\n'+seq+'\n'
+                        line = '>'+header+'\n'+seq+'\n'
 
                         if args.keep_prepared is True:
                             fa_file_out.write(line)
@@ -230,7 +234,7 @@ def main(argv):
                             prepared_recipe.append(key)
 
                         # Get rid of space and > in header (blast/hmmer doesn't like it) Need to push modified external to remove this. ToDo.
-                        preheader = header.replace(" ", "|").replace(">", "") # pre-hash header
+                        preheader = header.replace(" ", "|") # pre-hash header
                         
                         # Data that will be stored in the database
                         data = f"{preheader}\n{seq}"
@@ -250,7 +254,7 @@ def main(argv):
             args.verbose
         )
 
-        del dupe_set # Clear mem
+        del transcript_mapped_to # Clear mem
 
         printv("Storing prepared file in database", args.verbose)
 
