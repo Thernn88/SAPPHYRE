@@ -914,7 +914,6 @@ def main(argv):
                     sort
                 )
             )
-            x = 5
     else:
         arguments = list()
         for gene in transcripts_mapped_to:
@@ -978,8 +977,17 @@ def main(argv):
     current_hit_count = 1
     hit_id = 0
     batch_i= 0
+
+    dupe_counts = json.loads(db_conn.get("getall:dupes"))
+
     for gene in transcripts_mapped_to:
+        dupe_count_divvy= {}
         for hit in transcripts_mapped_to[gene]:
+            
+            #Make dupe count gene based
+            if hit.base_header in dupe_counts:
+                dupe_count_divvy[hit.base_header] = dupe_counts[hit.base_header]
+            
             hit_id += 1
             hit.hmm_sequence = "".join(sequence_dict[hit.header])
             hit.hmm_id = hit_id
@@ -1001,6 +1009,12 @@ def main(argv):
 
             current_batch.append(hit.to_json())
             current_hit_count += 1
+        
+        if len(dupe_count_divvy) > 1:
+            key = f"getdupes:{gene}"
+            data = json.dumps(dupe_count_divvy)
+            db_conn.put(key, data)
+
 
     del sequence_dict
 

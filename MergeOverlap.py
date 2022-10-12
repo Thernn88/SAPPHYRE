@@ -547,8 +547,9 @@ def do_protein(
                 node, _, frame = header.split("|")[3:]
                 gene_out.append(f">{node}|{frame}|{count}")
                 gene_out.append(sequence)
-
+    
     output_path = os.path.join(output_dir, f"{protein}_merged", gene)
+
     return output_path, gene_out
 
 
@@ -557,7 +558,6 @@ def main(
     output_dir,
     aa_path,
     nt_path,
-    dupe_tmp_file,
     fallback_taxa,
     debug,
     majority,
@@ -570,8 +570,13 @@ def main(
 
     print(gene)
 
-    with open(dupe_tmp_file) as dupe_tmp_in:
-        dupe_counts = json.load(dupe_tmp_in)
+    dupes_in_this_gene = rocksdb_db.get("getdupes:"+gene.split('.')[0])
+
+    if dupes_in_this_gene is not None:
+        dupe_counts = json.loads(dupes_in_this_gene)
+    else:
+        dupe_counts = {}    
+    
 
     path, data = do_protein(
         "aa",
@@ -604,6 +609,7 @@ def main(
         output_file.write("\n".join(data))
 
 
+
 def run_command(arg_tuple: tuple) -> None:
     """
     Calls the main() function parallel in each thread
@@ -615,7 +621,6 @@ def run_command(arg_tuple: tuple) -> None:
         nt_path,
         comparison,
         debug,
-        dupe_tmp_file,
         majority,
         majority_count,
     ) = arg_tuple
@@ -626,7 +631,6 @@ def run_command(arg_tuple: tuple) -> None:
         nt_path,
         comparison,
         debug,
-        dupe_tmp_file,
         majority,
         majority_count,
     )
@@ -703,9 +707,6 @@ if __name__ == "__main__":
             rocks_db_path = os.path.join(taxa_path, "rocksdb")
             rocksdb_db = wrap_rocks.RocksDB(rocks_db_path)
 
-            with open(dupe_tmp_file, "w") as dupe_tmp_out:
-                dupe_tmp_out.write(rocksdb_db.get("getall:dupes"))
-
             target_genes = []
             # NOTE: Path returns a Path object, which __repr__ is the string of the
             # path itself.
@@ -723,7 +724,6 @@ if __name__ == "__main__":
                             taxa_path,
                             target_aa_path,
                             target_nt_path,
-                            dupe_tmp_file,
                             args.comparison,
                             args.debug,
                             args.majority,
@@ -741,7 +741,6 @@ if __name__ == "__main__":
                         taxa_path,
                         target_aa_path,
                         target_nt_path,
-                        dupe_tmp_file,
                         args.comparison,
                         args.debug,
                         args.majority,
