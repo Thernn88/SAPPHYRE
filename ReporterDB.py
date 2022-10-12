@@ -1,4 +1,4 @@
-import hashlib
+import xxhash
 import os
 import sqlite3
 import wrap_rocks
@@ -260,10 +260,10 @@ def reverse_complement(nt_seq):
 
 def get_nucleotide_transcript_for(header):
     base_header = get_baseheader(header).strip()
-    hash_of_header = hashlib.sha256(base_header.encode()).hexdigest()
+    hash_of_header = xxhash.xxh64_hexdigest(base_header)
 
     row_data = rocksdb_db.get(hash_of_header)
-    this_header, sequence = row_data.split("\n")
+    _, sequence = row_data.split("\n")
 
     if "revcomp" in header:
         return base_header, reverse_complement(sequence)

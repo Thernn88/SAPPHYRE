@@ -6,7 +6,7 @@ import json
 import re
 from time import time
 from shutil import rmtree
-import hashlib
+import xxhash
 from tqdm import tqdm
 import math
 from Bio.SeqIO.FastaIO import SimpleFastaParser
@@ -240,7 +240,7 @@ def main(argv):
                         data = f"{preheader}\n{seq}"
 
                         # Hash the header
-                        key = hashlib.sha256(preheader.encode()).hexdigest()
+                        key = xxhash.xxh64_hexdigest(preheader)
 
                         # Write to rocksdb
                         db.put(key, data)
