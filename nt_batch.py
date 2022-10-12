@@ -7,6 +7,7 @@ import argparse
 import os
 from multiprocessing.pool import ThreadPool
 from threading import Lock
+from Bio.SeqIO.FastaIO import SimpleFastaParser
 
 
 def run_command(arg_tuple: tuple) -> None:
@@ -14,8 +15,7 @@ def run_command(arg_tuple: tuple) -> None:
     Aligns the references and calls mafft on the target gene
     """
     string, parent, taxa, gene, aa_path, nt_path, lock = arg_tuple
-
-    align_references(aa_path, nt_path)
+    
     with lock:
         print(gene)
     COMMAND = string.format( 
@@ -24,6 +24,7 @@ def run_command(arg_tuple: tuple) -> None:
         gene = gene
         )
     os.system(COMMAND)
+    align_references(aa_path, nt_path)
 
 
 def align_references(aa_path: str, nt_path: str) -> None:
@@ -46,30 +47,16 @@ def align_references(aa_path: str, nt_path: str) -> None:
     nt_out_lines = []
 
     with open(nt_path, 'r+', encoding = "UTF-8") as fp:
-        content = fp.read()
-        lines = content.split("\n")
-
-        end_of_references = False
-        for i in range(0, len(lines), 2):
-            if lines[i] != "":
-                header = lines[i]
-                seq = lines[i + 1]
-
-                if end_of_references is False:
-                    if header[-1] == '.':
-                        fields = header.split("|")
-                        nt_references[fields[1]] = (header, seq)
-                    else:
-                        end_of_references = True
-
-                if end_of_references is True:
-                    nt_out_lines.append(header+'\n')
-                    nt_out_lines.append(seq+'\n')
-
-        
+        parsed_fasta = SimpleFastaParser(fp)
+        for header, seq in parsed_fasta:
+            if header[-1] == '.':
+                fields = header.split("|")
+                nt_references[fields[1]] = (header, seq)
+            else:
+                nt_out_lines.append(header+'\n')
+                nt_out_lines.append(seq+'\n')
 
         to_add = []
-
         for taxa_name in order:
             header, seq = nt_references[taxa_name]
             to_add.append(header+'\n')
@@ -129,7 +116,7 @@ def main():
                         target_aa_path = os.path.join(mafft_path, target_gene + ".aa.fa")
                         target_nt_path = os.path.join(nt_aligned_path, target_gene + ".nt.fa")
 
-                        align_references(target_aa_path, target_nt_path)
+                        
                         os.system(
                             COMMAND.format( 
                                 parent = args.input,
@@ -137,6 +124,7 @@ def main():
                                 gene = target_gene
                                 )
                             )
+                        align_references(target_aa_path, target_nt_path)
 
 if __name__ == "__main__":
     main()
