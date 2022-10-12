@@ -261,6 +261,8 @@ def main(argv):
         if len(prepared_component_all) != 0:
             this_batch = "".join(prepared_component_all)
             prepared_component_all = []
+            component_i += 1
+            
             key = f"prepared:{component_i}"
 
             db.put(key, this_batch)
