@@ -981,17 +981,7 @@ def main(argv):
     for gene in transcripts_mapped_to:
         for hit in transcripts_mapped_to[gene]:
             hit_id += 1
-            try:
-                hit.hmm_sequence = "".join(sequence_dict[hit.header])
-            except KeyError:
-                try:
-                    #print(f"decementing header: {hit.header}")
-                    hit.header = header_length_decrement(hit.header)
-                    hit.hmm_sequence = "".join(sequence_dict[header])
-                    #print(f"decremented header: {hit.header}")
-                except KeyError:
-                    print('dun goofed')
-                    raise KeyError(hit.header)
+            hit.hmm_sequence = "".join(sequence_dict[hit.header])
             hit.hmm_id = hit_id
             if current_hit_count >= MAX_HMM_BATCH_SIZE:
                 data = json.dumps(current_batch)
