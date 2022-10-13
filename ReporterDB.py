@@ -1,16 +1,17 @@
-import xxhash
-import os
-import sqlite3
-import wrap_rocks
-from Bio.Seq import Seq
-from time import time
 import argparse
-import math
-from multiprocessing.pool import Pool
-import shutil
-import uuid
 import json
+import math
+import os
+import shutil
+import sqlite3
+import uuid
+from multiprocessing.pool import Pool
+from time import time
+
 import blosum_distance
+import wrap_rocks
+import xxhash
+from Bio.Seq import Seq
 
 T_global_start = time()
 
@@ -70,7 +71,7 @@ def get_set_id(orthoset_db_con, orthoset):
 
     orthoset_db_cur = orthoset_db_con.cursor()
     rows = orthoset_db_cur.execute(
-        "SELECT id FROM orthograph_set_details WHERE name = \"{}\";".format(orthoset)
+        'SELECT id FROM orthograph_set_details WHERE name = "{}";'.format(orthoset)
     )
 
     if not rows:
@@ -100,9 +101,10 @@ def get_taxa_in_set(set_id, orthoset_db_con):
 
     return reference_taxa
 
+
 def get_scores_list(score_threshold, min_length, num_threads):
     batches = rocksdb_db.get("hmmbatch:all")
-    batches = batches.split(',')
+    batches = batches.split(",")
 
     score_based_results = {}
     ufr_out = [["Gene", "Hash", "Header", "Score", "Start", "End"]]
@@ -241,6 +243,7 @@ def get_reference_sequence(hit_id, orthoset_db_con):
 
 def reverse_complement(nt_seq):
     return blosum_distance.bio_revcomp(nt_seq)
+
 
 def get_nucleotide_transcript_for(header):
     base_header = get_baseheader(header).strip()
@@ -494,11 +497,14 @@ def get_ortholog_group(orthoset_id, orthoid, orthoset_db_con):
 
     return rows
 
+
 def format_candidate_header(gene, taxa_name, taxa_id, sequence_id, coords, frame):
     return header_seperator.join([gene, taxa_name, taxa_id, sequence_id, coords, frame])
 
-def format_reference_header(gene, taxa_name, taxa_id, identifier = '.'):
+
+def format_reference_header(gene, taxa_name, taxa_id, identifier="."):
     return header_seperator.join([gene, taxa_name, taxa_id, identifier])
+
 
 def print_core_sequences(orthoid, core_sequences):
     core_sequences = sorted(core_sequences)
@@ -543,7 +549,14 @@ def print_unmerged_sequences(
             else hit["orf_aa_end_on_transcript"]
         )
 
-        header = format_candidate_header(orthoid, hit["reftaxon"], species_name, this_hdr, f'{round(start)}-{round(end)}', rf)
+        header = format_candidate_header(
+            orthoid,
+            hit["reftaxon"],
+            species_name,
+            this_hdr,
+            f"{round(start)}-{round(end)}",
+            rf,
+        )
 
         if type == "nt":
             seq = (
@@ -885,6 +898,7 @@ def exonerate_gene_multi(
             )
         )
 
+
 def reciprocal_search(
     hmmresults,
     list_of_wanted_orthoids,
@@ -908,9 +922,7 @@ def reciprocal_search(
 
         blast_results = get_blastresults_for_hmmsearch_id(result_hmmsearch_id)
 
-        this_match = is_reciprocal_match(
-            blast_results, reference_taxa
-        )
+        this_match = is_reciprocal_match(blast_results, reference_taxa)
 
         if this_match == None:
             this_fails.append(
@@ -1121,9 +1133,7 @@ if __name__ == "__main__":
         )
 
     rocksdb_db = wrap_rocks.RocksDB(rocks_db_path)
-    score_based_results, ufr_rows = get_scores_list(
-        min_score, min_length, num_threads
-    )
+    score_based_results, ufr_rows = get_scores_list(min_score, min_length, num_threads)
     # gene_based_results,header_based_results,ufr_rows = get_scores_list(min_score,taxa_db_path,orthoset_db_path,min_length,orthoset_id)
 
     ufr_path = os.path.join(input_path, "unfiltered-hits.csv")
@@ -1190,7 +1200,6 @@ if __name__ == "__main__":
 
             transcripts_mapped_to[orthoid].append(this_match)
 
-
     if 2 in verbose:
         T_internal_search = time()
         print(
@@ -1198,7 +1207,6 @@ if __name__ == "__main__":
                 brh_count, time() - T_global_start, time() - T_reciprocal_search
             )
         )
-
 
     exonerate_verbose = 3 in verbose
     T_exonerate_genes = time()
