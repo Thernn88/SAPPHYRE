@@ -1,20 +1,23 @@
 import argparse
-from sys import argv
-import os
-import wrap_rocks
 import json
-import re
-from time import time
-from shutil import rmtree
-import xxhash
-from tqdm import tqdm
 import math
-from Bio.SeqIO.FastaIO import SimpleFastaParser
+import os
+import re
+from shutil import rmtree
+from sys import argv
+from time import time
+
 import blosum_distance
+import wrap_rocks
+import xxhash
+from Bio.SeqIO.FastaIO import SimpleFastaParser
+from tqdm import tqdm
+
 
 def printv(msg, verbosity):
     if verbosity:
         print(msg)
+
 
 def truncate_taxa(header: str, extension=None) -> str:
     """
@@ -26,30 +29,37 @@ def truncate_taxa(header: str, extension=None) -> str:
     result = header
     m = re.search(r"_R?\d+$", header)
     if m:
-        tail_length = m.end()-m.start()
+        tail_length = m.end() - m.start()
         result = result[0:-tail_length]
     if extension:
         result = result + extension
     return result
 
+
 def rev_comp(seq):
     return blosum_distance.bio_revcomp(seq)
 
-def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
-    if 'N' in parent_sequence:
-        # Get N indices and start and end of sequence
-        indices = [0] + [i for i, ltr in enumerate(parent_sequence) if ltr == "N"] + [len(parent_sequence)]
 
-        for i in range(0, len(indices)-1):
+def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
+    if "N" in parent_sequence:
+        # Get N indices and start and end of sequence
+        indices = (
+            [0]
+            + [i for i, ltr in enumerate(parent_sequence) if ltr == "N"]
+            + [len(parent_sequence)]
+        )
+
+        for i in range(0, len(indices) - 1):
             start = indices[i]
-            end = indices[i+1]
+            end = indices[i + 1]
 
             length = end - start
             if length >= MINIMUM_SEQUENCE_LENGTH:
-                raw_seq = parent_sequence[start+1:end]
+                raw_seq = parent_sequence[start + 1 : end]
                 yield raw_seq
     else:
         yield parent_sequence
+
 
 def main(argv):
     trim_time = 0
@@ -68,15 +78,15 @@ def main(argv):
     parser.add_argument(
         "-ml",
         "--minimum_sequence_length",
-        default=90, 
-        type=int, 
+        default=90,
+        type=int,
         help="Minimum input sequence length.",
     )
     parser.add_argument(
         "-m",
         "--max_prepared_batch_size",
-        default=100000, 
-        type=int, 
+        default=100000,
+        type=int,
         help="Max sequences per prepared batch in db. Default: 100 thousand.",
     )
     parser.add_argument(
@@ -85,18 +95,13 @@ def main(argv):
         action="store_true",
         help="Writes the prepared input fasta into the output taxa directory.",
     )
-    parser.add_argument(
-        "-v", 
-        "--verbose", 
-        default=0, 
-        type=int, 
-        help="Verbose debug.")
+    parser.add_argument("-v", "--verbose", default=0, type=int, help="Verbose debug.")
     args = parser.parse_args()
 
     MAX_PREPARED_LEVEL_SIZE = args.max_prepared_batch_size
     MINIMUM_SEQUENCE_LENGTH = args.minimum_sequence_length
 
-    allowed_filetypes = ['fa', 'fas', 'fasta']
+    allowed_filetypes = ["fa", "fas", "fasta"]
 
     rocksdb_folder_name = "rocksdb"
     core_directory = "PhyMMR"
@@ -112,19 +117,24 @@ def main(argv):
 
     # Scan all the files in the input. Remove _R# and merge taxa
     for file in os.listdir(args.input):
-        if os.path.isfile(os.path.join(args.input, file)) and file.split('.')[-1] in allowed_filetypes:
-            taxa = file.split('.')[0]
+        if (
+            os.path.isfile(os.path.join(args.input, file))
+            and file.split(".")[-1] in allowed_filetypes
+        ):
+            taxa = file.split(".")[0]
 
-            formatted_taxa = truncate_taxa(taxa, extension='.fa')
+            formatted_taxa = truncate_taxa(taxa, extension=".fa")
 
             taxa_runs.setdefault(formatted_taxa, [])
             taxa_runs[formatted_taxa].append(file)
-    
+
     for formatted_taxa_out, components in taxa_runs.items():
         taxa_start = time()
         printv(f"Preparing {formatted_taxa_out}", args.verbose)
 
-        taxa_destination_directory = os.path.join(secondary_directory, formatted_taxa_out)
+        taxa_destination_directory = os.path.join(
+            secondary_directory, formatted_taxa_out
+        )
         rocksdb_path = os.path.join(taxa_destination_directory, rocksdb_folder_name)
 
         if args.clear_database and os.path.exists(rocksdb_path):
@@ -137,8 +147,10 @@ def main(argv):
 
         os.makedirs(taxa_destination_directory, exist_ok=True)
 
-        prepared_file_destination = os.path.join(taxa_destination_directory, formatted_taxa_out)
-        
+        prepared_file_destination = os.path.join(
+            taxa_destination_directory, formatted_taxa_out
+        )
+
         duplicates = {}
         transcript_mapped_to = {}
         dupes = 0
@@ -160,7 +172,7 @@ def main(argv):
 
             for header, parent_seq in tqdm(fasta_file) if args.verbose else fasta_file:
                 parent_seq = parent_seq.upper()
-                
+
                 if len(parent_seq) >= MINIMUM_SEQUENCE_LENGTH:
                     trim_start = time()
                     gen_object = N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH)
@@ -205,14 +217,12 @@ def main(argv):
                         else:
                             transcript_mapped_to[rev_seq] = header
 
-                        
-                        
                         seq_end = time()
                         dedup_time += seq_end - seq_start
                         this_index += 1
-                        
+
                         # If no dupe, write to prepared file and db
-                        line = '>'+header+'\n'+seq+'\n'
+                        line = ">" + header + "\n" + seq + "\n"
 
                         if args.keep_prepared is True:
                             fa_file_out.write(line)
@@ -234,8 +244,8 @@ def main(argv):
                             prepared_recipe.append(key)
 
                         # Get rid of space and > in header (blast/hmmer doesn't like it) Need to push modified external to remove this. ToDo.
-                        preheader = header.replace(" ", "|") # pre-hash header
-                        
+                        preheader = header.replace(" ", "|")  # pre-hash header
+
                         # Data that will be stored in the database
                         data = f"{preheader}\n{seq}"
 
@@ -247,14 +257,16 @@ def main(argv):
 
         if args.keep_prepared:
             fa_file_out.close()
-        sequence_count = (this_index - 1)
+        sequence_count = this_index - 1
 
         printv(
-            "Inserted {} sequences for {} found {} dupes.\n".format(sequence_count, formatted_taxa, dupes),
-            args.verbose
+            "Inserted {} sequences for {} found {} dupes.\n".format(
+                sequence_count, formatted_taxa, dupes
+            ),
+            args.verbose,
         )
 
-        del transcript_mapped_to # Clear mem
+        del transcript_mapped_to  # Clear mem
 
         printv("Storing prepared file in database", args.verbose)
 
@@ -262,7 +274,7 @@ def main(argv):
             this_batch = "".join(prepared_component_all)
             prepared_component_all = []
             component_i += 1
-            
+
             key = f"prepared:{component_i}"
 
             db.put(key, this_batch)
