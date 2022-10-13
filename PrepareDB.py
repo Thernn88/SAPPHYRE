@@ -37,11 +37,8 @@ def truncate_taxa(header: str, extension=None) -> str:
     return result
 
 
-def rev_comp(seq):
-    return blosum_distance.bio_revcomp(seq)
-
-
 def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
+    t1 = time()
     if "N" in parent_sequence:
         # Get N indices and start and end of sequence
         indices = (
@@ -57,14 +54,24 @@ def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
             length = end - start
             if length >= MINIMUM_SEQUENCE_LENGTH:
                 raw_seq = parent_sequence[start + 1 : end]
-                yield raw_seq
+                yield raw_seq, time() - t1
+                t1 = time()
     else:
-        yield parent_sequence
+        yield parent_sequence, time() - t1
 
 
-def add_pc_to_db(db, key, data):
+def add_pc_to_db(db, key: int, data: list) -> str:
+    """Join data into a string and add it to the database.
+
+    Args:
+        db: instance of rocks db
+        key: integer representing the index
+        data: list of stuff
+
+    Returns:
+        Formatted key string."""
     kstr = f"prepared:{key}"
-    db.put(kstr, data)
+    db.put(kstr, "".join(data))
     return kstr
 
 
@@ -165,6 +172,7 @@ def main(argv):
         this_index = 1
         component_i = (count())
         prepared_recipe = []
+        trim_times = []  # Append computed time for each loop.
 
         if args.keep_prepared:
             fa_file_out = open(prepared_file_destination, "w", encoding="UTF-8")
@@ -174,83 +182,70 @@ def main(argv):
                 continue
 
             fa_file_directory = os.path.join(args.input, file)
-
             fasta_file = SimpleFastaParser(open(fa_file_directory, encoding="UTF-8"))
 
             for header, parent_seq in tqdm(fasta_file) if args.verbose else fasta_file:
+                if not len(parent_seq) >= MINIMUM_SEQUENCE_LENGTH:
+                    continue
                 parent_seq = parent_seq.upper()
+                # for seq in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH):
+                for seq, tt in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH):
+                    trim_times.append(tt)
+                    length = len(seq)
+                    header = f"NODE_{this_index}_length_{length}"
 
-                if len(parent_seq) >= MINIMUM_SEQUENCE_LENGTH:
-                    trim_start = time()
-                    gen_object = N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH)
-                    trim_end = time()
-                    trim_time = trim_end - trim_start
-                    # for seq in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH):
-                    for seq in gen_object:
-                        length = len(seq)
-                        header = f"NODE_{this_index}_length_{length}"
+                    # Check for dupe, if so save how many times that sequence occured
+                    seq_start = time()
 
-                        # Check for dupe, if so save how many times that sequence occured
-                        seq_start = time()
+                    if seq in transcript_mapped_to:
+                        duplicates.setdefault(transcript_mapped_to[seq], 1)
+                        duplicates[transcript_mapped_to[seq]] += 1
+                        next(dupes)
+                        continue
+                    else:
+                        transcript_mapped_to[seq] = header
 
-                        if seq in transcript_mapped_to:
-                            original_header = transcript_mapped_to[seq]
-                            duplicates.setdefault(original_header, 1)
-                            duplicates[original_header] += 1
-                            next(dupes)
-                            continue
-                        else:
-                            transcript_mapped_to[seq] = header
+                    # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
+                    # sequence so we don't have to rev-comp this unique sequence again
+                    if seq in rev_comp_save:
+                        rev_seq = rev_comp_save[seq]
+                    else:
+                        rev_seq = blosum_distance.bio_revcomp(seq)
+                        rev_comp_save[seq] = rev_seq
 
-                        # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
-                        # sequence so we don't have to rev-comp this unique sequence again
-                        if seq in rev_comp_save:
-                            rev_seq = rev_comp_save[seq]
-                        else:
-                            rev_seq = rev_comp(seq)
-                            rev_comp_save[seq] = rev_seq
+                    # Check for revcomp dupe, if so save how many times that sequence occured
+                    if rev_seq in transcript_mapped_to:
+                        duplicates.setdefault(transcript_mapped_to[rev_seq], 1)
+                        duplicates[transcript_mapped_to[rev_seq]] += 1
+                        next(dupes)
+                        continue
+                    else:
+                        transcript_mapped_to[rev_seq] = header
 
-                        # Check for revcomp dupe, if so save how many times that sequence occured
-                        if rev_seq in transcript_mapped_to:
-                            original_header = transcript_mapped_to[rev_seq]
-                            duplicates.setdefault(original_header, 1)
-                            duplicates[original_header] += 1
-                            next(dupes)
-                            continue
-                        else:
-                            transcript_mapped_to[rev_seq] = header
+                    seq_end = time()
+                    dedup_time += seq_end - seq_start
+                    this_index += 1
 
-                        seq_end = time()
-                        dedup_time += seq_end - seq_start
-                        this_index += 1
+                    # If no dupe, write to prepared file and db
+                    line = ">" + header + "\n" + seq + "\n"
 
-                        # If no dupe, write to prepared file and db
-                        line = ">" + header + "\n" + seq + "\n"
+                    if args.keep_prepared:
+                        fa_file_out.write(line)
 
-                        if args.keep_prepared is True:
-                            fa_file_out.write(line)
+                    # Save prepared file lines in a list to ration into the db
+                    prepared_component_all.append(line)
 
-                        # Save prepared file lines in a list to ration into the db
-                        prepared_component_all.append(line)
+                    if len(prepared_component_all) >= MAX_PREPARED_LEVEL_SIZE:
+                        key = add_pc_to_db(
+                            db, next(component_i), prepared_component_all
+                        )
+                        prepared_recipe.append(key)
+                        prepared_component_all = []
 
-                        if len(prepared_component_all) >= MAX_PREPARED_LEVEL_SIZE:
-                            key = add_pc_to_db(
-                                db, next(component_i), "".join(prepared_component_all)
-                            )
-                            prepared_recipe.append(key)
-                            prepared_component_all = []
-
-                        # Get rid of space and > in header (blast/hmmer doesn't like it) Need to push modified external to remove this. ToDo.
-                        preheader = header.replace(" ", "|")  # pre-hash header
-
-                        # Data that will be stored in the database
-                        data = f"{preheader}\n{seq}"
-
-                        # Hash the header
-                        key = xxhash.xxh64_hexdigest(preheader)
-
-                        # Write to rocksdb
-                        db.put(key, data)
+                    # Get rid of space and > in header (blast/hmmer doesn't like it) Need to push modified external to remove this. ToDo.
+                    preheader = header.replace(" ", "|")  # pre-hash header
+                    # Key is a hash of the header
+                    db.put(xxhash.xxh64_hexdigest(preheader), f"{preheader}\n{seq}")
 
         if args.keep_prepared:
             fa_file_out.close()
@@ -269,7 +264,7 @@ def main(argv):
 
         if len(prepared_component_all) != 0:
             key = add_pc_to_db(
-                db, key=next(component_i), data="".join(prepared_component_all)
+                db, next(component_i), prepared_component_all
             )
             prepared_component_all = []
             prepared_recipe.append(key)            
@@ -283,7 +278,7 @@ def main(argv):
         printv("Took {:.2f}s for {}".format(time() - taxa_start, file), args.verbose)
 
     print("Finished took {:.2f}s overall.".format(time() - global_start))
-    print(f"N_trim time: {trim_time}")
+    print("N_trim time: {} seconds".format(sum(trim_times)))
     print(f"Dedupe time: {dedup_time}")
 
 
