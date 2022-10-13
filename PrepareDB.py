@@ -3,6 +3,7 @@ import json
 import math
 import os
 import re
+from itertools import count
 from shutil import rmtree
 from sys import argv
 from time import time
@@ -59,6 +60,12 @@ def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
                 yield raw_seq
     else:
         yield parent_sequence
+
+
+def add_pc_to_db(db, key, data):
+    kstr = f"prepared:{key}"
+    db.put(kstr, data)
+    return kstr
 
 
 def main(argv):
@@ -153,10 +160,10 @@ def main(argv):
 
         duplicates = {}
         transcript_mapped_to = {}
-        dupes = 0
+        dupes = (count())
         prepared_component_all = []
         this_index = 1
-        component_i = 0
+        component_i = (count())
         prepared_recipe = []
 
         if args.keep_prepared:
@@ -187,12 +194,10 @@ def main(argv):
                         seq_start = time()
 
                         if seq in transcript_mapped_to:
-                            original_header = transcript_mapped_to[rev_seq]
-                            if original_header in duplicates:
-                                duplicates[original_header] += 1
-                            else:
-                                duplicates[original_header] = 2
-                            dupes += 1
+                            original_header = transcript_mapped_to[seq]
+                            duplicates.setdefault(original_header, 1)
+                            duplicates[original_header] += 1
+                            next(dupes)
                             continue
                         else:
                             transcript_mapped_to[seq] = header
@@ -208,11 +213,9 @@ def main(argv):
                         # Check for revcomp dupe, if so save how many times that sequence occured
                         if rev_seq in transcript_mapped_to:
                             original_header = transcript_mapped_to[rev_seq]
-                            if original_header in duplicates:
-                                duplicates[original_header] += 1
-                            else:
-                                duplicates[original_header] = 2
-                            dupes += 1
+                            duplicates.setdefault(original_header, 1)
+                            duplicates[original_header] += 1
+                            next(dupes)
                             continue
                         else:
                             transcript_mapped_to[rev_seq] = header
@@ -231,17 +234,11 @@ def main(argv):
                         prepared_component_all.append(line)
 
                         if len(prepared_component_all) >= MAX_PREPARED_LEVEL_SIZE:
-                            this_batch = "".join(prepared_component_all)
-
-                            del prepared_component_all
-                            prepared_component_all = []
-                            component_i += 1
-
-                            key = f"prepared:{component_i}"
-
-                            db.put(key, this_batch)
-
+                            key = add_pc_to_db(
+                                db, next(component_i), "".join(prepared_component_all)
+                            )
                             prepared_recipe.append(key)
+                            prepared_component_all = []
 
                         # Get rid of space and > in header (blast/hmmer doesn't like it) Need to push modified external to remove this. ToDo.
                         preheader = header.replace(" ", "|")  # pre-hash header
@@ -261,7 +258,7 @@ def main(argv):
 
         printv(
             "Inserted {} sequences for {} found {} dupes.\n".format(
-                sequence_count, formatted_taxa, dupes
+                sequence_count, formatted_taxa, next(dupes)
             ),
             args.verbose,
         )
@@ -271,27 +268,17 @@ def main(argv):
         printv("Storing prepared file in database", args.verbose)
 
         if len(prepared_component_all) != 0:
-            this_batch = "".join(prepared_component_all)
+            key = add_pc_to_db(
+                db, key=next(component_i), data="".join(prepared_component_all)
+            )
             prepared_component_all = []
-            component_i += 1
-
-            key = f"prepared:{component_i}"
-
-            db.put(key, this_batch)
-
-            prepared_recipe.append(key)
+            prepared_recipe.append(key)            
 
         # Store the keys to each component of the prepared file
-        key = "getall:prepared"
-        data = ",".join(prepared_recipe)
-
-        db.put(key, data)
+        db.put("getall:prepared", ",".join(prepared_recipe))
 
         # Store the count of dupes in the database
-        key = "getall:dupes"
-        data = json.dumps(duplicates)
-
-        db.put(key, data)
+        db.put("getall:dupes", json.dumps(duplicates))
 
         printv("Took {:.2f}s for {}".format(time() - taxa_start, file), args.verbose)
 
