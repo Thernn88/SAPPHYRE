@@ -167,10 +167,10 @@ def main(argv):
 
         duplicates = {}
         transcript_mapped_to = {}
-        dupes = (count())
+        dupes = count()
         prepared_component_all = []
         this_index = 1
-        component_i = (count())
+        component_i = count()
         prepared_recipe = []
         trim_times = []  # Append computed time for each loop.
 
@@ -263,11 +263,9 @@ def main(argv):
         printv("Storing prepared file in database", args.verbose)
 
         if len(prepared_component_all) != 0:
-            key = add_pc_to_db(
-                db, next(component_i), prepared_component_all
-            )
+            key = add_pc_to_db(db, next(component_i), prepared_component_all)
             prepared_component_all = []
-            prepared_recipe.append(key)            
+            prepared_recipe.append(key)
 
         # Store the keys to each component of the prepared file
         db.put("getall:prepared", ",".join(prepared_recipe))
