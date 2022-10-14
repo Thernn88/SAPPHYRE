@@ -130,7 +130,7 @@ def get_scores_list(score_threshold, min_length, num_threads):
 
                 ufr_out.append(
                     [
-                        this_row["gene"],  # orthoid
+                        this_row["gene"],
                         out_header,
                         str(hmm_score),
                         str(hmm_start),
@@ -167,21 +167,22 @@ WHERE {orthoset_aaseqs}.{db_col_id} = ?"""
     orthoset_db_cur = orthoset_db_con.cursor()
 
     rows = orthoset_db_cur.execute(query, (hit_id,))
-    return rows[0][0]  # XXX: Assumes only one result.
+    
+    # Return first result
+    for row in rows:
+        return row[0]
 
 
 def is_reciprocal_match(blast_results, reference_taxa: list[str]):
     reftaxon_count = {ref_taxa: 0 for ref_taxa in reference_taxa}
 
-    # We only care about dicts with reftaxon
-    for result in [r for r in blast_results if "reftaxon" in r.keys()]:
-        # Reran invalid hits will not contain this
+    for result in blast_results:
         if result["reftaxon"] in reftaxon_count:
-            reftaxon_count[reftaxon] = 1  # only need the one
+            reftaxon_count[result["reftaxon"]] = 1  # only need the one
 
             if not strict_search_mode:
                 return result
-            if all(reftaxon_count):  # Everything's been counted
+            elif all(reftaxon_count.values()):  # Everything's been counted
                 return result
     return None
 
@@ -197,31 +198,6 @@ def transcript_not_long_enough(result, minimum_transcript_length):
         return True
     else:
         return False
-
-
-def coordinate_overlap(other_hits, new_hit):  # FIXME: not used anywhere
-    for hit in other_hits:
-        if "ali_start" in hit:
-            starts_before_ends_within = (
-                new_hit["ali_start"] < hit["ali_start"]
-                and new_hit["ali_end"] > hit["ali_start"]
-            )
-            starts_before_ends_after = (
-                new_hit["ali_start"] < hit["ali_start"]
-                and new_hit["ali_end"] > hit["ali_end"]
-            )
-            starts_within_ends_within = (
-                new_hit["ali_start"] > hit["ali_start"]
-                and new_hit["ali_end"] < hit["ali_end"]
-            )
-
-            if (
-                starts_before_ends_within
-                or starts_before_ends_after
-                or starts_within_ends_within
-            ):
-                return True
-    return False
 
 
 def get_reference_sequence(hit_id, orthoset_db_con):
@@ -743,8 +719,8 @@ def exonerate_gene_multi(
             )
 
         for hit in hits:
-            matching_alignment = [  # FIXME: do we need to strip?
-                i for i in results if i[0].strip() == hit["header"].strip()
+            matching_alignment = [
+                i for i in results if i[0] == hit["header"]
             ]
 
             if not matching_alignment:
@@ -989,6 +965,7 @@ orthoset_ntseqs = "orthograph_ntseqs"
 # Misc Settings
 ####
 
+# TODO Make these argparse variables
 strict_search_mode = False
 orthoid_list_file = None
 frameshift_correction = True
