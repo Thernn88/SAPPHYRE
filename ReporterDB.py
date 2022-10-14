@@ -16,6 +16,111 @@ from Bio.Seq import Seq
 
 T_global_start = time()
 
+class Hit:
+    __slots__ = (
+        "hmm_id",
+        "header",
+        "gene",
+        "score",
+        "hmm_start",
+        "hmm_end",
+        "ali_start",
+        "ali_end",
+        "est_sequence_hmm_region",
+        "est_sequence_complete",
+        "extended_orf_cdna_start",
+        "orf_cdna_end_on_transcript",
+        "extended_orf_cdna_end",
+        "orf_cdna_start_on_transcript",
+        "extended_orf_aa_start_on_transcript",
+        "extended_orf_aa_end_on_transcript",
+        "extended_orf_aa_end",
+        "extended_orf_aa_start",
+        "orf_aa_start_on_transcript",
+        "orf_aa_end_on_transcript",
+        "extended_orf_cdna_sequence",
+        "orf_cdna_sequence",
+        "extended_orf_aa_sequence",
+        "orf_aa_sequence",
+        "reftaxon",
+        "proteome_sequence",
+        "est_header",
+        "est_sequence_complete",
+        "est_sequence_hmm_region",
+        "orf_cdna_start",
+        "orf_cdna_end",
+        "orf_aa_start",
+        "orf_aa_end",
+        "target"
+    )
+
+    def __init__(self, as_json):
+        self.hmm_id = as_json["hmm_id"]
+        self.header = as_json["header"]
+        self.gene = as_json["gene"]
+        self.score = as_json["score"]
+        self.hmm_start = as_json["hmm_start"]
+        self.hmm_end = as_json["hmm_end"]
+        self.ali_start = as_json["ali_start"]
+        self.ali_end = as_json["ali_end"]
+
+
+    def remove_extended_orf(self):
+        self.extended_orf_aa_sequence = None
+        self.extended_orf_aa_start = None
+        self.extended_orf_aa_end = None
+        self.extended_orf_cdna_sequence = None
+        self.extended_orf_cdna_start = None
+        self.extended_orf_cdna_end = None
+
+    def add_extended_orf(self, exonerate_record):
+        (
+            _,
+            self.extended_orf_cdna_sequence,
+            self.extended_orf_cdna_start,
+            self.extended_orf_cdna_end,
+            self.extended_orf_aa_sequence,
+            self.extended_orf_aa_start,
+            self.extended_orf_aa_end
+        ) = exonerate_record
+
+        self.extended_orf_aa_start_on_transcript = ((
+            self.extended_orf_cdna_start - 1
+        ) / 3) + 1
+
+        self.extended_orf_aa_end_on_transcript = ((
+            self.extended_orf_cdna_end - 1
+        ) / 3) + 1
+
+        self.extended_orf_aa_sequence = translate_cdna(
+            self.extended_orf_cdna_sequence
+        )
+
+    def add_orf(self, exonerate_record):
+        (
+            _,
+            self.orf_cdna_sequence,
+            self.orf_cdna_start,
+            self.orf_cdna_end,
+            self.orf_aa_sequence,
+            self.orf_aa_start,
+            self.orf_aa_end,
+        ) = exonerate_record
+
+        self.orf_aa_sequence = translate_cdna(self.orf_cdna_sequence)
+
+        self.orf_cdna_start_on_transcript = (
+                self.orf_cdna_start + (self.ali_start * 3) - 3
+            )
+        self.orf_cdna_end_on_transcript = (
+                self.orf_cdna_end + (self.ali_start * 3) - 3
+            )
+        self.orf_aa_start_on_transcript = (
+                self.orf_cdna_start + (self.ali_start * 3) - 3
+            ) / 3
+        self.orf_aa_end_on_transcript = (
+                self.orf_cdna_end + (self.ali_start * 3) - 3
+            ) / 3
 
 class NodeRecord:
     def __init__(self, header, is_extension):
@@ -52,11 +157,8 @@ def clear_output_path(input):
 
     for protein_path in ["aa", "nt"]:
         protein_output = os.path.join(input, protein_path)
-        for item in os.listdir(protein_output):
-            item_path = os.path.join(protein_output, item)
-            if ".fa" in item:
-                os.remove(item_path)
-
+        shutil.rmtree(protein_output)
+        os.makedirs(protein_output, exist_ok=True)
 
 def get_set_id(orthoset_db_con, orthoset):
     """
@@ -105,7 +207,7 @@ def get_taxa_in_set(set_id, orthoset_db_con):
     return reference_taxa
 
 
-def get_scores_list(score_threshold, min_length, num_threads):
+def get_scores_list(score_threshold, min_length, debug):
     batches = rocksdb_db.get("hmmbatch:all")
     batches = batches.split(",")
 
@@ -116,35 +218,37 @@ def get_scores_list(score_threshold, min_length, num_threads):
         batch_rows = rocksdb_db.get(f"hmmbatch:{batch_i}")
         batch_rows = json.loads(batch_rows)
         for this_row in batch_rows:
-            this_row["hmmhit"] = ""
-
             length = this_row["env_end"] - this_row["env_start"]
 
             hmm_score = this_row["score"]
-            hmm_start = this_row["hmm_start"]
-            hmm_end = this_row["hmm_end"]
 
-            if float(hmm_score) > score_threshold and length > min_length:
-                components = this_row["header"].split("|")
-                if "[" in components[-1]:
-                    out_header = "|".join(components[:-1]) + " " + components[-1]
-                else:
-                    out_header = this_row["header"]
+            if hmm_score > score_threshold and length > min_length:
+                if debug:
+                    hmm_start = this_row["hmm_start"]
+                    hmm_end = this_row["hmm_end"]
+                    components = this_row["header"].split("|")
+                    if "[" in components[-1]:
+                        out_header = "|".join(components[:-1]) + " " + components[-1]
+                    else:
+                        out_header = this_row["header"]
 
-                ufr_out.append(
-                    [
-                        this_row["gene"],
-                        out_header,
-                        str(hmm_score),
-                        str(hmm_start),
-                        str(hmm_end),
-                    ]
-                )
+                    ufr_out.append(
+                        [
+                            this_row["gene"],
+                            out_header,
+                            str(hmm_score),
+                            str(hmm_start),
+                            str(hmm_end),
+                        ]
+                    )
+
+                this_hit = Hit(this_row)
 
                 score_based_results.setdefault(hmm_score, [])
-                score_based_results[hmm_score].append(this_row)
+                score_based_results[hmm_score].append(this_hit)
 
-    ufr_out = sorted(ufr_out, key=lambda x: (x[0], x[1], x[3], x[4]))
+    if debug:
+        ufr_out = sorted(ufr_out, key=lambda x: (x[0], x[1], x[3], x[4]))
 
     return score_based_results, ufr_out
 
@@ -178,20 +282,28 @@ WHERE {orthoset_aaseqs}.{db_col_id} = ?"""
 
 def is_reciprocal_match(blast_results, reference_taxa: List[str]):
     reftaxon_count = {ref_taxa: 0 for ref_taxa in reference_taxa}
+    ref_taxon_to_target = {}
 
     for result in blast_results:
-        if result["reftaxon"] in reftaxon_count:
-            reftaxon_count[result["reftaxon"]] = 1  # only need the one
+        ref_taxon = result["reftaxon"]
+
+        if ref_taxon in reftaxon_count:
+
+            if ref_taxon not in ref_taxon_to_target:
+                ref_taxon_to_target[ref_taxon] = result["target"]
+
+            reftaxon_count[ref_taxon] = 1  # only need the one
 
             if not strict_search_mode:
-                return result
+                return result["target"]
+
             elif all(reftaxon_count.values()):  # Everything's been counted
-                return result
+                return ref_taxon_to_target[max(reftaxon_count)] # Grab most hit reftaxon
     return None
 
 
 def calculate_length_of_ali(result):
-    return abs(result["ali_end"] - result["ali_start"]) + 1
+    return abs(result.ali_end - result.ali_start) + 1
 
 
 def transcript_not_long_enough(result, minimum_transcript_length):
@@ -238,61 +350,22 @@ def get_nucleotide_transcript_for(header):
 
 
 def crop_to_hmm_alignment(seq, header, hit):
-    start = hit["ali_start"] - 1  # Adjust for zero based number
+    start = hit.ali_start - 1  # Adjust for zero based number
     start = start * 3
-    end = hit["ali_end"] * 3
+    end = hit.ali_end * 3
 
     return seq[start:end]
 
 
 ### EXONERATE FUNCTIONS
 
-
-def parse_results(result_file_content):
-
-    cdna_sequence = ""
-    aa_sequence = ""
-    cdna_start = None
-    cdna_end = None
-    aa_start = None
-    aa_end = None
-
-    lines = result_file_content.split("\n")
-    current_seq = ""
-    for line in lines:
-        if ">" in line:
-            header, start, end = line.split(" ")
-            current_seq = header.replace(">", "")
-            if current_seq == "cdna":
-                cdna_start = start + 1
-                cdna_end = end
-            elif current_seq == "aa":
-                aa_start = start + 1
-                aa_end = end
-        else:
-            if current_seq == "cdna":
-                cdna_sequence += line
-            elif current_seq == "aa":
-                aa_sequence += line
-
-    if cdna_sequence == "":
-        cdna_sequence = None
-    if aa_sequence == "":
-        aa_sequence = None
-
-    return (cdna_sequence, cdna_start, cdna_end, aa_sequence, aa_start, aa_end)
-
-
-def fastaify(headers, sequences, input_path, tmp_path):
+def fastaify(headers, sequences, tmp_path):
     name = str(uuid.uuid4()) + ".tmp"  # Super unique name
     path = os.path.join(tmp_path, name)
 
-    this_out = []
-    for i, seq in enumerate(sequences):
-        this_out.append(">" + headers[i])
-        this_out.append(seq)
-
-    open(path, "w").write("\n".join(this_out))
+    with open(path, "w") as fp:
+        for header, seq in zip(headers, sequences):
+            fp.write(">" + header + "\n" + seq + "\n")
 
     return path
 
@@ -382,21 +455,22 @@ def parse_multi_results(handle):
             )
     return extended_result, result
 
-def get_multi_orf(query, targets, input_path, score_threshold, tmp_path, include_extended = False):
+
+def get_multi_orf(query, targets, score_threshold, tmp_path, include_extended = False):
     exonerate_ryo = ">cdna %tcb %tce\n%tcs>aa %qab %qae\n%qas"
     genetic_code = 1
     exonerate_model = "protein2genome"
 
-    headers = [i["header"] for i in targets]
+    headers = [i.header for i in targets]
     if include_extended:
-        headers.extend(["extended_"+i["header"] for i in targets])
+        headers.extend(["extended_"+i.header for i in targets])
     
-    sequences = [i["est_sequence_hmm_region"] for i in targets]
+    sequences = [i.est_sequence_hmm_region for i in targets]
     if include_extended:
-        sequences.extend([i["est_sequence_complete"] for i in targets])
+        sequences.extend([i.est_sequence_complete for i in targets])
 
-    queryfile = fastaify(["query"], [query], input_path, tmp_path)
-    targetfile = fastaify(headers, sequences, input_path, tmp_path)
+    queryfile = fastaify(["query"], [query], tmp_path)
+    targetfile = fastaify(headers, sequences, tmp_path)
 
     outfile = os.path.join(tmp_path, str(uuid.uuid4()) + ".exonerateout")
 
@@ -416,8 +490,8 @@ def get_multi_orf(query, targets, input_path, score_threshold, tmp_path, include
 
 def extended_orf_contains_original_orf(hit):
     if (
-        hit["extended_orf_cdna_start"] > hit["orf_cdna_end_on_transcript"]
-        or hit["extended_orf_cdna_end"] < hit["orf_cdna_start_on_transcript"]
+        hit.extended_orf_cdna_start > hit.orf_cdna_end_on_transcript
+        or hit.extended_orf_cdna_end < hit.orf_cdna_start_on_transcript
     ):
         return False
     else:
@@ -426,18 +500,18 @@ def extended_orf_contains_original_orf(hit):
 
 def get_overlap_length(candidate):
     if (
-        candidate["extended_orf_aa_start_on_transcript"] <= candidate["ali_end"]
-        and candidate["extended_orf_aa_end_on_transcript"] >= candidate["ali_start"]
+        candidate.extended_orf_aa_start_on_transcript <= candidate.ali_end
+        and candidate.extended_orf_aa_end_on_transcript >= candidate.ali_start
     ):
         overlap_start = (
-            candidate["extended_orf_aa_start_on_transcript"]
-            if candidate["extended_orf_aa_start_on_transcript"] > candidate["ali_start"]
-            else candidate["ali_start"]
+            candidate.extended_orf_aa_start_on_transcript
+            if candidate.extended_orf_aa_start_on_transcript > candidate.ali_start
+            else candidate.ali_start
         )
         overlap_end = (
-            candidate["extended_orf_aa_end_on_transcript"]
-            if candidate["extended_orf_aa_end_on_transcript"] > candidate["ali_end"]
-            else candidate["ali_end"]
+            candidate.extended_orf_aa_end_on_transcript
+            if candidate.extended_orf_aa_end_on_transcript > candidate.ali_end
+            else candidate.ali_end
         )
 
         overlap_length = overlap_end - overlap_start
@@ -448,23 +522,11 @@ def get_overlap_length(candidate):
 
 def overlap_by_orf(candidate):
     orf_length = abs(
-        candidate["extended_orf_aa_end"] - candidate["extended_orf_aa_start"]
+        candidate.extended_orf_aa_end - candidate.extended_orf_aa_start
     )
     overlap_length = get_overlap_length(candidate)
 
     return overlap_length / orf_length
-
-
-def remove_extended_orf(hit):
-    hit.pop("extended_orf_aa_sequence")
-    hit.pop("extended_orf_aa_start")
-    hit.pop("extended_orf_aa_end")
-    hit.pop("extended_orf_cdna_sequence")
-    hit.pop("extended_orf_cdna_start")
-    hit.pop("extended_orf_cdna_end")
-
-    return hit
-
 
 ### FIN
 
@@ -535,39 +597,39 @@ def print_unmerged_sequences(
     result = []
     kicks_result = set()
     for i, hit in enumerate(hits):
-        this_hdr, rf = get_rf(hit["header"])
+        this_hdr, rf = get_rf(hit.header)
 
         start = (
-            hit["extended_orf_aa_start_on_transcript"]
-            if "extended_orf_aa_start_on_transcript" in hit
-            else hit["orf_aa_start_on_transcript"]
+            hit.extended_orf_aa_start_on_transcript
+            if hit.extended_orf_aa_start_on_transcript is not None
+            else hit.orf_aa_start_on_transcript
         )
         end = (
-            hit["extended_orf_aa_end_on_transcript"]
-            if "extended_orf_aa_end_on_transcript" in hit
-            else hit["orf_aa_end_on_transcript"]
+            hit.extended_orf_aa_end_on_transcript
+            if hit.extended_orf_aa_end_on_transcript is not None
+            else hit.orf_aa_end_on_transcript
         )
 
         header = format_candidate_header(
             orthoid,
-            hit["reftaxon"],
+            hit.reftaxon,
             species_name,
             this_hdr,
-            f"{round(start)}-{round(end)}",
+            f"{round(start)}-{round(end)}", #FIXME Need to check if this is correct coords
             rf,
         )
 
         if type == "nt":
             seq = (
-                hit["extended_orf_cdna_sequence"]
-                if "extended_orf_cdna_sequence" in hit
-                else hit["orf_cdna_sequence"]
+                hit.extended_orf_cdna_sequence
+                if hit.extended_orf_cdna_sequence is not None
+                else hit.orf_cdna_sequence
             )
         elif type == "aa":
             seq = (
-                hit["extended_orf_aa_sequence"]
-                if "extended_orf_aa_sequence" in hit
-                else hit["orf_aa_sequence"]
+                hit.extended_orf_aa_sequence
+                if hit.extended_orf_aa_sequence is not None
+                else hit.orf_aa_sequence
             )
 
         if type == "aa":
@@ -646,6 +708,11 @@ def get_translate(header):
     translate = header.split("|")[1]
     return translate
 
+def get_match(header, results):
+    for result in results:
+        if result[0] == header:
+            return result
+    return None
 
 def run_exonerate(arg_tuple):
     (
@@ -702,22 +769,22 @@ def exonerate_gene_multi(
     reftaxon_to_proteome_sequence = {}
     for hit in list_of_hits:
         proteome_sequence, this_reftaxon = get_reference_sequence(
-            hit["target"], orthoset_db_con
+            hit.target, orthoset_db_con
         )
 
         reftaxon_to_proteome_sequence[this_reftaxon] = proteome_sequence
 
-        hit["reftaxon"] = this_reftaxon
-        hit["proteome_sequence"] = proteome_sequence
+        hit.reftaxon = this_reftaxon
+        hit.proteome_sequence = proteome_sequence
 
-        est_header, est_sequence_complete = get_nucleotide_transcript_for(hit["header"])
+        est_header, est_sequence_complete = get_nucleotide_transcript_for(hit.header)
         est_sequence_hmm_region = crop_to_hmm_alignment(
             est_sequence_complete, est_header, hit
         )
 
-        hit["est_header"] = est_header
-        hit["est_sequence_complete"] = est_sequence_complete
-        hit["est_sequence_hmm_region"] = est_sequence_hmm_region
+        hit.est_header = est_header
+        hit.est_sequence_complete = est_sequence_complete
+        hit.est_sequence_hmm_region = est_sequence_hmm_region
 
         if this_reftaxon not in reftaxon_related_transcripts:
             reftaxon_related_transcripts[this_reftaxon] = []
@@ -732,121 +799,38 @@ def exonerate_gene_multi(
         hits = reftaxon_related_transcripts[taxon_hit]
         query = reftaxon_to_proteome_sequence[taxon_hit]
 
-        extended_results, results = get_multi_orf(query, hits, input_path, min_score, tmp_path, include_extended = extend_orf)
+        extended_results, results = get_multi_orf(query, hits, min_score, tmp_path, include_extended = extend_orf)
 
         total_results += len(hits)
 
         for hit in hits:
-            matching_alignment = [
-                i for i in results if i[0] == hit["header"]
-            ]
+            matching_alignment = get_match(hit.header, results)
 
-            if not matching_alignment:
-                (
-                    orf_aa_sequence,
-                    orf_cdna_sequence,
-                    orf_cdna_start,
-                    orf_cdna_end,
-                    orf_aa_start,
-                    orf_aa_end,
-                ) = (None, None, None, None, None, None)
-            else:
-                (
-                    current_header,
-                    orf_cdna_sequence,
-                    orf_cdna_start,
-                    orf_cdna_end,
-                    orf_aa_sequence,
-                    orf_aa_start,
-                    orf_aa_end,
-                ) = matching_alignment[0]
+            if matching_alignment:
+                hit.add_orf(matching_alignment)
 
-                orf_aa_sequence = translate_cdna(orf_cdna_sequence)
-
-                hit["orf_aa_sequence"] = orf_aa_sequence
-                hit["orf_cdna_sequence"] = orf_cdna_sequence
-                hit["orf_cdna_start"] = orf_cdna_start
-                hit["orf_cdna_end"] = orf_cdna_end
-                hit["orf_aa_start"] = orf_aa_start
-                hit["orf_aa_end"] = orf_aa_end
-
-                if not orf_cdna_sequence:
-                    continue
-
-                else:
-                    hit["orf_cdna_start_on_transcript"] = (
-                        hit["orf_cdna_start"] + (hit["ali_start"] * 3) - 3
-                    )
-                    hit["orf_cdna_end_on_transcript"] = (
-                        hit["orf_cdna_end"] + (hit["ali_start"] * 3) - 3
-                    )
-                    hit["orf_aa_start_on_transcript"] = (
-                        hit["orf_cdna_start"] + (hit["ali_start"] * 3) - 3
-                    ) / 3
-                    hit["orf_aa_end_on_transcript"] = (
-                        hit["orf_cdna_end"] + (hit["ali_start"] * 3) - 3
-                    ) / 3
-
+                if hit.orf_cdna_sequence:
                     if extend_orf:
-                        matching_extended_alignment = [
-                            i for i in extended_results if i[0] == hit["header"]
-                        ]
-                        if matching_extended_alignment != []:
-                            (
-                                current_header,
-                                extended_orf_cdna_sequence,
-                                extended_orf_cdna_start,
-                                extended_orf_cdna_end,
-                                extended_orf_aa_sequence,
-                                extended_orf_aa_start,
-                                extended_orf_aa_end,
-                            ) = matching_extended_alignment[0]
+                        matching_extended_alignment = get_match(hit.header, extended_results)
 
-                            extended_orf_aa_start_on_transcript = (
-                                extended_orf_cdna_start - 1
-                            ) / 3 + 1
-                            # assert extended_orf_aa_start_on_transcript.is_integer()
-                            extended_orf_aa_end_on_transcript = (
-                                extended_orf_cdna_end - 1
-                            ) / 3 + 1
-                            # assert extended_orf_aa_end_on_transcript.is_integer()
-                            extended_orf_aa_sequence = translate_cdna(
-                                extended_orf_cdna_sequence
-                            )
-
-                            hit["extended_orf_aa_sequence"] = extended_orf_aa_sequence
-                            hit[
-                                "extended_orf_cdna_sequence"
-                            ] = extended_orf_cdna_sequence
-                            hit["extended_orf_cdna_start"] = extended_orf_cdna_start
-                            hit["extended_orf_cdna_end"] = extended_orf_cdna_end
-                            hit["extended_orf_aa_start"] = extended_orf_aa_start
-                            hit["extended_orf_aa_end"] = extended_orf_aa_end
-                            hit["extended_orf_aa_start"] = extended_orf_aa_start
-                            hit["extended_orf_aa_end"] = extended_orf_aa_end
-
-                            hit[
-                                "extended_orf_aa_start_on_transcript"
-                            ] = extended_orf_aa_start_on_transcript
-                            hit[
-                                "extended_orf_aa_end_on_transcript"
-                            ] = extended_orf_aa_end_on_transcript
+                        if matching_extended_alignment:
+                            hit.add_extended_orf(matching_extended_alignment)
 
                             if extended_orf_contains_original_orf(hit):
                                 orf_overlap = overlap_by_orf(hit)
                                 orf_overlap = int(orf_overlap * 1000000)
                                 if orf_overlap < orf_overlap_minimum:
-                                    hit = remove_extended_orf(hit)
+                                    hit.remove_extended_orf()
 
                             else:
-                                hit = remove_extended_orf(hit)
+                                hit.remove_extended_orf()
                         else:
-                            print("Failed to extend orf on {}".format(hit["header"]))
+                            print("Failed to extend orf on {}".format(hit.header))
 
                     output_sequences.append(hit)
 
     if len(output_sequences) > 0:
-        output_sequences = sorted(output_sequences, key=lambda d: d["hmm_start"])
+        output_sequences = sorted(output_sequences, key=lambda d: d.hmm_start)
 
         core_sequences = get_ortholog_group(orthoset_id, orthoid, orthoset_db_con)
 
@@ -860,15 +844,6 @@ def exonerate_gene_multi(
         if output:
             this_aa_out.extend(output)
             open(this_aa_path, "w").writelines(this_aa_out)
-
-            this_out = [orthoid]
-            for hit in output_sequences:
-                length = (
-                    len(hit["extended_orf_aa_sequence"])
-                    if "extended_orf_aa_sequence" in hit
-                    else len(hit["orf_aa_sequence"])
-                )
-                this_out.append("{}[{} aa]".format(hit["header"], length))
 
             core_sequences_nt = get_ortholog_group_nucleotide(
                 orthoset_id, orthoid, orthoset_db_con
@@ -905,36 +880,21 @@ def reciprocal_search(
         print("Ensuring reciprocal hit for hmmresults in {}".format(score))
 
     results = []
-    this_fails = []
     for result in hmmresults:
-        orthoid = result["gene"]
+        orthoid = result.gene
 
         if list_of_wanted_orthoids and orthoid not in list_of_wanted_orthoids:
             continue
 
-        result_hmmsearch_id = result["hmm_id"]
+        result_hmmsearch_id = result.hmm_id
 
         blast_results = get_blastresults_for_hmmsearch_id(result_hmmsearch_id)
 
-        this_match = is_reciprocal_match(blast_results, reference_taxa)
+        this_match_target = is_reciprocal_match(blast_results, reference_taxa)
 
-        if this_match == None:
-            this_fails.append(
-                [
-                    result["gene"],
-                    result["hmmhit"],
-                    result["header"],
-                    str(result["score"]),
-                    str(result["hmm_start"]),
-                    str(result["hmm_end"]),
-                    "Reciprocal mismatch",
-                ]
-            )
-        else:
-            this_match.update(result)  # Persist hmmresult data
-            this_match["gene"] = orthoid
-            this_match["score"] = score
-            results.append(this_match)
+        if this_match_target is not None:
+            result.target = this_match_target
+            results.append(result)
 
     if reciprocal_verbose:
         print(
@@ -943,7 +903,7 @@ def reciprocal_search(
             )
         )
 
-    return {"Results": results, "Kicks": this_fails}
+    return results
 
 
 ####
@@ -1128,16 +1088,15 @@ if __name__ == "__main__":
         )
 
     rocksdb_db = wrap_rocks.RocksDB(rocks_db_path)
-    score_based_results, ufr_rows = get_scores_list(min_score, min_length, num_threads)
-    # gene_based_results,header_based_results,ufr_rows = get_scores_list(min_score,taxa_db_path,orthoset_db_path,min_length,orthoset_id)
-
-    ufr_path = os.path.join(input_path, "unfiltered-hits.csv")
-
-    ufr_out = ["Gene,Header,Score,Start,End\n"]
-    for row in ufr_rows:
-        ufr_out.append(",".join(row) + "\n")
+    score_based_results, ufr_rows = get_scores_list(min_score, min_length, debug)
 
     if debug:
+        ufr_path = os.path.join(input_path, "unfiltered-hits.csv")
+
+        ufr_out = ["Gene,Header,Score,Start,End\n"]
+        for row in ufr_rows:
+            ufr_out.append(",".join(row) + "\n")
+
         open(ufr_path, "w").writelines(ufr_out)
 
     ####################################
@@ -1162,7 +1121,6 @@ if __name__ == "__main__":
     transcripts_mapped_to = {}
 
     reciprocal_verbose = 4 in verbose
-    filtered_sequences_log = []
 
     arguments = list()
     for score in scores:
@@ -1182,10 +1140,9 @@ if __name__ == "__main__":
     brh_count = 0
 
     for data in reciprocal_data:
-        filtered_sequences_log.extend(data["Kicks"])
-        brh_count += len(data["Results"])
-        for this_match in data["Results"]:
-            orthoid = this_match["gene"]
+        brh_count += len(data)
+        for this_match in data:
+            orthoid = this_match.gene
 
             if transcript_not_long_enough(this_match, min_length):
                 continue
