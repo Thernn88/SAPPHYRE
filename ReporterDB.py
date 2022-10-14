@@ -18,7 +18,7 @@ T_global_start = time()
 
 
 class NodeRecord:
-    def __init__(self, header):
+    def __init__(self, header, is_extension):
         self.header = header
         self.score = -math.inf
         self.cdna_start = None
@@ -27,6 +27,7 @@ class NodeRecord:
         self.aa_start = None
         self.aa_end = None
         self.aa_sequence = ""
+        self.is_extension = is_extension
 
     def __lt__(self, other):
         return self.score < other.score
@@ -315,15 +316,23 @@ def parse_nodes(lines):
     this_node = None
     state = 0
     for line in lines:
+        line = line.strip()
         if "vulgar:" in line:  # if vulgar line, start new record
-            current_header = line.split(" . ")[1].split(" ")[0]
-            this_node = NodeRecord(current_header)
-            this_node.score = int(line.split()[9])
-            previously_seen = nodes.get(current_header, False)
-            if previously_seen:
-                nodes[current_header] = max(this_node, previously_seen)
+            raw_header = line.split(" . ")[1].split(" ")[0]
+            is_extension = False
+            if 'extended_' in raw_header:
+                current_header = raw_header.replace('extended_','')
+                is_extension = True
             else:
-                nodes[current_header] = this_node
+                current_header = raw_header
+
+            this_node = NodeRecord(current_header, is_extension)
+            this_node.score = int(line.split()[9])
+            previously_seen = nodes.get(raw_header, False)
+            if previously_seen:
+                nodes[raw_header] = max(this_node, previously_seen)
+            else:
+                nodes[raw_header] = this_node
         elif ">cdna" in line:  # if cdna, set cdna values
             fields = line.split()
             this_node.cdna_start = int(fields[1])
@@ -341,37 +350,50 @@ def parse_nodes(lines):
     return nodes
 
 
-def parse_multi_results(result_file_content):
+def parse_multi_results(handle):
+    extended_result = []
     result = []
-    lines = result_file_content.split("\n")
-    nodes = parse_nodes(lines)
+    nodes = parse_nodes(handle)
     for key in nodes:
         node = nodes[key]
-        result.append(
-            (
-                node.header,
-                node.cdna_sequence,
-                node.cdna_start,
-                node.cdna_end,
-                node.aa_sequence,
-                node.aa_start,
-                node.aa_end,
+        if node.is_extension:
+            extended_result.append(
+                (
+                    node.header,
+                    node.cdna_sequence,
+                    node.cdna_start,
+                    node.cdna_end,
+                    node.aa_sequence,
+                    node.aa_start,
+                    node.aa_end,
+                )
             )
-        )
-    return result
+        else:
+            result.append(
+                (
+                    node.header,
+                    node.cdna_sequence,
+                    node.cdna_start,
+                    node.cdna_end,
+                    node.aa_sequence,
+                    node.aa_start,
+                    node.aa_end,
+                )
+            )
+    return extended_result, result
 
-
-def get_multi_orf(query, targets, input_path, score_threshold, tmp_path, extend=False):
+def get_multi_orf(query, targets, input_path, score_threshold, tmp_path, include_extended = False):
     exonerate_ryo = ">cdna %tcb %tce\n%tcs>aa %qab %qae\n%qas"
     genetic_code = 1
     exonerate_model = "protein2genome"
-    exhaustive = ""
 
-    headers = [i["header"].strip().replace(" ", "|") for i in targets]
-    if extend:
-        sequences = [i["est_sequence_complete"] for i in targets]
-    else:
-        sequences = [i["est_sequence_hmm_region"] for i in targets]
+    headers = [i["header"] for i in targets]
+    if include_extended:
+        headers.extend(["extended_"+i["header"] for i in targets])
+    
+    sequences = [i["est_sequence_hmm_region"] for i in targets]
+    if include_extended:
+        sequences.extend([i["est_sequence_complete"] for i in targets])
 
     queryfile = fastaify(["query"], [query], input_path, tmp_path)
     targetfile = fastaify(headers, sequences, input_path, tmp_path)
@@ -382,15 +404,14 @@ def get_multi_orf(query, targets, input_path, score_threshold, tmp_path, extend=
 
     os.system(exonerate_cmd)
 
-    result_content = open(outfile).read()
-
-    results = parse_multi_results(result_content)
+    with open(outfile) as fp:
+        extended_results, results = parse_multi_results(fp)
 
     os.remove(queryfile)
     os.remove(targetfile)
     os.remove(outfile)
 
-    return results
+    return extended_results, results
 
 
 def extended_orf_contains_original_orf(hit):
@@ -711,14 +732,9 @@ def exonerate_gene_multi(
         hits = reftaxon_related_transcripts[taxon_hit]
         query = reftaxon_to_proteome_sequence[taxon_hit]
 
-        results = get_multi_orf(query, hits, input_path, min_score, tmp_path)
+        extended_results, results = get_multi_orf(query, hits, input_path, min_score, tmp_path, include_extended = extend_orf)
 
         total_results += len(hits)
-
-        if extend_orf:
-            extended_results = get_multi_orf(
-                query, hits, input_path, min_score, tmp_path, extend=True
-            )
 
         for hit in hits:
             matching_alignment = [
