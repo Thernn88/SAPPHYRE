@@ -7,6 +7,7 @@ import sqlite3
 import uuid
 from multiprocessing.pool import Pool
 from time import time
+from typing import List
 
 import blosum_distance
 import wrap_rocks
@@ -77,8 +78,9 @@ def get_set_id(orthoset_db_con, orthoset):
     if not rows:
         raise Exception("Orthoset {} id cant be retrieved".format(orthoset))
 
-    # Assumes there is only one row:
-    return rows[0][0]
+    # Return first result
+    for row in rows:
+        return row[0]
 
 
 def get_taxa_in_set(set_id, orthoset_db_con):
@@ -173,7 +175,7 @@ WHERE {orthoset_aaseqs}.{db_col_id} = ?"""
         return row[0]
 
 
-def is_reciprocal_match(blast_results, reference_taxa: list[str]):
+def is_reciprocal_match(blast_results, reference_taxa: List[str]):
     reftaxon_count = {ref_taxa: 0 for ref_taxa in reference_taxa}
 
     for result in blast_results:
