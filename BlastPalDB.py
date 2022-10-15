@@ -21,7 +21,8 @@ class Result:
         "score", 
         "blast_start", 
         "blast_end",
-        "reftaxon"
+        "reftaxon",
+        "ref_sequence"
     )
 
     def __init__(self, query_id, subject_id, evalue, bit_score, q_start, q_end):
@@ -33,16 +34,13 @@ class Result:
         self.blast_start = int(q_start)
         self.blast_end = int(q_end)
         self.reftaxon = None
+        self.ref_sequence = None
 
     def to_json(self):
         return {
                     "target": self.target,
-                    "score": self.score,
-                    "evalue": self.evalue,
-                    "log_evalue": self.log_evalue,
-                    "blast_start": self.blast_start,
-                    "blast_end": self.blast_end,
-                    "reftaxon": self.reftaxon
+                    "reftaxon": self.reftaxon,
+                    "ref_sequence": self.ref_sequence
                 }
 
 @dataclass
@@ -106,7 +104,7 @@ def do(
             this_result = Result(*fields)
 
             if this_result.target in gene_conf.ref_names: # Hit target not valid
-                this_result.reftaxon = gene_conf.ref_names[this_result.target]
+                this_result.reftaxon, this_result.ref_sequence = gene_conf.ref_names[this_result.target]
 
                 # Although we have a threshold in the Blast call. Some still get through.
                 if (
@@ -142,6 +140,15 @@ def get_set_id(orthoset_db_con, orthoset):
     raise Exception("Orthoset {} id cant be retrieved".format(orthoset))
 
 def get_ref_taxon_for_genes(set_id, orthoset_db_con):
+    data = {}
+    orthoset_db_cur = orthoset_db_con.cursor()
+    query = 'SELECT id, sequence FROM orthograph_aaseqs'
+    rows = orthoset_db_cur.execute(query)
+
+    for row in rows:
+        id, sequence = row
+        data[id] = sequence
+
     result = {}
     query = f'''SELECT DISTINCT
         orthograph_taxa.name,
@@ -158,16 +165,15 @@ def get_ref_taxon_for_genes(set_id, orthoset_db_con):
             ON orthograph_aaseqs.taxid = orthograph_taxa.id
         WHERE orthograph_set_details.id = "{set_id}"'''
 
-    orthoset_db_cur = orthoset_db_con.cursor()
     rows = orthoset_db_cur.execute(query)
 
     for row in rows:
         name, gene, id = row
         
         if gene not in result:
-            result[gene] = {id:name}
+            result[gene] = {id:(name, data[id])}
         else:
-            result[gene][id] = name
+            result[gene][id] = (name, data[id])
 
     return result
 
@@ -251,11 +257,12 @@ def main():
 
     orthoset_id = get_set_id(orthoset_db_con, orthoset)
 
+    sql_start = time()
     ref_taxon = get_ref_taxon_for_genes(orthoset_id, orthoset_db_con)
 
     blast_db_path = os.path.join(orthosets_dir, orthoset, "blast", orthoset)
 
-    print("Grabbing HMM data from db.")
+    print("Done! Took {:.2f}s. Grabbing HMM data from db.".format(time()-sql_start))
 
     db_path = os.path.join(input_path, "rocksdb")
     db = wrap_rocks.RocksDB(db_path)
@@ -341,7 +348,7 @@ def main():
     for batch in to_write:
         for key, data, count in batch:
             db.put(key, data)
-            i += count  # REVIEW: why do we count?
+            i += count
 
     print(
         "Done. Took {:.2f}s overall. Writing {} results took {:.2f}s.".format(

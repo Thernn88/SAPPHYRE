@@ -1,4 +1,5 @@
 import argparse
+from audioop import reverse
 import json
 import math
 import os
@@ -146,18 +147,6 @@ class NodeRecord:
     def __le__(self, other):
         return self.score <= other.score
 
-
-def clear_output_path(input):
-    """
-    Clears protein output paths
-    """
-
-    for protein_path in ["aa", "nt"]:
-        protein_output = os.path.join(input, protein_path)
-        shutil.rmtree(protein_output)
-        os.makedirs(protein_output, exist_ok=True)
-
-
 def get_set_id(orthoset_db_con, orthoset):
     """
     Retrieves orthoset id from orthoset's name.
@@ -271,26 +260,6 @@ WHERE {orthoset_aaseqs}.{db_col_id} = ?"""
 
     # Return first result
     return next(rows)[0]
-
-
-def is_reciprocal_match(blast_results, reference_taxa: List[str]):
-    reftaxon_count = {ref_taxa: 0 for ref_taxa in reference_taxa}
-    ref_taxon_to_target = {}
-
-    for result in blast_results:
-        ref_taxon = result["reftaxon"]
-
-        if ref_taxon in reftaxon_count:
-            if not strict_search_mode:
-                return result["target"]
-            if ref_taxon not in ref_taxon_to_target:
-                ref_taxon_to_target[ref_taxon] = result["target"]
-            reftaxon_count[ref_taxon] += 1  # only need the one
-            if all(reftaxon_count.values()):  # Everything's been counted
-                return ref_taxon_to_target[
-                    max(reftaxon_count)
-                ]  # Grab most hit reftaxon
-    return None
 
 
 def calculate_length_of_ali(
@@ -541,8 +510,8 @@ def get_ortholog_group(orthoset_id, orthoid, orthoset_db_con):
     return rows
 
 
-def format_candidate_header(gene, taxa_name, taxa_id, sequence_id, coords, frame):
-    return header_seperator.join([gene, taxa_name, taxa_id, sequence_id, coords, frame])
+def format_candidate_header(gene, taxa_name, taxa_id, sequence_id, frame):
+    return header_seperator.join([gene, taxa_name, taxa_id, sequence_id, frame])
 
 
 def format_reference_header(gene, taxa_name, taxa_id, identifier="."):
@@ -571,30 +540,18 @@ def get_rf(header):
 
 
 def print_unmerged_sequences(
-    hits, orthoid, type, minimum_seq_data_length, species_name, kicks
+    hits, orthoid, type, minimum_seq_data_length, taxa_id, kicks
 ):
     result = []
     kicks_result = set()
     for i, hit in enumerate(hits):
         this_hdr, rf = get_rf(hit.header)
 
-        start = (
-            hit.extended_orf_aa_start_on_transcript
-            if hit.extended_orf_aa_start_on_transcript is not None
-            else hit.orf_aa_start_on_transcript
-        )
-        end = (
-            hit.extended_orf_aa_end_on_transcript
-            if hit.extended_orf_aa_end_on_transcript is not None
-            else hit.orf_aa_end_on_transcript
-        )
-
         header = format_candidate_header(
             orthoid,
             hit.reftaxon,
-            species_name,
+            taxa_id,
             this_hdr,
-            f"{round(start)}-{round(end)}",  # FIXME Need to check if this is correct coords
             rf,
         )
 
@@ -604,24 +561,24 @@ def print_unmerged_sequences(
                 if hit.extended_orf_cdna_sequence is not None
                 else hit.orf_cdna_sequence
             )
+
+            #Deinterleave
+            seq = seq.replace('\n','')
+
+            if i not in kicks:
+                result.append(">" + header + "\n")
+                result.append(seq + "\n")
         elif type == "aa":
             seq = (
                 hit.extended_orf_aa_sequence
                 if hit.extended_orf_aa_sequence is not None
                 else hit.orf_aa_sequence
             )
-
-        if type == "aa":
             if len(seq) - seq.count("-") > minimum_seq_data_length:
                 result.append(">" + header + "\n")
                 result.append(seq + "\n")
             else:
                 kicks_result.add(i)
-        elif type == "nt":
-            if i not in kicks:
-                result.append(">" + header + "\n")
-                result.append(seq + "\n")
-
     return kicks_result, result
 
 
@@ -697,12 +654,11 @@ def run_exonerate(arg_tuple):
         gene,
         list_of_hits,
         orthoset_db_path,
-        input_path,
         min_score,
         orthoset_id,
         aa_out_path,
         min_length,
-        species_name,
+        taxa_id,
         nt_out_path,
         tmp_path,
         exonerate_verbose,
@@ -711,12 +667,11 @@ def run_exonerate(arg_tuple):
         gene,
         list_of_hits,
         orthoset_db_path,
-        input_path,
         min_score,
         orthoset_id,
         aa_out_path,
         min_length,
-        species_name,
+        taxa_id,
         nt_out_path,
         tmp_path,
         exonerate_verbose,
@@ -727,12 +682,11 @@ def exonerate_gene_multi(
     orthoid,
     list_of_hits,
     orthoset_db_path,
-    input_path,
     min_score,
     orthoset_id,
     aa_out_path,
     min_length,
-    species_name,
+    taxa_id,
     nt_out_path,
     tmp_path,
     exonerate_verbose,
@@ -746,14 +700,7 @@ def exonerate_gene_multi(
     reftaxon_related_transcripts = {}
     reftaxon_to_proteome_sequence = {}
     for hit in list_of_hits:
-        proteome_sequence, this_reftaxon = get_reference_sequence(
-            hit.target, orthoset_db_con
-        )
-
-        reftaxon_to_proteome_sequence[this_reftaxon] = proteome_sequence
-
-        hit.reftaxon = this_reftaxon
-        hit.proteome_sequence = proteome_sequence
+        this_reftaxon = hit.reftaxon
 
         est_header, est_sequence_complete = get_nucleotide_transcript_for(hit.header)
         est_sequence_hmm_region = crop_to_hmm_alignment(
@@ -765,6 +712,7 @@ def exonerate_gene_multi(
         hit.est_sequence_hmm_region = est_sequence_hmm_region
 
         if this_reftaxon not in reftaxon_related_transcripts:
+            reftaxon_to_proteome_sequence[this_reftaxon] = hit.proteome_sequence
             reftaxon_related_transcripts[this_reftaxon] = []
 
         reftaxon_related_transcripts[this_reftaxon].append(hit)
@@ -800,7 +748,6 @@ def exonerate_gene_multi(
 
                             if extended_orf_contains_original_orf(hit):
                                 orf_overlap = overlap_by_orf(hit)
-                                orf_overlap = int(orf_overlap * 1000000)
                                 if orf_overlap < orf_overlap_minimum:
                                     hit.remove_extended_orf()
 
@@ -820,7 +767,7 @@ def exonerate_gene_multi(
         this_aa_path = os.path.join(aa_out_path, orthoid + ".aa.fa")
         this_aa_out.extend(print_core_sequences(orthoid, core_sequences))
         kicks, output = print_unmerged_sequences(
-            output_sequences, orthoid, "aa", min_length, species_name, kicks=set()
+            output_sequences, orthoid, "aa", min_length, taxa_id, kicks=set()
         )
 
         if output:
@@ -836,7 +783,7 @@ def exonerate_gene_multi(
 
             this_nt_out.extend(print_core_sequences(orthoid, core_sequences_nt))
             na_kicks, output = print_unmerged_sequences(
-                output_sequences, orthoid, "nt", min_length, species_name, kicks=kicks
+                output_sequences, orthoid, "nt", min_length, taxa_id, kicks=kicks
             )
             this_nt_out.extend(output)
 
@@ -849,6 +796,24 @@ def exonerate_gene_multi(
             )
         )
 
+def is_reciprocal_match(blast_results, reference_taxa: List[str]):
+    reftaxon_count = {ref_taxa: 0 for ref_taxa in reference_taxa}
+    ref_taxon_to_target = {}
+
+    for result in blast_results:
+        ref_taxon = result["reftaxon"]
+
+        if ref_taxon in reftaxon_count:
+            if not strict_search_mode:
+                return ref_taxon, result["ref_sequence"]
+            if ref_taxon not in ref_taxon_to_target:
+                ref_taxon_to_target[ref_taxon] = (ref_taxon, result["ref_sequence"])
+            reftaxon_count[ref_taxon] += 1  # only need the one
+            if all(reftaxon_count.values()):  # Everything's been counted
+                return ref_taxon_to_target[
+                    max(reftaxon_count)
+                ]  # Grab most hit reftaxon
+    return None, None
 
 def reciprocal_search(
     hmmresults,
@@ -870,10 +835,11 @@ def reciprocal_search(
 
         result_hmmsearch_id = result.hmm_id
         blast_results = get_blastresults_for_hmmsearch_id(result_hmmsearch_id)
-        this_match_target = is_reciprocal_match(blast_results, reference_taxa)
+        this_match_reftaxon, this_match_ref_sequence = is_reciprocal_match(blast_results, reference_taxa)
 
-        if this_match_target is not None:
-            result.target = this_match_target
+        if this_match_reftaxon:
+            result.proteome_sequence = this_match_ref_sequence
+            result.reftaxon = this_match_reftaxon
             results.append(result)
 
     if reciprocal_verbose:
@@ -925,11 +891,9 @@ orthoset_ntseqs = "orthograph_ntseqs"
 # TODO Make these argparse variables
 strict_search_mode = False
 orthoid_list_file = None
-frameshift_correction = True
 extend_orf = True
 orf_overlap_minimum = 0.15
-orf_overlap_minimum = int(orf_overlap_minimum * 1000000)
-clear_output = False
+clear_output = True
 
 header_seperator = "|"
 
@@ -991,9 +955,9 @@ if __name__ == "__main__":
     ####
 
     input_path = args.input
-    species_name = os.path.basename(input_path).split(".")[0]
+    taxa_id = os.path.basename(input_path).split(".")[0]
 
-    print("Doing {}.".format(species_name))
+    print("Doing {}.".format(taxa_id))
 
     if 1 in verbose:
         T_init_db = time()
@@ -1029,22 +993,18 @@ if __name__ == "__main__":
 
     orthoset_id = get_set_id(orthoset_db_con, orthoset)
 
-    if clear_output:
-        clear_output_path(input_path)
-
     aa_out = "aa"
     nt_out = "nt"
 
     aa_out_path = os.path.join(input_path, aa_out)
     nt_out_path = os.path.join(input_path, nt_out)
 
-    if os.path.exists(aa_out_path):
+    if clear_output:
         shutil.rmtree(aa_out_path)
-    os.mkdir(aa_out_path)
-
-    if os.path.exists(nt_out_path):
         shutil.rmtree(nt_out_path)
-    os.mkdir(nt_out_path)
+
+    os.makedirs(aa_out_path, exist_ok=True)
+    os.makedirs(nt_out_path, exist_ok=True)
 
     rocks_db_path = os.path.join(input_path, "rocksdb")
 
@@ -1142,20 +1102,21 @@ if __name__ == "__main__":
     exonerate_verbose = 3 in verbose
     T_exonerate_genes = time()
 
+    orthoid_in_seq_order = list(transcripts_mapped_to.items())
+    orthoid_in_seq_order.sort(key = lambda x : len(x[1]), reverse=True)
+
     # Disperse into reftaxons
     if num_threads == 1:
-        for orthoid in transcripts_mapped_to:
-            list_of_hits = transcripts_mapped_to[orthoid]
+        for orthoid, list_of_hits in orthoid_in_seq_order:
             exonerate_gene_multi(
                 orthoid,
                 list_of_hits,
                 orthoset_db_path,
-                input_path,
                 min_score,
                 orthoset_id,
                 aa_out_path,
                 min_length,
-                species_name,
+                taxa_id,
                 nt_out_path,
                 tmp_path,
                 exonerate_verbose,
@@ -1163,19 +1124,17 @@ if __name__ == "__main__":
 
     else:
         arguments = list()
-        for orthoid in transcripts_mapped_to:
-            list_of_hits = transcripts_mapped_to[orthoid]
+        for orthoid, list_of_hits in orthoid_in_seq_order:
             arguments.append(
                 (
                     orthoid,
                     list_of_hits,
                     orthoset_db_path,
-                    input_path,
                     min_score,
                     orthoset_id,
                     aa_out_path,
                     min_length,
-                    species_name,
+                    taxa_id,
                     nt_out_path,
                     tmp_path,
                     exonerate_verbose,
