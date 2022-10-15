@@ -98,10 +98,10 @@ def main(argv):
     )
     parser.add_argument(
         "-m",
-        "--max_prepared_batch_size",
-        default=100000,
+        "--max_fasta_batch_size",
+        default=1000000,
         type=int,
-        help="Max sequences per prepared batch in db. Default: 100 thousand.",
+        help="Max sequences per prepared batch in db. Default: 1 Million.",
     )
     parser.add_argument(
         "-k",
@@ -112,7 +112,7 @@ def main(argv):
     parser.add_argument("-v", "--verbose", default=0, type=int, help="Verbose debug.")
     args = parser.parse_args()
 
-    MAX_PREPARED_LEVEL_SIZE = args.max_prepared_batch_size
+    MAX_FASTA_LEVEL_SIZE = args.max_fasta_batch_size
     MINIMUM_SEQUENCE_LENGTH = args.minimum_sequence_length
 
     allowed_filetypes = ["fa", "fas", "fasta"]
@@ -120,6 +120,9 @@ def main(argv):
     rocksdb_folder_name = "rocksdb"
     core_directory = "PhyMMR"
     secondary_directory = os.path.join(core_directory, os.path.basename(args.input))
+
+    translate_program = "fastatranslate"
+    genetic_code = 1
 
     # Create necessary directories
     printv("Creating directories", args.verbose)
@@ -165,17 +168,17 @@ def main(argv):
             taxa_destination_directory, formatted_taxa_out
         )
 
+        prot_path = os.path.join(
+            taxa_destination_directory, formatted_taxa_out.replace(".fa","_prot.fa")
+        )
+
         duplicates = {}
         transcript_mapped_to = {}
         dupes = count()
-        prepared_component_all = []
         this_index = 1
-        component_i = count()
-        prepared_recipe = []
         trim_times = []  # Append computed time for each loop.
 
-        if args.keep_prepared:
-            fa_file_out = open(prepared_file_destination, "w", encoding="UTF-8")
+        fa_file_out = open(prepared_file_destination, "w", encoding="UTF-8")
         printv("Formatting input sequences and inserting into database", args.verbose)
         for file in components:
             if ".fa" not in file:
@@ -229,46 +232,72 @@ def main(argv):
                     # If no dupe, write to prepared file and db
                     line = ">" + header + "\n" + seq + "\n"
 
-                    if args.keep_prepared:
-                        fa_file_out.write(line)
-
-                    # Save prepared file lines in a list to ration into the db
-                    prepared_component_all.append(line)
-
-                    if len(prepared_component_all) >= MAX_PREPARED_LEVEL_SIZE:
-                        key = add_pc_to_db(
-                            db, next(component_i), prepared_component_all
-                        )
-                        prepared_recipe.append(key)
-                        prepared_component_all = []
+                    fa_file_out.write(line)
 
                     # Get rid of space and > in header (blast/hmmer doesn't like it) Need to push modified external to remove this. ToDo.
                     preheader = header.replace(" ", "|")  # pre-hash header
                     # Key is a hash of the header
                     db.put(xxhash.xxh64_hexdigest(preheader), f"{preheader}\n{seq}")
 
-        if args.keep_prepared:
-            fa_file_out.close()
+        printv("Translating prepared file", args.verbose)
+
+        aa_dupe_count = count()
+        prot_start = time()
+        os.system(
+                    f"{translate_program} --geneticcode {genetic_code} '{prepared_file_destination}' > '{prot_path}'"
+                )
+
+        prot_components = []
+
+        printv("Storing translated file in DB. Translate took {:.2f}s".format(time()-prot_start), args.verbose)
+
+        with open(prot_path, "r+", encoding="utf-8") as fp:
+            out_lines = []
+            aa_dedupe_time = time()
+            for header, seq in SimpleFastaParser(fp):
+                header = header.replace(" ","|")
+                if seq in transcript_mapped_to:
+                    duplicates.setdefault(transcript_mapped_to[seq], 1)
+                    duplicates[transcript_mapped_to[seq]] += 1
+                    next(aa_dupe_count)
+                    continue
+                else:
+                    transcript_mapped_to[seq] = header
+                out_lines.append(">"+header+"\n"+seq+"\n")
+            aa_dupes = next(aa_dupe_count)
+            printv("AA dedupe took {:.2f}s. Kicked {} dupes".format(time()-aa_dedupe_time, aa_dupes), args.verbose)
+
+            component = 0
+            for i in range(0,len(out_lines),MAX_FASTA_LEVEL_SIZE):
+                component += 1
+
+                data = out_lines[i: i+MAX_FASTA_LEVEL_SIZE]
+                prot_components.append(str(component))
+                db.put(f"getprot:{component}", "".join(data))
+
+            fp.seek(0)
+            fp.writelines(out_lines)
+            fp.truncate()
+
+        db.put("getall:prot", ",".join(prot_components))
+
+        if not args.keep_prepared:
+            os.remove(prepared_file_destination)
+            os.remove(prot_path)
+
+        printv("Translation and storing done! Took {:.2f}s".format(time()-prot_start), args.verbose)
+
         sequence_count = this_index - 1
 
         printv(
-            "Inserted {} sequences for {} found {} dupes.\n".format(
-                sequence_count, formatted_taxa, next(dupes)
+            "Inserted {} sequences for {} found {} NT & {} AA dupes.\n".format(
+                sequence_count, formatted_taxa, next(dupes), aa_dupes
             ),
             args.verbose,
         )
 
         del transcript_mapped_to  # Clear mem
 
-        printv("Storing prepared file in database", args.verbose)
-
-        if len(prepared_component_all) != 0:
-            key = add_pc_to_db(db, next(component_i), prepared_component_all)
-            prepared_component_all = []
-            prepared_recipe.append(key)
-
-        # Store the keys to each component of the prepared file
-        db.put("getall:prepared", ",".join(prepared_recipe))
 
         # Store the count of dupes in the database
         db.put("getall:dupes", json.dumps(duplicates))

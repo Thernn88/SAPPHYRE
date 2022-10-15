@@ -380,23 +380,15 @@ def make_temp_protfile(
     # return existing path if protfile exists and we aren't forcing a new one
     if not force_prot and os.path.exists(prot_path):
         return prot_path
-
-    prepared_name = ortholog + "_prep.tmp"
-    prepared_path = os.path.join(temp, prepared_name)
-
     start = time()
 
-    recipe = db_conn.get("getall:prepared").split(',')
+    recipe = db_conn.get("getall:prot").split(',')
 
-    with open(prepared_path, "w+") as prot_file_handle:
+    with open(prot_path, "w") as prot_file_handle:
         for component in recipe:
-            prot_file_handle.write(db_conn.get(component))
-
-    os.system(
-                    f"{translate_program} --geneticcode {genetic_code} '{prepared_path}' > '{prot_path}'"
-                )
+            prot_file_handle.write(db_conn.get(f"getprot:{component}"))
         
-    print("Wrote & translated prot file in {:.2f}s.".format(time() - start))
+    print("Wrote prot file in {:.2f}s.".format(time() - start))
     return prot_path
 
 def parse_domtbl_fields(fields: list) -> Hit:
@@ -960,33 +952,34 @@ def main(argv):
 
     for gene in transcripts_mapped_to:
         dupe_count_divvy= {}
+
         for hit in transcripts_mapped_to[gene]:
-            
-            #Make dupe count gene based
-            if hit.base_header in dupe_counts:
-                dupe_count_divvy[hit.base_header] = dupe_counts[hit.base_header]
-            
-            hit_id += 1
-            hit.hmm_sequence = "".join(sequence_dict[hit.header])
-            hit.hmm_id = hit_id
-            if current_hit_count >= MAX_HMM_BATCH_SIZE:
-                data = json.dumps(current_batch)
-                del current_batch
+            if hit.header in sequence_dict:
+                #Make dupe count gene based
+                if hit.base_header in dupe_counts:
+                    dupe_count_divvy[hit.base_header] = dupe_counts[hit.base_header]
+                
+                hit_id += 1
+                hit.hmm_sequence = "".join(sequence_dict[hit.header])
+                hit.hmm_id = hit_id
+                if current_hit_count >= MAX_HMM_BATCH_SIZE:
+                    data = json.dumps(current_batch)
+                    del current_batch
 
-                key = f'hmmbatch:{batch_i}'
+                    key = f'hmmbatch:{batch_i}'
 
-                global_hmm_obj_recipe.append(str(batch_i))
+                    global_hmm_obj_recipe.append(str(batch_i))
 
-                batch_i += 1
+                    batch_i += 1
 
-                db_conn.put(key, data)
+                    db_conn.put(key, data)
 
-                del data
-                current_batch = []
-                current_hit_count = 1
+                    del data
+                    current_batch = []
+                    current_hit_count = 1
 
-            current_batch.append(hit.to_json())
-            current_hit_count += 1
+                current_batch.append(hit.to_json())
+                current_hit_count += 1
         
         if len(dupe_count_divvy) > 1:
             key = f"getdupes:{gene}"
@@ -1017,8 +1010,6 @@ def main(argv):
     print("Inserted {} hits over {} batch(es) in {:.2f} seconds. Kicked {} hits during filtering".format(total_hits, len(global_hmm_obj_recipe), db_end - end, count-total_hits))
     print("Took {:.2f}s overall".format(time() - global_start))
     print("Cleaning temp files. Closing DB.")
-    clear_command = f'rm {os.path.join(temp_dir,"*")}'
-    os.system(clear_command)
 
 if __name__ == "__main__":
     main(argv)
