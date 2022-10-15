@@ -182,8 +182,7 @@ def get_set_id(orthoset_db_con, orthoset):
         raise Exception("Orthoset {} id cant be retrieved".format(orthoset))
 
     # Return first result
-    for row in rows:
-        return row[0]
+    return next(rows)[0]
 
 
 def get_taxa_in_set(set_id, orthoset_db_con):
@@ -202,9 +201,7 @@ def get_taxa_in_set(set_id, orthoset_db_con):
     orthoset_db_cur = orthoset_db_con.cursor()
     rows = orthoset_db_cur.execute(query)
 
-    reference_taxa = [row[1] for row in rows]
-
-    return reference_taxa
+    return [row[1] for row in rows]
 
 
 def get_scores_list(score_threshold, min_length, debug):
@@ -219,7 +216,6 @@ def get_scores_list(score_threshold, min_length, debug):
         batch_rows = json.loads(batch_rows)
         for this_row in batch_rows:
             length = this_row["env_end"] - this_row["env_start"]
-
             hmm_score = this_row["score"]
 
             if hmm_score > score_threshold and length > min_length:
@@ -276,8 +272,7 @@ WHERE {orthoset_aaseqs}.{db_col_id} = ?"""
     rows = orthoset_db_cur.execute(query, (hit_id,))
     
     # Return first result
-    for row in rows:
-        return row[0]
+    return next(rows)[0]
 
 
 def is_reciprocal_match(blast_results, reference_taxa: List[str]):
@@ -288,31 +283,23 @@ def is_reciprocal_match(blast_results, reference_taxa: List[str]):
         ref_taxon = result["reftaxon"]
 
         if ref_taxon in reftaxon_count:
-
-            if ref_taxon not in ref_taxon_to_target:
-                ref_taxon_to_target[ref_taxon] = result["target"]
-
-            reftaxon_count[ref_taxon] = 1  # only need the one
-
             if not strict_search_mode:
                 return result["target"]
-
-            elif all(reftaxon_count.values()):  # Everything's been counted
+            if ref_taxon not in ref_taxon_to_target:
+                ref_taxon_to_target[ref_taxon] = result["target"]
+            reftaxon_count[ref_taxon]+= 1  # only need the one
+            if all(reftaxon_count.values()):  # Everything's been counted
                 return ref_taxon_to_target[max(reftaxon_count)] # Grab most hit reftaxon
     return None
 
 
-def calculate_length_of_ali(result):
+def calculate_length_of_ali(result):  # XXX: could be merged with transcript_not_long_enough
     return abs(result.ali_end - result.ali_start) + 1
 
 
 def transcript_not_long_enough(result, minimum_transcript_length):
     length = calculate_length_of_ali(result)
-
-    if length < minimum_transcript_length:
-        return True
-    else:
-        return False
+    return length < minimum_transcript_length
 
 
 def get_reference_sequence(hit_id, orthoset_db_con):
@@ -328,8 +315,7 @@ def get_reference_sequence(hit_id, orthoset_db_con):
 
     rows = orthoset_db_cur.execute(query)
 
-    for row in rows:
-        return (row[0], row[1])
+    return next(rows)
 
 
 def reverse_complement(nt_seq):
@@ -345,8 +331,7 @@ def get_nucleotide_transcript_for(header):
 
     if "revcomp" in header:
         return base_header, reverse_complement(sequence)
-    else:
-        return base_header, sequence
+    return base_header, sequence
 
 
 def crop_to_hmm_alignment(seq, header, hit):
@@ -489,13 +474,10 @@ def get_multi_orf(query, targets, score_threshold, tmp_path, include_extended = 
 
 
 def extended_orf_contains_original_orf(hit):
-    if (
+    return (
         hit.extended_orf_cdna_start > hit.orf_cdna_end_on_transcript
         or hit.extended_orf_cdna_end < hit.orf_cdna_start_on_transcript
-    ):
-        return False
-    else:
-        return True
+    )
 
 
 def get_overlap_length(candidate):
@@ -516,8 +498,7 @@ def get_overlap_length(candidate):
 
         overlap_length = overlap_end - overlap_start
         return overlap_length
-    else:
-        return 0
+    return 0
 
 
 def overlap_by_orf(candidate):
@@ -555,7 +536,6 @@ def get_ortholog_group(orthoset_id, orthoid, orthoset_db_con):
             orthoid,
         ),
     )
-
     return rows
 
 
@@ -573,11 +553,8 @@ def print_core_sequences(orthoid, core_sequences):
     result = []
     for core in core_sequences:
         header = format_reference_header(orthoid, core[0], core[1])
-
-        sequence = core[2]
-
         result.append(">" + header + "\n")
-        result.append(sequence + "\n")
+        result.append(core[2] + "\n")  # append the sequence
 
     return result
 
@@ -682,13 +659,10 @@ def get_difference(scoreA, scoreB):
     try:
         if scoreA / scoreB > 1:
             return scoreA / scoreB
-
         elif scoreB / scoreA > 1:
             return scoreB / scoreA
-
         elif scoreA == scoreB:
             return 1
-
     except ZeroDivisionError:
         return 0
 
@@ -887,9 +861,7 @@ def reciprocal_search(
             continue
 
         result_hmmsearch_id = result.hmm_id
-
         blast_results = get_blastresults_for_hmmsearch_id(result_hmmsearch_id)
-
         this_match_target = is_reciprocal_match(blast_results, reference_taxa)
 
         if this_match_target is not None:
@@ -902,7 +874,6 @@ def reciprocal_search(
                 score, time() - T_reciprocal_start
             )
         )
-
     return results
 
 
