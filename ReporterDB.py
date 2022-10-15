@@ -16,6 +16,7 @@ from Bio.Seq import Seq
 
 T_global_start = time()
 
+
 class Hit:
     __slots__ = (
         "hmm_id",
@@ -51,7 +52,7 @@ class Hit:
         "orf_cdna_end",
         "orf_aa_start",
         "orf_aa_end",
-        "target"
+        "target",
     )
 
     def __init__(self, as_json):
@@ -63,7 +64,6 @@ class Hit:
         self.hmm_end = as_json["hmm_end"]
         self.ali_start = as_json["ali_start"]
         self.ali_end = as_json["ali_end"]
-
 
     def remove_extended_orf(self):
         self.extended_orf_aa_sequence = None
@@ -81,20 +81,18 @@ class Hit:
             self.extended_orf_cdna_end,
             self.extended_orf_aa_sequence,
             self.extended_orf_aa_start,
-            self.extended_orf_aa_end
+            self.extended_orf_aa_end,
         ) = exonerate_record
 
-        self.extended_orf_aa_start_on_transcript = ((
-            self.extended_orf_cdna_start - 1
-        ) / 3) + 1
+        self.extended_orf_aa_start_on_transcript = (
+            (self.extended_orf_cdna_start - 1) / 3
+        ) + 1
 
-        self.extended_orf_aa_end_on_transcript = ((
-            self.extended_orf_cdna_end - 1
-        ) / 3) + 1
+        self.extended_orf_aa_end_on_transcript = (
+            (self.extended_orf_cdna_end - 1) / 3
+        ) + 1
 
-        self.extended_orf_aa_sequence = translate_cdna(
-            self.extended_orf_cdna_sequence
-        )
+        self.extended_orf_aa_sequence = translate_cdna(self.extended_orf_cdna_sequence)
 
     def add_orf(self, exonerate_record):
         (
@@ -110,17 +108,16 @@ class Hit:
         self.orf_aa_sequence = translate_cdna(self.orf_cdna_sequence)
 
         self.orf_cdna_start_on_transcript = (
-                self.orf_cdna_start + (self.ali_start * 3) - 3
-            )
-        self.orf_cdna_end_on_transcript = (
-                self.orf_cdna_end + (self.ali_start * 3) - 3
-            )
+            self.orf_cdna_start + (self.ali_start * 3) - 3
+        )
+        self.orf_cdna_end_on_transcript = self.orf_cdna_end + (self.ali_start * 3) - 3
         self.orf_aa_start_on_transcript = (
-                self.orf_cdna_start + (self.ali_start * 3) - 3
-            ) / 3
+            self.orf_cdna_start + (self.ali_start * 3) - 3
+        ) / 3
         self.orf_aa_end_on_transcript = (
-                self.orf_cdna_end + (self.ali_start * 3) - 3
-            ) / 3
+            self.orf_cdna_end + (self.ali_start * 3) - 3
+        ) / 3
+
 
 class NodeRecord:
     def __init__(self, header, is_extension):
@@ -160,6 +157,7 @@ def clear_output_path(input):
         shutil.rmtree(protein_output)
         os.makedirs(protein_output, exist_ok=True)
 
+
 def get_set_id(orthoset_db_con, orthoset):
     """
     Retrieves orthoset id from orthoset's name.
@@ -182,8 +180,7 @@ def get_set_id(orthoset_db_con, orthoset):
         raise Exception("Orthoset {} id cant be retrieved".format(orthoset))
 
     # Return first result
-    for row in rows:
-        return row[0]
+    return next(rows)[0]
 
 
 def get_taxa_in_set(set_id, orthoset_db_con):
@@ -202,9 +199,7 @@ def get_taxa_in_set(set_id, orthoset_db_con):
     orthoset_db_cur = orthoset_db_con.cursor()
     rows = orthoset_db_cur.execute(query)
 
-    reference_taxa = [row[1] for row in rows]
-
-    return reference_taxa
+    return [row[1] for row in rows]
 
 
 def get_scores_list(score_threshold, min_length, debug):
@@ -219,7 +214,6 @@ def get_scores_list(score_threshold, min_length, debug):
         batch_rows = json.loads(batch_rows)
         for this_row in batch_rows:
             length = this_row["env_end"] - this_row["env_start"]
-
             hmm_score = this_row["score"]
 
             if hmm_score > score_threshold and length > min_length:
@@ -274,10 +268,9 @@ WHERE {orthoset_aaseqs}.{db_col_id} = ?"""
     orthoset_db_cur = orthoset_db_con.cursor()
 
     rows = orthoset_db_cur.execute(query, (hit_id,))
-    
+
     # Return first result
-    for row in rows:
-        return row[0]
+    return next(rows)[0]
 
 
 def is_reciprocal_match(blast_results, reference_taxa: List[str]):
@@ -288,31 +281,27 @@ def is_reciprocal_match(blast_results, reference_taxa: List[str]):
         ref_taxon = result["reftaxon"]
 
         if ref_taxon in reftaxon_count:
-
-            if ref_taxon not in ref_taxon_to_target:
-                ref_taxon_to_target[ref_taxon] = result["target"]
-
-            reftaxon_count[ref_taxon] = 1  # only need the one
-
             if not strict_search_mode:
                 return result["target"]
-
-            elif all(reftaxon_count.values()):  # Everything's been counted
-                return ref_taxon_to_target[max(reftaxon_count)] # Grab most hit reftaxon
+            if ref_taxon not in ref_taxon_to_target:
+                ref_taxon_to_target[ref_taxon] = result["target"]
+            reftaxon_count[ref_taxon] += 1  # only need the one
+            if all(reftaxon_count.values()):  # Everything's been counted
+                return ref_taxon_to_target[
+                    max(reftaxon_count)
+                ]  # Grab most hit reftaxon
     return None
 
 
-def calculate_length_of_ali(result):
+def calculate_length_of_ali(
+    result,
+):  # XXX: could be merged with transcript_not_long_enough
     return abs(result.ali_end - result.ali_start) + 1
 
 
 def transcript_not_long_enough(result, minimum_transcript_length):
     length = calculate_length_of_ali(result)
-
-    if length < minimum_transcript_length:
-        return True
-    else:
-        return False
+    return length < minimum_transcript_length
 
 
 def get_reference_sequence(hit_id, orthoset_db_con):
@@ -328,8 +317,7 @@ def get_reference_sequence(hit_id, orthoset_db_con):
 
     rows = orthoset_db_cur.execute(query)
 
-    for row in rows:
-        return (row[0], row[1])
+    return next(rows)
 
 
 def reverse_complement(nt_seq):
@@ -345,8 +333,7 @@ def get_nucleotide_transcript_for(header):
 
     if "revcomp" in header:
         return base_header, reverse_complement(sequence)
-    else:
-        return base_header, sequence
+    return base_header, sequence
 
 
 def crop_to_hmm_alignment(seq, header, hit):
@@ -358,6 +345,7 @@ def crop_to_hmm_alignment(seq, header, hit):
 
 
 ### EXONERATE FUNCTIONS
+
 
 def fastaify(headers, sequences, tmp_path):
     name = str(uuid.uuid4()) + ".tmp"  # Super unique name
@@ -393,8 +381,8 @@ def parse_nodes(lines):
         if "vulgar:" in line:  # if vulgar line, start new record
             raw_header = line.split(" . ")[1].split(" ")[0]
             is_extension = False
-            if 'extended_' in raw_header:
-                current_header = raw_header.replace('extended_','')
+            if "extended_" in raw_header:
+                current_header = raw_header.replace("extended_", "")
                 is_extension = True
             else:
                 current_header = raw_header
@@ -456,15 +444,15 @@ def parse_multi_results(handle):
     return extended_result, result
 
 
-def get_multi_orf(query, targets, score_threshold, tmp_path, include_extended = False):
+def get_multi_orf(query, targets, score_threshold, tmp_path, include_extended=False):
     exonerate_ryo = ">cdna %tcb %tce\n%tcs>aa %qab %qae\n%qas"
     genetic_code = 1
     exonerate_model = "protein2genome"
 
     headers = [i.header for i in targets]
     if include_extended:
-        headers.extend(["extended_"+i.header for i in targets])
-    
+        headers.extend(["extended_" + i.header for i in targets])
+
     sequences = [i.est_sequence_hmm_region for i in targets]
     if include_extended:
         sequences.extend([i.est_sequence_complete for i in targets])
@@ -489,13 +477,10 @@ def get_multi_orf(query, targets, score_threshold, tmp_path, include_extended = 
 
 
 def extended_orf_contains_original_orf(hit):
-    if (
+    return (
         hit.extended_orf_cdna_start > hit.orf_cdna_end_on_transcript
         or hit.extended_orf_cdna_end < hit.orf_cdna_start_on_transcript
-    ):
-        return False
-    else:
-        return True
+    )
 
 
 def get_overlap_length(candidate):
@@ -516,17 +501,15 @@ def get_overlap_length(candidate):
 
         overlap_length = overlap_end - overlap_start
         return overlap_length
-    else:
-        return 0
+    return 0
 
 
 def overlap_by_orf(candidate):
-    orf_length = abs(
-        candidate.extended_orf_aa_end - candidate.extended_orf_aa_start
-    )
+    orf_length = abs(candidate.extended_orf_aa_end - candidate.extended_orf_aa_start)
     overlap_length = get_overlap_length(candidate)
 
     return overlap_length / orf_length
+
 
 ### FIN
 
@@ -555,7 +538,6 @@ def get_ortholog_group(orthoset_id, orthoid, orthoset_db_con):
             orthoid,
         ),
     )
-
     return rows
 
 
@@ -573,11 +555,8 @@ def print_core_sequences(orthoid, core_sequences):
     result = []
     for core in core_sequences:
         header = format_reference_header(orthoid, core[0], core[1])
-
-        sequence = core[2]
-
         result.append(">" + header + "\n")
-        result.append(sequence + "\n")
+        result.append(core[2] + "\n")  # append the sequence
 
     return result
 
@@ -615,7 +594,7 @@ def print_unmerged_sequences(
             hit.reftaxon,
             species_name,
             this_hdr,
-            f"{round(start)}-{round(end)}", #FIXME Need to check if this is correct coords
+            f"{round(start)}-{round(end)}",  # FIXME Need to check if this is correct coords
             rf,
         )
 
@@ -682,13 +661,10 @@ def get_difference(scoreA, scoreB):
     try:
         if scoreA / scoreB > 1:
             return scoreA / scoreB
-
         elif scoreB / scoreA > 1:
             return scoreB / scoreA
-
         elif scoreA == scoreB:
             return 1
-
     except ZeroDivisionError:
         return 0
 
@@ -708,11 +684,13 @@ def get_translate(header):
     translate = header.split("|")[1]
     return translate
 
+
 def get_match(header, results):
     for result in results:
         if result[0] == header:
             return result
     return None
+
 
 def run_exonerate(arg_tuple):
     (
@@ -799,7 +777,9 @@ def exonerate_gene_multi(
         hits = reftaxon_related_transcripts[taxon_hit]
         query = reftaxon_to_proteome_sequence[taxon_hit]
 
-        extended_results, results = get_multi_orf(query, hits, min_score, tmp_path, include_extended = extend_orf)
+        extended_results, results = get_multi_orf(
+            query, hits, min_score, tmp_path, include_extended=extend_orf
+        )
 
         total_results += len(hits)
 
@@ -811,7 +791,9 @@ def exonerate_gene_multi(
 
                 if hit.orf_cdna_sequence:
                     if extend_orf:
-                        matching_extended_alignment = get_match(hit.header, extended_results)
+                        matching_extended_alignment = get_match(
+                            hit.header, extended_results
+                        )
 
                         if matching_extended_alignment:
                             hit.add_extended_orf(matching_extended_alignment)
@@ -887,9 +869,7 @@ def reciprocal_search(
             continue
 
         result_hmmsearch_id = result.hmm_id
-
         blast_results = get_blastresults_for_hmmsearch_id(result_hmmsearch_id)
-
         this_match_target = is_reciprocal_match(blast_results, reference_taxa)
 
         if this_match_target is not None:
@@ -902,7 +882,6 @@ def reciprocal_search(
                 score, time() - T_reciprocal_start
             )
         )
-
     return results
 
 
