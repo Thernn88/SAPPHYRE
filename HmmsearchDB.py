@@ -421,7 +421,7 @@ def domtbl_dupe_check(domtbl_path: str) -> None:
     Overwrites old file with new version."""
     data_lines_seen = dict()
     output = list()
-    with open(domtbl_path) as f:
+    with open(domtbl_path, 'r+') as f:
         for line in f:
             if line[0] == "#":
                 output.append(line)
@@ -430,8 +430,9 @@ def domtbl_dupe_check(domtbl_path: str) -> None:
             if not seen_before:
                 output.append(line)
                 data_lines_seen[line] = True
-    with open(domtbl_path, "w+") as f:
+        f.seek(0)
         f.writelines(output)
+        f.truncate()
 
 
 def get_hits_from_domtbl(domtbl_path: str, score, evalue) -> list:
