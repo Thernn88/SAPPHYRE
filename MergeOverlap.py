@@ -185,7 +185,7 @@ def disperse_into_overlap_groups(taxa_pair: list) -> dict:
     """
     result = []
     current_group = []
-    get_node = lambda x: x.split("|")[3]
+    get_node = lambda x: x.split("|")[2]
     current_region = None
 
     for start, end, header, sequence in taxa_pair:
@@ -335,7 +335,7 @@ def do_protein(
         # Use the header of the sequence that starts first as the base
         base_header = this_sequences[0][2]
 
-        this_gene, this_taxa, this_taxa_id, node, coords, frame = base_header.split("|")
+        this_gene, this_taxa, this_taxa_id, node, frame = base_header.split("|")
         base_header = "|".join([this_gene, this_taxa, this_taxa_id, node])
 
         # Create a list of each header and sequence that is present in this overlap region
@@ -544,7 +544,7 @@ def do_protein(
             gene_out.append(">" + this_taxa_id + "|MajorityRulesAssigned")
             gene_out.append("".join(majority_assignments))
             for header, sequence, count in consists_of:
-                node, _, frame = header.split("|")[3:]
+                node, frame = header.split("|")[3:]
                 gene_out.append(f">{node}|{frame}|{count}")
                 gene_out.append(sequence)
     
