@@ -7,7 +7,7 @@ from itertools import count
 from shutil import rmtree
 from sys import argv
 from time import time
-
+from multiprocessing.pool import Pool
 import blosum_distance
 import wrap_rocks
 import xxhash
@@ -74,6 +74,10 @@ def add_pc_to_db(db, key: int, data: list) -> str:
     db.put(kstr, "".join(data))
     return kstr
 
+def translate(in_path, out_path, translate_program = "fastatranslate", genetic_code = 1):
+    os.system(
+            f"{translate_program} --geneticcode {genetic_code} '{in_path}' > '{out_path}'"
+        )
 
 def main(argv):
     trim_time = 0
@@ -97,11 +101,11 @@ def main(argv):
         help="Minimum input sequence length.",
     )
     parser.add_argument(
-        "-m",
-        "--max_fasta_batch_size",
-        default=1000000,
+        "-p",
+        "--processes",
         type=int,
-        help="Max sequences per prepared batch in db. Default: 1 Million.",
+        default=1,
+        help="Number of threads used to call processes.",
     )
     parser.add_argument(
         "-k",
@@ -112,17 +116,14 @@ def main(argv):
     parser.add_argument("-v", "--verbose", default=0, type=int, help="Verbose debug.")
     args = parser.parse_args()
 
-    MAX_FASTA_LEVEL_SIZE = args.max_fasta_batch_size
     MINIMUM_SEQUENCE_LENGTH = args.minimum_sequence_length
+    num_threads = args.processes
 
     allowed_filetypes = ["fa", "fas", "fasta"]
 
     rocksdb_folder_name = "rocksdb"
     core_directory = "PhyMMR"
     secondary_directory = os.path.join(core_directory, os.path.basename(args.input))
-
-    translate_program = "fastatranslate"
-    genetic_code = 1
 
     # Create necessary directories
     printv("Creating directories", args.verbose)
@@ -178,7 +179,7 @@ def main(argv):
         this_index = 1
         trim_times = []  # Append computed time for each loop.
 
-        fa_file_out = open(prepared_file_destination, "w", encoding="UTF-8")
+        fa_file_out = []
         printv("Formatting input sequences and inserting into database", args.verbose)
         for file in components:
             if ".fa" not in file:
@@ -232,7 +233,7 @@ def main(argv):
                     # If no dupe, write to prepared file and db
                     line = ">" + header + "\n" + seq + "\n"
 
-                    fa_file_out.write(line)
+                    fa_file_out.append(line)
 
                     # Get rid of space and > in header (blast/hmmer doesn't like it) Need to push modified external to remove this. ToDo.
                     preheader = header.replace(" ", "|")  # pre-hash header
@@ -243,47 +244,67 @@ def main(argv):
 
         aa_dupe_count = count()
         prot_start = time()
-        os.system(
-                    f"{translate_program} --geneticcode {genetic_code} '{prepared_file_destination}' > '{prot_path}'"
-                )
+
+        if os.path.exists("/run/shm"):
+            tmp_path = "/run/shm"
+        elif os.path.exists("/dev/shm"):
+            tmp_path = "/dev/shm"
+        else:
+            tmp_path = os.path.join(args.input, "tmp")
+            os.makedirs(tmp_path, exist_ok=True)
+
+        sequences_per_thread = math.ceil((len(fa_file_out) / 2) / num_threads) * 2
+        translate_files = []
+        for i in range(0,len(fa_file_out),sequences_per_thread):
+            in_path = os.path.join(tmp_path,formatted_taxa_out+f'_{len(translate_files)}.fa')
+            out_path = os.path.join(tmp_path,formatted_taxa_out+f'_prot_{len(translate_files)}.fa')
+            translate_files.append((in_path, out_path))
+            open(in_path, 'w').writelines(fa_file_out[i:i + sequences_per_thread])
+
+        with Pool(num_threads) as translate_pool:
+            translate_pool.starmap(translate, translate_files)  
+            
+        if args.keep_prepared:
+            open(prepared_file_destination, "w", encoding="UTF-8").writelines(fa_file_out)
+        del fa_file_out
 
         prot_components = []
 
         printv("Storing translated file in DB. Translate took {:.2f}s".format(time()-prot_start), args.verbose)
 
-        with open(prot_path, "r+", encoding="utf-8") as fp:
-            out_lines = []
-            aa_dedupe_time = time()
-            for header, seq in SimpleFastaParser(fp):
-                header = header.replace(" ","|")
-                if seq in transcript_mapped_to:
-                    duplicates.setdefault(transcript_mapped_to[seq], 1)
-                    duplicates[transcript_mapped_to[seq]] += 1
-                    next(aa_dupe_count)
-                    continue
-                else:
-                    transcript_mapped_to[seq] = header
-                out_lines.append(">"+header+"\n"+seq+"\n")
-            aa_dupes = next(aa_dupe_count)
-            printv("AA dedupe took {:.2f}s. Kicked {} dupes".format(time()-aa_dedupe_time, aa_dupes), args.verbose)
+        out_lines = []
+        aa_dedupe_time = time()
+        for prepare_file, translate_file in translate_files:
+            with open(translate_file, "r+", encoding="utf-8") as fp:
+                for header, seq in SimpleFastaParser(fp):
+                    header = header.replace(" ","|")
+                    if seq in transcript_mapped_to:
+                        duplicates.setdefault(transcript_mapped_to[seq], 1)
+                        duplicates[transcript_mapped_to[seq]] += 1
+                        next(aa_dupe_count)
+                        continue
+                    else:
+                        transcript_mapped_to[seq] = header
+                    out_lines.append(">"+header+"\n"+seq+"\n")
+            os.remove(prepare_file)
+            os.remove(translate_file)
 
-            component = 0
-            for i in range(0,len(out_lines),MAX_FASTA_LEVEL_SIZE):
-                component += 1
+        if args.keep_prepared:
+            open(prot_path,'w').writelines(out_lines)
+        aa_dupes = next(aa_dupe_count)
+        printv("AA dedupe took {:.2f}s. Kicked {} dupes".format(time()-aa_dedupe_time, aa_dupes), args.verbose)
 
-                data = out_lines[i: i+MAX_FASTA_LEVEL_SIZE]
-                prot_components.append(str(component))
-                db.put(f"getprot:{component}", "".join(data))
+        levels = math.ceil(len(out_lines) / num_threads)
 
-            fp.seek(0)
-            fp.writelines(out_lines)
-            fp.truncate()
+        component = 0
+        for i in range(0,len(out_lines),levels):
+            component += 1
+
+            data = out_lines[i: i+levels]
+            prot_components.append(str(component))
+            db.put(f"getprot:{component}", "".join(data))
 
         db.put("getall:prot", ",".join(prot_components))
-
-        if not args.keep_prepared:
-            os.remove(prepared_file_destination)
-            os.remove(prot_path)
 
         printv("Translation and storing done! Took {:.2f}s".format(time()-prot_start), args.verbose)
 
