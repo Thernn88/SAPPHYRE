@@ -335,7 +335,7 @@ def do_protein(
         # Use the header of the sequence that starts first as the base
         base_header = this_sequences[0][2]
 
-        this_gene, this_taxa, this_taxa_id, node, frame = base_header.split("|")
+        this_gene, this_taxa, this_taxa_id, node = base_header.split("|")
         base_header = "|".join([this_gene, this_taxa, this_taxa_id, node])
 
         # Create a list of each header and sequence that is present in this overlap region
