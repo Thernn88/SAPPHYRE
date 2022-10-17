@@ -184,13 +184,12 @@ def disperse_into_overlap_groups(taxa_pair: list) -> dict:
     Returns (overlap region, sequences in overlap region)
     """
     result = []
-    current_group = []
-    get_node = lambda x: x.split("|")[2]
+    current_group = []  
     current_region = None
 
     for start, end, header, sequence in taxa_pair:
-        node = get_node(header)
-        this_object = (start, end, header, sequence, node)
+        node, frame = header.split('|')[-2:]
+        this_object = (start, end, header, sequence, node, frame)
 
         if current_region is None or find_overlap((start, end), current_region) is None:
             if current_group:
@@ -342,7 +341,10 @@ def do_protein(
         consists_of = []
 
         for sequence in this_sequences:
-            count = dupe_counts.get(sequence[4], 1)
+            if protein == "aa":
+                count = dupe_counts.get(sequence[4], 0) + dupe_counts.get(sequence[4]+"|"+sequence[5], 0) + 1
+            else:
+                count = dupe_counts.get(sequence[4], 0) + 1
             consists_of.append((sequence[2], sequence[3], count))
 
         # Gets last pipe of each component of a merge
@@ -559,6 +561,7 @@ def main(
     aa_path,
     nt_path,
     fallback_taxa,
+    dupe_counts,
     debug,
     majority,
     minimum_mr_amount,
@@ -569,14 +572,6 @@ def main(
     already_calculated_splits = {}
 
     print(gene)
-
-    dupes_in_this_gene = rocksdb_db.get("getdupes:"+gene.split('.')[0])
-
-    if dupes_in_this_gene is not None:
-        dupe_counts = json.loads(dupes_in_this_gene)
-    else:
-        dupe_counts = {}    
-    
 
     path, data = do_protein(
         "aa",
@@ -620,6 +615,7 @@ def run_command(arg_tuple: tuple) -> None:
         aa_path,
         nt_path,
         comparison,
+        dupe_counts,
         debug,
         majority,
         majority_count,
@@ -630,6 +626,7 @@ def run_command(arg_tuple: tuple) -> None:
         aa_path,
         nt_path,
         comparison,
+        dupe_counts,
         debug,
         majority,
         majority_count,
@@ -707,6 +704,8 @@ if __name__ == "__main__":
             rocks_db_path = os.path.join(taxa_path, "rocksdb")
             rocksdb_db = wrap_rocks.RocksDB(rocks_db_path)
 
+            dupe_counts = json.loads(rocksdb_db.get("getall:gene_dupes"))
+
             target_genes = []
             # NOTE: Path returns a Path object, which __repr__ is the string of the
             # path itself.
@@ -716,6 +715,7 @@ if __name__ == "__main__":
             if args.processes:
                 arguments = []
                 for target_gene in target_genes:
+                    dupes_in_this_gene = dupe_counts.get(target_gene.split('.')[0], {})
                     target_aa_path = os.path.join(aa_input, target_gene)
                     target_nt_path = os.path.join(nt_input, make_nt_name(target_gene))
                     arguments.append(
@@ -725,6 +725,7 @@ if __name__ == "__main__":
                             target_aa_path,
                             target_nt_path,
                             args.comparison,
+                            dupes_in_this_gene,
                             args.debug,
                             args.majority,
                             args.majority_count,
@@ -734,6 +735,7 @@ if __name__ == "__main__":
                     pool.map(run_command, arguments, chunksize=1)
             else:
                 for target_gene in target_genes:
+                    dupes_in_this_gene = dupe_counts.get(target_gene.split('.')[0], {})
                     target_aa_path = os.path.join(aa_input, target_gene)
                     target_nt_path = os.path.join(nt_input, make_nt_name(target_gene))
                     main(
@@ -742,6 +744,7 @@ if __name__ == "__main__":
                         target_aa_path,
                         target_nt_path,
                         args.comparison,
+                        dupes_in_this_gene,
                         args.debug,
                         args.majority,
                         args.majority_count,
