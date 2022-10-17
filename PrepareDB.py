@@ -101,6 +101,13 @@ def main(argv):
         help="Minimum input sequence length.",
     )
     parser.add_argument(
+        "-sl",
+        "--sequences_per_level",
+        default=1000000,
+        type=int,
+        help="Amount of sequences to store per database entry.",
+    )
+    parser.add_argument(
         "-p",
         "--processes",
         type=int,
@@ -116,6 +123,7 @@ def main(argv):
     parser.add_argument("-v", "--verbose", default=0, type=int, help="Verbose debug.")
     args = parser.parse_args()
 
+    PROT_MAX_SEQS_PER_LEVEL = args.sequences_per_level
     MINIMUM_SEQUENCE_LENGTH = args.minimum_sequence_length
     num_threads = args.processes
 
@@ -294,7 +302,7 @@ def main(argv):
         aa_dupes = next(aa_dupe_count)
         printv("AA dedupe took {:.2f}s. Kicked {} dupes".format(time()-aa_dedupe_time, aa_dupes), args.verbose)
 
-        levels = math.ceil(len(out_lines) / num_threads)
+        levels = math.ceil(len(out_lines) / PROT_MAX_SEQS_PER_LEVEL)
 
         component = 0
         for i in range(0,len(out_lines),levels):
