@@ -24,49 +24,7 @@ def run_command(arg_tuple: tuple) -> None:
         gene = gene
         )
     os.system(COMMAND)
-    align_references(aa_path, nt_path)
-
-
-def align_references(aa_path: str, nt_path: str) -> None:
-    """
-    Aligns the nt references with the same order as the aa references
-    """
-    order = []
-    with open(aa_path, encoding = "UTF-8") as aa_file:
-        for line in aa_file:
-            line = line.strip()
-            if line != "":
-                if ">" in line:
-                    if line[-1] == '.':
-                        fields = line.split("|")
-                        order.append(fields[1]) # Save order of reference taxa name
-                    else:
-                        break
-
-    nt_references = {}
-    nt_out_lines = []
-
-    with open(nt_path, 'r+', encoding = "UTF-8") as fp:
-        parsed_fasta = SimpleFastaParser(fp)
-        for header, seq in parsed_fasta:
-            if header[-1] == '.':
-                fields = header.split("|")
-                nt_references[fields[1]] = (header, seq)
-            else:
-                nt_out_lines.append(header+'\n')
-                nt_out_lines.append(seq+'\n')
-
-        to_add = []
-        for taxa_name in order:
-            header, seq = nt_references[taxa_name]
-            to_add.append(header+'\n')
-            to_add.append(seq+'\n')
-
-        nt_out_lines = to_add + nt_out_lines
-
-        fp.seek(0)
-        fp.writelines(nt_out_lines)
-        fp.truncate()
+    #align_references(aa_path, nt_path)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -124,7 +82,7 @@ def main():
                                 gene = target_gene
                                 )
                             )
-                        align_references(target_aa_path, target_nt_path)
+                        #align_references(target_aa_path, target_nt_path)
 
 if __name__ == "__main__":
     main()
