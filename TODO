@@ -2,32 +2,27 @@ TODO
 -----------
 
 PrepareDB.py
-  1. Review and incorperate Chubak's dedupe code. 
-    
-HmmsearchDB.py
-  1. Refactor Multi-Gene Filter
-  2. Refactor Internal-Multi Filter
-  3. Explore potential for chunked prot-file creation. This would involve splitting input.fa into chunks, doing parallel fastatranslate calls, and then combining the multiple outputs.
-      a. Alternative: rewrite fastatranslate in Rust so that it can thread and handle this internally.
+  1. Incorporate HammingDist dedupe
+  2. Benchmark Dedupe code & Fasta read/write in rust.
+  ==============Low Priority  
+  3. Incorporate .fastq/.fq.gz extraction
+  4. Regex taxa filenames so they don't bork the script.
+  5. Allow path to maintain sequence ID for references.
   
 ReporterDB.py
-  1. Refactor exonerate section. Bottleneck possibly caused by python code.
-  2. Reciprocal-filter refactor.
-  
-Mafft.py
+  1. Incorporate HamDups into Exonerate.
   
 Pal2Nal.py (LOW PRIORITY)
   1. Full blown rewrite. Python version is at least 4x slower than Perl version. (A lot of poor design decisions in Pal2Nal.py) Perhaps rewrite in Golang or Rust? 
   
 OutlierCheck.py
-  1. Refactor
-  2. Add additional outlier check methodology.
+  1. Add additional outlier check methodology.
   
 CrossContamination.py
   1. TODO
   
 MergeAll.py
-  1. Refactor (Fix that birds nest for loop)
+  1. Incorporate AA dupes into MergeOverlap code
   
 MergeGenes.py 
   1. Refactor
