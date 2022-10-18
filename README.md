@@ -3,8 +3,8 @@
 Requirements
 	
 	Externals
-	Mafft v7.510+ https://mafft.cbrc.jp/alignment/software/ - Currently requires make.
-	Exonerate - Custom - a custom build to utilize modified fastatranslate. Fastatranslate is planned to be replaced with a rust module w/ thread capabilities.
+	Mafft 7.489+ https://mafft.cbrc.jp/alignment/software/ sudo apt install mafft
+	Exonerate 2.2.0+ sudo apt install Exonerate
 	HMMer - 3.3+ https://github.com/EddyRivasLab/hmmer - sudo apt install Hmmer
 	Blast - NCBI-Blast 2.2.28+ ftp://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/ or sudo apt install ncbi-blast+
 	SQLite3 - sudo apt install sqlite3 (Will be removed later.)
@@ -18,26 +18,7 @@ Requirements
 			blosum_distance
 			itertools
 			bio
-			
-	Installing custom exonerate. 
-		PreReqs
-		sudo apt remove exonerate (if package previously installed)
-		sudo apt install autoconf
-		sudo apt install libglib2.0-dev
-		
-		---- All following commands should be run from inside exonerate folder.
-		
-		cd exonerate
-		autoreconf -f -i
-		./configure
-		
-		----Above should be one time only. Below to reinstall. 
-		
-		cd exonerate(if not already inside the exonerate folder
-		make clean
-		make
-		sudo make install
-		restart VM (?)
+			xxhash
 			
 Data Generation Scripts in order of use
 
