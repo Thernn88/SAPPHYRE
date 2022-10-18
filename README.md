@@ -4,7 +4,7 @@ Requirements
 	
 	Externals
 	Mafft 7.489+ https://mafft.cbrc.jp/alignment/software/ sudo apt install mafft
-	Exonerate 2.2.0+ sudo apt install Exonerate
+	Exonerate 2.4.0+ sudo apt install Exonerate
 	HMMer - 3.3+ https://github.com/EddyRivasLab/hmmer - sudo apt install Hmmer
 	Blast - NCBI-Blast 2.2.28+ ftp://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/ or sudo apt install ncbi-blast+
 	SQLite3 - sudo apt install sqlite3 (Will be removed later.)
