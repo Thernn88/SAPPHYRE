@@ -1029,7 +1029,7 @@ if __name__ == "__main__":
     sequences_db_path = os.path.join(rocks_db_path, "sequences")
     hits_db_path = os.path.join(rocks_db_path, "hits")
 
-    rocks_sequence_db = wrap_rocks.RocksDB(rocks_db_path)
+    rocks_sequence_db = wrap_rocks.RocksDB(sequences_db_path)
     rocks_hits_db = wrap_rocks.RocksDB(hits_db_path)
     score_based_results, ufr_rows = get_scores_list(min_score, min_length, debug)
 
