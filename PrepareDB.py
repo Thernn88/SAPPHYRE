@@ -306,7 +306,7 @@ def main(argv):
         aa_dupes = next(aa_dupe_count)
         printv("AA dedupe took {:.2f}s. Kicked {} dupes".format(time()-aa_dedupe_time, aa_dupes), args.verbose)
 
-        levels = math.ceil(len(out_lines) / PROT_MAX_SEQS_PER_LEVEL)
+        levels = math.ceil(len(out_lines) / math.ceil(len(out_lines) / PROT_MAX_SEQS_PER_LEVEL))
 
         component = 0
         for i in range(0,len(out_lines),levels):
