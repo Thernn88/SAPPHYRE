@@ -163,6 +163,7 @@ def main(argv):
             secondary_directory, formatted_taxa_out
         )
         rocksdb_path = os.path.join(taxa_destination_directory, rocksdb_folder_name)
+        sequences_db_path = os.path.join(rocksdb_path, sequences_db_name)
 
         if args.clear_database and os.path.exists(rocksdb_path):
             printv("Clearing old database", args.verbose)
@@ -170,9 +171,9 @@ def main(argv):
 
         printv("Creating rocksdb database", args.verbose)
 
-        os.makedirs(rocksdb_folder_name, exist_ok=True)
+        os.makedirs(rocksdb_path, exist_ok=True)
 
-        db = wrap_rocks.RocksDB(sequences_db_name)
+        db = wrap_rocks.RocksDB(sequences_db_path)
 
         os.makedirs(taxa_destination_directory, exist_ok=True)
 
