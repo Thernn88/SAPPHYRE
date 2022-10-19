@@ -264,7 +264,7 @@ def main():
 
     print("Done! Took {:.2f}s. Grabbing HMM data from db.".format(time()-sql_start))
 
-    db_path = os.path.join(input_path, "rocksdb")
+    db_path = os.path.join(input_path, "rocksdb", "hits")
     db = wrap_rocks.RocksDB(db_path)
 
     gene_to_hits = {}

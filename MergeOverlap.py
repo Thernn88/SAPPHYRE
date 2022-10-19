@@ -701,7 +701,7 @@ if __name__ == "__main__":
 
             dupe_tmp_file = os.path.join(tmp_dir, "DupeSeqs.tmp")
 
-            rocks_db_path = os.path.join(taxa_path, "rocksdb")
+            rocks_db_path = os.path.join(taxa_path, "rocksdb", "sequences")
             rocksdb_db = wrap_rocks.RocksDB(rocks_db_path)
 
             dupe_counts = json.loads(rocksdb_db.get("getall:gene_dupes"))

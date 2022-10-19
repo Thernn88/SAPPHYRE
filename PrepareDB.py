@@ -130,6 +130,7 @@ def main(argv):
     allowed_filetypes = ["fa", "fas", "fasta"]
 
     rocksdb_folder_name = "rocksdb"
+    sequences_db_name = "sequences"
     core_directory = "PhyMMR"
     secondary_directory = os.path.join(core_directory, os.path.basename(args.input))
 
@@ -169,7 +170,9 @@ def main(argv):
 
         printv("Creating rocksdb database", args.verbose)
 
-        db = wrap_rocks.RocksDB(rocksdb_path)
+        os.makedirs(rocksdb_folder_name, exist_ok=True)
+
+        db = wrap_rocks.RocksDB(sequences_db_name)
 
         os.makedirs(taxa_destination_directory, exist_ok=True)
 

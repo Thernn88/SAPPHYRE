@@ -192,14 +192,14 @@ def get_taxa_in_set(set_id, orthoset_db_con):
 
 
 def get_scores_list(score_threshold, min_length, debug):
-    batches = rocksdb_db.get("hmmbatch:all")
+    batches = rocks_hits_db.get("hmmbatch:all")
     batches = batches.split(",")
 
     score_based_results = {}
     ufr_out = [["Gene", "Hash", "Header", "Score", "Start", "End"]]
 
     for batch_i in batches:
-        batch_rows = rocksdb_db.get(f"hmmbatch:{batch_i}")
+        batch_rows = rocks_hits_db.get(f"hmmbatch:{batch_i}")
         batch_rows = json.loads(batch_rows)
         for this_row in batch_rows:
             length = this_row["env_end"] - this_row["env_start"]
@@ -238,7 +238,7 @@ def get_scores_list(score_threshold, min_length, debug):
 
 def get_blastresults_for_hmmsearch_id(hmmsearch_id):
     key = "blastfor:{}".format(hmmsearch_id)
-    db_entry = rocksdb_db.get(key)
+    db_entry = rocks_hits_db.get(key)
 
     if not db_entry:
         return []
@@ -297,7 +297,7 @@ def get_nucleotide_transcript_for(header):
     base_header = get_baseheader(header).strip()
     hash_of_header = xxhash.xxh64_hexdigest(base_header)
 
-    row_data = rocksdb_db.get(hash_of_header)
+    row_data = rocks_sequence_db.get(hash_of_header)
     _, sequence = row_data.split("\n")
 
     if "revcomp" in header:
@@ -1026,7 +1026,11 @@ if __name__ == "__main__":
             )
         )
 
-    rocksdb_db = wrap_rocks.RocksDB(rocks_db_path)
+    sequences_db_path = os.path.join(rocks_db_path, "sequences")
+    hits_db_path = os.path.join(rocks_db_path, "hits")
+
+    rocks_sequence_db = wrap_rocks.RocksDB(rocks_db_path)
+    rocks_hits_db = wrap_rocks.RocksDB(hits_db_path)
     score_based_results, ufr_rows = get_scores_list(min_score, min_length, debug)
 
     if debug:

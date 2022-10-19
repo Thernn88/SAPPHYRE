@@ -382,11 +382,11 @@ def make_temp_protfile(
         return prot_path
     start = time()
 
-    recipe = db_conn.get("getall:prot").split(',')
+    recipe = sequences_db_conn.get("getall:prot").split(',')
 
     with open(prot_path, "w") as prot_file_handle:
         for component in recipe:
-            prot_file_handle.write(db_conn.get(f"getprot:{component}"))
+            prot_file_handle.write(sequences_db_conn.get(f"getprot:{component}"))
         
     print("Wrote prot file in {:.2f}s.".format(time() - start))
     return prot_path
@@ -508,7 +508,7 @@ def de_interleave_record(s):
     return s.split('\n',1)
 
 def main(argv):
-    global db_conn
+    global sequences_db_conn
     global_start = time()
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -639,7 +639,10 @@ def main(argv):
 
     # if database not set, make expected path to database
     db_path = os.path.join(args.input, "rocksdb")
-    db_conn = wrap_rocks.RocksDB(db_path)
+    sequences_path = os.path.join(db_path, "sequences")
+    hits_path = os.path.join(db_path, "hits")
+
+    sequences_db_conn = wrap_rocks.RocksDB(sequences_path)
 
     # path to domtbl directory
     domtbl_dir = os.path.join(args.input, "hmmsearch")
@@ -948,7 +951,9 @@ def main(argv):
     hit_id = 0
     batch_i= 0
 
-    dupe_counts = json.loads(db_conn.get("getall:dupes"))
+    hits_db_conn = wrap_rocks.RocksDB(hits_path)
+
+    dupe_counts = json.loads(sequences_db_conn.get("getall:dupes"))
     dupes_per_gene = {}
 
     for gene in transcripts_mapped_to:
@@ -975,7 +980,7 @@ def main(argv):
 
                     batch_i += 1
 
-                    db_conn.put(key, data)
+                    hits_db_conn.put(key, data)
 
                     del data
                     current_batch = []
@@ -988,7 +993,7 @@ def main(argv):
             dupes_per_gene[gene] = dupe_count_divvy
     key = "getall:gene_dupes"
     data = json.dumps(dupes_per_gene)
-    db_conn.put(key, data)
+    sequences_db_conn.put(key, data)
 
 
     del sequence_dict
@@ -999,7 +1004,7 @@ def main(argv):
 
         global_hmm_obj_recipe.append(str(batch_i))
 
-        db_conn.put(key, data)
+        hits_db_conn.put(key, data)
 
     del current_batch
 
@@ -1008,7 +1013,7 @@ def main(argv):
     key = 'hmmbatch:all'
     data = ','.join(global_hmm_obj_recipe)
 
-    db_conn.put(key, data)
+    hits_db_conn.put(key, data)
 
     db_end = time()
     print("Inserted {} hits over {} batch(es) in {:.2f} seconds. Kicked {} hits during filtering".format(total_hits, len(global_hmm_obj_recipe), db_end - end, count-total_hits))
