@@ -103,7 +103,7 @@ def main(argv):
     parser.add_argument(
         "-sl",
         "--sequences_per_level",
-        default=1000000,
+        default=100000,
         type=int,
         help="Amount of sequences to store per database entry.",
     )
