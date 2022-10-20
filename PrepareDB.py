@@ -120,7 +120,7 @@ def main(argv):
         action="store_true",
         help="Writes the prepared input fasta into the output taxa directory.",
     )
-    parser.add_argument("-v", "--verbose", default=0, type=int, help="Verbose debug.")
+    parser.add_argument("-v", "--verbose", default=1, type=int, help="Verbose debug.")
     args = parser.parse_args()
 
     PROT_MAX_SEQS_PER_LEVEL = args.sequences_per_level
@@ -306,13 +306,14 @@ def main(argv):
         aa_dupes = next(aa_dupe_count)
         printv("AA dedupe took {:.2f}s. Kicked {} dupes".format(time()-aa_dedupe_time, aa_dupes), args.verbose)
 
-        levels = math.ceil(len(out_lines) / math.ceil(len(out_lines) / PROT_MAX_SEQS_PER_LEVEL))
+        levels = math.ceil(len(out_lines) / PROT_MAX_SEQS_PER_LEVEL)
+        per_level = math.ceil(len(out_lines) / levels)
 
         component = 0
-        for i in range(0,len(out_lines),levels):
+        for i in range(0,len(out_lines),per_level):
             component += 1
 
-            data = out_lines[i: i+levels]
+            data = out_lines[i: i+per_level]
             prot_components.append(str(component))
             db.put(f"getprot:{component}", "".join(data))
 
@@ -323,8 +324,8 @@ def main(argv):
         sequence_count = this_index - 1
 
         printv(
-            "Inserted {} sequences for {} found {} NT & {} AA dupes.\n".format(
-                sequence_count, formatted_taxa, next(dupes), aa_dupes
+            "Inserted {} sequences for {} over {} batches. Found {} NT and {} AA dupes.".format(
+                sequence_count, formatted_taxa_out, levels, next(dupes), aa_dupes
             ),
             args.verbose,
         )
@@ -335,11 +336,11 @@ def main(argv):
         # Store the count of dupes in the database
         db.put("getall:dupes", json.dumps(duplicates))
 
-        printv("Took {:.2f}s for {}".format(time() - taxa_start, file), args.verbose)
+        printv("Took {:.2f}s for {}\n".format(time() - taxa_start, file), args.verbose)
 
     print("Finished took {:.2f}s overall.".format(time() - global_start))
-    print("N_trim time: {} seconds".format(sum(trim_times)))
-    print(f"Dedupe time: {dedup_time}")
+    printv("N_trim time: {} seconds".format(sum(trim_times)), args.verbose)
+    printv(f"Dedupe time: {dedup_time}", args.verbose)
 
 
 if __name__ == "__main__":

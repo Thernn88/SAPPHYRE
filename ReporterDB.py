@@ -957,9 +957,8 @@ if __name__ == "__main__":
     input_path = args.input
     taxa_id = os.path.basename(input_path).split(".")[0]
 
-    print("Doing {}.".format(taxa_id))
-
     if 1 in verbose:
+        print("Doing {}.".format(taxa_id))
         T_init_db = time()
 
     if os.path.exists("/run/shm"):

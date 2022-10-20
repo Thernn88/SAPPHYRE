@@ -142,7 +142,7 @@ def get_overlap(a_start, a_end, b_start, b_end):
 
     return 0 if amount < 0 else amount
 
-def internal_filter_gene(this_gene_hits, gene, min_overlap_internal, score_diff_internal, filter_verbose, requires_sort):
+def internal_filter_gene(this_gene_hits, gene, min_overlap_internal, score_diff_internal, debug, requires_sort):
     if requires_sort:
         this_gene_hits.sort(key=lambda hit: hit.score, reverse=True)
 
@@ -155,7 +155,6 @@ def internal_filter_gene(this_gene_hits, gene, min_overlap_internal, score_diff_
             hit_b = this_gene_hits[j]
             if hit_b:
                 if hit_a.base_header != hit_b.base_header:
-                    #print(hit_a.base_header, hit_b.base_header, (hit_a.score / hit_b.score) if hit_b.score != 0 else 0)
                     if ((hit_a.score / hit_b.score) if hit_b.score != 0 else 0) < score_diff_internal:
                         break
                     
@@ -165,7 +164,7 @@ def internal_filter_gene(this_gene_hits, gene, min_overlap_internal, score_diff_
 
                     if (percentage_of_overlap >= min_overlap_internal):
                         this_gene_hits[j] = None
-                        if filter_verbose: 
+                        if debug: 
                             filtered_sequences_log.append([hit_b.gene,hit_b.header,str(hit_b.score),str(hit_b.hmm_start),str(hit_b.hmm_end),'Internal Overlapped with Lowest Score',hit_a.gene,hit_a.header,str(hit_a.score),str(hit_a.hmm_start),str(hit_a.hmm_end)])
 
     this_out_data = {'Passes':[i for i in this_gene_hits if i is not None], 'Log':filtered_sequences_log, 'Gene':gene}
@@ -173,7 +172,7 @@ def internal_filter_gene(this_gene_hits, gene, min_overlap_internal, score_diff_
 
 def multi_filter_dupes(
     this_hits,
-    filter_verbose,
+    debug,
     min_overlap_multi,
     score_diff_multi,
 ):
@@ -197,7 +196,7 @@ def multi_filter_dupes(
                 continue
             if candidate.gene == master.gene:  # From same gene = Pseudomaster
                 # Remove
-                if filter_verbose:
+                if debug:
                     filtered_sequences_log.append(
                         [
                             candidate.gene,
@@ -238,7 +237,7 @@ def multi_filter_dupes(
                     if score_difference >= score_diff_multi:
                         kick_happend = True
                         this_hits[i] = None
-                        if filter_verbose:
+                        if debug:
                             filtered_sequences_log.append(
                                 [
                                     candidate.gene,
@@ -269,7 +268,7 @@ def multi_filter_dupes(
                     if percentage_of_overlap >= min_overlap_multi:
                         kick_happend = True
                         this_hits[i] = None
-                        if filter_verbose:
+                        if debug:
                             filtered_sequences_log.append(
                                 [
                                     candidate.gene,
@@ -291,7 +290,7 @@ def multi_filter_dupes(
     }
     return multi_data
 
-def internal_multi_filter(flagged_headers, this_gene_hits, minimum_overlap_multi_internal, filter_verbose, gene):
+def internal_multi_filter(flagged_headers, this_gene_hits, minimum_overlap_multi_internal, debug, gene):
     this_gene_hits.sort(key=lambda hit: hit.score, reverse=True)
 
     bh_based_results = {}
@@ -324,7 +323,7 @@ def internal_multi_filter(flagged_headers, this_gene_hits, minimum_overlap_multi
                 if overlap_percent > minimum_overlap_multi_internal:
                     
                     this_gene_hits[hit_b_index] = None
-                    if filter_verbose: 
+                    if debug: 
                         filtered_sequences_log.append([hit_b.gene,hit_b.header,str(hit_b.score),str(hit_b.ali_start),str(hit_b.ali_end),'Internal Multi Overlapped with Lowest Score',hit_a.gene,hit_a.header,str(hit_a.score),str(hit_a.ali_start),str(hit_a.ali_end)])
 
     this_out_data = {'Passes':[i for i in this_gene_hits if i is not None], 'Log':filtered_sequences_log, 'Gene':gene}
@@ -361,14 +360,10 @@ def make_exclusion_list(path: str) -> set:
 
 
 def make_temp_protfile(
-    num_threads: int,
     ortholog: str,
     temp: str,
     force_prot: bool,
-    specimen_type=1,
-    table="orthograph_ests",
-    translate_program = "fastatranslate",
-    genetic_code = 1
+    verbose: bool
 ) -> str:
     """
     Looks up the digest and sequence in the orthodb est table, then
@@ -378,7 +373,8 @@ def make_temp_protfile(
     prot_name = ortholog + "_prot.tmp"
     prot_path = os.path.join(temp, prot_name)
     # return existing path if protfile exists and we aren't forcing a new one
-    if not force_prot and os.path.exists(prot_path):
+    if not force_prot and os.path.exists(prot_path) and os.path.getsize(prot_path) != 0:
+        printv('Found existing protfile', verbose)
         return prot_path
     start = time()
 
@@ -388,7 +384,7 @@ def make_temp_protfile(
         for component in recipe:
             prot_file_handle.write(sequences_db_conn.get(f"getprot:{component}"))
         
-    print("Wrote prot file in {:.2f}s.".format(time() - start))
+    printv("Wrote prot file in {:.2f}s".format(time() - start), verbose)
     return prot_path
 
 def parse_domtbl_fields(fields: list) -> Hit:
@@ -411,8 +407,8 @@ def parse_domtbl_fields(fields: list) -> Hit:
 def domtbl_dupe_check(domtbl_path: str) -> None:
     """Reads the given domtbl file and removes duplicate data rows.
     Overwrites old file with new version."""
-    data_lines_seen = dict()
-    output = list()
+    data_lines_seen = {}
+    output = []
     with open(domtbl_path, 'r+') as f:
         for line in f:
             if line[0] == "#":
@@ -429,7 +425,7 @@ def domtbl_dupe_check(domtbl_path: str) -> None:
 
 def get_hits_from_domtbl(domtbl_path: str, score, evalue) -> list:
     domtbl_dupe_check(domtbl_path)
-    hits = list()
+    hits = []
     with open(domtbl_path) as f:
         for line in f:
             if line and line[0] == "#":
@@ -454,9 +450,10 @@ def search_prot(
     prot_file: str,
     domtbl_path: str,
     hmm_file: str,
-    evalue,
-    score,
-    ovw,
+    evalue: float,
+    score: float,
+    ovw: bool,
+    verbose: bool,
     prog="hmmsearch",
     threads=1,
 ) -> str:
@@ -485,14 +482,14 @@ def search_prot(
 
     p = subprocess.run(command, stdout=subprocess.PIPE)
     if p.returncode != 0:  # non-zero return code means an error
-        print(f"{domtbl_path}:hmmsearch error code {p.returncode}")
+        printv(f"{domtbl_path}:hmmsearch error code {p.returncode}", verbose)
     else:
-        print(f"{domtbl_path}")
+        printv(f"Searched {os.path.basename(domtbl_path)}", verbose)
     return get_hits_from_domtbl(domtbl_path, score, evalue)
 
 
 def hmm_search(
-    hmm_file: str, domtbl_dir: str, evalue, score, prot: str, ovw: bool
+    hmm_file: str, domtbl_dir: str, evalue, score, prot: str, ovw: bool, verbose: bool
 ) -> None:
     """
     Reimplements hmmsearch loop in lines 468 to 538 in orthograph analyzer.
@@ -501,11 +498,12 @@ def hmm_search(
     hmm_name = get_hmm_name(hmm_file)
     domtbl_path = os.path.join(domtbl_dir, hmm_name + ".hmm.domtbl")
 
-    hits = search_prot(prot, domtbl_path, hmm_file, evalue, score, ovw)
+    hits = search_prot(prot, domtbl_path, hmm_file, evalue, score, ovw, verbose)
     return hits
 
-def de_interleave_record(s):
-    return s.split('\n',1)
+def printv(msg, verbosity):
+    if verbosity:
+        printv(msg)
 
 def main(argv):
     global sequences_db_conn
@@ -612,9 +610,13 @@ def main(argv):
         type=int, 
         help="Max hits per hmmsearch batch in db. Default: 500 thousand.",
     )
-    parser.add_argument("-d", "--debug", type=int, default=0, help="Verbose debug.")
+    parser.add_argument("-v", "--verbose", default=1, type=int, help="Verbose debug.")
+    parser.add_argument("-d", "--debug", type=int, default=0, help="Output debug logs.")
 
     args = parser.parse_args()
+
+    taxa = os.path.basename(args.input)
+    printv('Begin Hmmsearch for {}'.format(taxa), args.verbose)
 
     MAX_HMM_BATCH_SIZE = args.max_hmm_batch_size
     debug = args.debug != 0
@@ -647,8 +649,7 @@ def main(argv):
     # path to domtbl directory
     domtbl_dir = os.path.join(args.input, "hmmsearch")
 
-    if not os.path.exists(domtbl_dir):
-        os.mkdir(domtbl_dir)
+    os.makedirs(domtbl_dir, exist_ok=True)
 
     # path to .hmm file directory
     orthoset_dir = os.path.join(args.orthoset_input, args.orthoset)
@@ -665,7 +666,7 @@ def main(argv):
         wanted = make_exclusion_list(args.wanted_list)
 
     # make a list of valid ortholog names, excluded hidden files
-    print("Finding hmm files")
+    printv("Finding hmm files", args.verbose)
     hmm_list = [
         hmm for hmm in os.listdir(hmm_dir) if ".hmm" in hmm and hmm not in excluded
     ]
@@ -678,22 +679,28 @@ def main(argv):
     hmm_list = [os.path.join(hmm_dir, hmm) for hmm in hmm_list]
 
     # make protfile for hmm_search later
-    print("Checking protfile")
+    printv("Checking protfile", args.verbose)
 
     protfile = make_temp_protfile(
-        num_threads, ortholog, temp_dir, args.remake_protfile, specimen_type=1
+        ortholog, temp_dir, args.remake_protfile, args.verbose
     )
-    arg_tuples = list()
-    for hmm in hmm_list:
-        arg_tuples.append(
-            (hmm, domtbl_dir, args.evalue, args.score, protfile, args.overwrite)
-        )
 
     start = time()
-    hmm_results = list()  # list of lists containing Hit objects
-    with Pool(num_threads) as search_pool:
-        hmm_results = search_pool.starmap(hmm_search, arg_tuples)
-    print("Search time: {:.2f}".format(time() - start))
+    hmm_results = []  # list of lists containing Hit objects
+
+    if num_threads > 1:
+        arg_tuples = []
+        for hmm in hmm_list:
+            arg_tuples.append(
+                (hmm, domtbl_dir, args.evalue, args.score, protfile, args.overwrite, args.verbose,)
+            )
+        with Pool(num_threads) as search_pool:
+            hmm_results = search_pool.starmap(hmm_search, arg_tuples)
+    else:
+        for hmm in hmm_list:
+            hmm_results.append(hmm_search(hmm, domtbl_dir, args.evalue, args.score, protfile, args.overwrite, args.verbose))
+
+    printv("Search time: {:.2f}".format(time() - start), args.verbose)
 
     filter_start = time()
 
@@ -714,11 +721,9 @@ def main(argv):
 
             gene_based_results[this_gene].append(hit)
 
-    print(f"Filtering {count} hits.")
+    printv(f"Filtering {count} hits", args.verbose)
 
-    print('Doing multi-gene dupe filter')
-
-    print('Searching for dupes')
+    printv('Doing multi-gene dupe filter. Searching for duplicates', args.verbose)
     required_internal_multi_genes = {}
     rimg_set = set()
 
@@ -756,6 +761,7 @@ def main(argv):
             rimg_set.add(gene) # Used for internal sort
 
     headers = list(f_duplicates.keys())
+    possible_dupes = 0
     for header in headers:
         if len(f_duplicates[header]) > 1:
             unique_genes = list(
@@ -763,38 +769,41 @@ def main(argv):
             )
             if len(unique_genes) <= 1:  # But the same gene
                 f_duplicates.pop(header)
+            else:
+                possible_dupes += len(f_duplicates[header])
         else:
             f_duplicates.pop(header)
 
     for header_left in f_duplicates:
         header_based_results[header_left] = []
 
-    print('Filtering dupes (Search took {:.2f}s)'.format(time()-filter_start))
+    printv('Found {} potential dupes. Search took {:.2f}s. Filtering dupes'.format(possible_dupes, time()-filter_start), args.verbose)
 
-    filter_verbose = debug
-    filtered_sequences_log = []
+    if debug:
+        filtered_sequences_log = []
 
     if num_threads == 1:
         for header in f_duplicates:
             this_hits = f_duplicates[header]
             data = multi_filter_dupes(
                 this_hits,
-                filter_verbose,
+                debug,
                 min_overlap_multi,
                 score_diff_multi,
             )
 
-            filtered_sequences_log.extend(data["Log"])
+            if debug:
+                filtered_sequences_log.extend(data["Log"])
             header_based_results[data["Remaining"][0].header] = data["Remaining"]
 
     else:
-        arguments = list()
+        arguments = []
         for header in f_duplicates:
             this_hits = f_duplicates[header]
             arguments.append(
                 (
                     this_hits,
-                    filter_verbose,
+                    debug,
                     min_overlap_multi,
                     score_diff_multi,
                 )
@@ -804,15 +813,11 @@ def main(argv):
             multi_data = pool.starmap(multi_filter_dupes, arguments, chunksize=1)
 
         for data in multi_data:
-            filtered_sequences_log.extend(data["Log"])
+            if debug:
+                filtered_sequences_log.extend(data["Log"])
+            header_based_results[data["Remaining"][0].header] = data["Remaining"]
 
-            hits_to_add = []
-            for hit in data["Remaining"]:
-                hits_to_add.append(hit)
-
-            header_based_results[data["Remaining"][0].header] = hits_to_add
-
-    print('Done! Took {:.2f}s'.format(time()-filter_start))
+    printv('Done! Took {:.2f}s'.format(time()-filter_start), args.verbose)
     internal_multi_start = time()
 
     transcripts_mapped_to = {}
@@ -824,7 +829,7 @@ def main(argv):
                 transcripts_mapped_to[match.gene] = []
             transcripts_mapped_to[match.gene].append(match)
 
-    print('Doing internal multi filtering')
+    printv('Looking for internal duplicates over {} flagged genes'.format(len(required_internal_multi_genes)), args.verbose)
 
     if num_threads == 1:
         internal_multi_data = []
@@ -837,13 +842,13 @@ def main(argv):
                         check_headers,
                         this_gene_transcripts,
                         args.minimum_overlap_internal_multi,
-                        filter_verbose,
+                        debug,
                         gene,
                     )
                 )
 
     else:
-        arguments = list()
+        arguments = []
         for gene in required_internal_multi_genes:
             if gene in transcripts_mapped_to:
                 this_gene_transcripts = transcripts_mapped_to[gene]
@@ -853,7 +858,7 @@ def main(argv):
                         check_headers,
                         this_gene_transcripts,
                         args.minimum_overlap_internal_multi,
-                        filter_verbose,
+                        debug,
                         gene,
                     )
                 )
@@ -864,12 +869,13 @@ def main(argv):
         gene = data["Gene"]
 
         transcripts_mapped_to[gene] = data["Passes"]
-        filtered_sequences_log.extend(data["Log"])
+        if debug:
+            filtered_sequences_log.extend(data["Log"])
 
-    print('Done! Took {:.2f}s'.format(time()-internal_multi_start))
+    printv('Done! Took {:.2f}s'.format(time()-internal_multi_start), args.verbose)
     internal_start = time()
 
-    print('Doing internal filtering')
+    printv('Doing internal overlap filter', args.verbose)
 
     total_hits = 0
     if num_threads == 1:
@@ -883,12 +889,12 @@ def main(argv):
                     gene,
                     min_overlap_internal,
                     score_diff_internal,
-                    filter_verbose,
+                    debug,
                     sort
                 )
             )
     else:
-        arguments = list()
+        arguments = []
         for gene in transcripts_mapped_to:
             this_gene_transcripts = transcripts_mapped_to[gene]
             sort = gene not in rimg_set
@@ -898,7 +904,7 @@ def main(argv):
                     gene,
                     min_overlap_internal,
                     score_diff_internal,
-                    filter_verbose,
+                    debug,
                     sort
                 )
             )
@@ -914,19 +920,20 @@ def main(argv):
 
         transcripts_mapped_to[gene] = data["Passes"]
         total_hits += len(data["Passes"])
-        filtered_sequences_log.extend(data["Log"])
-
-    filtered_sequences_log_out = []
-    for line in filtered_sequences_log:
-        filtered_sequences_log_out.append(",".join(line) + "\n")
+        if debug:
+            filtered_sequences_log.extend(data["Log"])
 
     if debug:
-        filtered_sequences_log_path = os.path.join(args.input, "filtered-hits.csv")
-        with open(filtered_sequences_log_path, "w") as f_log_out:
-            f_log_out.writelines(filtered_sequences_log_out)
+        filtered_sequences_log_out = []
+        for line in filtered_sequences_log:
+            filtered_sequences_log_out.append(",".join(line) + "\n")
 
-    print('Done! Took {:.2f}s'.format(time()-internal_start))
-    print('Filtering took {:.2f}s'.format(time() - filter_start))
+        filtered_sequences_log_path = os.path.join(args.input, "filtered-hits.csv")
+        with open(filtered_sequences_log_path, "w") as fp:
+            fp.writelines(filtered_sequences_log_out)
+
+    printv('Done! Took {:.2f}s'.format(time()-internal_start), args.verbose)
+    printv('Filtering took {:.2f}s overall'.format(time() - filter_start), args.verbose)
 
     # Grab the seq dict
     sequence_dict = {}
@@ -940,7 +947,7 @@ def main(argv):
     if os.path.exists(protfile):
         os.remove(protfile)
 
-    print('Read prot file in {:.2f}s'.format(time()-start))
+    printv('Read prot file in {:.2f}s'.format(time()-start), args.verbose)
 
     end = time()
 
@@ -1016,9 +1023,7 @@ def main(argv):
     hits_db_conn.put(key, data)
 
     db_end = time()
-    print("Inserted {} hits over {} batch(es) in {:.2f} seconds. Kicked {} hits during filtering".format(total_hits, len(global_hmm_obj_recipe), db_end - end, count-total_hits))
+    printv("Inserted {} hits over {} batch(es) in {:.2f} seconds. Kicked {} hits during filtering".format(total_hits, len(global_hmm_obj_recipe), db_end - end, count-total_hits), args.verbose)
     print("Took {:.2f}s overall".format(time() - global_start))
-    print("Cleaning temp files. Closing DB.")
-
 if __name__ == "__main__":
     main(argv)
