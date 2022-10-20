@@ -999,8 +999,10 @@ if __name__ == "__main__":
     nt_out_path = os.path.join(input_path, nt_out)
 
     if clear_output:
-        shutil.rmtree(aa_out_path)
-        shutil.rmtree(nt_out_path)
+        if os.path.exists(aa_out_path):
+            shutil.rmtree(aa_out_path)
+        if os.path.exists(nt_out_path):    
+            shutil.rmtree(nt_out_path)
 
     os.makedirs(aa_out_path, exist_ok=True)
     os.makedirs(nt_out_path, exist_ok=True)
