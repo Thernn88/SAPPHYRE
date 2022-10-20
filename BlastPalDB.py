@@ -62,13 +62,14 @@ class GeneConfig:  # FIXME: I am not certain about types.
 
 def do(
     gene_conf: GeneConfig,
+    verbose: bool,
     prog="blastp",
 ):
     if (
         not os.path.exists(gene_conf.blast_file_done)
         or os.path.getsize(gene_conf.blast_file_done) == 0
     ):
-        print("Blasted:", gene_conf.gene)
+        printv("Blasted: {}".format(gene_conf.gene), verbose)
         with open(gene_conf.fa_file, "w") as fp:
             fw = FastaWriter(fp)
             fw.write_file(gene_conf.gene_sequences)
@@ -177,6 +178,10 @@ def get_ref_taxon_for_genes(set_id, orthoset_db_con):
 
     return result
 
+def printv(msg, verbosity):
+    if verbosity:
+        print(msg)
+
 def main():
     start = time()
     parser = argparse.ArgumentParser()
@@ -228,14 +233,18 @@ def main():
         default=1,
         help="Number of threads used to call processes.",
     )
+    parser.add_argument("-v", "--verbose", default=1, type=int, help="Verbose debug.")
     args = parser.parse_args()
 
-    print("Grabbing Reference data from SQL.")
+    
 
     input_path = args.input
     orthoset = args.orthoset
     orthosets_dir = args.orthoset_input
 
+    taxa = os.path.basename(input_path)
+    printv('Begin BlastPal for {}'.format(taxa), args.verbose)
+    printv("Grabbing Reference data from SQL.", args.verbose)
     # make dirs
     blast_path = os.path.join(input_path, "blast")
     if args.overwrite:
@@ -262,7 +271,7 @@ def main():
 
     blast_db_path = os.path.join(orthosets_dir, orthoset, "blast", orthoset)
 
-    print("Done! Took {:.2f}s. Grabbing HMM data from db.".format(time()-sql_start))
+    printv("Done! Took {:.2f}s. Grabbing HMM data from DB".format(time()-sql_start), args.verbose)
 
     db_path = os.path.join(input_path, "rocksdb", "hits")
     db = wrap_rocks.RocksDB(db_path)
@@ -291,10 +300,10 @@ def main():
 
     genes = list(gene_to_hits.keys())
 
-    print(
-        "Grabbed HMM Data. Took: {:.2f}s. Grabbed {} hits.".format(
+    printv(
+        "Grabbed HMM Data. Took: {:.2f}s. Found {} hits".format(
             time() - grab_hmm_start, hit_count
-        )
+        ), args.verbose
     )
 
     del global_hmm_object_raw
@@ -314,7 +323,8 @@ def main():
                     blast_db_path=blast_db_path,
                     blast_minimum_score=args.blast_minimum_score,
                     blast_minimum_evalue=args.blast_minimum_evalue,
-                )
+                ),
+                args.verbose
             )
             for gene in genes
         ]
@@ -329,17 +339,18 @@ def main():
                 blast_db_path=blast_db_path,
                 blast_minimum_score=args.blast_minimum_score,
                 blast_minimum_evalue=args.blast_minimum_evalue,
-            ),)
+            ),
+            args.verbose,)
             for gene in genes
         ]
 
         with Pool(num_threads) as pool:
             to_write = pool.starmap(do, arguments, chunksize=1)
 
-    print(
-        "Got Blast Results. Took: {:.2f}s. Writing to DB.".format(
+    printv(
+        "Got Blast Results. Took {:.2f}s. Writing to DB".format(
             time() - blast_start
-        )
+        ), args.verbose
     )
 
     write_start = time()
@@ -350,11 +361,9 @@ def main():
             db.put(key, data)
             i += count
 
-    print(
-        "Done. Took {:.2f}s overall. Writing {} results took {:.2f}s.".format(
-            time() - start, i, time() - write_start
-        )
-    )
+    printv("Writing {} results took {:.2f}s".format(i, time() - write_start), args.verbose)
+
+    print("Done. Took {:.2f}s overall".format(time() - start))
 
 
 if __name__ == "__main__":
