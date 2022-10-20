@@ -503,7 +503,7 @@ def hmm_search(
 
 def printv(msg, verbosity):
     if verbosity:
-        printv(msg)
+        print(msg)
 
 def main(argv):
     global sequences_db_conn
