@@ -4,11 +4,15 @@ TODO
 PrepareDB.py
   1. Incorporate HammingDist dedupe
   2. Benchmark Dedupe code & Fasta read/write in rust.
+  3. Move the dup hits table from sequences DB to hits DB? 
   ==============Low Priority  
-  3. Incorporate .fastq/.fq.gz extraction
-  4. Regex taxa filenames so they don't bork the script.
-  5. Allow path to maintain sequence ID for references.
+  4. Incorporate .fastq/.fq.gz extraction
+  5. Regex taxa filenames so they don't bork the script.
+  6. Allow path to maintain sequence ID for references.
   
+BlastPalDB.py
+  1. Why is grabbing blast results so slow. Investigate.
+
 ReporterDB.py
   1. Incorporate HamDups into Exonerate.
   
@@ -20,9 +24,6 @@ OutlierCheck.py
   
 CrossContamination.py
   1. TODO
-  
-MergeAll.py
-  1. Incorporate AA dupes into MergeOverlap code
   
 MergeGenes.py 
   1. Refactor

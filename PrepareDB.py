@@ -78,6 +78,7 @@ def translate(in_path, out_path, translate_program = "fastatranslate", genetic_c
     os.system(
             f"{translate_program} --geneticcode {genetic_code} '{in_path}' > '{out_path}'"
         )
+    os.remove(in_path)
 
 def main(argv):
     trim_time = 0
@@ -140,7 +141,6 @@ def main(argv):
     os.makedirs(secondary_directory, exist_ok=True)
 
     taxa_runs = {}
-    rev_comp_save = {}
 
     # Scan all the files in the input. Remove _R# and merge taxa
     for file in os.listdir(args.input):
@@ -186,6 +186,7 @@ def main(argv):
         )
 
         duplicates = {}
+        rev_comp_save = {}
         transcript_mapped_to = {}
         dupes = count()
         this_index = 1
@@ -298,11 +299,11 @@ def main(argv):
                     else:
                         transcript_mapped_to[seq] = header
                     out_lines.append(">"+header+"\n"+seq+"\n")
-            os.remove(prepare_file)
             os.remove(translate_file)
 
         if args.keep_prepared:
             open(prot_path,'w').writelines(out_lines)
+            
         aa_dupes = next(aa_dupe_count)
         printv("AA dedupe took {:.2f}s. Kicked {} dupes".format(time()-aa_dedupe_time, aa_dupes), args.verbose)
 

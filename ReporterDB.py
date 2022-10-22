@@ -1022,7 +1022,7 @@ if __name__ == "__main__":
     if 2 in verbose:
         T_hmmresults = time()
         print(
-            "Got referenca taxa in set. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing hmmresults".format(
+            "Got reference taxa in set. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing hmmresults".format(
                 time() - T_global_start, time() - T_reference_taxa
             )
         )
