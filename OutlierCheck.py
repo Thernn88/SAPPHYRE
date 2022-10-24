@@ -395,8 +395,8 @@ def main_process(
     sort: str,
     nt_output_path: str,
 ):
-     taxa_start = time()
-     keep_refs = not args_references
+
+    keep_refs = not args_references
 
     file_input = args_input
     filename = os.path.basename(file_input)
@@ -461,8 +461,7 @@ def main_process(
                 for i in range(0, len(non_empty_lines), 2):
                     nt_output_handle.write(non_empty_lines[i])
                     nt_output_handle.write(non_empty_lines[i + 1])
-    taxa_time = time() - taxa_start
-    print(f"Finished {args_input} in {taxa_time:.3f} seconds")
+
 
 def run_command(arg_tuple: tuple) -> None:
     input, nt_input, output, threshold, references_args, sort, nt = arg_tuple
@@ -577,11 +576,10 @@ if __name__ == "__main__":
                                 global_csv.write(line)
                                 if line[-1] != "\n":
                                     global_csv.write("\n")
-            #time_taken = time()
-            #time_taken = round(time_taken - start)
+            time_taken = time()
+            time_taken = round(time_taken - start)
 
             print(f"Finished in {time_taken} seconds")
 
         else:
             print(f"Can't find aa folder for taxa {taxa}")
-    print(f'Run finished. Total time {time() - start:.3f}')
