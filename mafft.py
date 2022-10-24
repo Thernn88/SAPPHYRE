@@ -12,7 +12,7 @@ def run_command(arg_tuple: tuple) -> None:
     else:
         print(gene)
 
-    ref_og_hashmap = {}
+    ref_og_hashmap = {} #Original headers
 
     tmp_gene_file = os.path.join(temp_folder,gene+'.tmp')
     with open(tmp_gene_file, "w") as fp_out, open(gene_file) as fp_in:
@@ -28,6 +28,8 @@ def run_command(arg_tuple: tuple) -> None:
 
     os.remove(tmp_gene_file)
 
+    ref_new_hashmap = {} #New sequences
+
     # Overwrite reference headers with original headers
     non_ref_found = False
     with open(result_file, "r+") as fp_out:
@@ -38,12 +40,18 @@ def run_command(arg_tuple: tuple) -> None:
                     non_ref_found = True
                     out.append(line)
                 else:
-                    out.append(ref_og_hashmap[line[1:].strip()])
+                    ref_new_hashmap[line[1:].strip()] = next(fp_out)
             else:
                 out.append(line)
 
+        reference_out = []
+        for taxa_id, original_header in ref_og_hashmap.items(): #Hashmap is also in order
+            aligned_sequence = ref_new_hashmap[taxa_id]
+            reference_out.append(original_header)
+            reference_out.append(aligned_sequence)
+
         fp_out.seek(0)
-        fp_out.writelines(out)
+        fp_out.writelines(reference_out + out)
         fp_out.truncate()
 
 
@@ -76,17 +84,17 @@ aln_folder = "aln"
 
 aln_path = os.path.join(args.orthoset_input, args.orthoset, aln_folder)
 
+delete_on_exit = False
 if os.path.exists("/run/shm"):
     tmp_dir = "/run/shm"
 elif os.path.exists("/dev/shm"):
     tmp_dir = "/dev/shm"
 else:
+    delete_on_exit = True
     tmp_dir = args.input
 
 temp_folder = os.path.join(tmp_dir, "tmp")
-delete_on_exit = False
 if not os.path.exists(temp_folder):
-    delete_on_exit = True
     os.makedirs(temp_folder, exist_ok=True)
 
 
