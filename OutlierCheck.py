@@ -395,8 +395,8 @@ def main_process(
     sort: str,
     nt_output_path: str,
 ):
-    taxa_start = time()
-    keep_refs = not args_references
+     taxa_start = time()
+     keep_refs = not args_references
 
     file_input = args_input
     filename = os.path.basename(file_input)
