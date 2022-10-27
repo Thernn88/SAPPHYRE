@@ -12,7 +12,7 @@ from multiprocessing.pool import Pool
 from itertools import combinations
 from time import time
 import numpy as np
-import blosum_distance as bd
+import phymmr_tools as bd
 
 class Record:
     def __init__(self, head, seq, raw_seq=None):
