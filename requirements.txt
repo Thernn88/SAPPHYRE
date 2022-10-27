@@ -3,4 +3,4 @@ numpy>=1.23.3
 tqdm>=4.64.1
 wrap_rocks>=0.3.1
 xxhash>=3.0.0
-tqdm>=0.24
+phymmr_tools>=0.24
