@@ -8,7 +8,7 @@ from shutil import rmtree
 from sys import argv
 from time import time
 from multiprocessing.pool import Pool
-import blosum_distance
+import phymmr_tools
 import wrap_rocks
 import xxhash
 from Bio.SeqIO.FastaIO import SimpleFastaParser
