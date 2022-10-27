@@ -227,7 +227,7 @@ def main(argv):
                     if seq in rev_comp_save:
                         rev_seq = rev_comp_save[seq]
                     else:
-                        rev_seq = blosum_distance.bio_revcomp(seq)
+                        rev_seq = phymmr_tools.bio_revcomp(seq)
                         rev_comp_save[seq] = rev_seq
 
                     # Check for revcomp dupe, if so save how many times that sequence occured
