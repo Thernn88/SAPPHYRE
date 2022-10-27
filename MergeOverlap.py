@@ -427,7 +427,7 @@ def do_protein(
 
                 new_merge.append(next_character)
 
-        new_merge.extend(["-"] * (trailing_end - data_end))
+        new_merge.extend(["-"] * (trailing_end - data_end - 1))
 
         # Doing MR Outlier Check
         #
