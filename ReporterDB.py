@@ -1,5 +1,5 @@
 import argparse
-from audioop import reverse
+#from audioop import reverse
 import json
 import math
 import os
@@ -10,7 +10,7 @@ from multiprocessing.pool import Pool
 from time import time
 from typing import List
 
-import blosum_distance
+import phymmr_tools
 import wrap_rocks
 import xxhash
 from Bio.Seq import Seq
@@ -290,7 +290,7 @@ def get_reference_sequence(hit_id, orthoset_db_con):
 
 
 def reverse_complement(nt_seq):
-    return blosum_distance.bio_revcomp(nt_seq)
+    return phymmr_tools.bio_revcomp(nt_seq)
 
 
 def get_nucleotide_transcript_for(header):
