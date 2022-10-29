@@ -7,7 +7,7 @@ moment of writing, I do not know which additional libraries are needed (please c
 me later).
 
 	~$ apt install build-essential
-	-$ apt install libboost-all-dev  # may not be needed
+	~$ apt install libboost-all-dev  # may not be needed
 
 For regular python:
 
