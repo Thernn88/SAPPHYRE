@@ -1,5 +1,4 @@
 import argparse
-#from audioop import reverse
 import json
 import math
 import os
@@ -544,14 +543,15 @@ def print_unmerged_sequences(
 ):
     result = []
     kicks_result = set()
+    exact_hit_mapped_already = set()
     for i, hit in enumerate(hits):
-        this_hdr, rf = get_rf(hit.header)
+        base_header, rf = get_rf(hit.header)
 
         header = format_candidate_header(
             orthoid,
             hit.reftaxon,
             taxa_id,
-            this_hdr,
+            base_header,
             rf,
         )
 
@@ -574,9 +574,14 @@ def print_unmerged_sequences(
                 if hit.extended_orf_aa_sequence is not None
                 else hit.orf_aa_sequence
             )
-            if len(seq) - seq.count("-") > minimum_seq_data_length:
+
+            seq = seq.replace('\n','')
+            unique_hit = base_header+seq
+
+            if not unique_hit in exact_hit_mapped_already and len(seq) - seq.count("-") > minimum_seq_data_length:
                 result.append(">" + header + "\n")
                 result.append(seq + "\n")
+                exact_hit_mapped_already.add(unique_hit)
             else:
                 kicks_result.add(i)
     return kicks_result, result
