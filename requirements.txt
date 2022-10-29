@@ -4,3 +4,4 @@ tqdm>=4.64.1
 wrap_rocks>=0.3.1
 xxhash>=3.0.0
 phymmr_tools>=0.24
+pro2codon>=1.2.4
