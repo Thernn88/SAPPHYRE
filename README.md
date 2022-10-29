@@ -1,6 +1,27 @@
 # PhyMMR
 
-Requirements
+## Development setup
+
+Some dependencies requires a c++ toolset installed, plus various libraries. At the
+moment of writing, I do not know which additional libraries are needed (please complete
+me later).
+
+	~$ apt install build-essential
+	~$ apt install libboost-all-dev  # may not be needed
+
+For regular python:
+
+	~$ virtualenv venv
+	~$ source venv/bin/activate
+	~$ pip install -r requirements.txt
+
+For pypy:
+
+	~$ virtualenv -p $(command -v pypy) venv
+	~$ source venv/bin/activate
+	~$ pip install -r requirements.txt
+
+## Requirements
 	
 	Externals
 	Mafft 7.489+ https://mafft.cbrc.jp/alignment/software/ sudo apt install mafft
@@ -19,28 +40,25 @@ Requirements
 			itertools
 			bio
 			xxhash
-			
+
+## Usage
+
+All scripts are located in the phymmr directory. You can call them using
+`python phymmr/<scriptname>.py`.
+
 Data Generation Scripts in order of use
 
-	PrepareDB.py
-
-	HmmsearchDB.py
-
-	BlastPalDB.py
-
-	ReporterDB.py
-
+1. PrepareDB.py
+2. HmmsearchDB.py
+3. BlastPalDB.py
+4. ReporterDB.py
 
 Post-Processing Scripts in order of use
 
-	mafft.py
-
-	nt_batch.py
-
-	FlexCull.py (Not Recommended / Optional for Transcriptome input)
-
-	OutlierCheck.py
-	
-	MergeOverlap.py
+1. mafft.py
+2. nt_batch.py
+3. FlexCull.py (Not Recommended / Optional for Transcriptome input)
+4. OutlierCheck.py
+5. MergeOverlap.py
 
 TO FINISH
