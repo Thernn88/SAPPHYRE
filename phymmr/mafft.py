@@ -62,7 +62,7 @@ parser.add_argument(
     "-oi",
     "--orthoset_input",
     type=str,
-    default="orthosets",
+    default="PhyMMR/orthosets",
     help="Path to directory of Orthosets folder",
 )
 parser.add_argument(
