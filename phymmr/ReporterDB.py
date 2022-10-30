@@ -679,9 +679,9 @@ def run_exonerate(arg_tuple: ExonerateArgs):
 def exonerate_gene_multi(eargs: ExonerateArgs):
     T_gene_start = time()
 
-    orthoset_db_con = sqlite3.connect(args.orthoset_db_path)
+    orthoset_db_con = sqlite3.connect(eargs.orthoset_db_path)
 
-    if args.exonerate_verbose:
+    if eargs.exonerate_verbose:
         print("Exonerating and doing output for: ", eargs.orthoid)
     reftaxon_related_transcripts = {}
     reftaxon_to_proteome_sequence = {}
