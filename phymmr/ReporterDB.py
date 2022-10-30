@@ -1112,44 +1112,33 @@ if __name__ == "__main__":
     exonerate_verbose = 3 in verbose
     T_exonerate_genes = time()
 
-    orthoid_in_seq_order = list(transcripts_mapped_to.items())
-    orthoid_in_seq_order.sort(key = lambda x : len(x[1]), reverse=True)
-
-    # Disperse into reftaxons
-    if num_threads == 1:
-        for orthoid, list_of_hits in orthoid_in_seq_order:
-            exonerate_gene_multi(
-                orthoid,
-                list_of_hits,
-                orthoset_db_path,
-                min_score,
-                orthoset_id,
-                aa_out_path,
-                min_length,
-                taxa_id,
-                nt_out_path,
-                tmp_path,
-                exonerate_verbose,
-            )
-
-    else:
+    if num_threads > 1:
         arguments = list()
-        for orthoid, list_of_hits in orthoid_in_seq_order:
-            arguments.append(
-                (
-                    orthoid,
-                    list_of_hits,
-                    orthoset_db_path,
-                    min_score,
-                    orthoset_id,
-                    aa_out_path,
-                    min_length,
-                    taxa_id,
-                    nt_out_path,
-                    tmp_path,
-                    exonerate_verbose,
-                )
-            )
+        func = arguments.append
+    else:
+        func = exonerate_gene_multi
+
+    # this sorting the list so that the ones with the most hits are first
+    for orthoids in sorted(
+        transcripts_mapped_to,
+        key=lambda k: len(transcripts_mapped_to[k]),
+        reverse=True
+    ):
+        func(
+            orthoid,
+            list_of_hits,
+            orthoset_db_path,
+            min_score,
+            orthoset_id,
+            aa_out_path,
+            min_length,
+            taxa_id,
+            nt_out_path,
+            tmp_path,
+            exonerate_verbose,
+        )
+
+    if num_threads != 1:
         with Pool(num_threads) as pool:
             pool.map(run_exonerate, arguments, chunksize=1)
 
