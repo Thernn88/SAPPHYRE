@@ -501,19 +501,440 @@ def hmm_search(
     hits = search_prot(prot, domtbl_path, hmm_file, evalue, score, ovw, verbose)
     return hits
 
-def printv(msg, verbosity):
+def printv(msg, verbosity) -> None:
     if verbosity:
         print(msg)
 
+
+def run_process(args, input_path: str) -> None:
+    """
+    Runs the hmmsearch process on an individual input path.
+    Allows the use of nargs in main().
+    """
+    MAX_HMM_BATCH_SIZE = args.max_hmm_batch_size
+    debug = args.debug != 0
+    score_diff_multi = args.score_diff_multi
+    min_overlap_multi = args.min_overlap_multi
+    score_diff_internal = args.score_diff_internal
+    min_overlap_internal = args.min_overlap_internal
+
+    num_threads = args.processes
+    global_start = time()
+    if os.path.exists("/run/shm"):
+        in_ram = "/run/shm"
+    else:
+        in_ram = "/dev/shm"
+    # temp_dir = os.path.join(input_path, "tmp")
+    temp_dir = os.path.join(in_ram, "tmp")
+    if not os.path.exists(temp_dir):
+        os.mkdir(temp_dir)
+
+    # get ortholog
+    ortholog = os.path.basename(input_path).split(".")[0]
+
+    # if database not set, make expected path to database
+    db_path = os.path.join(input_path, "rocksdb")
+    sequences_path = os.path.join(db_path, "sequences")
+    hits_path = os.path.join(db_path, "hits")
+
+    sequences_db_conn = wrap_rocks.RocksDB(sequences_path)
+
+    # path to domtbl directory
+    domtbl_dir = os.path.join(input_path, "hmmsearch")
+
+    os.makedirs(domtbl_dir, exist_ok=True)
+
+    # path to .hmm file directory
+    orthoset_dir = os.path.join(args.orthoset_input, args.orthoset)
+    hmm_dir = os.path.join(orthoset_dir, "hmms")
+
+    # make a set of excluded orthologs if argument was included
+    excluded = set()
+    if args.excluded_list:
+        excluded = make_exclusion_list(args.excluded_list)
+
+    # make a set of wanted orthologs if argument was included
+    wanted = set()
+    if args.wanted_list:
+        wanted = make_exclusion_list(args.wanted_list)
+
+    # make a list of valid ortholog names, excluded hidden files
+    printv("Finding hmm files", args.verbose)
+    hmm_list = [
+        hmm for hmm in os.listdir(hmm_dir) if ".hmm" in hmm and hmm not in excluded
+    ]
+    if wanted:
+        hmm_list = [hmm for hmm in hmm_list if hmm.split(".")[0] in wanted]
+
+    hmm_list.sort()
+
+    # rejoin file names with directory path
+    hmm_list = [os.path.join(hmm_dir, hmm) for hmm in hmm_list]
+
+    # make protfile for hmm_search later
+    printv("Checking protfile", args.verbose)
+
+    protfile = make_temp_protfile(
+        ortholog, temp_dir, args.remake_protfile, args.verbose
+    )
+
+    start = time()
+    hmm_results = []  # list of lists containing Hit objects
+
+    if num_threads > 1:
+        arg_tuples = []
+        for hmm in hmm_list:
+            arg_tuples.append(
+                (hmm, domtbl_dir, args.evalue, args.score, protfile, args.overwrite, args.verbose,)
+            )
+        with Pool(num_threads) as search_pool:
+            hmm_results = search_pool.starmap(hmm_search, arg_tuples)
+    else:
+        for hmm in hmm_list:
+            hmm_results.append(
+                hmm_search(hmm, domtbl_dir, args.evalue, args.score, protfile, args.overwrite, args.verbose))
+
+    printv("Search time: {:.2f}".format(time() - start), args.verbose)
+
+    filter_start = time()
+
+    f_duplicates = {}
+    gene_based_results = {}
+    header_based_results = {}
+    count = 0
+
+    # Disperse hits into genes
+    for hit_group in hmm_results:
+        for hit in hit_group:
+            count += 1
+            this_gene = hit.gene
+            if this_gene not in gene_based_results:
+                gene_based_results[this_gene] = []
+
+            hit.uuid = hit.header + f"_hit_{count}"
+
+            gene_based_results[this_gene].append(hit)
+
+    printv(f"Filtering {count} hits", args.verbose)
+
+    printv('Doing multi-gene dupe filter. Searching for duplicates', args.verbose)
+    required_internal_multi_genes = {}
+    rimg_set = set()
+
+    for gene in gene_based_results:
+        this_gene_baseheaders = set()
+        requires_internal_multi_filter = {}
+        this_requires = False
+
+        for hit in gene_based_results[gene]:
+            if "revcomp" in hit.header:
+                base_header = hit.base_header
+                raw_length = int(base_header.split("_length_")[1]) / 3
+                length = math.floor(raw_length)
+
+                new_env_start = length - int(hit.env_end)
+                new_env_end = length - int(hit.env_start)
+                hit.env_start = new_env_start
+                hit.env_end = new_env_end
+
+            if hit.header not in f_duplicates:
+                f_duplicates[hit.header] = []
+            if hit.header not in header_based_results:
+                header_based_results[hit.header] = []
+            if hit.base_header not in this_gene_baseheaders:
+                this_gene_baseheaders.add(hit.base_header)
+            else:
+                requires_internal_multi_filter[hit.base_header] = True  # As a dict to avoid dupe headers
+                this_requires = True
+
+            f_duplicates[hit.header].append(hit)
+            header_based_results[hit.header].append(hit)
+
+        if this_requires:
+            required_internal_multi_genes[gene] = list(requires_internal_multi_filter.keys())
+            rimg_set.add(gene)  # Used for internal sort
+
+    headers = list(f_duplicates.keys())
+    possible_dupes = 0
+    for header in headers:
+        if len(f_duplicates[header]) > 1:
+            unique_genes = list(
+                dict.fromkeys([i.gene for i in f_duplicates[header]])
+            )
+            if len(unique_genes) <= 1:  # But the same gene
+                f_duplicates.pop(header)
+            else:
+                possible_dupes += len(f_duplicates[header])
+        else:
+            f_duplicates.pop(header)
+
+    for header_left in f_duplicates:
+        header_based_results[header_left] = []
+
+    printv(
+        'Found {} potential dupes. Search took {:.2f}s. Filtering dupes'.format(possible_dupes, time() - filter_start),
+        args.verbose)
+
+    if debug:
+        filtered_sequences_log = []
+
+    if num_threads == 1:
+        for header in f_duplicates:
+            this_hits = f_duplicates[header]
+            data = multi_filter_dupes(
+                this_hits,
+                debug,
+                min_overlap_multi,
+                score_diff_multi,
+            )
+
+            if debug:
+                filtered_sequences_log.extend(data["Log"])
+            header_based_results[data["Remaining"][0].header] = data["Remaining"]
+
+    else:
+        arguments = []
+        for header in f_duplicates:
+            this_hits = f_duplicates[header]
+            arguments.append(
+                (
+                    this_hits,
+                    debug,
+                    min_overlap_multi,
+                    score_diff_multi,
+                )
+            )
+
+        with Pool(num_threads) as pool:
+            multi_data = pool.starmap(multi_filter_dupes, arguments, chunksize=1)
+
+        for data in multi_data:
+            if debug:
+                filtered_sequences_log.extend(data["Log"])
+            header_based_results[data["Remaining"][0].header] = data["Remaining"]
+
+    printv('Done! Took {:.2f}s'.format(time() - filter_start), args.verbose)
+    internal_multi_start = time()
+
+    transcripts_mapped_to = {}
+
+    for header in header_based_results:
+        for match in header_based_results[header]:
+            if match.gene not in transcripts_mapped_to:
+                transcripts_mapped_to[match.gene] = []
+            transcripts_mapped_to[match.gene].append(match)
+
+    printv('Looking for internal duplicates over {} flagged genes'.format(len(required_internal_multi_genes)),
+           args.verbose)
+
+    if num_threads == 1:
+        internal_multi_data = []
+        for gene in required_internal_multi_genes:
+            if gene in transcripts_mapped_to:
+                this_gene_transcripts = transcripts_mapped_to[gene]
+                check_headers = required_internal_multi_genes[gene]
+                internal_multi_data.append(  #
+                    internal_multi_filter(
+                        check_headers,
+                        this_gene_transcripts,
+                        args.minimum_overlap_internal_multi,
+                        debug,
+                        gene,
+                    )
+                )
+
+    else:
+        arguments = []
+        for gene in required_internal_multi_genes:
+            if gene in transcripts_mapped_to:
+                this_gene_transcripts = transcripts_mapped_to[gene]
+                check_headers = required_internal_multi_genes[gene]
+                arguments.append(
+                    (
+                        check_headers,
+                        this_gene_transcripts,
+                        args.minimum_overlap_internal_multi,
+                        debug,
+                        gene,
+                    )
+                )
+        with Pool(num_threads) as pool:
+            internal_multi_data = pool.starmap(internal_multi_filter, arguments, chunksize=1)
+
+    for data in internal_multi_data:
+        gene = data["Gene"]
+
+        transcripts_mapped_to[gene] = data["Passes"]
+        if debug:
+            filtered_sequences_log.extend(data["Log"])
+
+    printv('Done! Took {:.2f}s'.format(time() - internal_multi_start), args.verbose)
+    internal_start = time()
+
+    printv('Doing internal overlap filter', args.verbose)
+
+    total_hits = 0
+    if num_threads == 1:
+        internal_data = []
+        for gene in transcripts_mapped_to:
+            this_gene_transcripts = transcripts_mapped_to[gene]
+            sort = gene not in rimg_set
+            internal_data.append(
+                internal_filter_gene(
+                    this_gene_transcripts,
+                    gene,
+                    min_overlap_internal,
+                    score_diff_internal,
+                    debug,
+                    sort
+                )
+            )
+    else:
+        arguments = []
+        for gene in transcripts_mapped_to:
+            this_gene_transcripts = transcripts_mapped_to[gene]
+            sort = gene not in rimg_set
+            arguments.append(
+                (
+                    this_gene_transcripts,
+                    gene,
+                    min_overlap_internal,
+                    score_diff_internal,
+                    debug,
+                    sort
+                )
+            )
+        with Pool(num_threads) as pool:
+            internal_data = pool.starmap(internal_filter_gene, arguments, chunksize=1)
+
+    transcripts_mapped_to = {}
+    for data in internal_data:
+        gene = data["Gene"]
+
+        if gene not in transcripts_mapped_to:
+            transcripts_mapped_to[gene] = []
+
+        transcripts_mapped_to[gene] = data["Passes"]
+        total_hits += len(data["Passes"])
+        if debug:
+            filtered_sequences_log.extend(data["Log"])
+
+    if debug:
+        filtered_sequences_log_out = []
+        for line in filtered_sequences_log:
+            filtered_sequences_log_out.append(",".join(line) + "\n")
+
+        filtered_sequences_log_path = os.path.join(input_path, "filtered-hits.csv")
+        with open(filtered_sequences_log_path, "w") as fp:
+            fp.writelines(filtered_sequences_log_out)
+
+    printv('Done! Took {:.2f}s'.format(time() - internal_start), args.verbose)
+    printv('Filtering took {:.2f}s overall'.format(time() - filter_start), args.verbose)
+
+    # Grab the seq dict
+    sequence_dict = {}
+    start = time()
+    header = None
+    with open(protfile) as prot_file_handle:
+        fasta_file = SimpleFastaParser(prot_file_handle)
+        for header, sequence in fasta_file:
+            sequence_dict[header] = sequence
+
+    if os.path.exists(protfile):
+        os.remove(protfile)
+
+    printv('Read prot file in {:.2f}s'.format(time() - start), args.verbose)
+
+    end = time()
+
+    # Seperate hmm hits into seperate levels
+    global_hmm_obj_recipe = []
+    current_batch = []
+    current_hit_count = 1
+    hit_id = 0
+    batch_i = 0
+
+    hits_db_conn = wrap_rocks.RocksDB(hits_path)
+
+    dupe_counts = json.loads(sequences_db_conn.get("getall:dupes"))
+    dupes_per_gene = {}
+
+    for gene in transcripts_mapped_to:
+        dupe_count_divvy = {}
+
+        for hit in transcripts_mapped_to[gene]:
+            if hit.header in sequence_dict:
+                # Make dupe count gene based
+                if hit.base_header in dupe_counts:  # NT Dupe
+                    dupe_count_divvy[hit.base_header] = dupe_counts[hit.base_header]
+                if hit.header in dupe_counts:  # AA Dupe
+                    dupe_count_divvy[hit.header] = dupe_counts[hit.header]
+
+                hit_id += 1
+                hit.hmm_sequence = "".join(sequence_dict[hit.header])
+                hit.hmm_id = hit_id
+                if current_hit_count >= MAX_HMM_BATCH_SIZE:
+                    data = json.dumps(current_batch)
+                    del current_batch
+
+                    key = f'hmmbatch:{batch_i}'
+
+                    global_hmm_obj_recipe.append(str(batch_i))
+
+                    batch_i += 1
+
+                    hits_db_conn.put(key, data)
+
+                    del data
+                    current_batch = []
+                    current_hit_count = 1
+
+                current_batch.append(hit.to_json())
+                current_hit_count += 1
+
+        if len(dupe_count_divvy) > 1:
+            dupes_per_gene[gene] = dupe_count_divvy
+    key = "getall:gene_dupes"
+    data = json.dumps(dupes_per_gene)
+    sequences_db_conn.put(key, data)
+
+    del sequence_dict
+
+    if current_batch:
+        data = json.dumps(current_batch)
+        key = f'hmmbatch:{batch_i}'
+
+        global_hmm_obj_recipe.append(str(batch_i))
+
+        hits_db_conn.put(key, data)
+
+    del current_batch
+
+    # insert key to grab all hmm objects into the database
+
+    key = 'hmmbatch:all'
+    data = ','.join(global_hmm_obj_recipe)
+
+    hits_db_conn.put(key, data)
+
+    db_end = time()
+    printv("Inserted {} hits over {} batch(es) in {:.2f} seconds. Kicked {} hits during filtering".format(total_hits,
+                                                                                                          len(global_hmm_obj_recipe),
+                                                                                                          db_end - end,
+                                                                                                          count - total_hits),
+           args.verbose)
+    print("Took {:.2f}s overall".format(time() - global_start))
+
+
 def main(argv):
     global sequences_db_conn
-    global_start = time()
+    # global_start = time()
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-i",
-        "--input",
-        default="PhyMMR/Acroceridae/SRR6453524.fa",
+        "INPUT",
         help="Path to input directory.",
+        action="extend",
+        nargs="+"
     )
     parser.add_argument(
         "-oi",
@@ -614,416 +1035,10 @@ def main(argv):
     parser.add_argument("-d", "--debug", type=int, default=0, help="Output debug logs.")
 
     args = parser.parse_args()
+    for input_path in args.INPUT:
+        printv('Begin Hmmsearch for {}'.format(os.path.basename(input_path)), args.verbose)
+        run_process(args, input_path)
 
-    taxa = os.path.basename(args.input)
-    printv('Begin Hmmsearch for {}'.format(taxa), args.verbose)
 
-    MAX_HMM_BATCH_SIZE = args.max_hmm_batch_size
-    debug = args.debug != 0
-    score_diff_multi = args.score_diff_multi
-    min_overlap_multi = args.min_overlap_multi
-    score_diff_internal = args.score_diff_internal
-    min_overlap_internal = args.min_overlap_internal
-
-    num_threads = args.processes
-   
-    if os.path.exists("/run/shm"):
-        in_ram = "/run/shm"
-    else:
-        in_ram = "/dev/shm"
-    # temp_dir = os.path.join(args.input, "tmp")
-    temp_dir = os.path.join(in_ram, "tmp")
-    if not os.path.exists(temp_dir):
-        os.mkdir(temp_dir)
-
-    # get ortholog
-    ortholog = os.path.basename(args.input).split(".")[0]
-
-    # if database not set, make expected path to database
-    db_path = os.path.join(args.input, "rocksdb")
-    sequences_path = os.path.join(db_path, "sequences")
-    hits_path = os.path.join(db_path, "hits")
-
-    sequences_db_conn = wrap_rocks.RocksDB(sequences_path)
-
-    # path to domtbl directory
-    domtbl_dir = os.path.join(args.input, "hmmsearch")
-
-    os.makedirs(domtbl_dir, exist_ok=True)
-
-    # path to .hmm file directory
-    orthoset_dir = os.path.join(args.orthoset_input, args.orthoset)
-    hmm_dir = os.path.join(orthoset_dir, "hmms")
-
-    # make a set of excluded orthologs if argument was included
-    excluded = set()
-    if args.excluded_list:
-        excluded = make_exclusion_list(args.excluded_list)
-
-    # make a set of wanted orthologs if argument was included
-    wanted = set()
-    if args.wanted_list:
-        wanted = make_exclusion_list(args.wanted_list)
-
-    # make a list of valid ortholog names, excluded hidden files
-    printv("Finding hmm files", args.verbose)
-    hmm_list = [
-        hmm for hmm in os.listdir(hmm_dir) if ".hmm" in hmm and hmm not in excluded
-    ]
-    if wanted:
-        hmm_list = [hmm for hmm in hmm_list if hmm.split(".")[0] in wanted]
-
-    hmm_list.sort()
-
-    # rejoin file names with directory path
-    hmm_list = [os.path.join(hmm_dir, hmm) for hmm in hmm_list]
-
-    # make protfile for hmm_search later
-    printv("Checking protfile", args.verbose)
-
-    protfile = make_temp_protfile(
-        ortholog, temp_dir, args.remake_protfile, args.verbose
-    )
-
-    start = time()
-    hmm_results = []  # list of lists containing Hit objects
-
-    if num_threads > 1:
-        arg_tuples = []
-        for hmm in hmm_list:
-            arg_tuples.append(
-                (hmm, domtbl_dir, args.evalue, args.score, protfile, args.overwrite, args.verbose,)
-            )
-        with Pool(num_threads) as search_pool:
-            hmm_results = search_pool.starmap(hmm_search, arg_tuples)
-    else:
-        for hmm in hmm_list:
-            hmm_results.append(hmm_search(hmm, domtbl_dir, args.evalue, args.score, protfile, args.overwrite, args.verbose))
-
-    printv("Search time: {:.2f}".format(time() - start), args.verbose)
-
-    filter_start = time()
-
-    f_duplicates = {}
-    gene_based_results = {}
-    header_based_results = {}
-    count = 0
-
-    # Disperse hits into genes
-    for hit_group in hmm_results:
-        for hit in hit_group:
-            count += 1
-            this_gene = hit.gene
-            if this_gene not in gene_based_results:
-                gene_based_results[this_gene] = []
-
-            hit.uuid = hit.header + f"_hit_{count}"
-
-            gene_based_results[this_gene].append(hit)
-
-    printv(f"Filtering {count} hits", args.verbose)
-
-    printv('Doing multi-gene dupe filter. Searching for duplicates', args.verbose)
-    required_internal_multi_genes = {}
-    rimg_set = set()
-
-    for gene in gene_based_results:
-        this_gene_baseheaders = set()
-        requires_internal_multi_filter = {}
-        this_requires = False
-
-        for hit in gene_based_results[gene]:
-            if "revcomp" in hit.header:
-                base_header = hit.base_header
-                raw_length = int(base_header.split("_length_")[1]) / 3
-                length = math.floor(raw_length)
-
-                new_env_start = length - int(hit.env_end)
-                new_env_end = length - int(hit.env_start)
-                hit.env_start = new_env_start
-                hit.env_end = new_env_end
-
-            if hit.header not in f_duplicates:
-                f_duplicates[hit.header] = []
-            if hit.header not in header_based_results:
-                header_based_results[hit.header] = []
-            if hit.base_header not in this_gene_baseheaders:
-                this_gene_baseheaders.add(hit.base_header)
-            else:
-                requires_internal_multi_filter[hit.base_header] = True # As a dict to avoid dupe headers
-                this_requires = True
-
-            f_duplicates[hit.header].append(hit)
-            header_based_results[hit.header].append(hit)
-
-        if this_requires:
-            required_internal_multi_genes[gene] = list(requires_internal_multi_filter.keys())
-            rimg_set.add(gene) # Used for internal sort
-
-    headers = list(f_duplicates.keys())
-    possible_dupes = 0
-    for header in headers:
-        if len(f_duplicates[header]) > 1:
-            unique_genes = list(
-                dict.fromkeys([i.gene for i in f_duplicates[header]])
-            )
-            if len(unique_genes) <= 1:  # But the same gene
-                f_duplicates.pop(header)
-            else:
-                possible_dupes += len(f_duplicates[header])
-        else:
-            f_duplicates.pop(header)
-
-    for header_left in f_duplicates:
-        header_based_results[header_left] = []
-
-    printv('Found {} potential dupes. Search took {:.2f}s. Filtering dupes'.format(possible_dupes, time()-filter_start), args.verbose)
-
-    if debug:
-        filtered_sequences_log = []
-
-    if num_threads == 1:
-        for header in f_duplicates:
-            this_hits = f_duplicates[header]
-            data = multi_filter_dupes(
-                this_hits,
-                debug,
-                min_overlap_multi,
-                score_diff_multi,
-            )
-
-            if debug:
-                filtered_sequences_log.extend(data["Log"])
-            header_based_results[data["Remaining"][0].header] = data["Remaining"]
-
-    else:
-        arguments = []
-        for header in f_duplicates:
-            this_hits = f_duplicates[header]
-            arguments.append(
-                (
-                    this_hits,
-                    debug,
-                    min_overlap_multi,
-                    score_diff_multi,
-                )
-            )
-
-        with Pool(num_threads) as pool:
-            multi_data = pool.starmap(multi_filter_dupes, arguments, chunksize=1)
-
-        for data in multi_data:
-            if debug:
-                filtered_sequences_log.extend(data["Log"])
-            header_based_results[data["Remaining"][0].header] = data["Remaining"]
-
-    printv('Done! Took {:.2f}s'.format(time()-filter_start), args.verbose)
-    internal_multi_start = time()
-
-    transcripts_mapped_to = {}
-
-
-    for header in header_based_results:
-        for match in header_based_results[header]:
-            if match.gene not in transcripts_mapped_to:
-                transcripts_mapped_to[match.gene] = []
-            transcripts_mapped_to[match.gene].append(match)
-
-    printv('Looking for internal duplicates over {} flagged genes'.format(len(required_internal_multi_genes)), args.verbose)
-
-    if num_threads == 1:
-        internal_multi_data = []
-        for gene in required_internal_multi_genes:
-            if gene in transcripts_mapped_to:
-                this_gene_transcripts = transcripts_mapped_to[gene]
-                check_headers = required_internal_multi_genes[gene]
-                internal_multi_data.append(#
-                    internal_multi_filter(
-                        check_headers,
-                        this_gene_transcripts,
-                        args.minimum_overlap_internal_multi,
-                        debug,
-                        gene,
-                    )
-                )
-
-    else:
-        arguments = []
-        for gene in required_internal_multi_genes:
-            if gene in transcripts_mapped_to:
-                this_gene_transcripts = transcripts_mapped_to[gene]
-                check_headers = required_internal_multi_genes[gene]
-                arguments.append(
-                    (
-                        check_headers,
-                        this_gene_transcripts,
-                        args.minimum_overlap_internal_multi,
-                        debug,
-                        gene,
-                    )
-                )
-        with Pool(num_threads) as pool:
-            internal_multi_data = pool.starmap(internal_multi_filter, arguments, chunksize=1)
-
-    for data in internal_multi_data:
-        gene = data["Gene"]
-
-        transcripts_mapped_to[gene] = data["Passes"]
-        if debug:
-            filtered_sequences_log.extend(data["Log"])
-
-    printv('Done! Took {:.2f}s'.format(time()-internal_multi_start), args.verbose)
-    internal_start = time()
-
-    printv('Doing internal overlap filter', args.verbose)
-
-    total_hits = 0
-    if num_threads == 1:
-        internal_data = []
-        for gene in transcripts_mapped_to:
-            this_gene_transcripts = transcripts_mapped_to[gene]
-            sort = gene not in rimg_set
-            internal_data.append(
-                internal_filter_gene(
-                    this_gene_transcripts,
-                    gene,
-                    min_overlap_internal,
-                    score_diff_internal,
-                    debug,
-                    sort
-                )
-            )
-    else:
-        arguments = []
-        for gene in transcripts_mapped_to:
-            this_gene_transcripts = transcripts_mapped_to[gene]
-            sort = gene not in rimg_set
-            arguments.append(
-                (
-                    this_gene_transcripts,
-                    gene,
-                    min_overlap_internal,
-                    score_diff_internal,
-                    debug,
-                    sort
-                )
-            )
-        with Pool(num_threads) as pool:
-            internal_data = pool.starmap(internal_filter_gene, arguments, chunksize=1)
-
-    transcripts_mapped_to = {}
-    for data in internal_data:
-        gene = data["Gene"]
-
-        if gene not in transcripts_mapped_to:
-            transcripts_mapped_to[gene] = []
-
-        transcripts_mapped_to[gene] = data["Passes"]
-        total_hits += len(data["Passes"])
-        if debug:
-            filtered_sequences_log.extend(data["Log"])
-
-    if debug:
-        filtered_sequences_log_out = []
-        for line in filtered_sequences_log:
-            filtered_sequences_log_out.append(",".join(line) + "\n")
-
-        filtered_sequences_log_path = os.path.join(args.input, "filtered-hits.csv")
-        with open(filtered_sequences_log_path, "w") as fp:
-            fp.writelines(filtered_sequences_log_out)
-
-    printv('Done! Took {:.2f}s'.format(time()-internal_start), args.verbose)
-    printv('Filtering took {:.2f}s overall'.format(time() - filter_start), args.verbose)
-
-    # Grab the seq dict
-    sequence_dict = {}
-    start = time()
-    header = None
-    with open(protfile) as prot_file_handle:
-        fasta_file = SimpleFastaParser(prot_file_handle)
-        for header, sequence in fasta_file:
-            sequence_dict[header] = sequence
-    
-    if os.path.exists(protfile):
-        os.remove(protfile)
-
-    printv('Read prot file in {:.2f}s'.format(time()-start), args.verbose)
-
-    end = time()
-
-    # Seperate hmm hits into seperate levels
-    global_hmm_obj_recipe = []
-    current_batch = []
-    current_hit_count = 1
-    hit_id = 0
-    batch_i= 0
-
-    hits_db_conn = wrap_rocks.RocksDB(hits_path)
-
-    dupe_counts = json.loads(sequences_db_conn.get("getall:dupes"))
-    dupes_per_gene = {}
-
-    for gene in transcripts_mapped_to:
-        dupe_count_divvy= {}
-
-        for hit in transcripts_mapped_to[gene]:
-            if hit.header in sequence_dict:
-                #Make dupe count gene based
-                if hit.base_header in dupe_counts: #NT Dupe
-                    dupe_count_divvy[hit.base_header] = dupe_counts[hit.base_header]
-                if hit.header in dupe_counts: #AA Dupe
-                    dupe_count_divvy[hit.header] = dupe_counts[hit.header]
-                
-                hit_id += 1
-                hit.hmm_sequence = "".join(sequence_dict[hit.header])
-                hit.hmm_id = hit_id
-                if current_hit_count >= MAX_HMM_BATCH_SIZE:
-                    data = json.dumps(current_batch)
-                    del current_batch
-
-                    key = f'hmmbatch:{batch_i}'
-
-                    global_hmm_obj_recipe.append(str(batch_i))
-
-                    batch_i += 1
-
-                    hits_db_conn.put(key, data)
-
-                    del data
-                    current_batch = []
-                    current_hit_count = 1
-
-                current_batch.append(hit.to_json())
-                current_hit_count += 1
-        
-        if len(dupe_count_divvy) > 1:
-            dupes_per_gene[gene] = dupe_count_divvy
-    key = "getall:gene_dupes"
-    data = json.dumps(dupes_per_gene)
-    sequences_db_conn.put(key, data)
-
-
-    del sequence_dict
-
-    if current_batch:
-        data = json.dumps(current_batch)
-        key = f'hmmbatch:{batch_i}'
-
-        global_hmm_obj_recipe.append(str(batch_i))
-
-        hits_db_conn.put(key, data)
-
-    del current_batch
-
-    # insert key to grab all hmm objects into the database
-
-    key = 'hmmbatch:all'
-    data = ','.join(global_hmm_obj_recipe)
-
-    hits_db_conn.put(key, data)
-
-    db_end = time()
-    printv("Inserted {} hits over {} batch(es) in {:.2f} seconds. Kicked {} hits during filtering".format(total_hits, len(global_hmm_obj_recipe), db_end - end, count-total_hits), args.verbose)
-    print("Took {:.2f}s overall".format(time() - global_start))
 if __name__ == "__main__":
     main(argv)
