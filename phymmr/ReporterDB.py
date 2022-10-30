@@ -293,7 +293,7 @@ def reverse_complement(nt_seq):
     return phymmr_tools.bio_revcomp(nt_seq)
 
 
-def get_nucleotide_transcript_for(header, rsdb):
+def get_nucleotide_transcript_for(header):
     base_header = get_baseheader(header).strip()
     hash_of_header = xxhash.xxh64_hexdigest(base_header)
 
@@ -1114,7 +1114,7 @@ if __name__ == "__main__":
         help="Number of threads used to call processes.",
     )
     parser.add_argument(
-        "-v", "--verbose", type=int, default=0, action="count",
+        "-v", "--verbose", default=0, action="count",
         help="Verbosity level. Repeat for increased verbosity."
     )
     parser.add_argument("-d", "--debug", type=int, default=0, help="Verbose debug.")
