@@ -457,8 +457,8 @@ def main_process(
 
 
 def run_command(arg_tuple: tuple) -> None:
-    input, nt_input, output, threshold, references_args, sort, nt = arg_tuple
-    main_process(input, nt_input, output, threshold, references_args, sort, nt)
+    input, nt_input, output, threshold, references_args, sort, nt, debug = arg_tuple
+    main_process(input, nt_input, output, threshold, references_args, sort, nt, debug)
 
 
 if __name__ == "__main__":
