@@ -304,24 +304,6 @@ def compare_means(
     return regulars, to_add_later, outliers
 
 
-def make_nt_folder(path: str) -> str:  # FIXME: not used anywhere (but in a comment)
-    head, tail = os.path.split(path)
-    possible = os.listdir(head)
-    result = None
-    if tail == "mafft" and "nt_aligned" in possible:
-        result = os.path.join(head, "nt_aligned")
-    elif tail == "aa" and "nt" in possible:
-        result = os.path.join(head, "nt")
-    if result is None:
-        raise ValueError("no valid nt folder found in input")
-    return result
-
-
-def make_nt_out_folder(output: str, path: str) -> str:  # FIXME: not used anywhere
-    _, tail = os.path.split(path)
-    return os.path.join(output, tail)
-
-
 def deinterleave(fasta_lines: list) -> list:
     result = []
     this_out = []
