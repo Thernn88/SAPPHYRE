@@ -1127,7 +1127,7 @@ if __name__ == "__main__":
         reverse=True
     ):
         func(
-            orthoid,
+            orthoids,
             transcripts_mapped_to[orthoids],
             orthoset_db_path,
             min_score,
