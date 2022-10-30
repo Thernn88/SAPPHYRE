@@ -14,6 +14,7 @@ from time import time
 import numpy as np
 import phymmr_tools as bd
 
+
 class Record:
     def __init__(self, head, seq, raw_seq=None):
         self.id = head
@@ -72,6 +73,7 @@ def folder_check(path: str) -> None:
     os.makedirs(nt_folder, exist_ok=True)
     os.makedirs(logs_folder, exist_ok=True)
 
+
 def get_headers(lines: list) -> list:
     """
     Returns a list of every other line in the provided argument. Used to get
@@ -100,7 +102,7 @@ def split_sequences(lines: list, excluded: set) -> tuple:
 
         if end_of_references is False:
             # The reference header identifier is present in the header
-            if header[-1] == '.':
+            if header[-1] == ".":
                 if header.split("|")[1].lower() in bad_names:
                     excluded.add(header)
 
@@ -302,24 +304,6 @@ def compare_means(
     return regulars, to_add_later, outliers
 
 
-def make_nt_folder(path: str) -> str:  # FIXME: not used anywhere (but in a comment)
-    head, tail = os.path.split(path)
-    possible = os.listdir(head)
-    result = None
-    if tail == "mafft" and "nt_aligned" in possible:
-        result = os.path.join(head, "nt_aligned")
-    elif tail == "aa" and "nt" in possible:
-        result = os.path.join(head, "nt")
-    if result is None:
-        raise ValueError("no valid nt folder found in input")
-    return result
-
-
-def make_nt_out_folder(output: str, path: str) -> str:  # FIXME: not used anywhere
-    _, tail = os.path.split(path)
-    return os.path.join(output, tail)
-
-
 def deinterleave(fasta_lines: list) -> list:
     result = []
     this_out = []
@@ -343,7 +327,9 @@ def delete_empty_columns(raw_fed_sequences: list) -> list:
     """
     result = []
     sequences = []
-    raw_sequences = [i.replace("\n", "") for i in raw_fed_sequences if i.replace("\n", "") != ""]
+    raw_sequences = [
+        i.replace("\n", "") for i in raw_fed_sequences if i.replace("\n", "") != ""
+    ]
 
     for i in range(0, len(raw_sequences), 2):
         sequences.append(raw_sequences[i + 1])
@@ -394,6 +380,7 @@ def main_process(
     args_references,
     sort: str,
     nt_output_path: str,
+    debug: bool,
 ):
 
     keep_refs = not args_references
@@ -406,15 +393,19 @@ def main_process(
     aa_output = os.path.join(aa_output, filename)
 
     outliers_csv = os.path.join(args_output, "logs", "outliers_" + name + ".csv")
-    with open(outliers_csv, "w+", encoding = "UTF-8") as outliers_csv:
+    with open(outliers_csv, "w+", encoding="UTF-8") as outliers_csv:
         lines = []
-        with open(file_input, encoding = "UTF-8") as fasta_in:
+        with open(file_input, encoding="UTF-8") as fasta_in:
             lines = fasta_in.readlines()
             lines = deinterleave(lines)
 
         to_be_excluded = set()
-        reference_sequences, candidate_sequences = split_sequences(lines, to_be_excluded)
-        candidate_headers = [header for header in candidate_sequences if header[0] == ">"]
+        reference_sequences, candidate_sequences = split_sequences(
+            lines, to_be_excluded
+        )
+        candidate_headers = [
+            header for header in candidate_sequences if header[0] == ">"
+        ]
         raw_regulars, to_add, outliers = compare_means(
             reference_sequences,
             candidate_sequences,
@@ -432,7 +423,7 @@ def main_process(
         regulars = delete_empty_columns(raw_regulars)
 
         if to_add:  # If candidate added to fasta
-            with open(aa_output, "w+", encoding = "UTF-8") as aa_output:
+            with open(aa_output, "w+", encoding="UTF-8") as aa_output:
                 aa_output.writelines(regulars)
 
             to_be_excluded = set()
@@ -440,10 +431,10 @@ def main_process(
                 header, distance, ref_dist, grade, iqr = outlier
                 if grade == "Fail":
                     to_be_excluded.add(header)
-
-                header = header[1:]
-                result = [header, str(distance), str(ref_dist), str(iqr), grade]
-                outliers_csv.write(",".join(result) + "\n")
+                if debug:
+                    header = header[1:]
+                    result = [header, str(distance), str(ref_dist), str(iqr), grade]
+                    outliers_csv.write(",".join(result) + "\n")
 
             nt_file = filename.replace(".aa.", ".nt.")
             nt_input_path = os.path.join(nt_input, nt_file)
@@ -451,11 +442,13 @@ def main_process(
                 os.mkdir(nt_output_path)
             nt_output_path = os.path.join(nt_output_path, nt_file)
 
-            with open(nt_output_path, "w+", encoding = "UTF-8") as nt_output_handle:
-                with open(nt_input_path, encoding = "UTF-8") as nt_input_handle:
+            with open(nt_output_path, "w+", encoding="UTF-8") as nt_output_handle:
+                with open(nt_input_path, encoding="UTF-8") as nt_input_handle:
                     lines = nt_input_handle.readlines()
                     de_lines = deinterleave(lines)
-                    non_empty_lines = remove_excluded_sequences(de_lines, to_be_excluded)
+                    non_empty_lines = remove_excluded_sequences(
+                        de_lines, to_be_excluded
+                    )
                     non_empty_lines = delete_empty_columns(non_empty_lines)
 
                 for i in range(0, len(non_empty_lines), 2):
@@ -464,8 +457,8 @@ def main_process(
 
 
 def run_command(arg_tuple: tuple) -> None:
-    input, nt_input, output, threshold, references_args, sort, nt = arg_tuple
-    main_process(input, nt_input, output, threshold, references_args, sort, nt)
+    input, nt_input, output, threshold, references_args, sort, nt, debug = arg_tuple
+    main_process(input, nt_input, output, threshold, references_args, sort, nt, debug)
 
 
 if __name__ == "__main__":
@@ -500,6 +493,13 @@ if __name__ == "__main__":
         default="original",
         help="Sort candidate output by cluster and taxa, or preserver original order.",
     )
+    parser.add_argument(
+        "-d",
+        "--debug",
+        action="store_true",
+        default=False,
+        help="Log outliers to csv files",
+    )
     args = parser.parse_args()
     allowed_extensions = {"fa", "fas", "fasta"}
 
@@ -527,7 +527,7 @@ if __name__ == "__main__":
             # nt_folder = args.nt_input
             # if not nt_folder:
             #    nt_folder = make_nt_folder(args.aa_input)
-
+            file_inputs.sort(key=lambda x : os.path.getsize(x), reverse=True)
             if args.processes:
                 arguments = []
                 for gene in file_inputs:
@@ -540,6 +540,7 @@ if __name__ == "__main__":
                             args.no_references,
                             args.sort,
                             nt_output_path,
+                            args.debug,
                         )
                     )
 
@@ -556,26 +557,27 @@ if __name__ == "__main__":
                         args.no_references,
                         args.sort,
                         nt_output_path,
+                        args.debug,
                     )
+            if args.debug:
+                log_folder_path = os.path.join(output_path, "logs")
+                global_csv_path = os.path.join(log_folder_path, "outliers_global.csv")
 
-            log_folder_path = os.path.join(output_path, "logs")
-            global_csv_path = os.path.join(log_folder_path, "outliers_global.csv")
-
-            logs = [
-                x
-                for x in os.listdir(log_folder_path)
-                if "outliers_" in x and "global" not in x
-            ]
-            with open(global_csv_path, "w", encoding = "UTF-8") as global_csv:
-                global_csv.write("Gene,Header,Mean_Dist,Ref_Mean,IQR\n")
-                for log in logs:
-                    log_file_path = os.path.join(log_folder_path, log)
-                    with open(log_file_path, encoding = "UTF-8") as log_f:
-                        for line in log_f:
-                            if line.strip().split(",")[-1] == "Fail":
-                                global_csv.write(line)
-                                if line[-1] != "\n":
-                                    global_csv.write("\n")
+                logs = [
+                    x
+                    for x in os.listdir(log_folder_path)
+                    if "outliers_" in x and "global" not in x
+                ]
+                with open(global_csv_path, "w", encoding="UTF-8") as global_csv:
+                    global_csv.write("Gene,Header,Mean_Dist,Ref_Mean,IQR\n")
+                    for log in logs:
+                        log_file_path = os.path.join(log_folder_path, log)
+                        with open(log_file_path, encoding="UTF-8") as log_f:
+                            for line in log_f:
+                                if line.strip().split(",")[-1] == "Fail":
+                                    global_csv.write(line)
+                                    if line[-1] != "\n":
+                                        global_csv.write("\n")
             time_taken = time()
             time_taken = round(time_taken - start)
 

@@ -356,7 +356,8 @@ if __name__ == "__main__":
             available_tmp_path = folder_check(output_path, os.path.join(args.input, taxa))
 
             file_inputs = [input_gene for input_gene in os.listdir(aa_path) if ".aa" in input_gene]
-
+            file_inputs.sort(key=lambda x : os.path.getsize(os.path.join(aa_path, x)), reverse=True)
+            
             if args.processes:
                 arguments = []
                 for input_gene in file_inputs:

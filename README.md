@@ -29,7 +29,6 @@ For pypy:
 	HMMer - 3.3+ https://github.com/EddyRivasLab/hmmer - sudo apt install Hmmer
 	Blast - NCBI-Blast 2.2.28+ ftp://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/ or sudo apt install ncbi-blast+
 	SQLite3 - sudo apt install sqlite3 (Will be removed later.)
-	Perl - sudo apt install perl (Will be removed later.)
 	
 	Python - 3.8+ (Recommended 3.9+)
 		Python Modules
