@@ -711,6 +711,7 @@ if __name__ == "__main__":
             # path itself.
             for item in pathlib.Path(aa_input).glob("*.fa"):
                 target_genes.append(os.path.basename(item))
+            target_genes.sort(key=lambda x : os.path.getsize(os.path.join(aa_input, x)), reverse=True)
 
             if args.processes:
                 arguments = []

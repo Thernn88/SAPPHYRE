@@ -527,7 +527,7 @@ if __name__ == "__main__":
             # nt_folder = args.nt_input
             # if not nt_folder:
             #    nt_folder = make_nt_folder(args.aa_input)
-
+            file_inputs.sort(key=lambda x : os.path.getsize(x), reverse=True)
             if args.processes:
                 arguments = []
                 for gene in file_inputs:
