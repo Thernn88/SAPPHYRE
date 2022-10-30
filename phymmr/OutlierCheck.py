@@ -303,23 +303,6 @@ def compare_means(
             to_add_later.extend(intermediate_list)
     return regulars, to_add_later, outliers
 
-
-def deinterleave(fasta_lines: list) -> list:
-    result = []
-    this_out = []
-    for line in fasta_lines:
-        if line[0] == ">":
-            if this_out:
-                result.append("".join(this_out))
-            result.append(line)
-            this_out = []
-        else:
-            this_out.append(line.strip())
-    if this_out:
-        result.append("".join(this_out))
-    return result
-
-
 def delete_empty_columns(raw_fed_sequences: list) -> list:
     """
     Iterates over each sequence and deletes columns
@@ -397,7 +380,6 @@ def main_process(
         lines = []
         with open(file_input, encoding="UTF-8") as fasta_in:
             lines = fasta_in.readlines()
-            lines = deinterleave(lines)
 
         to_be_excluded = set()
         reference_sequences, candidate_sequences = split_sequences(
@@ -445,9 +427,8 @@ def main_process(
             with open(nt_output_path, "w+", encoding="UTF-8") as nt_output_handle:
                 with open(nt_input_path, encoding="UTF-8") as nt_input_handle:
                     lines = nt_input_handle.readlines()
-                    de_lines = deinterleave(lines)
                     non_empty_lines = remove_excluded_sequences(
-                        de_lines, to_be_excluded
+                        lines, to_be_excluded
                     )
                     non_empty_lines = delete_empty_columns(non_empty_lines)
 
