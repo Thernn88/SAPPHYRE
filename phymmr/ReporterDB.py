@@ -681,7 +681,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
 
     orthoset_db_con = sqlite3.connect(eargs.orthoset_db_path)
 
-    if eargs.exonerate_verbose:
+    if verbose <= 3:
         print("Exonerating and doing output for: ", eargs.orthoid)
     reftaxon_related_transcripts = {}
     reftaxon_to_proteome_sequence = {}
@@ -778,7 +778,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
             with open(this_nt_path, "w") as fp:
                 fp.writelines(this_nt_out)
 
-    if eargs.exonerate_verbose:
+    if verbose <= 3:
         print(
             "{} took {:.2f}s. Had {} sequences".format(
                 eargs.orthoid, time() - T_gene_start, len(output_sequences)
@@ -811,7 +811,7 @@ def reciprocal_search(
     score,
     reciprocal_verbose,
 ):
-    if reciprocal_verbose:
+    if verbose <= 4:
         T_reciprocal_start = time()
         print("Ensuring reciprocal hit for hmmresults in {}".format(score))
 
@@ -831,7 +831,7 @@ def reciprocal_search(
             result.reftaxon = this_match_reftaxon
             results.append(result)
 
-    if reciprocal_verbose:
+    if verbose <= 4:
         print(
             "Checked reciprocal hits for {}. Took {:.2f}s.".format(
                 score, time() - T_reciprocal_start
@@ -841,7 +841,7 @@ def reciprocal_search(
 
 
 def do_taxa(path, taxa_id):
-    if 1 in verbose:
+    if verbose <= 1:
         print("Doing {}.".format(taxa_id))
         T_init_db = time()
 
@@ -893,7 +893,7 @@ def do_taxa(path, taxa_id):
 
     rocks_db_path = os.path.join(path, "rocksdb")
 
-    if 2 in verbose:
+    if verbose <= 2:
         T_reference_taxa = time()
         print(
             "Initialized databases. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing reference taxa in set.".format(
@@ -903,7 +903,7 @@ def do_taxa(path, taxa_id):
 
     reference_taxa = get_taxa_in_set(orthoset_id, orthoset_db_con)
 
-    if 2 in verbose:
+    if verbose <= 2:
         T_hmmresults = time()
         print(
             "Got reference taxa in set. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing hmmresults".format(
@@ -911,11 +911,6 @@ def do_taxa(path, taxa_id):
             )
         )
 
-    sequences_db_path = os.path.join(rocks_db_path, "sequences")
-    hits_db_path = os.path.join(rocks_db_path, "hits")
-
-    rocks_sequence_db = wrap_rocks.RocksDB(sequences_db_path)
-    rocks_hits_db = wrap_rocks.RocksDB(hits_db_path)
     score_based_results, ufr_rows = get_scores_list(min_score, min_length, debug)
 
     if debug:
@@ -928,14 +923,14 @@ def do_taxa(path, taxa_id):
         open(ufr_path, "w").writelines(ufr_out)
 
     ####################################
-    if 2 in verbose:
+    if verbose <= 2:
         print(
             "Got hmmresults. Elapsed time {:.2f}s. Took {:.2f}s.".format(
                 time() - T_global_start, time() - T_hmmresults
             )
         )
 
-    if 1 in verbose:
+    if verbose <= 1:
         T_reciprocal_search = time()
         if args.verbose != 1:
             print(
@@ -948,8 +943,6 @@ def do_taxa(path, taxa_id):
     scores.sort(reverse=True)  # Ascending
     transcripts_mapped_to = {}
 
-    reciprocal_verbose = 4 in verbose
-
     arguments = []
     for score in scores:
         hmmresults = score_based_results[score]
@@ -959,7 +952,7 @@ def do_taxa(path, taxa_id):
                 list_of_wanted_orthoids,
                 reference_taxa,
                 score,
-                reciprocal_verbose,
+                verbose <= 4,
             )
         )
     with Pool(num_threads) as pool:
@@ -980,7 +973,7 @@ def do_taxa(path, taxa_id):
 
             transcripts_mapped_to[orthoid].append(this_match)
 
-    if 2 in verbose:
+    if verbose <= 2:
         T_internal_search = time()
         print(
             "Reciprocal check done, found {} reciprocal hits. Elapsed time {:.2f}s. Took {:.2f}s. Exonerating genes.".format(
@@ -988,7 +981,6 @@ def do_taxa(path, taxa_id):
             )
         )
 
-    exonerate_verbose = 3 in verbose
     T_exonerate_genes = time()
 
     if num_threads > 1:
@@ -1015,7 +1007,7 @@ def do_taxa(path, taxa_id):
                 taxa_id,
                 nt_out_path,
                 tmp_path,
-                exonerate_verbose,
+                verbose <= 3,
             )
         )
 
@@ -1023,7 +1015,7 @@ def do_taxa(path, taxa_id):
         with Pool(num_threads) as pool:
             pool.map(run_exonerate, arguments, chunksize=1)
 
-    if 1 in verbose:
+    if verbose <= 1:
         print(
             "Done. Final time {:.2f}s. Exonerate took {:.2f}s.".format(
                 time() - T_global_start, time() - T_exonerate_genes
@@ -1121,7 +1113,10 @@ if __name__ == "__main__":
         default=1,
         help="Number of threads used to call processes.",
     )
-    parser.add_argument("-v", "--verbose", type=int, default=2, help="Verbose debug.")
+    parser.add_argument(
+        "-v", "--verbose", type=int, default=0, action="count",
+        help="Verbosity level. Repeat for increased verbosity."
+    )
     parser.add_argument("-d", "--debug", type=int, default=0, help="Verbose debug.")
 
     args = parser.parse_args()
@@ -1138,12 +1133,12 @@ if __name__ == "__main__":
 
     min_length = args.min_length
     min_score = args.min_score
-    verbose = range(0, args.verbose + 1)
+    verbose = args.verbose
 
     ####
 
     for input_path in args.input:
         rocks_db_path = os.path.join(input_path, "rocksdb")
-        sequences_db_path = os.path.join(rocks_db_path, "sequences")
-        hits_db_path = os.path.join(rocks_db_path, "hits")
+        rocks_sequence_db = wrap_rocks.RocksDB(os.path.join(rocks_db_path, "sequences"))
+        rocks_hits_db = wrap_rocks.RocksDB(os.path.join(rocks_db_path, "hits"))
         do_taxa(path=input_path, taxa_id=os.path.basename(input_path).split(".")[0])
