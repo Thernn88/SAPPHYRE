@@ -12,7 +12,7 @@ from multiprocessing.pool import Pool
 from itertools import combinations
 from time import time
 import numpy as np
-import phymmr_tools as bd
+import blosum_distance as bd
 
 
 class Record:
@@ -64,14 +64,16 @@ def original_sort(headers, lines) -> list:
     return output
 
 
-def folder_check(path: str) -> None:
+def folder_check(path: str, debug: bool) -> None:
 
     aa_folder = os.path.join(path, "aa")
     nt_folder = os.path.join(path, "nt")
-    logs_folder = os.path.join(path, "logs")
+
     os.makedirs(aa_folder, exist_ok=True)
     os.makedirs(nt_folder, exist_ok=True)
-    os.makedirs(logs_folder, exist_ok=True)
+    if debug:
+        logs_folder = os.path.join(path, "logs")
+        os.makedirs(logs_folder, exist_ok=True)
 
 
 def get_headers(lines: list) -> list:
@@ -345,11 +347,12 @@ def delete_empty_columns(raw_fed_sequences: list) -> list:
                     positions_to_keep.append(i)
                     break
         for i in range(0, len(raw_sequences), 2):
-            result.append(raw_sequences[i] + "\n")
             try:
                 sequence = [raw_sequences[i + 1][x] for x in positions_to_keep]
+                result.append(raw_sequences[i] + "\n")
             except IndexError:
                 print(sequence)
+                continue
             sequence.append("\n")
             sequence = "".join(sequence)
 
@@ -392,68 +395,68 @@ def main_process(
     aa_output = os.path.join(args_output, "aa")
     aa_output = os.path.join(aa_output, filename)
 
-    outliers_csv = os.path.join(args_output, "logs", "outliers_" + name + ".csv")
-    with open(outliers_csv, "w+", encoding="UTF-8") as outliers_csv:
-        lines = []
-        with open(file_input, encoding="UTF-8") as fasta_in:
-            lines = fasta_in.readlines()
-            lines = deinterleave(lines)
+    outliers_csv_path = os.path.join(args_output, "logs", "outliers_" + name + ".csv")
+    lines = []
+    with open(file_input, encoding="UTF-8") as fasta_in:
+        lines = fasta_in.readlines()
+        lines = deinterleave(lines)
+
+    to_be_excluded = set()
+    reference_sequences, candidate_sequences = split_sequences(
+        lines, to_be_excluded
+    )
+    candidate_headers = [
+        header for header in candidate_sequences if header[0] == ">"
+    ]
+    raw_regulars, to_add, outliers = compare_means(
+        reference_sequences,
+        candidate_sequences,
+        threshold,
+        to_be_excluded,
+        keep_refs,
+        sort,
+    )
+    if sort == "original":
+        to_add = original_sort(candidate_headers, to_add)
+
+    for line in to_add:
+        raw_regulars.append(line)
+
+    regulars = delete_empty_columns(raw_regulars)
+
+    if to_add:  # If candidate added to fasta
+        with open(aa_output, "w+", encoding="UTF-8") as aa_output:
+            aa_output.writelines(regulars)
 
         to_be_excluded = set()
-        reference_sequences, candidate_sequences = split_sequences(
-            lines, to_be_excluded
-        )
-        candidate_headers = [
-            header for header in candidate_sequences if header[0] == ">"
-        ]
-        raw_regulars, to_add, outliers = compare_means(
-            reference_sequences,
-            candidate_sequences,
-            threshold,
-            to_be_excluded,
-            keep_refs,
-            sort,
-        )
-        if sort == "original":
-            to_add = original_sort(candidate_headers, to_add)
-
-        for line in to_add:
-            raw_regulars.append(line)
-
-        regulars = delete_empty_columns(raw_regulars)
-
-        if to_add:  # If candidate added to fasta
-            with open(aa_output, "w+", encoding="UTF-8") as aa_output:
-                aa_output.writelines(regulars)
-
-            to_be_excluded = set()
-            for outlier in outliers:
-                header, distance, ref_dist, grade, iqr = outlier
-                if grade == "Fail":
-                    to_be_excluded.add(header)
-                if debug:
+        for outlier in outliers:
+            header, distance, ref_dist, grade, iqr = outlier
+            if grade == "Fail":
+                to_be_excluded.add(header)
+            if debug:
+                with open(outliers_csv_path, "w+", encoding="UTF-8") as outliers_csv:
                     header = header[1:]
                     result = [header, str(distance), str(ref_dist), str(iqr), grade]
                     outliers_csv.write(",".join(result) + "\n")
 
-            nt_file = filename.replace(".aa.", ".nt.")
-            nt_input_path = os.path.join(nt_input, nt_file)
-            if not os.path.exists(nt_output_path):
-                os.mkdir(nt_output_path)
-            nt_output_path = os.path.join(nt_output_path, nt_file)
+        nt_file = filename.replace(".aa.", ".nt.")
+        nt_input_path = os.path.join(nt_input, nt_file)
+        if not os.path.exists(nt_output_path):
+            os.mkdir(nt_output_path)
+        nt_output_path = os.path.join(nt_output_path, nt_file)
 
-            with open(nt_output_path, "w+", encoding="UTF-8") as nt_output_handle:
-                with open(nt_input_path, encoding="UTF-8") as nt_input_handle:
-                    lines = nt_input_handle.readlines()
-                    de_lines = deinterleave(lines)
-                    non_empty_lines = remove_excluded_sequences(
-                        de_lines, to_be_excluded
-                    )
-                    non_empty_lines = delete_empty_columns(non_empty_lines)
+        with open(nt_output_path, "w+", encoding="UTF-8") as nt_output_handle:
+            with open(nt_input_path, encoding="UTF-8") as nt_input_handle:
+                lines = nt_input_handle.readlines()
+                de_lines = deinterleave(lines)
+                non_empty_lines = remove_excluded_sequences(
+                    de_lines, to_be_excluded
+                )
+                non_empty_lines = delete_empty_columns(non_empty_lines)
 
-                for i in range(0, len(non_empty_lines), 2):
-                    nt_output_handle.write(non_empty_lines[i])
-                    nt_output_handle.write(non_empty_lines[i + 1])
+            for i in range(0, len(non_empty_lines), 2):
+                nt_output_handle.write(non_empty_lines[i])
+                nt_output_handle.write(non_empty_lines[i + 1])
 
 
 def run_command(arg_tuple: tuple) -> None:
@@ -523,7 +526,7 @@ if __name__ == "__main__":
             ]
             output_path = os.path.join(taxa_path, args.output)
             nt_output_path = os.path.join(output_path, "nt")
-            folder_check(output_path)
+            folder_check(output_path, args.debug)
             # nt_folder = args.nt_input
             # if not nt_folder:
             #    nt_folder = make_nt_folder(args.aa_input)
