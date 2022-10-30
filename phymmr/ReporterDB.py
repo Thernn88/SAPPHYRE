@@ -754,7 +754,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
 
         if output:
             this_aa_out.extend(output)
-            with open(eargs.this_aa_path, "w") as fp:
+            with open(this_aa_path, "w") as fp:
                 fp.writelines(this_aa_out)
 
             core_sequences_nt = get_ortholog_group_nucleotide(
