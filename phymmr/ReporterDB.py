@@ -1132,8 +1132,7 @@ if __name__ == "__main__":
     ####
 
     for input_path in args.INPUT:
-        if verbose >= 1:
-            print(f"### Processing path '{input_path}'.")
+        print(f"### Processing path '{input_path}'.")
         rocks_db_path = os.path.join(input_path, "rocksdb")
         rocks_sequence_db = wrap_rocks.RocksDB(os.path.join(rocks_db_path, "sequences"))
         rocks_hits_db = wrap_rocks.RocksDB(os.path.join(rocks_db_path, "hits"))
