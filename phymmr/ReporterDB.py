@@ -1128,7 +1128,7 @@ if __name__ == "__main__":
     ):
         func(
             orthoid,
-            list_of_hits,
+            transcripts_mapped_to[orthoids],
             orthoset_db_path,
             min_score,
             orthoset_id,
