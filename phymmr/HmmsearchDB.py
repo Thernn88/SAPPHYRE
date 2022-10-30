@@ -363,7 +363,8 @@ def make_temp_protfile(
     ortholog: str,
     temp: str,
     force_prot: bool,
-    verbose: bool
+    verbose: bool,
+    sequences_db_conn
 ) -> str:
     """
     Looks up the digest and sequence in the orthodb est table, then
@@ -575,7 +576,7 @@ def run_process(args, input_path: str) -> None:
     printv("Checking protfile", args.verbose)
 
     protfile = make_temp_protfile(
-        ortholog, temp_dir, args.remake_protfile, args.verbose
+        ortholog, temp_dir, args.remake_protfile, args.verbose, sequences_db_conn
     )
 
     start = time()
@@ -927,8 +928,6 @@ def run_process(args, input_path: str) -> None:
 
 
 def main(argv):
-    global sequences_db_conn
-    # global_start = time()
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "INPUT",
