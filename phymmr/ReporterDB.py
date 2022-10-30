@@ -840,114 +840,7 @@ def reciprocal_search(
     return results
 
 
-####
-db_col_name = "name"
-db_col_target = "target"
-db_col_score = "score"
-db_col_evalue = "evalue"
-db_col_start = "start"
-db_col_end = "end"
-db_col_env_start = "env_start"
-db_col_env_end = "env_end"
-db_col_ali_start = "ali_start"
-db_col_ali_end = "ali_end"
-db_col_hmm_start = "hmm_start"
-db_col_hmm_end = "hmm_end"
-db_col_header = "header"
-db_col_hmmsearch_id = "hmmsearch_id"
-db_col_id = "id"
-db_col_digest = "digest"
-db_col_orthoid = "ortholog_gene_id"
-db_col_taxid = "taxid"
-db_col_query = "query"
-db_col_setid = "setid"
-db_col_sequence = "sequence"
-db_col_aaseq = "aa_seq"
-db_col_seqpair = "sequence_pair"
-db_col_ntseq = "nt_seq"
-
-orthoset_set_details = "orthograph_set_details"
-orthoset_taxa = "orthograph_taxa"
-orthoset_seqpairs = "orthograph_sequence_pairs"
-orthoset_orthologs = "orthograph_orthologs"
-orthoset_aaseqs = "orthograph_aaseqs"
-orthoset_ntseqs = "orthograph_ntseqs"
-
-####
-# Misc Settings
-####
-
-# TODO Make these argparse variables
-strict_search_mode = False
-orthoid_list_file = None
-extend_orf = True
-orf_overlap_minimum = 0.15
-clear_output = True
-
-header_seperator = "|"
-
-####
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-i",
-        "--input",
-        type=str,
-        default="PhyMMR/Acroceridae/SRR6453524.fa",
-        help="Path to directory of Input folder",
-    )
-    parser.add_argument(
-        "-oi",
-        "--orthoset_input",
-        type=str,
-        default="PhyMMR/orthosets",
-        help="Path to directory of Orthosets folder",
-    )
-    parser.add_argument(
-        "-o",
-        "--orthoset",
-        type=str,
-        default="Ortholog_set_Mecopterida_v4",
-        help="Orthoset",
-    )
-    parser.add_argument(
-        "-ml", "--min_length", type=int, default=30, help="Minimum Transcript Length"
-    )
-    parser.add_argument(
-        "-ms", "--min_score", type=float, default=40, help="Minimum Hit Domain Score"
-    )
-    parser.add_argument(
-        "-p",
-        "--processes",
-        type=int,
-        default=1,
-        help="Number of threads used to call processes.",
-    )
-    parser.add_argument("-v", "--verbose", type=int, default=2, help="Verbose debug.")
-    parser.add_argument("-d", "--debug", type=int, default=0, help="Verbose debug.")
-
-    args = parser.parse_args()
-
-    debug = args.debug != 0
-
-    num_threads = args.processes
-    if not isinstance(num_threads, int) or num_threads < 1:
-        num_threads = 1
-
-    ####
-    # Filter settings
-    ####
-
-    min_length = args.min_length
-    min_score = args.min_score
-    verbose = range(0, args.verbose + 1)
-
-    ####
-
-    input_path = args.input
-    taxa_id = os.path.basename(input_path).split(".")[0]
-
+def do_taxa(path, taxa_id):
     if 1 in verbose:
         print("Doing {}.".format(taxa_id))
         T_init_db = time()
@@ -957,7 +850,7 @@ if __name__ == "__main__":
     elif os.path.exists("/dev/shm"):
         tmp_path = "/dev/shm"
     else:
-        tmp_path = os.path.join(input_path, "tmp")
+        tmp_path = os.path.join(path, "tmp")
         os.makedirs(tmp_path, exist_ok=True)
 
     if orthoid_list_file:
@@ -986,19 +879,19 @@ if __name__ == "__main__":
     aa_out = "aa"
     nt_out = "nt"
 
-    aa_out_path = os.path.join(input_path, aa_out)
-    nt_out_path = os.path.join(input_path, nt_out)
+    aa_out_path = os.path.join(path, aa_out)
+    nt_out_path = os.path.join(path, nt_out)
 
     if clear_output:
         if os.path.exists(aa_out_path):
             shutil.rmtree(aa_out_path)
-        if os.path.exists(nt_out_path):    
+        if os.path.exists(nt_out_path):
             shutil.rmtree(nt_out_path)
 
     os.makedirs(aa_out_path, exist_ok=True)
     os.makedirs(nt_out_path, exist_ok=True)
 
-    rocks_db_path = os.path.join(input_path, "rocksdb")
+    rocks_db_path = os.path.join(path, "rocksdb")
 
     if 2 in verbose:
         T_reference_taxa = time()
@@ -1026,7 +919,7 @@ if __name__ == "__main__":
     score_based_results, ufr_rows = get_scores_list(min_score, min_length, debug)
 
     if debug:
-        ufr_path = os.path.join(input_path, "unfiltered-hits.csv")
+        ufr_path = os.path.join(path, "unfiltered-hits.csv")
 
         ufr_out = ["Gene,Header,Score,Start,End\n"]
         for row in ufr_rows:
@@ -1139,3 +1032,115 @@ if __name__ == "__main__":
 
     if args.verbose == 0:
         print("Done took {:.2f}s.".format(time() - T_global_start))
+
+
+####
+db_col_name = "name"
+db_col_target = "target"
+db_col_score = "score"
+db_col_evalue = "evalue"
+db_col_start = "start"
+db_col_end = "end"
+db_col_env_start = "env_start"
+db_col_env_end = "env_end"
+db_col_ali_start = "ali_start"
+db_col_ali_end = "ali_end"
+db_col_hmm_start = "hmm_start"
+db_col_hmm_end = "hmm_end"
+db_col_header = "header"
+db_col_hmmsearch_id = "hmmsearch_id"
+db_col_id = "id"
+db_col_digest = "digest"
+db_col_orthoid = "ortholog_gene_id"
+db_col_taxid = "taxid"
+db_col_query = "query"
+db_col_setid = "setid"
+db_col_sequence = "sequence"
+db_col_aaseq = "aa_seq"
+db_col_seqpair = "sequence_pair"
+db_col_ntseq = "nt_seq"
+
+orthoset_set_details = "orthograph_set_details"
+orthoset_taxa = "orthograph_taxa"
+orthoset_seqpairs = "orthograph_sequence_pairs"
+orthoset_orthologs = "orthograph_orthologs"
+orthoset_aaseqs = "orthograph_aaseqs"
+orthoset_ntseqs = "orthograph_ntseqs"
+
+####
+# Misc Settings
+####
+
+# TODO Make these argparse variables
+strict_search_mode = False
+orthoid_list_file = None
+extend_orf = True
+orf_overlap_minimum = 0.15
+clear_output = True
+
+header_seperator = "|"
+
+####
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
+    )
+    parser.add_argument(
+        "-i",
+        "--input",
+        type=str,
+        default="PhyMMR/Acroceridae/SRR6453524.fa",
+        help="Path to directory of Input folder",
+    )
+    parser.add_argument(
+        "-oi",
+        "--orthoset_input",
+        type=str,
+        default="PhyMMR/orthosets",
+        help="Path to directory of Orthosets folder",
+    )
+    parser.add_argument(
+        "-o",
+        "--orthoset",
+        type=str,
+        default="Ortholog_set_Mecopterida_v4",
+        help="Orthoset",
+    )
+    parser.add_argument(
+        "-ml", "--min_length", type=int, default=30, help="Minimum Transcript Length"
+    )
+    parser.add_argument(
+        "-ms", "--min_score", type=float, default=40, help="Minimum Hit Domain Score"
+    )
+    parser.add_argument(
+        "-p",
+        "--processes",
+        type=int,
+        default=1,
+        help="Number of threads used to call processes.",
+    )
+    parser.add_argument("-v", "--verbose", type=int, default=2, help="Verbose debug.")
+    parser.add_argument("-d", "--debug", type=int, default=0, help="Verbose debug.")
+
+    args = parser.parse_args()
+
+    debug = args.debug != 0
+
+    num_threads = args.processes
+    if not isinstance(num_threads, int) or num_threads < 1:
+        num_threads = 1
+
+    ####
+    # Filter settings
+    ####
+
+    min_length = args.min_length
+    min_score = args.min_score
+    verbose = range(0, args.verbose + 1)
+
+    ####
+
+    for input_path in args.input:
+        do_taxa(path=input_path, taxa_id=os.path.basename(input_path).split(".")[0])
