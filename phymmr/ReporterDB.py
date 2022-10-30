@@ -677,12 +677,11 @@ def run_exonerate(arg_tuple: ExonerateArgs):
 
 
 def exonerate_gene_multi(eargs: ExonerateArgs):
-    T_gene_start = time()
+    if verbose >= 2:
+        print("Exonerating and doing output for: ", eargs.orthoid)
+        T_gene_start = time()
 
     orthoset_db_con = sqlite3.connect(eargs.orthoset_db_path)
-
-    if verbose >= 3:
-        print("Exonerating and doing output for: ", eargs.orthoid)
     reftaxon_related_transcripts = {}
     reftaxon_to_proteome_sequence = {}
     for hit in eargs.list_of_hits:
@@ -778,7 +777,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
             with open(this_nt_path, "w") as fp:
                 fp.writelines(this_nt_out)
 
-    if verbose >= 3:
+    if verbose >= 2:
         print(
             "{} took {:.2f}s. Had {} sequences".format(
                 eargs.orthoid, time() - T_gene_start, len(output_sequences)
@@ -811,7 +810,7 @@ def reciprocal_search(
     score,
     reciprocal_verbose,
 ):
-    if verbose >= 4:
+    if verbose >= 3:
         T_reciprocal_start = time()
         print("Ensuring reciprocal hit for hmmresults in {}".format(score))
 
@@ -831,7 +830,7 @@ def reciprocal_search(
             result.reftaxon = this_match_reftaxon
             results.append(result)
 
-    if verbose >= 4:
+    if verbose >= 3:
         print(
             "Checked reciprocal hits for {}. Took {:.2f}s.".format(
                 score, time() - T_reciprocal_start
@@ -841,9 +840,8 @@ def reciprocal_search(
 
 
 def do_taxa(path, taxa_id):
+    print("Doing {}.".format(taxa_id))
     if verbose >= 1:
-        print("Doing {}.".format(taxa_id))
-    if verbose >= 2:
         T_init_db = time()
 
     if os.path.exists("/run/shm"):
@@ -894,7 +892,7 @@ def do_taxa(path, taxa_id):
 
     rocks_db_path = os.path.join(path, "rocksdb")
 
-    if verbose >= 2:
+    if verbose >= 1:
         T_reference_taxa = time()
         print(
             "Initialized databases. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing reference taxa in set.".format(
@@ -904,7 +902,7 @@ def do_taxa(path, taxa_id):
 
     reference_taxa = get_taxa_in_set(orthoset_id, orthoset_db_con)
 
-    if verbose >= 2:
+    if verbose >= 1:
         T_hmmresults = time()
         print(
             "Got reference taxa in set. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing hmmresults".format(
@@ -924,21 +922,18 @@ def do_taxa(path, taxa_id):
         open(ufr_path, "w").writelines(ufr_out)
 
     ####################################
-    if verbose >= 2:
+    if verbose >= 1:
         print(
             "Got hmmresults. Elapsed time {:.2f}s. Took {:.2f}s.".format(
                 time() - T_global_start, time() - T_hmmresults
             )
         )
-
-    if verbose >= 1:
-        T_reciprocal_search = time()
-        if args.verbose != 1:
-            print(
-                "Retrieved data from DB. Elapsed time {:.2f}s. Took {:.2f}s. Doing reciprocal check.".format(
-                    time() - T_global_start, time() - T_hmmresults
-                )
+        print(
+            "Retrieved data from DB. Elapsed time {:.2f}s. Took {:.2f}s. Doing reciprocal check.".format(
+                time() - T_global_start, time() - T_hmmresults
             )
+        )
+        T_reciprocal_search = time()
 
     scores = list(score_based_results.keys())
     scores.sort(reverse=True)  # Ascending
@@ -953,7 +948,6 @@ def do_taxa(path, taxa_id):
                 list_of_wanted_orthoids,
                 reference_taxa,
                 score,
-                verbose <= 4,
             )
         )
     with Pool(num_threads) as pool:
@@ -974,7 +968,7 @@ def do_taxa(path, taxa_id):
 
             transcripts_mapped_to[orthoid].append(this_match)
 
-    if verbose >= 2:
+    if verbose >= 1:
         T_internal_search = time()
         print(
             "Reciprocal check done, found {} reciprocal hits. Elapsed time {:.2f}s. Took {:.2f}s. Exonerating genes.".format(
@@ -1008,7 +1002,6 @@ def do_taxa(path, taxa_id):
                 taxa_id,
                 nt_out_path,
                 tmp_path,
-                verbose <= 3,
             )
         )
 
