@@ -293,7 +293,7 @@ def reverse_complement(nt_seq):
     return phymmr_tools.bio_revcomp(nt_seq)
 
 
-def get_nucleotide_transcript_for(header):
+def get_nucleotide_transcript_for(header, rsdb):
     base_header = get_baseheader(header).strip()
     hash_of_header = xxhash.xxh64_hexdigest(base_header)
 
@@ -1143,4 +1143,7 @@ if __name__ == "__main__":
     ####
 
     for input_path in args.input:
+        rocks_db_path = os.path.join(input_path, "rocksdb")
+        sequences_db_path = os.path.join(rocks_db_path, "sequences")
+        hits_db_path = os.path.join(rocks_db_path, "hits")
         do_taxa(path=input_path, taxa_id=os.path.basename(input_path).split(".")[0])
