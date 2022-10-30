@@ -667,7 +667,6 @@ ExonerateArgs = namedtuple("ExonerateArgs",
         "taxa_id",
         "nt_out_path",
         "tmp_path",
-        "exonerate_verbose",
     ]
 )
 
@@ -803,13 +802,7 @@ def is_reciprocal_match(blast_results, reference_taxa: List[str]):
                 ]  # Grab most hit reftaxon
     return None, None
 
-def reciprocal_search(
-    hmmresults,
-    list_of_wanted_orthoids,
-    reference_taxa,
-    score,
-    reciprocal_verbose,
-):
+def reciprocal_search(hmmresults, list_of_wanted_orthoids, reference_taxa, score):
     if verbose >= 3:
         T_reciprocal_start = time()
         print("Ensuring reciprocal hit for hmmresults in {}".format(score))
