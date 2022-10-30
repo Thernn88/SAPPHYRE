@@ -5,6 +5,7 @@ import os
 import shutil
 import sqlite3
 import uuid
+from collections import namedtuple
 from multiprocessing.pool import Pool
 from time import time
 from typing import List
@@ -654,57 +655,37 @@ def get_match(header, results):
     return None
 
 
-def run_exonerate(arg_tuple):
-    (
-        gene,
-        list_of_hits,
-        orthoset_db_path,
-        min_score,
-        orthoset_id,
-        aa_out_path,
-        min_length,
-        taxa_id,
-        nt_out_path,
-        tmp_path,
-        exonerate_verbose,
-    ) = arg_tuple
-    exonerate_gene_multi(
-        gene,
-        list_of_hits,
-        orthoset_db_path,
-        min_score,
-        orthoset_id,
-        aa_out_path,
-        min_length,
-        taxa_id,
-        nt_out_path,
-        tmp_path,
-        exonerate_verbose,
-    )
+ExonerateArgs = namedtuple("ExonerateArgs",
+    [
+        "orthoid",
+        "list_of_hits",
+        "orthoset_db_path",
+        "min_score",
+        "orthoset_id",
+        "aa_out_path",
+        "min_length",
+        "taxa_id",
+        "nt_out_path",
+        "tmp_path",
+        "exonerate_verbose",
+    ]
+)
 
 
-def exonerate_gene_multi(
-    orthoid,
-    list_of_hits,
-    orthoset_db_path,
-    min_score,
-    orthoset_id,
-    aa_out_path,
-    min_length,
-    taxa_id,
-    nt_out_path,
-    tmp_path,
-    exonerate_verbose,
-):
+def run_exonerate(arg_tuple: ExonerateArgs):
+    exonerate_gene_multi(arg_tuple)
+
+
+def exonerate_gene_multi(eargs: ExonerateArgs):
     T_gene_start = time()
 
-    orthoset_db_con = sqlite3.connect(orthoset_db_path)
+    orthoset_db_con = sqlite3.connect(args.orthoset_db_path)
 
-    if exonerate_verbose:
-        print("Exonerating and doing output for: ", orthoid)
+    if args.exonerate_verbose:
+        print("Exonerating and doing output for: ", eargs.orthoid)
     reftaxon_related_transcripts = {}
     reftaxon_to_proteome_sequence = {}
-    for hit in list_of_hits:
+    for hit in eargs.list_of_hits:
         this_reftaxon = hit.reftaxon
 
         est_header, est_sequence_complete = get_nucleotide_transcript_for(hit.header)
@@ -723,22 +704,16 @@ def exonerate_gene_multi(
         reftaxon_related_transcripts[this_reftaxon].append(hit)
 
     output_sequences = []
-
     total_results = 0
-
-    for taxon_hit in reftaxon_related_transcripts:
-        hits = reftaxon_related_transcripts[taxon_hit]
-        query = reftaxon_to_proteome_sequence[taxon_hit]
-
-        extended_results, results = get_multi_orf(
-            query, hits, min_score, tmp_path, include_extended=extend_orf
-        )
-
+    for taxon_hit, hits in reftaxon_related_transcripts.items():
         total_results += len(hits)
+        query = reftaxon_to_proteome_sequence[taxon_hit]
+        extended_results, results = get_multi_orf(
+            query, hits, eargs.min_score, eargs.tmp_path, include_extended=extend_orf
+        )
 
         for hit in hits:
             matching_alignment = get_match(hit.header, results)
-
             if matching_alignment:
                 hit.add_orf(matching_alignment)
 
@@ -755,49 +730,58 @@ def exonerate_gene_multi(
                                 orf_overlap = overlap_by_orf(hit)
                                 if orf_overlap < orf_overlap_minimum:
                                     hit.remove_extended_orf()
-
                             else:
                                 hit.remove_extended_orf()
                         else:
                             print("Failed to extend orf on {}".format(hit.header))
-
                     output_sequences.append(hit)
-
     if len(output_sequences) > 0:
         output_sequences = sorted(output_sequences, key=lambda d: d.hmm_start)
-
-        core_sequences = get_ortholog_group(orthoset_id, orthoid, orthoset_db_con)
-
+        core_sequences = get_ortholog_group(
+            eargs.orthoset_id, eargs.orthoid, eargs.orthoset_db_con
+        )
         this_aa_out = []
-        this_aa_path = os.path.join(aa_out_path, orthoid + ".aa.fa")
-        this_aa_out.extend(print_core_sequences(orthoid, core_sequences))
+        this_aa_path = os.path.join(eargs.aa_out_path, eargs.orthoid + ".aa.fa")
+        this_aa_out.extend(print_core_sequences(eargs.orthoid, core_sequences))
         kicks, output = print_unmerged_sequences(
-            output_sequences, orthoid, "aa", min_length, taxa_id, kicks=set()
+            output_sequences,
+            eargs.orthoid,
+            "aa",
+            eargs.min_length,
+            eargs.taxa_id,
+            kicks=set()
         )
 
         if output:
             this_aa_out.extend(output)
-            open(this_aa_path, "w").writelines(this_aa_out)
+            with open(eargs.this_aa_path, "w") as fp:
+                fp.writelines(this_aa_out)
 
             core_sequences_nt = get_ortholog_group_nucleotide(
-                orthoset_id, orthoid, orthoset_db_con
+                eargs.orthoset_id, eargs.orthoid, eargs.orthoset_db_con
             )
 
             this_nt_out = []
-            this_nt_path = os.path.join(nt_out_path, orthoid + ".nt.fa")
+            this_nt_path = os.path.join(eargs.nt_out_path, eargs.orthoid + ".nt.fa")
 
-            this_nt_out.extend(print_core_sequences(orthoid, core_sequences_nt))
+            this_nt_out.extend(print_core_sequences(eargs.orthoid, core_sequences_nt))
             na_kicks, output = print_unmerged_sequences(
-                output_sequences, orthoid, "nt", min_length, taxa_id, kicks=kicks
+                output_sequences,
+                eargs.orthoid,
+                "nt",
+                eargs.min_length,
+                eargs.taxa_id,
+                kicks=kicks
             )
             this_nt_out.extend(output)
 
-            open(this_nt_path, "w").writelines(this_nt_out)
+            with open(this_nt_path, "w") as fp:
+                fp.writelines(this_nt_out)
 
-    if exonerate_verbose:
+    if eargs.exonerate_verbose:
         print(
             "{} took {:.2f}s. Had {} sequences".format(
-                orthoid, time() - T_gene_start, len(output_sequences)
+                eargs.orthoid, time() - T_gene_start, len(output_sequences)
             )
         )
 
@@ -1073,7 +1057,7 @@ if __name__ == "__main__":
 
     reciprocal_verbose = 4 in verbose
 
-    arguments = list()
+    arguments = []
     for score in scores:
         hmmresults = score_based_results[score]
         arguments.append(
@@ -1115,7 +1099,7 @@ if __name__ == "__main__":
     T_exonerate_genes = time()
 
     if num_threads > 1:
-        arguments = list()
+        arguments = []
         func = arguments.append
     else:
         func = exonerate_gene_multi
@@ -1127,17 +1111,19 @@ if __name__ == "__main__":
         reverse=True
     ):
         func(
-            orthoids,
-            transcripts_mapped_to[orthoids],
-            orthoset_db_path,
-            min_score,
-            orthoset_id,
-            aa_out_path,
-            min_length,
-            taxa_id,
-            nt_out_path,
-            tmp_path,
-            exonerate_verbose,
+            ExonerateArgs(
+                orthoids,
+                transcripts_mapped_to[orthoids],
+                orthoset_db_path,
+                min_score,
+                orthoset_id,
+                aa_out_path,
+                min_length,
+                taxa_id,
+                nt_out_path,
+                tmp_path,
+                exonerate_verbose,
+            )
         )
 
     if num_threads > 1:
