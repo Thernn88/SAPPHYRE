@@ -948,6 +948,8 @@ if __name__ == "__main__":
     debug = args.debug != 0
 
     num_threads = args.processes
+    if not isinstance(num_threads, int) or num_threads < 1:
+        num_threads = 1
 
     ####
     # Filter settings
@@ -1138,7 +1140,7 @@ if __name__ == "__main__":
             exonerate_verbose,
         )
 
-    if num_threads != 1:
+    if num_threads > 1:
         with Pool(num_threads) as pool:
             pool.map(run_exonerate, arguments, chunksize=1)
 
