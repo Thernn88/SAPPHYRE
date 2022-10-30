@@ -758,7 +758,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                 fp.writelines(this_aa_out)
 
             core_sequences_nt = get_ortholog_group_nucleotide(
-                eargs.orthoset_id, eargs.orthoid, eargs.orthoset_db_con
+                eargs.orthoset_id, eargs.orthoid, orthoset_db_con
             )
 
             this_nt_out = []
