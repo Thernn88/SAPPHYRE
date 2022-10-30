@@ -738,7 +738,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
     if len(output_sequences) > 0:
         output_sequences = sorted(output_sequences, key=lambda d: d.hmm_start)
         core_sequences = get_ortholog_group(
-            eargs.orthoset_id, eargs.orthoid, eargs.orthoset_db_con
+            eargs.orthoset_id, eargs.orthoid, orthoset_db_con
         )
         this_aa_out = []
         this_aa_path = os.path.join(eargs.aa_out_path, eargs.orthoid + ".aa.fa")
