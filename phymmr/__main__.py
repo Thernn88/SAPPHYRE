@@ -16,7 +16,13 @@ Post-processing:
 import argparse
 
 def subcmd_preparedb(subparsers):
-    parser_preparedb = subparsers.add_parser("preparedb")
+    parser_preparedb = subparsers.add_parser(
+        "preparedb",
+        help="Loads NT input files (.fa, .fas or .fasta) into a rocksdb database. "
+             "Unique NT sequences stored with a duplicate count stored for later use. "
+             "Performs six-fold translation of base NT sequences into AA translation. "
+             "Unique AA translation stored with duplicate counts stored for later use."
+    )
     parser_preparedb.add_argument(
         "-i", "--input", default="Snails", type=str, help="Path to input directory."
     )
@@ -50,11 +56,18 @@ def subcmd_preparedb(subparsers):
 
 
 def preparedb(args):
+    from . import PrepareDB
     print(args)
 
 
 def subcmd_hmmsearchdb(subparsers):
-    parser_hmmsearchdb = subparsers.add_parser("hmmsearchdb")
+    parser_hmmsearchdb = subparsers.add_parser(
+        "hmmsearchdb",
+        help="Queries protein translations against profile HMMs using the HMMER3 "
+             "external. Filters HMMER3 output using 3 custom filters: MultiGene, "
+             "InternalMulti & InternalSubpar to remove LQ hits and prevent sequence "
+             "reuse. Loads hits into RocksDB after filters finish."
+    )
     parser_hmmsearchdb.add_argument(
         "INPUT",
         help="Path to input directory.",
@@ -159,7 +172,11 @@ def hmmsearchdb(args):
 
 
 def subcmd_blastpaldb(subparsers):
-    parser_blastpal = subparsers.add_parser("blastpaldb")
+    parser_blastpal = subparsers.add_parser(
+        "blastpaldb",
+        help="Blasts Hmmsearch hits using NCBI-Blast against reference sequences. "
+             "Loads resulting output into RocksDB"
+    )
 
     parser_blastpal.add_argument(
         "INPUT",
@@ -209,7 +226,12 @@ def blastpaldb(args):
 
 
 def subcmd_reporterdb(subparsers):
-    parser_reporterdb = subparsers.add_parser("reporterdb")
+    parser_reporterdb = subparsers.add_parser(
+        "reporterdb",
+        help="Checks Blast results to ensure a hit is reciprocal. Queries a sequence "
+             "using exonerate to align it against a target reference and trim it to "
+             "mapped region. Produces aa and nt output."
+    )
     parser_reporterdb.add_argument(
         "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
     )
@@ -241,7 +263,11 @@ def reporterdb(args):
 
 
 def subcmd_outliercheck(subparsers):
-    parser_outliercheck = subparsers.add_parser("outliercheck")
+    parser_outliercheck = subparsers.add_parser(
+        "outliercheck",
+        help="Calculates a Blosum62 distance matrix which are used to remove outlier "
+             "sequences above a threshold."
+    )
     parser_outliercheck.add_argument(
         "-i", "--input", default="Taxa", help="Path to taxa"
     )
@@ -282,7 +308,11 @@ def outliercheck(args):
 
 
 def subcmd_mergeoverlap(subparsers):
-    parser_mergeoverlap = subparsers.add_parser("mergeoverlap")
+    parser_mergeoverlap = subparsers.add_parser(
+        "mergeoverlap",
+        help="Reference-guided De-novo Assembly Algorithm which merges overlapping reads "
+             "into contiguous segments (Contigs)."
+    )
 
     parser_mergeoverlap.add_argument(
         "-i", "--input", default="Parent", help="Path to parent input"
@@ -337,7 +367,10 @@ def mergeoverlap(args):
 
 
 def subcmd_mergegenes(subparsers):
-    parser_mergegenes = subparsers.add_parser("mergegenes")
+    parser_mergegenes = subparsers.add_parser(
+        "mergegenes",
+        help="Usefulness yet to be defined... (FIXME)"
+    )
     parser_mergegenes.add_argument(
         "-i",
         "--input",
@@ -359,7 +392,10 @@ def mergegenes(args):
 
 
 def subcmd_mafft(subparsers):
-    parser_mafft = subparsers.add_parser("mafft")
+    parser_mafft = subparsers.add_parser(
+        "mafft",
+        help="Aligns AA sequences against existing reference alignment."
+    )
     parser_mafft.add_argument(
         "-i", "--input", type=str, default="Parent", help="Path to parent folder for input"
     )
@@ -408,7 +444,11 @@ def pal2nal(args):
 
 
 def subcmd_flexcull(subparsers):
-    parser_flexcull = subparsers.add_parser("flexcull")
+    parser_flexcull = subparsers.add_parser(
+        "flexcull",
+        help="Adaptive End Trimming algorithm that trims the start and end of "
+             "candidate reads to remove introns and/or other LQ bases."
+    )
     parser_flexcull.add_argument(
         "-i", "--input", type=str, default="parent", help="Parent input path."
     )
