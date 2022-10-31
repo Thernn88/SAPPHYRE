@@ -267,13 +267,16 @@ def subcmd_reporterdb(subparsers):
     parser_reporterdb.add_argument(
         "-ms", "--min_score", type=float, default=40, help="Minimum Hit Domain Score"
     )
+    parser.add_argument("-d", "--debug", type=int, default=0, help="Verbose debug.")
     parser_reporterdb.set_defaults(
         func=reporterdb, formathelp=parser_reporterdb.format_help
     )
 
 
-def reporterdb(args):  # TODO
-    print(args)
+def reporterdb(args):
+    from . import ReporterDB
+    if not ReporterDB.main(args):
+        print(args.formathelp())
 
 
 def subcmd_outliercheck(subparsers):
