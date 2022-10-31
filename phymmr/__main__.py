@@ -232,7 +232,9 @@ def subcmd_blastpaldb(subparsers):
 
 
 def blastpaldb(args):
-    print(args)
+    from . import BlastPalDB
+    if not BlastPalDB.main(args):
+        print(args.formathelp())
 
 
 def subcmd_reporterdb(subparsers):

@@ -313,57 +313,8 @@ def run_process(args, input_path) -> None:
 
     print("Done. Took {:.2f}s overall".format(time() - start))
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "INPUT",
-        action="extend",
-        nargs="+",
-        help="Path to directory of Input folder",
-    )
-    parser.add_argument(
-        "-oi",
-        "--orthoset_input",
-        type=str,
-        default="PhyMMR/orthosets",
-        help="Path to directory of Orthosets folder",
-    )
-    parser.add_argument(
-        "-o",
-        "--orthoset",
-        type=str,
-        default="Ortholog_set_Mecopterida_v4",
-        help="Orthoset",
-    )
-    parser.add_argument(
-        "-bs",
-        "--blast_minimum_score",
-        type=float,
-        default=40.0,
-        help="Minimum score filter in blast.",
-    )
-    parser.add_argument(
-        "-be",
-        "--blast_minimum_evalue",
-        type=float,
-        default=0.00001,
-        help="Minimum evalue filter in blast.",
-    )
-    parser.add_argument(
-        "-ovw",
-        "--overwrite",
-        action="store_true",
-        help="Overwrite existing blast results.",
-    )
-    parser.add_argument(
-        "-p",
-        "--processes",
-        type=int,
-        default=1,
-        help="Number of threads used to call processes.",
-    )
-    parser.add_argument("-v", "--verbose", default=1, type=int, help="Verbose debug.")
-    args = parser.parse_args()
+
+def main(args):
     for input_path in args.INPUT:
         run_process(args, input_path)
 
