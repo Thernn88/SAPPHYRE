@@ -273,22 +273,6 @@ def directory_check(target_output_path) -> str:
     return tmp_path
 
 
-# REVIEW: GeneRef and GeneData are some musing from me in order to improve the
-# loop over references. Not tested, unknown if map() would work (I suspect it
-# doesn't).
-# GeneRef = namedtuple("GeneRef", ["header", "sequence"])
-
-
-# class GeneData:
-#     def __init__(self):
-#         self.gene = []
-#         self.comparison = {}
-
-#     def feed_me(self, generef: GeneRef):
-#         self.gene.extend(generef)
-#         self.comparison[generef.header.split("|")[1]] = generef.sequence
-
-
 def do_protein(
     protein,
     path,
@@ -304,9 +288,6 @@ def do_protein(
     with open(path, encoding="UTF-8") as nt_in:
         references, candidates = parse_fasta(nt_in.read())
 
-    # gd = GeneData()
-    # for g in map(lambda h, s: GeneRef(h, s), references):  # FIXME: use starmap in case of tuples
-    #     gd.feed_me(g)
     gene_out = []
 
     # Grab all the reference sequences
