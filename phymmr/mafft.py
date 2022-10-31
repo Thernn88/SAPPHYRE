@@ -1,4 +1,3 @@
-import argparse
 import os
 from multiprocessing.pool import ThreadPool
 from threading import Lock
@@ -47,85 +46,63 @@ def run_command(arg_tuple: tuple) -> None:
         fp_out.truncate()
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument(
-    "-i", "--input", type=str, default="Parent", help="Path to parent folder for input"
-)
-parser.add_argument(
-    "-p",
-    "--processes",
-    type=int,
-    default=0,
-    help="Number of threads used to call processes.",
-)
-parser.add_argument(
-    "-oi",
-    "--orthoset_input",
-    type=str,
-    default="PhyMMR/orthosets",
-    help="Path to directory of Orthosets folder",
-)
-parser.add_argument(
-    "-o", "--orthoset", type=str, default="Ortholog_set_Mecopterida_v4", help="Orthoset"
-)
-args = parser.parse_args()
+def main(args):
+    mafft_folder = "mafft"
+    aa_folder = "aa"
+    aln_folder = "aln"
 
-mafft_folder = "mafft"
-aa_folder = "aa"
-aln_folder = "aln"
+    aln_path = os.path.join(args.orthoset_input, args.orthoset, aln_folder)
 
-aln_path = os.path.join(args.orthoset_input, args.orthoset, aln_folder)
-
-if os.path.exists("/run/shm"):
-    tmp_dir = "/run/shm"
-elif os.path.exists("/dev/shm"):
-    tmp_dir = "/dev/shm"
-else:
-    tmp_dir = args.input
-
-temp_folder = os.path.join(tmp_dir, "tmp")
-delete_on_exit = False
-if not os.path.exists(temp_folder):
-    delete_on_exit = True
-    os.makedirs(temp_folder, exist_ok=True)
-
-
-for taxa in os.listdir(args.input):
-    start = time()
-    print("Doing taxa {}".format(taxa))
-    mafft_path = os.path.join(args.input, taxa, mafft_folder)
-    aa_path = os.path.join(args.input, taxa, aa_folder)
-    if os.path.exists(aa_path):
-        if not os.path.exists(mafft_path):
-            os.mkdir(mafft_path)
-
-        genes = [gene.split(".")[0] for gene in os.listdir(aa_path) if ".aa" in gene]
-
-        # command = 'mafft --anysymbol --auto --quiet --thread -1  --addfragments {0} --thread -1 '+aln_path+'/{2}.aln.fa > {1}'
-        command = (
-            "mafft-linsi --anysymbol --quiet --linelength -1 --addfragments {0} --thread -1 "
-            + aln_path
-            + "/{2}.aln.fa > {1}"
-        )
-
-        if args.processes:
-            arguments = list()
-            lock = Lock()
-            for gene in genes:
-                gene_file = os.path.join(aa_path, gene + ".aa.fa")
-                result_file = os.path.join(mafft_path, gene + ".aa.fa")
-                arguments.append((command, gene_file, result_file, gene, temp_folder, lock))
-            with ThreadPool(args.processes) as pool:
-                pool.map(run_command, arguments, chunksize=1)
-        else:
-            for gene in genes:
-                gene_file = os.path.join(aa_path, gene + ".aa.fa")
-                result_file = os.path.join(mafft_path, gene + ".aa.fa")
-                run_command((command, gene_file, result_file, gene, temp_folder, None))
-
-        print("Took {:.2f}s".format(time() - start))
+    if os.path.exists("/run/shm"):
+        tmp_dir = "/run/shm"
+    elif os.path.exists("/dev/shm"):
+        tmp_dir = "/dev/shm"
     else:
-        print("Can't find aa folder for taxa {}".format(taxa))
+        tmp_dir = args.input
 
-if delete_on_exit:
-    os.remove(temp_folder)
+    temp_folder = os.path.join(tmp_dir, "tmp")
+    delete_on_exit = False
+    if not os.path.exists(temp_folder):
+        delete_on_exit = True
+        os.makedirs(temp_folder, exist_ok=True)
+
+
+    for taxa in os.listdir(args.input):
+        start = time()
+        print("Doing taxa {}".format(taxa))
+        mafft_path = os.path.join(args.input, taxa, mafft_folder)
+        aa_path = os.path.join(args.input, taxa, aa_folder)
+        if os.path.exists(aa_path):
+            if not os.path.exists(mafft_path):
+                os.mkdir(mafft_path)
+
+            genes = [gene.split(".")[0] for gene in os.listdir(aa_path) if ".aa" in gene]
+
+            # command = 'mafft --anysymbol --auto --quiet --thread -1  --addfragments {0} --thread -1 '+aln_path+'/{2}.aln.fa > {1}'
+            command = (
+                "mafft-linsi --anysymbol --quiet --linelength -1 --addfragments {0} --thread -1 "
+                + aln_path
+                + "/{2}.aln.fa > {1}"
+            )
+
+            if args.processes > 1:
+                arguments = list()
+                lock = Lock()
+                for gene in genes:
+                    gene_file = os.path.join(aa_path, gene + ".aa.fa")
+                    result_file = os.path.join(mafft_path, gene + ".aa.fa")
+                    arguments.append((command, gene_file, result_file, gene, temp_folder, lock))
+                with ThreadPool(args.processes) as pool:
+                    pool.map(run_command, arguments, chunksize=1)
+            else:
+                for gene in genes:
+                    gene_file = os.path.join(aa_path, gene + ".aa.fa")
+                    result_file = os.path.join(mafft_path, gene + ".aa.fa")
+                    run_command((command, gene_file, result_file, gene, temp_folder, None))
+
+            print("Took {:.2f}s".format(time() - start))
+        else:
+            print("Can't find aa folder for taxa {}".format(taxa))
+
+    if delete_on_exit:
+        os.remove(temp_folder)

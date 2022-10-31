@@ -448,7 +448,10 @@ def subcmd_mafft(subparsers):
 
 
 def mafft(args):
-    print(args)
+    from . import mafft
+    if not mafft.main(args):
+        print()
+        print(args.formathelp())
 
 
 def subcmd_pal2nal(subparsers):
