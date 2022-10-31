@@ -1,23 +1,7 @@
 import argparse
 import os
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-i",
-        "--input",
-        nargs="+",
-        action="append",
-        help="Path to input")
-    parser.add_argument(
-        "-o",
-        "--output",
-        type=str,
-        default="MergedGenes",
-        help="Merged output."
-    )
-    args = parser.parse_args()
-
+def main(args):
     aa_out = {}
     nt_out = {}
 
@@ -91,3 +75,6 @@ if __name__ == '__main__':
     for gene in nt_out:
         gene_out = os.path.join(nt_out_path, gene)
         open(gene_out, "w").write("\n".join(nt_out[gene]))
+
+if __name__ == '__main__':
+    main()
