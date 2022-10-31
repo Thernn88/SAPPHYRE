@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import json
 import sys
@@ -10,8 +12,8 @@ from typing import Any, Dict, Generator, List, Tuple
 from Bio.SeqIO.FastaIO import SimpleFastaParser
 from pro2codon import pn2codon
 
-GENETIC_TABLE = """
-{
+DICT_OPP = {'NT Seqs': "AA Seqs", "AA Seqs": 'NT_Seqs'}
+DICT_TABLES = {
     "1": {
         "F": [
             "TTT",
@@ -3575,9 +3577,6 @@ GENETIC_TABLE = """
         ]
     }
 }
-"""
-
-DICT_TABLES = json.loads(GENETIC_TABLE)
 
 
 def return_aligned_paths(
@@ -3630,10 +3629,7 @@ def prepare_taxa_and_genes(input: str, d) -> Tuple[Generator[
 
     return out_generator, len(glob_genes)
 
-from pprint import pprint
 
-DICT_OPP = {'NT Seqs': "AA Seqs", "AA Seqs": 'NT_Seqs'}
-from copy import copy
 def read_and_convert_fasta_files(
     aa_file: str,
     nt_file: str,
@@ -3646,10 +3642,8 @@ def read_and_convert_fasta_files(
     nt_seqs = SimpleFastaParser(open(nt_file))
     aa_seqs = SimpleFastaParser(open(aa_file))
 
-
     aas = []
     nts = {}
-
 
     for aa, nt in zip(aa_seqs, nt_seqs):
         aa_header, aa_seq = aa
@@ -3665,26 +3659,15 @@ def read_and_convert_fasta_files(
         nts[nt_header] = (nt_header, nt_seq)
         aas.append((aa_header, aa_seq))
 
-        
-
-    
-
-
     ret = {}
-    
     i = -1
-
     for aa in aas:
         try:
             if aa[0] not in ret:
                 i += 1
-
             ret[aa[0]] = (aa, (i, *nts[aa[0]]))
-            
-
         except:
             print("ERROR CAUGHT: There is a single header in PEP sequence FASTA file that does not exist in NUC sequence FASTA file")
-
             sys.exit()
     return ret
 
@@ -3719,7 +3702,6 @@ def worker(tup: Tuple[Path, Path, Path, Dict]):
     out_file.write_text(res)    
 
 
-
 def timeit(func):
     @wraps(func)
     def timeit_wrapper(*args, **kwargs):
@@ -3748,6 +3730,7 @@ if __name__ == "__main__":
     arg_parser = init_argparse()
     args = arg_parser.parse_args()
 
+    # FIXME: this needs to be in a try/except statement as defensive programming
     d = DICT_TABLES[str(args.table)]
 
     generator, _ = prepare_taxa_and_genes(args.input, d)
