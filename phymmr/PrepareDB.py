@@ -1,3 +1,4 @@
+from __future__ import annotations
 import argparse
 import json
 import math
@@ -76,53 +77,14 @@ def add_pc_to_db(db, key: int, data: list) -> str:
 
 def translate(in_path, out_path, translate_program = "fastatranslate", genetic_code = 1):
     os.system(
-            f"{translate_program} --geneticcode {genetic_code} '{in_path}' > '{out_path}'"
-        )
+        f"{translate_program} --geneticcode {genetic_code} '{in_path}' > '{out_path}'"
+    )
     os.remove(in_path)
 
-def main(argv):
+def main(args):
     trim_time = 0
     dedup_time = 0
     global_start = time()
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-i", "--input", default="Snails", type=str, help="Path to input directory."
-    )
-    parser.add_argument(
-        "-c",
-        "--clear_database",
-        action="store_true",
-        help="Overwrite existing rocksdb database.",
-    )
-    parser.add_argument(
-        "-ml",
-        "--minimum_sequence_length",
-        default=90,
-        type=int,
-        help="Minimum input sequence length.",
-    )
-    parser.add_argument(
-        "-sl",
-        "--sequences_per_level",
-        default=100000,
-        type=int,
-        help="Amount of sequences to store per database entry.",
-    )
-    parser.add_argument(
-        "-p",
-        "--processes",
-        type=int,
-        default=1,
-        help="Number of threads used to call processes.",
-    )
-    parser.add_argument(
-        "-k",
-        "--keep_prepared",
-        action="store_true",
-        help="Writes the prepared input fasta into the output taxa directory.",
-    )
-    parser.add_argument("-v", "--verbose", default=1, type=int, help="Verbose debug.")
-    args = parser.parse_args()
 
     PROT_MAX_SEQS_PER_LEVEL = args.sequences_per_level
     MINIMUM_SEQUENCE_LENGTH = args.minimum_sequence_length
@@ -345,4 +307,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    main(argv)
+    main()

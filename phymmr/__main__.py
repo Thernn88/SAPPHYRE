@@ -57,7 +57,7 @@ def subcmd_preparedb(subparsers):
 
 def preparedb(args):
     from . import PrepareDB
-    print(args)
+    PrepareDB.main(args)
 
 
 def subcmd_hmmsearchdb(subparsers):
