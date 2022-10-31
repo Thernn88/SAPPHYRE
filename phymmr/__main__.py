@@ -520,7 +520,10 @@ def subcmd_flexcull(subparsers):
 
 
 def flexcull(args):
-    print(args)
+    from . import FlexCull
+    if not FlexCull.main(args):
+        print()
+        print(args.formathelp())
 
 
 if __name__ == "__main__":

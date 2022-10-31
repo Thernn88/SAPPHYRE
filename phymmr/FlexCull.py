@@ -3,7 +3,6 @@ FlexCull Description Goes Here
 
 PyLint 9.81/10
 """
-import argparse
 import os
 from multiprocessing.pool import Pool
 from time import time
@@ -71,7 +70,7 @@ def parse_fasta(fasta_path: str) -> tuple:
     return references, candidates, raw_references
 
 
-def main(
+def do_gene(
     aa_input: str,
     nt_input: str,
     output: str,
@@ -302,48 +301,11 @@ def run_command(arg_tuple: tuple) -> None:
     Calls the main() function parallel in each thread
     """
     aa_input, nt_input, output, matches, aa_file, tmp_path, debug = arg_tuple
-    main(aa_input, nt_input, output, matches, aa_file, tmp_path, debug)
+    do_gene(aa_input, nt_input, output, matches, aa_file, tmp_path, debug)
 
 
-if __name__ == "__main__":
+def main(args):
     start = time()
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-i", "--input", type=str, default="parent", help="Parent input path."
-    )
-    parser.add_argument(
-        "-o", "--output", type=str, default="trimmed", help="Output Directory."
-    )
-    parser.add_argument(
-        "-aa", "--aa", type=str, default="mafft", help="AA Folder Name."
-    )
-    parser.add_argument(
-        "-nt", "--nt", type=str, default="nt_aligned", help="NT Folder Name."
-    )
-    parser.add_argument(
-        "-m",
-        "--matches",
-        type=int,
-        default=3,
-        help="Amount of nucleotides that have to match reference.",
-    )
-    parser.add_argument(
-        "-bp", "--bp", type=int, default=15, help="Minimum bp after cull."
-    )
-    parser.add_argument(
-        "-p",
-        "--processes",
-        type=int,
-        default=2,
-        help="Number of threads used to call processes.",
-    )
-    parser.add_argument(
-        "-d",
-        "--debug",
-        action="store_true",
-        help="Enable debug. When enabled Output log of culls.",
-    )
-    args = parser.parse_args()
     allowed_extensions = ["fa", "fas", "fasta"]
 
     for taxa in os.listdir(args.input):
@@ -358,7 +320,7 @@ if __name__ == "__main__":
             file_inputs = [input_gene for input_gene in os.listdir(aa_path) if ".aa" in input_gene]
             file_inputs.sort(key=lambda x : os.path.getsize(os.path.join(aa_path, x)), reverse=True)
             
-            if args.processes:
+            if args.processes > 1:
                 arguments = []
                 for input_gene in file_inputs:
                     arguments.append(
@@ -377,7 +339,7 @@ if __name__ == "__main__":
                     pool.map(run_command, arguments, chunksize=1)
             else:
                 for input_gene in file_inputs:
-                    main(
+                    do_gene(
                         aa_path,
                         nt_path,
                         output_path,
