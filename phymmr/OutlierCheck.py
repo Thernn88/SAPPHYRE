@@ -3,8 +3,7 @@ Outlier Check
 
 PyLint 8.99/10
 """
-
-import argparse
+from __future__ import annotations
 import os
 from copy import deepcopy
 from statistics import mean
@@ -445,13 +444,12 @@ def run_command(arg_tuple: tuple) -> None:
     main_process(input, nt_input, output, threshold, references_args, sort, nt, debug)
 
 
-def main(args):
+def do_folder(folder, args):
     start = time()
     allowed_extensions = {"fa", "fas", "fasta"}
-
-    for taxa in os.listdir(args.input):
+    for taxa in os.listdir(folder):
         print(f"Doing taxa {taxa}")
-        taxa_path = os.path.join(args.input, taxa)
+        taxa_path = os.path.join(folder, taxa)
 
         wanted_aa_path = os.path.join(taxa_path, "trimmed", "aa")
         if os.path.exists(wanted_aa_path):
@@ -521,9 +519,9 @@ def main(args):
                         with open(log_file_path, encoding="UTF-8") as log_f:
                             for line in log_f:
                                 if line.strip().split(",")[-1] == "Fail":
-                                    global_csv.write(line)
                                     if line[-1] != "\n":
-                                        global_csv.write("\n")
+                                        line = f"{line}\n"
+                                    global_csv.write(line)
             time_taken = time()
             time_taken = round(time_taken - start)
 
@@ -533,5 +531,17 @@ def main(args):
             print(f"Can't find aa folder for taxa {taxa}")
 
 
+def main(args):
+    if not all(os.path.exists(i) for i in args.INPUT):
+        print("ERROR: All folders passed as argument must exists.")
+        return False
+    for folder in args.INPUT:
+        do_folder(folder, args)
+
+
+
+
 if __name__ == "__main__":
-    main()
+    raise Exception(
+        "Cannot be called directly, please use the module:\nphymmr OutlierCheck"
+    )
