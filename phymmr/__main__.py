@@ -334,9 +334,8 @@ def subcmd_mergeoverlap(subparsers):
         help="Reference-guided De-novo Assembly Algorithm which merges overlapping reads "
         "into contiguous segments (Contigs).",
     )
-
     parser_mergeoverlap.add_argument(
-        "-i", "--input", default="Parent", help="Path to parent input"
+        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
     )
     parser_mergeoverlap.add_argument(
         "-aa",

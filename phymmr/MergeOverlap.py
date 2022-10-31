@@ -3,7 +3,7 @@ Merges all sequences per taxa into single sequence in each gene
 
 PyLint 9.61/10
 """
-import argparse
+from __future__ import annotations
 import json
 import os
 import pathlib
@@ -614,10 +614,9 @@ def run_command(arg_tuple: tuple) -> None:
     )
 
 
-def main(args):
+def do_folder(input_folder, args):
     start_time = time()
-
-    for taxa in os.listdir(args.input):
+    for taxa in os.listdir(input_folder):
         print(f"Doing taxa, {taxa}")
         taxa_path = os.path.join(args.input, taxa)
         input_path = os.path.join(taxa_path, "outlier")
@@ -686,6 +685,15 @@ def main(args):
                 os.remove(dupe_tmp_file)
         else:
             print(f"Can't find aa folder for taxa, {taxa}")
+
+
+def main(args):
+    if not all(os.path.exists(i) for i in args.INPUT):
+        print("ERROR: All folders passed as argument must exists.")
+        return False
+    for folder in args.INPUT:
+        do_folder(folder, args)
+
 
 
 if __name__ == "__main__":
