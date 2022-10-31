@@ -476,7 +476,10 @@ def subcmd_pal2nal(subparsers):
 
 
 def pal2nal(args):
-    print(args)
+    from . import pal2nal
+    if not pal2nal.main(args):
+        print()
+        print(args.formathelp())
 
 
 def subcmd_flexcull(subparsers):

@@ -3720,19 +3720,15 @@ def run_batch_threaded(num_threads: int, ls: List[
         List[
             List[Tuple[Tuple[Path, Path, Path], Dict]]
         ]]):
-
-
     with Pool(num_threads) as pool:
         list(pool.map(worker, ls, chunksize=100))
 
 
-if __name__ == "__main__":
-    arg_parser = init_argparse()
-    args = arg_parser.parse_args()
-
-    # FIXME: this needs to be in a try/except statement as defensive programming
+def main(args):
     d = DICT_TABLES[str(args.table)]
-
     generator, _ = prepare_taxa_and_genes(args.input, d)
-
     run_batch_threaded(num_threads=args.processes, ls=generator)
+
+
+if __name__ == "__main__":
+    main()
