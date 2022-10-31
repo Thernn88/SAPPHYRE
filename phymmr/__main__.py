@@ -24,9 +24,8 @@ def subcmd_preparedb(subparsers):
         "Performs six-fold translation of base NT sequences into AA translation. "
         "Unique AA translation stored with duplicate counts stored for later use.",
     )
-    parser_preparedb.add_argument(
-        "-i", "--input", default="Snails", type=str, required=True,
-        help="Path to input directory."
+    parser_reporterdb.add_argument(
+        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
     )
     parser_preparedb.add_argument(
         "-c",

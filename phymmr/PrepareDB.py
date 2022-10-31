@@ -16,6 +16,11 @@ from Bio.SeqIO.FastaIO import SimpleFastaParser
 from tqdm import tqdm
 
 
+ALLOWED_FILETYPES = ["fa", "fas", "fasta"]
+ROCKSDB_FOLDER_NAME = "rocksdb"
+SEQUENCES_DB_NAME = "sequences"
+CORE_DIRECTORY = "PhyMMR"
+
 def printv(msg, verbosity):
     if verbosity:
         print(msg)
@@ -38,7 +43,7 @@ def truncate_taxa(header: str, extension=None) -> str:
     return result
 
 
-def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
+def N_trim(parent_sequence, minimum_sequence_length):
     t1 = time()
     if "N" in parent_sequence:
         # Get N indices and start and end of sequence
@@ -53,7 +58,7 @@ def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
             end = indices[i + 1]
 
             length = end - start
-            if length >= MINIMUM_SEQUENCE_LENGTH:
+            if length >= minimum_sequence_length:
                 raw_seq = parent_sequence[start + 1 : end]
                 yield raw_seq, time() - t1
                 t1 = time()
@@ -81,25 +86,11 @@ def translate(in_path, out_path, translate_program = "fastatranslate", genetic_c
     )
     os.remove(in_path)
 
-def main(args):
-    if not os.path.exists(args.input):
-        print("ERROR: An existing directory must be provided.")
-        return False
 
-    trim_time = 0
-    dedup_time = 0
+def do_taxa(input_folder, num_threads, args):
     global_start = time()
-
-    PROT_MAX_SEQS_PER_LEVEL = args.sequences_per_level
-    MINIMUM_SEQUENCE_LENGTH = args.minimum_sequence_length
-    num_threads = args.processes
-
-    allowed_filetypes = ["fa", "fas", "fasta"]
-
-    rocksdb_folder_name = "rocksdb"
-    sequences_db_name = "sequences"
-    core_directory = "PhyMMR"
-    secondary_directory = os.path.join(core_directory, os.path.basename(args.input))
+    dedup_time = 0
+    secondary_directory = os.path.join(CORE_DIRECTORY, os.path.basename(input_folder))
 
     # Create necessary directories
     printv("Creating directories", args.verbose)
@@ -109,10 +100,10 @@ def main(args):
     taxa_runs = {}
 
     # Scan all the files in the input. Remove _R# and merge taxa
-    for file in os.listdir(args.input):
+    for file in os.listdir(input_folder):
         if (
-            os.path.isfile(os.path.join(args.input, file))
-            and file.split(".")[-1] in allowed_filetypes
+            os.path.isfile(os.path.join(input_folder, file))
+            and file.split(".")[-1] in ALLOWED_FILETYPES
         ):
             taxa = file.split(".")[0]
 
@@ -128,8 +119,8 @@ def main(args):
         taxa_destination_directory = os.path.join(
             secondary_directory, formatted_taxa_out
         )
-        rocksdb_path = os.path.join(taxa_destination_directory, rocksdb_folder_name)
-        sequences_db_path = os.path.join(rocksdb_path, sequences_db_name)
+        rocksdb_path = os.path.join(taxa_destination_directory, ROCKSDB_FOLDER_NAME)
+        sequences_db_path = os.path.join(rocksdb_path, SEQUENCES_DB_NAME)
 
         if args.clear_database and os.path.exists(rocksdb_path):
             printv("Clearing old database", args.verbose)
@@ -168,11 +159,10 @@ def main(args):
             fasta_file = SimpleFastaParser(open(fa_file_directory, encoding="UTF-8"))
 
             for header, parent_seq in tqdm(fasta_file) if args.verbose else fasta_file:
-                if not len(parent_seq) >= MINIMUM_SEQUENCE_LENGTH:
+                if not len(parent_seq) >= args.minimum_sequence_length:
                     continue
                 parent_seq = parent_seq.upper()
-                # for seq in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH):
-                for seq, tt in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH):
+                for seq, tt in N_trim(parent_seq, args.minimum_sequence_length):
                     trim_times.append(tt)
                     length = len(seq)
                     header = f"NODE_{this_index}_length_{length}"
@@ -241,10 +231,11 @@ def main(args):
             open(in_path, 'w').writelines(fa_file_out[i:i + sequences_per_thread])
 
         with Pool(num_threads) as translate_pool:
-            translate_pool.starmap(translate, translate_files)  
-            
+            translate_pool.starmap(translate, translate_files)
+
         if args.keep_prepared:
-            open(prepared_file_destination, "w", encoding="UTF-8").writelines(fa_file_out)
+            with open(prepared_file_destination, "w", encoding="UTF-8") as fp:
+                fp.writelines(fa_file_out)
         del fa_file_out
 
         prot_components = []
@@ -269,17 +260,16 @@ def main(args):
 
         if args.keep_prepared:
             open(prot_path,'w').writelines(out_lines)
-            
+
         aa_dupes = next(aa_dupe_count)
         printv("AA dedupe took {:.2f}s. Kicked {} dupes".format(time()-aa_dedupe_time, aa_dupes), args.verbose)
 
-        levels = math.ceil(len(out_lines) / PROT_MAX_SEQS_PER_LEVEL)
+        levels = math.ceil(len(out_lines) / args.sequences_per_level)
         per_level = math.ceil(len(out_lines) / levels)
 
         component = 0
         for i in range(0,len(out_lines),per_level):
             component += 1
-
             data = out_lines[i: i+per_level]
             prot_components.append(str(component))
             db.put(f"getprot:{component}", "".join(data))
@@ -296,13 +286,10 @@ def main(args):
             ),
             args.verbose,
         )
-
         del transcript_mapped_to  # Clear mem
-
 
         # Store the count of dupes in the database
         db.put("getall:dupes", json.dumps(duplicates))
-
         printv("Took {:.2f}s for {}\n".format(time() - taxa_start, file), args.verbose)
 
     print("Finished took {:.2f}s overall.".format(time() - global_start))
@@ -310,5 +297,25 @@ def main(args):
     printv(f"Dedupe time: {dedup_time}", args.verbose)
 
 
+def main(args):
+    if not all(os.path.exists(i) for i in args.INPUT):
+        print("ERROR: All folders passed as argument must exists.")
+        return False
+    try:
+        num_threads = int(args.processes)
+        if num_threads < 1:
+            num_threads = 1
+    except ValueError:
+        num_threads = 1
+        print(
+            "WARNING: 'processes' argument was not of type integer, defaulting to 1 thread."
+        )
+
+    for input_folder in args.INPUT:
+        do_taxa(input_folder, num_threads, args)
+
+
 if __name__ == "__main__":
-    main()
+    raise Exception(
+        "Cannot be called directly, please use the module:\nphymmr PrepareDB"
+    )

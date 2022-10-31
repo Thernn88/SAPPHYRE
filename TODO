@@ -1,10 +1,22 @@
 TODO
 -----------
 
-__main__.py
+__main__.py:
  [x] Use upper cases for sub commands @done (31-10-22 23:15)
  [ ] Write a proper description for the software
  [ ] Transform filenames to lowercase
+ List of dir as input:
+   [x] PrepareDB @done (31-10-22 23:49)
+   [ ] mafft
+   [ ] FlexCull
+   [ ] OutlierCheck
+   [ ] MergeOverlap
+ Test new input style:
+   [ ] PrepareDB
+   [ ] mafft
+   [ ] FlexCull
+   [ ] OutlierCheck
+   [ ] MergeOverlap
 
 PrepareDB.py
   [ ] Incorporate HammingDist dedupe
