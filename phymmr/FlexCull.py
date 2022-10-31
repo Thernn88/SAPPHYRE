@@ -3,6 +3,7 @@ FlexCull Description Goes Here
 
 PyLint 9.81/10
 """
+from __future__ import annotations
 import os
 from multiprocessing.pool import Pool
 from time import time
@@ -304,22 +305,22 @@ def run_command(arg_tuple: tuple) -> None:
     do_gene(aa_input, nt_input, output, matches, aa_file, tmp_path, debug)
 
 
-def main(args):
+def do_folder(folder, args):
     start = time()
     allowed_extensions = ["fa", "fas", "fasta"]
 
-    for taxa in os.listdir(args.input):
+    for taxa in os.listdir(folder):
         print(f"Doing taxa {taxa}")
-        aa_path = os.path.join(args.input, taxa, args.aa)
-        nt_path = os.path.join(args.input, taxa, args.nt)
-        output_path = os.path.join(args.input, taxa, args.output)
+        aa_path = os.path.join(folder, taxa, args.aa)
+        nt_path = os.path.join(folder, taxa, args.nt)
+        output_path = os.path.join(folder, taxa, args.output)
 
         if os.path.exists(aa_path) and os.path.exists(nt_path):
-            available_tmp_path = folder_check(output_path, os.path.join(args.input, taxa))
+            available_tmp_path = folder_check(output_path, os.path.join(folder, taxa))
 
             file_inputs = [input_gene for input_gene in os.listdir(aa_path) if ".aa" in input_gene]
             file_inputs.sort(key=lambda x : os.path.getsize(os.path.join(aa_path, x)), reverse=True)
-            
+
             if args.processes > 1:
                 arguments = []
                 for input_gene in file_inputs:
@@ -362,3 +363,18 @@ def main(args):
             print("Done! Took {:.2f}s overall.".format(time_taken))
         else:
             print(f"Can't find aa and nt folder for taxa {taxa}")
+
+
+def main(args):
+    if not all(os.path.exists(i) for i in args.INPUT):
+        print("ERROR: All folders passed as argument must exists.")
+        return False
+    for folder in args.INPUT:
+        do_folder(folder, args)
+
+
+if __name__ == "__main__":
+    raise Exception(
+        "Cannot be called directly, please use the module:\nphymmr FlexCull"
+    )
+

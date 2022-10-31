@@ -490,7 +490,7 @@ def subcmd_flexcull(subparsers):
         "candidate reads to remove introns and/or other LQ bases.",
     )
     parser_flexcull.add_argument(
-        "-i", "--input", type=str, default="parent", help="Parent input path."
+        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
     )
     parser_flexcull.add_argument(
         "-o", "--output", type=str, default="trimmed", help="Output Directory."
