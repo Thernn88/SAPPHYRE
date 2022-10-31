@@ -82,6 +82,10 @@ def translate(in_path, out_path, translate_program = "fastatranslate", genetic_c
     os.remove(in_path)
 
 def main(args):
+    if not os.path.exists(args.input):
+        print("ERROR: An existing directory must be provided.")
+        return False
+
     trim_time = 0
     dedup_time = 0
     global_start = time()
