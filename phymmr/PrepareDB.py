@@ -112,6 +112,10 @@ def do_taxa(input_folder, num_threads, args):
             taxa_runs.setdefault(formatted_taxa, [])
             taxa_runs[formatted_taxa].append(file)
 
+    if not taxa_runs:
+        print("ERROR: Nothing to do here, abort.")
+        return
+
     for formatted_taxa_out, components in taxa_runs.items():
         taxa_start = time()
         printv(f"Preparing {formatted_taxa_out}", args.verbose)
