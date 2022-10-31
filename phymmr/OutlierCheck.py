@@ -445,46 +445,8 @@ def run_command(arg_tuple: tuple) -> None:
     main_process(input, nt_input, output, threshold, references_args, sort, nt, debug)
 
 
-if __name__ == "__main__":
+def main(args):
     start = time()
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("-i", "--input", default="Taxa", help="Path to taxa")
-    parser.add_argument("-o", "--output", default="outlier", help="Output folder")
-    parser.add_argument(
-        "-p",
-        "--processes",
-        type=int,
-        default=0,
-        help="Number of threads used to call processes.",
-    )
-    parser.add_argument(
-        "-t",
-        "--threshold",
-        type=int,
-        default=50,
-        help="Greater than reference mean to be counted as an outlier. Default is 2x.",
-    )
-    parser.add_argument(
-        "--no-references",
-        action="store_true",
-        help="Disable output of reference sequences",
-    )
-    parser.add_argument(
-        "-s",
-        "--sort",
-        choices=["cluster", "original"],
-        default="original",
-        help="Sort candidate output by cluster and taxa, or preserver original order.",
-    )
-    parser.add_argument(
-        "-d",
-        "--debug",
-        action="store_true",
-        default=False,
-        help="Log outliers to csv files",
-    )
-    args = parser.parse_args()
     allowed_extensions = {"fa", "fas", "fasta"}
 
     for taxa in os.listdir(args.input):
@@ -512,7 +474,7 @@ if __name__ == "__main__":
             # if not nt_folder:
             #    nt_folder = make_nt_folder(args.aa_input)
             file_inputs.sort(key=lambda x : os.path.getsize(x), reverse=True)
-            if args.processes:
+            if args.processes > 1:
                 arguments = []
                 for gene in file_inputs:
                     arguments.append(
@@ -569,3 +531,7 @@ if __name__ == "__main__":
 
         else:
             print(f"Can't find aa folder for taxa {taxa}")
+
+
+if __name__ == "__main__":
+    main()

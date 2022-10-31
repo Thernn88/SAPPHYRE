@@ -272,7 +272,7 @@ def subcmd_reporterdb(subparsers):
     )
 
 
-def reporterdb(args):
+def reporterdb(args):  # TODO
     print(args)
 
 
@@ -320,7 +320,10 @@ def subcmd_outliercheck(subparsers):
 
 
 def outliercheck(args):
-    print(args)
+    from . import OutlierCheck
+    if not OutlierCheck.main(args):
+        print()
+        print(args.formathelp)
 
 
 def subcmd_mergeoverlap(subparsers):
