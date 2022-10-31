@@ -320,4 +320,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    main()
+    raise Exception(
+        "Cannot be called directly, please use the module:\nphymmr BlastPalDB"
+    )
