@@ -178,18 +178,147 @@ def get_ref_taxon_for_genes(set_id, orthoset_db_con):
 
     return result
 
-def printv(msg, verbosity):
+
+def printv(msg, verbosity) -> None:
     if verbosity:
         print(msg)
 
-def main():
+
+def run_process(args, input_path) -> None:
     start = time()
+    orthoset = args.orthoset
+    orthosets_dir = args.orthoset_input
+
+    taxa = os.path.basename(input_path)
+    printv('Begin BlastPal for {}'.format(taxa), args.verbose)
+    printv("Grabbing Reference data from SQL.", args.verbose)
+    # make dirs
+    blast_path = os.path.join(input_path, "blast")
+    if args.overwrite:
+        if os.path.exists(blast_path):
+            rmtree(blast_path)
+    os.makedirs(blast_path, exist_ok=True)
+
+    if os.path.exists("/run/shm"):
+        tmp_path = "/run/shm"
+    elif os.path.exists("/dev/shm"):
+        tmp_path = "/dev/shm"
+    else:
+        tmp_path = os.path.join(input_path, "tmp")
+        os.makedirs(tmp_path, exist_ok=True)
+
+    # grab gene reftaxon
+    orthoset_db_path = os.path.join(orthosets_dir, orthoset + ".sqlite")
+    orthoset_db_con = sqlite3.connect(orthoset_db_path)
+
+    orthoset_id = get_set_id(orthoset_db_con, orthoset)
+
+    sql_start = time()
+    ref_taxon = get_ref_taxon_for_genes(orthoset_id, orthoset_db_con)
+
+    blast_db_path = os.path.join(orthosets_dir, orthoset, "blast", orthoset)
+
+    printv("Done! Took {:.2f}s. Grabbing HMM data from DB".format(time() - sql_start), args.verbose)
+
+    db_path = os.path.join(input_path, "rocksdb", "hits")
+    db = wrap_rocks.RocksDB(db_path)
+
+    gene_to_hits = {}
+
+    grab_hmm_start = time()
+
+    global_hmm_object_raw = db.get("hmmbatch:all")
+    global_hmm_batches = global_hmm_object_raw.split(",")
+    hit_count = 0
+
+    for batch_i in global_hmm_batches:
+        key = f"hmmbatch:{batch_i}"
+        hmm_json = db.get(key)
+        hmm_hits = json.loads(hmm_json)
+
+        for hmm_object in hmm_hits:
+            hit_count += 1
+            hmm_id = hmm_object["hmm_id"]
+            header = hmm_object["header"].strip()
+            gene = hmm_object["gene"]
+
+            gene_to_hits.setdefault(gene, [])
+            gene_to_hits[gene].append(
+                SeqRecord(Seq(hmm_object["hmm_sequence"]), id=header + f"_hmmid{hmm_id}", description=""))
+
+    genes = list(gene_to_hits.keys())
+
+    printv(
+        "Grabbed HMM Data. Took: {:.2f}s. Found {} hits".format(
+            time() - grab_hmm_start, hit_count
+        ), args.verbose
+    )
+
+    del global_hmm_object_raw
+
+    blast_start = time()
+    num_threads = args.processes
+    # Run
+    if num_threads <= 1:
+        to_write = [
+            do(
+                GeneConfig(
+                    gene=gene,
+                    tmp_path=tmp_path,
+                    gene_sequences=gene_to_hits[gene],
+                    ref_names=ref_taxon[gene],
+                    blast_path=blast_path,
+                    blast_db_path=blast_db_path,
+                    blast_minimum_score=args.blast_minimum_score,
+                    blast_minimum_evalue=args.blast_minimum_evalue,
+                ),
+                args.verbose
+            )
+            for gene in genes
+        ]
+    else:
+        arguments = [
+            (GeneConfig(
+                gene=gene,
+                tmp_path=tmp_path,
+                gene_sequences=gene_to_hits[gene],
+                ref_names=ref_taxon[gene],
+                blast_path=blast_path,
+                blast_db_path=blast_db_path,
+                blast_minimum_score=args.blast_minimum_score,
+                blast_minimum_evalue=args.blast_minimum_evalue,
+            ),
+             args.verbose,)
+            for gene in genes
+        ]
+
+        with Pool(num_threads) as pool:
+            to_write = pool.starmap(do, arguments, chunksize=1)
+
+    printv(
+        "Got Blast Results. Took {:.2f}s. Writing to DB".format(
+            time() - blast_start
+        ), args.verbose
+    )
+
+    write_start = time()
+
+    i = 0
+    for batch in to_write:
+        for key, data, count in batch:
+            db.put(key, data)
+            i += count
+
+    printv("Writing {} results took {:.2f}s".format(i, time() - write_start), args.verbose)
+
+    print("Done. Took {:.2f}s overall".format(time() - start))
+
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-i",
-        "--input",
-        type=str,
-        default="PhyMMR/Acroceridae/SRR6453524.fa",
+        "INPUT",
+        action="extend",
+        nargs="+",
         help="Path to directory of Input folder",
     )
     parser.add_argument(
@@ -235,135 +364,8 @@ def main():
     )
     parser.add_argument("-v", "--verbose", default=1, type=int, help="Verbose debug.")
     args = parser.parse_args()
-
-    
-
-    input_path = args.input
-    orthoset = args.orthoset
-    orthosets_dir = args.orthoset_input
-
-    taxa = os.path.basename(input_path)
-    printv('Begin BlastPal for {}'.format(taxa), args.verbose)
-    printv("Grabbing Reference data from SQL.", args.verbose)
-    # make dirs
-    blast_path = os.path.join(input_path, "blast")
-    if args.overwrite:
-        if os.path.exists(blast_path):
-            rmtree(blast_path)
-    os.makedirs(blast_path, exist_ok=True)
-
-    if os.path.exists("/run/shm"):
-        tmp_path = "/run/shm"
-    elif os.path.exists("/dev/shm"):
-        tmp_path = "/dev/shm"
-    else:
-        tmp_path = os.path.join(input_path, "tmp")
-        os.makedirs(tmp_path, exist_ok=True)
-
-    # grab gene reftaxon
-    orthoset_db_path = os.path.join(orthosets_dir, orthoset + ".sqlite")
-    orthoset_db_con = sqlite3.connect(orthoset_db_path)
-
-    orthoset_id = get_set_id(orthoset_db_con, orthoset)
-
-    sql_start = time()
-    ref_taxon = get_ref_taxon_for_genes(orthoset_id, orthoset_db_con)
-
-    blast_db_path = os.path.join(orthosets_dir, orthoset, "blast", orthoset)
-
-    printv("Done! Took {:.2f}s. Grabbing HMM data from DB".format(time()-sql_start), args.verbose)
-
-    db_path = os.path.join(input_path, "rocksdb", "hits")
-    db = wrap_rocks.RocksDB(db_path)
-
-    gene_to_hits = {}
-
-    grab_hmm_start = time()
-
-    global_hmm_object_raw = db.get("hmmbatch:all")
-    global_hmm_batches = global_hmm_object_raw.split(",")
-    hit_count = 0
-
-    for batch_i in global_hmm_batches:
-        key = f"hmmbatch:{batch_i}"
-        hmm_json = db.get(key)
-        hmm_hits = json.loads(hmm_json)
-
-        for hmm_object in hmm_hits:
-            hit_count += 1
-            hmm_id = hmm_object["hmm_id"]
-            header = hmm_object["header"].strip()
-            gene = hmm_object["gene"]
-
-            gene_to_hits.setdefault(gene, [])
-            gene_to_hits[gene].append(SeqRecord(Seq(hmm_object["hmm_sequence"]), id=header + f"_hmmid{hmm_id}", description=""))
-
-    genes = list(gene_to_hits.keys())
-
-    printv(
-        "Grabbed HMM Data. Took: {:.2f}s. Found {} hits".format(
-            time() - grab_hmm_start, hit_count
-        ), args.verbose
-    )
-
-    del global_hmm_object_raw
-
-    blast_start = time()
-    num_threads = args.processes
-    # Run
-    if num_threads <= 1:
-        to_write = [
-            do(
-                GeneConfig(
-                    gene=gene,
-                    tmp_path=tmp_path,
-                    gene_sequences=gene_to_hits[gene],
-                    ref_names = ref_taxon[gene],
-                    blast_path=blast_path,
-                    blast_db_path=blast_db_path,
-                    blast_minimum_score=args.blast_minimum_score,
-                    blast_minimum_evalue=args.blast_minimum_evalue,
-                ),
-                args.verbose
-            )
-            for gene in genes
-        ]
-    else:
-        arguments = [
-            (GeneConfig(
-                gene=gene,
-                tmp_path=tmp_path,
-                gene_sequences=gene_to_hits[gene],
-                ref_names = ref_taxon[gene],
-                blast_path=blast_path,
-                blast_db_path=blast_db_path,
-                blast_minimum_score=args.blast_minimum_score,
-                blast_minimum_evalue=args.blast_minimum_evalue,
-            ),
-            args.verbose,)
-            for gene in genes
-        ]
-
-        with Pool(num_threads) as pool:
-            to_write = pool.starmap(do, arguments, chunksize=1)
-
-    printv(
-        "Got Blast Results. Took {:.2f}s. Writing to DB".format(
-            time() - blast_start
-        ), args.verbose
-    )
-
-    write_start = time()
-
-    i = 0
-    for batch in to_write:
-        for key, data, count in batch:
-            db.put(key, data)
-            i += count
-
-    printv("Writing {} results took {:.2f}s".format(i, time() - write_start), args.verbose)
-
-    print("Done. Took {:.2f}s overall".format(time() - start))
+    for input_path in args.INPUT:
+        run_process(args, input_path)
 
 
 if __name__ == "__main__":
