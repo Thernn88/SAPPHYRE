@@ -384,7 +384,10 @@ def subcmd_mergeoverlap(subparsers):
 
 
 def mergeoverlap(args):
-    print(args)
+    from . import MergeOverlap
+    if not MergeOverlap.main(args):
+        print()
+        print(args.formathelp())
 
 
 def subcmd_mergegenes(subparsers):
