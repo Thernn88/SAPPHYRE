@@ -904,140 +904,35 @@ def run_process(args, input_path: str) -> None:
     if current_batch:
         data = json.dumps(current_batch)
         key = f'hmmbatch:{batch_i}'
-
         global_hmm_obj_recipe.append(str(batch_i))
-
         hits_db_conn.put(key, data)
 
     del current_batch
 
     # insert key to grab all hmm objects into the database
-
     key = 'hmmbatch:all'
     data = ','.join(global_hmm_obj_recipe)
-
     hits_db_conn.put(key, data)
 
     db_end = time()
-    printv("Inserted {} hits over {} batch(es) in {:.2f} seconds. Kicked {} hits during filtering".format(total_hits,
-                                                                                                          len(global_hmm_obj_recipe),
-                                                                                                          db_end - end,
-                                                                                                          count - total_hits),
-           args.verbose)
+    printv(
+        "Inserted {} hits over {} batch(es) in {:.2f} seconds. Kicked {} hits during "
+        "filtering".format(
+            total_hits,
+            len(global_hmm_obj_recipe),
+            db_end - end,
+            count - total_hits
+        ),
+        args.verbose
+    )
     print("Took {:.2f}s overall".format(time() - global_start))
 
 
-def main(argv):
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "INPUT",
-        help="Path to input directory.",
-        action="extend",
-        nargs="+"
-    )
-    parser.add_argument(
-        "-oi",
-        "--orthoset_input",
-        type=str,
-        default="PhyMMR/orthosets",
-        help="Path to directory of Orthosets folder",
-    )
-    parser.add_argument(
-        "-o",
-        "--orthoset",
-        type=str,
-        default="Ortholog_set_Mecopterida_v4",
-        help="Orthoset",
-    )
-    parser.add_argument(
-        "-ovw",
-        "--overwrite",
-        default=False,
-        action="store_true",
-        help="Remake domtbl files even if previous file exists.",
-    )
-    parser.add_argument(
-        "-s", "--score", type=float, default=40, help="Score threshold. Defaults to 40"
-    )
-    parser.add_argument(
-        "-e",
-        "--evalue",
-        type=float,
-        default=0,
-        help="Evalue threshold. Defaults to 0",
-    )
-    parser.add_argument(
-        "--excluded-list",
-        default=False,
-        help="File containing names of genes to be excluded",
-    )
-    parser.add_argument(
-        "--wanted-list", default=False, help="File containing list of wanted genes"
-    )
-    parser.add_argument(
-        "-p",
-        "--processes",
-        type=int,
-        default=1,
-        help="""Number of worker processes launched.
-                        Defaults to 1.""",
-    )
-    parser.add_argument(
-        "--remake-protfile",
-        default=False,
-        action="store_true",
-        help="Force creation of a new protfile even if one already exists.",
-    )
-    parser.add_argument(
-        "-sdm",
-        "--score_diff_multi",
-        type=float,
-        default=1.05,
-        help="Multi-gene Score Difference Adjustment",
-    )
-    parser.add_argument(
-        "-mom",
-        "--min_overlap_multi",
-        type=float,
-        default=0.3,
-        help="Multi-gene Minimum Overlap Adjustment",
-    )
-    parser.add_argument(
-        "-momi",
-        "--minimum_overlap_internal_multi",
-        type=float,
-        default=0.5,
-        help="Internal Multi Minimum Overlap Adjustment",
-    )##
-    parser.add_argument(
-        "-sdi",
-        "--score_diff_internal",
-        type=float,
-        default=1.5,
-        help="Internal Score Difference Adjustmen",
-    )
-    parser.add_argument(
-        "-moi",
-        "--min_overlap_internal",
-        type=float,
-        default=0.9,
-        help="Internal Minimum Overlap Adjustment",
-    )
-    parser.add_argument(
-        "-m",
-        "--max_hmm_batch_size",
-        default=250000, 
-        type=int, 
-        help="Max hits per hmmsearch batch in db. Default: 500 thousand.",
-    )
-    parser.add_argument("-v", "--verbose", default=1, type=int, help="Verbose debug.")
-    parser.add_argument("-d", "--debug", type=int, default=0, help="Output debug logs.")
-
-    args = parser.parse_args()
+def main(args):
     for input_path in args.INPUT:
         printv('Begin Hmmsearch for {}'.format(os.path.basename(input_path)), args.verbose)
         run_process(args, input_path)
 
 
 if __name__ == "__main__":
-    main(argv)
+    main()
