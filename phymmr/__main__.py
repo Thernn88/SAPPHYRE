@@ -406,8 +406,8 @@ def subcmd_mergegenes(subparsers):
 
 
 def mergegenes(args):
-    from . import MergeOverlap
-    if not MergeOverlap.main(args):
+    from . import MergeGenes
+    if not MergeGenes.main(args):
         print()
         print(args.formathelp())
 
