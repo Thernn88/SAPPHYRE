@@ -418,18 +418,7 @@ def subcmd_mafft(subparsers):
         "mafft", help="Aligns AA sequences against existing reference alignment."
     )
     parser_mafft.add_argument(
-        "-i",
-        "--input",
-        type=str,
-        default="Parent",
-        help="Path to parent folder for input",
-    )
-    parser_mafft.add_argument(
-        "-p",
-        "--processes",
-        type=int,
-        default=0,
-        help="Number of threads used to call processes.",
+        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
     )
     parser_mafft.add_argument(
         "-oi",

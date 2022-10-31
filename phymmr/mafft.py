@@ -1,7 +1,20 @@
+from __future__ import annotations
 import os
 from multiprocessing.pool import ThreadPool
 from threading import Lock
 from time import time
+
+MAFFT_FOLDER = "mafft"
+AA_FOLDER = "aa"
+ALN_FOLDER = "aln"  # FIXME: not used?
+
+if os.path.exists("/run/shm"):
+    TMP_DIR = "/run/shm"
+elif os.path.exists("/dev/shm"):
+    TMP_DIR = "/dev/shm"
+else:
+    TMP_DIR = None
+
 
 def run_command(arg_tuple: tuple) -> None:
     string, gene_file, result_file, gene, temp_folder, lock = arg_tuple
@@ -46,32 +59,21 @@ def run_command(arg_tuple: tuple) -> None:
         fp_out.truncate()
 
 
-def main(args):
-    mafft_folder = "mafft"
-    aa_folder = "aa"
-    aln_folder = "aln"
+def do_folder(folder, args):
+    aln_path = os.path.join(args.orthoset_input, args.orthoset, ALN_FOLDER)
+    TMP_DIR = TMP_DIR or folder
 
-    aln_path = os.path.join(args.orthoset_input, args.orthoset, aln_folder)
-
-    if os.path.exists("/run/shm"):
-        tmp_dir = "/run/shm"
-    elif os.path.exists("/dev/shm"):
-        tmp_dir = "/dev/shm"
-    else:
-        tmp_dir = args.input
-
-    temp_folder = os.path.join(tmp_dir, "tmp")
+    temp_folder = os.path.join(TMP_DIR, "tmp")
     delete_on_exit = False
     if not os.path.exists(temp_folder):
         delete_on_exit = True
         os.makedirs(temp_folder, exist_ok=True)
 
-
-    for taxa in os.listdir(args.input):
+    for taxa in os.listdir(folder):
         start = time()
         print("Doing taxa {}".format(taxa))
-        mafft_path = os.path.join(args.input, taxa, mafft_folder)
-        aa_path = os.path.join(args.input, taxa, aa_folder)
+        mafft_path = os.path.join(folder, taxa, MAFFT_FOLDER)
+        aa_path = os.path.join(folder, taxa, AA_FOLDER)
         if os.path.exists(aa_path):
             if not os.path.exists(mafft_path):
                 os.mkdir(mafft_path)
@@ -106,3 +108,17 @@ def main(args):
 
     if delete_on_exit:
         os.remove(temp_folder)
+
+
+def main(args):
+    if not all(os.path.exists(i) for i in args.INPUT):
+        print("ERROR: All folders passed as argument must exists.")
+        return False
+    for folder in args.INPUT:
+        do_folder(folder, args)
+
+
+if __name__ == "__main__":
+    raise Exception(
+        "Cannot be called directly, please use the module:\nphymmr mafft"
+    )
