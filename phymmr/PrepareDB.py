@@ -112,8 +112,6 @@ def do_taxa(input_folder, num_threads, args):
             taxa_runs.setdefault(formatted_taxa, [])
             taxa_runs[formatted_taxa].append(file)
 
-    trim_times = []  # Append computed time for each loop.
-
     for formatted_taxa_out, components in taxa_runs.items():
         taxa_start = time()
         printv(f"Preparing {formatted_taxa_out}", args.verbose)
@@ -149,6 +147,7 @@ def do_taxa(input_folder, num_threads, args):
         transcript_mapped_to = {}
         dupes = count()
         this_index = 1
+        trim_times = []  # Append computed time for each loop.
 
         fa_file_out = []
         printv("Formatting input sequences and inserting into database", args.verbose)
