@@ -2,8 +2,9 @@ TODO
 -----------
 
 __main__.py
- [ ] Use upper cases for sub commands
+ [x] Use upper cases for sub commands @done (31-10-22 23:15)
  [ ] Write a proper description for the software
+ [ ] Transform filenames to lowercase
 
 PrepareDB.py
   [ ] Incorporate HammingDist dedupe

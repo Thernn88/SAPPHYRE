@@ -18,7 +18,7 @@ import argparse
 
 def subcmd_preparedb(subparsers):
     parser_preparedb = subparsers.add_parser(
-        "preparedb",
+        "PrepareDB",
         help="Loads NT input files (.fa, .fas or .fasta) into a rocksdb database. "
         "Unique NT sequences stored with a duplicate count stored for later use. "
         "Performs six-fold translation of base NT sequences into AA translation. "
@@ -69,7 +69,7 @@ def preparedb(args):
 
 def subcmd_hmmsearchdb(subparsers):
     parser_hmmsearchdb = subparsers.add_parser(
-        "hmmsearchdb",
+        "HmmsearchDB",
         help="Queries protein translations against profile HMMs using the HMMER3 "
         "external. Filters HMMER3 output using 3 custom filters: MultiGene, "
         "InternalMulti & InternalSubpar to remove LQ hits and prevent sequence reuse. "
@@ -181,7 +181,7 @@ def hmmsearchdb(args):
 
 def subcmd_blastpaldb(subparsers):
     parser_blastpal = subparsers.add_parser(
-        "blastpaldb",
+        "BlastPalDB",
         help="Blasts Hmmsearch hits using NCBI-Blast against reference sequences. "
         "Loads resulting output into RocksDB",
     )
@@ -239,7 +239,7 @@ def blastpaldb(args):
 
 def subcmd_reporterdb(subparsers):
     parser_reporterdb = subparsers.add_parser(
-        "reporterdb",
+        "ReporterDB",
         help="Checks Blast results to ensure a hit is reciprocal. Queries a sequence "
         "using exonerate to align it against a target reference and trim it to mapped "
         "region. Produces aa and nt output.",
@@ -281,7 +281,7 @@ def reporterdb(args):
 
 def subcmd_outliercheck(subparsers):
     parser_outliercheck = subparsers.add_parser(
-        "outliercheck",
+        "OutlierCheck",
         help="Calculates a Blosum62 distance matrix which are used to remove outlier "
         "sequences above a threshold.",
     )
@@ -331,7 +331,7 @@ def outliercheck(args):
 
 def subcmd_mergeoverlap(subparsers):
     parser_mergeoverlap = subparsers.add_parser(
-        "mergeoverlap",
+        "MergeOverlap",
         help="Reference-guided De-novo Assembly Algorithm which merges overlapping reads "
         "into contiguous segments (Contigs).",
     )
@@ -395,7 +395,7 @@ def mergeoverlap(args):
 
 def subcmd_mergegenes(subparsers):
     parser_mergegenes = subparsers.add_parser(
-        "mergegenes", help="Usefulness yet to be defined... (FIXME)"
+        "MergeGenes", help="Usefulness yet to be defined... (FIXME)"
     )
     parser_mergegenes.add_argument(
         "-i", "--input", nargs="+", action="append", help="Path to input"
@@ -459,7 +459,7 @@ def mafft(args):
 
 def subcmd_pal2nal(subparsers):
     parser_pal2nal = subparsers.add_parser(
-        "pal2nal",
+        "Pal2Nal",
         help="Mirrors Amino Acid Alignment to Nucleotide data using specified NCBI "
         "table. Also performs basic error checking on data.",
     )
@@ -487,7 +487,7 @@ def pal2nal(args):
 
 def subcmd_flexcull(subparsers):
     parser_flexcull = subparsers.add_parser(
-        "flexcull",
+        "FlexCull",
         help="Adaptive End Trimming algorithm that trims the start and end of "
         "candidate reads to remove introns and/or other LQ bases.",
     )
