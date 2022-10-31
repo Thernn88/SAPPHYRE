@@ -403,7 +403,10 @@ def subcmd_mergegenes(subparsers):
 
 
 def mergegenes(args):
-    print(args)
+    from . import MergeOverlap
+    if not MergeOverlap.main(args):
+        print()
+        print(args.formathelp())
 
 
 def subcmd_mafft(subparsers):

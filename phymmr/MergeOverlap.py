@@ -536,7 +536,7 @@ def do_protein(
     return output_path, gene_out
 
 
-def main(
+def do_gene(
     gene,
     output_dir,
     aa_path,
@@ -601,7 +601,7 @@ def run_command(arg_tuple: tuple) -> None:
         majority,
         majority_count,
     ) = arg_tuple
-    main(
+    do_gene(
         gene,
         output_dir,
         aa_path,
@@ -614,61 +614,8 @@ def run_command(arg_tuple: tuple) -> None:
     )
 
 
-if __name__ == "__main__":
+def main(args):
     start_time = time()
-    parser = argparse.ArgumentParser("Merges all sequences per taxa in genes.")
-    parser.add_argument("-i", "--input", default="Parent", help="Path to parent input")
-    parser.add_argument(
-        "-aa",
-        "--aa_input",
-        type=str,
-        default="aa",
-        help="Path to directory of AA folder",
-    )
-    parser.add_argument(
-        "-nt",
-        "--nt_input",
-        type=str,
-        default="nt",
-        help="Path to directory of NT folder",
-    )
-    parser.add_argument(
-        "-d",
-        "--debug",
-        action="store_true",
-        help="Enable debug. When enabled displays each component of merged headers.",
-    )
-    parser.add_argument(
-        "-c",
-        "--comparison",
-        type=str,
-        default="Drosophila_melanogaster",
-        help="""Fallback Comparison Taxa. Sequence in which
-        Sequence A and Sequence B is compared to in split calculation.""",
-    )
-    parser.add_argument(
-        "-m",
-        "--majority",
-        type=float,
-        default=0.66,
-        help="Percentage for majority ruling.",
-    )
-    parser.add_argument(
-        "-mc",
-        "--majority_count",
-        type=int,
-        default=4,
-        help="Percentage for majority ruling.",
-    )
-    parser.add_argument(
-        "-p",
-        "--processes",
-        type=int,
-        default=0,
-        help="Number of threads used to call processes.",
-    )
-
-    args = parser.parse_args()
 
     for taxa in os.listdir(args.input):
         print(f"Doing taxa, {taxa}")
@@ -694,7 +641,7 @@ if __name__ == "__main__":
                 target_genes.append(os.path.basename(item))
             target_genes.sort(key=lambda x : os.path.getsize(os.path.join(aa_input, x)), reverse=True)
 
-            if args.processes:
+            if args.processes > 1:
                 arguments = []
                 for target_gene in target_genes:
                     dupes_in_this_gene = dupe_counts.get(target_gene.split('.')[0], {})
@@ -739,3 +686,7 @@ if __name__ == "__main__":
                 os.remove(dupe_tmp_file)
         else:
             print(f"Can't find aa folder for taxa, {taxa}")
+
+
+if __name__ == "__main__":
+    main()
