@@ -59,9 +59,9 @@ def subcmd_preparedb(subparsers):
 
 
 def preparedb(args):
-    from . import PrepareDB
+    from . import preparedb
 
-    if not PrepareDB.main(args):
+    if not preparedb.main(args):
         print()
         print(args.formathelp())
 
@@ -173,8 +173,8 @@ def subcmd_hmmsearchdb(subparsers):
 
 
 def hmmsearchdb(args):
-    from . import HmmsearchDB
-    if not HmmsearchDB.main(args):
+    from . import hmmsearchdb
+    if not hmmsearchdb.main(args):
         print(args.formathelp)
 
 
@@ -231,8 +231,8 @@ def subcmd_blastpaldb(subparsers):
 
 
 def blastpaldb(args):
-    from . import BlastPalDB
-    if not BlastPalDB.main(args):
+    from . import blastpaldb
+    if not blastpaldb.main(args):
         print(args.formathelp())
 
 
@@ -273,8 +273,8 @@ def subcmd_reporterdb(subparsers):
 
 
 def reporterdb(args):
-    from . import ReporterDB
-    if not ReporterDB.main(args):
+    from . import reporterdb
+    if not reporterdb.main(args):
         print(args.formathelp())
 
 
@@ -322,8 +322,8 @@ def subcmd_outliercheck(subparsers):
 
 
 def outliercheck(args):
-    from . import OutlierCheck
-    if not OutlierCheck.main(args):
+    from . import outliercheck
+    if not outliercheck.main(args):
         print()
         print(args.formathelp)
 
@@ -385,8 +385,8 @@ def subcmd_mergeoverlap(subparsers):
 
 
 def mergeoverlap(args):
-    from . import MergeOverlap
-    if not MergeOverlap.main(args):
+    from . import merge_overlap
+    if not merge_overlap.main(args):
         print()
         print(args.formathelp())
 
@@ -407,8 +407,8 @@ def subcmd_mergegenes(subparsers):
 
 
 def mergegenes(args):
-    from . import MergeGenes
-    if not MergeGenes.main(args):
+    from . import merge_genes
+    if not merge_genes.main(args):
         print()
         print(args.formathelp())
 
@@ -510,8 +510,8 @@ def subcmd_flexcull(subparsers):
 
 
 def flexcull(args):
-    from . import FlexCull
-    if not FlexCull.main(args):
+    from . import flexcull
+    if not flexcull.main(args):
         print()
         print(args.formathelp())
 
