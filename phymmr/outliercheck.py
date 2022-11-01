@@ -16,7 +16,7 @@ from time import time
 import numpy as np
 import phymmr_tools as bd
 
-ALLOWED_EXTENSIONS = {"fa", "fas", "fasta"}
+ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta")
 
 
 class Record:
@@ -384,7 +384,6 @@ def main_process(
     aa_output = os.path.join(aa_output, filename)
 
     outliers_csv_path = os.path.join(args_output, "logs", "outliers_" + name + ".csv")
-    lines = []
     with open(file_input, encoding="UTF-8") as fasta_in:
         lines = fasta_in.readlines()
 
@@ -468,9 +467,9 @@ def do_folder(folder, args):
         return
 
     file_inputs = [
-        Path(aa_input, gene)
+        gene
         for gene in aa_input.iterdir()
-        if ".aa" in str(gene) and gene.suffix in ALLOWED_EXTENSIONS
+        if ".aa" in gene.suffixes and gene.suffix in ALLOWED_EXTENSIONS
     ]
     output_path = Path(folder, args.output)
     nt_output_path = os.path.join(output_path, "nt")
