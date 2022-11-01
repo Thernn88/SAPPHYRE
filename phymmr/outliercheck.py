@@ -4,14 +4,19 @@ Outlier Check
 PyLint 8.99/10
 """
 from __future__ import annotations
+
 import os
 from copy import deepcopy
-from statistics import mean
-from multiprocessing.pool import Pool
 from itertools import combinations
+from multiprocessing.pool import Pool
+from pathlib import Path
+from statistics import mean
 from time import time
+
 import numpy as np
-import blosum_distance as bd
+import phymmr_tools as bd
+
+ALLOWED_EXTENSIONS = {"fa", "fas", "fasta"}
 
 
 class Record:
@@ -63,16 +68,17 @@ def original_sort(headers, lines) -> list:
     return output
 
 
-def folder_check(path: str, debug: bool) -> None:
+def folder_check(path: Path, debug: bool) -> None:
+    """Create subfolders 'aa' and 'nt' to given path."""
+    aa_folder = Path(path, "aa")
+    nt_folder = Path(path, "nt")
 
-    aa_folder = os.path.join(path, "aa")
-    nt_folder = os.path.join(path, "nt")
+    aa_folder.mkdir(parents=True, exist_ok=True)
+    nt_folder.mkdir(parents=True, exist_ok=True)
 
-    os.makedirs(aa_folder, exist_ok=True)
-    os.makedirs(nt_folder, exist_ok=True)
     if debug:
-        logs_folder = os.path.join(path, "logs")
-        os.makedirs(logs_folder, exist_ok=True)
+        logs_folder = Path(path, "logs")
+        logs_folder.mkdir(parents=True, exist_ok=True)
 
 
 def get_headers(lines: list) -> list:
@@ -208,19 +214,18 @@ def make_ref_mean(matrix: list, ignore_zeros=False) -> float:
     distances. Returns the value as a float. If ignore_zeros is enabled, ignores
     any distance value of zero.
     """
-    sum = 0
+    isum = 0
     zeros_found = 0
     total_number = 0
     for row in matrix:
         for column in row:
-            sum += column
+            isum += column
             total_number += 1
             if column == 0:
                 zeros_found += 1
     if ignore_zeros:
         total_number -= zeros_found
-    mean = sum / total_number
-    return mean
+    return isum / total_number
 
 
 def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
@@ -304,6 +309,7 @@ def compare_means(
             to_add_later.extend(intermediate_list)
     return regulars, to_add_later, outliers
 
+
 def delete_empty_columns(raw_fed_sequences: list) -> list:
     """
     Iterates over each sequence and deletes columns
@@ -333,7 +339,7 @@ def delete_empty_columns(raw_fed_sequences: list) -> list:
                 sequence = [raw_sequences[i + 1][x] for x in positions_to_keep]
                 result.append(raw_sequences[i] + "\n")
             except IndexError:
-                print(sequence)
+                print(sequence)  # FIXME: write a proper error message
                 continue
             sequence.append("\n")
             sequence = "".join(sequence)
@@ -440,95 +446,90 @@ def main_process(
 
 
 def run_command(arg_tuple: tuple) -> None:
-    input, nt_input, output, threshold, references_args, sort, nt, debug = arg_tuple
-    main_process(input, nt_input, output, threshold, references_args, sort, nt, debug)
+    main_process(*arg_tuple)
 
 
 def do_folder(folder, args):
     start = time()
-    allowed_extensions = {"fa", "fas", "fasta"}
-    for taxa in os.listdir(folder):
-        print(f"Doing taxa {taxa}")
-        taxa_path = os.path.join(folder, taxa)
+    print(f"### Processing folder {folder}")
+    wanted_aa_path = Path(folder, "trimmed", "aa")
+    if wanted_aa_path.exists():
+        aa_input = wanted_aa_path
+        nt_input = Path(folder, "trimmed", "nt")
+    else:
+        aa_input = Path(folder, "mafft")
+        nt_input = Path(folder, "nt_aligned")
 
-        wanted_aa_path = os.path.join(taxa_path, "trimmed", "aa")
-        if os.path.exists(wanted_aa_path):
-            aa_input = wanted_aa_path
-            nt_input = os.path.join(taxa_path, "trimmed", "nt")
-        else:
-            aa_input = os.path.join(taxa_path, "mafft")
-            nt_input = os.path.join(taxa_path, "nt_aligned")
+    if not aa_input.exists():  # exit early
+        print(f"Can't find aa folder for taxa {folder}")
+        return
 
-        if os.path.exists(aa_input):
-            file_inputs = [
-                os.path.join(aa_input, gene)
-                for gene in os.listdir(os.path.join(aa_input))
-                if ".aa" in gene and gene.split(".")[-1] in allowed_extensions
-            ]
-            output_path = os.path.join(taxa_path, args.output)
-            nt_output_path = os.path.join(output_path, "nt")
-            folder_check(output_path, args.debug)
-            # nt_folder = args.nt_input
-            # if not nt_folder:
-            #    nt_folder = make_nt_folder(args.aa_input)
-            file_inputs.sort(key=lambda x : os.path.getsize(x), reverse=True)
-            if args.processes > 1:
-                arguments = []
-                for gene in file_inputs:
-                    arguments.append(
-                        (
-                            gene,
-                            nt_input,
-                            output_path,
-                            args.threshold,
-                            args.no_references,
-                            args.sort,
-                            nt_output_path,
-                            args.debug,
-                        )
-                    )
+    file_inputs = [
+        Path(aa_input, gene)
+        for gene in aa_input.iterdir()
+        if ".aa" in gene and gene.suffix in ALLOWED_EXTENSIONS
+    ]
+    output_path = Path(folder, args.output)
+    nt_output_path = os.path.join(output_path, "nt")
+    folder_check(output_path, args.debug)
+    # nt_folder = args.nt_input
+    # if not nt_folder:
+    #    nt_folder = make_nt_folder(args.aa_input)
+    file_inputs.sort(key=lambda x: x.stat().st_size, reverse=True)
+    if args.processes > 1:
+        arguments = []
+        for gene in file_inputs:
+            arguments.append(
+                (
+                    gene,
+                    nt_input,
+                    output_path,
+                    args.threshold,
+                    args.no_references,
+                    args.sort,
+                    nt_output_path,
+                    args.debug,
+                )
+            )
 
-                with Pool(args.processes) as pool:
-                    pool.map(run_command, arguments, chunksize=1)
-            else:
-                for gene in file_inputs:
-                    print(gene)
-                    main_process(
-                        gene,
-                        nt_input,
-                        output_path,
-                        args.threshold,
-                        args.no_references,
-                        args.sort,
-                        nt_output_path,
-                        args.debug,
-                    )
-            if args.debug:
-                log_folder_path = os.path.join(output_path, "logs")
-                global_csv_path = os.path.join(log_folder_path, "outliers_global.csv")
+        with Pool(args.processes) as pool:
+            pool.map(run_command, arguments, chunksize=1)
+    else:
+        for gene in file_inputs:
+            print(gene)
+            main_process(
+                gene,
+                nt_input,
+                output_path,
+                args.threshold,
+                args.no_references,
+                args.sort,
+                nt_output_path,
+                args.debug,
+            )
+    if args.debug:
+        log_folder_path = os.path.join(output_path, "logs")
+        global_csv_path = os.path.join(log_folder_path, "outliers_global.csv")
 
-                logs = [
-                    x
-                    for x in os.listdir(log_folder_path)
-                    if "outliers_" in x and "global" not in x
-                ]
-                with open(global_csv_path, "w", encoding="UTF-8") as global_csv:
-                    global_csv.write("Gene,Header,Mean_Dist,Ref_Mean,IQR\n")
-                    for log in logs:
-                        log_file_path = os.path.join(log_folder_path, log)
-                        with open(log_file_path, encoding="UTF-8") as log_f:
-                            for line in log_f:
-                                if line.strip().split(",")[-1] == "Fail":
-                                    if line[-1] != "\n":
-                                        line = f"{line}\n"
-                                    global_csv.write(line)
-            time_taken = time()
-            time_taken = round(time_taken - start)
+        logs = [
+            x
+            for x in os.listdir(log_folder_path)
+            if "outliers_" in x and "global" not in x
+        ]
+        with open(global_csv_path, "w", encoding="UTF-8") as global_csv:
+            global_csv.write("Gene,Header,Mean_Dist,Ref_Mean,IQR\n")
+            for log in logs:
+                log_file_path = os.path.join(log_folder_path, log)
+                with open(log_file_path, encoding="UTF-8") as log_f:
+                    for line in log_f:
+                        if line.strip().split(",")[-1] == "Fail":
+                            if line[-1] != "\n":
+                                line = f"{line}\n"
+                            global_csv.write(line)
+    time_taken = time()
+    time_taken = round(time_taken - start)
 
-            print(f"Finished in {time_taken} seconds")
-
-        else:
-            print(f"Can't find aa folder for taxa {taxa}")
+    print(f"Finished in {time_taken} seconds")
 
 
 def main(args):
@@ -536,7 +537,7 @@ def main(args):
         print("ERROR: All folders passed as argument must exists.")
         return False
     for folder in args.INPUT:
-        do_folder(folder, args)
+        do_folder(Path(folder), args)
 
 
 if __name__ == "__main__":
