@@ -205,7 +205,7 @@ def get_scores_list(score_threshold, min_length, rocks_hits_db, debug):
             length = this_row["env_end"] - this_row["env_start"]
             hmm_score = this_row["score"]
 
-            if hmm_score > score_threshold and length > args.min_length:
+            if hmm_score > score_threshold and length > min_length:
                 if debug:
                     hmm_start = this_row["hmm_start"]
                     hmm_end = this_row["hmm_end"]
