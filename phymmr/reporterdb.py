@@ -668,7 +668,7 @@ ExonerateArgs = namedtuple("ExonerateArgs",
         "nt_out_path",
         "tmp_path",
         "verbose",
-        "rdb_kw", # kwargs: {'rocks_sequence_db': ..., 'rocks_hits_db': ...}
+        "rocks_sequence_db",
     ]
 )
 
@@ -689,7 +689,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
         this_reftaxon = hit.reftaxon
 
         est_header, est_sequence_complete = get_nucleotide_transcript_for(
-            hit.header, rdb_kw.rocks_sequence_db
+            hit.header, eargs.rocks_sequence_db
         )
         est_sequence_hmm_region = crop_to_hmm_alignment(
             est_sequence_complete, est_header, hit
@@ -916,7 +916,7 @@ def do_taxa(path, taxa_id, args, **kwargs):
         )
 
     score_based_results, ufr_rows = get_scores_list(
-        args.min_score, args.min_length, kwargs.rocks_hits_db, args.debug
+        args.min_score, args.min_length, kwargs["rocks_hits_db"], args.debug
     )
 
     if args.debug:
@@ -956,7 +956,7 @@ def do_taxa(path, taxa_id, args, **kwargs):
                 reference_taxa,
                 score,
                 args,
-                kwargs.rocks_hits_db,
+                kwargs["rocks_hits_db"],
             )
         )
     with Pool(num_threads) as pool:
@@ -1012,7 +1012,7 @@ def do_taxa(path, taxa_id, args, **kwargs):
                 nt_out_path,
                 tmp_path,
                 args.verbose,
-                kwargs
+                kwargs["rocks_sequence_db"]
             )
         )
 
@@ -1098,5 +1098,7 @@ def main(args):
     return True
 
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    raise Exception(
+        "Cannot be called directly, please use the module:\nphymmr ReporterDB"
+    )
