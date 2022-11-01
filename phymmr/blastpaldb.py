@@ -190,7 +190,7 @@ def run_process(args, input_path) -> None:
     orthosets_dir = args.orthoset_input
 
     taxa = os.path.basename(input_path)
-    printv('Begin BlastPal for {}'.format(taxa), args.verbose)
+    print(f'Begin BlastPal for {taxa}')
     printv("Grabbing Reference data from SQL.", args.verbose)
     # make dirs
     blast_path = os.path.join(input_path, "blast")
@@ -315,8 +315,12 @@ def run_process(args, input_path) -> None:
 
 
 def main(args):
+    if not all(os.path.exists(i) for i in args.INPUT):
+        print("ERROR: All folders passed as argument must exists.")
+        return False
     for input_path in args.INPUT:
         run_process(args, input_path)
+    return True
 
 
 if __name__ == "__main__":
