@@ -935,7 +935,7 @@ def main(args):
     for input_path in args.INPUT:
         printv('Begin Hmmsearch for {}'.format(os.path.basename(input_path)), args.verbose)
         run_process(args, input_path)
-    return False
+    return True
 
 
 if __name__ == "__main__":

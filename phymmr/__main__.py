@@ -175,7 +175,7 @@ def subcmd_hmmsearchdb(subparsers):
 def hmmsearchdb(args):
     from . import hmmsearchdb
     if not hmmsearchdb.main(args):
-        print(args.formathelp)
+        print(args.formathelp())
 
 
 def subcmd_blastpaldb(subparsers):
