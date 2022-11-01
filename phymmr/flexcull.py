@@ -79,6 +79,7 @@ def do_gene(
     aa_file: str,
     tmp_path: str,
     debug: bool,
+    bp: int
 ) -> None:
     """
     FlexCull main function. Culls input aa and nt using specified amount of matches
@@ -118,8 +119,6 @@ def do_gene(
 
     aa_out_path = os.path.join(output, "aa", aa_file)
     aa_out = [raw_references]
-
-    
 
     for header, sequence in candidates:
         gene = header.split("|")[0].replace(">", "")
@@ -201,7 +200,7 @@ def do_gene(
             data_length = cull_end - cull_start
             bp_after_cull = len(out_line) - out_line.count("-")
 
-            if bp_after_cull >= args.bp:
+            if bp_after_cull >= bp:
                 follow_through[gene][header] = False, cull_start, cull_end
 
                 aa_out.append(">" + header + "\n")
@@ -301,8 +300,8 @@ def run_command(arg_tuple: tuple) -> None:
     """
     Calls the main() function parallel in each thread
     """
-    aa_input, nt_input, output, matches, aa_file, tmp_path, debug = arg_tuple
-    do_gene(aa_input, nt_input, output, matches, aa_file, tmp_path, debug)
+    #aa_input, nt_input, output, matches, aa_file, tmp_path, debug = arg_tuple
+    do_gene(*arg_tuple)
 
 
 def do_folder(folder, args):
@@ -336,6 +335,7 @@ def do_folder(folder, args):
                     input_gene,
                     available_tmp_path,
                     args.debug,
+                    args.bp,
                 )
             )
 
@@ -351,6 +351,7 @@ def do_folder(folder, args):
                 input_gene,
                 available_tmp_path,
                 args.debug,
+                args.bp,
             )
 
     if args.debug:
