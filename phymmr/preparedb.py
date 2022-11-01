@@ -288,6 +288,7 @@ def main(args):
 
     global_start = time()
     dedup_time = 0
+    taxa_runs = {}
     for input_file in args.INPUT:
         input_file = Path(input_file)
         if input_file.suffix not in ALLOWED_FILETYPES:
@@ -295,14 +296,18 @@ def main(args):
             continue
 
         print("### Processing {}".format(input_file.name))
-        secondary_directory = os.path.join(CORE_DIRECTORY, input_file.name)os.makedirs(secondary_directory, exist_ok=True)
-        taxa_runs = {}
+        secondary_directory = os.path.join(CORE_DIRECTORY, input_file.name)
+        os.makedirs(secondary_directory, exist_ok=True)
 
         # Scan all the files in the input. Remove _R# and merge taxa
         taxa = input_file.stem
         formatted_taxa = truncate_taxa(taxa, extension=".fa")
         taxa_runs.setdefault(formatted_taxa, [])
-        taxa_runs[formatted_taxa].append(file)
+        taxa_runs[formatted_taxa].append(input_file)
+
+    if not taxa_runs:
+        print("No taxa to run. Abort.")
+        return True
 
     for formatted_taxa_out, components in taxa_runs.items():
         if not components:
