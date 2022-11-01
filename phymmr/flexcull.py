@@ -313,7 +313,7 @@ def do_folder(folder, args):
     output_path = os.path.join(folder, args.output)
     if not os.path.exists(aa_path) or not os.path.exists(nt_path):
         print(f"Can't find aa ({aa_path}) and nt ({nt_path}) folders. Abort")
-        continue
+        return
     available_tmp_path = folder_check(output_path, folder)
     file_inputs = [
         input_gene
