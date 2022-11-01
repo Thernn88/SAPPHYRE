@@ -4,18 +4,22 @@ Merges all sequences per taxa into single sequence in each gene
 PyLint 9.61/10
 """
 from __future__ import annotations
+
 import json
 import os
-import pathlib
-from collections import namedtuple
 from multiprocessing.pool import Pool
+from pathlib import Path
 from time import time
-from typing import Union
+from typing import Union, Literal
 
 import wrap_rocks
 from Bio.Seq import Seq
 
-make_nt_name = lambda x: str(x).replace(".aa.", ".nt.")
+TMP_PATH = None
+if os.path.exists("/run/shm"):
+    TMP_PATH = "/run/shm"
+elif os.path.exists("/dev/shm"):
+    TMP_PATH = "/dev/shm"
 
 DNA_CODONS = {
     "GCT": "A",
@@ -86,6 +90,10 @@ DNA_CODONS = {
 }
 
 
+def make_nt_name(x):
+    return str(x).replace(".aa.", ".nt.")
+
+
 def make_seq_dict(sequences: list, data_region: tuple) -> dict:
     """
     Creates a dictionary of each sequence present at each coordinate of a list of sequences
@@ -115,14 +123,14 @@ def most_common_element_with_count(iterable) -> tuple:
     return winner
 
 
-def parse_fasta(text_input: str) -> list:
+def parse_fasta(text_input: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """
     Returns references from raw fasta text input.
     """
     lines = text_input.split("\n")
 
-    references = []
-    candidates = []
+    references: list[tuple[str, str]] = []
+    candidates: list[tuple[str, str]] = []
 
     while "" in lines:
         lines.remove("")  # Remove blank lines
@@ -159,7 +167,7 @@ def get_start_end(sequence: str) -> tuple:
         if sequence[i] != "-":
             end = i
             break
-    return (start, end)
+    return start, end
 
 
 def expand_region(original: tuple, expansion: tuple) -> tuple:
@@ -174,10 +182,10 @@ def expand_region(original: tuple, expansion: tuple) -> tuple:
     if expansion[1] > end:
         end = expansion[1]
 
-    return (start, end)
+    return start, end
 
 
-def disperse_into_overlap_groups(taxa_pair: list) -> dict:
+def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
     """
     Splits list of (header,sequence) into overlap based groups.
 
@@ -223,7 +231,7 @@ def calculate_split(sequence_a: str, sequence_b: str, comparison_sequence: str) 
     creates a frankenstein sequence of sequence A + Sequence B joined at each
     position in the overlap.
 
-    Final split position = pos in overlap with highest score.
+    Final split position = pos in overlap with the highest score.
 
     Score is determined by the amount of characters that are the same between each
     position in the frankenstein sequence and the comparison sequence.
@@ -237,7 +245,6 @@ def calculate_split(sequence_a: str, sequence_b: str, comparison_sequence: str) 
     sequence_b_overlap = sequence_b[overlap_start : overlap_end + 1]
     comparison_overlap = comparison_sequence[overlap_start : overlap_end + 1]
 
-    highest_score = 0
     base_score = 0
     highest_scoring_pos = 0
 
@@ -263,20 +270,17 @@ def directory_check(target_output_path) -> str:
     """
     os.makedirs(os.path.join(target_output_path, "aa_merged"), exist_ok=True)
     os.makedirs(os.path.join(target_output_path, "nt_merged"), exist_ok=True)
-    if os.path.exists("/run/shm"):
-        tmp_path = "/run/shm"
-    elif os.path.exists("/dev/shm"):
-        tmp_path = "/dev/shm"
-    else:
+    if not TMP_PATH:
         tmp_path = os.path.join(target_output_path, "tmp")
         os.makedirs(tmp_path, exist_ok=True)
-    return tmp_path
+        return tmp_path
+    return TMP_PATH
 
 
 def do_protein(
-    protein,
+    protein: Literal["aa", "nt"],
     path,
-    output_dir,
+    output_dir: Path,
     fallback_taxa,
     dupe_counts,
     already_calculated_splits,
@@ -308,7 +312,7 @@ def do_protein(
     # Sort by start position
     sequences_to_merge.sort(key=lambda x: x[0])
 
-    # Split in to coordinate overlap based groups
+    # Disperse sequences into clusters of overlap
     overlap_groups = disperse_into_overlap_groups(sequences_to_merge)
 
     for overlap_region, this_sequences in overlap_groups:
@@ -323,7 +327,7 @@ def do_protein(
 
         for sequence in this_sequences:
             if protein == "aa":
-                count = dupe_counts.get(sequence[4], 0) + dupe_counts.get(sequence[4]+"|"+sequence[5], 0) + 1
+                count = dupe_counts.get(sequence[4], 0) + dupe_counts.get(sequence[4] + "|" + sequence[5], 0) + 1
             else:
                 count = dupe_counts.get(sequence[4], 0) + 1
             consists_of.append((sequence[2], sequence[3], count))
@@ -361,13 +365,13 @@ def do_protein(
                 # If there is more than one sequence at this current index
                 splits = amount_of_seqs_at_cursor - 1
 
-                # Grab most occuring taxon
+                # Grab most occurring taxon
                 taxons_of_split = [
                     header.split("|")[1] for (header, _) in sequences_at_current_point
                 ]
 
                 most_occuring = most_common_element_with_count(taxons_of_split)
-                if most_occuring[1] == 1:  # No taxa occurs more than once
+                if most_occuring[1] == 1:  # No taxa occur more than once
                     comparison_taxa = fallback_taxa
                 else:
                     comparison_taxa = most_occuring[0]
@@ -381,7 +385,7 @@ def do_protein(
 
                 # Iterate over each split if cursor is past calculated split
                 # position add from sequence B. We only want to add from one
-                # sequence out of every possible split so we calculate which
+                # sequence out of every possible split, so we calculate which
                 # sequence to add from here then add the character to the
                 # final merge in the next line.
                 for split_count in range(splits - 1, -1, -1):
@@ -508,7 +512,7 @@ def do_protein(
                             if DNA_CODONS[j] == most_occuring_translated_char
                         ]
 
-                        # Grab the most occuring NT that maps to that AA from the current seq
+                        # Grab the most occurring NT that maps to that AA from the current seq
                         (mode_cand_raw_character, _,) = most_common_element_with_count(
                             candidate_chars_mapping_to_same_dna
                         )
@@ -538,7 +542,7 @@ def do_protein(
 
 def do_gene(
     gene,
-    output_dir,
+    output_dir: Path,
     aa_path,
     nt_path,
     fallback_taxa,
@@ -585,106 +589,81 @@ def do_gene(
         output_file.write("\n".join(data))
 
 
-
 def run_command(arg_tuple: tuple) -> None:
     """
-    Calls the main() function parallel in each thread
+    Calls the do_gene() function parallel in each thread
     """
-    (
-        gene,
-        output_dir,
-        aa_path,
-        nt_path,
-        comparison,
-        dupe_counts,
-        debug,
-        majority,
-        majority_count,
-    ) = arg_tuple
-    do_gene(
-        gene,
-        output_dir,
-        aa_path,
-        nt_path,
-        comparison,
-        dupe_counts,
-        debug,
-        majority,
-        majority_count,
-    )
+    do_gene(*arg_tuple)
 
 
-def do_folder(input_folder, args):
+def do_folder(folder: Path, args):
     start_time = time()
-    for taxa in os.listdir(input_folder):
-        print(f"Doing taxa, {taxa}")
-        taxa_path = os.path.join(args.input, taxa)
-        input_path = os.path.join(taxa_path, "outlier")
-        aa_input = os.path.join(input_path, args.aa_input)
-        nt_input = os.path.join(input_path, args.nt_input)
 
-        if os.path.exists(aa_input):
-            tmp_dir = directory_check(taxa_path)
+    print(f"### Processing {folder}")
+    input_path = Path(folder, "outlier")
+    aa_input = Path(input_path, args.aa_input)
+    nt_input = Path(input_path, args.nt_input)
 
-            dupe_tmp_file = os.path.join(tmp_dir, "DupeSeqs.tmp")
+    if not os.path.exists(aa_input):
+        print(f"Can't find aa folder for taxa, {folder}")
+        return
 
-            rocks_db_path = os.path.join(taxa_path, "rocksdb", "sequences")
-            rocksdb_db = wrap_rocks.RocksDB(rocks_db_path)
+    tmp_dir = directory_check(folder)
+    dupe_tmp_file = Path(tmp_dir, "DupeSeqs.tmp")
+    rocks_db_path = Path(folder, "rocksdb", "sequences")
+    rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
+    dupe_counts = json.loads(rocksdb_db.get("getall:gene_dupes"))
 
-            dupe_counts = json.loads(rocksdb_db.get("getall:gene_dupes"))
+    target_genes = []
+    # NOTE: Path returns a Path object, which __repr__ is the string of the
+    # path itself.
+    for item in Path(aa_input).glob("*.fa"):
+        target_genes.append(item.name)
+    target_genes.sort(key=lambda x: Path(aa_input, x).stat().st_size, reverse=True)
 
-            target_genes = []
-            # NOTE: Path returns a Path object, which __repr__ is the string of the
-            # path itself.
-            for item in pathlib.Path(aa_input).glob("*.fa"):
-                target_genes.append(os.path.basename(item))
-            target_genes.sort(key=lambda x : os.path.getsize(os.path.join(aa_input, x)), reverse=True)
+    if args.processes > 1:
+        arguments = []
+        for target_gene in target_genes:
+            dupes_in_this_gene = dupe_counts.get(target_gene.split('.')[0], {})
+            target_aa_path = Path(aa_input, target_gene)
+            target_nt_path = Path(nt_input, make_nt_name(target_gene))
+            arguments.append(
+                (
+                    target_gene,
+                    folder,
+                    target_aa_path,
+                    target_nt_path,
+                    args.comparison,
+                    dupes_in_this_gene,
+                    args.debug,
+                    args.majority,
+                    args.majority_count,
+                )
+            )
+        with Pool(args.processes) as pool:
+            pool.map(run_command, arguments, chunksize=1)
+    else:
+        for target_gene in target_genes:
+            dupes_in_this_gene = dupe_counts.get(target_gene.split('.')[0], {})
+            target_aa_path = os.path.join(aa_input, target_gene)
+            target_nt_path = os.path.join(nt_input, make_nt_name(target_gene))
+            do_gene(
+                target_gene,
+                folder,
+                target_aa_path,
+                target_nt_path,
+                args.comparison,
+                dupes_in_this_gene,
+                args.debug,
+                args.majority,
+                args.majority_count,
+            )
 
-            if args.processes > 1:
-                arguments = []
-                for target_gene in target_genes:
-                    dupes_in_this_gene = dupe_counts.get(target_gene.split('.')[0], {})
-                    target_aa_path = os.path.join(aa_input, target_gene)
-                    target_nt_path = os.path.join(nt_input, make_nt_name(target_gene))
-                    arguments.append(
-                        (
-                            target_gene,
-                            taxa_path,
-                            target_aa_path,
-                            target_nt_path,
-                            args.comparison,
-                            dupes_in_this_gene,
-                            args.debug,
-                            args.majority,
-                            args.majority_count,
-                        )
-                    )
-                with Pool(args.processes) as pool:
-                    pool.map(run_command, arguments, chunksize=1)
-            else:
-                for target_gene in target_genes:
-                    dupes_in_this_gene = dupe_counts.get(target_gene.split('.')[0], {})
-                    target_aa_path = os.path.join(aa_input, target_gene)
-                    target_nt_path = os.path.join(nt_input, make_nt_name(target_gene))
-                    main(
-                        target_gene,
-                        taxa_path,
-                        target_aa_path,
-                        target_nt_path,
-                        args.comparison,
-                        dupes_in_this_gene,
-                        args.debug,
-                        args.majority,
-                        args.majority_count,
-                    )
+    timed = round(time() - start_time)
+    print(f"Finished in {timed} seconds")
 
-            timed = round(time() - start_time)
-            print(f"Finished in {timed} seconds")
-
-            if os.path.exists(dupe_tmp_file):
-                os.remove(dupe_tmp_file)
-        else:
-            print(f"Can't find aa folder for taxa, {taxa}")
+    if os.path.exists(dupe_tmp_file):
+        os.remove(dupe_tmp_file)
 
 
 def main(args):
@@ -692,7 +671,8 @@ def main(args):
         print("ERROR: All folders passed as argument must exists.")
         return False
     for folder in args.INPUT:
-        do_folder(folder, args)
+        do_folder(Path(folder), args)
+    return True
 
 
 if __name__ == "__main__":
