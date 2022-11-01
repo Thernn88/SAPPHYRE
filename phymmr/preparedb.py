@@ -3,6 +3,7 @@ import json
 import math
 import os
 import re
+from pathlib import Path
 from itertools import count
 from shutil import rmtree
 from sys import argv
@@ -15,10 +16,11 @@ from Bio.SeqIO.FastaIO import SimpleFastaParser
 from tqdm import tqdm
 
 
-ALLOWED_FILETYPES = ["fa", "fas", "fasta"]
+ALLOWED_FILETYPES = (".fa", ".fas", ".fasta")
 ROCKSDB_FOLDER_NAME = "rocksdb"
 SEQUENCES_DB_NAME = "sequences"
 CORE_DIRECTORY = "PhyMMR"
+
 
 def printv(msg, verbosity):
     if verbosity:
@@ -86,218 +88,188 @@ def translate(in_path, out_path, translate_program = "fastatranslate", genetic_c
     os.remove(in_path)
 
 
-def do_taxa(input_folder, num_threads, args):
-    global_start = time()
-    dedup_time = 0
-    secondary_directory = os.path.join(CORE_DIRECTORY, os.path.basename(input_folder))
+def do_taxa(formatted_taxa_out, components, num_threads, args, dedup_time):
+    taxa_start = time()
+    printv(f"Preparing {formatted_taxa_out}", args.verbose)
 
-    # Create necessary directories
-    printv("Creating directories", args.verbose)
+    taxa_destination_directory = os.path.join(
+        secondary_directory, formatted_taxa_out
+    )
+    rocksdb_path = os.path.join(taxa_destination_directory, ROCKSDB_FOLDER_NAME)
+    sequences_db_path = os.path.join(rocksdb_path, SEQUENCES_DB_NAME)
 
-    os.makedirs(secondary_directory, exist_ok=True)
+    if args.clear_database and os.path.exists(rocksdb_path):
+        printv("Clearing old database", args.verbose)
+        rmtree(rocksdb_path)
 
-    taxa_runs = {}
+    printv("Creating rocksdb database", args.verbose)
 
-    # Scan all the files in the input. Remove _R# and merge taxa
-    for file in os.listdir(input_folder):
-        if (
-            os.path.isfile(os.path.join(input_folder, file))
-            and file.split(".")[-1] in ALLOWED_FILETYPES
-        ):
-            taxa = file.split(".")[0]
+    os.makedirs(rocksdb_path, exist_ok=True)
 
-            formatted_taxa = truncate_taxa(taxa, extension=".fa")
+    db = wrap_rocks.RocksDB(sequences_db_path)
 
-            taxa_runs.setdefault(formatted_taxa, [])
-            taxa_runs[formatted_taxa].append(file)
+    os.makedirs(taxa_destination_directory, exist_ok=True)
 
-    if not taxa_runs:
-        print("ERROR: Nothing to do here, abort.")
-        return
+    prepared_file_destination = os.path.join(
+        taxa_destination_directory, formatted_taxa_out
+    )
 
-    for formatted_taxa_out, components in taxa_runs.items():
-        taxa_start = time()
-        printv(f"Preparing {formatted_taxa_out}", args.verbose)
+    prot_path = os.path.join(
+        taxa_destination_directory, formatted_taxa_out.replace(".fa","_prot.fa")
+    )
 
-        taxa_destination_directory = os.path.join(
-            secondary_directory, formatted_taxa_out
-        )
-        rocksdb_path = os.path.join(taxa_destination_directory, ROCKSDB_FOLDER_NAME)
-        sequences_db_path = os.path.join(rocksdb_path, SEQUENCES_DB_NAME)
+    duplicates = {}
+    rev_comp_save = {}
+    transcript_mapped_to = {}
+    dupes = count()
+    this_index = 1
+    trim_times = []  # Append computed time for each loop.
 
-        if args.clear_database and os.path.exists(rocksdb_path):
-            printv("Clearing old database", args.verbose)
-            rmtree(rocksdb_path)
+    fa_file_out = []
+    printv("Formatting input sequences and inserting into database", args.verbose)
+    for file in components:
+        if ".fa" not in file:
+            continue
 
-        printv("Creating rocksdb database", args.verbose)
+        fa_file_directory = os.path.join(args.input, file)
+        fasta_file = SimpleFastaParser(open(fa_file_directory, encoding="UTF-8"))
 
-        os.makedirs(rocksdb_path, exist_ok=True)
-
-        db = wrap_rocks.RocksDB(sequences_db_path)
-
-        os.makedirs(taxa_destination_directory, exist_ok=True)
-
-        prepared_file_destination = os.path.join(
-            taxa_destination_directory, formatted_taxa_out
-        )
-
-        prot_path = os.path.join(
-            taxa_destination_directory, formatted_taxa_out.replace(".fa","_prot.fa")
-        )
-
-        duplicates = {}
-        rev_comp_save = {}
-        transcript_mapped_to = {}
-        dupes = count()
-        this_index = 1
-        trim_times = []  # Append computed time for each loop.
-
-        fa_file_out = []
-        printv("Formatting input sequences and inserting into database", args.verbose)
-        for file in components:
-            if ".fa" not in file:
+        for header, parent_seq in tqdm(fasta_file) if args.verbose else fasta_file:
+            if not len(parent_seq) >= args.minimum_sequence_length:
                 continue
+            parent_seq = parent_seq.upper()
+            for seq, tt in N_trim(parent_seq, args.minimum_sequence_length):
+                trim_times.append(tt)
+                length = len(seq)
+                header = f"NODE_{this_index}_length_{length}"
 
-            fa_file_directory = os.path.join(args.input, file)
-            fasta_file = SimpleFastaParser(open(fa_file_directory, encoding="UTF-8"))
+                # Check for dupe, if so save how many times that sequence occured
+                seq_start = time()
 
-            for header, parent_seq in tqdm(fasta_file) if args.verbose else fasta_file:
-                if not len(parent_seq) >= args.minimum_sequence_length:
+                if seq in transcript_mapped_to:
+                    duplicates.setdefault(transcript_mapped_to[seq], 1)
+                    duplicates[transcript_mapped_to[seq]] += 1
+                    next(dupes)
                     continue
-                parent_seq = parent_seq.upper()
-                for seq, tt in N_trim(parent_seq, args.minimum_sequence_length):
-                    trim_times.append(tt)
-                    length = len(seq)
-                    header = f"NODE_{this_index}_length_{length}"
+                else:
+                    transcript_mapped_to[seq] = header
 
-                    # Check for dupe, if so save how many times that sequence occured
-                    seq_start = time()
+                # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
+                # sequence so we don't have to rev-comp this unique sequence again
+                if seq in rev_comp_save:
+                    rev_seq = rev_comp_save[seq]
+                else:
+                    rev_seq = phymmr_tools.bio_revcomp(seq)
+                    rev_comp_save[seq] = rev_seq
 
-                    if seq in transcript_mapped_to:
-                        duplicates.setdefault(transcript_mapped_to[seq], 1)
-                        duplicates[transcript_mapped_to[seq]] += 1
-                        next(dupes)
-                        continue
-                    else:
-                        transcript_mapped_to[seq] = header
+                # Check for revcomp dupe, if so save how many times that sequence occured
+                if rev_seq in transcript_mapped_to:
+                    duplicates.setdefault(transcript_mapped_to[rev_seq], 1)
+                    duplicates[transcript_mapped_to[rev_seq]] += 1
+                    next(dupes)
+                    continue
+                else:
+                    transcript_mapped_to[rev_seq] = header
 
-                    # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
-                    # sequence so we don't have to rev-comp this unique sequence again
-                    if seq in rev_comp_save:
-                        rev_seq = rev_comp_save[seq]
-                    else:
-                        rev_seq = phymmr_tools.bio_revcomp(seq)
-                        rev_comp_save[seq] = rev_seq
+                seq_end = time()
+                dedup_time += seq_end - seq_start
+                this_index += 1
 
-                    # Check for revcomp dupe, if so save how many times that sequence occured
-                    if rev_seq in transcript_mapped_to:
-                        duplicates.setdefault(transcript_mapped_to[rev_seq], 1)
-                        duplicates[transcript_mapped_to[rev_seq]] += 1
-                        next(dupes)
-                        continue
-                    else:
-                        transcript_mapped_to[rev_seq] = header
+                # If no dupe, write to prepared file and db
+                line = ">" + header + "\n" + seq + "\n"
 
-                    seq_end = time()
-                    dedup_time += seq_end - seq_start
-                    this_index += 1
+                fa_file_out.append(line)
 
-                    # If no dupe, write to prepared file and db
-                    line = ">" + header + "\n" + seq + "\n"
+                # Get rid of space and > in header (blast/hmmer doesn't like it) Need to push modified external to remove this. ToDo.
+                preheader = header.replace(" ", "|")  # pre-hash header
+                # Key is a hash of the header
+                db.put(xxhash.xxh64_hexdigest(preheader), f"{preheader}\n{seq}")
 
-                    fa_file_out.append(line)
+    printv("Translating prepared file", args.verbose)
 
-                    # Get rid of space and > in header (blast/hmmer doesn't like it) Need to push modified external to remove this. ToDo.
-                    preheader = header.replace(" ", "|")  # pre-hash header
-                    # Key is a hash of the header
-                    db.put(xxhash.xxh64_hexdigest(preheader), f"{preheader}\n{seq}")
+    aa_dupe_count = count()
+    prot_start = time()
 
-        printv("Translating prepared file", args.verbose)
+    if os.path.exists("/run/shm"):
+        tmp_path = "/run/shm"
+    elif os.path.exists("/dev/shm"):
+        tmp_path = "/dev/shm"
+    else:
+        tmp_path = os.path.join(args.input, "tmp")
+        os.makedirs(tmp_path, exist_ok=True)
 
-        aa_dupe_count = count()
-        prot_start = time()
+    sequences_per_thread = math.ceil((len(fa_file_out) / 2) / num_threads) * 2
+    translate_files = []
+    for i in range(0, len(fa_file_out), sequences_per_thread):
+        in_path = Path(tmp_path, formatted_taxa_out + f'_{len(translate_files)}.fa')
+        out_path = Path(tmp_path, formatted_taxa_out + f'_prot_{len(translate_files)}.fa')
+        translate_files.append((in_path, out_path))
+        with open(in_path, 'w') as fp:
+            fp.writelines(fa_file_out[i:i + sequences_per_thread])
 
-        if os.path.exists("/run/shm"):
-            tmp_path = "/run/shm"
-        elif os.path.exists("/dev/shm"):
-            tmp_path = "/dev/shm"
-        else:
-            tmp_path = os.path.join(args.input, "tmp")
-            os.makedirs(tmp_path, exist_ok=True)
+    with Pool(num_threads) as translate_pool:
+        translate_pool.starmap(translate, translate_files)
 
-        sequences_per_thread = math.ceil((len(fa_file_out) / 2) / num_threads) * 2
-        translate_files = []
-        for i in range(0,len(fa_file_out),sequences_per_thread):
-            in_path = os.path.join(tmp_path,formatted_taxa_out+f'_{len(translate_files)}.fa')
-            out_path = os.path.join(tmp_path,formatted_taxa_out+f'_prot_{len(translate_files)}.fa')
-            translate_files.append((in_path, out_path))
-            open(in_path, 'w').writelines(fa_file_out[i:i + sequences_per_thread])
+    if args.keep_prepared:
+        with open(prepared_file_destination, "w", encoding="UTF-8") as fp:
+            fp.writelines(fa_file_out)
+    del fa_file_out
 
-        with Pool(num_threads) as translate_pool:
-            translate_pool.starmap(translate, translate_files)
+    prot_components = []
 
-        if args.keep_prepared:
-            with open(prepared_file_destination, "w", encoding="UTF-8") as fp:
-                fp.writelines(fa_file_out)
-        del fa_file_out
+    printv("Storing translated file in DB. Translate took {:.2f}s".format(time()-prot_start), args.verbose)
 
-        prot_components = []
+    out_lines = []
+    aa_dedupe_time = time()
+    for prepare_file, translate_file in translate_files:
+        with open(translate_file, "r+", encoding="utf-8") as fp:
+            for header, seq in SimpleFastaParser(fp):
+                header = header.replace(" ","|")
+                if seq in transcript_mapped_to:
+                    duplicates.setdefault(transcript_mapped_to[seq], 1)
+                    duplicates[transcript_mapped_to[seq]] += 1
+                    next(aa_dupe_count)
+                    continue
+                else:
+                    transcript_mapped_to[seq] = header
+                out_lines.append(">"+header+"\n"+seq+"\n")
+        os.remove(translate_file)
 
-        printv("Storing translated file in DB. Translate took {:.2f}s".format(time()-prot_start), args.verbose)
+    if args.keep_prepared:
+        open(prot_path,'w').writelines(out_lines)
 
-        out_lines = []
-        aa_dedupe_time = time()
-        for prepare_file, translate_file in translate_files:
-            with open(translate_file, "r+", encoding="utf-8") as fp:
-                for header, seq in SimpleFastaParser(fp):
-                    header = header.replace(" ","|")
-                    if seq in transcript_mapped_to:
-                        duplicates.setdefault(transcript_mapped_to[seq], 1)
-                        duplicates[transcript_mapped_to[seq]] += 1
-                        next(aa_dupe_count)
-                        continue
-                    else:
-                        transcript_mapped_to[seq] = header
-                    out_lines.append(">"+header+"\n"+seq+"\n")
-            os.remove(translate_file)
+    aa_dupes = next(aa_dupe_count)
+    printv("AA dedupe took {:.2f}s. Kicked {} dupes".format(time()-aa_dedupe_time, aa_dupes), args.verbose)
 
-        if args.keep_prepared:
-            open(prot_path,'w').writelines(out_lines)
+    levels = math.ceil(len(out_lines) / args.sequences_per_level)
+    per_level = math.ceil(len(out_lines) / levels)
 
-        aa_dupes = next(aa_dupe_count)
-        printv("AA dedupe took {:.2f}s. Kicked {} dupes".format(time()-aa_dedupe_time, aa_dupes), args.verbose)
+    component = 0
+    for i in range(0,len(out_lines),per_level):
+        component += 1
+        data = out_lines[i: i+per_level]
+        prot_components.append(str(component))
+        db.put(f"getprot:{component}", "".join(data))
 
-        levels = math.ceil(len(out_lines) / args.sequences_per_level)
-        per_level = math.ceil(len(out_lines) / levels)
+    db.put("getall:prot", ",".join(prot_components))
 
-        component = 0
-        for i in range(0,len(out_lines),per_level):
-            component += 1
-            data = out_lines[i: i+per_level]
-            prot_components.append(str(component))
-            db.put(f"getprot:{component}", "".join(data))
+    printv("Translation and storing done! Took {:.2f}s".format(time()-prot_start), args.verbose)
 
-        db.put("getall:prot", ",".join(prot_components))
+    sequence_count = this_index - 1
 
-        printv("Translation and storing done! Took {:.2f}s".format(time()-prot_start), args.verbose)
+    printv(
+        "Inserted {} sequences for {} over {} batches. Found {} NT and {} AA dupes.".format(
+            sequence_count, formatted_taxa_out, levels, next(dupes), aa_dupes
+        ),
+        args.verbose,
+    )
+    del transcript_mapped_to  # Clear mem
 
-        sequence_count = this_index - 1
+    # Store the count of dupes in the database
+    db.put("getall:dupes", json.dumps(duplicates))
+    printv("Took {:.2f}s for {}\n".format(time() - taxa_start, file), args.verbose)
 
-        printv(
-            "Inserted {} sequences for {} over {} batches. Found {} NT and {} AA dupes.".format(
-                sequence_count, formatted_taxa_out, levels, next(dupes), aa_dupes
-            ),
-            args.verbose,
-        )
-        del transcript_mapped_to  # Clear mem
-
-        # Store the count of dupes in the database
-        db.put("getall:dupes", json.dumps(duplicates))
-        printv("Took {:.2f}s for {}\n".format(time() - taxa_start, file), args.verbose)
-
-    print("Finished took {:.2f}s overall.".format(time() - global_start))
-    printv("N_trim time: {} seconds".format(sum(trim_times)), args.verbose)
-    printv(f"Dedupe time: {dedup_time}", args.verbose)
+    return dedup_time, trim_times
 
 
 def main(args):
@@ -314,8 +286,36 @@ def main(args):
             "WARNING: 'processes' argument was not of type integer, defaulting to 1 thread."
         )
 
-    for input_folder in args.INPUT:
-        do_taxa(input_folder, num_threads, args)
+    global_start = time()
+    dedup_time = 0
+    for input_file in args.INPUT:
+        input_file = Path(input_file)
+        if input_file.suffix not in ALLOWED_FILETYPES:
+            print("Invalid file {}. Ignoring".format(input_file))
+            continue
+
+        print("### Processing {}".format(input_file.name))
+        secondary_directory = os.path.join(CORE_DIRECTORY, input_file.name)os.makedirs(secondary_directory, exist_ok=True)
+        taxa_runs = {}
+
+        # Scan all the files in the input. Remove _R# and merge taxa
+        taxa = input_file.stem
+        formatted_taxa = truncate_taxa(taxa, extension=".fa")
+        taxa_runs.setdefault(formatted_taxa, [])
+        taxa_runs[formatted_taxa].append(file)
+
+    for formatted_taxa_out, components in taxa_runs.items():
+        if not components:
+            if args.verbose >= 2:
+                print(f"Formatted_taxa '{formatted_taxa}' is empty, ignoring.")
+            continue
+        dedup_time, trim_times = do_taxa(
+            formatted_taxa_out, components, num_threads, args, dedup_time
+        )
+
+    print("Finished took {:.2f}s overall.".format(time() - global_start))
+    printv("N_trim time: {} seconds".format(sum(trim_times)), args.verbose)
+    printv(f"Dedupe time: {dedup_time}", args.verbose)
     return True
 
 
