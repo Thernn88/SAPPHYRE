@@ -14,7 +14,7 @@ __main__.py:
  Test new input style:
    [ ] PrepareDB
    [ ] mafft
-   [ ] FlexCull
+   [x] FlexCull @done (01-11-22 02:39)
    [ ] OutlierCheck
    [ ] MergeOverlap
 

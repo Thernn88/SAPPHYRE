@@ -377,6 +377,7 @@ def main(args):
         return False
     for folder in args.INPUT:
         do_folder(folder, args)
+    return True
 
 
 if __name__ == "__main__":
