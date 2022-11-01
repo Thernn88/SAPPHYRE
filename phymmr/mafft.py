@@ -8,12 +8,12 @@ MAFFT_FOLDER = "mafft"
 AA_FOLDER = "aa"
 ALN_FOLDER = "aln"  # FIXME: not used?
 
+TMP_DIR = None
 if os.path.exists("/run/shm"):
     TMP_DIR = "/run/shm"
 elif os.path.exists("/dev/shm"):
     TMP_DIR = "/dev/shm"
-else:
-    TMP_DIR = None
+
 
 
 def run_command(arg_tuple: tuple) -> None:
@@ -61,50 +61,51 @@ def run_command(arg_tuple: tuple) -> None:
 
 def do_folder(folder, args):
     aln_path = os.path.join(args.orthoset_input, args.orthoset, ALN_FOLDER)
-    TMP_DIR = TMP_DIR or folder
+    if TMP_DIR:
+        temp_folder = os.path.join(TMP_DIR, "tmp")
+    else:
+        temp_folder = os.path.join(folder, "tmp")
 
-    temp_folder = os.path.join(TMP_DIR, "tmp")
     delete_on_exit = False
     if not os.path.exists(temp_folder):
         delete_on_exit = True
         os.makedirs(temp_folder, exist_ok=True)
 
-    for taxa in os.listdir(folder):
-        start = time()
-        print("Doing taxa {}".format(taxa))
-        mafft_path = os.path.join(folder, taxa, MAFFT_FOLDER)
-        aa_path = os.path.join(folder, taxa, AA_FOLDER)
-        if os.path.exists(aa_path):
-            if not os.path.exists(mafft_path):
-                os.mkdir(mafft_path)
+    print(f"### Processing folder {folder}")
+    start = time()
+    mafft_path = os.path.join(folder, MAFFT_FOLDER)
+    aa_path = os.path.join(folder, AA_FOLDER)
+    if not os.path.exists(aa_path):
+        print(f"Can't find aa ({aa_path}) folder. Abort")
+        return
+    if not os.path.exists(mafft_path):
+        os.mkdir(mafft_path)
 
-            genes = [gene.split(".")[0] for gene in os.listdir(aa_path) if ".aa" in gene]
+    genes = [gene.split(".")[0] for gene in os.listdir(aa_path) if ".aa" in gene]
 
-            # command = 'mafft --anysymbol --auto --quiet --thread -1  --addfragments {0} --thread -1 '+aln_path+'/{2}.aln.fa > {1}'
-            command = (
-                "mafft-linsi --anysymbol --quiet --linelength -1 --addfragments {0} --thread -1 "
-                + aln_path
-                + "/{2}.aln.fa > {1}"
-            )
+    # command = 'mafft --anysymbol --auto --quiet --thread -1  --addfragments {0} --thread -1 '+aln_path+'/{2}.aln.fa > {1}'
+    command = (
+        "mafft-linsi --anysymbol --quiet --linelength -1 --addfragments {0} --thread -1 "
+        + aln_path
+        + "/{2}.aln.fa > {1}"
+    )
 
-            if args.processes > 1:
-                arguments = list()
-                lock = Lock()
-                for gene in genes:
-                    gene_file = os.path.join(aa_path, gene + ".aa.fa")
-                    result_file = os.path.join(mafft_path, gene + ".aa.fa")
-                    arguments.append((command, gene_file, result_file, gene, temp_folder, lock))
-                with ThreadPool(args.processes) as pool:
-                    pool.map(run_command, arguments, chunksize=1)
-            else:
-                for gene in genes:
-                    gene_file = os.path.join(aa_path, gene + ".aa.fa")
-                    result_file = os.path.join(mafft_path, gene + ".aa.fa")
-                    run_command((command, gene_file, result_file, gene, temp_folder, None))
+    if args.processes > 1:
+        arguments = list()
+        lock = Lock()
+        for gene in genes:
+            gene_file = os.path.join(aa_path, gene + ".aa.fa")
+            result_file = os.path.join(mafft_path, gene + ".aa.fa")
+            arguments.append((command, gene_file, result_file, gene, temp_folder, lock))
+        with ThreadPool(args.processes) as pool:
+            pool.map(run_command, arguments, chunksize=1)
+    else:
+        for gene in genes:
+            gene_file = os.path.join(aa_path, gene + ".aa.fa")
+            result_file = os.path.join(mafft_path, gene + ".aa.fa")
+            run_command((command, gene_file, result_file, gene, temp_folder, None))
 
-            print("Took {:.2f}s".format(time() - start))
-        else:
-            print("Can't find aa folder for taxa {}".format(taxa))
+    print("Took {:.2f}s".format(time() - start))
 
     if delete_on_exit:
         os.remove(temp_folder)
@@ -116,6 +117,7 @@ def main(args):
         return False
     for folder in args.INPUT:
         do_folder(folder, args)
+    return True
 
 
 if __name__ == "__main__":
