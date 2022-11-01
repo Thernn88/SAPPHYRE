@@ -4,10 +4,13 @@ FlexCull Description Goes Here
 PyLint 9.81/10
 """
 from __future__ import annotations
+
 import os
 from multiprocessing.pool import Pool
 from time import time
+
 from Bio import AlignIO
+
 
 def folder_check(output_target_path: str, input_target_path: str) -> str:
     """
@@ -37,11 +40,13 @@ def folder_check(output_target_path: str, input_target_path: str) -> str:
 
     return target_tmp_path
 
+
 def make_nt(aa_file_name: str) -> str:
     """
     Converts AA file name to NT file name
     """
     return aa_file_name.replace(".aa.", ".nt.")
+
 
 def parse_fasta(fasta_path: str) -> tuple:
     """
@@ -58,7 +63,7 @@ def parse_fasta(fasta_path: str) -> tuple:
                 header = seq.name
                 sequence = str(seq.seq)
 
-                if header[-1] == '.': #Is reference
+                if header[-1] == '.':  #Is reference
                     references.append((header, sequence))
 
                     raw_references.append(">"+header+"\n"+sequence+"\n")
@@ -278,7 +283,8 @@ def do_gene(
                 nt_out.write(">" + header + "\n")
                 nt_out.write(out_line + "\n")
 
-def consolidate(log_paths: list) -> str:
+
+def consolidate(log_paths: list) -> list[str]:
     """Consolidates each individual gene log to
     global log"""
 
@@ -300,7 +306,7 @@ def run_command(arg_tuple: tuple) -> None:
     """
     Calls the main() function parallel in each thread
     """
-    #aa_input, nt_input, output, matches, aa_file, tmp_path, debug = arg_tuple
+    # aa_input, nt_input, output, matches, aa_file, tmp_path, debug = arg_tuple
     do_gene(*arg_tuple)
 
 
