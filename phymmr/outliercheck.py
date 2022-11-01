@@ -461,13 +461,16 @@ def do_folder(folder, args):
         nt_input = Path(folder, "nt_aligned")
 
     if not aa_input.exists():  # exit early
-        print(f"Can't find aa folder for taxa {folder}")
+        print(
+            f"Can't find aa folder for taxa {folder}: '{wanted_aa_path}' "
+            "does not exists."
+        )
         return
 
     file_inputs = [
         Path(aa_input, gene)
         for gene in aa_input.iterdir()
-        if ".aa" in gene and gene.suffix in ALLOWED_EXTENSIONS
+        if ".aa" in str(gene) and gene.suffix in ALLOWED_EXTENSIONS
     ]
     output_path = Path(folder, args.output)
     nt_output_path = os.path.join(output_path, "nt")
@@ -538,6 +541,7 @@ def main(args):
         return False
     for folder in args.INPUT:
         do_folder(Path(folder), args)
+    return True
 
 
 if __name__ == "__main__":
