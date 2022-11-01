@@ -392,14 +392,21 @@ def mergeoverlap(args):
 
 
 def subcmd_mergegenes(subparsers):
+    dsc = "Initial Dataset Construction: Merges AA and NT data files across "\
+          "multiple taxa into a single AA and NT pair per gene."
     parser_mergegenes = subparsers.add_parser(
-        "MergeGenes", help="Usefulness yet to be defined... (FIXME)"
+        "MergeGenes", help=dsc, description=dsc
     )
     parser_mergegenes.add_argument(
-        "-i", "--input", nargs="+", action="append", help="Path to input"
+        "INPUT", help="Paths of directories.", action="extend", nargs="+"
     )
     parser_mergegenes.add_argument(
-        "-o", "--output", type=str, default="MergedGenes", help="Merged output."
+        "-t", "--prepend-directory", action="store", type=str, dest="DIRECTORY",
+        help="Prepend DIRECTORY to the list of INPUT."
+    )
+    parser_mergegenes.add_argument(
+        "-o", "--output-directory", type=str, required=True,
+        help="Target directory for merged output. (Example: MergedGenes)"
     )
     parser_mergegenes.set_defaults(
         func=mergegenes, formathelp=parser_mergegenes.format_help
