@@ -191,7 +191,7 @@ def get_taxa_in_set(set_id, orthoset_db_con):
     return [row[1] for row in rows]
 
 
-def get_scores_list(score_threshold, min_length, debug):
+def get_scores_list(score_threshold, min_length, rocks_hits_db, debug):
     batches = rocks_hits_db.get("hmmbatch:all")
     batches = batches.split(",")
 
@@ -236,7 +236,7 @@ def get_scores_list(score_threshold, min_length, debug):
     return score_based_results, ufr_out
 
 
-def get_blastresults_for_hmmsearch_id(hmmsearch_id):
+def get_blastresults_for_hmmsearch_id(hmmsearch_id, rocks_hits_db):
     key = "blastfor:{}".format(hmmsearch_id)
     db_entry = rocks_hits_db.get(key)
 
@@ -293,7 +293,7 @@ def reverse_complement(nt_seq):
     return phymmr_tools.bio_revcomp(nt_seq)
 
 
-def get_nucleotide_transcript_for(header):
+def get_nucleotide_transcript_for(header, rocks_sequence_db):
     base_header = get_baseheader(header).strip()
     hash_of_header = xxhash.xxh64_hexdigest(base_header)
 
@@ -668,6 +668,7 @@ ExonerateArgs = namedtuple("ExonerateArgs",
         "nt_out_path",
         "tmp_path",
         "verbose",
+        "rdb_kw", # kwargs: {'rocks_sequence_db': ..., 'rocks_hits_db': ...}
     ]
 )
 
@@ -687,7 +688,9 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
     for hit in eargs.list_of_hits:
         this_reftaxon = hit.reftaxon
 
-        est_header, est_sequence_complete = get_nucleotide_transcript_for(hit.header)
+        est_header, est_sequence_complete = get_nucleotide_transcript_for(
+            hit.header, rdb_kw.rocks_sequence_db
+        )
         est_sequence_hmm_region = crop_to_hmm_alignment(
             est_sequence_complete, est_header, hit
         )
@@ -803,7 +806,9 @@ def is_reciprocal_match(blast_results, reference_taxa: List[str]):
                 ]  # Grab most hit reftaxon
     return None, None
 
-def reciprocal_search(hmmresults, list_of_wanted_orthoids, reference_taxa, score, args):
+def reciprocal_search(
+    hmmresults, list_of_wanted_orthoids, reference_taxa, score, args, rocks_hits_db
+):
     if args.verbose >= 3:
         T_reciprocal_start = time()
         print("Ensuring reciprocal hit for hmmresults in {}".format(score))
@@ -816,8 +821,12 @@ def reciprocal_search(hmmresults, list_of_wanted_orthoids, reference_taxa, score
             continue
 
         result_hmmsearch_id = result.hmm_id
-        blast_results = get_blastresults_for_hmmsearch_id(result_hmmsearch_id)
-        this_match_reftaxon, this_match_ref_sequence = is_reciprocal_match(blast_results, reference_taxa)
+        blast_results = get_blastresults_for_hmmsearch_id(
+            result_hmmsearch_id, rocks_hits_db
+        )
+        this_match_reftaxon, this_match_ref_sequence = is_reciprocal_match(
+            blast_results, reference_taxa
+        )
 
         if this_match_reftaxon:
             result.proteome_sequence = this_match_ref_sequence
@@ -833,7 +842,7 @@ def reciprocal_search(hmmresults, list_of_wanted_orthoids, reference_taxa, score
     return results
 
 
-def do_taxa(path, taxa_id, args):
+def do_taxa(path, taxa_id, argsn **kwargs):
     print("Doing {}.".format(taxa_id))
     if args.verbose >= 1:
         T_init_db = time()
@@ -888,8 +897,6 @@ def do_taxa(path, taxa_id, args):
     os.makedirs(aa_out_path, exist_ok=True)
     os.makedirs(nt_out_path, exist_ok=True)
 
-    rocks_db_path = os.path.join(path, "rocksdb")
-
     if args.verbose >= 1:
         T_reference_taxa = time()
         print(
@@ -909,7 +916,7 @@ def do_taxa(path, taxa_id, args):
         )
 
     score_based_results, ufr_rows = get_scores_list(
-        args.min_score, args.min_length, args.debug
+        args.min_score, args.min_length, kwargs.rocks_hits_db, args.debug
     )
 
     if args.debug:
@@ -949,6 +956,7 @@ def do_taxa(path, taxa_id, args):
                 reference_taxa,
                 score,
                 args,
+                kwargs.rocks_hits_db,
             )
         )
     with Pool(num_threads) as pool:
@@ -1003,7 +1011,8 @@ def do_taxa(path, taxa_id, args):
                 taxa_id,
                 nt_out_path,
                 tmp_path,
-                args.verbose
+                args.verbose,
+                kwargs
             )
         )
 
@@ -1083,6 +1092,8 @@ def main(args):
             path=input_path,
             taxa_id=os.path.basename(input_path).split(".")[0],
             args=args,
+            rocks_sequence_db=rocks_sequence_db,
+            rocks_hits_db=rocks_hits_db,
         )
     return True
 
