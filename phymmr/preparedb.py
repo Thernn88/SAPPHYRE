@@ -316,6 +316,7 @@ def main(args):
 
     for input_folder in args.INPUT:
         do_taxa(input_folder, num_threads, args)
+    return True
 
 
 if __name__ == "__main__":
