@@ -307,62 +307,67 @@ def run_command(arg_tuple: tuple) -> None:
 
 def do_folder(folder, args):
     start = time()
-    allowed_extensions = ["fa", "fas", "fasta"]
+    print(f"### Processing folder {folder}")
+    aa_path = os.path.join(folder, args.aa)
+    nt_path = os.path.join(folder, args.nt)
+    output_path = os.path.join(folder, args.output)
+    if not os.path.exists(aa_path) or not os.path.exists(nt_path):
+        print(f"Can't find aa ({aa_path}) and nt ({nt_path}) folders. Abort")
+        continue
+    available_tmp_path = folder_check(output_path, folder)
+    file_inputs = [
+        input_gene
+        for input_gene in os.listdir(aa_path)
+        if ".aa" in input_gene
+    ]
+    file_inputs.sort(
+        key=lambda x : os.path.getsize(os.path.join(aa_path, x)), reverse=True
+    )
 
-    for taxa in os.listdir(folder):
-        print(f"Doing taxa {taxa}")
-        aa_path = os.path.join(folder, taxa, args.aa)
-        nt_path = os.path.join(folder, taxa, args.nt)
-        output_path = os.path.join(folder, taxa, args.output)
+    if args.processes > 1:
+        arguments = []
+        for input_gene in file_inputs:
+            arguments.append(
+                (
+                    aa_path,
+                    nt_path,
+                    output_path,
+                    args.matches,
+                    input_gene,
+                    available_tmp_path,
+                    args.debug,
+                )
+            )
 
-        if os.path.exists(aa_path) and os.path.exists(nt_path):
-            available_tmp_path = folder_check(output_path, os.path.join(folder, taxa))
+        with Pool(args.processes) as pool:
+            pool.map(run_command, arguments, chunksize=1)
+    else:
+        for input_gene in file_inputs:
+            do_gene(
+                aa_path,
+                nt_path,
+                output_path,
+                args.matches,
+                input_gene,
+                available_tmp_path,
+                args.debug,
+            )
 
-            file_inputs = [input_gene for input_gene in os.listdir(aa_path) if ".aa" in input_gene]
-            file_inputs.sort(key=lambda x : os.path.getsize(os.path.join(aa_path, x)), reverse=True)
+    if args.debug:
+        logs = [
+            os.path.join(available_tmp_path, log_present)
+            for log_present in os.listdir(available_tmp_path)
+        ]
+        log_global = consolidate(logs)
+        log_global.sort()
+        log_out = os.path.join(output_path, 'Culls.csv')
+        with open(log_out,'w') as fp:
+            fp.writelines(log_global)
 
-            if args.processes > 1:
-                arguments = []
-                for input_gene in file_inputs:
-                    arguments.append(
-                        (
-                            aa_path,
-                            nt_path,
-                            output_path,
-                            args.matches,
-                            input_gene,
-                            available_tmp_path,
-                            args.debug,
-                        )
-                    )
+    time_taken = time()
+    time_taken = time_taken - start
 
-                with Pool(args.processes) as pool:
-                    pool.map(run_command, arguments, chunksize=1)
-            else:
-                for input_gene in file_inputs:
-                    do_gene(
-                        aa_path,
-                        nt_path,
-                        output_path,
-                        args.matches,
-                        input_gene,
-                        available_tmp_path,
-                        args.debug,
-                    )
-
-            if args.debug:
-                logs = [os.path.join(available_tmp_path, log_present) for log_present in os.listdir(available_tmp_path)]
-                log_global = consolidate(logs)
-                log_global.sort()
-                log_out = os.path.join(output_path,'Culls.csv')
-                open(log_out,'w').writelines(log_global)
-
-            time_taken = time()
-            time_taken = time_taken - start
-
-            print("Done! Took {:.2f}s overall.".format(time_taken))
-        else:
-            print(f"Can't find aa and nt folder for taxa {taxa}")
+    print("Done! Took {:.2f}s overall.".format(time_taken))
 
 
 def main(args):
