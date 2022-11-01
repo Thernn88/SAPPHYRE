@@ -485,10 +485,10 @@ def subcmd_flexcull(subparsers):
         "-o", "--output", type=str, default="trimmed", help="Output Directory."
     )
     parser_flexcull.add_argument(
-        "-aa", "--aa", type=str, default="mafft", help="AA Folder Name."
+        "-aa", "--amino-acid", type=str, default="mafft", help="AA Folder Name."
     )
     parser_flexcull.add_argument(
-        "-nt", "--nt", type=str, default="nt_aligned", help="NT Folder Name."
+        "-nt", "--nucleotide", type=str, default="nt_aligned", help="NT Folder Name."
     )
     parser_flexcull.add_argument(
         "-m",
@@ -498,7 +498,7 @@ def subcmd_flexcull(subparsers):
         help="Amount of nucleotides that have to match reference.",
     )
     parser_flexcull.add_argument(
-        "-bp", "--bp", type=int, default=15, help="Minimum bp after cull."
+        "-bp", "--base-pair", type=int, default=15, help="Minimum bp after cull."
     )
     parser_flexcull.add_argument(
         "-d",
