@@ -450,9 +450,8 @@ def subcmd_pal2nal(subparsers):
         help="Mirrors Amino Acid Alignment to Nucleotide data using specified NCBI "
         "table. Also performs basic error checking on data.",
     )
-
     parser_pal2nal.add_argument(
-        "-i", "--input", type=str, default="Parent", help="Parent input path."
+        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
     )
     parser_pal2nal.add_argument(
         "-p",

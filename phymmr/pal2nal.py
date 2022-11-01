@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import argparse
-import json
 import sys
 import time
 from functools import wraps
@@ -3653,7 +3651,7 @@ def read_and_convert_fasta_files(
         nt_header, nt_seq = nt_header.strip(), nt_seq.strip()
 
         if aa_header[-2:] == '.a':
-            print("- ", i)
+            print(f"{aa_header[-2:]} == '.a' break")  # FIXME what does it mean?
             break
 
         nts[nt_header] = (nt_header, nt_seq)
@@ -3670,23 +3668,6 @@ def read_and_convert_fasta_files(
             print("ERROR CAUGHT: There is a single header in PEP sequence FASTA file that does not exist in NUC sequence FASTA file")
             sys.exit()
     return ret
-
-
-def init_argparse() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-
-        usage="pal2nal.py [OPTIONS] [FILES]...",
-
-        description="Batch-Convert Amino Acids to Codons with error checking using the default NCBI table, or your specified table."
-    )
-
-    parser.add_argument('-i', '--input', type=str, default='Parent',
-                        help='Parent input path.')
-    parser.add_argument('-p', '--processes', type=int, default=4,
-                        help='Number of threads used to call processes.')
-    parser.add_argument('-t', '--table', type=int, default=1,
-                        help='Table ID.')
-    return parser
 
 
 def worker(tup: Tuple[Path, Path, Path, Dict]):
@@ -3731,4 +3712,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    main()
+    raise Exception(
+        "Cannot be called directly, please use the module:\nphymmr Pal2Nal"
+    )

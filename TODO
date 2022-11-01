@@ -15,8 +15,8 @@ __main__.py:
    [ ] PrepareDB
    [x] mafft @done (01-11-22 02:54)
    [x] FlexCull @done (01-11-22 02:39)
-   [ ] OutlierCheck
-   [ ] MergeOverlap
+   [x] OutlierCheck @done (2022-11-01 22:10)
+   [x] MergeOverlap @done (2022-11-01 23:08)
 
 PrepareDB.py
   [ ] Incorporate HammingDist dedupe
