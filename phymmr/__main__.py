@@ -285,7 +285,7 @@ def subcmd_outliercheck(subparsers):
         "sequences above a threshold.",
     )
     parser_outliercheck.add_argument(
-        "-i", "--input", default="Taxa", help="Path to taxa"
+        "INPUT", help="Path to taxa", action="extend", nargs="+"
     )
     parser_outliercheck.add_argument(
         "-o", "--output", default="outlier", help="Output folder"
