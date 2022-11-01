@@ -3707,8 +3707,10 @@ def run_batch_threaded(num_threads: int, ls: List[
 
 def main(args):
     d = DICT_TABLES[str(args.table)]
-    generator, _ = prepare_taxa_and_genes(args.input, d)
-    run_batch_threaded(num_threads=args.processes, ls=generator)
+    for folder in args.INPUT:
+        generator, _ = prepare_taxa_and_genes(folder, d)
+        run_batch_threaded(num_threads=args.processes, ls=generator)
+    return True
 
 
 if __name__ == "__main__":
