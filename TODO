@@ -13,7 +13,7 @@ __main__.py:
    [x] MergeOverlap @done (01-11-22 00:09)
  Test new input style:
    [ ] PrepareDB
-   [ ] mafft
+   [x] mafft @done (01-11-22 02:54)
    [x] FlexCull @done (01-11-22 02:39)
    [ ] OutlierCheck
    [ ] MergeOverlap

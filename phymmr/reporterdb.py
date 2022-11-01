@@ -1,4 +1,4 @@
-import argparse
+from __future__ import annotations
 import json
 import math
 import os
@@ -1071,14 +1071,20 @@ header_seperator = "|"
 ####
 
 def main(args):
+    if not all(os.path.exists(i) for i in args.INPUT):
+        print("ERROR: All folders passed as argument must exists.")
+        return False
     for input_path in args.INPUT:
         print(f"### Processing path '{input_path}'.")
         rocks_db_path = os.path.join(input_path, "rocksdb")
         rocks_sequence_db = wrap_rocks.RocksDB(os.path.join(rocks_db_path, "sequences"))
         rocks_hits_db = wrap_rocks.RocksDB(os.path.join(rocks_db_path, "hits"))
         do_taxa(
-            path=input_path, taxa_id=os.path.basename(input_path).split(".")[0], args
+            path=input_path,
+            taxa_id=os.path.basename(input_path).split(".")[0],
+            args=args,
         )
+    return True
 
 
 if __name__ == '__main__':
