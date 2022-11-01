@@ -1,4 +1,4 @@
-import argparse
+from __future__ import annotations
 import itertools
 import math
 from multiprocessing.pool import Pool
@@ -929,10 +929,16 @@ def run_process(args, input_path: str) -> None:
 
 
 def main(args):
+    if not all(os.path.exists(i) for i in args.INPUT):
+        print("ERROR: All folders passed as argument must exists.")
+        return False
     for input_path in args.INPUT:
         printv('Begin Hmmsearch for {}'.format(os.path.basename(input_path)), args.verbose)
         run_process(args, input_path)
+    return False
 
 
 if __name__ == "__main__":
-    main()
+    raise Exception(
+        "Cannot be called directly, please use the module:\nphymmr HmmSearchDB"
+    )
