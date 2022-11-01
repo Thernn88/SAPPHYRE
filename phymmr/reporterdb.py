@@ -842,7 +842,7 @@ def reciprocal_search(
     return results
 
 
-def do_taxa(path, taxa_id, argsn **kwargs):
+def do_taxa(path, taxa_id, args, **kwargs):
     print("Doing {}.".format(taxa_id))
     if args.verbose >= 1:
         T_init_db = time()
