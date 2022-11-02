@@ -470,13 +470,6 @@ def subcmd_pal2nal(subparsers):
     parser_pal2nal.add_argument(
         "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
     )
-    parser_pal2nal.add_argument(
-        "-p",
-        "--processes",
-        type=int,
-        default=4,
-        help="Number of threads used to call processes.",
-    )
     parser_pal2nal.add_argument("-t", "--table", type=int, default=1, help="Table ID.")
     parser_pal2nal.set_defaults(func=pal2nal, formathelp=parser_pal2nal.format_help)
 
