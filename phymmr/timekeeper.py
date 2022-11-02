@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# © 2022 GPLv3+ bicobus <bicobus@keemail.me>
+# © 2022 GPLv3+ PhyMMR Team 
 """Simple helper class to measure the time a piece of code takes to execute.
 
 It can either work with 2 time point, or a series of them.
