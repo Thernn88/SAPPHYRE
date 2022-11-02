@@ -25,7 +25,7 @@ def subcmd_preparedb(subparsers):
         "Unique AA translation stored with duplicate counts stored for later use.",
     )
     parser_preparedb.add_argument(
-        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
+        "INPUT", help="Path to directory of Input folder", action="store"
     )
     parser_preparedb.add_argument(
         "-c",
