@@ -606,17 +606,18 @@ def print_unmerged_sequences(
                     if aa_seq in already_mapped_sequence:
                         continue
 
-                # If not kicked reformat header to be unique
-                old_header = header
-                header = format_candidate_header(
-                    orthoid,
-                    hit.reftaxon,
-                    taxa_id,
-                    base_header+f"_{header_mapped_x_times[old_header]}",
-                    rf,
-                )
+                if header in header_mapped_x_times:
+                    # Make header unique
+                    old_header = header
+                    header = format_candidate_header(
+                        orthoid,
+                        hit.reftaxon,
+                        taxa_id,
+                        base_header+f"_{header_mapped_x_times[old_header]}",
+                        rf,
+                    )
 
-                header_mapped_x_times[old_header] += 1
+                    header_mapped_x_times[old_header] += 1
             else:
                 base_header_mapped_already[base_header] = header, aa_seq
 
