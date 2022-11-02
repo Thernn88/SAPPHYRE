@@ -576,7 +576,7 @@ if __name__ == "__main__":
     subcmd_mergegenes(subparsers)
 
     args = parser.parse_args()
-    try:
-        args.func(args)
-    except AttributeError:
+    if not hasattr(args, "func"):
         parser.print_help()
+        parser.exit()
+    args.func(args)
