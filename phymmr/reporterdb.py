@@ -597,7 +597,7 @@ def print_unmerged_sequences(
             if base_header in base_header_mapped_already:
                 already_mapped_header, already_mapped_sequence = base_header_mapped_already[base_header]
 
-                if len(aa_seq) > already_mapped_sequence:
+                if len(aa_seq) > len(already_mapped_sequence):
                     if already_mapped_sequence in aa_seq:
                         aa_result[header_maps_to_where[already_mapped_header]] = f">{header}\n{aa_seq}\n" 
                         nt_result[header_maps_to_where[already_mapped_header]] = f">{header}\n{nt_seq}\n" 
