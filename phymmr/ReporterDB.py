@@ -173,6 +173,8 @@ def get_set_id(orthoset_db_con, orthoset):
 
 
 def get_taxa_in_set(set_id, orthoset_db_con):
+    reference_taxa = []
+
     query = f'''SELECT DISTINCT {orthoset_set_details}.name, {orthoset_taxa}.name
         FROM {orthoset_seqpairs}
         INNER JOIN {orthoset_taxa}
@@ -538,13 +540,11 @@ def get_rf(header):
 
 
 def print_unmerged_sequences(
-    hits, orthoid, minimum_seq_data_length, taxa_id
+    hits, orthoid, type, minimum_seq_data_length, taxa_id, kicks
 ):
-    aa_result = []
-    nt_result = []
-
-    header_mapped_previously = {}
-    exact_sequence_mapped_already = set()
+    result = []
+    kicks_result = set()
+    exact_hit_mapped_already = set()
     for i, hit in enumerate(hits):
         base_header, rf = get_rf(hit.header)
 
@@ -556,42 +556,36 @@ def print_unmerged_sequences(
             rf,
         )
 
-        nt_seq = (
-            hit.extended_orf_cdna_sequence
-            if hit.extended_orf_cdna_sequence is not None
-            else hit.orf_cdna_sequence
-        )
+        if type == "nt":
+            seq = (
+                hit.extended_orf_cdna_sequence
+                if hit.extended_orf_cdna_sequence is not None
+                else hit.orf_cdna_sequence
+            )
 
-        aa_seq = (
-            hit.extended_orf_aa_sequence
-            if hit.extended_orf_aa_sequence is not None
-            else hit.orf_aa_sequence
-        )
+            #Deinterleave
+            seq = seq.replace('\n','')
 
-        aa_seq = aa_seq.replace('\n','')
-        exact_sequence = base_header+aa_seq
+            if i not in kicks:
+                result.append(">" + header + "\n")
+                result.append(seq + "\n")
+        elif type == "aa":
+            seq = (
+                hit.extended_orf_aa_sequence
+                if hit.extended_orf_aa_sequence is not None
+                else hit.orf_aa_sequence
+            )
 
-        if exact_sequence in exact_sequence_mapped_already:
-            continue
+            seq = seq.replace('\n','')
+            unique_hit = base_header+seq
 
-        if len(aa_seq) - aa_seq.count("-") > minimum_seq_data_length:
-            if hit.header in header_mapped_previously:
-                first_sequence = aa_result[header_mapped_previously[hit.header]]
-                # New sequence is larger than the previously mapped one
-                if len(aa_seq) >= len(first_sequence):
-                    # Old sequence is just a substring of new one
-                    if first_sequence in aa_seq: 
-                        # Overwrite old sequence with larger new one
-                        aa_result[header_mapped_previously[hit.header]] = ">" + header + "\n" + aa_seq + "\n"
-                        nt_result[header_mapped_previously[hit.header]] = ">" + header + "\n" + nt_seq + "\n"
-                continue
-
-            exact_sequence_mapped_already.add(exact_sequence)
-            header_mapped_previously[hit.header] = len(aa_result) #Save current pos
-            aa_result.append(">" + header + "\n" + aa_seq + "\n")
-            nt_result.append(">" + header + "\n" + nt_seq + "\n")
-
-    return aa_result, nt_result
+            if not unique_hit in exact_hit_mapped_already and len(seq) - seq.count("-") > minimum_seq_data_length:
+                result.append(">" + header + "\n")
+                result.append(seq + "\n")
+                exact_hit_mapped_already.add(unique_hit)
+            else:
+                kicks_result.add(i)
+    return kicks_result, result
 
 
 def get_ortholog_group_nucleotide(orthoset_id, orthoid, orthoset_db_con):
@@ -747,16 +741,17 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
         this_aa_out = []
         this_aa_path = os.path.join(eargs.aa_out_path, eargs.orthoid + ".aa.fa")
         this_aa_out.extend(print_core_sequences(eargs.orthoid, core_sequences))
-        aa_output, nt_output = print_unmerged_sequences(
+        kicks, output = print_unmerged_sequences(
             output_sequences,
             eargs.orthoid,
+            "aa",
             eargs.min_length,
             eargs.taxa_id,
             kicks=set()
         )
 
-        if aa_output:
-            this_aa_out.extend(aa_output)
+        if output:
+            this_aa_out.extend(output)
             with open(this_aa_path, "w") as fp:
                 fp.writelines(this_aa_out)
 
@@ -768,7 +763,15 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
             this_nt_path = os.path.join(eargs.nt_out_path, eargs.orthoid + ".nt.fa")
 
             this_nt_out.extend(print_core_sequences(eargs.orthoid, core_sequences_nt))
-            this_nt_out.extend(nt_output)
+            na_kicks, output = print_unmerged_sequences(
+                output_sequences,
+                eargs.orthoid,
+                "nt",
+                eargs.min_length,
+                eargs.taxa_id,
+                kicks=kicks
+            )
+            this_nt_out.extend(output)
 
             with open(this_nt_path, "w") as fp:
                 fp.writelines(this_nt_out)
