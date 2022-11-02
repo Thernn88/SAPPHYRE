@@ -274,7 +274,17 @@ def subcmd_reporterdb(subparsers):
 
 def reporterdb(args):
     from . import reporterdb
-    if not reporterdb.main(args):
+    mainargs = reporterdb.MainArgs(
+        args.verbose,
+        args.processes,
+        args.debug,
+        args.INPUT,
+        args.orthoset_input,
+        args.orthoset,
+        args.min_length,
+        args.min_score
+    )
+    if not reporterdb.main(mainargs):
         print(args.formathelp())
 
 

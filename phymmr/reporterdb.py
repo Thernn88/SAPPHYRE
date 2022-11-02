@@ -8,7 +8,7 @@ import uuid
 from collections import namedtuple
 from multiprocessing.pool import Pool
 from time import time
-from typing import List
+from typing import List, Optional
 
 import phymmr_tools
 import wrap_rocks
@@ -16,6 +16,20 @@ import xxhash
 from Bio.Seq import Seq
 
 T_global_start = time()
+
+MainArgs = namedtuple(
+    "MainArgs",
+    [
+        'verbose',
+        'processes',
+        'debug',
+        'INPUT',
+        'orthoset_input',
+        'orthoset',
+        'min_length',
+        'min_score',
+    ]
+)
 
 
 class Hit:
@@ -146,6 +160,7 @@ class NodeRecord:
 
     def __le__(self, other):
         return self.score <= other.score
+
 
 def get_set_id(orthoset_db_con, orthoset):
     """
@@ -328,7 +343,7 @@ def fastaify(headers, sequences, tmp_path):
 
 
 def translate_cdna(cdna_seq):
-    if cdna_seq == None:
+    if not cdna_seq:
         return None
 
     if len(cdna_seq) % 3 != 0:
@@ -540,7 +555,7 @@ def get_rf(header):
 
 
 def print_unmerged_sequences(
-    hits, orthoid, type, minimum_seq_data_length, taxa_id, kicks
+    hits, orthoid, ttype, minimum_seq_data_length, taxa_id, kicks
 ):
     result = []
     kicks_result = set()
@@ -556,7 +571,7 @@ def print_unmerged_sequences(
             rf,
         )
 
-        if type == "nt":
+        if ttype == "nt":
             seq = (
                 hit.extended_orf_cdna_sequence
                 if hit.extended_orf_cdna_sequence is not None
@@ -569,7 +584,7 @@ def print_unmerged_sequences(
             if i not in kicks:
                 result.append(">" + header + "\n")
                 result.append(seq + "\n")
-        elif type == "aa":
+        elif ttype == "aa":
             seq = (
                 hit.extended_orf_aa_sequence
                 if hit.extended_orf_aa_sequence is not None
@@ -616,17 +631,17 @@ def get_ortholog_group_nucleotide(orthoset_id, orthoid, orthoset_db_con):
     return rows
 
 
-def get_difference(scoreA, scoreB):
+def get_difference(score_a, score_b):
     """
     Returns decimal difference of two scores
     """
 
     try:
-        if scoreA / scoreB > 1:
-            return scoreA / scoreB
-        elif scoreB / scoreA > 1:
-            return scoreB / scoreA
-        elif scoreA == scoreB:
+        if score_a / score_b > 1:
+            return score_a / score_b
+        if score_b / score_a > 1:
+            return score_b / score_a
+        if score_a == score_b:
             return 1
     except ZeroDivisionError:
         return 0
@@ -655,7 +670,8 @@ def get_match(header, results):
     return None
 
 
-ExonerateArgs = namedtuple("ExonerateArgs",
+ExonerateArgs = namedtuple(
+    "ExonerateArgs",
     [
         "orthoid",
         "list_of_hits",
@@ -807,9 +823,9 @@ def is_reciprocal_match(blast_results, reference_taxa: List[str]):
     return None, None
 
 def reciprocal_search(
-    hmmresults, list_of_wanted_orthoids, reference_taxa, score, args, rocks_hits_db
+    hmmresults, list_of_wanted_orthoids, reference_taxa, score, verbose, rocks_hits_db
 ):
-    if args.verbose >= 3:
+    if verbose >= 3:
         T_reciprocal_start = time()
         print("Ensuring reciprocal hit for hmmresults in {}".format(score))
 
@@ -833,7 +849,7 @@ def reciprocal_search(
             result.reftaxon = this_match_reftaxon
             results.append(result)
 
-    if args.verbose >= 3:
+    if verbose >= 3:
         print(
             "Checked reciprocal hits for {}. Took {:.2f}s.".format(
                 score, time() - T_reciprocal_start
@@ -946,24 +962,23 @@ def do_taxa(path, taxa_id, args, **kwargs):
     scores.sort(reverse=True)  # Ascending
     transcripts_mapped_to = {}
 
-    arguments = []
+    argmnts = []
     for score in scores:
         hmmresults = score_based_results[score]
-        arguments.append(
+        argmnts.append(
             (
                 hmmresults,
                 list_of_wanted_orthoids,
                 reference_taxa,
                 score,
-                args,
+                args.verbose,
                 kwargs["rocks_hits_db"],
             )
         )
     with Pool(num_threads) as pool:
-        reciprocal_data = pool.starmap(reciprocal_search, arguments, chunksize=1)
+        reciprocal_data = pool.starmap(reciprocal_search, argmnts, chunksize=1)
 
     brh_count = 0
-
     for data in reciprocal_data:
         brh_count += len(data)
         for this_match in data:
@@ -988,7 +1003,7 @@ def do_taxa(path, taxa_id, args, **kwargs):
     T_exonerate_genes = time()
 
     if num_threads > 1:
-        arguments = []
+        arguments: list[Optional[ExonerateArgs]] = []
         func = arguments.append
     else:
         func = exonerate_gene_multi
@@ -1077,7 +1092,6 @@ clear_output = True
 
 header_seperator = "|"
 
-####
 
 def main(args):
     if not all(os.path.exists(i) for i in args.INPUT):
