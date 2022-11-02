@@ -15,6 +15,8 @@ import wrap_rocks
 import xxhash
 from Bio.Seq import Seq
 
+from . import rocky
+
 T_global_start = time()
 
 MainArgs = namedtuple(
@@ -251,9 +253,9 @@ def get_scores_list(score_threshold, min_length, rocks_hits_db, debug):
     return score_based_results, ufr_out
 
 
-def get_blastresults_for_hmmsearch_id(hmmsearch_id, rocks_hits_db):
+def get_blastresults_for_hmmsearch_id(hmmsearch_id):
     key = "blastfor:{}".format(hmmsearch_id)
-    db_entry = rocks_hits_db.get(key)
+    db_entry = rocky.get_rock("rocks_hits_db").get(key)
 
     if not db_entry:
         return []
@@ -308,11 +310,11 @@ def reverse_complement(nt_seq):
     return phymmr_tools.bio_revcomp(nt_seq)
 
 
-def get_nucleotide_transcript_for(header, rocks_sequence_db):
+def get_nucleotide_transcript_for(header):
     base_header = get_baseheader(header).strip()
     hash_of_header = xxhash.xxh64_hexdigest(base_header)
 
-    row_data = rocks_sequence_db.get(hash_of_header)
+    row_data = rocky.get_rock("rocks_sequence_db").get(hash_of_header)
     _, sequence = row_data.split("\n")
 
     if "revcomp" in header:
@@ -684,7 +686,6 @@ ExonerateArgs = namedtuple(
         "nt_out_path",
         "tmp_path",
         "verbose",
-        "rocks_sequence_db",
     ]
 )
 
@@ -705,7 +706,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
         this_reftaxon = hit.reftaxon
 
         est_header, est_sequence_complete = get_nucleotide_transcript_for(
-            hit.header, eargs.rocks_sequence_db
+            hit.header
         )
         est_sequence_hmm_region = crop_to_hmm_alignment(
             est_sequence_complete, est_header, hit
@@ -823,7 +824,7 @@ def is_reciprocal_match(blast_results, reference_taxa: List[str]):
     return None, None
 
 def reciprocal_search(
-    hmmresults, list_of_wanted_orthoids, reference_taxa, score, verbose, rocks_hits_db
+    hmmresults, list_of_wanted_orthoids, reference_taxa, score, verbose
 ):
     if verbose >= 3:
         T_reciprocal_start = time()
@@ -838,7 +839,7 @@ def reciprocal_search(
 
         result_hmmsearch_id = result.hmm_id
         blast_results = get_blastresults_for_hmmsearch_id(
-            result_hmmsearch_id, rocks_hits_db
+            result_hmmsearch_id
         )
         this_match_reftaxon, this_match_ref_sequence = is_reciprocal_match(
             blast_results, reference_taxa
@@ -858,7 +859,7 @@ def reciprocal_search(
     return results
 
 
-def do_taxa(path, taxa_id, args, **kwargs):
+def do_taxa(path, taxa_id, args):
     print("Doing {}.".format(taxa_id))
     if args.verbose >= 1:
         T_init_db = time()
@@ -932,7 +933,7 @@ def do_taxa(path, taxa_id, args, **kwargs):
         )
 
     score_based_results, ufr_rows = get_scores_list(
-        args.min_score, args.min_length, kwargs["rocks_hits_db"], args.debug
+        args.min_score, args.min_length, rocky.get_rock("rocks_hits_db"), args.debug
     )
 
     if args.debug:
@@ -972,7 +973,6 @@ def do_taxa(path, taxa_id, args, **kwargs):
                 reference_taxa,
                 score,
                 args.verbose,
-                kwargs["rocks_hits_db"],
             )
         )
     with Pool(num_threads) as pool:
@@ -1027,7 +1027,6 @@ def do_taxa(path, taxa_id, args, **kwargs):
                 nt_out_path,
                 tmp_path,
                 args.verbose,
-                kwargs["rocks_sequence_db"]
             )
         )
 
@@ -1100,14 +1099,12 @@ def main(args):
     for input_path in args.INPUT:
         print(f"### Processing path '{input_path}'.")
         rocks_db_path = os.path.join(input_path, "rocksdb")
-        rocks_sequence_db = wrap_rocks.RocksDB(os.path.join(rocks_db_path, "sequences"))
-        rocks_hits_db = wrap_rocks.RocksDB(os.path.join(rocks_db_path, "hits"))
+        rocky.create_pointer("rocks_sequence_db", os.path.join(rocks_db_path, "sequences"))
+        rocky.create_pointer("rocks_hits_db", os.path.join(rocks_db_path, "hits"))
         do_taxa(
             path=input_path,
             taxa_id=os.path.basename(input_path).split(".")[0],
             args=args,
-            rocks_sequence_db=rocks_sequence_db,
-            rocks_hits_db=rocks_hits_db,
         )
     return True
 
