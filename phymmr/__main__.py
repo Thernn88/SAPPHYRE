@@ -470,13 +470,6 @@ def subcmd_pal2nal(subparsers):
     parser_pal2nal.add_argument(
         "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
     )
-    parser_pal2nal.add_argument(
-        "-p",
-        "--processes",
-        type=int,
-        default=4,
-        help="Number of threads used to call processes.",
-    )
     parser_pal2nal.add_argument("-t", "--table", type=int, default=1, help="Table ID.")
     parser_pal2nal.set_defaults(func=pal2nal, formathelp=parser_pal2nal.format_help)
 
@@ -527,7 +520,18 @@ def subcmd_flexcull(subparsers):
 
 def flexcull(args):
     from . import flexcull
-    if not flexcull.main(args):
+    flexargs = flexcull.MainArgs(
+        args.verbose,
+        args.processes,
+        args.debug,
+        args.INPUT,
+        args.output,
+        args.amino_acid,
+        args.nucleotide,
+        args.matches,
+        args.base_pair
+    )
+    if not flexcull.main(flexargs):
         print()
         print(args.formathelp())
 
