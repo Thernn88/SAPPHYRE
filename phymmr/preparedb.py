@@ -310,7 +310,10 @@ def main(args):
     print("Finished took {:.2f}s overall.".format(time() - global_start))
     printv("N_trim time: {} seconds".format(sum(trim_times)), args.verbose)
     printv(f"Dedupe time: {dedup_time}", args.verbose)
+    return True
 
 
 if __name__ == "__main__":
-    main()
+    raise Exception(
+        "Cannot be called directly, please use the module:\nphymmr PrepareDB"
+    )
