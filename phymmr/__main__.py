@@ -538,8 +538,12 @@ if __name__ == "__main__":
         # TODO write me
         description="Order: PrepareDB, HmmsearchDB, BlastPalDB, ReporterDB, "
         "mafft, pal2nal, FlexCull (optional), OutlierCheck, MergeOverlap, MergeGenes",
-        epilog="I am epilog",  # TODO write me
-        # formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="phymmr  Copyright (C) 2022  PhyMMR Team\n"
+        "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n"
+        "This program comes with ABSOLUTELY NO WARRANTY.\n"
+        "This is free software, and you are welcome to redistribute it "
+        "under certain conditions.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
     parser.add_argument(
