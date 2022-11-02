@@ -1,4 +1,4 @@
-import argparse
+from __future__ import annotations
 import itertools
 import math
 from multiprocessing.pool import Pool
@@ -363,7 +363,8 @@ def make_temp_protfile(
     ortholog: str,
     temp: str,
     force_prot: bool,
-    verbose: bool
+    verbose: bool,
+    sequences_db_conn
 ) -> str:
     """
     Looks up the digest and sequence in the orthodb est table, then
@@ -501,123 +502,16 @@ def hmm_search(
     hits = search_prot(prot, domtbl_path, hmm_file, evalue, score, ovw, verbose)
     return hits
 
-def printv(msg, verbosity):
+def printv(msg, verbosity) -> None:
     if verbosity:
         print(msg)
 
-def main(argv):
-    global sequences_db_conn
-    global_start = time()
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-i",
-        "--input",
-        default="PhyMMR/Acroceridae/SRR6453524.fa",
-        help="Path to input directory.",
-    )
-    parser.add_argument(
-        "-oi",
-        "--orthoset_input",
-        type=str,
-        default="PhyMMR/orthosets",
-        help="Path to directory of Orthosets folder",
-    )
-    parser.add_argument(
-        "-o",
-        "--orthoset",
-        type=str,
-        default="Ortholog_set_Mecopterida_v4",
-        help="Orthoset",
-    )
-    parser.add_argument(
-        "-ovw",
-        "--overwrite",
-        default=False,
-        action="store_true",
-        help="Remake domtbl files even if previous file exists.",
-    )
-    parser.add_argument(
-        "-s", "--score", type=float, default=40, help="Score threshold. Defaults to 40"
-    )
-    parser.add_argument(
-        "-e",
-        "--evalue",
-        type=float,
-        default=0,
-        help="Evalue threshold. Defaults to 0",
-    )
-    parser.add_argument(
-        "--excluded-list",
-        default=False,
-        help="File containing names of genes to be excluded",
-    )
-    parser.add_argument(
-        "--wanted-list", default=False, help="File containing list of wanted genes"
-    )
-    parser.add_argument(
-        "-p",
-        "--processes",
-        type=int,
-        default=1,
-        help="""Number of worker processes launched.
-                        Defaults to 1.""",
-    )
-    parser.add_argument(
-        "--remake-protfile",
-        default=False,
-        action="store_true",
-        help="Force creation of a new protfile even if one already exists.",
-    )
-    parser.add_argument(
-        "-sdm",
-        "--score_diff_multi",
-        type=float,
-        default=1.05,
-        help="Multi-gene Score Difference Adjustment",
-    )
-    parser.add_argument(
-        "-mom",
-        "--min_overlap_multi",
-        type=float,
-        default=0.3,
-        help="Multi-gene Minimum Overlap Adjustment",
-    )
-    parser.add_argument(
-        "-momi",
-        "--minimum_overlap_internal_multi",
-        type=float,
-        default=0.5,
-        help="Internal Multi Minimum Overlap Adjustment",
-    )##
-    parser.add_argument(
-        "-sdi",
-        "--score_diff_internal",
-        type=float,
-        default=1.5,
-        help="Internal Score Difference Adjustmen",
-    )
-    parser.add_argument(
-        "-moi",
-        "--min_overlap_internal",
-        type=float,
-        default=0.9,
-        help="Internal Minimum Overlap Adjustment",
-    )
-    parser.add_argument(
-        "-m",
-        "--max_hmm_batch_size",
-        default=250000, 
-        type=int, 
-        help="Max hits per hmmsearch batch in db. Default: 500 thousand.",
-    )
-    parser.add_argument("-v", "--verbose", default=1, type=int, help="Verbose debug.")
-    parser.add_argument("-d", "--debug", type=int, default=0, help="Output debug logs.")
 
-    args = parser.parse_args()
-
-    taxa = os.path.basename(args.input)
-    printv('Begin Hmmsearch for {}'.format(taxa), args.verbose)
-
+def run_process(args, input_path: str) -> None:
+    """
+    Runs the hmmsearch process on an individual input path.
+    Allows the use of nargs in main().
+    """
     MAX_HMM_BATCH_SIZE = args.max_hmm_batch_size
     debug = args.debug != 0
     score_diff_multi = args.score_diff_multi
@@ -626,28 +520,28 @@ def main(argv):
     min_overlap_internal = args.min_overlap_internal
 
     num_threads = args.processes
-   
+    global_start = time()
     if os.path.exists("/run/shm"):
         in_ram = "/run/shm"
     else:
         in_ram = "/dev/shm"
-    # temp_dir = os.path.join(args.input, "tmp")
+    # temp_dir = os.path.join(input_path, "tmp")
     temp_dir = os.path.join(in_ram, "tmp")
     if not os.path.exists(temp_dir):
         os.mkdir(temp_dir)
 
     # get ortholog
-    ortholog = os.path.basename(args.input).split(".")[0]
+    ortholog = os.path.basename(input_path).split(".")[0]
 
     # if database not set, make expected path to database
-    db_path = os.path.join(args.input, "rocksdb")
+    db_path = os.path.join(input_path, "rocksdb")
     sequences_path = os.path.join(db_path, "sequences")
     hits_path = os.path.join(db_path, "hits")
 
     sequences_db_conn = wrap_rocks.RocksDB(sequences_path)
 
     # path to domtbl directory
-    domtbl_dir = os.path.join(args.input, "hmmsearch")
+    domtbl_dir = os.path.join(input_path, "hmmsearch")
 
     os.makedirs(domtbl_dir, exist_ok=True)
 
@@ -682,7 +576,7 @@ def main(argv):
     printv("Checking protfile", args.verbose)
 
     protfile = make_temp_protfile(
-        ortholog, temp_dir, args.remake_protfile, args.verbose
+        ortholog, temp_dir, args.remake_protfile, args.verbose, sequences_db_conn
     )
 
     start = time()
@@ -698,7 +592,8 @@ def main(argv):
             hmm_results = search_pool.starmap(hmm_search, arg_tuples)
     else:
         for hmm in hmm_list:
-            hmm_results.append(hmm_search(hmm, domtbl_dir, args.evalue, args.score, protfile, args.overwrite, args.verbose))
+            hmm_results.append(
+                hmm_search(hmm, domtbl_dir, args.evalue, args.score, protfile, args.overwrite, args.verbose))
 
     printv("Search time: {:.2f}".format(time() - start), args.verbose)
 
@@ -750,7 +645,7 @@ def main(argv):
             if hit.base_header not in this_gene_baseheaders:
                 this_gene_baseheaders.add(hit.base_header)
             else:
-                requires_internal_multi_filter[hit.base_header] = True # As a dict to avoid dupe headers
+                requires_internal_multi_filter[hit.base_header] = True  # As a dict to avoid dupe headers
                 this_requires = True
 
             f_duplicates[hit.header].append(hit)
@@ -758,7 +653,7 @@ def main(argv):
 
         if this_requires:
             required_internal_multi_genes[gene] = list(requires_internal_multi_filter.keys())
-            rimg_set.add(gene) # Used for internal sort
+            rimg_set.add(gene)  # Used for internal sort
 
     headers = list(f_duplicates.keys())
     possible_dupes = 0
@@ -777,7 +672,9 @@ def main(argv):
     for header_left in f_duplicates:
         header_based_results[header_left] = []
 
-    printv('Found {} potential dupes. Search took {:.2f}s. Filtering dupes'.format(possible_dupes, time()-filter_start), args.verbose)
+    printv(
+        'Found {} potential dupes. Search took {:.2f}s. Filtering dupes'.format(possible_dupes, time() - filter_start),
+        args.verbose)
 
     if debug:
         filtered_sequences_log = []
@@ -817,11 +714,10 @@ def main(argv):
                 filtered_sequences_log.extend(data["Log"])
             header_based_results[data["Remaining"][0].header] = data["Remaining"]
 
-    printv('Done! Took {:.2f}s'.format(time()-filter_start), args.verbose)
+    printv('Done! Took {:.2f}s'.format(time() - filter_start), args.verbose)
     internal_multi_start = time()
 
     transcripts_mapped_to = {}
-
 
     for header in header_based_results:
         for match in header_based_results[header]:
@@ -829,7 +725,8 @@ def main(argv):
                 transcripts_mapped_to[match.gene] = []
             transcripts_mapped_to[match.gene].append(match)
 
-    printv('Looking for internal duplicates over {} flagged genes'.format(len(required_internal_multi_genes)), args.verbose)
+    printv('Looking for internal duplicates over {} flagged genes'.format(len(required_internal_multi_genes)),
+           args.verbose)
 
     if num_threads == 1:
         internal_multi_data = []
@@ -837,7 +734,7 @@ def main(argv):
             if gene in transcripts_mapped_to:
                 this_gene_transcripts = transcripts_mapped_to[gene]
                 check_headers = required_internal_multi_genes[gene]
-                internal_multi_data.append(#
+                internal_multi_data.append(  #
                     internal_multi_filter(
                         check_headers,
                         this_gene_transcripts,
@@ -872,7 +769,7 @@ def main(argv):
         if debug:
             filtered_sequences_log.extend(data["Log"])
 
-    printv('Done! Took {:.2f}s'.format(time()-internal_multi_start), args.verbose)
+    printv('Done! Took {:.2f}s'.format(time() - internal_multi_start), args.verbose)
     internal_start = time()
 
     printv('Doing internal overlap filter', args.verbose)
@@ -928,11 +825,11 @@ def main(argv):
         for line in filtered_sequences_log:
             filtered_sequences_log_out.append(",".join(line) + "\n")
 
-        filtered_sequences_log_path = os.path.join(args.input, "filtered-hits.csv")
+        filtered_sequences_log_path = os.path.join(input_path, "filtered-hits.csv")
         with open(filtered_sequences_log_path, "w") as fp:
             fp.writelines(filtered_sequences_log_out)
 
-    printv('Done! Took {:.2f}s'.format(time()-internal_start), args.verbose)
+    printv('Done! Took {:.2f}s'.format(time() - internal_start), args.verbose)
     printv('Filtering took {:.2f}s overall'.format(time() - filter_start), args.verbose)
 
     # Grab the seq dict
@@ -943,11 +840,11 @@ def main(argv):
         fasta_file = SimpleFastaParser(prot_file_handle)
         for header, sequence in fasta_file:
             sequence_dict[header] = sequence
-    
+
     if os.path.exists(protfile):
         os.remove(protfile)
 
-    printv('Read prot file in {:.2f}s'.format(time()-start), args.verbose)
+    printv('Read prot file in {:.2f}s'.format(time() - start), args.verbose)
 
     end = time()
 
@@ -956,7 +853,7 @@ def main(argv):
     current_batch = []
     current_hit_count = 1
     hit_id = 0
-    batch_i= 0
+    batch_i = 0
 
     hits_db_conn = wrap_rocks.RocksDB(hits_path)
 
@@ -964,16 +861,16 @@ def main(argv):
     dupes_per_gene = {}
 
     for gene in transcripts_mapped_to:
-        dupe_count_divvy= {}
+        dupe_count_divvy = {}
 
         for hit in transcripts_mapped_to[gene]:
             if hit.header in sequence_dict:
-                #Make dupe count gene based
-                if hit.base_header in dupe_counts: #NT Dupe
+                # Make dupe count gene based
+                if hit.base_header in dupe_counts:  # NT Dupe
                     dupe_count_divvy[hit.base_header] = dupe_counts[hit.base_header]
-                if hit.header in dupe_counts: #AA Dupe
+                if hit.header in dupe_counts:  # AA Dupe
                     dupe_count_divvy[hit.header] = dupe_counts[hit.header]
-                
+
                 hit_id += 1
                 hit.hmm_sequence = "".join(sequence_dict[hit.header])
                 hit.hmm_id = hit_id
@@ -995,35 +892,53 @@ def main(argv):
 
                 current_batch.append(hit.to_json())
                 current_hit_count += 1
-        
+
         if len(dupe_count_divvy) > 1:
             dupes_per_gene[gene] = dupe_count_divvy
     key = "getall:gene_dupes"
     data = json.dumps(dupes_per_gene)
     sequences_db_conn.put(key, data)
 
-
     del sequence_dict
 
     if current_batch:
         data = json.dumps(current_batch)
         key = f'hmmbatch:{batch_i}'
-
         global_hmm_obj_recipe.append(str(batch_i))
-
         hits_db_conn.put(key, data)
 
     del current_batch
 
     # insert key to grab all hmm objects into the database
-
     key = 'hmmbatch:all'
     data = ','.join(global_hmm_obj_recipe)
-
     hits_db_conn.put(key, data)
 
     db_end = time()
-    printv("Inserted {} hits over {} batch(es) in {:.2f} seconds. Kicked {} hits during filtering".format(total_hits, len(global_hmm_obj_recipe), db_end - end, count-total_hits), args.verbose)
+    printv(
+        "Inserted {} hits over {} batch(es) in {:.2f} seconds. Kicked {} hits during "
+        "filtering".format(
+            total_hits,
+            len(global_hmm_obj_recipe),
+            db_end - end,
+            count - total_hits
+        ),
+        args.verbose
+    )
     print("Took {:.2f}s overall".format(time() - global_start))
+
+
+def main(args):
+    if not all(os.path.exists(i) for i in args.INPUT):
+        print("ERROR: All folders passed as argument must exists.")
+        return False
+    for input_path in args.INPUT:
+        printv('Begin Hmmsearch for {}'.format(os.path.basename(input_path)), args.verbose)
+        run_process(args, input_path)
+    return True
+
+
 if __name__ == "__main__":
-    main(argv)
+    raise Exception(
+        "Cannot be called directly, please use the module:\nphymmr HmmSearchDB"
+    )

@@ -1,20 +1,37 @@
-import argparse
+from __future__ import annotations
 import json
 import math
 import os
 import shutil
 import sqlite3
 import uuid
+from collections import namedtuple
 from multiprocessing.pool import Pool
 from time import time
-from typing import List
+from typing import List, Optional
 
 import phymmr_tools
 import wrap_rocks
 import xxhash
 from Bio.Seq import Seq
 
+from . import rocky
+
 T_global_start = time()
+
+MainArgs = namedtuple(
+    "MainArgs",
+    [
+        'verbose',
+        'processes',
+        'debug',
+        'INPUT',
+        'orthoset_input',
+        'orthoset',
+        'min_length',
+        'min_score',
+    ]
+)
 
 
 class Hit:
@@ -146,6 +163,7 @@ class NodeRecord:
     def __le__(self, other):
         return self.score <= other.score
 
+
 def get_set_id(orthoset_db_con, orthoset):
     """
     Retrieves orthoset id from orthoset's name.
@@ -190,7 +208,7 @@ def get_taxa_in_set(set_id, orthoset_db_con):
     return [row[1] for row in rows]
 
 
-def get_scores_list(score_threshold, min_length, debug):
+def get_scores_list(score_threshold, min_length, rocks_hits_db, debug):
     batches = rocks_hits_db.get("hmmbatch:all")
     batches = batches.split(",")
 
@@ -237,7 +255,7 @@ def get_scores_list(score_threshold, min_length, debug):
 
 def get_blastresults_for_hmmsearch_id(hmmsearch_id):
     key = "blastfor:{}".format(hmmsearch_id)
-    db_entry = rocks_hits_db.get(key)
+    db_entry = rocky.get_rock("rocks_hits_db").get(key)
 
     if not db_entry:
         return []
@@ -296,7 +314,7 @@ def get_nucleotide_transcript_for(header):
     base_header = get_baseheader(header).strip()
     hash_of_header = xxhash.xxh64_hexdigest(base_header)
 
-    row_data = rocks_sequence_db.get(hash_of_header)
+    row_data = rocky.get_rock("rocks_sequence_db").get(hash_of_header)
     _, sequence = row_data.split("\n")
 
     if "revcomp" in header:
@@ -327,7 +345,7 @@ def fastaify(headers, sequences, tmp_path):
 
 
 def translate_cdna(cdna_seq):
-    if cdna_seq == None:
+    if not cdna_seq:
         return None
 
     if len(cdna_seq) % 3 != 0:
@@ -523,8 +541,7 @@ def print_core_sequences(orthoid, core_sequences):
     result = []
     for core in core_sequences:
         header = format_reference_header(orthoid, core[0], core[1])
-        result.append(">" + header + "\n")
-        result.append(core[2] + "\n")  # append the sequence
+        result.append(f">{header}\n{core[2]}\n")
 
     return result
 
@@ -539,10 +556,13 @@ def get_rf(header):
 
 
 def print_unmerged_sequences(
-    hits, orthoid, type, minimum_seq_data_length, taxa_id, kicks
+    hits, orthoid, minimum_seq_data_length, taxa_id
 ):
-    result = []
-    kicks_result = set()
+    aa_result = []
+    nt_result = []
+    header_maps_to_where = {}
+    header_mapped_x_times = {}
+    base_header_mapped_already = {}
     exact_hit_mapped_already = set()
     for i, hit in enumerate(hits):
         base_header, rf = get_rf(hit.header)
@@ -555,36 +575,62 @@ def print_unmerged_sequences(
             rf,
         )
 
-        if type == "nt":
-            seq = (
-                hit.extended_orf_cdna_sequence
-                if hit.extended_orf_cdna_sequence is not None
-                else hit.orf_cdna_sequence
-            )
+        nt_seq = (
+            hit.extended_orf_cdna_sequence
+            if hit.extended_orf_cdna_sequence is not None
+            else hit.orf_cdna_sequence
+        )
 
-            #Deinterleave
-            seq = seq.replace('\n','')
+        #Deinterleave
+        nt_seq = nt_seq.replace('\n','')
 
-            if i not in kicks:
-                result.append(">" + header + "\n")
-                result.append(seq + "\n")
-        elif type == "aa":
-            seq = (
-                hit.extended_orf_aa_sequence
-                if hit.extended_orf_aa_sequence is not None
-                else hit.orf_aa_sequence
-            )
+        aa_seq = (
+            hit.extended_orf_aa_sequence
+            if hit.extended_orf_aa_sequence is not None
+            else hit.orf_aa_sequence
+        )
 
-            seq = seq.replace('\n','')
-            unique_hit = base_header+seq
+        aa_seq = aa_seq.replace('\n','')
+        unique_hit = base_header+aa_seq
 
-            if not unique_hit in exact_hit_mapped_already and len(seq) - seq.count("-") > minimum_seq_data_length:
-                result.append(">" + header + "\n")
-                result.append(seq + "\n")
-                exact_hit_mapped_already.add(unique_hit)
+        if not unique_hit in exact_hit_mapped_already and len(aa_seq) - aa_seq.count("-") > minimum_seq_data_length:
+            if base_header in base_header_mapped_already:
+                already_mapped_header, already_mapped_sequence = base_header_mapped_already[base_header]
+
+                if len(aa_seq) > len(already_mapped_sequence):
+                    if already_mapped_sequence in aa_seq:
+                        aa_result[header_maps_to_where[already_mapped_header]] = f">{header}\n{aa_seq}\n" 
+                        nt_result[header_maps_to_where[already_mapped_header]] = f">{header}\n{nt_seq}\n" 
+                        continue
+                else:
+                    if aa_seq in already_mapped_sequence:
+                        continue
+
+                if header in header_mapped_x_times:
+                    # Make header unique
+                    old_header = header
+                    header = format_candidate_header(
+                        orthoid,
+                        hit.reftaxon,
+                        taxa_id,
+                        base_header+f"_{header_mapped_x_times[old_header]}",
+                        rf,
+                    )
+
+                    header_mapped_x_times[old_header] += 1
             else:
-                kicks_result.add(i)
-    return kicks_result, result
+                base_header_mapped_already[base_header] = header, aa_seq
+
+            header_maps_to_where[header] = len(aa_result) # Save the index of the sequence output
+            aa_result.append(f">{header}\n{aa_seq}\n" )
+            nt_result.append(f">{header}\n{nt_seq}\n" )
+
+            header_mapped_x_times[header] = 1
+
+            
+            exact_hit_mapped_already.add(unique_hit)
+
+    return aa_result, nt_result
 
 
 def get_ortholog_group_nucleotide(orthoset_id, orthoid, orthoset_db_con):
@@ -615,17 +661,17 @@ def get_ortholog_group_nucleotide(orthoset_id, orthoid, orthoset_db_con):
     return rows
 
 
-def get_difference(scoreA, scoreB):
+def get_difference(score_a, score_b):
     """
     Returns decimal difference of two scores
     """
 
     try:
-        if scoreA / scoreB > 1:
-            return scoreA / scoreB
-        elif scoreB / scoreA > 1:
-            return scoreB / scoreA
-        elif scoreA == scoreB:
+        if score_a / score_b > 1:
+            return score_a / score_b
+        if score_b / score_a > 1:
+            return score_b / score_a
+        if score_a == score_b:
             return 1
     except ZeroDivisionError:
         return 0
@@ -654,60 +700,42 @@ def get_match(header, results):
     return None
 
 
-def run_exonerate(arg_tuple):
-    (
-        gene,
-        list_of_hits,
-        orthoset_db_path,
-        min_score,
-        orthoset_id,
-        aa_out_path,
-        min_length,
-        taxa_id,
-        nt_out_path,
-        tmp_path,
-        exonerate_verbose,
-    ) = arg_tuple
-    exonerate_gene_multi(
-        gene,
-        list_of_hits,
-        orthoset_db_path,
-        min_score,
-        orthoset_id,
-        aa_out_path,
-        min_length,
-        taxa_id,
-        nt_out_path,
-        tmp_path,
-        exonerate_verbose,
-    )
+ExonerateArgs = namedtuple(
+    "ExonerateArgs",
+    [
+        "orthoid",
+        "list_of_hits",
+        "orthoset_db_path",
+        "min_score",
+        "orthoset_id",
+        "aa_out_path",
+        "min_length",
+        "taxa_id",
+        "nt_out_path",
+        "tmp_path",
+        "verbose",
+    ]
+)
 
 
-def exonerate_gene_multi(
-    orthoid,
-    list_of_hits,
-    orthoset_db_path,
-    min_score,
-    orthoset_id,
-    aa_out_path,
-    min_length,
-    taxa_id,
-    nt_out_path,
-    tmp_path,
-    exonerate_verbose,
-):
-    T_gene_start = time()
+def run_exonerate(arg_tuple: ExonerateArgs):
+    exonerate_gene_multi(arg_tuple)
 
-    orthoset_db_con = sqlite3.connect(orthoset_db_path)
 
-    if exonerate_verbose:
-        print("Exonerating and doing output for: ", orthoid)
+def exonerate_gene_multi(eargs: ExonerateArgs):
+    if eargs.verbose >= 2:
+        print("Exonerating and doing output for: ", eargs.orthoid)
+        T_gene_start = time()
+
+    orthoset_db_con = sqlite3.connect(eargs.orthoset_db_path)
     reftaxon_related_transcripts = {}
     reftaxon_to_proteome_sequence = {}
-    for hit in list_of_hits:
+    for hit in eargs.list_of_hits:
         this_reftaxon = hit.reftaxon
 
-        est_header, est_sequence_complete = get_nucleotide_transcript_for(hit.header)
+        est_header, est_sequence_complete = get_nucleotide_transcript_for(
+            hit.header
+        )
         est_sequence_hmm_region = crop_to_hmm_alignment(
             est_sequence_complete, est_header, hit
         )
@@ -723,22 +751,16 @@ def exonerate_gene_multi(
         reftaxon_related_transcripts[this_reftaxon].append(hit)
 
     output_sequences = []
-
     total_results = 0
-
-    for taxon_hit in reftaxon_related_transcripts:
-        hits = reftaxon_related_transcripts[taxon_hit]
-        query = reftaxon_to_proteome_sequence[taxon_hit]
-
-        extended_results, results = get_multi_orf(
-            query, hits, min_score, tmp_path, include_extended=extend_orf
-        )
-
+    for taxon_hit, hits in reftaxon_related_transcripts.items():
         total_results += len(hits)
+        query = reftaxon_to_proteome_sequence[taxon_hit]
+        extended_results, results = get_multi_orf(
+            query, hits, eargs.min_score, eargs.tmp_path, include_extended=extend_orf
+        )
 
         for hit in hits:
             matching_alignment = get_match(hit.header, results)
-
             if matching_alignment:
                 hit.add_orf(matching_alignment)
 
@@ -755,49 +777,43 @@ def exonerate_gene_multi(
                                 orf_overlap = overlap_by_orf(hit)
                                 if orf_overlap < orf_overlap_minimum:
                                     hit.remove_extended_orf()
-
                             else:
                                 hit.remove_extended_orf()
                         else:
                             print("Failed to extend orf on {}".format(hit.header))
-
                     output_sequences.append(hit)
-
     if len(output_sequences) > 0:
         output_sequences = sorted(output_sequences, key=lambda d: d.hmm_start)
-
-        core_sequences = get_ortholog_group(orthoset_id, orthoid, orthoset_db_con)
-
-        this_aa_out = []
-        this_aa_path = os.path.join(aa_out_path, orthoid + ".aa.fa")
-        this_aa_out.extend(print_core_sequences(orthoid, core_sequences))
-        kicks, output = print_unmerged_sequences(
-            output_sequences, orthoid, "aa", min_length, taxa_id, kicks=set()
+        core_sequences = get_ortholog_group(
+            eargs.orthoset_id, eargs.orthoid, orthoset_db_con
+        )
+        this_aa_path = os.path.join(eargs.aa_out_path, eargs.orthoid + ".aa.fa")
+        aa_output, nt_output = print_unmerged_sequences(
+            output_sequences,
+            eargs.orthoid,
+            eargs.min_length,
+            eargs.taxa_id,
         )
 
-        if output:
-            this_aa_out.extend(output)
-            open(this_aa_path, "w").writelines(this_aa_out)
+        if aa_output:
+            with open(this_aa_path, "w") as fp:
+                fp.writelines(print_core_sequences(eargs.orthoid, core_sequences))
+                fp.writelines(aa_output)
 
             core_sequences_nt = get_ortholog_group_nucleotide(
-                orthoset_id, orthoid, orthoset_db_con
+                eargs.orthoset_id, eargs.orthoid, orthoset_db_con
             )
 
-            this_nt_out = []
-            this_nt_path = os.path.join(nt_out_path, orthoid + ".nt.fa")
+            this_nt_path = os.path.join(eargs.nt_out_path, eargs.orthoid + ".nt.fa")
 
-            this_nt_out.extend(print_core_sequences(orthoid, core_sequences_nt))
-            na_kicks, output = print_unmerged_sequences(
-                output_sequences, orthoid, "nt", min_length, taxa_id, kicks=kicks
-            )
-            this_nt_out.extend(output)
+            with open(this_nt_path, "w") as fp:
+                fp.writelines(print_core_sequences(eargs.orthoid, core_sequences_nt))
+                fp.writelines(nt_output)
 
-            open(this_nt_path, "w").writelines(this_nt_out)
-
-    if exonerate_verbose:
+    if eargs.verbose >= 2:
         print(
             "{} took {:.2f}s. Had {} sequences".format(
-                orthoid, time() - T_gene_start, len(output_sequences)
+                eargs.orthoid, time() - T_gene_start, len(output_sequences)
             )
         )
 
@@ -821,13 +837,9 @@ def is_reciprocal_match(blast_results, reference_taxa: List[str]):
     return None, None
 
 def reciprocal_search(
-    hmmresults,
-    list_of_wanted_orthoids,
-    reference_taxa,
-    score,
-    reciprocal_verbose,
+    hmmresults, list_of_wanted_orthoids, reference_taxa, score, verbose
 ):
-    if reciprocal_verbose:
+    if verbose >= 3:
         T_reciprocal_start = time()
         print("Ensuring reciprocal hit for hmmresults in {}".format(score))
 
@@ -839,21 +851,211 @@ def reciprocal_search(
             continue
 
         result_hmmsearch_id = result.hmm_id
-        blast_results = get_blastresults_for_hmmsearch_id(result_hmmsearch_id)
-        this_match_reftaxon, this_match_ref_sequence = is_reciprocal_match(blast_results, reference_taxa)
+        blast_results = get_blastresults_for_hmmsearch_id(
+            result_hmmsearch_id
+        )
+        this_match_reftaxon, this_match_ref_sequence = is_reciprocal_match(
+            blast_results, reference_taxa
+        )
 
         if this_match_reftaxon:
             result.proteome_sequence = this_match_ref_sequence
             result.reftaxon = this_match_reftaxon
             results.append(result)
 
-    if reciprocal_verbose:
+    if verbose >= 3:
         print(
             "Checked reciprocal hits for {}. Took {:.2f}s.".format(
                 score, time() - T_reciprocal_start
             )
         )
     return results
+
+
+def do_taxa(path, taxa_id, args):
+    print("Doing {}.".format(taxa_id))
+    if args.verbose >= 1:
+        T_init_db = time()
+
+    num_threads = args.processes
+    if not isinstance(num_threads, int) or num_threads < 1:
+        num_threads = 1
+
+    if os.path.exists("/run/shm"):
+        tmp_path = "/run/shm"
+    elif os.path.exists("/dev/shm"):
+        tmp_path = "/dev/shm"
+    else:
+        tmp_path = os.path.join(path, "tmp")
+        os.makedirs(tmp_path, exist_ok=True)
+
+    if orthoid_list_file:
+        list_of_wanted_orthoids = open(orthoid_list_file).read().split("\n")
+        wanted_orthoid_only = True
+    else:
+        list_of_wanted_orthoids = []
+        wanted_orthoid_only = False
+
+    orthoset_path = args.orthoset_input
+    orthoset = args.orthoset
+
+    orthoset_db_path = os.path.join(orthoset_path, orthoset + ".sqlite")
+    orthoset_db_con = sqlite3.connect(orthoset_db_path)
+
+    cache_size = 16000000
+
+    orthoset_db_con.execute("PRAGMA journal_mode = OFF;")
+    orthoset_db_con.execute("PRAGMA synchronous = 0;")
+    orthoset_db_con.execute(f"PRAGMA cache_size = {cache_size};")
+    orthoset_db_con.execute("PRAGMA locking_mode = EXCLUSIVE;")
+    orthoset_db_con.execute("PRAGMA temp_store = MEMORY;")
+
+    orthoset_id = get_set_id(orthoset_db_con, orthoset)
+
+    aa_out = "aa"
+    nt_out = "nt"
+
+    aa_out_path = os.path.join(path, aa_out)
+    nt_out_path = os.path.join(path, nt_out)
+
+    if clear_output:
+        if os.path.exists(aa_out_path):
+            shutil.rmtree(aa_out_path)
+        if os.path.exists(nt_out_path):
+            shutil.rmtree(nt_out_path)
+
+    os.makedirs(aa_out_path, exist_ok=True)
+    os.makedirs(nt_out_path, exist_ok=True)
+
+    if args.verbose >= 1:
+        T_reference_taxa = time()
+        print(
+            "Initialized databases. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing reference taxa in set.".format(
+                time() - T_global_start, time() - T_init_db
+            )
+        )
+
+    reference_taxa = get_taxa_in_set(orthoset_id, orthoset_db_con)
+
+    if args.verbose >= 1:
+        T_hmmresults = time()
+        print(
+            "Got reference taxa in set. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing hmmresults".format(
+                time() - T_global_start, time() - T_reference_taxa
+            )
+        )
+
+    score_based_results, ufr_rows = get_scores_list(
+        args.min_score, args.min_length, rocky.get_rock("rocks_hits_db"), args.debug
+    )
+
+    if args.debug:
+        ufr_path = os.path.join(path, "unfiltered-hits.csv")
+
+        ufr_out = ["Gene,Header,Score,Start,End\n"]
+        for row in ufr_rows:
+            ufr_out.append(",".join(row) + "\n")
+
+        open(ufr_path, "w").writelines(ufr_out)
+
+    ####################################
+    if args.verbose >= 1:
+        print(
+            "Got hmmresults. Elapsed time {:.2f}s. Took {:.2f}s.".format(
+                time() - T_global_start, time() - T_hmmresults
+            )
+        )
+        print(
+            "Retrieved data from DB. Elapsed time {:.2f}s. Took {:.2f}s. Doing reciprocal check.".format(
+                time() - T_global_start, time() - T_hmmresults
+            )
+        )
+        T_reciprocal_search = time()
+
+    scores = list(score_based_results.keys())
+    scores.sort(reverse=True)  # Ascending
+    transcripts_mapped_to = {}
+
+    argmnts = []
+    for score in scores:
+        hmmresults = score_based_results[score]
+        argmnts.append(
+            (
+                hmmresults,
+                list_of_wanted_orthoids,
+                reference_taxa,
+                score,
+                args.verbose,
+            )
+        )
+    with Pool(num_threads) as pool:
+        reciprocal_data = pool.starmap(reciprocal_search, argmnts, chunksize=1)
+
+    brh_count = 0
+    for data in reciprocal_data:
+        brh_count += len(data)
+        for this_match in data:
+            orthoid = this_match.gene
+
+            if transcript_not_long_enough(this_match, args.min_length):
+                continue
+
+            if orthoid not in transcripts_mapped_to:
+                transcripts_mapped_to[orthoid] = []
+
+            transcripts_mapped_to[orthoid].append(this_match)
+
+    if args.verbose >= 1:
+        T_internal_search = time()
+        print(
+            "Reciprocal check done, found {} reciprocal hits. Elapsed time {:.2f}s. Took {:.2f}s. Exonerating genes.".format(
+                brh_count, time() - T_global_start, time() - T_reciprocal_search
+            )
+        )
+
+    T_exonerate_genes = time()
+
+    if num_threads > 1:
+        arguments: list[Optional[ExonerateArgs]] = []
+        func = arguments.append
+    else:
+        func = exonerate_gene_multi
+
+    # this sorting the list so that the ones with the most hits are first
+    for orthoids in sorted(
+        transcripts_mapped_to,
+        key=lambda k: len(transcripts_mapped_to[k]),
+        reverse=True
+    ):
+        func(
+            ExonerateArgs(
+                orthoids,
+                transcripts_mapped_to[orthoids],
+                orthoset_db_path,
+                args.min_score,
+                orthoset_id,
+                aa_out_path,
+                args.min_length,
+                taxa_id,
+                nt_out_path,
+                tmp_path,
+                args.verbose,
+            )
+        )
+
+    if num_threads > 1:
+        with Pool(num_threads) as pool:
+            pool.map(run_exonerate, arguments, chunksize=1)
+
+    if args.verbose >= 1:
+        print(
+            "Done. Final time {:.2f}s. Exonerate took {:.2f}s.".format(
+                time() - T_global_start, time() - T_exonerate_genes
+            )
+        )
+
+    if args.verbose == 0:
+        print("Done took {:.2f}s.".format(time() - T_global_start))
 
 
 ####
@@ -902,263 +1104,25 @@ clear_output = True
 
 header_seperator = "|"
 
-####
+
+def main(args):
+    if not all(os.path.exists(i) for i in args.INPUT):
+        print("ERROR: All folders passed as argument must exists.")
+        return False
+    for input_path in args.INPUT:
+        print(f"### Processing path '{input_path}'.")
+        rocks_db_path = os.path.join(input_path, "rocksdb")
+        rocky.create_pointer("rocks_sequence_db", os.path.join(rocks_db_path, "sequences"))
+        rocky.create_pointer("rocks_hits_db", os.path.join(rocks_db_path, "hits"))
+        do_taxa(
+            path=input_path,
+            taxa_id=os.path.basename(input_path).split(".")[0],
+            args=args,
+        )
+    return True
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-i",
-        "--input",
-        type=str,
-        default="PhyMMR/Acroceridae/SRR6453524.fa",
-        help="Path to directory of Input folder",
+    raise Exception(
+        "Cannot be called directly, please use the module:\nphymmr ReporterDB"
     )
-    parser.add_argument(
-        "-oi",
-        "--orthoset_input",
-        type=str,
-        default="PhyMMR/orthosets",
-        help="Path to directory of Orthosets folder",
-    )
-    parser.add_argument(
-        "-o",
-        "--orthoset",
-        type=str,
-        default="Ortholog_set_Mecopterida_v4",
-        help="Orthoset",
-    )
-    parser.add_argument(
-        "-ml", "--min_length", type=int, default=30, help="Minimum Transcript Length"
-    )
-    parser.add_argument(
-        "-ms", "--min_score", type=float, default=40, help="Minimum Hit Domain Score"
-    )
-    parser.add_argument(
-        "-p",
-        "--processes",
-        type=int,
-        default=1,
-        help="Number of threads used to call processes.",
-    )
-    parser.add_argument("-v", "--verbose", type=int, default=2, help="Verbose debug.")
-    parser.add_argument("-d", "--debug", type=int, default=0, help="Verbose debug.")
-
-    args = parser.parse_args()
-
-    debug = args.debug != 0
-
-    num_threads = args.processes
-
-    ####
-    # Filter settings
-    ####
-
-    min_length = args.min_length
-    min_score = args.min_score
-    verbose = range(0, args.verbose + 1)
-
-    ####
-
-    input_path = args.input
-    taxa_id = os.path.basename(input_path).split(".")[0]
-
-    if 1 in verbose:
-        print("Doing {}.".format(taxa_id))
-        T_init_db = time()
-
-    if os.path.exists("/run/shm"):
-        tmp_path = "/run/shm"
-    elif os.path.exists("/dev/shm"):
-        tmp_path = "/dev/shm"
-    else:
-        tmp_path = os.path.join(input_path, "tmp")
-        os.makedirs(tmp_path, exist_ok=True)
-
-    if orthoid_list_file:
-        list_of_wanted_orthoids = open(orthoid_list_file).read().split("\n")
-        wanted_orthoid_only = True
-    else:
-        list_of_wanted_orthoids = []
-        wanted_orthoid_only = False
-
-    orthoset_path = args.orthoset_input
-    orthoset = args.orthoset
-
-    orthoset_db_path = os.path.join(orthoset_path, orthoset + ".sqlite")
-    orthoset_db_con = sqlite3.connect(orthoset_db_path)
-
-    cache_size = 16000000
-
-    orthoset_db_con.execute("PRAGMA journal_mode = OFF;")
-    orthoset_db_con.execute("PRAGMA synchronous = 0;")
-    orthoset_db_con.execute(f"PRAGMA cache_size = {cache_size};")
-    orthoset_db_con.execute("PRAGMA locking_mode = EXCLUSIVE;")
-    orthoset_db_con.execute("PRAGMA temp_store = MEMORY;")
-
-    orthoset_id = get_set_id(orthoset_db_con, orthoset)
-
-    aa_out = "aa"
-    nt_out = "nt"
-
-    aa_out_path = os.path.join(input_path, aa_out)
-    nt_out_path = os.path.join(input_path, nt_out)
-
-    if clear_output:
-        if os.path.exists(aa_out_path):
-            shutil.rmtree(aa_out_path)
-        if os.path.exists(nt_out_path):    
-            shutil.rmtree(nt_out_path)
-
-    os.makedirs(aa_out_path, exist_ok=True)
-    os.makedirs(nt_out_path, exist_ok=True)
-
-    rocks_db_path = os.path.join(input_path, "rocksdb")
-
-    if 2 in verbose:
-        T_reference_taxa = time()
-        print(
-            "Initialized databases. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing reference taxa in set.".format(
-                time() - T_global_start, time() - T_init_db
-            )
-        )
-
-    reference_taxa = get_taxa_in_set(orthoset_id, orthoset_db_con)
-
-    if 2 in verbose:
-        T_hmmresults = time()
-        print(
-            "Got reference taxa in set. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing hmmresults".format(
-                time() - T_global_start, time() - T_reference_taxa
-            )
-        )
-
-    sequences_db_path = os.path.join(rocks_db_path, "sequences")
-    hits_db_path = os.path.join(rocks_db_path, "hits")
-
-    rocks_sequence_db = wrap_rocks.RocksDB(sequences_db_path)
-    rocks_hits_db = wrap_rocks.RocksDB(hits_db_path)
-    score_based_results, ufr_rows = get_scores_list(min_score, min_length, debug)
-
-    if debug:
-        ufr_path = os.path.join(input_path, "unfiltered-hits.csv")
-
-        ufr_out = ["Gene,Header,Score,Start,End\n"]
-        for row in ufr_rows:
-            ufr_out.append(",".join(row) + "\n")
-
-        open(ufr_path, "w").writelines(ufr_out)
-
-    ####################################
-    if 2 in verbose:
-        print(
-            "Got hmmresults. Elapsed time {:.2f}s. Took {:.2f}s.".format(
-                time() - T_global_start, time() - T_hmmresults
-            )
-        )
-
-    if 1 in verbose:
-        T_reciprocal_search = time()
-        if args.verbose != 1:
-            print(
-                "Retrieved data from DB. Elapsed time {:.2f}s. Took {:.2f}s. Doing reciprocal check.".format(
-                    time() - T_global_start, time() - T_hmmresults
-                )
-            )
-
-    scores = list(score_based_results.keys())
-    scores.sort(reverse=True)  # Ascending
-    transcripts_mapped_to = {}
-
-    reciprocal_verbose = 4 in verbose
-
-    arguments = list()
-    for score in scores:
-        hmmresults = score_based_results[score]
-        arguments.append(
-            (
-                hmmresults,
-                list_of_wanted_orthoids,
-                reference_taxa,
-                score,
-                reciprocal_verbose,
-            )
-        )
-    with Pool(num_threads) as pool:
-        reciprocal_data = pool.starmap(reciprocal_search, arguments, chunksize=1)
-
-    brh_count = 0
-
-    for data in reciprocal_data:
-        brh_count += len(data)
-        for this_match in data:
-            orthoid = this_match.gene
-
-            if transcript_not_long_enough(this_match, min_length):
-                continue
-
-            if orthoid not in transcripts_mapped_to:
-                transcripts_mapped_to[orthoid] = []
-
-            transcripts_mapped_to[orthoid].append(this_match)
-
-    if 2 in verbose:
-        T_internal_search = time()
-        print(
-            "Reciprocal check done, found {} reciprocal hits. Elapsed time {:.2f}s. Took {:.2f}s. Exonerating genes.".format(
-                brh_count, time() - T_global_start, time() - T_reciprocal_search
-            )
-        )
-
-    exonerate_verbose = 3 in verbose
-    T_exonerate_genes = time()
-
-    orthoid_in_seq_order = list(transcripts_mapped_to.items())
-    orthoid_in_seq_order.sort(key = lambda x : len(x[1]), reverse=True)
-
-    # Disperse into reftaxons
-    if num_threads == 1:
-        for orthoid, list_of_hits in orthoid_in_seq_order:
-            exonerate_gene_multi(
-                orthoid,
-                list_of_hits,
-                orthoset_db_path,
-                min_score,
-                orthoset_id,
-                aa_out_path,
-                min_length,
-                taxa_id,
-                nt_out_path,
-                tmp_path,
-                exonerate_verbose,
-            )
-
-    else:
-        arguments = list()
-        for orthoid, list_of_hits in orthoid_in_seq_order:
-            arguments.append(
-                (
-                    orthoid,
-                    list_of_hits,
-                    orthoset_db_path,
-                    min_score,
-                    orthoset_id,
-                    aa_out_path,
-                    min_length,
-                    taxa_id,
-                    nt_out_path,
-                    tmp_path,
-                    exonerate_verbose,
-                )
-            )
-        with Pool(num_threads) as pool:
-            pool.map(run_exonerate, arguments, chunksize=1)
-
-    if 1 in verbose:
-        print(
-            "Done. Final time {:.2f}s. Exonerate took {:.2f}s.".format(
-                time() - T_global_start, time() - T_exonerate_genes
-            )
-        )
-
-    if args.verbose == 0:
-        print("Done took {:.2f}s.".format(time() - T_global_start))

@@ -1,3 +1,4 @@
+from __future__ import annotations
 import argparse
 import json
 import math
@@ -53,7 +54,7 @@ def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
 
             length = end - start
             if length >= MINIMUM_SEQUENCE_LENGTH:
-                raw_seq = parent_sequence[start + 1 : end]
+                raw_seq = parent_sequence[start + 1: end]
                 yield raw_seq, time() - t1
                 t1 = time()
     else:
@@ -74,66 +75,34 @@ def add_pc_to_db(db, key: int, data: list) -> str:
     db.put(kstr, "".join(data))
     return kstr
 
-def translate(in_path, out_path, translate_program = "fastatranslate", genetic_code = 1):
+
+def translate(in_path, out_path, translate_program="fastatranslate", genetic_code=1):
     os.system(
-            f"{translate_program} --geneticcode {genetic_code} '{in_path}' > '{out_path}'"
-        )
+        f"{translate_program} --geneticcode {genetic_code} '{in_path}' > '{out_path}'"
+    )
     os.remove(in_path)
 
-def main(argv):
+
+def main(args):
+    if not os.path.exists(args.INPUT):
+        print("ERROR: An existing directory must be provided.")
+        return False
+
     trim_time = 0
     dedup_time = 0
     global_start = time()
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-i", "--input", default="Snails", type=str, help="Path to input directory."
-    )
-    parser.add_argument(
-        "-c",
-        "--clear_database",
-        action="store_true",
-        help="Overwrite existing rocksdb database.",
-    )
-    parser.add_argument(
-        "-ml",
-        "--minimum_sequence_length",
-        default=90,
-        type=int,
-        help="Minimum input sequence length.",
-    )
-    parser.add_argument(
-        "-sl",
-        "--sequences_per_level",
-        default=100000,
-        type=int,
-        help="Amount of sequences to store per database entry.",
-    )
-    parser.add_argument(
-        "-p",
-        "--processes",
-        type=int,
-        default=1,
-        help="Number of threads used to call processes.",
-    )
-    parser.add_argument(
-        "-k",
-        "--keep_prepared",
-        action="store_true",
-        help="Writes the prepared input fasta into the output taxa directory.",
-    )
-    parser.add_argument("-v", "--verbose", default=1, type=int, help="Verbose debug.")
-    args = parser.parse_args()
 
     PROT_MAX_SEQS_PER_LEVEL = args.sequences_per_level
     MINIMUM_SEQUENCE_LENGTH = args.minimum_sequence_length
     num_threads = args.processes
+    folder = args.INPUT
 
     allowed_filetypes = ["fa", "fas", "fasta"]
 
     rocksdb_folder_name = "rocksdb"
     sequences_db_name = "sequences"
     core_directory = "PhyMMR"
-    secondary_directory = os.path.join(core_directory, os.path.basename(args.input))
+    secondary_directory = os.path.join(core_directory, os.path.basename(folder))
 
     # Create necessary directories
     printv("Creating directories", args.verbose)
@@ -143,9 +112,9 @@ def main(argv):
     taxa_runs = {}
 
     # Scan all the files in the input. Remove _R# and merge taxa
-    for file in os.listdir(args.input):
+    for file in os.listdir(folder):
         if (
-            os.path.isfile(os.path.join(args.input, file))
+            os.path.isfile(os.path.join(folder, file))
             and file.split(".")[-1] in allowed_filetypes
         ):
             taxa = file.split(".")[0]
@@ -182,7 +151,7 @@ def main(argv):
         )
 
         prot_path = os.path.join(
-            taxa_destination_directory, formatted_taxa_out.replace(".fa","_prot.fa")
+            taxa_destination_directory, formatted_taxa_out.replace(".fa", "_prot.fa")
         )
 
         duplicates = {}
@@ -198,7 +167,7 @@ def main(argv):
             if ".fa" not in file:
                 continue
 
-            fa_file_directory = os.path.join(args.input, file)
+            fa_file_directory = os.path.join(folder, file)
             fasta_file = SimpleFastaParser(open(fa_file_directory, encoding="UTF-8"))
 
             for header, parent_seq in tqdm(fasta_file) if args.verbose else fasta_file:
@@ -263,34 +232,34 @@ def main(argv):
         elif os.path.exists("/dev/shm"):
             tmp_path = "/dev/shm"
         else:
-            tmp_path = os.path.join(args.input, "tmp")
+            tmp_path = os.path.join(folder, "tmp")
             os.makedirs(tmp_path, exist_ok=True)
 
         sequences_per_thread = math.ceil((len(fa_file_out) / 2) / num_threads) * 2
         translate_files = []
-        for i in range(0,len(fa_file_out),sequences_per_thread):
-            in_path = os.path.join(tmp_path,formatted_taxa_out+f'_{len(translate_files)}.fa')
-            out_path = os.path.join(tmp_path,formatted_taxa_out+f'_prot_{len(translate_files)}.fa')
+        for i in range(0, len(fa_file_out), sequences_per_thread):
+            in_path = os.path.join(tmp_path, formatted_taxa_out + f'_{len(translate_files)}.fa')
+            out_path = os.path.join(tmp_path, formatted_taxa_out + f'_prot_{len(translate_files)}.fa')
             translate_files.append((in_path, out_path))
             open(in_path, 'w').writelines(fa_file_out[i:i + sequences_per_thread])
 
         with Pool(num_threads) as translate_pool:
-            translate_pool.starmap(translate, translate_files)  
-            
+            translate_pool.starmap(translate, translate_files)
+
         if args.keep_prepared:
             open(prepared_file_destination, "w", encoding="UTF-8").writelines(fa_file_out)
         del fa_file_out
 
         prot_components = []
 
-        printv("Storing translated file in DB. Translate took {:.2f}s".format(time()-prot_start), args.verbose)
+        printv("Storing translated file in DB. Translate took {:.2f}s".format(time() - prot_start), args.verbose)
 
         out_lines = []
         aa_dedupe_time = time()
         for prepare_file, translate_file in translate_files:
             with open(translate_file, "r+", encoding="utf-8") as fp:
                 for header, seq in SimpleFastaParser(fp):
-                    header = header.replace(" ","|")
+                    header = header.replace(" ", "|")
                     if seq in transcript_mapped_to:
                         duplicates.setdefault(transcript_mapped_to[seq], 1)
                         duplicates[transcript_mapped_to[seq]] += 1
@@ -298,29 +267,29 @@ def main(argv):
                         continue
                     else:
                         transcript_mapped_to[seq] = header
-                    out_lines.append(">"+header+"\n"+seq+"\n")
+                    out_lines.append(">" + header + "\n" + seq + "\n")
             os.remove(translate_file)
 
         if args.keep_prepared:
-            open(prot_path,'w').writelines(out_lines)
-            
+            open(prot_path, 'w').writelines(out_lines)
+
         aa_dupes = next(aa_dupe_count)
-        printv("AA dedupe took {:.2f}s. Kicked {} dupes".format(time()-aa_dedupe_time, aa_dupes), args.verbose)
+        printv("AA dedupe took {:.2f}s. Kicked {} dupes".format(time() - aa_dedupe_time, aa_dupes), args.verbose)
 
         levels = math.ceil(len(out_lines) / PROT_MAX_SEQS_PER_LEVEL)
         per_level = math.ceil(len(out_lines) / levels)
 
         component = 0
-        for i in range(0,len(out_lines),per_level):
+        for i in range(0, len(out_lines), per_level):
             component += 1
 
-            data = out_lines[i: i+per_level]
+            data = out_lines[i: i + per_level]
             prot_components.append(str(component))
             db.put(f"getprot:{component}", "".join(data))
 
         db.put("getall:prot", ",".join(prot_components))
 
-        printv("Translation and storing done! Took {:.2f}s".format(time()-prot_start), args.verbose)
+        printv("Translation and storing done! Took {:.2f}s".format(time() - prot_start), args.verbose)
 
         sequence_count = this_index - 1
 
@@ -333,7 +302,6 @@ def main(argv):
 
         del transcript_mapped_to  # Clear mem
 
-
         # Store the count of dupes in the database
         db.put("getall:dupes", json.dumps(duplicates))
 
@@ -342,7 +310,10 @@ def main(argv):
     print("Finished took {:.2f}s overall.".format(time() - global_start))
     printv("N_trim time: {} seconds".format(sum(trim_times)), args.verbose)
     printv(f"Dedupe time: {dedup_time}", args.verbose)
+    return True
 
 
 if __name__ == "__main__":
-    main(argv)
+    raise Exception(
+        "Cannot be called directly, please use the module:\nphymmr PrepareDB"
+    )

@@ -178,72 +178,19 @@ def get_ref_taxon_for_genes(set_id, orthoset_db_con):
 
     return result
 
-def printv(msg, verbosity):
+
+def printv(msg, verbosity) -> None:
     if verbosity:
         print(msg)
 
-def main():
+
+def run_process(args, input_path) -> None:
     start = time()
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-i",
-        "--input",
-        type=str,
-        default="PhyMMR/Acroceridae/SRR6453524.fa",
-        help="Path to directory of Input folder",
-    )
-    parser.add_argument(
-        "-oi",
-        "--orthoset_input",
-        type=str,
-        default="PhyMMR/orthosets",
-        help="Path to directory of Orthosets folder",
-    )
-    parser.add_argument(
-        "-o",
-        "--orthoset",
-        type=str,
-        default="Ortholog_set_Mecopterida_v4",
-        help="Orthoset",
-    )
-    parser.add_argument(
-        "-bs",
-        "--blast_minimum_score",
-        type=float,
-        default=40.0,
-        help="Minimum score filter in blast.",
-    )
-    parser.add_argument(
-        "-be",
-        "--blast_minimum_evalue",
-        type=float,
-        default=0.00001,
-        help="Minimum evalue filter in blast.",
-    )
-    parser.add_argument(
-        "-ovw",
-        "--overwrite",
-        action="store_true",
-        help="Overwrite existing blast results.",
-    )
-    parser.add_argument(
-        "-p",
-        "--processes",
-        type=int,
-        default=1,
-        help="Number of threads used to call processes.",
-    )
-    parser.add_argument("-v", "--verbose", default=1, type=int, help="Verbose debug.")
-    args = parser.parse_args()
-
-    
-
-    input_path = args.input
     orthoset = args.orthoset
     orthosets_dir = args.orthoset_input
 
     taxa = os.path.basename(input_path)
-    printv('Begin BlastPal for {}'.format(taxa), args.verbose)
+    print(f'Begin BlastPal for {taxa}')
     printv("Grabbing Reference data from SQL.", args.verbose)
     # make dirs
     blast_path = os.path.join(input_path, "blast")
@@ -271,7 +218,7 @@ def main():
 
     blast_db_path = os.path.join(orthosets_dir, orthoset, "blast", orthoset)
 
-    printv("Done! Took {:.2f}s. Grabbing HMM data from DB".format(time()-sql_start), args.verbose)
+    printv("Done! Took {:.2f}s. Grabbing HMM data from DB".format(time() - sql_start), args.verbose)
 
     db_path = os.path.join(input_path, "rocksdb", "hits")
     db = wrap_rocks.RocksDB(db_path)
@@ -296,7 +243,8 @@ def main():
             gene = hmm_object["gene"]
 
             gene_to_hits.setdefault(gene, [])
-            gene_to_hits[gene].append(SeqRecord(Seq(hmm_object["hmm_sequence"]), id=header + f"_hmmid{hmm_id}", description=""))
+            gene_to_hits[gene].append(
+                SeqRecord(Seq(hmm_object["hmm_sequence"]), id=header + f"_hmmid{hmm_id}", description=""))
 
     genes = list(gene_to_hits.keys())
 
@@ -318,7 +266,7 @@ def main():
                     gene=gene,
                     tmp_path=tmp_path,
                     gene_sequences=gene_to_hits[gene],
-                    ref_names = ref_taxon[gene],
+                    ref_names=ref_taxon[gene],
                     blast_path=blast_path,
                     blast_db_path=blast_db_path,
                     blast_minimum_score=args.blast_minimum_score,
@@ -334,13 +282,13 @@ def main():
                 gene=gene,
                 tmp_path=tmp_path,
                 gene_sequences=gene_to_hits[gene],
-                ref_names = ref_taxon[gene],
+                ref_names=ref_taxon[gene],
                 blast_path=blast_path,
                 blast_db_path=blast_db_path,
                 blast_minimum_score=args.blast_minimum_score,
                 blast_minimum_evalue=args.blast_minimum_evalue,
             ),
-            args.verbose,)
+             args.verbose,)
             for gene in genes
         ]
 
@@ -366,5 +314,16 @@ def main():
     print("Done. Took {:.2f}s overall".format(time() - start))
 
 
+def main(args):
+    if not all(os.path.exists(i) for i in args.INPUT):
+        print("ERROR: All folders passed as argument must exists.")
+        return False
+    for input_path in args.INPUT:
+        run_process(args, input_path)
+    return True
+
+
 if __name__ == "__main__":
-    main()
+    raise Exception(
+        "Cannot be called directly, please use the module:\nphymmr BlastPalDB"
+    )
