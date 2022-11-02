@@ -541,8 +541,7 @@ def print_core_sequences(orthoid, core_sequences):
     result = []
     for core in core_sequences:
         header = format_reference_header(orthoid, core[0], core[1])
-        result.append(">" + header + "\n")
-        result.append(core[2] + "\n")  # append the sequence
+        result.append(f">{header}\n{core[2]}\n")
 
     return result
 
@@ -557,10 +556,13 @@ def get_rf(header):
 
 
 def print_unmerged_sequences(
-    hits, orthoid, ttype, minimum_seq_data_length, taxa_id, kicks
+    hits, orthoid, minimum_seq_data_length, taxa_id
 ):
-    result = []
-    kicks_result = set()
+    aa_result = []
+    nt_result = []
+    header_maps_to_where = {}
+    header_mapped_x_times = {}
+    base_header_mapped_already = {}
     exact_hit_mapped_already = set()
     for i, hit in enumerate(hits):
         base_header, rf = get_rf(hit.header)
@@ -573,36 +575,61 @@ def print_unmerged_sequences(
             rf,
         )
 
-        if ttype == "nt":
-            seq = (
-                hit.extended_orf_cdna_sequence
-                if hit.extended_orf_cdna_sequence is not None
-                else hit.orf_cdna_sequence
-            )
+        nt_seq = (
+            hit.extended_orf_cdna_sequence
+            if hit.extended_orf_cdna_sequence is not None
+            else hit.orf_cdna_sequence
+        )
 
-            #Deinterleave
-            seq = seq.replace('\n','')
+        #Deinterleave
+        nt_seq = nt_seq.replace('\n','')
 
-            if i not in kicks:
-                result.append(">" + header + "\n")
-                result.append(seq + "\n")
-        elif ttype == "aa":
-            seq = (
-                hit.extended_orf_aa_sequence
-                if hit.extended_orf_aa_sequence is not None
-                else hit.orf_aa_sequence
-            )
+        aa_seq = (
+            hit.extended_orf_aa_sequence
+            if hit.extended_orf_aa_sequence is not None
+            else hit.orf_aa_sequence
+        )
 
-            seq = seq.replace('\n','')
-            unique_hit = base_header+seq
+        aa_seq = aa_seq.replace('\n','')
+        unique_hit = base_header+aa_seq
 
-            if not unique_hit in exact_hit_mapped_already and len(seq) - seq.count("-") > minimum_seq_data_length:
-                result.append(">" + header + "\n")
-                result.append(seq + "\n")
-                exact_hit_mapped_already.add(unique_hit)
+        if not unique_hit in exact_hit_mapped_already and len(aa_seq) - aa_seq.count("-") > minimum_seq_data_length:
+            if base_header in base_header_mapped_already:
+                already_mapped_header, already_mapped_sequence = base_header_mapped_already[base_header]
+
+                if len(aa_seq) > already_mapped_sequence:
+                    if already_mapped_sequence in aa_seq:
+                        aa_result[header_maps_to_where[already_mapped_header]] = f">{header}\n{aa_seq}\n" 
+                        nt_result[header_maps_to_where[already_mapped_header]] = f">{header}\n{nt_seq}\n" 
+                        continue
+                else:
+                    if aa_seq in already_mapped_sequence:
+                        continue
+
+                # If not kicked reformat header to be unique
+                old_header = header
+                header = format_candidate_header(
+                    orthoid,
+                    hit.reftaxon,
+                    taxa_id,
+                    base_header+f"_{header_mapped_x_times[old_header]}",
+                    rf,
+                )
+
+                header_mapped_x_times[old_header] += 1
             else:
-                kicks_result.add(i)
-    return kicks_result, result
+                base_header_mapped_already[base_header] = header, aa_seq
+
+            header_maps_to_where[header] = len(aa_result) # Save the index of the sequence output
+            aa_result.append(f">{header}\n{aa_seq}\n" )
+            nt_result.append(f">{header}\n{nt_seq}\n" )
+
+            header_mapped_x_times[header] = 1
+
+            
+            exact_hit_mapped_already.add(unique_hit)
+
+    return aa_result, nt_result
 
 
 def get_ortholog_group_nucleotide(orthoset_id, orthoid, orthoset_db_con):
@@ -759,43 +786,28 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
         core_sequences = get_ortholog_group(
             eargs.orthoset_id, eargs.orthoid, orthoset_db_con
         )
-        this_aa_out = []
         this_aa_path = os.path.join(eargs.aa_out_path, eargs.orthoid + ".aa.fa")
-        this_aa_out.extend(print_core_sequences(eargs.orthoid, core_sequences))
-        kicks, output = print_unmerged_sequences(
+        aa_output, nt_output = print_unmerged_sequences(
             output_sequences,
             eargs.orthoid,
-            "aa",
             eargs.min_length,
             eargs.taxa_id,
-            kicks=set()
         )
 
-        if output:
-            this_aa_out.extend(output)
+        if aa_output:
             with open(this_aa_path, "w") as fp:
-                fp.writelines(this_aa_out)
+                fp.writelines(print_core_sequences(eargs.orthoid, core_sequences))
+                fp.writelines(aa_output)
 
             core_sequences_nt = get_ortholog_group_nucleotide(
                 eargs.orthoset_id, eargs.orthoid, orthoset_db_con
             )
 
-            this_nt_out = []
             this_nt_path = os.path.join(eargs.nt_out_path, eargs.orthoid + ".nt.fa")
 
-            this_nt_out.extend(print_core_sequences(eargs.orthoid, core_sequences_nt))
-            na_kicks, output = print_unmerged_sequences(
-                output_sequences,
-                eargs.orthoid,
-                "nt",
-                eargs.min_length,
-                eargs.taxa_id,
-                kicks=kicks
-            )
-            this_nt_out.extend(output)
-
             with open(this_nt_path, "w") as fp:
-                fp.writelines(this_nt_out)
+                fp.writelines(print_core_sequences(eargs.orthoid, core_sequences_nt))
+                fp.writelines(nt_output)
 
     if eargs.verbose >= 2:
         print(
