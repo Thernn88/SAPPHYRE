@@ -520,7 +520,18 @@ def subcmd_flexcull(subparsers):
 
 def flexcull(args):
     from . import flexcull
-    if not flexcull.main(args):
+    flexargs = flexcull.MainArgs(
+        args.verbose,
+        args.processes,
+        args.debug,
+        args.INPUT,
+        args.output,
+        args.amino_acid,
+        args.nucleotide,
+        args.matches,
+        args.base_pair
+    )
+    if not flexcull.main(flexargs):
         print()
         print(args.formathelp())
 

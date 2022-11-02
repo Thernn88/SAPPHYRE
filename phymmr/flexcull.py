@@ -6,10 +6,26 @@ PyLint 9.81/10
 from __future__ import annotations
 
 import os
+from collections import namedtuple
 from multiprocessing.pool import Pool
 from time import time
 
 from Bio import AlignIO
+
+MainArgs = namedtuple(
+    "MainArgs",
+    [
+        'verbose',
+        'processes',
+        'debug',
+        'INPUT',
+        'output',
+        'amino_acid',
+        'nucleotide',
+        'matches',
+        'base_pair',
+    ]
+)
 
 
 def folder_check(output_target_path: str, input_target_path: str) -> str:
@@ -310,11 +326,11 @@ def run_command(arg_tuple: tuple) -> None:
     do_gene(*arg_tuple)
 
 
-def do_folder(folder, args):
+def do_folder(folder, args: MainArgs):
     start = time()
     print(f"### Processing folder {folder}")
-    aa_path = os.path.join(folder, args.aa)
-    nt_path = os.path.join(folder, args.nt)
+    aa_path = os.path.join(folder, args.amino_acid)
+    nt_path = os.path.join(folder, args.nucleotide)
     output_path = os.path.join(folder, args.output)
     if not os.path.exists(aa_path) or not os.path.exists(nt_path):
         print(f"Can't find aa ({aa_path}) and nt ({nt_path}) folders. Abort")
@@ -341,7 +357,7 @@ def do_folder(folder, args):
                     input_gene,
                     available_tmp_path,
                     args.debug,
-                    args.bp,
+                    args.base_pair,
                 )
             )
 
@@ -357,7 +373,7 @@ def do_folder(folder, args):
                 input_gene,
                 available_tmp_path,
                 args.debug,
-                args.bp,
+                args.base_pair,
             )
 
     if args.debug:
