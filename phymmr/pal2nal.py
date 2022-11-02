@@ -1,5 +1,5 @@
-import argparse
-import json
+from __future__ import annotations
+
 import sys
 import time
 from functools import wraps
@@ -10,8 +10,8 @@ from typing import Any, Dict, Generator, List, Tuple
 from Bio.SeqIO.FastaIO import SimpleFastaParser
 from pro2codon import pn2codon
 
-GENETIC_TABLE = """
-{
+DICT_OPP = {'NT Seqs': "AA Seqs", "AA Seqs": 'NT_Seqs'}
+DICT_TABLES = {
     "1": {
         "F": [
             "TTT",
@@ -3575,9 +3575,6 @@ GENETIC_TABLE = """
         ]
     }
 }
-"""
-
-DICT_TABLES = json.loads(GENETIC_TABLE)
 
 
 def return_aligned_paths(
@@ -3630,10 +3627,7 @@ def prepare_taxa_and_genes(input: str, d) -> Tuple[Generator[
 
     return out_generator, len(glob_genes)
 
-from pprint import pprint
 
-DICT_OPP = {'NT Seqs': "AA Seqs", "AA Seqs": 'NT_Seqs'}
-from copy import copy
 def read_and_convert_fasta_files(
     aa_file: str,
     nt_file: str,
@@ -3646,10 +3640,8 @@ def read_and_convert_fasta_files(
     nt_seqs = SimpleFastaParser(open(nt_file))
     aa_seqs = SimpleFastaParser(open(aa_file))
 
-
     aas = []
     nts = {}
-
 
     for aa, nt in zip(aa_seqs, nt_seqs):
         aa_header, aa_seq = aa
@@ -3659,51 +3651,23 @@ def read_and_convert_fasta_files(
         nt_header, nt_seq = nt_header.strip(), nt_seq.strip()
 
         if aa_header[-2:] == '.a':
-            print("- ", i)
+            print(f"{aa_header[-2:]} == '.a' break")  # FIXME what does it mean?
             break
 
         nts[nt_header] = (nt_header, nt_seq)
         aas.append((aa_header, aa_seq))
 
-        
-
-    
-
-
     ret = {}
-    
     i = -1
-
     for aa in aas:
         try:
             if aa[0] not in ret:
                 i += 1
-
             ret[aa[0]] = (aa, (i, *nts[aa[0]]))
-            
-
         except:
             print("ERROR CAUGHT: There is a single header in PEP sequence FASTA file that does not exist in NUC sequence FASTA file")
-
             sys.exit()
     return ret
-
-
-def init_argparse() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-
-        usage="pal2nal.py [OPTIONS] [FILES]...",
-
-        description="Batch-Convert Amino Acids to Codons with error checking using the default NCBI table, or your specified table."
-    )
-
-    parser.add_argument('-i', '--input', type=str, default='Parent',
-                        help='Parent input path.')
-    parser.add_argument('-p', '--processes', type=int, default=4,
-                        help='Number of threads used to call processes.')
-    parser.add_argument('-t', '--table', type=int, default=1,
-                        help='Table ID.')
-    return parser
 
 
 def worker(tup: Tuple[Path, Path, Path, Dict]):
@@ -3717,7 +3681,6 @@ def worker(tup: Tuple[Path, Path, Path, Dict]):
     res = pn2codon(stem, d, seqs)
 
     out_file.write_text(res)    
-
 
 
 def timeit(func):
@@ -3738,18 +3701,19 @@ def run_batch_threaded(num_threads: int, ls: List[
         List[
             List[Tuple[Tuple[Path, Path, Path], Dict]]
         ]]):
-
-
     with Pool(num_threads) as pool:
         list(pool.map(worker, ls, chunksize=100))
 
 
-if __name__ == "__main__":
-    arg_parser = init_argparse()
-    args = arg_parser.parse_args()
-
+def main(args):
     d = DICT_TABLES[str(args.table)]
+    for folder in args.INPUT:
+        generator, _ = prepare_taxa_and_genes(folder, d)
+        run_batch_threaded(num_threads=args.processes, ls=generator)
+    return True
 
-    generator, _ = prepare_taxa_and_genes(args.input, d)
 
-    run_batch_threaded(num_threads=args.processes, ls=generator)
+if __name__ == "__main__":
+    raise Exception(
+        "Cannot be called directly, please use the module:\nphymmr Pal2Nal"
+    )
