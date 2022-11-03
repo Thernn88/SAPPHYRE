@@ -554,7 +554,7 @@ def print_unmerged_sequences(
     base_header_mapped_already = {}
     exact_hit_mapped_already = set()
     for hit in hits:
-        base_header, reference_frame = header.split('|')
+        base_header, reference_frame = hit.header.split('|')
 
         header = format_candidate_header(
             orthoid,
