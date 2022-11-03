@@ -1087,10 +1087,10 @@ header_seperator = "|"
 
 def main(args):
     if not all(os.path.exists(i) for i in args.INPUT):
-        print("ERROR: All folders passed as argument must exists.")
+        print("ERROR: All folders passed as argument must exist.")
         return False
     for input_path in args.INPUT:
-        print(f"### Processing path '{input_path}'.")
+        #print(f"### Processing path '{input_path}'.")
         rocks_db_path = os.path.join(input_path, "rocksdb")
         rocky.create_pointer("rocks_sequence_db", os.path.join(rocks_db_path, "sequences"))
         rocky.create_pointer("rocks_hits_db", os.path.join(rocks_db_path, "hits"))
