@@ -85,7 +85,7 @@ def do_folder(folder, args):
 
     # command = 'mafft --anysymbol --auto --quiet --thread -1  --addfragments {0} --thread -1 '+aln_path+'/{2}.aln.fa > {1}'
     command = (
-        "mafft-linsi --anysymbol --quiet --linelength -1 --addfragments {0} --thread -1 "
+        "mafft --anysymbol --quiet --linelength -1 --addfragments {0} --thread -1 "
         + aln_path
         + "/{2}.aln.fa > {1}"
     )
