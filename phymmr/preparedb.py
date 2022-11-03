@@ -102,7 +102,7 @@ def main(args):
     rocksdb_folder_name = "rocksdb"
     sequences_db_name = "sequences"
     core_directory = "PhyMMR"
-    secondary_directory = os.path.join(core_directory, os.path.basename(folder))
+    secondary_directory = os.path.join(core_directory, os.path.basename(os.path.normpath(folder)))
 
     # Create necessary directories
     printv("Creating directories", args.verbose)
