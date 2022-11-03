@@ -266,7 +266,7 @@ def subcmd_reporterdb(subparsers):
     parser_reporterdb.add_argument(
         "-ms", "--min_score", type=float, default=40, help="Minimum Hit Domain Score"
     )
-    parser.add_argument("-d", "--debug", type=int, default=0, help="Verbose debug.")
+    parser_reporterdb.add_argument("-d", "--debug", type=int, default=0, help="Verbose debug.")
     parser_reporterdb.set_defaults(
         func=reporterdb, formathelp=parser_reporterdb.format_help
     )
@@ -536,7 +536,7 @@ def flexcull(args):
         print(args.formathelp())
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(
         prog="phymmr",
         # TODO write me
@@ -580,3 +580,7 @@ if __name__ == "__main__":
         parser.print_help()
         parser.exit()
     args.func(args)
+
+
+if __name__ == "__main__":
+    main()
