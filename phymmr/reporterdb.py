@@ -310,7 +310,7 @@ def reverse_complement(nt_seq):
 
 
 def get_nucleotide_transcript_for(header):
-    base_header = get_baseheader(header).strip()
+    base_header = header.split("|")[0]
     hash_of_header = xxhash.xxh64_hexdigest(base_header)
 
     row_data = rocky.get_rock("rocks_sequence_db").get(hash_of_header)
@@ -544,30 +544,6 @@ def print_core_sequences(orthoid, core_sequences):
 
     return result
 
-
-def get_baseheader(header):
-    """
-    Returns header content before first pipe.
-    """
-    return header.split("|")[0].strip()
-
-
-def get_translate(header):
-    """
-    Returns header content of second pipe.
-    """
-    return header.split("|")[1]
-
-
-def get_rf(header):
-    raw_header = get_baseheader(header)
-    header_part = get_translate(header)
-    if "translate" in header_part or "revcomp" in header_part:
-        frame = header_part
-
-    return raw_header, frame
-
-
 def print_unmerged_sequences(
     hits, orthoid, minimum_seq_data_length, taxa_id
 ):
@@ -577,15 +553,15 @@ def print_unmerged_sequences(
     header_mapped_x_times = {}
     base_header_mapped_already = {}
     exact_hit_mapped_already = set()
-    for i, hit in enumerate(hits):
-        base_header, rf = get_rf(hit.header)
+    for hit in hits:
+        base_header, reference_frame = header.split('|')
 
         header = format_candidate_header(
             orthoid,
             hit.reftaxon,
             taxa_id,
             base_header,
-            rf,
+            reference_frame,
         )
 
         nt_seq = (
@@ -630,7 +606,7 @@ def print_unmerged_sequences(
                         hit.reftaxon,
                         taxa_id,
                         base_header+f"_{header_mapped_x_times[old_header]}",
-                        rf,
+                        reference_frame,
                     )
 
                     header_mapped_x_times[old_header] += 1
