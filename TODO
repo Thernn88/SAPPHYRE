@@ -18,31 +18,40 @@ __main__.py:
    [x] OutlierCheck @done (2022-11-01 22:10)
    [x] MergeOverlap @done (2022-11-01 23:08)
 
-PrepareDB.py
-  [ ] Incorporate HammingDist dedupe
-  [ ] Benchmark Dedupe code & Fasta read/write in rust.
+PrepareDB
+  [ ] Fix Verbosity
+  [ ] Read fasta files using Bio. This will also help with fastq.gz/.fq.gz extraction
+  [ ] Experiment with using MapReduce to speed up AA dedupe.
+  [ ] Incorporate HammingDist dedupe.
   [ ] Move the dup hits table from sequences DB to hits DB?
   [ ] Incorporate .fastq/.fq.gz extraction @low
   [ ] Regex taxa filenames so they don't bork the script. @low
   [ ] Allow path to maintain sequence ID for references. @low
-  
-BlastPalDB.py
-  [ ] Why is grabbing blast results so slow. Investigate.
 
-ReporterDB.py
-  [ ] Incorporate HamDups into Exonerate.
+Hmmsearch
+  [ ] Fix Verbosity
   
-Pal2Nal.py (LOW PRIORITY)
+BlastPalDB
+  [ ] Fix Verbosity
+
+ReporterDB
+  [ ] Incorporate HamDups into Exonerate.
+  [ ] Experiement with splitting largest work units into multiple work units. 
+
+mafft
+  [ ] Fix Verbosity
+
+Pal2Nal
   [x] Full blown rewrite. Python version is at least 4x slower than Perl version. (A lot of poor design decisions in Pal2Nal.py) Perhaps rewrite in Golang or Rust? @done (31-10-22 22:10)
   
-OutlierCheck.py
+OutlierCheck
   [ ] Add additional outlier check methodology.
   
-CrossContamination.py
+CrossContamination
   [ ] TODO
   
-MergeGenes.py
-  [ ] Refactor
+MergeGenes
+  [ ] So slow! Please speed up. Multiprocessing?
   
 Finalize Dataset Section
   1. Heavy refactor and script combination
