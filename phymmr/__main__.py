@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 """
 Order:
-    1. PrepareDB
-    2. HmmsearchDB
-    3. BlastPalDB
-    4. ReporterDB
+    1. Prepare
+    2. Hmmsearch
+    3. BlastPal
+    4. Reporter
 Post-processing:
     5. mafft
     6. pal2nal
@@ -16,171 +16,171 @@ Post-processing:
 import argparse
 
 
-def subcmd_preparedb(subparsers):
-    parser_preparedb = subparsers.add_parser(
-        "PrepareDB",
+def subcmd_prepare(subparsers):
+    parser_prepare = subparsers.add_parser(
+        "Prepare",
         help="Loads NT input files (.fa, .fas or .fasta) into a rocksdb database. "
         "Unique NT sequences stored with a duplicate count stored for later use. "
         "Performs six-fold translation of base NT sequences into AA translation. "
         "Unique AA translation stored with duplicate counts stored for later use.",
     )
-    parser_preparedb.add_argument(
+    parser_prepare.add_argument(
         "INPUT", help="Path to directory of Input folder", action="store"
     )
-    parser_preparedb.add_argument(
+    parser_prepare.add_argument(
         "-c",
         "--clear_database",
         action="store_true",
         help="Overwrite existing rocksdb database.",
     )
-    parser_preparedb.add_argument(
+    parser_prepare.add_argument(
         "-ml",
         "--minimum_sequence_length",
         default=90,
         type=int,
         help="Minimum input sequence length.",
     )
-    parser_preparedb.add_argument(
+    parser_prepare.add_argument(
         "-sl",
         "--sequences_per_level",
         default=100000,
         type=int,
         help="Amount of sequences to store per database entry.",
     )
-    parser_preparedb.add_argument(
+    parser_prepare.add_argument(
         "-k",
         "--keep_prepared",
         action="store_true",
         help="Writes the prepared input fasta into the output taxa directory.",
     )
-    parser_preparedb.set_defaults(
-        func=preparedb, formathelp=parser_preparedb.format_help
+    parser_prepare.set_defaults(
+        func=prepare, formathelp=parser_prepare.format_help
     )
 
 
-def preparedb(args):
-    from . import preparedb
+def prepare(args):
+    from . import prepare
 
-    if not preparedb.main(args):
+    if not prepare.main(args):
         print()
         print(args.formathelp())
 
 
-def subcmd_hmmsearchdb(subparsers):
-    parser_hmmsearchdb = subparsers.add_parser(
-        "HmmsearchDB",
+def subcmd_hmmsearch(subparsers):
+    parser_hmmsearch = subparsers.add_parser(
+        "Hmmsearch",
         help="Queries protein translations against profile HMMs using the HMMER3 "
         "external. Filters HMMER3 output using 3 custom filters: MultiGene, "
         "InternalMulti & InternalSubpar to remove LQ hits and prevent sequence reuse. "
         "Loads hits into RocksDB after filters finish.",
     )
-    parser_hmmsearchdb.add_argument(
+    parser_hmmsearch.add_argument(
         "INPUT", help="Path to input directory.", action="extend", nargs="+"
     )
-    parser_hmmsearchdb.add_argument(
+    parser_hmmsearch.add_argument(
         "-oi",
         "--orthoset_input",
         type=str,
         default="PhyMMR/orthosets",
         help="Path to directory of Orthosets folder",
     )
-    parser_hmmsearchdb.add_argument(
+    parser_hmmsearch.add_argument(
         "-o",
         "--orthoset",
         type=str,
         default="Ortholog_set_Mecopterida_v4",
         help="Orthoset",
     )
-    parser_hmmsearchdb.add_argument(
+    parser_hmmsearch.add_argument(
         "-ovw",
         "--overwrite",
         default=False,
         action="store_true",
         help="Remake domtbl files even if previous file exists.",
     )
-    parser_hmmsearchdb.add_argument(
+    parser_hmmsearch.add_argument(
         "-s", "--score", type=float, default=40, help="Score threshold. Defaults to 40"
     )
-    parser_hmmsearchdb.add_argument(
+    parser_hmmsearch.add_argument(
         "-e",
         "--evalue",
         type=float,
         default=0,
         help="Evalue threshold. Defaults to 0",
     )
-    parser_hmmsearchdb.add_argument(
+    parser_hmmsearch.add_argument(
         "--excluded-list",
         default=False,
         help="File containing names of genes to be excluded",
     )
-    parser_hmmsearchdb.add_argument(
+    parser_hmmsearch.add_argument(
         "--wanted-list", default=False, help="File containing list of wanted genes"
     )
-    parser_hmmsearchdb.add_argument(
+    parser_hmmsearch.add_argument(
         "--remake-protfile",
         default=False,
         action="store_true",
         help="Force creation of a new protfile even if one already exists.",
     )
-    parser_hmmsearchdb.add_argument(
+    parser_hmmsearch.add_argument(
         "-sdm",
         "--score_diff_multi",
         type=float,
         default=1.05,
         help="Multi-gene Score Difference Adjustment",
     )
-    parser_hmmsearchdb.add_argument(
+    parser_hmmsearch.add_argument(
         "-mom",
         "--min_overlap_multi",
         type=float,
         default=0.3,
         help="Multi-gene Minimum Overlap Adjustment",
     )
-    parser_hmmsearchdb.add_argument(
+    parser_hmmsearch.add_argument(
         "-momi",
         "--minimum_overlap_internal_multi",
         type=float,
         default=0.5,
         help="Internal Multi Minimum Overlap Adjustment",
     )
-    parser_hmmsearchdb.add_argument(
+    parser_hmmsearch.add_argument(
         "-sdi",
         "--score_diff_internal",
         type=float,
         default=1.5,
         help="Internal Score Difference Adjustmen",
     )
-    parser_hmmsearchdb.add_argument(
+    parser_hmmsearch.add_argument(
         "-moi",
         "--min_overlap_internal",
         type=float,
         default=0.9,
         help="Internal Minimum Overlap Adjustment",
     )
-    parser_hmmsearchdb.add_argument(
+    parser_hmmsearch.add_argument(
         "-m",
         "--max_hmm_batch_size",
         default=250000,
         type=int,
         help="Max hits per hmmsearch batch in db. Default: 500 thousand.",
     )
-    parser_hmmsearchdb.add_argument(
+    parser_hmmsearch.add_argument(
         "-d", "--debug", type=int, default=0, help="Output debug logs."
     )
-    parser_hmmsearchdb.set_defaults(
-        func=hmmsearchdb, formathelp=parser_hmmsearchdb.format_help
+    parser_hmmsearch.set_defaults(
+        func=hmmsearch, formathelp=parser_hmmsearch.format_help
     )
 
 
-def hmmsearchdb(args):
-    from . import hmmsearchdb
-    if not hmmsearchdb.main(args):
+def hmmsearch(args):
+    from . import hmmsearch
+    if not hmmsearch.main(args):
         print(args.formathelp())
 
 
-def subcmd_blastpaldb(subparsers):
+def subcmd_blastpal(subparsers):
     parser_blastpal = subparsers.add_parser(
-        "BlastPalDB",
+        "BlastPal",
         help="Blasts Hmmsearch hits using NCBI-Blast against reference sequences. "
         "Loads resulting output into RocksDB",
     )
@@ -226,55 +226,55 @@ def subcmd_blastpaldb(subparsers):
         help="Overwrite existing blast results.",
     )
     parser_blastpal.set_defaults(
-        func=blastpaldb, formathelp=parser_blastpal.format_help
+        func=blastpal, formathelp=parser_blastpal.format_help
     )
 
 
-def blastpaldb(args):
-    from . import blastpaldb
-    if not blastpaldb.main(args):
+def blastpal(args):
+    from . import blastpal
+    if not blastpal.main(args):
         print(args.formathelp())
 
 
-def subcmd_reporterdb(subparsers):
-    parser_reporterdb = subparsers.add_parser(
-        "ReporterDB",
+def subcmd_reporter(subparsers):
+    parser_reporter = subparsers.add_parser(
+        "Reporter",
         help="Checks Blast results to ensure a hit is reciprocal. Queries a sequence "
         "using exonerate to align it against a target reference and trim it to mapped "
         "region. Produces aa and nt output.",
     )
-    parser_reporterdb.add_argument(
+    parser_reporter.add_argument(
         "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
     )
-    parser_reporterdb.add_argument(
+    parser_reporter.add_argument(
         "-oi",
         "--orthoset_input",
         type=str,
         default="PhyMMR/orthosets",
         help="Path to directory of Orthosets folder",
     )
-    parser_reporterdb.add_argument(
+    parser_reporter.add_argument(
         "-o",
         "--orthoset",
         type=str,
         default="Ortholog_set_Mecopterida_v4",
         help="Orthoset",
     )
-    parser_reporterdb.add_argument(
+    parser_reporter.add_argument(
         "-ml", "--min_length", type=int, default=30, help="Minimum Transcript Length"
     )
-    parser_reporterdb.add_argument(
+    parser_reporter.add_argument(
         "-ms", "--min_score", type=float, default=40, help="Minimum Hit Domain Score"
     )
     parser.add_argument("-d", "--debug", type=int, default=0, help="Verbose debug.")
-    parser_reporterdb.set_defaults(
-        func=reporterdb, formathelp=parser_reporterdb.format_help
+    parser_reporter.set_defaults(
+        func=reporter, formathelp=parser_reporter.format_help
     )
 
 
-def reporterdb(args):
-    from . import reporterdb
-    mainargs = reporterdb.MainArgs(
+def reporter(args):
+    from . import reporter
+    mainargs = reporter.MainArgs(
         args.verbose,
         args.processes,
         args.debug,
@@ -284,7 +284,7 @@ def reporterdb(args):
         args.min_length,
         args.min_score
     )
-    if not reporterdb.main(mainargs):
+    if not reporter.main(mainargs):
         print(args.formathelp())
 
 
@@ -540,7 +540,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog="phymmr",
         # TODO write me
-        description="Order: PrepareDB, HmmsearchDB, BlastPalDB, ReporterDB, "
+        description="Order: Prepare, Hmmsearch, BlastPal, Reporter, "
         "mafft, pal2nal, FlexCull (optional), OutlierCheck, MergeOverlap, MergeGenes",
         epilog="phymmr  Copyright (C) 2022  PhyMMR Team\n"
         "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n"
@@ -566,10 +566,10 @@ if __name__ == "__main__":
     )
 
     subparsers = parser.add_subparsers()
-    subcmd_preparedb(subparsers)
-    subcmd_hmmsearchdb(subparsers)
-    subcmd_blastpaldb(subparsers)
-    subcmd_reporterdb(subparsers)
+    subcmd_prepare(subparsers)
+    subcmd_hmmsearch(subparsers)
+    subcmd_blastpal(subparsers)
+    subcmd_reporter(subparsers)
 
     # mafft > pal2nal > FlexCull (optional) > OutlierCheck > MergeOverlap
     subcmd_mafft(subparsers)
