@@ -474,7 +474,7 @@ def search_prot(
     verbose: bool,
     prog="hmmsearch",
     threads=1,
-) -> str:
+) -> list:
     if os.path.exists(domtbl_path) and not ovw:
         # always overwrite the empty domtbl files
         if not empty_domtbl_file(domtbl_path):
@@ -502,7 +502,7 @@ def search_prot(
     if p.returncode != 0:  # non-zero return code means an error
         printv(f"{domtbl_path}:hmmsearch error code {p.returncode}", verbose)
     else:
-        printv(f"Searched {os.path.basename(domtbl_path)}", verbose)
+        printv(f"Searched {os.path.basename(domtbl_path)}", verbose, 2)
     return get_hits_from_domtbl(domtbl_path, score, evalue)
 
 

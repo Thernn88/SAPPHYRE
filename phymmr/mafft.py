@@ -1,8 +1,11 @@
 from __future__ import annotations
+
 import os
 from multiprocessing.pool import ThreadPool
 from threading import Lock
 from time import time
+
+from .utils import printv
 
 MAFFT_FOLDER = "mafft"
 AA_FOLDER = "aa"
@@ -15,18 +18,17 @@ elif os.path.exists("/dev/shm"):
     TMP_DIR = "/dev/shm"
 
 
-
 def run_command(arg_tuple: tuple) -> None:
-    string, gene_file, result_file, gene, temp_folder, lock = arg_tuple
+    string, gene_file, result_file, gene, temp_folder, lock, verbose = arg_tuple
     if lock is not None:
         with lock:
-            print(gene)
+            printv(gene, verbose)
     else:
-        print(gene)
+        printv(gene, verbose)
 
     ref_og_hashmap = {}
 
-    tmp_gene_file = os.path.join(temp_folder,gene+'.tmp')
+    tmp_gene_file = os.path.join(temp_folder, gene + '.tmp')
     with open(tmp_gene_file, "w") as fp_out, open(gene_file) as fp_in:
         for line in fp_in:
             if line[0] == ">" and line[-2] == ".":
@@ -96,14 +98,14 @@ def do_folder(folder, args):
         for gene in genes:
             gene_file = os.path.join(aa_path, gene + ".aa.fa")
             result_file = os.path.join(mafft_path, gene + ".aa.fa")
-            arguments.append((command, gene_file, result_file, gene, temp_folder, lock))
+            arguments.append((command, gene_file, result_file, gene, temp_folder, lock, args.verbose))
         with ThreadPool(args.processes) as pool:
             pool.map(run_command, arguments, chunksize=1)
     else:
         for gene in genes:
             gene_file = os.path.join(aa_path, gene + ".aa.fa")
             result_file = os.path.join(mafft_path, gene + ".aa.fa")
-            run_command((command, gene_file, result_file, gene, temp_folder, None))
+            run_command((command, gene_file, result_file, gene, temp_folder, None, args.verbose))
 
     print("Took {:.2f}s".format(time() - start))
 
