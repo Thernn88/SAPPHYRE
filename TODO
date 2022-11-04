@@ -35,7 +35,7 @@ Hmmsearch
   [ ] Fix Verbosity. Lock gene prints behind -vv 
   
 BlastPalDB
-  [ ] Fix Verbosity
+  [ ] Fix Verbosity. Lock gene prints behind -v
   [ ] Can someone check and see if the Blast External is sorted to do genes with most Hmmsearch results first?
   [ ] Should also add a post blast sort to start the heaviest workloads first.
 
