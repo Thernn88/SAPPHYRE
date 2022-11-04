@@ -52,6 +52,7 @@ mafft
 
 Pal2Nal
   [x] Full blown rewrite. Python version is at least 4x slower than Perl version. (A lot of poor design decisions in Pal2Nal.py) Perhaps rewrite in Golang or Rust? @done (31-10-22 22:10)
+  [ ] Fix error prints to always tell which gene had the error!
   
 OutlierCheck
   [ ] Add additional outlier check methodology.
