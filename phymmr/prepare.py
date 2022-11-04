@@ -102,7 +102,7 @@ def main(args):
     rocksdb_folder_name = "rocksdb"
     sequences_db_name = "sequences"
     core_directory = "PhyMMR"
-    secondary_directory = os.path.join(core_directory, os.path.basename(folder))
+    secondary_directory = os.path.join(core_directory, os.path.basename(os.path.normpath(folder)))
 
     # Create necessary directories
     printv("Creating directories", args.verbose)
@@ -123,7 +123,7 @@ def main(args):
 
             taxa_runs.setdefault(formatted_taxa, [])
             taxa_runs[formatted_taxa].append(file)
-
+    trim_times = []  # Append computed time for each loop.
     for formatted_taxa_out, components in taxa_runs.items():
         taxa_start = time()
         printv(f"Preparing {formatted_taxa_out}", args.verbose)
@@ -159,7 +159,6 @@ def main(args):
         transcript_mapped_to = {}
         dupes = count()
         this_index = 1
-        trim_times = []  # Append computed time for each loop.
 
         fa_file_out = []
         printv("Formatting input sequences and inserting into database", args.verbose)
@@ -315,5 +314,5 @@ def main(args):
 
 if __name__ == "__main__":
     raise Exception(
-        "Cannot be called directly, please use the module:\nphymmr PrepareDB"
+        "Cannot be called directly, please use the module:\nphymmr Prepare"
     )

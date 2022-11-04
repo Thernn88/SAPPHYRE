@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import json
 import math
 import os
@@ -11,13 +12,11 @@ from time import time
 from typing import List, Optional
 
 import phymmr_tools
-import wrap_rocks
 import xxhash
 from Bio.Seq import Seq
 
 from . import rocky
-
-T_global_start = time()
+from .timekeeper import TimeKeeper, KeeperMode
 
 MainArgs = namedtuple(
     "MainArgs",
@@ -311,7 +310,7 @@ def reverse_complement(nt_seq):
 
 
 def get_nucleotide_transcript_for(header):
-    base_header = get_baseheader(header).strip()
+    base_header = header.split("|")[0]
     hash_of_header = xxhash.xxh64_hexdigest(base_header)
 
     row_data = rocky.get_rock("rocks_sequence_db").get(hash_of_header)
@@ -545,16 +544,6 @@ def print_core_sequences(orthoid, core_sequences):
 
     return result
 
-
-def get_rf(header):
-    raw_header = get_baseheader(header)
-    header_part = get_translate(header)
-    if "translate" in header_part or "revcomp" in header_part:
-        frame = header_part
-
-    return raw_header, frame
-
-
 def print_unmerged_sequences(
     hits, orthoid, minimum_seq_data_length, taxa_id
 ):
@@ -564,15 +553,15 @@ def print_unmerged_sequences(
     header_mapped_x_times = {}
     base_header_mapped_already = {}
     exact_hit_mapped_already = set()
-    for i, hit in enumerate(hits):
-        base_header, rf = get_rf(hit.header)
+    for hit in hits:
+        base_header, reference_frame = hit.header.split('|')
 
         header = format_candidate_header(
             orthoid,
             hit.reftaxon,
             taxa_id,
             base_header,
-            rf,
+            reference_frame,
         )
 
         nt_seq = (
@@ -581,8 +570,8 @@ def print_unmerged_sequences(
             else hit.orf_cdna_sequence
         )
 
-        #Deinterleave
-        nt_seq = nt_seq.replace('\n','')
+        # De-interleave
+        nt_seq = nt_seq.replace('\n', '')
 
         aa_seq = (
             hit.extended_orf_aa_sequence
@@ -590,10 +579,13 @@ def print_unmerged_sequences(
             else hit.orf_aa_sequence
         )
 
-        aa_seq = aa_seq.replace('\n','')
+        aa_seq = aa_seq.replace('\n', '')
         unique_hit = base_header+aa_seq
 
-        if not unique_hit in exact_hit_mapped_already and len(aa_seq) - aa_seq.count("-") > minimum_seq_data_length:
+        if (
+            unique_hit not in exact_hit_mapped_already
+            and len(aa_seq) - aa_seq.count("-") > minimum_seq_data_length
+        ):
             if base_header in base_header_mapped_already:
                 already_mapped_header, already_mapped_sequence = base_header_mapped_already[base_header]
 
@@ -614,7 +606,7 @@ def print_unmerged_sequences(
                         hit.reftaxon,
                         taxa_id,
                         base_header+f"_{header_mapped_x_times[old_header]}",
-                        rf,
+                        reference_frame,
                     )
 
                     header_mapped_x_times[old_header] += 1
@@ -626,8 +618,6 @@ def print_unmerged_sequences(
             nt_result.append(f">{header}\n{nt_seq}\n" )
 
             header_mapped_x_times[header] = 1
-
-            
             exact_hit_mapped_already.add(unique_hit)
 
     return aa_result, nt_result
@@ -677,22 +667,6 @@ def get_difference(score_a, score_b):
         return 0
 
 
-def get_baseheader(header):
-    """
-    Returns header content before first pipe.
-    """
-    baseheader = header.split("|")[0].strip()
-    return baseheader
-
-
-def get_translate(header):
-    """
-    Returns header content of second pipe.
-    """
-    translate = header.split("|")[1]
-    return translate
-
-
 def get_match(header, results):
     for result in results:
         if result[0] == header:
@@ -725,7 +699,7 @@ def run_exonerate(arg_tuple: ExonerateArgs):
 def exonerate_gene_multi(eargs: ExonerateArgs):
     if eargs.verbose >= 2:
         print("Exonerating and doing output for: ", eargs.orthoid)
-        T_gene_start = time()
+        t_gene_start = TimeKeeper(KeeperMode.DIRECT)
 
     orthoset_db_con = sqlite3.connect(eargs.orthoset_db_path)
     reftaxon_related_transcripts = {}
@@ -813,9 +787,10 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
     if eargs.verbose >= 2:
         print(
             "{} took {:.2f}s. Had {} sequences".format(
-                eargs.orthoid, time() - T_gene_start, len(output_sequences)
+                eargs.orthoid, t_gene_start.differencial(), len(output_sequences)
             )
         )
+
 
 def is_reciprocal_match(blast_results, reference_taxa: List[str]):
     reftaxon_count = {ref_taxa: 0 for ref_taxa in reference_taxa}
@@ -836,11 +811,12 @@ def is_reciprocal_match(blast_results, reference_taxa: List[str]):
                 ]  # Grab most hit reftaxon
     return None, None
 
+
 def reciprocal_search(
     hmmresults, list_of_wanted_orthoids, reference_taxa, score, verbose
 ):
     if verbose >= 3:
-        T_reciprocal_start = time()
+        t_reciprocal_start = TimeKeeper(KeeperMode.DIRECT)
         print("Ensuring reciprocal hit for hmmresults in {}".format(score))
 
     results = []
@@ -866,7 +842,7 @@ def reciprocal_search(
     if verbose >= 3:
         print(
             "Checked reciprocal hits for {}. Took {:.2f}s.".format(
-                score, time() - T_reciprocal_start
+                score, t_reciprocal_start.differencial()
             )
         )
     return results
@@ -874,8 +850,9 @@ def reciprocal_search(
 
 def do_taxa(path, taxa_id, args):
     print("Doing {}.".format(taxa_id))
+    t_taxa_start = TimeKeeper(KeeperMode.DIRECT)
     if args.verbose >= 1:
-        T_init_db = time()
+        t_init_db = TimeKeeper(KeeperMode.DIRECT)
 
     num_threads = args.processes
     if not isinstance(num_threads, int) or num_threads < 1:
@@ -889,8 +866,9 @@ def do_taxa(path, taxa_id, args):
         tmp_path = os.path.join(path, "tmp")
         os.makedirs(tmp_path, exist_ok=True)
 
-    if orthoid_list_file:
-        list_of_wanted_orthoids = open(orthoid_list_file).read().split("\n")
+    if orthoid_list_file:  # TODO orthoid_list_file must be passed as argument
+        with open(orthoid_list_file) as fp:
+            list_of_wanted_orthoids = fp.read().split("\n")
         wanted_orthoid_only = True
     else:
         list_of_wanted_orthoids = []
@@ -928,22 +906,24 @@ def do_taxa(path, taxa_id, args):
     os.makedirs(nt_out_path, exist_ok=True)
 
     if args.verbose >= 1:
-        T_reference_taxa = time()
+        t_reference_taxa = TimeKeeper(KeeperMode.DIRECT)
         print(
             "Initialized databases. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing reference taxa in set.".format(
-                time() - T_global_start, time() - T_init_db
+                t_taxa_start.differencial(), t_init_db.differencial()
             )
         )
+        del t_init_db
 
     reference_taxa = get_taxa_in_set(orthoset_id, orthoset_db_con)
 
     if args.verbose >= 1:
-        T_hmmresults = time()
+        t_hmmresults = TimeKeeper(KeeperMode.DIRECT)
         print(
             "Got reference taxa in set. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing hmmresults".format(
-                time() - T_global_start, time() - T_reference_taxa
+                t_taxa_start.differencial(), t_reference_taxa.differencial()
             )
         )
+        del t_reference_taxa
 
     score_based_results, ufr_rows = get_scores_list(
         args.min_score, args.min_length, rocky.get_rock("rocks_hits_db"), args.debug
@@ -951,26 +931,28 @@ def do_taxa(path, taxa_id, args):
 
     if args.debug:
         ufr_path = os.path.join(path, "unfiltered-hits.csv")
-
         ufr_out = ["Gene,Header,Score,Start,End\n"]
         for row in ufr_rows:
             ufr_out.append(",".join(row) + "\n")
-
-        open(ufr_path, "w").writelines(ufr_out)
+        with open(ufr_path, "w") as fp:
+            fp.writelines(ufr_out)
 
     ####################################
     if args.verbose >= 1:
         print(
             "Got hmmresults. Elapsed time {:.2f}s. Took {:.2f}s.".format(
-                time() - T_global_start, time() - T_hmmresults
+                t_taxa_start.differencial(), t_hmmresults.differencial()
             )
         )
-        print(
-            "Retrieved data from DB. Elapsed time {:.2f}s. Took {:.2f}s. Doing reciprocal check.".format(
-                time() - T_global_start, time() - T_hmmresults
-            )
-        )
-        T_reciprocal_search = time()
+        # FIXME: defunct time keeping. I don't know where the db processing is
+        #   located. Is this a sqlite3 remnant?
+        # print(
+        #     "Retrieved data from DB. Elapsed time {:.2f}s. Took {:.2f}s. Doing reciprocal check.".format(
+        #         time() - T_global_start, time() - T_hmmresults
+        #     )
+        # )
+        t_reciprocal_search = TimeKeeper(KeeperMode.DIRECT)
+        del t_hmmresults
 
     scores = list(score_based_results.keys())
     scores.sort(reverse=True)  # Ascending
@@ -1006,14 +988,13 @@ def do_taxa(path, taxa_id, args):
             transcripts_mapped_to[orthoid].append(this_match)
 
     if args.verbose >= 1:
-        T_internal_search = time()
         print(
             "Reciprocal check done, found {} reciprocal hits. Elapsed time {:.2f}s. Took {:.2f}s. Exonerating genes.".format(
-                brh_count, time() - T_global_start, time() - T_reciprocal_search
+                brh_count, t_taxa_start.differencial(), t_reciprocal_search.differencial()
             )
         )
 
-    T_exonerate_genes = time()
+    t_exonerate_genes = TimeKeeper(KeeperMode.DIRECT)
 
     if num_threads > 1:
         arguments: list[Optional[ExonerateArgs]] = []
@@ -1050,12 +1031,11 @@ def do_taxa(path, taxa_id, args):
     if args.verbose >= 1:
         print(
             "Done. Final time {:.2f}s. Exonerate took {:.2f}s.".format(
-                time() - T_global_start, time() - T_exonerate_genes
+                t_taxa_start.differencial(), t_exonerate_genes.differencial()
             )
         )
-
-    if args.verbose == 0:
-        print("Done took {:.2f}s.".format(time() - T_global_start))
+    else:
+        print("Done took {:.2f}s.".format(t_taxa_start.differencial()))
 
 
 ####
@@ -1107,10 +1087,10 @@ header_seperator = "|"
 
 def main(args):
     if not all(os.path.exists(i) for i in args.INPUT):
-        print("ERROR: All folders passed as argument must exists.")
+        print("ERROR: All folders passed as argument must exist.")
         return False
     for input_path in args.INPUT:
-        print(f"### Processing path '{input_path}'.")
+        #print(f"### Processing path '{input_path}'.")
         rocks_db_path = os.path.join(input_path, "rocksdb")
         rocky.create_pointer("rocks_sequence_db", os.path.join(rocks_db_path, "sequences"))
         rocky.create_pointer("rocks_hits_db", os.path.join(rocks_db_path, "hits"))
@@ -1124,5 +1104,5 @@ def main(args):
 
 if __name__ == "__main__":
     raise Exception(
-        "Cannot be called directly, please use the module:\nphymmr ReporterDB"
+        "Cannot be called directly, please use the module:\nphymmr Reporter"
     )

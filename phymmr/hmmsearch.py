@@ -1,16 +1,18 @@
 from __future__ import annotations
+
 import itertools
-import math
-from multiprocessing.pool import Pool
-import os
-import re
-import subprocess
-from sys import argv
-from time import time
-import wrap_rocks
 import json
-from tqdm import tqdm
+import math
+import os
+import subprocess
+from multiprocessing.pool import Pool
+from time import time
+
+import wrap_rocks
 from Bio.SeqIO.FastaIO import SimpleFastaParser
+
+from .utils import printv
+
 
 class Hit:
     __slots__ = (
@@ -76,6 +78,7 @@ class Hit:
 
     def __repr__(self) -> str:
         return f"{self.header} {self.score}"
+
     def list_values(self, species_id):
         """
         Given a species_id, returns a list of values suitable for the
@@ -117,30 +120,29 @@ class Hit:
             "hmm_sequence": self.hmm_sequence
         }
 
+
 def get_difference(scoreA, scoreB):
     """
     Returns decimal difference of two scores
     """
-
     try:
         if scoreA / scoreB > 1:
             return scoreA / scoreB
-
-        elif scoreB / scoreA > 1:
+        if scoreB / scoreA > 1:
             return scoreB / scoreA
-
-        elif scoreA == scoreB:
+        if scoreA == scoreB:
             return 1
-
     except ZeroDivisionError:
         return 0
+
 
 def get_overlap(a_start, a_end, b_start, b_end):
     overlap_end = min(a_end, b_end)
     overlap_start = max(a_start, b_start)
-    amount = (overlap_end - overlap_start) + 1 #inclusive 
+    amount = (overlap_end - overlap_start) + 1  # inclusive
 
     return 0 if amount < 0 else amount
+
 
 def internal_filter_gene(this_gene_hits, gene, min_overlap_internal, score_diff_internal, debug, requires_sort):
     if requires_sort:
@@ -148,27 +150,35 @@ def internal_filter_gene(this_gene_hits, gene, min_overlap_internal, score_diff_
 
     filtered_sequences_log = []
 
-    for i,hit_a in enumerate(this_gene_hits):
+    for i, hit_a in enumerate(this_gene_hits):
         if not hit_a:
             continue
-        for j in range(len(this_gene_hits)-1, i, -1):
+        for j in range(len(this_gene_hits) - 1, i, -1):
             hit_b = this_gene_hits[j]
             if hit_b:
                 if hit_a.base_header != hit_b.base_header:
                     if ((hit_a.score / hit_b.score) if hit_b.score != 0 else 0) < score_diff_internal:
                         break
-                    
+
                     amount_of_overlap = get_overlap(hit_a.hmm_start, hit_a.hmm_end, hit_b.hmm_start, hit_b.hmm_end)
-                    distance = (hit_b.hmm_end - hit_b.hmm_start) + 1 # Inclusive
+                    distance = (hit_b.hmm_end - hit_b.hmm_start) + 1  # Inclusive
                     percentage_of_overlap = amount_of_overlap / distance
 
-                    if (percentage_of_overlap >= min_overlap_internal):
+                    if percentage_of_overlap >= min_overlap_internal:
                         this_gene_hits[j] = None
-                        if debug: 
-                            filtered_sequences_log.append([hit_b.gene,hit_b.header,str(hit_b.score),str(hit_b.hmm_start),str(hit_b.hmm_end),'Internal Overlapped with Lowest Score',hit_a.gene,hit_a.header,str(hit_a.score),str(hit_a.hmm_start),str(hit_a.hmm_end)])
+                        if debug:
+                            filtered_sequences_log.append(
+                                [
+                                    hit_b.gene, hit_b.header, str(hit_b.score), str(hit_b.hmm_start),
+                                    str(hit_b.hmm_end), 'Internal Overlapped with Lowest Score', hit_a.gene,
+                                    hit_a.header, str(hit_a.score), str(hit_a.hmm_start), str(hit_a.hmm_end)
+                                ]
+                            )
 
-    this_out_data = {'Passes':[i for i in this_gene_hits if i is not None], 'Log':filtered_sequences_log, 'Gene':gene}
+    this_out_data = {'Passes': [i for i in this_gene_hits if i is not None], 'Log': filtered_sequences_log,
+                     'Gene': gene}
     return this_out_data
+
 
 def multi_filter_dupes(
     this_hits,
@@ -179,7 +189,7 @@ def multi_filter_dupes(
     kick_happend = True
     filtered_sequences_log = []
 
-    this_hits.sort(key=lambda data: (data.score, data.gene), reverse = True)
+    this_hits.sort(key=lambda data: (data.score, data.gene), reverse=True)
 
     while kick_happend:
         kick_happend = False
@@ -214,7 +224,7 @@ def multi_filter_dupes(
                     )
 
                 this_hits[i] = None
-                candidates[i-1] = None
+                candidates[i - 1] = None
                 # Extend master range
                 kick_happend = True
                 if candidate.env_start < master_env_start:
@@ -228,8 +238,9 @@ def multi_filter_dupes(
 
         for i, candidate in enumerate(candidates, 1):
             if candidate:
-                distance = (master_env_end - master_env_start) + 1 # Inclusive
-                amount_of_overlap = get_overlap(master_env_start, master_env_end, candidate.env_start, candidate.env_end)
+                distance = (master_env_end - master_env_start) + 1  # Inclusive
+                amount_of_overlap = get_overlap(master_env_start, master_env_end, candidate.env_start,
+                                                candidate.env_end)
                 percentage_of_overlap = amount_of_overlap / distance
 
                 if percentage_of_overlap >= min_overlap_multi:
@@ -260,10 +271,11 @@ def multi_filter_dupes(
         if (
             miniscule_score
         ):  # Remove all overlapping candidates if it's score is a miniscule difference of the masters
-            for i,candidate in enumerate(candidates, 1):
+            for i, candidate in enumerate(candidates, 1):
                 if candidate:
-                    distance = (master_env_end - master_env_start) + 1 # Inclusive
-                    amount_of_overlap = get_overlap(master_env_start, master_env_end, candidate.env_start, candidate.env_end)
+                    distance = (master_env_end - master_env_start) + 1  # Inclusive
+                    amount_of_overlap = get_overlap(master_env_start, master_env_end, candidate.env_start,
+                                                    candidate.env_end)
                     percentage_of_overlap = amount_of_overlap / distance
                     if percentage_of_overlap >= min_overlap_multi:
                         kick_happend = True
@@ -290,11 +302,12 @@ def multi_filter_dupes(
     }
     return multi_data
 
+
 def internal_multi_filter(flagged_headers, this_gene_hits, minimum_overlap_multi_internal, debug, gene):
     this_gene_hits.sort(key=lambda hit: hit.score, reverse=True)
 
     bh_based_results = {}
-    for i,hit in enumerate(this_gene_hits): #Iterate once and make hashmap
+    for i, hit in enumerate(this_gene_hits):  # Iterate once and make hashmap
         if not hit.base_header in bh_based_results:
             bh_based_results[hit.base_header] = [i]
         else:
@@ -303,7 +316,7 @@ def internal_multi_filter(flagged_headers, this_gene_hits, minimum_overlap_multi
     filtered_sequences_log = []
 
     for b_header in flagged_headers:
-        if b_header in bh_based_results: # Not kicked during multi
+        if b_header in bh_based_results:  # Not kicked during multi
             bh_hits = bh_based_results[b_header]
 
             for hit_a_index, hit_b_index in itertools.combinations(bh_hits, 2):
@@ -314,19 +327,23 @@ def internal_multi_filter(flagged_headers, this_gene_hits, minimum_overlap_multi
                 hit_b = this_gene_hits[hit_b_index]
                 if not hit_b:
                     continue
-                
+
                 overlap_amount = get_overlap(hit_a.ali_start, hit_a.ali_end, hit_b.ali_start, hit_b.ali_end)
                 distance = (hit_b.ali_end - hit_b.ali_start) + 1
 
                 overlap_percent = overlap_amount / distance
 
                 if overlap_percent > minimum_overlap_multi_internal:
-                    
-                    this_gene_hits[hit_b_index] = None
-                    if debug: 
-                        filtered_sequences_log.append([hit_b.gene,hit_b.header,str(hit_b.score),str(hit_b.ali_start),str(hit_b.ali_end),'Internal Multi Overlapped with Lowest Score',hit_a.gene,hit_a.header,str(hit_a.score),str(hit_a.ali_start),str(hit_a.ali_end)])
 
-    this_out_data = {'Passes':[i for i in this_gene_hits if i is not None], 'Log':filtered_sequences_log, 'Gene':gene}
+                    this_gene_hits[hit_b_index] = None
+                    if debug:
+                        filtered_sequences_log.append(
+                            [hit_b.gene, hit_b.header, str(hit_b.score), str(hit_b.ali_start), str(hit_b.ali_end),
+                             'Internal Multi Overlapped with Lowest Score', hit_a.gene, hit_a.header, str(hit_a.score),
+                             str(hit_a.ali_start), str(hit_a.ali_end)])
+
+    this_out_data = {'Passes': [i for i in this_gene_hits if i is not None], 'Log': filtered_sequences_log,
+                     'Gene': gene}
 
     return this_out_data
 
@@ -384,12 +401,12 @@ def make_temp_protfile(
     with open(prot_path, "w") as prot_file_handle:
         for component in recipe:
             prot_file_handle.write(sequences_db_conn.get(f"getprot:{component}"))
-        
+
     printv("Wrote prot file in {:.2f}s".format(time() - start), verbose)
     return prot_path
 
-def parse_domtbl_fields(fields: list) -> Hit:
 
+def parse_domtbl_fields(fields: list) -> Hit:
     hit = Hit(
         fields[0],
         fields[3],
@@ -457,7 +474,7 @@ def search_prot(
     verbose: bool,
     prog="hmmsearch",
     threads=1,
-) -> str:
+) -> list:
     if os.path.exists(domtbl_path) and not ovw:
         # always overwrite the empty domtbl files
         if not empty_domtbl_file(domtbl_path):
@@ -485,7 +502,7 @@ def search_prot(
     if p.returncode != 0:  # non-zero return code means an error
         printv(f"{domtbl_path}:hmmsearch error code {p.returncode}", verbose)
     else:
-        printv(f"Searched {os.path.basename(domtbl_path)}", verbose)
+        printv(f"Searched {os.path.basename(domtbl_path)}", verbose, 2)
     return get_hits_from_domtbl(domtbl_path, score, evalue)
 
 
@@ -501,10 +518,6 @@ def hmm_search(
 
     hits = search_prot(prot, domtbl_path, hmm_file, evalue, score, ovw, verbose)
     return hits
-
-def printv(msg, verbosity) -> None:
-    if verbosity:
-        print(msg)
 
 
 def run_process(args, input_path: str) -> None:
@@ -940,5 +953,5 @@ def main(args):
 
 if __name__ == "__main__":
     raise Exception(
-        "Cannot be called directly, please use the module:\nphymmr HmmSearchDB"
+        "Cannot be called directly, please use the module:\nphymmr Hmmsearch"
     )

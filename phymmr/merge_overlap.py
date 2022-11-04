@@ -550,13 +550,15 @@ def do_gene(
     debug,
     majority,
     minimum_mr_amount,
+    verbosity,
 ) -> None:
     """
     Merge main loop. Opens fasta file, parses sequences and merges based on taxa
     """
     already_calculated_splits = {}
 
-    print(gene)
+    if verbosity:
+        print("Doing:",gene)
 
     path, data = do_protein(
         "aa",
@@ -638,6 +640,7 @@ def do_folder(folder: Path, args):
                     args.debug,
                     args.majority,
                     args.majority_count,
+                    args.verbose,
                 )
             )
         with Pool(args.processes) as pool:
@@ -657,6 +660,7 @@ def do_folder(folder: Path, args):
                 args.debug,
                 args.majority,
                 args.majority_count,
+                args.verbose,
             )
 
     timed = round(time() - start_time)

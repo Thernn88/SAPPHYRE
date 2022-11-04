@@ -100,7 +100,8 @@ def do_gene(
     aa_file: str,
     tmp_path: str,
     debug: bool,
-    bp: int
+    bp: int,
+    verbosity: int,
 ) -> None:
     """
     FlexCull main function. Culls input aa and nt using specified amount of matches
@@ -108,7 +109,8 @@ def do_gene(
     gene_path = os.path.join(aa_input, aa_file)
     this_gene = aa_file.split(".")[0]
 
-    print(this_gene)
+    if verbosity:
+        print("Doing:",this_gene)
 
     references, candidates, raw_references = parse_fasta(gene_path)
 
@@ -358,6 +360,7 @@ def do_folder(folder, args: MainArgs):
                     available_tmp_path,
                     args.debug,
                     args.base_pair,
+                    args.verbose,
                 )
             )
 
@@ -374,6 +377,7 @@ def do_folder(folder, args: MainArgs):
                 available_tmp_path,
                 args.debug,
                 args.base_pair,
+                args.verbose,
             )
 
     if args.debug:

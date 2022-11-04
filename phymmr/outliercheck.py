@@ -372,12 +372,16 @@ def main_process(
     sort: str,
     nt_output_path: str,
     debug: bool,
+    verbose: int,
 ):
-
     keep_refs = not args_references
 
     file_input = args_input
     filename = os.path.basename(file_input)
+
+    if verbose:
+        print("Doing:",filename)
+
     name = filename.split(".")[0]
     threshold = args_threshold / 100
     aa_output = os.path.join(args_output, "aa")
@@ -491,6 +495,7 @@ def do_folder(folder, args):
                     args.sort,
                     nt_output_path,
                     args.debug,
+                    args.verbose,
                 )
             )
 
@@ -498,7 +503,6 @@ def do_folder(folder, args):
             pool.map(run_command, arguments, chunksize=1)
     else:
         for gene in file_inputs:
-            print(gene)
             main_process(
                 gene,
                 nt_input,
@@ -508,6 +512,7 @@ def do_folder(folder, args):
                 args.sort,
                 nt_output_path,
                 args.debug,
+                args.verbose,
             )
     if args.debug:
         log_folder_path = os.path.join(output_path, "logs")
