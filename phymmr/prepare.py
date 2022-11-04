@@ -126,7 +126,7 @@ def main(args):
     trim_times = []  # Append computed time for each loop.
     for formatted_taxa_out, components in taxa_runs.items():
         taxa_start = time()
-        printv(f"Preparing {formatted_taxa_out}", args.verbose)
+        print(f"Preparing {formatted_taxa_out}", args.verbose)
 
         taxa_destination_directory = os.path.join(
             secondary_directory, formatted_taxa_out
