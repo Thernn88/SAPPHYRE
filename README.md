@@ -39,6 +39,7 @@ Example commands workflow using Mayer et al. (2021) reference set. Verbose enabl
 	python3 -m phymmr -p 16 -v MergeOverlap PhyMMR/lepidoptera/*.fa
 
 Generic Commands
+	
 	python3 -m phymmr <args> Prepare <args> input/<DIR>/
 	python3 -m phymmr <args> Hmmsearch <args> PhyMMR/<DIR>/*.fa
 	python3 -m phymmr <args> BlastPal <args> PhyMMR/<DIR>/*.fa
