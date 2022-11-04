@@ -81,7 +81,7 @@ def subcmd_hmmsearch(subparsers):
         "-oi",
         "--orthoset_input",
         type=str,
-        default="PhyMMR/orthosets",
+        default="orthosets",
         help="Path to directory of Orthosets folder",
     )
     par.add_argument(
@@ -195,7 +195,7 @@ def subcmd_blastpal(subparsers):
         "-oi",
         "--orthoset_input",
         type=str,
-        default="PhyMMR/orthosets",
+        default="orthosets",
         help="Path to directory of Orthosets folder",
     )
     par.add_argument(
@@ -250,7 +250,7 @@ def subcmd_reporter(subparsers):
         "-oi",
         "--orthoset_input",
         type=str,
-        default="PhyMMR/orthosets",
+        default="orthosets",
         help="Path to directory of Orthosets folder",
     )
     par.add_argument(
@@ -441,7 +441,7 @@ def subcmd_mafft(subparsers):
         "-oi",
         "--orthoset_input",
         type=str,
-        default="PhyMMR/orthosets",
+        default="orthosets",
         help="Path to directory of Orthosets folder",
     )
     par.add_argument(
