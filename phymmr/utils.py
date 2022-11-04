@@ -1,5 +1,5 @@
 
 
 def printv(msg, verbosity, reqverb=1) -> None:
-    if verbosity >= reqverb :
+    if verbosity >= reqverb:
         print(msg)
