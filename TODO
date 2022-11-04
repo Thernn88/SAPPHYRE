@@ -2,7 +2,7 @@ TODO
 -----------
 HIGH PRIORITY!!!!
 	[ ] Allow Pal2Nal through MergeOverlap to function when Reference NT sequences are absent.
-	[ ] Move orthosets folder out of PhyMMR to the same level as the phymmr and PhyMMR folder. Update paths to reflect this.
+	[x] Move orthosets folder out of PhyMMR to the same level as the phymmr and PhyMMR folder. Update paths to reflect this. @done (04-11-22 14:15)
 	[ ] Populate ReadMe with detailed instructions and examples. (assigned to Kevin)
 
 __main__.py:
