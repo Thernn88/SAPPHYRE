@@ -45,12 +45,12 @@ For pypy:
 All scripts are located in the phymmr directory. You can call them using
 python3 -m phymmr -p 6 Prepare input/<DIR>/
 
-python3 -m phymmr -p 16 Hmmsearch PhyMMR/<DIR>/*.fa
-python3 -m phymmr -p 8 BlastPal PhyMMR/<DIR>/*.fa
-python3 -m phymmr -p 16 Reporter PhyMMR/<DIR>/*.fa
-python3 -m phymmr -p 8 mafft PhyMMR/<DIR>/*.fa
-python3 -m phymmr -p 16 Pal2Nal PhyMMR/<DIR>/*.fa
-python3 -m phymmr -p 16 FlexCull PhyMMR/<DIR>/*.fa
-python3 -m phymmr -p 16 OutlierCheck PhyMMR/<DIR>/*.fa
-python3 -m phymmr -p 64 MergeOverlap PhyMMR/SRR/*.fa
+	python3 -m phymmr -p 16 Hmmsearch PhyMMR/<DIR>/*.fa
+	python3 -m phymmr -p 8 BlastPal PhyMMR/<DIR>/*.fa
+	python3 -m phymmr -p 16 Reporter PhyMMR/<DIR>/*.fa
+	python3 -m phymmr -p 8 mafft PhyMMR/<DIR>/*.fa
+	python3 -m phymmr -p 16 Pal2Nal PhyMMR/<DIR>/*.fa
+	python3 -m phymmr -p 16 FlexCull PhyMMR/<DIR>/*.fa
+	python3 -m phymmr -p 16 OutlierCheck PhyMMR/<DIR>/*.fa
+	python3 -m phymmr -p 64 MergeOverlap PhyMMR/SRR/*.fa
 
