@@ -43,21 +43,14 @@ For pypy:
 ## Usage
 
 All scripts are located in the phymmr directory. You can call them using
-`python phymmr/<scriptname>.py`.
+python3 -m phymmr -p 6 Prepare input/<DIR>/
 
-Data Generation Scripts in order of use
+python3 -m phymmr -p 16 Hmmsearch PhyMMR/<DIR>/*.fa
+python3 -m phymmr -p 8 BlastPal PhyMMR/<DIR>/*.fa
+python3 -m phymmr -p 16 Reporter PhyMMR/<DIR>/*.fa
+python3 -m phymmr -p 8 mafft PhyMMR/<DIR>/*.fa
+python3 -m phymmr -p 16 Pal2Nal PhyMMR/<DIR>/*.fa
+python3 -m phymmr -p 16 FlexCull PhyMMR/<DIR>/*.fa
+python3 -m phymmr -p 16 OutlierCheck PhyMMR/<DIR>/*.fa
+python3 -m phymmr -p 64 MergeOverlap PhyMMR/SRR/*.fa
 
-1. PrepareDB.py
-2. HmmsearchDB.py
-3. BlastPalDB.py
-4. ReporterDB.py
-
-Post-Processing Scripts in order of use
-
-1. mafft.py
-2. nt_batch.py
-3. FlexCull.py (Not Recommended / Optional for Transcriptome input)
-4. OutlierCheck.py
-5. MergeOverlap.py
-
-TO FINISH
