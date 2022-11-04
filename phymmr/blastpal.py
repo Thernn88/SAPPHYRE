@@ -1,16 +1,20 @@
-import argparse
+import json
 import json
 import math
 import os
 import sqlite3
-import wrap_rocks
 from dataclasses import dataclass
 from multiprocessing.pool import Pool
 from shutil import rmtree
 from time import time
+
+import wrap_rocks
 from Bio.Seq import Seq
-from Bio.SeqRecord import SeqRecord
 from Bio.SeqIO.FastaIO import FastaWriter
+from Bio.SeqRecord import SeqRecord
+
+from .utils import printv
+
 
 class Result:
     __slots__ = (
@@ -43,6 +47,7 @@ class Result:
                     "ref_sequence": self.ref_sequence
                 }
 
+
 @dataclass
 class GeneConfig:  # FIXME: I am not certain about types.
     gene: str
@@ -69,7 +74,7 @@ def do(
         not os.path.exists(gene_conf.blast_file_done)
         or os.path.getsize(gene_conf.blast_file_done) == 0
     ):
-        printv("Blasted: {}".format(gene_conf.gene), verbose)
+        printv("Blasted: {}".format(gene_conf.gene), verbose, 2)
         with open(gene_conf.fa_file, "w") as fp:
             fw = FastaWriter(fp)
             fw.write_file(gene_conf.gene_sequences)
@@ -127,18 +132,18 @@ def do(
     
     return this_return
 
+
 def get_set_id(orthoset_db_con, orthoset):
     """
     Retrieves orthoset id from orthoset db
     """
-
     orthoset_db_cur = orthoset_db_con.cursor()
     rows = orthoset_db_cur.execute(f'SELECT id FROM orthograph_set_details WHERE name = "{orthoset}";')
-
     for row in rows:
         return row[0]
 
     raise Exception("Orthoset {} id cant be retrieved".format(orthoset))
+
 
 def get_ref_taxon_for_genes(set_id, orthoset_db_con):
     data = {}
@@ -177,11 +182,6 @@ def get_ref_taxon_for_genes(set_id, orthoset_db_con):
             result[gene][id] = (name, data[id])
 
     return result
-
-
-def printv(msg, verbosity) -> None:
-    if verbosity:
-        print(msg)
 
 
 def run_process(args, input_path) -> None:
@@ -278,17 +278,19 @@ def run_process(args, input_path) -> None:
         ]
     else:
         arguments = [
-            (GeneConfig(
-                gene=gene,
-                tmp_path=tmp_path,
-                gene_sequences=gene_to_hits[gene],
-                ref_names=ref_taxon[gene],
-                blast_path=blast_path,
-                blast_db_path=blast_db_path,
-                blast_minimum_score=args.blast_minimum_score,
-                blast_minimum_evalue=args.blast_minimum_evalue,
-            ),
-             args.verbose,)
+            (
+                GeneConfig(
+                    gene=gene,
+                    tmp_path=tmp_path,
+                    gene_sequences=gene_to_hits[gene],
+                    ref_names=ref_taxon[gene],
+                    blast_path=blast_path,
+                    blast_db_path=blast_db_path,
+                    blast_minimum_score=args.blast_minimum_score,
+                    blast_minimum_evalue=args.blast_minimum_evalue,
+                ),
+                args.verbose,
+            )
             for gene in genes
         ]
 

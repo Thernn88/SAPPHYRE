@@ -32,10 +32,10 @@ PrepareDB
   [ ] Allow path to maintain sequence ID for references. @low
 
 Hmmsearch
-  [ ] Fix Verbosity. Lock gene prints behind -vv 
+  [x] Fix Verbosity. Lock gene prints behind -vv
   
 BlastPalDB
-  [ ] Fix Verbosity
+  [x] Fix Verbosity
   [ ] Can someone check and see if the Blast External is sorted to do genes with most Hmmsearch results first?
   [ ] Should also add a post blast sort to start the heaviest workloads first.
 
@@ -44,7 +44,7 @@ ReporterDB
   [ ] Experiement with splitting largest work units into multiple work units. 
 
 mafft
-  [ ] Fix Verbosity. Lock gene prints behind -v.
+  [x] Fix Verbosity. Lock gene prints behind -v.
 
 Pal2Nal
   [x] Full blown rewrite. Python version is at least 4x slower than Perl version. (A lot of poor design decisions in Pal2Nal.py) Perhaps rewrite in Golang or Rust? @done (31-10-22 22:10)
