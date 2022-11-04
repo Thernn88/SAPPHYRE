@@ -52,5 +52,5 @@ All scripts are located in the phymmr directory. You can call them using
 	python3 -m phymmr -p 16 Pal2Nal PhyMMR/<DIR>/*.fa
 	python3 -m phymmr -p 16 FlexCull PhyMMR/<DIR>/*.fa
 	python3 -m phymmr -p 16 OutlierCheck PhyMMR/<DIR>/*.fa
-	python3 -m phymmr -p 64 MergeOverlap PhyMMR/SRR/*.fa
+	python3 -m phymmr -p 64 MergeOverlap PhyMMR/<DIR>/*.fa
 
