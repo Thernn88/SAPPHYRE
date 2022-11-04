@@ -14,11 +14,7 @@ import wrap_rocks
 import xxhash
 from Bio.SeqIO.FastaIO import SimpleFastaParser
 from tqdm import tqdm
-
-
-def printv(msg, verbosity):
-    if verbosity:
-        print(msg)
+from .utils import printv
 
 
 def truncate_taxa(header: str, extension=None) -> str:
@@ -273,7 +269,7 @@ def main(args):
             open(prot_path, 'w').writelines(out_lines)
 
         aa_dupes = next(aa_dupe_count)
-        printv("AA dedupe took {:.2f}s. Kicked {} dupes".format(time() - aa_dedupe_time, aa_dupes), args.verbose,2)
+        printv("AA dedupe took {:.2f}s. Kicked {} dupes".format(time() - aa_dedupe_time, aa_dupes), args.verbose, 2)
 
         levels = math.ceil(len(out_lines) / PROT_MAX_SEQS_PER_LEVEL)
         per_level = math.ceil(len(out_lines) / levels)
@@ -308,7 +304,7 @@ def main(args):
 
     print("Finished took {:.2f}s overall.".format(time() - global_start))
     printv("N_trim time: {} seconds".format(sum(trim_times)), args.verbose, 2)
-    printv(f"Dedupe time: {dedup_time}", args.verbose,2)
+    printv(f"Dedupe time: {dedup_time}", args.verbose, 2)
     return True
 
 
