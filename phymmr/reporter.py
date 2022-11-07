@@ -787,7 +787,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
     if eargs.verbose >= 2:
         print(
             "{} took {:.2f}s. Had {} sequences".format(
-                eargs.orthoid, t_gene_start.differencial(), len(output_sequences)
+                eargs.orthoid, t_gene_start.differential(), len(output_sequences)
             )
         )
 
@@ -842,7 +842,7 @@ def reciprocal_search(
     if verbose >= 3:
         print(
             "Checked reciprocal hits for {}. Took {:.2f}s.".format(
-                score, t_reciprocal_start.differencial()
+                score, t_reciprocal_start.differential()
             )
         )
     return results
@@ -909,7 +909,7 @@ def do_taxa(path, taxa_id, args):
         t_reference_taxa = TimeKeeper(KeeperMode.DIRECT)
         print(
             "Initialized databases. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing reference taxa in set.".format(
-                t_taxa_start.differencial(), t_init_db.differencial()
+                t_taxa_start.differential(), t_init_db.differential()
             )
         )
         del t_init_db
@@ -920,7 +920,7 @@ def do_taxa(path, taxa_id, args):
         t_hmmresults = TimeKeeper(KeeperMode.DIRECT)
         print(
             "Got reference taxa in set. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing hmmresults".format(
-                t_taxa_start.differencial(), t_reference_taxa.differencial()
+                t_taxa_start.differential(), t_reference_taxa.differential()
             )
         )
         del t_reference_taxa
@@ -941,7 +941,7 @@ def do_taxa(path, taxa_id, args):
     if args.verbose >= 1:
         print(
             "Got hmmresults. Elapsed time {:.2f}s. Took {:.2f}s.".format(
-                t_taxa_start.differencial(), t_hmmresults.differencial()
+                t_taxa_start.differential(), t_hmmresults.differential()
             )
         )
         # FIXME: defunct time keeping. I don't know where the db processing is
@@ -990,7 +990,7 @@ def do_taxa(path, taxa_id, args):
     if args.verbose >= 1:
         print(
             "Reciprocal check done, found {} reciprocal hits. Elapsed time {:.2f}s. Took {:.2f}s. Exonerating genes.".format(
-                brh_count, t_taxa_start.differencial(), t_reciprocal_search.differencial()
+                brh_count, t_taxa_start.differential(), t_reciprocal_search.differential()
             )
         )
 
@@ -1031,11 +1031,11 @@ def do_taxa(path, taxa_id, args):
     if args.verbose >= 1:
         print(
             "Done. Final time {:.2f}s. Exonerate took {:.2f}s.".format(
-                t_taxa_start.differencial(), t_exonerate_genes.differencial()
+                t_taxa_start.differential(), t_exonerate_genes.differential()
             )
         )
     else:
-        print("Done took {:.2f}s.".format(t_taxa_start.differencial()))
+        print("Done took {:.2f}s.".format(t_taxa_start.differential()))
 
 
 ####
