@@ -38,13 +38,15 @@ def run_command(args: CmdArgs) -> None:
     else:
         printv(args.gene, args.verbose)
 
-    with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(mode="w", dir=tmpdir) as tmpfile:
+    with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(mode="w+", dir=tmpdir) as tmpfile:
         ref_og_hashmap = process_genefile(tmpfile, args.gene_file)
+        tmpfile.file.flush()
         command = args.string.format(
             tmpfile=tmpfile.name,
             resultfile=args.result_file,
             gene=args.gene
         )
+        printv(f"Executing command: {command}", args.verbose, 2)
         os.system(command)
 
     # Overwrite reference headers with original headers
@@ -79,7 +81,7 @@ def do_folder(folder, args):
     genes = [gene.split(".")[0] for gene in os.listdir(aa_path) if ".aa" in gene]
     aln_path = os.path.join(args.orthoset_input, args.orthoset, ALN_FOLDER)
     # command = 'mafft --anysymbol --auto --quiet --thread -1  --addfragments {0} --thread -1 '+aln_path+'/{2}.aln.fa > {1}'
-    command = "mafft --anysymbol --quiet --linelength -1 --addfragments {tmpfile} --thread -1 \"%s/{gene}.aln.fa\" > \"{resultfile}\"" % aln_path
+    command = "mafft --anysymbol --quiet --linelength -1 --addfragments {tmpfile} --thread -1 %s/{gene}.aln.fa > {resultfile}" % aln_path
 
     if args.processes > 1:
         arguments = []
