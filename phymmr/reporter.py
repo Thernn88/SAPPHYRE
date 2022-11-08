@@ -80,6 +80,8 @@ class Hit:
         self.hmm_end = as_json["hmm_end"]
         self.ali_start = as_json["ali_start"]
         self.ali_end = as_json["ali_end"]
+        self.remove_extended_orf() #Set values to null
+        
 
     def remove_extended_orf(self):
         self.extended_orf_aa_sequence = None
@@ -453,7 +455,6 @@ def get_multi_orf(query, targets, score_threshold, tmp_path, include_extended=Fa
 
     with open(outfile) as fp:
         extended_results, results = parse_multi_results(fp)
-
     os.remove(queryfile)
     os.remove(targetfile)
     os.remove(outfile)
@@ -749,11 +750,12 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
 
                             if extended_orf_contains_original_orf(hit):
                                 orf_overlap = overlap_by_orf(hit)
-                                if orf_overlap < orf_overlap_minimum:
-                                    hit.remove_extended_orf()
-                            else:
-                                hit.remove_extended_orf()
-                        else:
+                                if orf_overlap >= orf_overlap_minimum:
+                                    continue
+                            
+                            # Does not contain original orf or does not overlap enough.
+                            hit.remove_extended_orf()
+                        else: # No alignment returned
                             print("Failed to extend orf on {}".format(hit.header))
                     output_sequences.append(hit)
     if len(output_sequences) > 0:
@@ -940,17 +942,10 @@ def do_taxa(path, taxa_id, args):
     ####################################
     if args.verbose >= 1:
         print(
-            "Got hmmresults. Elapsed time {:.2f}s. Took {:.2f}s.".format(
+            "Got hmmresults. Elapsed time {:.2f}s. Took {:.2f}s. Doing reciprocal check.".format(
                 t_taxa_start.differential(), t_hmmresults.differential()
             )
         )
-        # FIXME: defunct time keeping. I don't know where the db processing is
-        #   located. Is this a sqlite3 remnant?
-        # print(
-        #     "Retrieved data from DB. Elapsed time {:.2f}s. Took {:.2f}s. Doing reciprocal check.".format(
-        #         time() - T_global_start, time() - T_hmmresults
-        #     )
-        # )
         t_reciprocal_search = TimeKeeper(KeeperMode.DIRECT)
         del t_hmmresults
 
