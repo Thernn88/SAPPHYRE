@@ -41,11 +41,9 @@ def run_command(args: CmdArgs) -> None:
     with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(mode="w", dir=tmpdir) as tmpfile:
         ref_og_hashmap = process_genefile(tmpfile, args.gene_file)
         command = args.string.format(
-            {
-                "tmpfile": tmpfile.name,
-                "resultfile": args.result_file,
-                "gene": args.gene
-            }
+            tmpfile=tmpfile.name,
+            resultfile=args.result_file,
+            gene=args.gene
         )
         os.system(command)
 
