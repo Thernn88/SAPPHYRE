@@ -99,11 +99,11 @@ class TimeKeeper:
 
     def format(self, string):
         """Format and return a string containing {total}."""
-        return string.format({"total": self.differential()})
+        return string.format(total=self.differential())
 
     def format2(self, string):
         """format and return a string containing {total} and {lap}"""
-        return string.format({"total": self.differential(), "lap": self.lap()})
+        return string.format(total=self.differential(), lap=self.lap())
 
 
 if __name__ == "__main__":
