@@ -7,6 +7,7 @@ import sqlite3
 from dataclasses import dataclass
 from multiprocessing.pool import Pool
 from shutil import rmtree
+from tempfile import TemporaryDirectory, NamedTemporaryFile
 from time import time
 
 import wrap_rocks
@@ -14,7 +15,7 @@ from Bio.Seq import Seq
 from Bio.SeqIO.FastaIO import FastaWriter
 from Bio.SeqRecord import SeqRecord
 
-from .utils import printv
+from .utils import printv, gettempdir
 
 
 class Result:
@@ -63,7 +64,6 @@ class GeneConfig:  # FIXME: I am not certain about types.
     def __post_init__(self):
         self.blast_file_path = os.path.join(self.blast_path, f"{self.gene}.blast")
         self.blast_file_done = f"{self.blast_file_path}.done"
-        self.fa_file = os.path.join(self.tmp_path, f"{self.gene}.fa")
 
 
 def do(
@@ -76,28 +76,25 @@ def do(
         or os.path.getsize(gene_conf.blast_file_done) == 0
     ):
         printv("Blasted: {}".format(gene_conf.gene), verbose, 2)
-        with open(gene_conf.fa_file, "w") as fp:
-            fw = FastaWriter(fp)
+        with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmpfile:
+            fw = FastaWriter(tmpfile)
             fw.write_file(gene_conf.gene_sequences)
-
-        cmd = (
-            "{prog} -outfmt '7 qseqid sseqid evalue bitscore qstart qend' "
-            "-evalue '{evalue_threshold}' -threshold '{score_threshold}' "
-            "-num_threads '{num_threads}' -db '{db}' -query '{queryfile}' "
-            "-out '{outfile}'".format(
-                prog=prog,
-                evalue_threshold=gene_conf.blast_minimum_evalue,
-                score_threshold=gene_conf.blast_minimum_score,
-                num_threads=2,
-                db=gene_conf.blast_db_path,
-                queryfile=gene_conf.fa_file,
-                outfile=gene_conf.blast_file_path,
+            cmd = (
+                "{prog} -outfmt '7 qseqid sseqid evalue bitscore qstart qend' "
+                "-evalue '{evalue_threshold}' -threshold '{score_threshold}' "
+                "-num_threads '{num_threads}' -db '{db}' -query '{queryfile}' "
+                "-out '{outfile}'".format(
+                    prog=prog,
+                    evalue_threshold=gene_conf.blast_minimum_evalue,
+                    score_threshold=gene_conf.blast_minimum_score,
+                    num_threads=2,
+                    db=gene_conf.blast_db_path,
+                    queryfile=tmpfile.name,
+                    outfile=gene_conf.blast_file_path,
+                )
             )
-        )
-        os.system(cmd)
-        os.remove(gene_conf.fa_file)
-
-        os.rename(gene_conf.blast_file_path, gene_conf.blast_file_done)
+            os.system(cmd)
+            os.rename(gene_conf.blast_file_path, gene_conf.blast_file_done)
 
     gene_out = {}
     this_return = []
@@ -200,14 +197,6 @@ def run_process(args, input_path) -> None:
             rmtree(blast_path)
     os.makedirs(blast_path, exist_ok=True)
 
-    if os.path.exists("/run/shm"):
-        tmp_path = "/run/shm"
-    elif os.path.exists("/dev/shm"):
-        tmp_path = "/dev/shm"
-    else:
-        tmp_path = os.path.join(input_path, "tmp")
-        os.makedirs(tmp_path, exist_ok=True)
-
     # grab gene reftaxon
     orthoset_db_path = os.path.join(orthosets_dir, orthoset + ".sqlite")
     orthoset_db_con = sqlite3.connect(orthoset_db_path)
@@ -265,7 +254,6 @@ def run_process(args, input_path) -> None:
             do(
                 GeneConfig(
                     gene=gene,
-                    tmp_path=tmp_path,
                     gene_sequences=gene_to_hits[gene],
                     ref_names=ref_taxon[gene],
                     blast_path=blast_path,
@@ -282,7 +270,6 @@ def run_process(args, input_path) -> None:
             (
                 GeneConfig(
                     gene=gene,
-                    tmp_path=tmp_path,
                     gene_sequences=gene_to_hits[gene],
                     ref_names=ref_taxon[gene],
                     blast_path=blast_path,
