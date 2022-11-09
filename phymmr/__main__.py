@@ -451,6 +451,10 @@ def subcmd_mafft(subparsers):
         default="Ortholog_set_Mecopterida_v4",
         help="Orthoset",
     )
+    par.add_argument(
+        "-l", "--linsi", action="store_true", default=False,
+        help="Enable the use of mafft-linsi."
+    )
     par.set_defaults(func=mafft, formathelp=par.format_help)
 
 
