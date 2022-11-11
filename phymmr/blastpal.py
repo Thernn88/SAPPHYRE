@@ -231,7 +231,7 @@ def run_process(args, input_path) -> None:
 
     global_hmm_object_raw = db.get("hmmbatch:all")
     global_hmm_batches = global_hmm_object_raw.split(",")
-    hit_count = 0
+    genes = Counter()
 
     for batch_i in global_hmm_batches:
         key = f"hmmbatch:{batch_i}"
@@ -239,21 +239,21 @@ def run_process(args, input_path) -> None:
         hmm_hits = json.loads(hmm_json)
 
         for hmm_object in hmm_hits:
-            hit_count += 1
             hmm_id = hmm_object["hmm_id"]
             header = hmm_object["header"].strip()
             gene = hmm_object["gene"]
+            genes[gene] = genes.get(gene, 0) + 1
 
             gene_to_hits.setdefault(gene, [])
             gene_to_hits[gene].append(
-                SeqRecord(Seq(hmm_object["hmm_sequence"]), id=header + f"_hmmid{hmm_id}", description=""))
-
-    # genes = list(gene_to_hits.keys())
-    gene_to_hits = Counter(gene_to_hits)  # sort by length of value
+                SeqRecord(Seq(hmm_object["hmm_sequence"]), id=header + f"_hmmid{hmm_id}", description="")
+            )
+    # Identical to Counter().most_common()
+    # genes = sorted(genes.items(), key=lambda x: x[1], reverse=True)
 
     printv(
         "Grabbed HMM Data. Took: {:.2f}s. Found {} hits".format(
-            time() - grab_hmm_start, hit_count
+            time() - grab_hmm_start, genes.total()
         ), args.verbose
     )
 
@@ -266,10 +266,10 @@ def run_process(args, input_path) -> None:
         to_write = [
             do(
                 GeneConfig(
-                    gene=genek,
+                    gene=gene,
                     tmp_path=tmp_path,
-                    gene_sequences=genel,
-                    ref_names=ref_taxon[genek],
+                    gene_sequences=gene_to_hits[gene],
+                    ref_names=ref_taxon[gene],
                     blast_path=blast_path,
                     blast_db_path=blast_db_path,
                     blast_minimum_score=args.blast_minimum_score,
@@ -277,16 +277,16 @@ def run_process(args, input_path) -> None:
                 ),
                 args.verbose
             )
-            for genek, genel in gene_to_hits
+            for gene, _ in genes.most_common()
         ]
     else:
         arguments = [
             (
                 GeneConfig(
-                    gene=genek,
+                    gene=gene,
                     tmp_path=tmp_path,
-                    gene_sequences=genel,
-                    ref_names=ref_taxon[genek],
+                    gene_sequences=gene_to_hits[gene],
+                    ref_names=ref_taxon[gene],
                     blast_path=blast_path,
                     blast_db_path=blast_db_path,
                     blast_minimum_score=args.blast_minimum_score,
@@ -294,7 +294,7 @@ def run_process(args, input_path) -> None:
                 ),
                 args.verbose,
             )
-            for genek, genel in gene_to_hits
+            for gene, _ in genes.most_common()
         ]
 
         with Pool(num_threads) as pool:
