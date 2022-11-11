@@ -4,6 +4,7 @@ import json
 import math
 import os
 import sqlite3
+from collections import Counter
 from dataclasses import dataclass
 from multiprocessing.pool import Pool
 from shutil import rmtree
@@ -247,7 +248,8 @@ def run_process(args, input_path) -> None:
             gene_to_hits[gene].append(
                 SeqRecord(Seq(hmm_object["hmm_sequence"]), id=header + f"_hmmid{hmm_id}", description=""))
 
-    genes = list(gene_to_hits.keys())
+    # genes = list(gene_to_hits.keys())
+    gene_to_hits = Counter(gene_to_hits)  # sort by length of value
 
     printv(
         "Grabbed HMM Data. Took: {:.2f}s. Found {} hits".format(
@@ -264,10 +266,10 @@ def run_process(args, input_path) -> None:
         to_write = [
             do(
                 GeneConfig(
-                    gene=gene,
+                    gene=genek,
                     tmp_path=tmp_path,
-                    gene_sequences=gene_to_hits[gene],
-                    ref_names=ref_taxon[gene],
+                    gene_sequences=genel,
+                    ref_names=ref_taxon[genek],
                     blast_path=blast_path,
                     blast_db_path=blast_db_path,
                     blast_minimum_score=args.blast_minimum_score,
@@ -275,16 +277,16 @@ def run_process(args, input_path) -> None:
                 ),
                 args.verbose
             )
-            for gene in genes
+            for genek, genel in gene_to_hits
         ]
     else:
         arguments = [
             (
                 GeneConfig(
-                    gene=gene,
+                    gene=genek,
                     tmp_path=tmp_path,
-                    gene_sequences=gene_to_hits[gene],
-                    ref_names=ref_taxon[gene],
+                    gene_sequences=genel,
+                    ref_names=ref_taxon[genek],
                     blast_path=blast_path,
                     blast_db_path=blast_db_path,
                     blast_minimum_score=args.blast_minimum_score,
@@ -292,7 +294,7 @@ def run_process(args, input_path) -> None:
                 ),
                 args.verbose,
             )
-            for gene in genes
+            for genek, genel in gene_to_hits
         ]
 
         with Pool(num_threads) as pool:
