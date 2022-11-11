@@ -32,9 +32,9 @@ class ProtFile:
     def makeme(self, dbconn):
         start = time()
         recipe = dbconn.get("getall:prot").split(",")
-        self.content = SpooledTemporaryFile(mode="w+")
+        self.content = SpooledTemporaryFile(mode="w+b")
         for component in recipe:
-            self.content.write(dbconn.get(f"getprot:{component}"))
+            self.content.write(bytes(dbconn.get(f"getprot:{component}"), "utf-8"))
         printv("Retrieved prot data in {:.2f}s".format(time() - start), self.verbosity)
 
     @cached_property
