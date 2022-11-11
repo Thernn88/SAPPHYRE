@@ -299,7 +299,7 @@ def do_protein(
     gene,
     majority,
     minimum_mr_amount,
-    split_non_overlap_chunks,
+    merge_all_candidates,
     debug=None,
 ):
     with open(path, encoding="UTF-8") as fp:
@@ -329,11 +329,11 @@ def do_protein(
         sequences_to_merge.sort(key=lambda x: x[0])
 
         # Disperse sequences into clusters of overlap
-        if split_non_overlap_chunks:
-            overlap_groups = disperse_into_overlap_groups(sequences_to_merge)
-        else:
+        if merge_all_candidates:
             overlap_groups = grab_merge_start_end(sequences_to_merge)
-
+        else:
+            overlap_groups = disperse_into_overlap_groups(sequences_to_merge)
+            
         for overlap_region, this_sequences in overlap_groups:
             # Use the header of the sequence that starts first as the base
             base_header = this_sequences[0][2]
@@ -572,7 +572,7 @@ def do_gene(
     majority,
     minimum_mr_amount,
     verbosity,
-    split_non_overlap_chunks
+    merge_all_candidates
 ) -> None:
     """
     Merge main loop. Opens fasta file, parses sequences and merges based on taxa
@@ -592,7 +592,7 @@ def do_gene(
         gene,
         majority,
         minimum_mr_amount,
-        split_non_overlap_chunks,
+        merge_all_candidates,
         debug=debug,
     )
     with open(path, "w", encoding="UTF-8") as output_file:
@@ -608,7 +608,7 @@ def do_gene(
         make_nt_name(gene),
         majority,
         minimum_mr_amount,
-        split_non_overlap_chunks,
+        merge_all_candidates,
         debug=debug,
     )
     with open(path, "w", encoding="UTF-8") as output_file:
@@ -665,7 +665,7 @@ def do_folder(folder: Path, args):
                     args.majority,
                     args.majority_count,
                     args.verbose,
-                    args.force_overlap_chunks,
+                    args.ignore_overlap_chunks,
                 )
             )
         with Pool(args.processes) as pool:
@@ -686,7 +686,7 @@ def do_folder(folder: Path, args):
                 args.majority,
                 args.majority_count,
                 args.verbose,
-                args.force_overlap_chunks,
+                args.ignore_overlap_chunks,
             )
 
     timed = round(time() - start_time)

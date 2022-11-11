@@ -376,11 +376,11 @@ def subcmd_mergeoverlap(subparsers):
         "compared to in split calculation.",
     )
     par.add_argument(
-        "-fo",
-        "--force_overlap_chunks",
+        "-io",
+        "--ignore_overlap_chunks",
         action="store_true", 
         default=False,
-        help="Only merge overlapping chunks within each reference taxon candidate merge."
+        help="Ignore overlapping chunks and merge all candidates for a reference taxon."
     )
     par.add_argument(
         "-m",
