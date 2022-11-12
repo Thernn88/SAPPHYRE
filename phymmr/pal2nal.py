@@ -10,7 +10,6 @@ from typing import Any, Dict, Generator, List, Tuple
 from Bio.SeqIO.FastaIO import SimpleFastaParser
 from pro2codon import pn2codon
 
-DICT_OPP = {'NT Seqs': "AA Seqs", "AA Seqs": 'NT_Seqs'}
 DICT_TABLES = {
     "1": {
         "F": [
@@ -3581,7 +3580,7 @@ def return_aligned_paths(
     glob_paths_taxa: List[Path],
     glob_paths_genes: List[Path],
     path_aligned: Path,
-    d,
+    specified_dna_table,
 ) -> Generator[Path, Any, Any]:
     for path_nt, path_aa in zip(glob_paths_taxa, glob_paths_genes):
         if not path_nt.is_file() or not path_aa.is_file():
@@ -3597,11 +3596,11 @@ def return_aligned_paths(
             path_aa,
             path_nt,
             path_aligned.joinpath(Path(f"{stem_taxon}.nt.fa")),
-            d,
+            specified_dna_table,
         )
 
 
-def prepare_taxa_and_genes(input: str, d) -> Tuple[Generator[
+def prepare_taxa_and_genes(input: str, specified_dna_table) -> Tuple[Generator[
     Tuple[Path, Path, Path],
     Any,
     Any
@@ -3622,7 +3621,7 @@ def prepare_taxa_and_genes(input: str, d) -> Tuple[Generator[
         glob_taxa,
         glob_genes,
         joined_nt_aligned,
-        d,
+        specified_dna_table,
     )
 
     return out_generator, len(glob_genes)
@@ -3643,18 +3642,25 @@ def read_and_convert_fasta_files(
     aas = []
     nts = {}
 
-    for aa, nt in zip(aa_seqs, nt_seqs):
-        aa_header, aa_seq = aa
+    nt_has_refs = False
+    for i, nt in enumerate(nt_seqs):
+        if i == 0:
+            if nt[0][-1] == ".": 
+                nt_has_refs = True
+
         nt_header, nt_seq = nt
+        nt_header, nt_seq = nt_header.strip(), nt_seq.strip()
+        nts[nt_header] = (nt_header, nt_seq)
+
+    
+    for aa in aa_seqs:
+        aa_header, aa_seq = aa
+
+        if aa_header[-1] == "." and not nt_has_refs:
+            continue
 
         aa_header, aa_seq = aa_header.strip(), aa_seq.strip()
-        nt_header, nt_seq = nt_header.strip(), nt_seq.strip()
-
-        if aa_header[-2:] == '.a':
-            print(f"{aa_header[-2:]} == '.a' break")  # FIXME what does it mean?
-            break
-
-        nts[nt_header] = (nt_header, nt_seq)
+        
         aas.append((aa_header, aa_seq))
 
     ret = {}
@@ -3664,23 +3670,28 @@ def read_and_convert_fasta_files(
             if aa[0] not in ret:
                 i += 1
             ret[aa[0]] = (aa, (i, *nts[aa[0]]))
-        except:
+        except KeyError as e:
             print("ERROR CAUGHT: There is a single header in PEP sequence FASTA file that does not exist in NUC sequence FASTA file")
-            sys.exit()
+            print(f"SEQUENCE MISSING: {e}")
+            return False
     return ret
 
 
-def worker(tup: Tuple[Path, Path, Path, Dict]):
-    aa_file, nt_file, out_file, d = tup
+def worker(aa_file: str, nt_file: str, out_file:Path, specified_dna_table:dict):
     seqs = read_and_convert_fasta_files(
         aa_file,
         nt_file
     )
 
+    if seqs is False:
+        return False
+
     stem = out_file.stem
-    res = pn2codon(stem, d, seqs)
+    res = pn2codon(stem, specified_dna_table, seqs)
 
     out_file.write_text(res)    
+
+    return True
 
 
 def timeit(func):
@@ -3691,7 +3702,7 @@ def timeit(func):
         end_time = time.perf_counter()
         total_time = end_time - start_time
         print(
-            f'Function {func.__name__}{args} {kwargs} Took {total_time:.4f} seconds')
+            f"Function {func.__name__}{args} {kwargs} Took {total_time:.4f} seconds")
         return result
     return timeit_wrapper
 
@@ -3702,14 +3713,19 @@ def run_batch_threaded(num_threads: int, ls: List[
             List[Tuple[Tuple[Path, Path, Path], Dict]]
         ]]):
     with Pool(num_threads) as pool:
-        list(pool.map(worker, ls, chunksize=100))
+        return all(pool.starmap(worker, ls, chunksize=100))
 
 
 def main(args):
-    d = DICT_TABLES[str(args.table)]
+    specified_dna_table = DICT_TABLES[str(args.table)]
     for folder in args.INPUT:
-        generator, _ = prepare_taxa_and_genes(folder, d)
-        run_batch_threaded(num_threads=args.processes, ls=generator)
+        generator, _ = prepare_taxa_and_genes(folder, specified_dna_table)
+        success = run_batch_threaded(num_threads=args.processes, ls=generator)
+
+        if not success:
+            print('A fatal error has occured.')
+            return False
+
     return True
 
 

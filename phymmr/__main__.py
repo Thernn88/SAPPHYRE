@@ -81,7 +81,7 @@ def subcmd_hmmsearch(subparsers):
         "-oi",
         "--orthoset_input",
         type=str,
-        default="PhyMMR/orthosets",
+        default="orthosets",
         help="Path to directory of Orthosets folder",
     )
     par.add_argument(
@@ -195,7 +195,7 @@ def subcmd_blastpal(subparsers):
         "-oi",
         "--orthoset_input",
         type=str,
-        default="PhyMMR/orthosets",
+        default="orthosets",
         help="Path to directory of Orthosets folder",
     )
     par.add_argument(
@@ -250,7 +250,7 @@ def subcmd_reporter(subparsers):
         "-oi",
         "--orthoset_input",
         type=str,
-        default="PhyMMR/orthosets",
+        default="orthosets",
         help="Path to directory of Orthosets folder",
     )
     par.add_argument(
@@ -376,6 +376,13 @@ def subcmd_mergeoverlap(subparsers):
         "compared to in split calculation.",
     )
     par.add_argument(
+        "-io",
+        "--ignore_overlap_chunks",
+        action="store_true", 
+        default=False,
+        help="Ignore overlapping chunks and merge all candidates for a reference taxon."
+    )
+    par.add_argument(
         "-m",
         "--majority",
         type=float,
@@ -441,7 +448,7 @@ def subcmd_mafft(subparsers):
         "-oi",
         "--orthoset_input",
         type=str,
-        default="PhyMMR/orthosets",
+        default="orthosets",
         help="Path to directory of Orthosets folder",
     )
     par.add_argument(
@@ -450,6 +457,10 @@ def subcmd_mafft(subparsers):
         type=str,
         default="Ortholog_set_Mecopterida_v4",
         help="Orthoset",
+    )
+    par.add_argument(
+        "-l", "--linsi", action="store_true", default=False,
+        help="Enable the use of mafft-linsi."
     )
     par.set_defaults(func=mafft, formathelp=par.format_help)
 

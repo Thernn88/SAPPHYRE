@@ -80,6 +80,8 @@ class Hit:
         self.hmm_end = as_json["hmm_end"]
         self.ali_start = as_json["ali_start"]
         self.ali_end = as_json["ali_end"]
+        self.remove_extended_orf() #Set values to null
+        
 
     def remove_extended_orf(self):
         self.extended_orf_aa_sequence = None
@@ -453,7 +455,6 @@ def get_multi_orf(query, targets, score_threshold, tmp_path, include_extended=Fa
 
     with open(outfile) as fp:
         extended_results, results = parse_multi_results(fp)
-
     os.remove(queryfile)
     os.remove(targetfile)
     os.remove(outfile)
@@ -749,11 +750,12 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
 
                             if extended_orf_contains_original_orf(hit):
                                 orf_overlap = overlap_by_orf(hit)
-                                if orf_overlap < orf_overlap_minimum:
-                                    hit.remove_extended_orf()
-                            else:
-                                hit.remove_extended_orf()
-                        else:
+                                if orf_overlap >= orf_overlap_minimum:
+                                    continue
+                            
+                            # Does not contain original orf or does not overlap enough.
+                            hit.remove_extended_orf()
+                        else: # No alignment returned
                             print("Failed to extend orf on {}".format(hit.header))
                     output_sequences.append(hit)
     if len(output_sequences) > 0:
@@ -787,7 +789,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
     if eargs.verbose >= 2:
         print(
             "{} took {:.2f}s. Had {} sequences".format(
-                eargs.orthoid, t_gene_start.differencial(), len(output_sequences)
+                eargs.orthoid, t_gene_start.differential(), len(output_sequences)
             )
         )
 
@@ -842,7 +844,7 @@ def reciprocal_search(
     if verbose >= 3:
         print(
             "Checked reciprocal hits for {}. Took {:.2f}s.".format(
-                score, t_reciprocal_start.differencial()
+                score, t_reciprocal_start.differential()
             )
         )
     return results
@@ -909,7 +911,7 @@ def do_taxa(path, taxa_id, args):
         t_reference_taxa = TimeKeeper(KeeperMode.DIRECT)
         print(
             "Initialized databases. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing reference taxa in set.".format(
-                t_taxa_start.differencial(), t_init_db.differencial()
+                t_taxa_start.differential(), t_init_db.differential()
             )
         )
         del t_init_db
@@ -920,7 +922,7 @@ def do_taxa(path, taxa_id, args):
         t_hmmresults = TimeKeeper(KeeperMode.DIRECT)
         print(
             "Got reference taxa in set. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing hmmresults".format(
-                t_taxa_start.differencial(), t_reference_taxa.differencial()
+                t_taxa_start.differential(), t_reference_taxa.differential()
             )
         )
         del t_reference_taxa
@@ -940,17 +942,10 @@ def do_taxa(path, taxa_id, args):
     ####################################
     if args.verbose >= 1:
         print(
-            "Got hmmresults. Elapsed time {:.2f}s. Took {:.2f}s.".format(
-                t_taxa_start.differencial(), t_hmmresults.differencial()
+            "Got hmmresults. Elapsed time {:.2f}s. Took {:.2f}s. Doing reciprocal check.".format(
+                t_taxa_start.differential(), t_hmmresults.differential()
             )
         )
-        # FIXME: defunct time keeping. I don't know where the db processing is
-        #   located. Is this a sqlite3 remnant?
-        # print(
-        #     "Retrieved data from DB. Elapsed time {:.2f}s. Took {:.2f}s. Doing reciprocal check.".format(
-        #         time() - T_global_start, time() - T_hmmresults
-        #     )
-        # )
         t_reciprocal_search = TimeKeeper(KeeperMode.DIRECT)
         del t_hmmresults
 
@@ -990,7 +985,7 @@ def do_taxa(path, taxa_id, args):
     if args.verbose >= 1:
         print(
             "Reciprocal check done, found {} reciprocal hits. Elapsed time {:.2f}s. Took {:.2f}s. Exonerating genes.".format(
-                brh_count, t_taxa_start.differencial(), t_reciprocal_search.differencial()
+                brh_count, t_taxa_start.differential(), t_reciprocal_search.differential()
             )
         )
 
@@ -1031,11 +1026,11 @@ def do_taxa(path, taxa_id, args):
     if args.verbose >= 1:
         print(
             "Done. Final time {:.2f}s. Exonerate took {:.2f}s.".format(
-                t_taxa_start.differencial(), t_exonerate_genes.differencial()
+                t_taxa_start.differential(), t_exonerate_genes.differential()
             )
         )
     else:
-        print("Done took {:.2f}s.".format(t_taxa_start.differencial()))
+        print("Done took {:.2f}s.".format(t_taxa_start.differential()))
 
 
 ####
