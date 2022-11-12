@@ -557,13 +557,6 @@ def subcmd_sradownload(sp):
         help="Path to SRA Toolkit. Will try system's PATH if not used.",
         required=False
     )
-    par.add_argument(
-        "-p",
-        "--processes",
-        type=int,
-        default=1,
-        help="Number of threads used to call processes.",
-    )
     par.set_defaults(func=sradownload, formathelp=par.format_help)
 
 
