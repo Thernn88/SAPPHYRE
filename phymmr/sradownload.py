@@ -1,45 +1,34 @@
-import csv 
+import csv
 import os
-import requests
-import argparse
-from time import sleep
 from multiprocessing.pool import Pool
+from pathlib import Path
 
-def download_parallel(command, srr_acession, path_to_download, expected_directory, out_fields):
-    os.system(f"{command} {srr_acession} -O {path_to_download}")
-    return os.path.exists(expected_directory), out_fields
+import requests
+from bs4 import BeautifulSoup
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input', default='Coleoptera.csv', help="CSV File Input.")
-    parser.add_argument('-b', '--bin', default='C:/Users/kevin/Downloads/sratoolkit/bin', help="Path to SRA Toolkit.")
-    parser.add_argument(
-        "-p",
-        "--processes",
-        type=int,
-        default=1,
-        help="Number of threads used to call processes.",
-    )
-    args = parser.parse_args()
+from phymmr.utils import printv
 
-    path_to_bin = args.bin
-    base = os.path.basename(args.input).split('.')[0]
 
-    finPath = args.input.split('.')
-    finPath[0] = finPath[0]+'_Downloaded'
-    finPath = '.'.join(finPath)
-    failPath = args.input.split('.')
-    failPath[0] = failPath[0]+'_Fails'
-    failPath = '.'.join(failPath)
+def download_parallel(command, srr_acession, path_to_download, verbose):
+    printv(f"Download {srr_acession} to {path_to_download}...", verbose)
+    r = os.system(f"{command} {srr_acession} -O {path_to_download}")
+    print(r)
 
-    open(finPath,'w',encoding='utf-8').write('')
-    open(failPath,'w',encoding='utf-8').write('')
 
-    with open(args.input, encoding='utf-8') as csvfile:
-        csv_read = csv.reader(csvfile, delimiter=',', quotechar='"')
+def main(args):
+    cmd = 'fastq-dump --gzip'
+    if args.bin:
+        cmd = Path(args.bin, cmd)
+
+    csvfile = Path(args.INPUT)
+    # target_folder = csvfile.name.removesuffix(".csv")
+    path_to_download = Path(os.getcwd(), csvfile.name.removesuffix(".csv"))
+
+    with open(csvfile, mode="r", encoding='utf-8') as fp:
+        csv_read = csv.reader(fp, delimiter=',', quotechar='"')
         arguments = []
-        for i,fields in enumerate(csv_read):
-            out_fields = ['"'+str(i).replace('ï»¿','')+'"' for i in fields]
+        for i, fields in enumerate(csv_read):
+            out_fields = ['"{}"'.format(str(i).replace('ï»¿', '')) for i in fields]
             if fields[0] == 'Experiment Accession':
                 out_fields.append('"SRR Acession"')
 
@@ -48,20 +37,20 @@ if __name__ == '__main__':
                 print(f"Searching for runs in SRA: {acession}")
 
                 url = 'https://www.ncbi.nlm.nih.gov/sra/{}[accn]'.format(acession)
-
+                # TODO handle network errors
                 req = requests.get(url)
-                
-                link_elements = req.text.split('trace.ncbi.nlm.nih.gov/Traces?run=')
-                
-                for link in link_elements[1:]:
-                    srr_acession = link.split('">')[0]
+                soup = BeautifulSoup(req.content, "html.parser")
+                for srr_acession in (
+                    a.contents[0]
+                    for a in soup.find_all("a", href=True)
+                    if a['href'].startswith("//trace.ncbi.nlm.nih.gov/Traces?run")
+                ):
                     print(f"Attempting to download: {srr_acession}")
-                    out_fields.append('"'+srr_acession+'"')
+                    out_fields.append(f'"{srr_acession}"')
 
-                    command = os.path.join(path_to_bin,'fastq-dump --gzip')
-                    path_to_download = os.path.join(os.getcwd(),base)
-                    expected_directory = os.path.join(path_to_download,srr_acession+'.fastq')
-                    arguments.append((command,srr_acession,path_to_download,expected_directory,out_fields))
+                    # TODO: verify download is successful
+                    # expected_directory = Path(path_to_download, f'{srr_acession}.fastq')
+                    arguments.append((cmd, srr_acession, path_to_download, args.verbose))
 
         with Pool(args.processes) as pool:
-            downloaded_files = pool.starmap(download_parallel, arguments, chunksize=1)
+            pool.starmap(download_parallel, arguments, chunksize=1)
