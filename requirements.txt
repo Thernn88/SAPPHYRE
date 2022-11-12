@@ -5,3 +5,5 @@ wrap_rocks>=0.3.1
 xxhash>=3.0.0
 phymmr_tools>=0.2.4
 pro2codon>=1.2.4
+requests>=2.28
+beautifulsoup4
