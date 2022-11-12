@@ -4,6 +4,7 @@ import json
 import math
 import os
 import sqlite3
+from collections import Counter
 from dataclasses import dataclass
 from multiprocessing.pool import Pool
 from shutil import rmtree
@@ -230,7 +231,7 @@ def run_process(args, input_path) -> None:
 
     global_hmm_object_raw = db.get("hmmbatch:all")
     global_hmm_batches = global_hmm_object_raw.split(",")
-    hit_count = 0
+    genes = Counter()
 
     for batch_i in global_hmm_batches:
         key = f"hmmbatch:{batch_i}"
@@ -238,20 +239,21 @@ def run_process(args, input_path) -> None:
         hmm_hits = json.loads(hmm_json)
 
         for hmm_object in hmm_hits:
-            hit_count += 1
             hmm_id = hmm_object["hmm_id"]
             header = hmm_object["header"].strip()
             gene = hmm_object["gene"]
+            genes[gene] = genes.get(gene, 0) + 1
 
             gene_to_hits.setdefault(gene, [])
             gene_to_hits[gene].append(
-                SeqRecord(Seq(hmm_object["hmm_sequence"]), id=header + f"_hmmid{hmm_id}", description=""))
-
-    genes = list(gene_to_hits.keys())
+                SeqRecord(Seq(hmm_object["hmm_sequence"]), id=header + f"_hmmid{hmm_id}", description="")
+            )
+    # Identical to Counter().most_common()
+    # genes = sorted(genes.items(), key=lambda x: x[1], reverse=True)
 
     printv(
         "Grabbed HMM Data. Took: {:.2f}s. Found {} hits".format(
-            time() - grab_hmm_start, hit_count
+            time() - grab_hmm_start, genes.total()
         ), args.verbose
     )
 
@@ -275,7 +277,7 @@ def run_process(args, input_path) -> None:
                 ),
                 args.verbose
             )
-            for gene in genes
+            for gene, _ in genes.most_common()
         ]
     else:
         arguments = [
@@ -292,7 +294,7 @@ def run_process(args, input_path) -> None:
                 ),
                 args.verbose,
             )
-            for gene in genes
+            for gene, _ in genes.most_common()
         ]
 
         with Pool(num_threads) as pool:
