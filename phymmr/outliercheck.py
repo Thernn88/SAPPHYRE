@@ -310,7 +310,7 @@ def compare_means(
     return regulars, to_add_later, outliers
 
 
-def delete_empty_columns(raw_fed_sequences: list) -> list:
+def delete_empty_columns(raw_fed_sequences: list) -> tuple[list, list]:
     """
     Iterates over each sequence and deletes columns
     that consist of 100% dashes.
@@ -323,9 +323,6 @@ def delete_empty_columns(raw_fed_sequences: list) -> list:
 
     for i in range(0, len(raw_sequences), 2):
         sequences.append(raw_sequences[i + 1])
-    min_length = float("inf")
-    for seq in sequences:
-        min_length = min(len(seq), min_length)
 
     positions_to_keep = []
     if sequences:
@@ -334,20 +331,42 @@ def delete_empty_columns(raw_fed_sequences: list) -> list:
                 if sequence[i] != "-":
                     positions_to_keep.append(i)
                     break
+                
         for i in range(0, len(raw_sequences), 2):
             try:
                 sequence = [raw_sequences[i + 1][x] for x in positions_to_keep]
                 result.append(raw_sequences[i] + "\n")
             except IndexError:
-                print(sequence)  # FIXME: write a proper error message
+                print(raw_sequences[i])  # FIXME: write a proper error message
                 continue
             sequence.append("\n")
             sequence = "".join(sequence)
 
             result.append(sequence)
 
-    return result
+    return result, positions_to_keep
 
+def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
+    """
+    Iterates over each sequence and deletes columns
+    that were removed in the empty column removal.
+    """
+    raw_sequences = [
+        i.replace("\n", "") for i in raw_fed_sequences if i.replace("\n", "") != ""
+    ]
+
+    result = []
+
+    for i in range(0, len(raw_sequences), 2):
+        result.append(raw_sequences[i]+"\n")
+
+        sequence = raw_sequences[i + 1]
+
+        sequence = [sequence[i*3:(i*3)+3] for i in positions_to_keep]
+        
+        result.append("".join(sequence)+"\n")
+    
+    return result
 
 def remove_excluded_sequences(lines: list, excluded: set) -> list:
     """
@@ -412,7 +431,7 @@ def main_process(
     for line in to_add:
         raw_regulars.append(line)
 
-    regulars = delete_empty_columns(raw_regulars)
+    regulars, allowed_columns = delete_empty_columns(raw_regulars)
 
     if to_add:  # If candidate added to fasta
         with open(aa_output, "w+", encoding="UTF-8") as aa_output:
@@ -441,7 +460,7 @@ def main_process(
                 non_empty_lines = remove_excluded_sequences(
                     lines, to_be_excluded
                 )
-                non_empty_lines = delete_empty_columns(non_empty_lines)
+                non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
 
             for i in range(0, len(non_empty_lines), 2):
                 nt_output_handle.write(non_empty_lines[i])
