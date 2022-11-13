@@ -307,13 +307,14 @@ def do_protein(
 
     gene_out = []
 
-    # Grab all the reference sequences
-    comparison_sequences = {}
-    for header, sequence in references:
-        gene_out.append(header)
-        gene_out.append(sequence)
-        taxon = header.split("|")[1]
-        comparison_sequences[taxon] = sequence
+    if protein == "aa":
+        # Grab all the reference sequences
+        comparison_sequences = {}
+        for header, sequence in references:
+            gene_out.append(header)
+            gene_out.append(sequence)
+            taxon = header.split("|")[1]
+            comparison_sequences[taxon] = sequence
 
     # Grab all the candidate sequences and sort into reference taxa based groups
     taxa_groups = {}
@@ -333,7 +334,7 @@ def do_protein(
             overlap_groups = grab_merge_start_end(sequences_to_merge)
         else:
             overlap_groups = disperse_into_overlap_groups(sequences_to_merge)
-            
+
         for overlap_region, this_sequences in overlap_groups:
             # Use the header of the sequence that starts first as the base
             base_header = this_sequences[0][2]
@@ -391,16 +392,17 @@ def do_protein(
                         header.split("|")[1] for (header, _) in sequences_at_current_point
                     ]
 
-                    most_occuring = most_common_element_with_count(taxons_of_split)
-                    if most_occuring[1] == 1:  # No taxa occur more than once
-                        comparison_taxa = fallback_taxa
-                    else:
-                        comparison_taxa = most_occuring[0]
+                    if protein == "aa":
+                        most_occuring = most_common_element_with_count(taxons_of_split)
+                        if most_occuring[1] == 1:  # No taxa occur more than once
+                            comparison_taxa = fallback_taxa
+                        else:
+                            comparison_taxa = most_occuring[0]
 
-                    # Grab the reference sequence for the mode taxon
-                    comparison_sequence = comparison_sequences.get(
-                        comparison_taxa, comparison_sequences[fallback_taxa]
-                    )
+                        # Grab the reference sequence for the mode taxon
+                        comparison_sequence = comparison_sequences.get(
+                            comparison_taxa, comparison_sequences[fallback_taxa]
+                        )
 
                     next_character = sequences_at_current_point[0][1][cursor]
 
@@ -415,6 +417,8 @@ def do_protein(
 
                         split_key = header_a + header_b
 
+                        
+
                         if protein == "aa":
                             if split_key in already_calculated_splits:
                                 split_position = already_calculated_splits[split_key]
@@ -425,6 +429,7 @@ def do_protein(
                                 already_calculated_splits[split_key] = split_position
 
                         elif protein == "nt":
+                            
                             split_position = already_calculated_splits[split_key] * 3
 
                         if cursor >= split_position:
