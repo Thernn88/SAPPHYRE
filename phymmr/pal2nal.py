@@ -3725,7 +3725,8 @@ def main(args):
             printv("A fatal error has occured.", args.verbose, 0)
             return False
         printv(f"Done! Took {time_keeper.lap():.2f}s", args.verbose, 1)
-    printv(f"Took {time_keeper.differential():.2f}s overall.", args.verbose, 0)
+    if len(args.INPUT) > 1 or not args.verbose:
+        printv(f"Took {time_keeper.differential():.2f}s overall.", args.verbose, 0)
     return True
 
 if __name__ == "__main__":
