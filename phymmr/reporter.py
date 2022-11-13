@@ -92,7 +92,7 @@ class Hit:
         self.extended_orf_cdna_start = None
         self.extended_orf_cdna_end = None
 
-    def add_extended_orf(self, exonerate_record):
+    def add_extended_orf(self, exonerate_record, verbose):
         (
             _,
             self.extended_orf_cdna_sequence,
@@ -111,9 +111,9 @@ class Hit:
             (self.extended_orf_cdna_end - 1) / 3
         ) + 1
 
-        self.extended_orf_aa_sequence = translate_cdna(self.extended_orf_cdna_sequence)
+        self.extended_orf_aa_sequence = translate_cdna(self.extended_orf_cdna_sequence, verbose)
 
-    def add_orf(self, exonerate_record):
+    def add_orf(self, exonerate_record, verbose):
         (
             _,
             self.orf_cdna_sequence,
@@ -124,7 +124,7 @@ class Hit:
             self.orf_aa_end,
         ) = exonerate_record
 
-        self.orf_aa_sequence = translate_cdna(self.orf_cdna_sequence)
+        self.orf_aa_sequence = translate_cdna(self.orf_cdna_sequence, verbose)
 
         self.orf_cdna_start_on_transcript = (
             self.orf_cdna_start + (self.ali_start * 3) - 3
@@ -346,12 +346,12 @@ def fastaify(headers, sequences, tmp_path):
     return path
 
 
-def translate_cdna(cdna_seq):
+def translate_cdna(cdna_seq, verbose):
     if not cdna_seq:
         return None
 
     if len(cdna_seq) % 3 != 0:
-        print("WARNING: NT Sequence length is not divisable by 3")
+        printv("WARNING: NT Sequence length is not divisable by 3", verbose, 0)
 
     return str(Seq(cdna_seq).translate())
 
@@ -737,7 +737,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
         for hit in hits:
             matching_alignment = get_match(hit.header, results)
             if matching_alignment:
-                hit.add_orf(matching_alignment)
+                hit.add_orf(matching_alignment, eargs.verbose)
 
                 if hit.orf_cdna_sequence:
                     if extend_orf:
@@ -746,7 +746,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                         )
 
                         if matching_extended_alignment:
-                            hit.add_extended_orf(matching_extended_alignment)
+                            hit.add_extended_orf(matching_extended_alignment, eargs.verbose)
 
                             if extended_orf_contains_original_orf(hit):
                                 orf_overlap = overlap_by_orf(hit)
@@ -840,7 +840,7 @@ def reciprocal_search(
 
 
 def do_taxa(path, taxa_id, args):
-    print(f"Doing {taxa_id}.")
+    printv(f"Doing {taxa_id}.", args.verbose, 0)
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
 
     num_threads = args.processes
@@ -981,7 +981,7 @@ def do_taxa(path, taxa_id, args):
     printv(f"Done. Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s. Exonerating genes.", args.verbose)
 
     if not args.verbose:
-        print(f"Done took {time_keeper.differential():.2f}s.")
+        printv(f"Done took {time_keeper.differential():.2f}s.", args.verbose, 0)
 
 
 ####
@@ -1033,7 +1033,7 @@ header_seperator = "|"
 
 def main(args):
     if not all(os.path.exists(i) for i in args.INPUT):
-        print("ERROR: All folders passed as argument must exist.")
+        printv("ERROR: All folders passed as argument must exist.", args.verbose, 0)
         return False
     for input_path in args.INPUT:
         rocks_db_path = os.path.join(input_path, "rocksdb")
