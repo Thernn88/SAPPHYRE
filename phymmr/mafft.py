@@ -79,7 +79,15 @@ def do_folder(folder, args):
     os.makedirs(mafft_path, exist_ok=True)
 
     genes = [gene.split(".")[0] for gene in os.listdir(aa_path) if ".aa" in gene]
-    aln_path = os.path.join(args.orthoset_input, args.orthoset, ALN_FOLDER)
+    genes.sort(key = lambda x : os.path.getsize(os.path.join(aa_path, x + ".aa.fa")), reverse=True)
+    orthoset_path = os.path.join(args.orthoset_input, args.orthoset)
+    aln_path = os.path.join(orthoset_path, ALN_FOLDER)
+    if not os.path.exists(orthoset_path):
+        print('ERROR: Orthoset path not found.')
+        return False
+    if not os.path.exists(aln_path):
+        print("ERROR: Aln folder not found.")
+        return False
     cmd = "mafft"
     if args.linsi:
         cmd = "mafft-linsi"
@@ -108,6 +116,7 @@ def do_folder(folder, args):
             pool.map(run_command, arguments, chunksize=1)
 
     print("Took {:.2f}s".format(time() - start))
+    return True
 
 
 def main(args):
@@ -115,7 +124,9 @@ def main(args):
         print("ERROR: All folders passed as argument must exists.")
         return False
     for folder in args.INPUT:
-        do_folder(folder, args)
+        success = do_folder(folder, args)
+        if not success:
+            return False
     return True
 
 
