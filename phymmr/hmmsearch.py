@@ -492,7 +492,7 @@ def search_prot(
 
     p = subprocess.run(command, stdout=subprocess.PIPE)
     if p.returncode != 0:  # non-zero return code means an error
-        printv(f"{domtbl_path}:hmmsearch error code {p.returncode}", verbose)
+        printv(f"{domtbl_path}:hmmsearch error code {p.returncode}", verbose, 0)
     else:
         printv(f"Searched {os.path.basename(domtbl_path)}", verbose, 2)
     return get_hits_from_domtbl(domtbl_path, score, evalue)
@@ -917,16 +917,19 @@ def run_process(args, input_path: str) -> None:
     batches = len(global_hmm_obj_recipe)
     kicks = count - total_hits
     printv(f"Inserted {total_hits} hits over {batches} batch(es) in {time_keeper.lap():.2f} seconds. Kicked {kicks} hits during filtering", args.verbose)
-    printv(f"Took {time_keeper.differential():.2f}s overall", args.verbose, 0)
+    printv(f"Done! Took {time_keeper.differential():.2f}s overall", args.verbose, 0)
 
 
 def main(args):
+    global_time = TimeKeeper(KeeperMode.DIRECT)
     if not all(os.path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
     for input_path in args.INPUT:
-        printv('Begin Hmmsearch for {}'.format(os.path.basename(input_path)), args.verbose)
+        printv(f"Processing: {os.path.basename(input_path)}", args.verbose)
         run_process(args, input_path)
+    if len(args.INPUT) > 1 or not args.verbose:
+        printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
     return True
 
 

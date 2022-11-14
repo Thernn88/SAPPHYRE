@@ -193,7 +193,7 @@ def run_process(args, input_path) -> None:
     orthosets_dir = args.orthoset_input
 
     taxa = os.path.basename(input_path)
-    printv(f'Begin BlastPal for {taxa}', args.verbose, 0)
+    printv(f'Processing: {taxa}', args.verbose, 0)
     printv("Grabbing Reference data from SQL.", args.verbose)
     # make dirs
     blast_path = os.path.join(input_path, "blast")
@@ -300,15 +300,18 @@ def run_process(args, input_path) -> None:
             i += count
 
     printv(f"Writing {i} results took {time_keeper.lap():.2f}s", args.verbose)
-    printv(f"Done. Took {time_keeper.differential():.2f}s overall", args.verbose, 0)
+    printv(f"Done! Took {time_keeper.differential():.2f}s overall", args.verbose)
 
 
 def main(args):
+    global_time = TimeKeeper(KeeperMode.DIRECT)
     if not all(os.path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
     for input_path in args.INPUT:
         run_process(args, input_path)
+    if len(args.INPUT) > 1 or not args.verbose:
+        printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
     return True
 
 

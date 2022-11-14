@@ -35,9 +35,9 @@ CmdArgs = namedtuple(
 def run_command(args: CmdArgs) -> None:
     if args.lock is not None:
         with args.lock:
-            printv(f"Doing: {args.gene}", args.verbose)
+            printv(f"Doing: {args.gene}", args.verbose, 2)
     else:
-        printv(f"Doing: {args.gene}", args.verbose)
+        printv(f"Doing: {args.gene}", args.verbose, 2)
 
     with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(mode="w+", dir=tmpdir) as tmpfile:
         ref_og_hashmap = process_genefile(tmpfile, args.gene_file)
@@ -70,7 +70,7 @@ def run_command(args: CmdArgs) -> None:
 
 
 def do_folder(folder, args):
-    printv(f"Doing: {os.path.basename(folder)}", args.verbose)
+    printv(f"Processing: {os.path.basename(folder)}", args.verbose)
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     mafft_path = os.path.join(folder, MAFFT_FOLDER)
     aa_path = os.path.join(folder, AA_FOLDER)

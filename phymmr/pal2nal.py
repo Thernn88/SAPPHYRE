@@ -3688,7 +3688,7 @@ def read_and_convert_fasta_files(
 
 def worker(aa_file: str, nt_file: str, out_file: Path, specified_dna_table: dict, verbose: bool) -> bool:
     gene = ospath.basename(aa_file).split(".")[0]
-    printv(f"Doing: {gene}", verbose, 1)
+    printv(f"Doing: {gene}", verbose, 2)
     seqs = read_and_convert_fasta_files(
         aa_file,
         nt_file,
@@ -3717,7 +3717,7 @@ def main(args):
     specified_dna_table = DICT_TABLES[str(args.table)]
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     for folder in args.INPUT:
-        printv(f"Doing: {ospath.basename(folder)}", args.verbose, 0)
+        printv(f"Processing: {ospath.basename(folder)}", args.verbose, 0)
         this_taxa_jobs, _ = prepare_taxa_and_genes(folder, specified_dna_table, args.verbose)
         success = run_batch_threaded(num_threads=args.processes, ls=this_taxa_jobs)
 

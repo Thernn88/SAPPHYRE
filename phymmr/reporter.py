@@ -840,7 +840,7 @@ def reciprocal_search(
 
 
 def do_taxa(path, taxa_id, args):
-    printv(f"Doing {taxa_id}.", args.verbose, 0)
+    printv(f"Processing: {taxa_id}", args.verbose, 0)
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
 
     num_threads = args.processes
@@ -978,10 +978,8 @@ def do_taxa(path, taxa_id, args):
         with Pool(num_threads) as pool:
             pool.map(run_exonerate, arguments, chunksize=1)
     
-    printv(f"Done. Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s. Exonerating genes.", args.verbose)
+    printv(f"Done! Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s. Exonerating genes.", args.verbose)
 
-    if not args.verbose:
-        printv(f"Done took {time_keeper.differential():.2f}s.", args.verbose, 0)
 
 
 ####
@@ -1032,6 +1030,7 @@ header_seperator = "|"
 
 
 def main(args):
+    global_time = TimeKeeper(KeeperMode.DIRECT)
     if not all(os.path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exist.", args.verbose, 0)
         return False
@@ -1044,6 +1043,8 @@ def main(args):
             taxa_id=os.path.basename(input_path).split(".")[0],
             args=args,
         )
+    if len(args.INPUT) > 1 or not args.verbose:
+        printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
     return True
 
 

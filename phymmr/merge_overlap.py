@@ -15,6 +15,9 @@ from typing import Union, Literal
 import wrap_rocks
 from Bio.Seq import Seq
 
+from .utils import printv
+from .timekeeper import TimeKeeper, KeeperMode
+
 TMP_PATH = None
 if os.path.exists("/run/shm"):
     TMP_PATH = "/run/shm"
@@ -583,9 +586,7 @@ def do_gene(
     Merge main loop. Opens fasta file, parses sequences and merges based on taxa
     """
     already_calculated_splits = {}
-
-    if verbosity:
-        print("Doing:",gene)
+    printv(f"Doing: {gene}", verbosity, 2)
 
     path, data = do_protein(
         "aa",
@@ -628,15 +629,15 @@ def run_command(arg_tuple: tuple) -> None:
 
 
 def do_folder(folder: Path, args):
-    start_time = time()
+    folder_time = TimeKeeper(KeeperMode.DIRECT)
 
-    print(f"### Processing {folder}")
+    printv(f"Processing: {os.path.basename(folder)}", args.verbose, 0)
     input_path = Path(folder, "outlier")
     aa_input = Path(input_path, args.aa_input)
     nt_input = Path(input_path, args.nt_input)
 
     if not os.path.exists(aa_input):
-        print(f"Can't find aa folder for taxa, {folder}")
+        printv(f"WARNING: Can't find aa folder for taxa, {folder}", args.verbose, 0)
         return
 
     tmp_dir = directory_check(folder)
@@ -646,8 +647,6 @@ def do_folder(folder: Path, args):
     dupe_counts = json.loads(rocksdb_db.get("getall:gene_dupes"))
 
     target_genes = []
-    # NOTE: Path returns a Path object, which __repr__ is the string of the
-    # path itself.
     for item in Path(aa_input).glob("*.fa"):
         target_genes.append(item.name)
     target_genes.sort(key=lambda x: Path(aa_input, x).stat().st_size, reverse=True)
@@ -693,20 +692,21 @@ def do_folder(folder: Path, args):
                 args.verbose,
                 args.ignore_overlap_chunks,
             )
-
-    timed = round(time() - start_time)
-    print(f"Finished in {timed} seconds")
+    printv(f"Done! Took {folder_time.differential():.2f}s", args.verbose)
 
     if os.path.exists(dupe_tmp_file):
         os.remove(dupe_tmp_file)
 
 
 def main(args):
+    global_time = TimeKeeper(KeeperMode.DIRECT)
     if not all(os.path.exists(i) for i in args.INPUT):
-        print("ERROR: All folders passed as argument must exists.")
+        printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
     for folder in args.INPUT:
         do_folder(Path(folder), args)
+    if len(args.INPUT) > 1 or not args.verbose:
+        printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
     return True
 
 

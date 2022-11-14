@@ -123,7 +123,7 @@ def main(args):
     for formatted_taxa_out, components in taxa_runs.items():
         global_time_keeper.lap()
         taxa_time_keeper = TimeKeeper(KeeperMode.DIRECT)
-        printv(f"Preparing {formatted_taxa_out}", args.verbose, 0)
+        printv(f"Preparing: {formatted_taxa_out}", args.verbose, 0)
 
         taxa_destination_directory = os.path.join(
             secondary_directory, formatted_taxa_out
@@ -247,7 +247,7 @@ def main(args):
 
         prot_components = []
 
-        printv("fStoring translated file in DB. Translate took {taxa_time_keeper.lap():.2f}s", args.verbose)
+        printv(f"Storing translated file in DB. Translate took {taxa_time_keeper.lap():.2f}s", args.verbose)
 
         out_lines = []
         for prepare_file, translate_file in translate_files:
@@ -301,7 +301,7 @@ def main(args):
 
         printv(f"Took {global_time_keeper.lap():.2f}s for {file}\n", args.verbose)
 
-    printv(f"Finished took {global_time_keeper.differential():.2f}s overall.", args.verbose, 0)
+    printv(f"Finished! Took {global_time_keeper.differential():.2f}s overall.", args.verbose, 0)
     printv("N_trim time: {} seconds".format(sum(trim_times)), args.verbose, 2)
     printv(f"Dedupe time: {dedup_time}", args.verbose, 2)
     return True

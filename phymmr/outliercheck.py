@@ -1,7 +1,5 @@
 """
 Outlier Check
-
-PyLint 8.99/10
 """
 from __future__ import annotations
 
@@ -16,6 +14,8 @@ from time import time
 import numpy as np
 import phymmr_tools as bd
 
+from .utils import printv
+from .timekeeper import TimeKeeper, KeeperMode
 ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta")
 
 
@@ -310,7 +310,7 @@ def compare_means(
     return regulars, to_add_later, outliers
 
 
-def delete_empty_columns(raw_fed_sequences: list) -> tuple[list, list]:
+def delete_empty_columns(raw_fed_sequences: list, verbose: bool) -> tuple[list, list]:
     """
     Iterates over each sequence and deletes columns
     that consist of 100% dashes.
@@ -337,7 +337,7 @@ def delete_empty_columns(raw_fed_sequences: list) -> tuple[list, list]:
                 sequence = [raw_sequences[i + 1][x] for x in positions_to_keep]
                 result.append(raw_sequences[i] + "\n")
             except IndexError:
-                print(raw_sequences[i])  # FIXME: write a proper error message
+                printv(f"WARNING: Sequence length is not the same as other sequences: {raw_sequences[i]}", verbose, 0)
                 continue
             sequence.append("\n")
             sequence = "".join(sequence)
@@ -398,8 +398,7 @@ def main_process(
     file_input = args_input
     filename = os.path.basename(file_input)
 
-    if verbose:
-        print("Doing:",filename)
+    printv(f"Doing: {filename}", verbose, 2)
 
     name = filename.split(".")[0]
     threshold = args_threshold / 100
@@ -431,7 +430,7 @@ def main_process(
     for line in to_add:
         raw_regulars.append(line)
 
-    regulars, allowed_columns = delete_empty_columns(raw_regulars)
+    regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
 
     if to_add:  # If candidate added to fasta
         with open(aa_output, "w+", encoding="UTF-8") as aa_output:
@@ -472,8 +471,7 @@ def run_command(arg_tuple: tuple) -> None:
 
 
 def do_folder(folder, args):
-    start = time()
-    print(f"### Processing folder {folder}")
+    time_keeper = TimeKeeper(KeeperMode.DIRECT)
     wanted_aa_path = Path(folder, "trimmed", "aa")
     if wanted_aa_path.exists():
         aa_input = wanted_aa_path
@@ -482,11 +480,10 @@ def do_folder(folder, args):
         aa_input = Path(folder, "mafft")
         nt_input = Path(folder, "nt_aligned")
 
+    printv(f"Processing: {os.path.basename(folder)}", args.verbose, 0)
+
     if not aa_input.exists():  # exit early
-        print(
-            f"Can't find aa folder for taxa {folder}: '{wanted_aa_path}' "
-            "does not exists."
-        )
+        printv(f"WARNING: Can't find aa folder for taxa {folder}: '{wanted_aa_path}'. Aborting", args.verbose, 0)
         return
 
     file_inputs = [
@@ -497,9 +494,7 @@ def do_folder(folder, args):
     output_path = Path(folder, args.output)
     nt_output_path = os.path.join(output_path, "nt")
     folder_check(output_path, args.debug)
-    # nt_folder = args.nt_input
-    # if not nt_folder:
-    #    nt_folder = make_nt_folder(args.aa_input)
+
     file_inputs.sort(key=lambda x: x.stat().st_size, reverse=True)
     if args.processes > 1:
         arguments = []
@@ -552,18 +547,19 @@ def do_folder(folder, args):
                             if line[-1] != "\n":
                                 line = f"{line}\n"
                             global_csv.write(line)
-    time_taken = time()
-    time_taken = round(time_taken - start)
 
-    print(f"Finished in {time_taken} seconds")
+    printv(f"Done! Took {time_keeper.differential():.2f}s", args.verbose)
 
 
 def main(args):
+    global_time = TimeKeeper(KeeperMode.DIRECT)
     if not all(os.path.exists(i) for i in args.INPUT):
-        print("ERROR: All folders passed as argument must exists.")
+        printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
     for folder in args.INPUT:
         do_folder(Path(folder), args)
+    if len(args.INPUT) > 1 or not args.verbose :
+        printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
     return True
 
 
