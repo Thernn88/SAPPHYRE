@@ -12,7 +12,7 @@ import wrap_rocks
 from Bio.SeqIO.FastaIO import SimpleFastaParser
 
 from .utils import printv
-
+from .timekeeper import TimeKeeper, KeeperMode
 
 class Hit:
     __slots__ = (
@@ -379,8 +379,6 @@ def make_exclusion_list(path: str) -> set:
 def make_temp_protfile(
     ortholog: str,
     temp: str,
-    force_prot: bool,
-    verbose: bool,
     sequences_db_conn
 ) -> str:
     """
@@ -390,11 +388,6 @@ def make_temp_protfile(
     """
     prot_name = ortholog + "_prot.tmp"
     prot_path = os.path.join(temp, prot_name)
-    # return existing path if protfile exists and we aren't forcing a new one
-    if not force_prot and os.path.exists(prot_path) and os.path.getsize(prot_path) != 0:
-        printv('Found existing protfile', verbose)
-        return prot_path
-    start = time()
 
     recipe = sequences_db_conn.get("getall:prot").split(',')
 
@@ -402,7 +395,6 @@ def make_temp_protfile(
         for component in recipe:
             prot_file_handle.write(sequences_db_conn.get(f"getprot:{component}"))
 
-    printv("Wrote prot file in {:.2f}s".format(time() - start), verbose)
     return prot_path
 
 
@@ -532,8 +524,9 @@ def run_process(args, input_path: str) -> None:
     score_diff_internal = args.score_diff_internal
     min_overlap_internal = args.min_overlap_internal
 
+    time_keeper = TimeKeeper(KeeperMode.DIRECT)
+
     num_threads = args.processes
-    global_start = time()
     if os.path.exists("/run/shm"):
         in_ram = "/run/shm"
     else:
@@ -586,13 +579,16 @@ def run_process(args, input_path: str) -> None:
     hmm_list = [os.path.join(hmm_dir, hmm) for hmm in hmm_list]
 
     # make protfile for hmm_search later
-    printv("Checking protfile", args.verbose)
+    printv("Creating protfile", args.verbose)
+    time_keeper.lap()
 
     protfile = make_temp_protfile(
-        ortholog, temp_dir, args.remake_protfile, args.verbose, sequences_db_conn
+        ortholog, temp_dir, sequences_db_conn
     )
 
-    start = time()
+    printv(f"Wrote prot file in {time_keeper.lap():.2f}s", args.verbose)
+
+
     hmm_results = []  # list of lists containing Hit objects
 
     if num_threads > 1:
@@ -608,9 +604,9 @@ def run_process(args, input_path: str) -> None:
             hmm_results.append(
                 hmm_search(hmm, domtbl_dir, args.evalue, args.score, protfile, args.overwrite, args.verbose))
 
-    printv("Search time: {:.2f}".format(time() - start), args.verbose)
+    printv(f"Search time: {time_keeper.lap():.2f}", args.verbose)
 
-    filter_start = time()
+    filter_timer = TimeKeeper(KeeperMode.DIRECT)
 
     f_duplicates = {}
     gene_based_results = {}
@@ -631,7 +627,7 @@ def run_process(args, input_path: str) -> None:
 
     printv(f"Filtering {count} hits", args.verbose)
 
-    printv('Doing multi-gene dupe filter. Searching for duplicates', args.verbose)
+    printv("Doing multi-gene dupe filter. Searching for duplicates", args.verbose)
     required_internal_multi_genes = {}
     rimg_set = set()
 
@@ -685,9 +681,7 @@ def run_process(args, input_path: str) -> None:
     for header_left in f_duplicates:
         header_based_results[header_left] = []
 
-    printv(
-        'Found {} potential dupes. Search took {:.2f}s. Filtering dupes'.format(possible_dupes, time() - filter_start),
-        args.verbose)
+    printv(f"Found {possible_dupes} potential dupes. Search took {filter_timer.lap():.2f}s. Filtering dupes", args.verbose)
 
     if debug:
         filtered_sequences_log = []
@@ -727,9 +721,7 @@ def run_process(args, input_path: str) -> None:
                 filtered_sequences_log.extend(data["Log"])
             header_based_results[data["Remaining"][0].header] = data["Remaining"]
 
-    printv('Done! Took {:.2f}s'.format(time() - filter_start), args.verbose)
-    internal_multi_start = time()
-
+    printv(f"Done! Took {filter_timer.lap():.2f}s", args.verbose)
     transcripts_mapped_to = {}
 
     for header in header_based_results:
@@ -738,8 +730,7 @@ def run_process(args, input_path: str) -> None:
                 transcripts_mapped_to[match.gene] = []
             transcripts_mapped_to[match.gene].append(match)
 
-    printv('Looking for internal duplicates over {} flagged genes'.format(len(required_internal_multi_genes)),
-           args.verbose)
+    printv(f"Looking for internal duplicates over {len(required_internal_multi_genes)} flagged genes", args.verbose)
 
     if num_threads == 1:
         internal_multi_data = []
@@ -782,10 +773,8 @@ def run_process(args, input_path: str) -> None:
         if debug:
             filtered_sequences_log.extend(data["Log"])
 
-    printv('Done! Took {:.2f}s'.format(time() - internal_multi_start), args.verbose)
-    internal_start = time()
-
-    printv('Doing internal overlap filter', args.verbose)
+    printv(f"Done! Took {filter_timer.lap():.2f}s", args.verbose)
+    printv("Doing internal overlap filter", args.verbose)
 
     total_hits = 0
     if num_threads == 1:
@@ -842,13 +831,13 @@ def run_process(args, input_path: str) -> None:
         with open(filtered_sequences_log_path, "w") as fp:
             fp.writelines(filtered_sequences_log_out)
 
-    printv('Done! Took {:.2f}s'.format(time() - internal_start), args.verbose)
-    printv('Filtering took {:.2f}s overall'.format(time() - filter_start), args.verbose)
+    printv(f"Done! Took {filter_timer.lap():.2f}s", args.verbose)
+    printv(f"Filtering took {filter_timer.differential():.2f}s overall", args.verbose)
 
     # Grab the seq dict
     sequence_dict = {}
-    start = time()
     header = None
+    time_keeper.lap()
     with open(protfile) as prot_file_handle:
         fasta_file = SimpleFastaParser(prot_file_handle)
         for header, sequence in fasta_file:
@@ -857,9 +846,7 @@ def run_process(args, input_path: str) -> None:
     if os.path.exists(protfile):
         os.remove(protfile)
 
-    printv('Read prot file in {:.2f}s'.format(time() - start), args.verbose)
-
-    end = time()
+    printv(f"Read prot file in {time_keeper.lap():.2f}s", args.verbose)
 
     # Seperate hmm hits into seperate levels
     global_hmm_obj_recipe = []
@@ -927,23 +914,15 @@ def run_process(args, input_path: str) -> None:
     data = ','.join(global_hmm_obj_recipe)
     hits_db_conn.put(key, data)
 
-    db_end = time()
-    printv(
-        "Inserted {} hits over {} batch(es) in {:.2f} seconds. Kicked {} hits during "
-        "filtering".format(
-            total_hits,
-            len(global_hmm_obj_recipe),
-            db_end - end,
-            count - total_hits
-        ),
-        args.verbose
-    )
-    print("Took {:.2f}s overall".format(time() - global_start))
+    batches = len(global_hmm_obj_recipe)
+    kicks = count - total_hits
+    printv(f"Inserted {total_hits} hits over {batches} batch(es) in {time_keeper.lap():.2f} seconds. Kicked {kicks} hits during filtering", args.verbose)
+    printv(f"Took {time_keeper.differential():.2f}s overall", args.verbose, 0)
 
 
 def main(args):
     if not all(os.path.exists(i) for i in args.INPUT):
-        print("ERROR: All folders passed as argument must exists.")
+        printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
     for input_path in args.INPUT:
         printv('Begin Hmmsearch for {}'.format(os.path.basename(input_path)), args.verbose)

@@ -16,6 +16,7 @@ from Bio.SeqIO.FastaIO import FastaWriter
 from Bio.SeqRecord import SeqRecord
 
 from .utils import printv
+from .timekeeper import TimeKeeper, KeeperMode
 
 
 class Result:
@@ -76,7 +77,7 @@ def do(
         not os.path.exists(gene_conf.blast_file_done)
         or os.path.getsize(gene_conf.blast_file_done) == 0
     ):
-        printv("Blasted: {}".format(gene_conf.gene), verbose, 2)
+        printv(f"Blasted: {gene_conf.gene}", verbose, 2)
         with open(gene_conf.fa_file, "w") as fp:
             fw = FastaWriter(fp)
             fw.write_file(gene_conf.gene_sequences)
@@ -187,12 +188,12 @@ def get_ref_taxon_for_genes(set_id, orthoset_db_con):
 
 
 def run_process(args, input_path) -> None:
-    start = time()
+    time_keeper = TimeKeeper(KeeperMode.DIRECT)
     orthoset = args.orthoset
     orthosets_dir = args.orthoset_input
 
     taxa = os.path.basename(input_path)
-    print(f'Begin BlastPal for {taxa}')
+    printv(f'Begin BlastPal for {taxa}', args.verbose, 0)
     printv("Grabbing Reference data from SQL.", args.verbose)
     # make dirs
     blast_path = os.path.join(input_path, "blast")
@@ -215,19 +216,16 @@ def run_process(args, input_path) -> None:
 
     orthoset_id = get_set_id(orthoset_db_con, orthoset)
 
-    sql_start = time()
     ref_taxon = get_ref_taxon_for_genes(orthoset_id, orthoset_db_con)
 
     blast_db_path = os.path.join(orthosets_dir, orthoset, "blast", orthoset)
 
-    printv("Done! Took {:.2f}s. Grabbing HMM data from DB".format(time() - sql_start), args.verbose)
+    printv(f"Done! Took {time_keeper.lap():.2f}s. Grabbing HMM data from DB", args.verbose)
 
     db_path = os.path.join(input_path, "rocksdb", "hits")
     db = wrap_rocks.RocksDB(db_path)
 
     gene_to_hits = {}
-
-    grab_hmm_start = time()
 
     global_hmm_object_raw = db.get("hmmbatch:all")
     global_hmm_batches = global_hmm_object_raw.split(",")
@@ -248,18 +246,11 @@ def run_process(args, input_path) -> None:
             gene_to_hits[gene].append(
                 SeqRecord(Seq(hmm_object["hmm_sequence"]), id=header + f"_hmmid{hmm_id}", description="")
             )
-    # Identical to Counter().most_common()
-    # genes = sorted(genes.items(), key=lambda x: x[1], reverse=True)
 
-    printv(
-        "Grabbed HMM Data. Took: {:.2f}s. Found {} hits".format(
-            time() - grab_hmm_start, genes.total()
-        ), args.verbose
-    )
+    printv(f"Grabbed HMM Data. Took: {time_keeper.lap():.2f}s. Found {sum(genes.values())} hits", args.verbose)
 
     del global_hmm_object_raw
 
-    blast_start = time()
     num_threads = args.processes
     # Run
     if num_threads <= 1:
@@ -300,13 +291,7 @@ def run_process(args, input_path) -> None:
         with Pool(num_threads) as pool:
             to_write = pool.starmap(do, arguments, chunksize=1)
 
-    printv(
-        "Got Blast Results. Took {:.2f}s. Writing to DB".format(
-            time() - blast_start
-        ), args.verbose
-    )
-
-    write_start = time()
+    printv(f"Got Blast Results. Took {time_keeper.lap():.2f}s. Writing to DB", args.verbose)
 
     i = 0
     for batch in to_write:
@@ -314,14 +299,13 @@ def run_process(args, input_path) -> None:
             db.put(key, data)
             i += count
 
-    printv("Writing {} results took {:.2f}s".format(i, time() - write_start), args.verbose)
-
-    print("Done. Took {:.2f}s overall".format(time() - start))
+    printv(f"Writing {i} results took {time_keeper.lap():.2f}s", args.verbose)
+    printv(f"Done. Took {time_keeper.differential():.2f}s overall", args.verbose, 0)
 
 
 def main(args):
     if not all(os.path.exists(i) for i in args.INPUT):
-        print("ERROR: All folders passed as argument must exists.")
+        printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
     for input_path in args.INPUT:
         run_process(args, input_path)
