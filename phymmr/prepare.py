@@ -2,8 +2,10 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import mmap
 import os
 import re
+import gzip
 from itertools import count
 from shutil import rmtree
 from sys import argv
@@ -13,6 +15,7 @@ import phymmr_tools
 import wrap_rocks
 import xxhash
 from Bio.SeqIO.FastaIO import SimpleFastaParser
+from Bio.SeqIO.QualityIO import FastqGeneralIterator
 from tqdm import tqdm
 from .utils import printv
 from .timekeeper import TimeKeeper, KeeperMode
@@ -33,6 +36,23 @@ def truncate_taxa(header: str, extension=None) -> str:
         result = result + extension
     return result
 
+def get_seq_count(filename, is_gz):
+    count = 0
+    if is_gz:
+        f = gzip.open(filename, "r+")
+        for line in f:
+            if line[0] == ord(">") or line[0] == ord("+"):
+                count += 1
+    else: # We can grab it cheaper
+        f = open(filename, "r+")
+        buf = mmap.mmap(f.fileno(), 0)
+        readline = buf.readline
+        line = readline()
+        while line:
+            if line[0] == ord(">") or line[0] == ord("+"):
+                count += 1
+            line = readline()
+    return count
 
 def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
     t1 = time()
@@ -93,7 +113,7 @@ def main(args):
     num_threads = args.processes
     folder = args.INPUT
 
-    allowed_filetypes = ["fa", "fas", "fasta"]
+    allowed_filetypes = ["fa", "fas", "fasta", "fq", "fastq", "fq", "fastq.gz", "fq.gz"]
 
     rocksdb_folder_name = "rocksdb"
     sequences_db_name = "sequences"
@@ -109,9 +129,10 @@ def main(args):
 
     # Scan all the files in the input. Remove _R# and merge taxa
     for file in os.listdir(folder):
+        file_type = '.'.join(file.split(".")[1:])
         if (
             os.path.isfile(os.path.join(folder, file))
-            and file.split(".")[-1] in allowed_filetypes
+            and file_type in allowed_filetypes
         ):
             taxa = file.split(".")[0]
 
@@ -160,13 +181,25 @@ def main(args):
         fa_file_out = []
         printv("Formatting input sequences and inserting into database", args.verbose)
         for file in components:
-            if ".fa" not in file:
-                continue
+            fa_file_path = os.path.join(folder, file)
+            
+            if ".fq" in fa_file_path or ".fastq" in fa_file_path:
+                read_method = FastqGeneralIterator
+            else:
+                read_method = SimpleFastaParser
 
-            fa_file_directory = os.path.join(folder, file)
-            fasta_file = SimpleFastaParser(open(fa_file_directory, encoding="UTF-8"))
+            is_compressed = file.split('.')[-1] == 'gz'
+            if is_compressed:
+                fasta_file = read_method(gzip.open(fa_file_path, "rt"))
+            else:
+                fasta_file = read_method(open(fa_file_path, encoding="utf-8"))
+            
+            if args.verbose: 
+                seq_grab_count = get_seq_count(fa_file_path, is_compressed)
+            for_loop = tqdm(fasta_file, total=seq_grab_count) if args.verbose else fasta_file
+            for row in for_loop:
+                header, parent_seq = row[:2]
 
-            for header, parent_seq in tqdm(fasta_file) if args.verbose else fasta_file:
                 if not len(parent_seq) >= MINIMUM_SEQUENCE_LENGTH:
                     continue
                 parent_seq = parent_seq.upper()
@@ -288,8 +321,8 @@ def main(args):
         sequence_count = this_index - 1
 
         printv(
-            "Inserted {} sequences for {} over {} batches. Found {} NT and {} AA dupes.".format(
-                sequence_count, formatted_taxa_out, levels, next(dupes), aa_dupes
+            "Inserted {} sequences over {} batches. Found {} NT and {} AA dupes.".format(
+                sequence_count, levels, next(dupes), aa_dupes
             ),
             args.verbose,
         )
@@ -299,7 +332,7 @@ def main(args):
         # Store the count of dupes in the database
         db.put("getall:dupes", json.dumps(duplicates))
 
-        printv(f"Took {global_time_keeper.lap():.2f}s for {file}\n", args.verbose)
+        printv(f"{formatted_taxa_out} took {global_time_keeper.lap():.2f}s overall\n", args.verbose)
 
     printv(f"Finished! Took {global_time_keeper.differential():.2f}s overall.", args.verbose, 0)
     printv("N_trim time: {} seconds".format(sum(trim_times)), args.verbose, 2)
