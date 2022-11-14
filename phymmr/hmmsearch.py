@@ -10,12 +10,12 @@ from functools import cached_property
 from multiprocessing.pool import Pool
 from pathlib import Path
 from tempfile import SpooledTemporaryFile
-from time import time
 from typing import Optional
 
 import wrap_rocks
 from Bio.SeqIO.FastaIO import SimpleFastaParser
 
+from .timekeeper import TimeKeeper, KeeperMode
 from .utils import printv, gettempdir
 
 
@@ -30,46 +30,46 @@ class ProtFile:
         self.verbosity = verbosity
 
     def makeme(self, dbconn):
-        start = time()
+        """Dump prot data from db into a file.
+
+        The temporary file will be cleaned as soon as this object is GC'd, if
+        not done manually sooner.
+        """
+        tike = TimeKeeper(KeeperMode.DIRECT)
         recipe = dbconn.get("getall:prot").split(",")
-        self.content = SpooledTemporaryFile(mode="w+b")
-        for component in recipe:
-            self.content.write(bytes(dbconn.get(f"getprot:{component}"), "utf-8"))
-        printv("Retrieved prot data in {:.2f}s".format(time() - start), self.verbosity)
+        with open(self.temp_file, mode="w+b") as fp:
+            for component in recipe:
+                fp.write(bytes(dbconn.get(f"getprot:{component}"), "utf-8"))
+        printv("Retrieved prot data in {:.2f}s".format(tike.differential()), self.verbosity)
 
     @cached_property
     def sequences(self):
+        """Compute a dict of sequence then remove tmp file from memory.
+
+        Effectively moves the data from shared memory into a python dict.
+        """
         sequence_dict = {}
-        start = time()
+        tike = TimeKeeper(KeeperMode.DIRECT)
         self.content.seek(0)
-        for header, sequence in SimpleFastaParser(self.content):
-            sequence_dict[header] = sequence
-        printv('Read prot file in {:.2f}s'.format(time() - start), self.verbosity)
-        self.content.close()  # once here, we do not need the protfile
-        self.content = None
+        with open(self.temp_file, mode="rb") as fp:
+            for header, sequence in SimpleFastaParser(fp):
+                sequence_dict[header] = sequence
+        printv('Read prot file in {:.2f}s'.format(tike.differential()), self.verbosity)
+        self.cleanup()
         return sequence_dict
 
-    def flush(self):
-        with open(self.temp_file, "w") as fp:
-            self.content.seek(0)
-            for line in self.content:
-                fp.write(line)
-
-    @contextmanager
-    def hmmer(self):
-        try:
-            self.flush()
-            yield self.temp_file
-        finally:
-            self.cleanup()
-
     def cleanup(self):
+        """Remove temp file if it exists
+
+        This file is huge, and must be properly removed so to not have issues
+        later.
+        """
         if self.temp_file.exists():
             self.temp_file.unlink()
 
     def __del__(self):
         self.cleanup()
-from .timekeeper import TimeKeeper, KeeperMode
+
 
 class Hit:
     __slots__ = (
@@ -535,23 +535,22 @@ def search_prot(
         option = "-E"
         threshold = str(evalue)
     # $searchprog --domtblout $outfile $threshold_option --cpu $num_threads $hmmfile $protfile
-    with protfile.hmmer() as protpath:
-        command = [
-            prog,
-            "--domtblout",
-            domtbl_path,
-            option,
-            threshold,
-            "--cpu",
-            str(threads),
-            hmm_file,
-            protpath,
-        ]
-        p = subprocess.run(command, stdout=subprocess.PIPE)
-        if p.returncode != 0:  # non-zero return code means an error
-            printv(f"{domtbl_path}:hmmsearch error code {p.returncode}", verbose, 0)
-        else:
-            printv(f"Searched {os.path.basename(domtbl_path)}", verbose, 2)
+    command = [
+        prog,
+        "--domtblout",
+        domtbl_path,
+        option,
+        threshold,
+        "--cpu",
+        str(threads),
+        hmm_file,
+        protfile.temp_file,
+    ]
+    p = subprocess.run(command, stdout=subprocess.PIPE)
+    if p.returncode != 0:  # non-zero return code means an error
+        printv(f"{domtbl_path}:hmmsearch error code {p.returncode}", verbose, 0)
+    else:
+        printv(f"Searched {os.path.basename(domtbl_path)}", verbose, 2)
     return get_hits_from_domtbl(domtbl_path, score, evalue)
 
 
@@ -583,7 +582,6 @@ def run_process(args, input_path: str) -> None:
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
 
     num_threads = args.processes
-    global_start = time()
 
     # get ortholog
     ortholog = os.path.basename(input_path).split(".")[0]
@@ -632,7 +630,6 @@ def run_process(args, input_path: str) -> None:
     protfile.makeme(sequences_db_conn)
 
     printv(f"Wrote prot file in {time_keeper.lap():.2f}s", args.verbose)
-
 
     hmm_results = []  # list of lists containing Hit objects
     if num_threads > 1:
@@ -878,7 +875,6 @@ def run_process(args, input_path: str) -> None:
     printv(f"Done! Took {filter_timer.lap():.2f}s", args.verbose)
     printv(f"Filtering took {filter_timer.differential():.2f}s overall", args.verbose)
 
-    end = time()
     # Seperate hmm hits into seperate levels
     global_hmm_obj_recipe = []
     current_batch = []
