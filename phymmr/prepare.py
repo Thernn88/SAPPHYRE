@@ -1,21 +1,34 @@
 from __future__ import annotations
+
 import argparse
+import gzip
 import json
 import math
+import mmap
 import os
 import re
 from itertools import count
-from shutil import rmtree
-from sys import argv
-from time import time
 from multiprocessing.pool import Pool
+from pathlib import Path
+from queue import Queue
+from shutil import rmtree
+from subprocess import call
+from sys import argv
+from threading import Thread
+from time import time
+
 import phymmr_tools
 import wrap_rocks
 import xxhash
 from Bio.SeqIO.FastaIO import SimpleFastaParser
+from Bio.SeqIO.QualityIO import FastqGeneralIterator
 from tqdm import tqdm
-from .utils import printv
-from .timekeeper import TimeKeeper, KeeperMode
+
+from .timekeeper import KeeperMode, TimeKeeper
+from .utils import ConcurrentLogger
+
+
+
 
 def truncate_taxa(header: str, extension=None) -> str:
     """
@@ -33,6 +46,33 @@ def truncate_taxa(header: str, extension=None) -> str:
         result = result + extension
     return result
 
+def get_seq_count(filename: Path, is_gz: bool):
+    count = 0
+    if is_gz:
+        f = gzip.open(filename, "r+")
+        for line in f:
+            if line[0] == ord(">") or line[0] == ord("+"):
+                count += 1
+    else: # We can grab it cheaper
+        by = filename.read_bytes()
+        ascii_le = ord('>')
+        ascii_pl = ord('+')
+
+        char_count = {ascii_le: 0, ascii_pl: 0}
+
+        def map_char_count(l: bytearray):
+            char_count.setdefault(l[0], 0)
+            char_count[l[0]] += 1
+
+        by_splt_lines = by.splitlines()
+        list(map(map_char_count, by_splt_lines))
+
+        if char_count[ascii_le] > 0:
+            count = char_count[ascii_le]
+        elif char_count[ascii_pl] > 0:
+            count = char_count[ascii_pl]
+
+    return count
 
 def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
     t1 = time()
@@ -72,15 +112,28 @@ def add_pc_to_db(db, key: int, data: list) -> str:
     return kstr
 
 
-def translate(in_path, out_path, translate_program="fastatranslate", genetic_code=1):
-    os.system(
-        f"{translate_program} --geneticcode {genetic_code} '{in_path}' > '{out_path}'"
+def translate(in_path: Path, out_path: Path, translate_program="fastatranslate", genetic_code=1):
+    call(
+        " ".join([
+            translate_program,
+            '--geneticcode',
+            str(genetic_code),
+            str(in_path), 
+            '>',
+            str(out_path)
+        ]),
+        shell=True
     )
-    os.remove(in_path)
+    in_path.unlink()
 
 
 def main(args):
-    if not os.path.exists(args.INPUT):
+    msgq = Queue()
+    printv = ConcurrentLogger(msgq)
+    printv.start()
+    input_path = Path(args.INPUT)
+
+    if not input_path.exists():
         printv("ERROR: An existing directory must be provided.", args.verbose, 0)
         return False
 
@@ -92,64 +145,63 @@ def main(args):
     MINIMUM_SEQUENCE_LENGTH = args.minimum_sequence_length
     num_threads = args.processes
     folder = args.INPUT
+    project_root = Path(__file__).parent.parent
 
-    allowed_filetypes = ["fa", "fas", "fasta"]
+    allowed_filetypes = ["fa", "fas", "fasta", "fq", "fastq", "fq", "fastq.gz", "fq.gz"]
 
     rocksdb_folder_name = "rocksdb"
     sequences_db_name = "sequences"
-    core_directory = "PhyMMR"
-    secondary_directory = os.path.join(core_directory, os.path.basename(os.path.normpath(folder)))
+    core_directory = Path("PhyMMR").joinpath(input_path.parts[-1])
+    secondary_directory = project_root.joinpath(core_directory)
 
     # Create necessary directories
     printv("Creating directories", args.verbose)
-
-    os.makedirs(secondary_directory, exist_ok=True)
+    secondary_directory.mkdir(parents=True, exist_ok=True)
 
     taxa_runs = {}
 
     # Scan all the files in the input. Remove _R# and merge taxa
-    for file in os.listdir(folder):
-        if (
-            os.path.isfile(os.path.join(folder, file))
-            and file.split(".")[-1] in allowed_filetypes
-        ):
-            taxa = file.split(".")[0]
+    
+    allowed_files_glob = list(input_path.glob("**/*.f[aq]*"))
+    for f in allowed_files_glob:
+        file_is_file = f.is_file()
+        
+        file_suffix = f.suffix
+        file_suffix_allowed = file_suffix[1:] in allowed_filetypes
+        
+        if (file_is_file and file_suffix_allowed):
+            taxa = f.stem.split(".")[0]
 
             formatted_taxa = truncate_taxa(taxa, extension=".fa")
 
             taxa_runs.setdefault(formatted_taxa, [])
-            taxa_runs[formatted_taxa].append(file)
+            taxa_runs[formatted_taxa].append(f)
     
     for formatted_taxa_out, components in taxa_runs.items():
         global_time_keeper.lap()
         taxa_time_keeper = TimeKeeper(KeeperMode.DIRECT)
         printv(f"Preparing: {formatted_taxa_out}", args.verbose, 0)
 
-        taxa_destination_directory = os.path.join(
-            secondary_directory, formatted_taxa_out
-        )
-        rocksdb_path = os.path.join(taxa_destination_directory, rocksdb_folder_name)
-        sequences_db_path = os.path.join(rocksdb_path, sequences_db_name)
+        taxa_destination_directory = secondary_directory.joinpath(formatted_taxa_out)
 
-        if args.clear_database and os.path.exists(rocksdb_path):
+        rocksdb_path = taxa_destination_directory.joinpath(rocksdb_folder_name)
+        sequences_db_path = rocksdb_path.joinpath(sequences_db_name)
+
+        if args.clear_database and rocksdb_path.exists():
             printv("Clearing old database", args.verbose)
             rmtree(rocksdb_path)
 
         printv("Creating rocksdb database", args.verbose)
 
-        os.makedirs(rocksdb_path, exist_ok=True)
+        rocksdb_path.mkdir(parents=True, exist_ok=True)
 
-        db = wrap_rocks.RocksDB(sequences_db_path)
+        db = wrap_rocks.RocksDB(str(sequences_db_path))
 
-        os.makedirs(taxa_destination_directory, exist_ok=True)
+        taxa_destination_directory.mkdir(parents=True, exist_ok=True)
 
-        prepared_file_destination = os.path.join(
-            taxa_destination_directory, formatted_taxa_out
-        )
+        prepared_file_destination = taxa_destination_directory.joinpath(formatted_taxa_out)
 
-        prot_path = os.path.join(
-            taxa_destination_directory, formatted_taxa_out.replace(".fa", "_prot.fa")
-        )
+        prot_path = taxa_destination_directory.joinpath(formatted_taxa_out.replace(".fa", "_prot.fa"))
 
         duplicates = {}
         rev_comp_save = {}
@@ -159,14 +211,24 @@ def main(args):
 
         fa_file_out = []
         printv("Formatting input sequences and inserting into database", args.verbose)
-        for file in components:
-            if ".fa" not in file:
-                continue
+        for fa_file_path in components:           
+            if any([fa_file_path.suffix in (".fq", ".fastq")]):
+                read_method = FastqGeneralIterator
+            else:
+                read_method = SimpleFastaParser
 
-            fa_file_directory = os.path.join(folder, file)
-            fasta_file = SimpleFastaParser(open(fa_file_directory, encoding="UTF-8"))
+            is_compressed = fa_file_path.suffix == '.gz'
+            if is_compressed:
+                fasta_file = read_method(gzip.open(fa_file_path, "rt"))
+            else:
+                fasta_file = read_method(open(fa_file_path, "r"))
+                                
+            if args.verbose: 
+                seq_grab_count = get_seq_count(fa_file_path, is_compressed)
+            for_loop = tqdm(fasta_file, total=seq_grab_count) if args.verbose else fasta_file
+            for row in for_loop:
+                header, parent_seq = row[:2]
 
-            for header, parent_seq in tqdm(fasta_file) if args.verbose else fasta_file:
                 if not len(parent_seq) >= MINIMUM_SEQUENCE_LENGTH:
                     continue
                 parent_seq = parent_seq.upper()
@@ -222,27 +284,37 @@ def main(args):
 
         aa_dupe_count = count()
 
-        if os.path.exists("/run/shm"):
-            tmp_path = "/run/shm"
-        elif os.path.exists("/dev/shm"):
-            tmp_path = "/dev/shm"
+        path_run_tmp = Path("/run/shm")
+        path_dev_tmp = Path("/dev/shm")
+        path_tmp_tmp = Path("/tmp")
+
+        if path_dev_tmp.exists() and path_dev_tmp.is_dir():
+            tmp_path = path_dev_tmp
+        elif path_run_tmp.exists() and path_run_tmp.is_dir():
+            tmp_path = path_run_tmp
+        elif path_tmp_tmp.exists() and path_tmp_tmp.is_dir():
+            tmp_path = path_tmp_tmp
         else:
-            tmp_path = os.path.join(folder, "tmp")
-            os.makedirs(tmp_path, exist_ok=True)
+            tmp_path = project_root.joinpath("tmp")
+            tmp_path.mkdir(parents=True, exist_ok=True)
 
         sequences_per_thread = math.ceil((len(fa_file_out) / 2) / num_threads) * 2
         translate_files = []
         for i in range(0, len(fa_file_out), sequences_per_thread):
-            in_path = os.path.join(tmp_path, formatted_taxa_out + f'_{len(translate_files)}.fa')
-            out_path = os.path.join(tmp_path, formatted_taxa_out + f'_prot_{len(translate_files)}.fa')
+            in_path = tmp_path.joinpath(
+                formatted_taxa_out + f'_{len(translate_files)}.fa'
+            )
+            out_path = tmp_path.joinpath(
+                formatted_taxa_out + f'_prot_{len(translate_files)}.fa'
+            )
             translate_files.append((in_path, out_path))
-            open(in_path, 'w').writelines(fa_file_out[i:i + sequences_per_thread])
+            in_path.write_text("\n".join(fa_file_out[i:i + sequences_per_thread]))
 
         with Pool(num_threads) as translate_pool:
             translate_pool.starmap(translate, translate_files)
 
         if args.keep_prepared:
-            open(prepared_file_destination, "w", encoding="UTF-8").writelines(fa_file_out)
+            prepared_file_destination.write_text("\n".join(fa_file_out))
         del fa_file_out
 
         prot_components = []
@@ -288,8 +360,8 @@ def main(args):
         sequence_count = this_index - 1
 
         printv(
-            "Inserted {} sequences for {} over {} batches. Found {} NT and {} AA dupes.".format(
-                sequence_count, formatted_taxa_out, levels, next(dupes), aa_dupes
+            "Inserted {} sequences over {} batches. Found {} NT and {} AA dupes.".format(
+                sequence_count, levels, next(dupes), aa_dupes
             ),
             args.verbose,
         )
@@ -299,11 +371,13 @@ def main(args):
         # Store the count of dupes in the database
         db.put("getall:dupes", json.dumps(duplicates))
 
-        printv(f"Took {global_time_keeper.lap():.2f}s for {file}\n", args.verbose)
+        printv(f"{formatted_taxa_out} took {global_time_keeper.lap():.2f}s overall\n", args.verbose)
 
     printv(f"Finished! Took {global_time_keeper.differential():.2f}s overall.", args.verbose, 0)
     printv("N_trim time: {} seconds".format(sum(trim_times)), args.verbose, 2)
     printv(f"Dedupe time: {dedup_time}", args.verbose, 2)
+    
+    msgq.join()
     return True
 
 
