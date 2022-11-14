@@ -1,24 +1,26 @@
 from __future__ import annotations
-import argparse
+
+import gzip
 import json
 import math
 import mmap
 import os
 import re
-import gzip
 from itertools import count
-from shutil import rmtree
-from sys import argv
-from time import time
 from multiprocessing.pool import Pool
+from shutil import rmtree
+from time import time
+
 import phymmr_tools
 import wrap_rocks
 import xxhash
 from Bio.SeqIO.FastaIO import SimpleFastaParser
 from Bio.SeqIO.QualityIO import FastqGeneralIterator
 from tqdm import tqdm
-from .utils import printv
+
 from .timekeeper import TimeKeeper, KeeperMode
+from .utils import printv
+
 
 def truncate_taxa(header: str, extension=None) -> str:
     """
@@ -36,13 +38,14 @@ def truncate_taxa(header: str, extension=None) -> str:
         result = result + extension
     return result
 
+
 def get_seq_count(filename, is_gz):
-    count = 0
+    counter = count()
     if is_gz:
         f = gzip.open(filename, "r+")
         for line in f:
             if line[0] == ord(">") or line[0] == ord("+"):
-                count += 1
+                next(counter)
     else: # We can grab it cheaper
         f = open(filename, "r+")
         buf = mmap.mmap(f.fileno(), 0)
@@ -50,12 +53,12 @@ def get_seq_count(filename, is_gz):
         line = readline()
         while line:
             if line[0] == ord(">") or line[0] == ord("+"):
-                count += 1
+                next(counter)
             line = readline()
-    return count
+    return next(counter)
 
-def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
-    t1 = time()
+
+def N_trim(parent_sequence, minimum_sequence_length, tike):
     if "N" in parent_sequence:
         # Get N indices and start and end of sequence
         indices = (
@@ -69,12 +72,12 @@ def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
             end = indices[i + 1]
 
             length = end - start
-            if length >= MINIMUM_SEQUENCE_LENGTH:
+            if length >= minimum_sequence_length:
                 raw_seq = parent_sequence[start + 1: end]
-                yield raw_seq, time() - t1
-                t1 = time()
+                tike.timer1("now")
+                yield raw_seq
     else:
-        yield parent_sequence, time() - t1
+        yield parent_sequence
 
 
 def add_pc_to_db(db, key: int, data: list) -> str:
@@ -104,7 +107,8 @@ def main(args):
         printv("ERROR: An existing directory must be provided.", args.verbose, 0)
         return False
 
-    trim_times = []  # Append computed time for each loop.
+    # Append computed time for each loop.
+    trim_times = TimeKeeper(KeeperMode.SUM)
     dedup_time = 0
     global_time_keeper = TimeKeeper(KeeperMode.DIRECT)
 
@@ -204,8 +208,7 @@ def main(args):
                     continue
                 parent_seq = parent_seq.upper()
                 # for seq in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH):
-                for seq, tt in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH):
-                    trim_times.append(tt)
+                for seq, tt in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH, trim_times):
                     length = len(seq)
                     header = f"NODE_{this_index}_length_{length}"
 
@@ -335,7 +338,7 @@ def main(args):
         printv(f"{formatted_taxa_out} took {global_time_keeper.lap():.2f}s overall\n", args.verbose)
 
     printv(f"Finished! Took {global_time_keeper.differential():.2f}s overall.", args.verbose, 0)
-    printv("N_trim time: {} seconds".format(sum(trim_times)), args.verbose, 2)
+    printv("N_trim time: {} seconds".format(trim_times.time1), args.verbose, 2)
     printv(f"Dedupe time: {dedup_time}", args.verbose, 2)
     return True
 
