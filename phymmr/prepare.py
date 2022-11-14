@@ -8,7 +8,9 @@ import os
 import re
 from itertools import count
 from multiprocessing.pool import Pool
+from pathlib import Path
 from shutil import rmtree
+from tempfile import TemporaryDirectory
 from time import time
 
 import phymmr_tools
@@ -19,7 +21,55 @@ from Bio.SeqIO.QualityIO import FastqGeneralIterator
 from tqdm import tqdm
 
 from .timekeeper import TimeKeeper, KeeperMode
-from .utils import printv
+from .utils import printv, gettempdir
+
+
+class TempFiles:
+    def __init__(self):
+        self.translate_files = []
+        self.tmppath = TemporaryDirectory(dir=gettempdir())
+
+    def makefile(self, taxa, infile_content):
+        inpath = Path(self.tmppath.name, f"{taxa}_{len(self.translate_files)}.fa")
+        outpath = Path(self.tmppath.name, f"{taxa}_prot_{len(self.translate_files)}.fa")
+        self.translate_files.append((inpath, outpath))
+        with open(inpath, 'w') as fp:
+            fp.writelines(infile_content)
+
+    def build_sequences(self, tmt: dict, dup: dict):
+        """Build a list of strings containing the sequence header and the sequence itself.
+
+        Args:
+            tmt: "Transcript mapped to" header indexed on sequences.
+            dup: Count amount of duplicate headers found.
+
+        Returns:
+            A tuple containing a list of header/sequence, the tmt dict, the
+             duplicate dict and an integer representing the amount of aa
+             duplicate found.
+        """
+        aa_dupe_count = count()
+        out_lines = []
+        for _, translate_file in self.translate_files:
+            with open(translate_file, "r+", encoding="utf-8") as fp:
+                for header, seq in SimpleFastaParser(fp):
+                    header = header.replace(" ", "|")
+                    if seq in tmt:
+                        dup.setdefault(tmt[seq], 1)
+                        dup[tmt[seq]] += 1
+                        next(aa_dupe_count)
+                        continue
+                    else:
+                        tmt[seq] = header
+                    out_lines.append(">" + header + "\n" + seq + "\n")
+        return out_lines, tmt, dup, next(aa_dupe_count)
+
+    def cleanup(self):
+        if os.path.exists(self.tmppath.name):
+            self.tmppath.cleanup()
+
+    def __del__(self):
+        self.cleanup()
 
 
 def truncate_taxa(header: str, extension=None) -> str:
@@ -256,63 +306,36 @@ def main(args):
 
         printv("Translating prepared file", args.verbose)
 
-        aa_dupe_count = count()
-
-        if os.path.exists("/run/shm"):
-            tmp_path = "/run/shm"
-        elif os.path.exists("/dev/shm"):
-            tmp_path = "/dev/shm"
-        else:
-            tmp_path = os.path.join(folder, "tmp")
-            os.makedirs(tmp_path, exist_ok=True)
-
         sequences_per_thread = math.ceil((len(fa_file_out) / 2) / num_threads) * 2
-        translate_files = []
+        tfiles = TempFiles()
         for i in range(0, len(fa_file_out), sequences_per_thread):
-            in_path = os.path.join(tmp_path, formatted_taxa_out + f'_{len(translate_files)}.fa')
-            out_path = os.path.join(tmp_path, formatted_taxa_out + f'_prot_{len(translate_files)}.fa')
-            translate_files.append((in_path, out_path))
-            open(in_path, 'w').writelines(fa_file_out[i:i + sequences_per_thread])
+            tfiles.makefile(formatted_taxa_out, fa_file_out[i:i + sequences_per_thread])
 
         with Pool(num_threads) as translate_pool:
-            translate_pool.starmap(translate, translate_files)
+            translate_pool.starmap(translate, tfiles.translate_files)
 
         if args.keep_prepared:
-            open(prepared_file_destination, "w", encoding="UTF-8").writelines(fa_file_out)
+            with open(prepared_file_destination, "w", encoding="UTF-8") as fp:
+                fp.writelines(fa_file_out)
         del fa_file_out
-
-        prot_components = []
 
         printv(f"Storing translated file in DB. Translate took {taxa_time_keeper.lap():.2f}s", args.verbose)
 
-        out_lines = []
-        for prepare_file, translate_file in translate_files:
-            with open(translate_file, "r+", encoding="utf-8") as fp:
-                for header, seq in SimpleFastaParser(fp):
-                    header = header.replace(" ", "|")
-                    if seq in transcript_mapped_to:
-                        duplicates.setdefault(transcript_mapped_to[seq], 1)
-                        duplicates[transcript_mapped_to[seq]] += 1
-                        next(aa_dupe_count)
-                        continue
-                    else:
-                        transcript_mapped_to[seq] = header
-                    out_lines.append(">" + header + "\n" + seq + "\n")
-            os.remove(translate_file)
+        out_lines, transcript_mapped_to, duplicates, aa_dupes = tfiles.build_sequences(transcript_mapped_to, duplicates)
 
         if args.keep_prepared:
-            open(prot_path, 'w').writelines(out_lines)
+            with open(prot_path, 'w') as fp:
+                fp.writelines(out_lines)
 
-        aa_dupes = next(aa_dupe_count)
         printv(f"AA dedupe took {taxa_time_keeper.lap():.2f}s. Kicked {aa_dupes} dupes", args.verbose, 2)
 
         levels = math.ceil(len(out_lines) / PROT_MAX_SEQS_PER_LEVEL)
         per_level = math.ceil(len(out_lines) / levels)
 
+        prot_components = []
         component = 0
         for i in range(0, len(out_lines), per_level):
             component += 1
-
             data = out_lines[i: i + per_level]
             prot_components.append(str(component))
             db.put(f"getprot:{component}", "".join(data))
