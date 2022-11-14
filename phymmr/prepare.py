@@ -2,8 +2,10 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import mmap
 import os
 import re
+import gzip
 from itertools import count
 from shutil import rmtree
 from sys import argv
@@ -13,9 +15,10 @@ import phymmr_tools
 import wrap_rocks
 import xxhash
 from Bio.SeqIO.FastaIO import SimpleFastaParser
+from Bio.SeqIO.QualityIO import FastqGeneralIterator
 from tqdm import tqdm
 from .utils import printv
-
+from .timekeeper import TimeKeeper, KeeperMode
 
 def truncate_taxa(header: str, extension=None) -> str:
     """
@@ -33,6 +36,23 @@ def truncate_taxa(header: str, extension=None) -> str:
         result = result + extension
     return result
 
+def get_seq_count(filename, is_gz):
+    count = 0
+    if is_gz:
+        f = gzip.open(filename, "r+")
+        for line in f:
+            if line[0] == ord(">") or line[0] == ord("+"):
+                count += 1
+    else: # We can grab it cheaper
+        f = open(filename, "r+")
+        buf = mmap.mmap(f.fileno(), 0)
+        readline = buf.readline
+        line = readline()
+        while line:
+            if line[0] == ord(">") or line[0] == ord("+"):
+                count += 1
+            line = readline()
+    return count
 
 def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
     t1 = time()
@@ -81,19 +101,19 @@ def translate(in_path, out_path, translate_program="fastatranslate", genetic_cod
 
 def main(args):
     if not os.path.exists(args.INPUT):
-        print("ERROR: An existing directory must be provided.")
+        printv("ERROR: An existing directory must be provided.", args.verbose, 0)
         return False
 
-    trim_time = 0
+    trim_times = []  # Append computed time for each loop.
     dedup_time = 0
-    global_start = time()
+    global_time_keeper = TimeKeeper(KeeperMode.DIRECT)
 
     PROT_MAX_SEQS_PER_LEVEL = args.sequences_per_level
     MINIMUM_SEQUENCE_LENGTH = args.minimum_sequence_length
     num_threads = args.processes
     folder = args.INPUT
 
-    allowed_filetypes = ["fa", "fas", "fasta"]
+    allowed_filetypes = ["fa", "fas", "fasta", "fq", "fastq", "fq", "fastq.gz", "fq.gz"]
 
     rocksdb_folder_name = "rocksdb"
     sequences_db_name = "sequences"
@@ -109,9 +129,10 @@ def main(args):
 
     # Scan all the files in the input. Remove _R# and merge taxa
     for file in os.listdir(folder):
+        file_type = '.'.join(file.split(".")[1:])
         if (
             os.path.isfile(os.path.join(folder, file))
-            and file.split(".")[-1] in allowed_filetypes
+            and file_type in allowed_filetypes
         ):
             taxa = file.split(".")[0]
 
@@ -119,10 +140,11 @@ def main(args):
 
             taxa_runs.setdefault(formatted_taxa, [])
             taxa_runs[formatted_taxa].append(file)
-    trim_times = []  # Append computed time for each loop.
+    
     for formatted_taxa_out, components in taxa_runs.items():
-        taxa_start = time()
-        print(f"Preparing {formatted_taxa_out}")
+        global_time_keeper.lap()
+        taxa_time_keeper = TimeKeeper(KeeperMode.DIRECT)
+        printv(f"Preparing: {formatted_taxa_out}", args.verbose, 0)
 
         taxa_destination_directory = os.path.join(
             secondary_directory, formatted_taxa_out
@@ -159,13 +181,25 @@ def main(args):
         fa_file_out = []
         printv("Formatting input sequences and inserting into database", args.verbose)
         for file in components:
-            if ".fa" not in file:
-                continue
+            fa_file_path = os.path.join(folder, file)
+            
+            if ".fq" in fa_file_path or ".fastq" in fa_file_path:
+                read_method = FastqGeneralIterator
+            else:
+                read_method = SimpleFastaParser
 
-            fa_file_directory = os.path.join(folder, file)
-            fasta_file = SimpleFastaParser(open(fa_file_directory, encoding="UTF-8"))
+            is_compressed = file.split('.')[-1] == 'gz'
+            if is_compressed:
+                fasta_file = read_method(gzip.open(fa_file_path, "rt"))
+            else:
+                fasta_file = read_method(open(fa_file_path, encoding="utf-8"))
+            
+            if args.verbose: 
+                seq_grab_count = get_seq_count(fa_file_path, is_compressed)
+            for_loop = tqdm(fasta_file, total=seq_grab_count) if args.verbose else fasta_file
+            for row in for_loop:
+                header, parent_seq = row[:2]
 
-            for header, parent_seq in tqdm(fasta_file) if args.verbose else fasta_file:
                 if not len(parent_seq) >= MINIMUM_SEQUENCE_LENGTH:
                     continue
                 parent_seq = parent_seq.upper()
@@ -220,7 +254,6 @@ def main(args):
         printv("Translating prepared file", args.verbose)
 
         aa_dupe_count = count()
-        prot_start = time()
 
         if os.path.exists("/run/shm"):
             tmp_path = "/run/shm"
@@ -247,10 +280,9 @@ def main(args):
 
         prot_components = []
 
-        printv("Storing translated file in DB. Translate took {:.2f}s".format(time() - prot_start), args.verbose)
+        printv(f"Storing translated file in DB. Translate took {taxa_time_keeper.lap():.2f}s", args.verbose)
 
         out_lines = []
-        aa_dedupe_time = time()
         for prepare_file, translate_file in translate_files:
             with open(translate_file, "r+", encoding="utf-8") as fp:
                 for header, seq in SimpleFastaParser(fp):
@@ -269,7 +301,7 @@ def main(args):
             open(prot_path, 'w').writelines(out_lines)
 
         aa_dupes = next(aa_dupe_count)
-        printv("AA dedupe took {:.2f}s. Kicked {} dupes".format(time() - aa_dedupe_time, aa_dupes), args.verbose, 2)
+        printv(f"AA dedupe took {taxa_time_keeper.lap():.2f}s. Kicked {aa_dupes} dupes", args.verbose, 2)
 
         levels = math.ceil(len(out_lines) / PROT_MAX_SEQS_PER_LEVEL)
         per_level = math.ceil(len(out_lines) / levels)
@@ -284,13 +316,13 @@ def main(args):
 
         db.put("getall:prot", ",".join(prot_components))
 
-        printv("Translation and storing done! Took {:.2f}s".format(time() - prot_start), args.verbose)
+        printv(f"Translation and storing done! Took {taxa_time_keeper.lap():.2f}s", args.verbose)
 
         sequence_count = this_index - 1
 
         printv(
-            "Inserted {} sequences for {} over {} batches. Found {} NT and {} AA dupes.".format(
-                sequence_count, formatted_taxa_out, levels, next(dupes), aa_dupes
+            "Inserted {} sequences over {} batches. Found {} NT and {} AA dupes.".format(
+                sequence_count, levels, next(dupes), aa_dupes
             ),
             args.verbose,
         )
@@ -300,9 +332,9 @@ def main(args):
         # Store the count of dupes in the database
         db.put("getall:dupes", json.dumps(duplicates))
 
-        printv("Took {:.2f}s for {}\n".format(time() - taxa_start, file), args.verbose)
+        printv(f"{formatted_taxa_out} took {global_time_keeper.lap():.2f}s overall\n", args.verbose)
 
-    print("Finished took {:.2f}s overall.".format(time() - global_start))
+    printv(f"Finished! Took {global_time_keeper.differential():.2f}s overall.", args.verbose, 0)
     printv("N_trim time: {} seconds".format(sum(trim_times)), args.verbose, 2)
     printv(f"Dedupe time: {dedup_time}", args.verbose, 2)
     return True

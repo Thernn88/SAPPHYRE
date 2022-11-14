@@ -17,6 +17,7 @@ from Bio.Seq import Seq
 
 from . import rocky
 from .timekeeper import TimeKeeper, KeeperMode
+from .utils import printv
 
 MainArgs = namedtuple(
     "MainArgs",
@@ -91,7 +92,7 @@ class Hit:
         self.extended_orf_cdna_start = None
         self.extended_orf_cdna_end = None
 
-    def add_extended_orf(self, exonerate_record):
+    def add_extended_orf(self, exonerate_record, verbose):
         (
             _,
             self.extended_orf_cdna_sequence,
@@ -110,9 +111,9 @@ class Hit:
             (self.extended_orf_cdna_end - 1) / 3
         ) + 1
 
-        self.extended_orf_aa_sequence = translate_cdna(self.extended_orf_cdna_sequence)
+        self.extended_orf_aa_sequence = translate_cdna(self.extended_orf_cdna_sequence, verbose)
 
-    def add_orf(self, exonerate_record):
+    def add_orf(self, exonerate_record, verbose):
         (
             _,
             self.orf_cdna_sequence,
@@ -123,7 +124,7 @@ class Hit:
             self.orf_aa_end,
         ) = exonerate_record
 
-        self.orf_aa_sequence = translate_cdna(self.orf_cdna_sequence)
+        self.orf_aa_sequence = translate_cdna(self.orf_cdna_sequence, verbose)
 
         self.orf_cdna_start_on_transcript = (
             self.orf_cdna_start + (self.ali_start * 3) - 3
@@ -180,11 +181,11 @@ def get_set_id(orthoset_db_con, orthoset):
 
     orthoset_db_cur = orthoset_db_con.cursor()
     rows = orthoset_db_cur.execute(
-        'SELECT id FROM orthograph_set_details WHERE name = "{}";'.format(orthoset)
+        f'SELECT id FROM orthograph_set_details WHERE name = "{orthoset}";'
     )
 
     if not rows:
-        raise Exception("Orthoset {} id cant be retrieved".format(orthoset))
+        raise Exception(f"Orthoset {orthoset} id cant be retrieved")
 
     # Return first result
     return next(rows)[0]
@@ -255,7 +256,7 @@ def get_scores_list(score_threshold, min_length, rocks_hits_db, debug):
 
 
 def get_blastresults_for_hmmsearch_id(hmmsearch_id):
-    key = "blastfor:{}".format(hmmsearch_id)
+    key = f"blastfor:{hmmsearch_id}"
     db_entry = rocky.get_rock("rocks_hits_db").get(key)
 
     if not db_entry:
@@ -345,12 +346,12 @@ def fastaify(headers, sequences, tmp_path):
     return path
 
 
-def translate_cdna(cdna_seq):
+def translate_cdna(cdna_seq, verbose):
     if not cdna_seq:
         return None
 
     if len(cdna_seq) % 3 != 0:
-        print("WARNING: NT Sequence length is not divisable by 3")
+        printv("WARNING: NT Sequence length is not divisable by 3", verbose, 0)
 
     return str(Seq(cdna_seq).translate())
 
@@ -698,9 +699,8 @@ def run_exonerate(arg_tuple: ExonerateArgs):
 
 
 def exonerate_gene_multi(eargs: ExonerateArgs):
-    if eargs.verbose >= 2:
-        print("Exonerating and doing output for: ", eargs.orthoid)
-        t_gene_start = TimeKeeper(KeeperMode.DIRECT)
+    t_gene_start = TimeKeeper(KeeperMode.DIRECT)
+    printv(f"Exonerating and doing output for: {eargs.orthoid}", eargs.verbose, 2)
 
     orthoset_db_con = sqlite3.connect(eargs.orthoset_db_path)
     reftaxon_related_transcripts = {}
@@ -737,7 +737,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
         for hit in hits:
             matching_alignment = get_match(hit.header, results)
             if matching_alignment:
-                hit.add_orf(matching_alignment)
+                hit.add_orf(matching_alignment, eargs.verbose)
 
                 if hit.orf_cdna_sequence:
                     if extend_orf:
@@ -746,7 +746,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                         )
 
                         if matching_extended_alignment:
-                            hit.add_extended_orf(matching_extended_alignment)
+                            hit.add_extended_orf(matching_extended_alignment, eargs.verbose)
 
                             if extended_orf_contains_original_orf(hit):
                                 orf_overlap = overlap_by_orf(hit)
@@ -756,7 +756,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                             # Does not contain original orf or does not overlap enough.
                             hit.remove_extended_orf()
                         else: # No alignment returned
-                            print("Failed to extend orf on {}".format(hit.header))
+                            printv(f"WARNING: Failed to extend orf on {hit.header}. Using trimmed sequence", eargs.verbose)
                     output_sequences.append(hit)
     if len(output_sequences) > 0:
         output_sequences = sorted(output_sequences, key=lambda d: d.hmm_start)
@@ -786,12 +786,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                 fp.writelines(print_core_sequences(eargs.orthoid, core_sequences_nt))
                 fp.writelines(nt_output)
 
-    if eargs.verbose >= 2:
-        print(
-            "{} took {:.2f}s. Had {} sequences".format(
-                eargs.orthoid, t_gene_start.differential(), len(output_sequences)
-            )
-        )
+    printv(f"{eargs.orthoid} took {t_gene_start.differential():.2f}s. Had {len(output_sequences)} sequences", eargs.verbose, 2)
 
 
 def is_reciprocal_match(blast_results, reference_taxa: List[str]):
@@ -817,9 +812,8 @@ def is_reciprocal_match(blast_results, reference_taxa: List[str]):
 def reciprocal_search(
     hmmresults, list_of_wanted_orthoids, reference_taxa, score, verbose
 ):
-    if verbose >= 3:
-        t_reciprocal_start = TimeKeeper(KeeperMode.DIRECT)
-        print("Ensuring reciprocal hit for hmmresults in {}".format(score))
+    t_reciprocal_start = TimeKeeper(KeeperMode.DIRECT)
+    printv(f"Ensuring reciprocal hit for hmmresults in {score}", verbose, 2)
 
     results = []
     for result in hmmresults:
@@ -841,20 +835,13 @@ def reciprocal_search(
             result.reftaxon = this_match_reftaxon
             results.append(result)
 
-    if verbose >= 3:
-        print(
-            "Checked reciprocal hits for {}. Took {:.2f}s.".format(
-                score, t_reciprocal_start.differential()
-            )
-        )
+    printv(f"Checked reciprocal hits for {score}. Took {t_reciprocal_start.differential():.2f}s.", verbose, 2)
     return results
 
 
 def do_taxa(path, taxa_id, args):
-    print("Doing {}.".format(taxa_id))
-    t_taxa_start = TimeKeeper(KeeperMode.DIRECT)
-    if args.verbose >= 1:
-        t_init_db = TimeKeeper(KeeperMode.DIRECT)
+    printv(f"Processing: {taxa_id}", args.verbose, 0)
+    time_keeper = TimeKeeper(KeeperMode.DIRECT)
 
     num_threads = args.processes
     if not isinstance(num_threads, int) or num_threads < 1:
@@ -871,10 +858,8 @@ def do_taxa(path, taxa_id, args):
     if orthoid_list_file:  # TODO orthoid_list_file must be passed as argument
         with open(orthoid_list_file) as fp:
             list_of_wanted_orthoids = fp.read().split("\n")
-        wanted_orthoid_only = True
     else:
         list_of_wanted_orthoids = []
-        wanted_orthoid_only = False
 
     orthoset_path = args.orthoset_input
     orthoset = args.orthoset
@@ -907,25 +892,11 @@ def do_taxa(path, taxa_id, args):
     os.makedirs(aa_out_path, exist_ok=True)
     os.makedirs(nt_out_path, exist_ok=True)
 
-    if args.verbose >= 1:
-        t_reference_taxa = TimeKeeper(KeeperMode.DIRECT)
-        print(
-            "Initialized databases. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing reference taxa in set.".format(
-                t_taxa_start.differential(), t_init_db.differential()
-            )
-        )
-        del t_init_db
+    printv(f"Initialized databases. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing reference taxa in set.", args.verbose)
 
     reference_taxa = get_taxa_in_set(orthoset_id, orthoset_db_con)
 
-    if args.verbose >= 1:
-        t_hmmresults = TimeKeeper(KeeperMode.DIRECT)
-        print(
-            "Got reference taxa in set. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing hmmresults".format(
-                t_taxa_start.differential(), t_reference_taxa.differential()
-            )
-        )
-        del t_reference_taxa
+    printv(f"Got reference taxa in set. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing hmmresults.", args.verbose)
 
     score_based_results, ufr_rows = get_scores_list(
         args.min_score, args.min_length, rocky.get_rock("rocks_hits_db"), args.debug
@@ -939,15 +910,7 @@ def do_taxa(path, taxa_id, args):
         with open(ufr_path, "w") as fp:
             fp.writelines(ufr_out)
 
-    ####################################
-    if args.verbose >= 1:
-        print(
-            "Got hmmresults. Elapsed time {:.2f}s. Took {:.2f}s. Doing reciprocal check.".format(
-                t_taxa_start.differential(), t_hmmresults.differential()
-            )
-        )
-        t_reciprocal_search = TimeKeeper(KeeperMode.DIRECT)
-        del t_hmmresults
+    printv(f"Got hmmresults. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Doing reciprocal check.", args.verbose)
 
     scores = list(score_based_results.keys())
     scores.sort(reverse=True)  # Ascending
@@ -981,15 +944,7 @@ def do_taxa(path, taxa_id, args):
                 transcripts_mapped_to[orthoid] = []
 
             transcripts_mapped_to[orthoid].append(this_match)
-
-    if args.verbose >= 1:
-        print(
-            "Reciprocal check done, found {} reciprocal hits. Elapsed time {:.2f}s. Took {:.2f}s. Exonerating genes.".format(
-                brh_count, t_taxa_start.differential(), t_reciprocal_search.differential()
-            )
-        )
-
-    t_exonerate_genes = TimeKeeper(KeeperMode.DIRECT)
+    printv(f"Reciprocal check done, found {brh_count} reciprocal hits. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Exonerating genes.", args.verbose)
 
     if num_threads > 1:
         arguments: list[Optional[ExonerateArgs]] = []
@@ -1022,15 +977,9 @@ def do_taxa(path, taxa_id, args):
     if num_threads > 1:
         with Pool(num_threads) as pool:
             pool.map(run_exonerate, arguments, chunksize=1)
+    
+    printv(f"Done! Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s. Exonerating genes.", args.verbose)
 
-    if args.verbose >= 1:
-        print(
-            "Done. Final time {:.2f}s. Exonerate took {:.2f}s.".format(
-                t_taxa_start.differential(), t_exonerate_genes.differential()
-            )
-        )
-    else:
-        print("Done took {:.2f}s.".format(t_taxa_start.differential()))
 
 
 ####
@@ -1081,11 +1030,11 @@ header_seperator = "|"
 
 
 def main(args):
+    global_time = TimeKeeper(KeeperMode.DIRECT)
     if not all(os.path.exists(i) for i in args.INPUT):
-        print("ERROR: All folders passed as argument must exist.")
+        printv("ERROR: All folders passed as argument must exist.", args.verbose, 0)
         return False
     for input_path in args.INPUT:
-        #print(f"### Processing path '{input_path}'.")
         rocks_db_path = os.path.join(input_path, "rocksdb")
         rocky.create_pointer("rocks_sequence_db", os.path.join(rocks_db_path, "sequences"))
         rocky.create_pointer("rocks_hits_db", os.path.join(rocks_db_path, "hits"))
@@ -1094,6 +1043,8 @@ def main(args):
             taxa_id=os.path.basename(input_path).split(".")[0],
             args=args,
         )
+    if len(args.INPUT) > 1 or not args.verbose:
+        printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
     return True
 
 

@@ -376,6 +376,13 @@ def subcmd_mergeoverlap(subparsers):
         "compared to in split calculation.",
     )
     par.add_argument(
+        "-io",
+        "--ignore_overlap_chunks",
+        action="store_true", 
+        default=False,
+        help="Ignore overlapping chunks and merge all candidates for a reference taxon."
+    )
+    par.add_argument(
         "-m",
         "--majority",
         type=float,
@@ -540,6 +547,26 @@ def flexcull(args):
         print(args.formathelp())
 
 
+def subcmd_sradownload(sp):
+    par = sp.add_parser("SRADownload", help="Download fastq files from www.ncbi.nlm.nih.gov")
+    par.add_argument(
+        "INPUT", help="Path to the CSV file input",
+    )
+    par.add_argument(
+        '-b', '--bin',
+        help="Path to SRA Toolkit. Will try system's PATH if not used.",
+        required=False
+    )
+    par.set_defaults(func=sradownload, formathelp=par.format_help)
+
+
+def sradownload(argsobj):
+    from . import sradownload
+    if not sradownload.main(argsobj):
+        print()
+        print(argsobj.formathelp())
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog="phymmr",
@@ -584,6 +611,7 @@ if __name__ == "__main__":
     subcmd_outliercheck(subparsers)
     subcmd_mergeoverlap(subparsers)
     subcmd_mergegenes(subparsers)
+    subcmd_sradownload(subparsers)
 
     args = parser.parse_args()
     if not hasattr(args, "func"):

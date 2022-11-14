@@ -69,7 +69,7 @@ class ProtFile:
 
     def __del__(self):
         self.cleanup()
-
+from .timekeeper import TimeKeeper, KeeperMode
 
 class Hit:
     __slots__ = (
@@ -433,6 +433,28 @@ def make_exclusion_list(path: str) -> set:
     return excluded
 
 
+def make_temp_protfile(
+    ortholog: str,
+    temp: str,
+    sequences_db_conn
+) -> str:
+    """
+    Looks up the digest and sequence in the orthodb est table, then
+    writes to the protfile. Returns path to protfile as a str.
+    Creates side effects.
+    """
+    prot_name = ortholog + "_prot.tmp"
+    prot_path = os.path.join(temp, prot_name)
+
+    recipe = sequences_db_conn.get("getall:prot").split(',')
+
+    with open(prot_path, "w") as prot_file_handle:
+        for component in recipe:
+            prot_file_handle.write(sequences_db_conn.get(f"getprot:{component}"))
+
+    return prot_path
+
+
 def parse_domtbl_fields(fields: list) -> Hit:
     hit = Hit(
         fields[0],
@@ -527,7 +549,7 @@ def search_prot(
         ]
         p = subprocess.run(command, stdout=subprocess.PIPE)
         if p.returncode != 0:  # non-zero return code means an error
-            printv(f"{domtbl_path}:hmmsearch error code {p.returncode}", verbose)
+            printv(f"{domtbl_path}:hmmsearch error code {p.returncode}", verbose, 0)
         else:
             printv(f"Searched {os.path.basename(domtbl_path)}", verbose, 2)
     return get_hits_from_domtbl(domtbl_path, score, evalue)
@@ -557,6 +579,8 @@ def run_process(args, input_path: str) -> None:
     min_overlap_multi = args.min_overlap_multi
     score_diff_internal = args.score_diff_internal
     min_overlap_internal = args.min_overlap_internal
+
+    time_keeper = TimeKeeper(KeeperMode.DIRECT)
 
     num_threads = args.processes
     global_start = time()
@@ -603,10 +627,13 @@ def run_process(args, input_path: str) -> None:
 
     # make protfile for hmm_search later
     printv("Checking protfile", args.verbose)
+    time_keeper.lap()
     protfile = ProtFile(ortholog, args.verbose)
     protfile.makeme(sequences_db_conn)
 
-    start = time()
+    printv(f"Wrote prot file in {time_keeper.lap():.2f}s", args.verbose)
+
+
     hmm_results = []  # list of lists containing Hit objects
     if num_threads > 1:
         arg_tuples = []
@@ -621,9 +648,9 @@ def run_process(args, input_path: str) -> None:
             hmm_results.append(
                 hmm_search(hmm, domtbl_dir, args.evalue, args.score, protfile, args.overwrite, args.verbose))
 
-    printv("Search time: {:.2f}".format(time() - start), args.verbose)
+    printv(f"Search time: {time_keeper.lap():.2f}", args.verbose)
 
-    filter_start = time()
+    filter_timer = TimeKeeper(KeeperMode.DIRECT)
 
     f_duplicates = {}
     gene_based_results = {}
@@ -644,7 +671,7 @@ def run_process(args, input_path: str) -> None:
 
     printv(f"Filtering {count} hits", args.verbose)
 
-    printv('Doing multi-gene dupe filter. Searching for duplicates', args.verbose)
+    printv("Doing multi-gene dupe filter. Searching for duplicates", args.verbose)
     required_internal_multi_genes = {}
     rimg_set = set()
 
@@ -698,9 +725,7 @@ def run_process(args, input_path: str) -> None:
     for header_left in f_duplicates:
         header_based_results[header_left] = []
 
-    printv(
-        'Found {} potential dupes. Search took {:.2f}s. Filtering dupes'.format(possible_dupes, time() - filter_start),
-        args.verbose)
+    printv(f"Found {possible_dupes} potential dupes. Search took {filter_timer.lap():.2f}s. Filtering dupes", args.verbose)
 
     if debug:
         filtered_sequences_log = []
@@ -740,9 +765,7 @@ def run_process(args, input_path: str) -> None:
                 filtered_sequences_log.extend(data["Log"])
             header_based_results[data["Remaining"][0].header] = data["Remaining"]
 
-    printv('Done! Took {:.2f}s'.format(time() - filter_start), args.verbose)
-    internal_multi_start = time()
-
+    printv(f"Done! Took {filter_timer.lap():.2f}s", args.verbose)
     transcripts_mapped_to = {}
 
     for header in header_based_results:
@@ -751,8 +774,7 @@ def run_process(args, input_path: str) -> None:
                 transcripts_mapped_to[match.gene] = []
             transcripts_mapped_to[match.gene].append(match)
 
-    printv('Looking for internal duplicates over {} flagged genes'.format(len(required_internal_multi_genes)),
-           args.verbose)
+    printv(f"Looking for internal duplicates over {len(required_internal_multi_genes)} flagged genes", args.verbose)
 
     if num_threads == 1:
         internal_multi_data = []
@@ -795,10 +817,8 @@ def run_process(args, input_path: str) -> None:
         if debug:
             filtered_sequences_log.extend(data["Log"])
 
-    printv('Done! Took {:.2f}s'.format(time() - internal_multi_start), args.verbose)
-    internal_start = time()
-
-    printv('Doing internal overlap filter', args.verbose)
+    printv(f"Done! Took {filter_timer.lap():.2f}s", args.verbose)
+    printv("Doing internal overlap filter", args.verbose)
 
     total_hits = 0
     if num_threads == 1:
@@ -855,8 +875,8 @@ def run_process(args, input_path: str) -> None:
         with open(filtered_sequences_log_path, "w") as fp:
             fp.writelines(filtered_sequences_log_out)
 
-    printv('Done! Took {:.2f}s'.format(time() - internal_start), args.verbose)
-    printv('Filtering took {:.2f}s overall'.format(time() - filter_start), args.verbose)
+    printv(f"Done! Took {filter_timer.lap():.2f}s", args.verbose)
+    printv(f"Filtering took {filter_timer.differential():.2f}s overall", args.verbose)
 
     end = time()
     # Seperate hmm hits into seperate levels
@@ -925,27 +945,22 @@ def run_process(args, input_path: str) -> None:
     data = ','.join(global_hmm_obj_recipe)
     hits_db_conn.put(key, data)
 
-    db_end = time()
-    printv(
-        "Inserted {} hits over {} batch(es) in {:.2f} seconds. Kicked {} hits during "
-        "filtering".format(
-            total_hits,
-            len(global_hmm_obj_recipe),
-            db_end - end,
-            count - total_hits
-        ),
-        args.verbose
-    )
-    print("Took {:.2f}s overall".format(time() - global_start))
+    batches = len(global_hmm_obj_recipe)
+    kicks = count - total_hits
+    printv(f"Inserted {total_hits} hits over {batches} batch(es) in {time_keeper.lap():.2f} seconds. Kicked {kicks} hits during filtering", args.verbose)
+    printv(f"Done! Took {time_keeper.differential():.2f}s overall", args.verbose, 0)
 
 
 def main(args):
+    global_time = TimeKeeper(KeeperMode.DIRECT)
     if not all(os.path.exists(i) for i in args.INPUT):
-        print("ERROR: All folders passed as argument must exists.")
+        printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
     for input_path in args.INPUT:
-        printv('Begin Hmmsearch for {}'.format(os.path.basename(input_path)), args.verbose)
+        printv(f"Processing: {os.path.basename(input_path)}", args.verbose)
         run_process(args, input_path)
+    if len(args.INPUT) > 1 or not args.verbose:
+        printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
     return True
 
 

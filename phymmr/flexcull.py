@@ -12,6 +12,9 @@ from time import time
 
 from Bio import AlignIO
 
+from .utils import printv
+from .timekeeper import TimeKeeper, KeeperMode
+
 MainArgs = namedtuple(
     "MainArgs",
     [
@@ -109,8 +112,7 @@ def do_gene(
     gene_path = os.path.join(aa_input, aa_file)
     this_gene = aa_file.split(".")[0]
 
-    if verbosity:
-        print("Doing:",this_gene)
+    printv("Doing: {this_gene}", verbosity, 2)
 
     references, candidates, raw_references = parse_fasta(gene_path)
 
@@ -329,13 +331,13 @@ def run_command(arg_tuple: tuple) -> None:
 
 
 def do_folder(folder, args: MainArgs):
-    start = time()
-    print(f"### Processing folder {folder}")
+    folder_time = TimeKeeper(KeeperMode.DIRECT)
+    printv(f"Processing: {folder}", args.verbose, 0)
     aa_path = os.path.join(folder, args.amino_acid)
     nt_path = os.path.join(folder, args.nucleotide)
     output_path = os.path.join(folder, args.output)
     if not os.path.exists(aa_path) or not os.path.exists(nt_path):
-        print(f"Can't find aa ({aa_path}) and nt ({nt_path}) folders. Abort")
+        printv(f"WARNING: Can't find aa ({aa_path}) and nt ({nt_path}) folders. Abort", args.verbose)
         return
     available_tmp_path = folder_check(output_path, folder)
     file_inputs = [
@@ -391,18 +393,17 @@ def do_folder(folder, args: MainArgs):
         with open(log_out,'w') as fp:
             fp.writelines(log_global)
 
-    time_taken = time()
-    time_taken = time_taken - start
-
-    print("Done! Took {:.2f}s overall.".format(time_taken))
-
+    printv(f"Done! Took {folder_time.differential():.2f}s", args.verbose)
 
 def main(args):
+    global_time = TimeKeeper(KeeperMode.DIRECT)
     if not all(os.path.exists(i) for i in args.INPUT):
-        print("ERROR: All folders passed as argument must exists.")
+        printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
     for folder in args.INPUT:
         do_folder(folder, args)
+    if len(args.INPUT) > 1 or not args.verbose:
+        printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
     return True
 
 
