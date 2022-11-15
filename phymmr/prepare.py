@@ -471,17 +471,17 @@ class DatabasePreparer:
 
 def map_taxa_runs(
     tuple_in: Tuple[str, str],
-    verbose,
-    printv,
-    clear_database,
-    keep_prepared,
-    MINIMUM_SEQUENCE_LENGTH,
-    secondary_directory,
-    global_time_keeper,
-    num_threads,
-    tmp_path,
-    PROT_MAX_SEQS_PER_LEVEL,
-    dedup_time
+    verbose: int,
+    printv: Callable,
+    clear_database: int,
+    keep_prepared: int,
+    MINIMUM_SEQUENCE_LENGTH: int,
+    secondary_directory: Path,
+    global_time_keeper: Any,
+    num_threads: int,
+    tmp_path: Path,
+    PROT_MAX_SEQS_PER_LEVEL: Path,
+    dedup_time: List[int]
 ):
     formatted_taxa_out, components = tuple_in
 
