@@ -915,7 +915,7 @@ def do_taxa(path, taxa_id, args):
     printv(f"Got hmmresults. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Doing reciprocal check.", args.verbose)
 
     genes = list(gene_based_results.keys())
-    genes.sort(reverse=True)  # Ascending
+    genes.sort(key = lambda x: len(x), reverse=True)  # Ascending
     transcripts_mapped_to = {}
 
     argmnts = []
@@ -937,7 +937,6 @@ def do_taxa(path, taxa_id, args):
         brh_count += len(data)
         for this_match in data:
             orthoid = this_match.gene
-
             if transcript_not_long_enough(this_match, args.min_length):
                 continue
 
@@ -946,7 +945,6 @@ def do_taxa(path, taxa_id, args):
 
             transcripts_mapped_to[orthoid].append(this_match)
     printv(f"Reciprocal check done, found {brh_count} reciprocal hits. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Exonerating genes.", args.verbose)
-
     if num_threads > 1:
         arguments: list[Optional[ExonerateArgs]] = []
         func = arguments.append
