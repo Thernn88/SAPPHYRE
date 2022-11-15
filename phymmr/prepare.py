@@ -8,14 +8,12 @@ import mmap
 import os
 import re
 from itertools import count
-from multiprocessing.pool import Pool
+from multiprocessing.pool import Pool, ThreadPool
 from pathlib import Path
 from queue import Queue
-from shutil import rmtree
 from subprocess import call
-from sys import argv
-from threading import Thread
 from time import time
+from typing import Any, Callable, Dict, Generator, List, Tuple
 
 import phymmr_tools
 import wrap_rocks
@@ -27,7 +25,19 @@ from tqdm import tqdm
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import ConcurrentLogger
 
-
+ROCKSDB_FOLDER_NAME = "rocksdb"
+SEQUENCES_DB_NAME = "sequences"
+CORE_FOLDER = "PhyMMR"
+ALLOWED_FILETYPES = [
+    "fa",
+    "fas",
+    "fasta",
+    "fq",
+    "fastq",
+    "fq",
+    "fastq.gz",
+    "fq.gz"
+]
 
 
 def truncate_taxa(header: str, extension=None) -> str:
@@ -46,35 +56,41 @@ def truncate_taxa(header: str, extension=None) -> str:
         result = result + extension
     return result
 
-def get_seq_count(filename: Path, is_gz: bool):
+
+def get_seq_count(filename: Path, is_gz: bool) -> int:
+    """
+    Get the count of sequences based on number of headers.
+    """
     count = 0
     if is_gz:
-        f = gzip.open(filename, "r+")
-        for line in f:
-            if line[0] == ord(">") or line[0] == ord("+"):
-                count += 1
-    else: # We can grab it cheaper
+        with gzip.open(filename, "rb") as gzf:
+            splt_lines = gzf.readlines()
+    else:  # We can grab it cheaper
         by = filename.read_bytes()
-        ascii_le = ord('>')
-        ascii_pl = ord('+')
+        splt_lines = by.splitlines()
 
-        char_count = {ascii_le: 0, ascii_pl: 0}
+    ascii_le = ord('>')
+    ascii_pl = ord('+')
+    char_count = {ascii_le: 0, ascii_pl: 0}
 
-        def map_char_count(l: bytearray):
-            char_count.setdefault(l[0], 0)
-            char_count[l[0]] += 1
+    def map_char_count(l: bytearray):
+        char_count.setdefault(l[0], 0)
+        char_count[l[0]] += 1
 
-        by_splt_lines = by.splitlines()
-        list(map(map_char_count, by_splt_lines))
+    list(map(map_char_count, splt_lines))
 
-        if char_count[ascii_le] > 0:
-            count = char_count[ascii_le]
-        elif char_count[ascii_pl] > 0:
-            count = char_count[ascii_pl]
+    if char_count[ascii_le] > 0:
+        count = char_count[ascii_le]
+    elif char_count[ascii_pl] > 0:
+        count = char_count[ascii_pl]
 
     return count
 
-def N_trim(parent_sequence, MINIMUM_SEQUENCE_LENGTH):
+
+def N_trim(
+    parent_sequence: str,
+    MINIMUM_SEQUENCE_LENGTH: int
+) -> Generator[Tuple[str, int], Any, Any]:
     t1 = time()
     if "N" in parent_sequence:
         # Get N indices and start and end of sequence
@@ -113,12 +129,16 @@ def add_pc_to_db(db, key: int, data: list) -> str:
 
 
 def translate(in_path: Path, out_path: Path, translate_program="fastatranslate", genetic_code=1):
+    """
+    Call FASTA translate utility using subprocess.call
+    """
+
     call(
         " ".join([
             translate_program,
             '--geneticcode',
             str(genetic_code),
-            str(in_path), 
+            str(in_path),
             '>',
             str(out_path)
         ]),
@@ -127,48 +147,19 @@ def translate(in_path: Path, out_path: Path, translate_program="fastatranslate",
     in_path.unlink()
 
 
-def main(args):
-    msgq = Queue()
-    printv = ConcurrentLogger(msgq)
-    printv.start()
-    input_path = Path(args.INPUT)
-
-    if not input_path.exists():
-        printv("ERROR: An existing directory must be provided.", args.verbose, 0)
-        return False
-
-    trim_times = []  # Append computed time for each loop.
-    dedup_time = 0
-    global_time_keeper = TimeKeeper(KeeperMode.DIRECT)
-
-    PROT_MAX_SEQS_PER_LEVEL = args.sequences_per_level
-    MINIMUM_SEQUENCE_LENGTH = args.minimum_sequence_length
-    num_threads = args.processes
-    folder = args.INPUT
-    project_root = Path(__file__).parent.parent
-
-    allowed_filetypes = ["fa", "fas", "fasta", "fq", "fastq", "fq", "fastq.gz", "fq.gz"]
-
-    rocksdb_folder_name = "rocksdb"
-    sequences_db_name = "sequences"
-    core_directory = Path("PhyMMR").joinpath(input_path.parts[-1])
-    secondary_directory = project_root.joinpath(core_directory)
-
-    # Create necessary directories
-    printv("Creating directories", args.verbose)
-    secondary_directory.mkdir(parents=True, exist_ok=True)
+def glob_for_fasta_and_save_for_runs(globbed: Generator[Path, Any, Any]) -> Dict[str, List[Path]]:
+    """
+    Scan all the files in the input. Remove _R# and merge taxa
+    """
 
     taxa_runs = {}
 
-    # Scan all the files in the input. Remove _R# and merge taxa
-    
-    allowed_files_glob = list(input_path.glob("**/*.f[aq]*"))
-    for f in allowed_files_glob:
+    for f in globbed:
         file_is_file = f.is_file()
-        
+
         file_suffix = f.suffix
-        file_suffix_allowed = file_suffix[1:] in allowed_filetypes
-        
+        file_suffix_allowed = file_suffix[1:] in ALLOWED_FILETYPES
+
         if (file_is_file and file_suffix_allowed):
             taxa = f.stem.split(".")[0]
 
@@ -176,171 +167,262 @@ def main(args):
 
             taxa_runs.setdefault(formatted_taxa, [])
             taxa_runs[formatted_taxa].append(f)
-    
-    for formatted_taxa_out, components in taxa_runs.items():
-        global_time_keeper.lap()
-        taxa_time_keeper = TimeKeeper(KeeperMode.DIRECT)
-        printv(f"Preparing: {formatted_taxa_out}", args.verbose, 0)
 
-        taxa_destination_directory = secondary_directory.joinpath(formatted_taxa_out)
+    return taxa_runs
 
-        rocksdb_path = taxa_destination_directory.joinpath(rocksdb_folder_name)
-        sequences_db_path = rocksdb_path.joinpath(sequences_db_name)
 
-        if args.clear_database and rocksdb_path.exists():
-            printv("Clearing old database", args.verbose)
-            rmtree(rocksdb_path)
+class SeqDeduplicator:
+    def __init__(
+        self,
+        fa_file_path: Path,
+        db: Any,
+        MINIMUM_SEQUENCE_LENGTH: int,
+        verbose: int
+    ):
+        self.fa_file_path = fa_file_path
+        self.MINIMUM_SEQUENCE_LENGTH = MINIMUM_SEQUENCE_LENGTH
+        self.verbose = verbose
+        self.fasta_file = None
+        self.for_loop = None
+        self.db = db
 
-        printv("Creating rocksdb database", args.verbose)
-
-        rocksdb_path.mkdir(parents=True, exist_ok=True)
-
-        db = wrap_rocks.RocksDB(str(sequences_db_path))
-
-        taxa_destination_directory.mkdir(parents=True, exist_ok=True)
-
-        prepared_file_destination = taxa_destination_directory.joinpath(formatted_taxa_out)
-
-        prot_path = taxa_destination_directory.joinpath(formatted_taxa_out.replace(".fa", "_prot.fa"))
-
-        duplicates = {}
-        rev_comp_save = {}
-        transcript_mapped_to = {}
-        dupes = count()
-        this_index = 1
-
-        fa_file_out = []
-        printv("Formatting input sequences and inserting into database", args.verbose)
-        for fa_file_path in components:           
-            if any([fa_file_path.suffix in (".fq", ".fastq")]):
-                read_method = FastqGeneralIterator
-            else:
-                read_method = SimpleFastaParser
-
-            is_compressed = fa_file_path.suffix == '.gz'
-            if is_compressed:
-                fasta_file = read_method(gzip.open(fa_file_path, "rt"))
-            else:
-                fasta_file = read_method(open(fa_file_path, "r"))
-                                
-            if args.verbose: 
-                seq_grab_count = get_seq_count(fa_file_path, is_compressed)
-            for_loop = tqdm(fasta_file, total=seq_grab_count) if args.verbose else fasta_file
-            for row in for_loop:
-                header, parent_seq = row[:2]
-
-                if not len(parent_seq) >= MINIMUM_SEQUENCE_LENGTH:
-                    continue
-                parent_seq = parent_seq.upper()
-                # for seq in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH):
-                for seq, tt in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH):
-                    trim_times.append(tt)
-                    length = len(seq)
-                    header = f"NODE_{this_index}_length_{length}"
-
-                    # Check for dupe, if so save how many times that sequence occured
-                    seq_start = time()
-
-                    if seq in transcript_mapped_to:
-                        duplicates.setdefault(transcript_mapped_to[seq], 1)
-                        duplicates[transcript_mapped_to[seq]] += 1
-                        next(dupes)
-                        continue
-                    else:
-                        transcript_mapped_to[seq] = header
-
-                    # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
-                    # sequence so we don't have to rev-comp this unique sequence again
-                    if seq in rev_comp_save:
-                        rev_seq = rev_comp_save[seq]
-                    else:
-                        rev_seq = phymmr_tools.bio_revcomp(seq)
-                        rev_comp_save[seq] = rev_seq
-
-                    # Check for revcomp dupe, if so save how many times that sequence occured
-                    if rev_seq in transcript_mapped_to:
-                        duplicates.setdefault(transcript_mapped_to[rev_seq], 1)
-                        duplicates[transcript_mapped_to[rev_seq]] += 1
-                        next(dupes)
-                        continue
-                    else:
-                        transcript_mapped_to[rev_seq] = header
-
-                    seq_end = time()
-                    dedup_time += seq_end - seq_start
-                    this_index += 1
-
-                    # If no dupe, write to prepared file and db
-                    line = ">" + header + "\n" + seq + "\n"
-
-                    fa_file_out.append(line)
-
-                    # Get rid of space and > in header (blast/hmmer doesn't like it) Need to push modified external to remove this. ToDo.
-                    preheader = header.replace(" ", "|")  # pre-hash header
-                    # Key is a hash of the header
-                    db.put(xxhash.xxh64_hexdigest(preheader), f"{preheader}\n{seq}")
-
-        printv("Translating prepared file", args.verbose)
-
-        aa_dupe_count = count()
-
-        path_run_tmp = Path("/run/shm")
-        path_dev_tmp = Path("/dev/shm")
-        path_tmp_tmp = Path("/tmp")
-
-        if path_dev_tmp.exists() and path_dev_tmp.is_dir():
-            tmp_path = path_dev_tmp
-        elif path_run_tmp.exists() and path_run_tmp.is_dir():
-            tmp_path = path_run_tmp
-        elif path_tmp_tmp.exists() and path_tmp_tmp.is_dir():
-            tmp_path = path_tmp_tmp
+    def dedup_init(self):
+        suffix = self.fa_file_path.suffix
+        if any([suffix in (".fq", ".fastq")]):
+            read_method = FastqGeneralIterator
         else:
-            tmp_path = project_root.joinpath("tmp")
-            tmp_path.mkdir(parents=True, exist_ok=True)
+            read_method = SimpleFastaParser
 
-        sequences_per_thread = math.ceil((len(fa_file_out) / 2) / num_threads) * 2
-        translate_files = []
-        for i in range(0, len(fa_file_out), sequences_per_thread):
+        is_compressed = suffix == '.gz'
+        if is_compressed:
+            self.fasta_file = read_method(gzip.open(self.fa_file_path, "rt"))
+        else:
+            self.fasta_file = read_method(open(self.fa_file_path, "r"))
+
+        if self.verbose:
+            self.seq_grab_count = get_seq_count(
+                self.fa_file_path, is_compressed)
+
+        self.for_loop = tqdm(
+            self.fasta_file, total=self.seq_grab_count) if self.verbose else self.fasta_file
+
+    def __call__(
+        self,
+        trim_times: List[int],
+        duplicates: Dict[str, int],
+        rev_comp_save: Dict[str, int],
+        transcript_mapped_to: Dict[str, str],
+        dupes: List[Any],
+        this_index: List[int],
+        fa_file_out: List[int],
+        dedup_time: List[int],
+    ):
+        self.dedup_init()
+
+        for row in self.for_loop:
+            header, parent_seq = row[:2]
+
+            if not len(parent_seq) >= self.MINIMUM_SEQUENCE_LENGTH:
+                continue
+            parent_seq = parent_seq.upper()
+            # for seq in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH):
+            for seq, tt in N_trim(parent_seq, self.MINIMUM_SEQUENCE_LENGTH):
+                trim_times.append(tt)
+                length = len(seq)
+                header = f"NODE_{this_index[0]}_length_{length}"
+
+                # Check for dupe, if so save how many times that sequence occured
+                seq_start = time()
+
+                if seq in transcript_mapped_to:
+                    duplicates.setdefault(
+                        transcript_mapped_to[seq], 1)
+                    duplicates[transcript_mapped_to[seq]] += 1
+                    next(dupes[0])
+                    continue
+                else:
+                    transcript_mapped_to[seq] = header
+
+                # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
+                    # sequence so we don't have to rev-comp this unique sequence again
+                if seq in rev_comp_save:
+                    rev_seq = rev_comp_save[seq]
+                else:
+                    rev_seq = phymmr_tools.bio_revcomp(seq)
+                    rev_comp_save[seq] = rev_seq
+
+                # Check for revcomp dupe, if so save how many times that sequence occured
+                if rev_seq in transcript_mapped_to:
+                    duplicates.setdefault(
+                        transcript_mapped_to[rev_seq], 1)
+                    duplicates[transcript_mapped_to[rev_seq]] += 1
+                    next(dupes[0])
+                    continue
+                else:
+                    transcript_mapped_to[rev_seq] = header
+
+                seq_end = time()
+                dedup_time[0] += seq_end - seq_start
+                this_index[0] += 1
+
+                # If no dupe, write to prepared file and db
+                line = ">" + header + "\n" + seq + "\n"
+
+                fa_file_out.append(line)
+
+                # Get rid of space and > in header (blast/hmmer doesn't like it) Need to push modified external to remove this. ToDo.
+                preheader = header.replace(" ", "|")  # pre-hash header
+                # Key is a hash of the header
+                self.db.put(xxhash.xxh64_hexdigest(
+                    preheader), f"{preheader}\n{seq}")
+
+
+class DatabasePreparer:
+    def __init__(
+        self,
+        formatted_taxa_out: str,
+        components: List[Path],
+        verbose: bool,
+        printv: Callable,
+        clear_database: bool,
+        keep_prepared: bool,
+        MINIMUM_SEQUENCE_LENGTH: int,
+        dedup_time: List[int]
+    ):
+        self.fto = formatted_taxa_out
+        self.comp = components
+        self.db = None
+        self.prepared_file_destination = None
+        self.prot_path = None
+        self.fa_file_out = []
+        self.verbose = verbose
+        self.printv = printv
+        self.clear_database = clear_database
+        self.seq_grab_count = 0
+        self.MINIMUM_SEQUENCE_LENGTH = MINIMUM_SEQUENCE_LENGTH
+        self.taxa_time_keeper = None
+        self.prot_components = []
+        self.translate_files = []
+        self.keep_prepared = keep_prepared
+        self.trim_times = []
+        self.duplicates = {}
+        self.rev_comp_save = {}
+        self.transcript_mapped_to = {}
+        self.dupes = [count()]
+        self.this_index = [1]
+        self.fa_file_out = []
+        self.dedup_time = dedup_time
+
+    def init_db(
+            self,
+            secondary_directory: Path,
+            global_time_keeper: Any
+    ) -> Any:
+        global_time_keeper.lap()
+        self.taxa_time_keeper = TimeKeeper(KeeperMode.DIRECT)
+        self.printv(f"Preparing: {self.fto}", self.verbose, 0)
+        self.printv(
+            "Formatting input sequences and inserting into database", self.verbose)
+
+        taxa_destination_directory = secondary_directory.joinpath(self.fto)
+
+        rocksdb_path = taxa_destination_directory.joinpath(ROCKSDB_FOLDER_NAME)
+        sequences_db_path = rocksdb_path.joinpath(SEQUENCES_DB_NAME)
+
+        if self.clear_database and rocksdb_path.exists():
+            self.printv("Clearing old database", self.verbose)
+            rocksdb_path.rmdir()
+
+        self.printv("Creating rocksdb database", self.verbose)
+        rocksdb_path.mkdir(parents=True, exist_ok=True)
+        self.db = wrap_rocks.RocksDB(str(sequences_db_path))
+        taxa_destination_directory.mkdir(parents=True, exist_ok=True)
+        self.prepared_file_destination = taxa_destination_directory.joinpath(
+            self.fto)
+        self.prot_path = taxa_destination_directory.joinpath(
+            self.fto.replace(".fa", "_prot.fa"))
+
+    def dedup(self):
+        for fa_file_path in self.comp:
+            SeqDeduplicator(
+                fa_file_path,
+                self.db,
+                self.MINIMUM_SEQUENCE_LENGTH,
+                self.verbose
+            )(
+                self.trim_times,
+                self.duplicates,
+                self.rev_comp_save,
+                self.transcript_mapped_to,
+                self.dupes,
+                self.this_index,
+                self.fa_file_out,
+                self.dedup_time
+            )
+
+    def translate_fasta_and_write_to_disk(
+        self,
+        num_threads: int,
+        tmp_path: Path,
+    ):
+        self.printv("Translating prepared file", self.verbose)
+
+        sequences_per_thread = math.ceil(
+            (len(self.fa_file_out) / 2) / num_threads) * 2
+        self.translate_files = []
+
+        for i in range(0, len(self.fa_file_out), sequences_per_thread):
             in_path = tmp_path.joinpath(
-                formatted_taxa_out + f'_{len(translate_files)}.fa'
+                self.fto + f'_{len(self.translate_files)}.fa'
             )
             out_path = tmp_path.joinpath(
-                formatted_taxa_out + f'_prot_{len(translate_files)}.fa'
+                self.fto + f'_prot_{len(self.translate_files)}.fa'
             )
-            translate_files.append((in_path, out_path))
-            in_path.write_text("\n".join(fa_file_out[i:i + sequences_per_thread]))
+            self.translate_files.append((in_path, out_path))
+            in_path.write_text(
+                "\n".join(self.fa_file_out[i:i + sequences_per_thread]))
 
         with Pool(num_threads) as translate_pool:
-            translate_pool.starmap(translate, translate_files)
+            translate_pool.starmap(translate, self.translate_files)
 
-        if args.keep_prepared:
-            prepared_file_destination.write_text("\n".join(fa_file_out))
-        del fa_file_out
+        if self.keep_prepared:
+            self.prepared_file_destination.write_text(
+                "\n".join(self.fa_file_out))
+
+    def store_in_db(
+        self,
+        PROT_MAX_SEQS_PER_LEVEL: int,
+        global_time_keeper: Any
+
+    ):
+        self.printv(
+            f"Storing translated file in DB. Translate took {self.taxa_time_keeper.lap():.2f}s", self.verbose)
 
         prot_components = []
-
-        printv(f"Storing translated file in DB. Translate took {taxa_time_keeper.lap():.2f}s", args.verbose)
+        aa_dupe_count = count()
 
         out_lines = []
-        for prepare_file, translate_file in translate_files:
+        for _, translate_file in self.translate_files:
             with open(translate_file, "r+", encoding="utf-8") as fp:
                 for header, seq in SimpleFastaParser(fp):
                     header = header.replace(" ", "|")
-                    if seq in transcript_mapped_to:
-                        duplicates.setdefault(transcript_mapped_to[seq], 1)
-                        duplicates[transcript_mapped_to[seq]] += 1
+                    if seq in self.transcript_mapped_to:
+                        self.duplicates.setdefault(
+                            self.transcript_mapped_to[seq], 1)
+                        self.duplicates[self.transcript_mapped_to[seq]] += 1
                         next(aa_dupe_count)
                         continue
                     else:
-                        transcript_mapped_to[seq] = header
+                        self.transcript_mapped_to[seq] = header
                     out_lines.append(">" + header + "\n" + seq + "\n")
             os.remove(translate_file)
 
-        if args.keep_prepared:
-            open(prot_path, 'w').writelines(out_lines)
+        if self.keep_prepared:
+            open(self.prot_path, 'w').writelines(out_lines)
 
         aa_dupes = next(aa_dupe_count)
-        printv(f"AA dedupe took {taxa_time_keeper.lap():.2f}s. Kicked {aa_dupes} dupes", args.verbose, 2)
+        self.printv(
+            f"AA dedupe took {self.taxa_time_keeper.lap():.2f}s. Kicked {aa_dupes} dupes", self.verbose, 2)
 
         levels = math.ceil(len(out_lines) / PROT_MAX_SEQS_PER_LEVEL)
         per_level = math.ceil(len(out_lines) / levels)
@@ -351,32 +433,145 @@ def main(args):
 
             data = out_lines[i: i + per_level]
             prot_components.append(str(component))
-            db.put(f"getprot:{component}", "".join(data))
+            self.db.put(f"getprot:{component}", "".join(data))
 
-        db.put("getall:prot", ",".join(prot_components))
+        self.db.put("getall:prot", ",".join(prot_components))
 
-        printv(f"Translation and storing done! Took {taxa_time_keeper.lap():.2f}s", args.verbose)
+        self.printv(
+            f"Translation and storing done! Took {self.taxa_time_keeper.lap():.2f}s", self.verbose)
 
-        sequence_count = this_index - 1
+        sequence_count = self.this_index[0] - 1
 
-        printv(
+        self.printv(
             "Inserted {} sequences over {} batches. Found {} NT and {} AA dupes.".format(
-                sequence_count, levels, next(dupes), aa_dupes
+                sequence_count, levels, next(self.dupes[0]), aa_dupes
             ),
-            args.verbose,
+            self.verbose,
         )
 
-        del transcript_mapped_to  # Clear mem
-
         # Store the count of dupes in the database
-        db.put("getall:dupes", json.dumps(duplicates))
+        self.db.put("getall:dupes", json.dumps(self.duplicates))
 
-        printv(f"{formatted_taxa_out} took {global_time_keeper.lap():.2f}s overall\n", args.verbose)
+        self.printv(
+            f"{self.fto} took {global_time_keeper.lap():.2f}s overall\n", self.verbose)
 
-    printv(f"Finished! Took {global_time_keeper.differential():.2f}s overall.", args.verbose, 0)
+    def __call__(
+        self,
+        secondary_directory: Path,
+        global_time_keeper: Any,
+        num_threads: int,
+        tmp_path: Path,
+        PROT_MAX_SEQS_PER_LEVEL: int
+    ):
+        self.init_db(secondary_directory, global_time_keeper)
+        self.dedup()
+        self.translate_fasta_and_write_to_disk(num_threads, tmp_path)
+        self.store_in_db(PROT_MAX_SEQS_PER_LEVEL, global_time_keeper)
+
+
+def map_taxa_runs(
+    tuple_in: Tuple[str, str],
+    verbose,
+    printv,
+    clear_database,
+    keep_prepared,
+    MINIMUM_SEQUENCE_LENGTH,
+    secondary_directory,
+    global_time_keeper,
+    num_threads,
+    tmp_path,
+    PROT_MAX_SEQS_PER_LEVEL,
+    dedup_time
+):
+    formatted_taxa_out, components = tuple_in
+
+    DatabasePreparer(
+        formatted_taxa_out,
+        components,
+        verbose,
+        printv,
+        clear_database,
+        keep_prepared,
+        MINIMUM_SEQUENCE_LENGTH,
+        dedup_time
+    )(
+        secondary_directory,
+        global_time_keeper,
+        num_threads,
+        tmp_path,
+        PROT_MAX_SEQS_PER_LEVEL
+    )
+
+
+def main(args):
+    msgq = Queue()
+    printv = ConcurrentLogger(msgq)
+    printv.start()
+
+    input_path = Path(args.INPUT)
+    PROT_MAX_SEQS_PER_LEVEL = args.sequences_per_level
+    MINIMUM_SEQUENCE_LENGTH = args.minimum_sequence_length
+    num_threads = args.processes
+
+    project_root = Path(__file__).parent.parent
+    core_directory = Path(CORE_FOLDER).joinpath(input_path.parts[-1])
+    secondary_directory = project_root.joinpath(core_directory)
+
+    path_run_tmp = Path("/run/shm")
+    path_dev_tmp = Path("/dev/shm")
+    path_tmp_tmp = Path("/tmp")
+
+    if path_dev_tmp.exists() and path_dev_tmp.is_dir():
+        tmp_path = path_dev_tmp
+    elif path_run_tmp.exists() and path_run_tmp.is_dir():
+        tmp_path = path_run_tmp
+    elif path_tmp_tmp.exists() and path_tmp_tmp.is_dir():
+        tmp_path = path_tmp_tmp
+    else:
+        tmp_path = project_root.joinpath("tmp")
+        tmp_path.mkdir(parents=True, exist_ok=True)
+
+    # Create necessary directories
+    printv("Creating directories", args.verbose)
+    secondary_directory.mkdir(parents=True, exist_ok=True)
+
+    if not input_path.exists():
+        printv("ERROR: An existing directory must be provided.", args.verbose, 0)
+        return False
+
+    trim_times = []  # Append computed time for each loop.
+    dedup_time = [0]
+    global_time_keeper = TimeKeeper(KeeperMode.DIRECT)
+
+    globbed = input_path.glob("**/*.f[aq]*")
+    taxa_runs = glob_for_fasta_and_save_for_runs(globbed)
+
+    ls_args = [
+        (
+            tuple_in,
+            args.verbose,
+            printv,
+            args.clear_database,
+            args.keep_prepared,
+            MINIMUM_SEQUENCE_LENGTH,
+            secondary_directory,
+            global_time_keeper,
+            num_threads,
+            tmp_path,
+            PROT_MAX_SEQS_PER_LEVEL,
+            dedup_time
+        )
+        for tuple_in in taxa_runs.items()
+    ]
+
+    with ThreadPool(num_threads) as pool:
+        pool.starmap(map_taxa_runs, ls_args)
+
+    printv(
+        f"Finished! Took {global_time_keeper.differential():.2f}s overall.", args.verbose, 0)
     printv("N_trim time: {} seconds".format(sum(trim_times)), args.verbose, 2)
-    printv(f"Dedupe time: {dedup_time}", args.verbose, 2)
-    
+    printv(f"Dedupe time: {dedup_time[0]}", args.verbose, 2)
+
     msgq.join()
     return True
 
