@@ -214,7 +214,7 @@ def get_scores_list(score_threshold, min_length, rocks_hits_db, debug):
     batches = rocks_hits_db.get("hmmbatch:all")
     batches = batches.split(",")
 
-    score_based_results = {}
+    gene_based_results = {}
     ufr_out = [["Gene", "Hash", "Header", "Score", "Start", "End"]]
 
     for batch_i in batches:
@@ -223,6 +223,7 @@ def get_scores_list(score_threshold, min_length, rocks_hits_db, debug):
         for this_row in batch_rows:
             length = this_row["env_end"] - this_row["env_start"]
             hmm_score = this_row["score"]
+            gene = this_row["gene"]
 
             if hmm_score > score_threshold and length > min_length:
                 if debug:
@@ -234,29 +235,30 @@ def get_scores_list(score_threshold, min_length, rocks_hits_db, debug):
                     else:
                         out_header = this_row["header"]
 
-                    ufr_out.append(
-                        [
-                            this_row["gene"],
-                            out_header,
-                            str(hmm_score),
-                            str(hmm_start),
-                            str(hmm_end),
-                        ]
-                    )
+                    if debug:
+                        ufr_out.append(
+                            [
+                                this_row["gene"],
+                                out_header,
+                                str(hmm_score),
+                                str(hmm_start),
+                                str(hmm_end),
+                            ]
+                        )
 
                 this_hit = Hit(this_row)
 
-                score_based_results.setdefault(hmm_score, [])
-                score_based_results[hmm_score].append(this_hit)
+                gene_based_results.setdefault(gene, [])
+                gene_based_results[gene].append(this_hit)
 
     if debug:
         ufr_out = sorted(ufr_out, key=lambda x: (x[0], x[1], x[3], x[4]))
 
-    return score_based_results, ufr_out
+    return gene_based_results, ufr_out
 
 
-def get_blastresults_for_hmmsearch_id(hmmsearch_id):
-    key = f"blastfor:{hmmsearch_id}"
+def get_blastresults_for_gene(gene):
+    key = f"blastfor:{gene}"
     db_entry = rocky.get_rock("rocks_hits_db").get(key)
 
     if not db_entry:
@@ -810,22 +812,22 @@ def is_reciprocal_match(blast_results, reference_taxa: List[str]):
 
 
 def reciprocal_search(
-    hmmresults, list_of_wanted_orthoids, reference_taxa, score, verbose
+    hmmresults, list_of_wanted_orthoids, reference_taxa, gene, verbose
 ):
     t_reciprocal_start = TimeKeeper(KeeperMode.DIRECT)
-    printv(f"Ensuring reciprocal hit for hmmresults in {score}", verbose, 2)
-
+    printv(f"Ensuring reciprocal hit for hmmresults in {gene}", verbose, 2)
+    gene_blast_results = get_blastresults_for_gene(gene)
     results = []
     for result in hmmresults:
-        orthoid = result.gene
-
-        if list_of_wanted_orthoids and orthoid not in list_of_wanted_orthoids:
+        hmm_id = str(result.hmm_id)
+        if list_of_wanted_orthoids and gene not in list_of_wanted_orthoids:
             continue
 
-        result_hmmsearch_id = result.hmm_id
-        blast_results = get_blastresults_for_hmmsearch_id(
-            result_hmmsearch_id
-        )
+        if hmm_id not in gene_blast_results:
+            continue
+
+        blast_results = gene_blast_results[hmm_id]
+        
         this_match_reftaxon, this_match_ref_sequence = is_reciprocal_match(
             blast_results, reference_taxa
         )
@@ -835,7 +837,7 @@ def reciprocal_search(
             result.reftaxon = this_match_reftaxon
             results.append(result)
 
-    printv(f"Checked reciprocal hits for {score}. Took {t_reciprocal_start.differential():.2f}s.", verbose, 2)
+    printv(f"Checked reciprocal hits for {gene}. Took {t_reciprocal_start.differential():.2f}s.", verbose, 2)
     return results
 
 
@@ -898,7 +900,7 @@ def do_taxa(path, taxa_id, args):
 
     printv(f"Got reference taxa in set. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing hmmresults.", args.verbose)
 
-    score_based_results, ufr_rows = get_scores_list(
+    gene_based_results, ufr_rows = get_scores_list(
         args.min_score, args.min_length, rocky.get_rock("rocks_hits_db"), args.debug
     )
 
@@ -912,19 +914,18 @@ def do_taxa(path, taxa_id, args):
 
     printv(f"Got hmmresults. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Doing reciprocal check.", args.verbose)
 
-    scores = list(score_based_results.keys())
-    scores.sort(reverse=True)  # Ascending
+    genes = list(gene_based_results.keys())
+    genes.sort(key = lambda x: len(x), reverse=True)  # Ascending
     transcripts_mapped_to = {}
 
     argmnts = []
-    for score in scores:
-        hmmresults = score_based_results[score]
+    for gene, hmmresults in gene_based_results.items():
         argmnts.append(
             (
                 hmmresults,
                 list_of_wanted_orthoids,
                 reference_taxa,
-                score,
+                gene,
                 args.verbose,
             )
         )
@@ -936,7 +937,6 @@ def do_taxa(path, taxa_id, args):
         brh_count += len(data)
         for this_match in data:
             orthoid = this_match.gene
-
             if transcript_not_long_enough(this_match, args.min_length):
                 continue
 
@@ -945,7 +945,6 @@ def do_taxa(path, taxa_id, args):
 
             transcripts_mapped_to[orthoid].append(this_match)
     printv(f"Reciprocal check done, found {brh_count} reciprocal hits. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Exonerating genes.", args.verbose)
-
     if num_threads > 1:
         arguments: list[Optional[ExonerateArgs]] = []
         func = arguments.append
