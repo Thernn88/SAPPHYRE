@@ -43,7 +43,7 @@ def subcmd_prepare(subparsers):
     par.add_argument(
         "-sl",
         "--sequences_per_level",
-        default=100000,
+        default=500000,
         type=int,
         help="Amount of sequences to store per database entry.",
     )
