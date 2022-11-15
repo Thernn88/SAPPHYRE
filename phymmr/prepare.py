@@ -257,6 +257,7 @@ def main(args):
         printv("Translating prepared file", args.verbose)
 
         aa_dupe_count = count()
+        taxa_time_keeper.lap()
 
         if os.path.exists("/run/shm"):
             tmp_path = "/run/shm"
