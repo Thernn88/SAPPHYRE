@@ -6,6 +6,7 @@ import os
 import sqlite3
 from collections import Counter
 from dataclasses import dataclass
+from itertools import count
 from multiprocessing.pool import Pool
 from shutil import rmtree
 from time import time
@@ -102,7 +103,6 @@ def do(
         os.rename(gene_conf.blast_file_path, gene_conf.blast_file_done)
 
     gene_out = {}
-    this_return = []
 
     with open(gene_conf.blast_file_done, "r") as fp:
         for line in fp:
@@ -125,15 +125,7 @@ def do(
                     gene_out.setdefault(hmmsearch_id, [])
                     gene_out[hmmsearch_id].append(this_result.to_json())
 
-    for hmmsearch_id in gene_out:
-        this_out_results = gene_out[hmmsearch_id]
-        key = "blastfor:{}".format(hmmsearch_id)
-
-        data = json.dumps(this_out_results)
-
-        this_return.append((key, data, len(this_out_results)))
-    
-    return this_return
+    return (f"blastfor:{gene_conf.gene}", json.dumps(gene_out))
 
 
 def get_set_id(orthoset_db_con, orthoset):
@@ -245,6 +237,7 @@ def run_process(args, input_path) -> None:
             gene_to_hits.setdefault(gene, [])
             gene_to_hits[gene].append(
                 SeqRecord(Seq(hmm_object["hmm_sequence"]), id=header + f"_hmmid{hmm_id}", description="")
+                #SeqRecord(Seq(hmm_object["hmm_sequence"]), id=f"{gene}_"+header + f"_hmmid{hmm_id}", description="")
             )
 
     printv(f"Grabbed HMM Data. Took: {time_keeper.lap():.2f}s. Found {sum(genes.values())} hits", args.verbose)
@@ -293,13 +286,12 @@ def run_process(args, input_path) -> None:
 
     printv(f"Got Blast Results. Took {time_keeper.lap():.2f}s. Writing to DB", args.verbose)
 
-    i = 0
-    for batch in to_write:
-        for key, data, count in batch:
-            db.put(key, data)
-            i += count
+    counter = count()
+    for key, data in to_write:
+        db.put(key, data)
+        next(counter)
 
-    printv(f"Writing {i} results took {time_keeper.lap():.2f}s", args.verbose)
+    printv(f"Writing {next(counter)} results took {time_keeper.lap():.2f}s", args.verbose)
     printv(f"Done! Took {time_keeper.differential():.2f}s overall", args.verbose)
 
 
