@@ -118,7 +118,6 @@ def do(
                 # Although we have a threshold in the Blast call. Some still get through.
                 if (
                     this_result.score >= gene_conf.blast_minimum_score
-                    and this_result.evalue <= gene_conf.blast_minimum_evalue
                 ):
                     _, hmmsearch_id = this_result.query_id.split("_hmmid")
 
