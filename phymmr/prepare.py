@@ -509,6 +509,11 @@ def main(args):
     printv.start()
 
     input_path = Path(args.INPUT)
+
+    if not input_path.exists():
+        printv("ERROR: An existing directory must be provided.", args.verbose, 0)
+        return False
+
     PROT_MAX_SEQS_PER_LEVEL = args.sequences_per_level
     MINIMUM_SEQUENCE_LENGTH = args.minimum_sequence_length
     num_threads = args.processes
@@ -534,10 +539,7 @@ def main(args):
     # Create necessary directories
     printv("Creating directories", args.verbose)
     secondary_directory.mkdir(parents=True, exist_ok=True)
-
-    if not input_path.exists():
-        printv("ERROR: An existing directory must be provided.", args.verbose, 0)
-        return False
+   
 
     trim_times = []  # Append computed time for each loop.
     dedup_time = [0]
