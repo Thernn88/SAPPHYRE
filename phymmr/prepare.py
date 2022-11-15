@@ -564,8 +564,7 @@ def main(args):
         for tuple_in in taxa_runs.items()
     ]
 
-    with ThreadPool(num_threads) as pool:
-        pool.starmap(map_taxa_runs, ls_args)
+    list(map(lambda x: map_taxa_runs(x[0], *x[1:]), ls_args))
 
     printv(
         f"Finished! Took {global_time_keeper.differential():.2f}s overall.", args.verbose, 0)
