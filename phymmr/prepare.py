@@ -8,7 +8,7 @@ import mmap
 import os
 import re
 from itertools import count
-from multiprocessing.pool import Pool, ThreadPool
+from multiprocessing.pool import Pool
 from pathlib import Path
 from queue import Queue
 from subprocess import call
@@ -29,14 +29,14 @@ ROCKSDB_FOLDER_NAME = "rocksdb"
 SEQUENCES_DB_NAME = "sequences"
 CORE_FOLDER = "PhyMMR"
 ALLOWED_FILETYPES = [
-    "fa",
-    "fas",
-    "fasta",
-    "fq",
-    "fastq",
-    "fq",
-    "fastq.gz",
-    "fq.gz"
+    ".fa",
+    ".fas",
+    ".fasta",
+    ".fq",
+    ".fastq",
+    ".fq",
+    ".fastq.gz",
+    ".fq.gz"
 ]
 
 
@@ -158,7 +158,7 @@ def glob_for_fasta_and_save_for_runs(globbed: Generator[Path, Any, Any]) -> Dict
         file_is_file = f.is_file()
 
         file_suffix = f.suffix
-        file_suffix_allowed = file_suffix[1:] in ALLOWED_FILETYPES
+        file_suffix_allowed = file_suffix in ALLOWED_FILETYPES
 
         if (file_is_file and file_suffix_allowed):
             taxa = f.stem.split(".")[0]
@@ -543,7 +543,7 @@ def main(args):
     dedup_time = [0]
     global_time_keeper = TimeKeeper(KeeperMode.DIRECT)
 
-    globbed = input_path.glob("**/*.f[aq]*")
+    globbed = input_path.glob("*.f[aq]*")
     taxa_runs = glob_for_fasta_and_save_for_runs(globbed)
 
     ls_args = [
