@@ -210,7 +210,7 @@ def get_taxa_in_set(set_id, orthoset_db_con):
     return [row[1] for row in rows]
 
 
-def get_scores_list(score_threshold, min_length, rocks_hits_db, debug):
+def get_hmmresults(score_threshold, min_length, rocks_hits_db, debug):
     batches = rocks_hits_db.get("hmmbatch:all")
     batches = batches.split(",")
 
@@ -257,15 +257,24 @@ def get_scores_list(score_threshold, min_length, rocks_hits_db, debug):
     return gene_based_results, ufr_out
 
 
-def get_blastresults_for_gene(gene):
-    key = f"blastfor:{gene}"
-    db_entry = rocky.get_rock("rocks_hits_db").get(key)
+def get_blastresults(rocks_hits_db):
+    batches = rocks_hits_db.get("blastbatch:all")
+    batches = batches.split(",")
 
-    if not db_entry:
-        return []
+    blast_results = {}
 
-    result = json.loads(db_entry)
-    return result
+    for batch_i in batches:
+        batch_rows = rocks_hits_db.get(f"blastbatch:{batch_i}")
+        batch_rows = json.loads(batch_rows)
+        for result in batch_rows:
+            gene = result["gene"]
+            hmm_id = result["hmm_id"]
+            blast_results.setdefault(gene, {})
+            blast_results[gene].setdefault(hmm_id, [])
+            blast_results[gene][hmm_id].append(result)
+
+    return blast_results
+
 
 
 def get_reftaxon_name(hit_id, orthoset_db_path):
@@ -790,52 +799,43 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
 
     printv(f"{eargs.orthoid} took {t_gene_start.differential():.2f}s. Had {len(output_sequences)} sequences", eargs.verbose, 2)
 
-
-def is_reciprocal_match(blast_results, reference_taxa: List[str]):
-    reftaxon_count = {ref_taxa: 0 for ref_taxa in reference_taxa}
-    ref_taxon_to_target = {}
-
-    for result in blast_results:
-        ref_taxon = result["reftaxon"]
-
-        if ref_taxon in reftaxon_count:
-            if not strict_search_mode:
-                return ref_taxon, result["ref_sequence"]
-            if ref_taxon not in ref_taxon_to_target:
-                ref_taxon_to_target[ref_taxon] = (ref_taxon, result["ref_sequence"])
-            reftaxon_count[ref_taxon] += 1  # only need the one
-            if all(reftaxon_count.values()):  # Everything's been counted
-                return ref_taxon_to_target[
-                    max(reftaxon_count)
-                ]  # Grab most hit reftaxon
-    return None, None
-
-
 def reciprocal_search(
-    hmmresults, list_of_wanted_orthoids, reference_taxa, gene, verbose
+    hmmresults, gene_blast_results, reference_taxa, gene, verbose
 ):
     t_reciprocal_start = TimeKeeper(KeeperMode.DIRECT)
     printv(f"Ensuring reciprocal hit for hmmresults in {gene}", verbose, 2)
-    gene_blast_results = get_blastresults_for_gene(gene)
     results = []
-    for result in hmmresults:
-        hmm_id = str(result.hmm_id)
-        if list_of_wanted_orthoids and gene not in list_of_wanted_orthoids:
-            continue
+    for hit in hmmresults:
+        hmm_id = str(hit.hmm_id)
 
         if hmm_id not in gene_blast_results:
             continue
 
         blast_results = gene_blast_results[hmm_id]
-        
-        this_match_reftaxon, this_match_ref_sequence = is_reciprocal_match(
-            blast_results, reference_taxa
-        )
 
+        reftaxon_count = {ref_taxa: 0 for ref_taxa in reference_taxa}
+        ref_taxon_to_target = {}
+
+        this_match_reftaxon = None
+
+        for result in blast_results:
+            ref_taxon = result["reftaxon"]
+
+            if ref_taxon in reftaxon_count:
+                if not strict_search_mode:
+                    this_match_reftaxon, this_match_ref_sequence = ref_taxon, result["ref_sequence"]
+                    break
+                if ref_taxon not in ref_taxon_to_target:
+                    ref_taxon_to_target[ref_taxon] = (ref_taxon, result["ref_sequence"])
+                reftaxon_count[ref_taxon] += 1  # only need the one
+                if all(reftaxon_count.values()):  # Everything's been counted
+                    this_match_reftaxon, this_match_ref_sequence = ref_taxon_to_target[max(reftaxon_count)]  # Grab most hit reftaxon
+                    break
+        
         if this_match_reftaxon:
-            result.proteome_sequence = this_match_ref_sequence
-            result.reftaxon = this_match_reftaxon
-            results.append(result)
+            hit.proteome_sequence = this_match_ref_sequence
+            hit.reftaxon = this_match_reftaxon
+            results.append(hit)
 
     printv(f"Checked reciprocal hits for {gene}. Took {t_reciprocal_start.differential():.2f}s.", verbose, 2)
     return results
@@ -900,7 +900,7 @@ def do_taxa(path, taxa_id, args):
 
     printv(f"Got reference taxa in set. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing hmmresults.", args.verbose)
 
-    gene_based_results, ufr_rows = get_scores_list(
+    gene_based_results, ufr_rows = get_hmmresults(
         args.min_score, args.min_length, rocky.get_rock("rocks_hits_db"), args.debug
     )
 
@@ -912,7 +912,11 @@ def do_taxa(path, taxa_id, args):
         with open(ufr_path, "w") as fp:
             fp.writelines(ufr_out)
 
-    printv(f"Got hmmresults. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Doing reciprocal check.", args.verbose)
+    printv(f"Got hmmresults. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing Blast results.", args.verbose)
+
+    blast_resultss = get_blastresults(rocky.get_rock("rocks_hits_db"))
+
+    printv(f"Got Blast results. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Doing reciprocal check.", args.verbose)
 
     genes = list(gene_based_results.keys())
     genes.sort(key = lambda x: len(x), reverse=True)  # Ascending
@@ -920,15 +924,18 @@ def do_taxa(path, taxa_id, args):
 
     argmnts = []
     for gene, hmmresults in gene_based_results.items():
+        if list_of_wanted_orthoids and gene not in list_of_wanted_orthoids:
+            continue
         argmnts.append(
             (
                 hmmresults,
-                list_of_wanted_orthoids,
+                blast_resultss.get(gene, []),
                 reference_taxa,
                 gene,
                 args.verbose,
             )
         )
+
     with Pool(num_threads) as pool:
         reciprocal_data = pool.starmap(reciprocal_search, argmnts, chunksize=1)
 

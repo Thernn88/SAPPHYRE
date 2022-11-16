@@ -30,11 +30,14 @@ class Result:
         "blast_start", 
         "blast_end",
         "reftaxon",
-        "ref_sequence"
+        "ref_sequence",
+        "hmmsearch_id",
+        "gene"
     )
 
-    def __init__(self, query_id, subject_id, evalue, bit_score, q_start, q_end):
-        self.query_id = str(query_id)
+    def __init__(self, gene, query_id, subject_id, evalue, bit_score, q_start, q_end):
+        self.gene = gene
+        self.query_id, self.hmmsearch_id = str(query_id).split('_hmmid')
         self.target = int(subject_id)
         self.evalue = float(evalue)
         self.log_evalue = math.log(self.evalue) if self.evalue != 0 else -999.0
@@ -46,6 +49,8 @@ class Result:
 
     def to_json(self):
         return {
+                    "hmm_id": self.hmmsearch_id,
+                    "gene": self.gene,
                     "target": self.target,
                     "reftaxon": self.reftaxon,
                     "ref_sequence": self.ref_sequence
@@ -61,7 +66,6 @@ class GeneConfig:  # FIXME: I am not certain about types.
     blast_path: str
     blast_db_path: str
     blast_minimum_score: float
-    blast_minimum_evalue: float
 
     def __post_init__(self):
         self.blast_file_path = os.path.join(self.blast_path, f"{self.gene}.blast")
@@ -89,7 +93,6 @@ def do(
             "-num_threads '{num_threads}' -db '{db}' -query '{queryfile}' "
             "-out '{outfile}'".format(
                 prog=prog,
-                evalue_threshold=gene_conf.blast_minimum_evalue,
                 score_threshold=gene_conf.blast_minimum_score,
                 num_threads=2,
                 db=gene_conf.blast_db_path,
@@ -102,7 +105,7 @@ def do(
 
         os.rename(gene_conf.blast_file_path, gene_conf.blast_file_done)
 
-    gene_out = {}
+    gene_out = []
 
     with open(gene_conf.blast_file_done, "r") as fp:
         for line in fp:
@@ -110,7 +113,7 @@ def do(
                 continue
             fields = line.split("\t")
 
-            this_result = Result(*fields)
+            this_result = Result(gene_conf.gene, *fields)
 
             if this_result.target in gene_conf.ref_names: # Hit target not valid
                 this_result.reftaxon, this_result.ref_sequence = gene_conf.ref_names[this_result.target]
@@ -119,12 +122,9 @@ def do(
                 if (
                     this_result.score >= gene_conf.blast_minimum_score
                 ):
-                    _, hmmsearch_id = this_result.query_id.split("_hmmid")
+                    gene_out.append(this_result.to_json())
 
-                    gene_out.setdefault(hmmsearch_id, [])
-                    gene_out[hmmsearch_id].append(this_result.to_json())
-
-    return (f"blastfor:{gene_conf.gene}", json.dumps(gene_out))
+    return gene_out
 
 
 def get_set_id(orthoset_db_con, orthoset):
@@ -256,7 +256,6 @@ def run_process(args, input_path) -> None:
                     blast_path=blast_path,
                     blast_db_path=blast_db_path,
                     blast_minimum_score=args.blast_minimum_score,
-                    blast_minimum_evalue=args.blast_minimum_evalue,
                 ),
                 args.verbose
             )
@@ -273,7 +272,6 @@ def run_process(args, input_path) -> None:
                     blast_path=blast_path,
                     blast_db_path=blast_db_path,
                     blast_minimum_score=args.blast_minimum_score,
-                    blast_minimum_evalue=args.blast_minimum_evalue,
                 ),
                 args.verbose,
             )
@@ -285,12 +283,30 @@ def run_process(args, input_path) -> None:
 
     printv(f"Got Blast Results. Took {time_keeper.lap():.2f}s. Writing to DB", args.verbose)
 
+    total = count()
     counter = count()
-    for key, data in to_write:
-        db.put(key, data)
-        next(counter)
+    this_batch = []
+    recipe = []
+    batch_i = 1
+    for batch in to_write:
+        for result in batch:
+            this_batch.append(result)
+            if next(counter) == args.max_blast_batch_size:
+                recipe.append(batch_i)
+                db.put(f'blastbatch:{batch_i}', json.dumps(this_batch))
+                batch_i += 1
+                counter = count()
+                this_batch = []
+            next(total)
+    
+    if this_batch:
+        recipe.append(batch_i)
+        db.put(f'blastbatch:{batch_i}', json.dumps(this_batch))
+        batch_i += 1
 
-    printv(f"Writing {next(counter)} results took {time_keeper.lap():.2f}s", args.verbose)
+    db.put('blastbatch:all', ','.join(map(str, recipe)))
+
+    printv(f"Writing {next(total)} results over {batch_i} batches took {time_keeper.lap():.2f}s", args.verbose)
     printv(f"Done! Took {time_keeper.differential():.2f}s overall", args.verbose)
 
 
