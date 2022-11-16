@@ -7,6 +7,7 @@ import math
 import mmap
 import os
 import re
+
 from itertools import count
 from multiprocessing.pool import Pool
 from pathlib import Path
@@ -28,17 +29,17 @@ from .utils import ConcurrentLogger
 ROCKSDB_FOLDER_NAME = "rocksdb"
 SEQUENCES_DB_NAME = "sequences"
 CORE_FOLDER = "PhyMMR"
-ALLOWED_FILETYPES = [
+ALLOWED_FILETYPES_NORMAL = [
     ".fa",
     ".fas",
     ".fasta",
     ".fq",
     ".fastq",
     ".fq",
-    ".fastq.gz",
-    ".fq.gz"
 ]
+ALLOWED_FILETYPES_GZ = [f"{ft}.gz" for ft in ALLOWED_FILETYPES_NORMAL]
 
+ALLOWED_FILETYPES = ALLOWED_FILETYPES_NORMAL + ALLOWED_FILETYPES_GZ
 
 def truncate_taxa(header: str, extension=None) -> str:
     """
@@ -57,41 +58,25 @@ def truncate_taxa(header: str, extension=None) -> str:
     return result
 
 
-def get_seq_count(filename: Path, is_gz: bool) -> int:
-    """
-    Get the count of sequences based on number of headers.
-    """
-    count = 0
+def get_seq_count(filename, is_gz):
+    counter = count()
     if is_gz:
-        with gzip.open(filename, "rb") as gzf:
-            splt_lines = gzf.readlines()
-    else:  # We can grab it cheaper
-        by = filename.read_bytes()
-        splt_lines = by.splitlines()
+        f = gzip.open(filename, "r+")
+        for line in f:
+            if line[0] == ord(">") or line[0] == ord("+"):
+                next(counter)
+    else: # We can grab it cheaper
+        f = open(filename, "r+")
+        buf = mmap.mmap(f.fileno(), 0)
+        readline = buf.readline
+        line = readline()
+        while line:
+            if line[0] == ord(">") or line[0] == ord("+"):
+                next(counter)
+            line = readline()
+    return next(counter)
 
-    ascii_le = ord('>')
-    ascii_pl = ord('+')
-    char_count = {ascii_le: 0, ascii_pl: 0}
-
-    def map_char_count(l: bytearray):
-        char_count.setdefault(l[0], 0)
-        char_count[l[0]] += 1
-
-    list(map(map_char_count, splt_lines))
-
-    if char_count[ascii_le] > 0:
-        count = char_count[ascii_le]
-    elif char_count[ascii_pl] > 0:
-        count = char_count[ascii_pl]
-
-    return count
-
-
-def N_trim(
-    parent_sequence: str,
-    MINIMUM_SEQUENCE_LENGTH: int
-) -> Generator[Tuple[str, int], Any, Any]:
-    t1 = time()
+def N_trim(parent_sequence, minimum_sequence_length, tike):
     if "N" in parent_sequence:
         # Get N indices and start and end of sequence
         indices = (
@@ -105,12 +90,12 @@ def N_trim(
             end = indices[i + 1]
 
             length = end - start
-            if length >= MINIMUM_SEQUENCE_LENGTH:
+            if length >= minimum_sequence_length:
                 raw_seq = parent_sequence[start + 1: end]
-                yield raw_seq, time() - t1
-                t1 = time()
+                tike.timer1("now")
+                yield raw_seq
     else:
-        yield parent_sequence, time() - t1
+        yield parent_sequence
 
 
 def add_pc_to_db(db, key: int, data: list) -> str:
@@ -157,8 +142,8 @@ def glob_for_fasta_and_save_for_runs(globbed: Generator[Path, Any, Any]) -> Dict
     for f in globbed:
         file_is_file = f.is_file()
 
-        file_suffix = f.suffix
-        file_suffix_allowed = file_suffix in ALLOWED_FILETYPES
+        file_name = f.name
+        file_suffix_allowed = any([suff in file_name for suff in ALLOWED_FILETYPES])
 
         if (file_is_file and file_suffix_allowed):
             taxa = f.stem.split(".")[0]
@@ -176,58 +161,53 @@ class SeqDeduplicator:
         self,
         fa_file_path: Path,
         db: Any,
-        MINIMUM_SEQUENCE_LENGTH: int,
+        minimum_sequence_length: int,
         verbose: int
     ):
         self.fa_file_path = fa_file_path
-        self.MINIMUM_SEQUENCE_LENGTH = MINIMUM_SEQUENCE_LENGTH
+        self.minimum_sequence_length = minimum_sequence_length
         self.verbose = verbose
-        self.fasta_file = None
-        self.for_loop = None
-        self.db = db
+        self.db = db       
 
-    def dedup_init(self):
+    def __call__(
+        self,
+        trim_times: TimeKeeper,
+        duplicates: Dict[str, int],
+        rev_comp_save: Dict[str, int],
+        transcript_mapped_to: Dict[str, str],
+        dupes: List[count[int]],
+        this_index: List[int],
+        fa_file_out: List[str],
+        dedup_time: List[int],
+    ):
+
         suffix = self.fa_file_path.suffix
-        if any([suffix in (".fq", ".fastq")]):
+        if any([s in self.fa_file_path.stem for s in (".fq", ".fastq")]):
             read_method = FastqGeneralIterator
         else:
             read_method = SimpleFastaParser
 
         is_compressed = suffix == '.gz'
         if is_compressed:
-            self.fasta_file = read_method(gzip.open(self.fa_file_path, "rt"))
+            fasta_file = list(read_method(gzip.open(str(self.fa_file_path), "rt")))
         else:
-            self.fasta_file = read_method(open(self.fa_file_path, "r"))
+            fasta_file = read_method(open(str(self.fa_file_path), "r"))
 
         if self.verbose:
-            self.seq_grab_count = get_seq_count(
+            seq_grab_count = get_seq_count(
                 self.fa_file_path, is_compressed)
 
-        self.for_loop = tqdm(
-            self.fasta_file, total=self.seq_grab_count) if self.verbose else self.fasta_file
+        for_loop = tqdm(
+            fasta_file, total=seq_grab_count) if self.verbose else fasta_file
 
-    def __call__(
-        self,
-        trim_times: List[int],
-        duplicates: Dict[str, int],
-        rev_comp_save: Dict[str, int],
-        transcript_mapped_to: Dict[str, str],
-        dupes: List[Any],
-        this_index: List[int],
-        fa_file_out: List[int],
-        dedup_time: List[int],
-    ):
-        self.dedup_init()
-
-        for row in self.for_loop:
+        for row in for_loop:
             header, parent_seq = row[:2]
 
-            if not len(parent_seq) >= self.MINIMUM_SEQUENCE_LENGTH:
+            if not len(parent_seq) >= self.minimum_sequence_length:
                 continue
             parent_seq = parent_seq.upper()
-            # for seq in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH):
-            for seq, tt in N_trim(parent_seq, self.MINIMUM_SEQUENCE_LENGTH):
-                trim_times.append(tt)
+
+            for seq in N_trim(parent_seq, self.minimum_sequence_length, trim_times):
                 length = len(seq)
                 header = f"NODE_{this_index[0]}_length_{length}"
 
@@ -286,11 +266,13 @@ class DatabasePreparer:
         printv: Callable,
         clear_database: bool,
         keep_prepared: bool,
-        MINIMUM_SEQUENCE_LENGTH: int,
-        dedup_time: List[int]
+        minimum_sequence_length: int,
+        dedup_time: List[int],
+        trim_times: TimeKeeper
     ):
         self.fto = formatted_taxa_out
         self.comp = components
+        self.trim_times = trim_times
         self.db = None
         self.prepared_file_destination = None
         self.prot_path = None
@@ -299,12 +281,11 @@ class DatabasePreparer:
         self.printv = printv
         self.clear_database = clear_database
         self.seq_grab_count = 0
-        self.MINIMUM_SEQUENCE_LENGTH = MINIMUM_SEQUENCE_LENGTH
+        self.minimum_sequence_length = minimum_sequence_length
         self.taxa_time_keeper = None
         self.prot_components = []
         self.translate_files = []
         self.keep_prepared = keep_prepared
-        self.trim_times = []
         self.duplicates = {}
         self.rev_comp_save = {}
         self.transcript_mapped_to = {}
@@ -347,7 +328,7 @@ class DatabasePreparer:
             SeqDeduplicator(
                 fa_file_path,
                 self.db,
-                self.MINIMUM_SEQUENCE_LENGTH,
+                self.minimum_sequence_length,
                 self.verbose
             )(
                 self.trim_times,
@@ -368,7 +349,7 @@ class DatabasePreparer:
         self.printv("Translating prepared file", self.verbose)
 
         sequences_per_thread = math.ceil(
-            (len(self.fa_file_out) / 2) / num_threads) * 2
+            (len(self.fa_file_out) // 2) // num_threads) * 2
         self.translate_files = []
 
         for i in range(0, len(self.fa_file_out), sequences_per_thread):
@@ -391,8 +372,8 @@ class DatabasePreparer:
 
     def store_in_db(
         self,
-        PROT_MAX_SEQS_PER_LEVEL: int,
-        global_time_keeper: Any
+        prot_max_seqs_per_level: int,
+        global_time_keeper: TimeKeeper
 
     ):
         self.printv(
@@ -424,7 +405,7 @@ class DatabasePreparer:
         self.printv(
             f"AA dedupe took {self.taxa_time_keeper.lap():.2f}s. Kicked {aa_dupes} dupes", self.verbose, 2)
 
-        levels = math.ceil(len(out_lines) / PROT_MAX_SEQS_PER_LEVEL)
+        levels = math.ceil(len(out_lines) / prot_max_seqs_per_level)
         per_level = math.ceil(len(out_lines) / levels)
 
         component = 0
@@ -461,12 +442,12 @@ class DatabasePreparer:
         global_time_keeper: Any,
         num_threads: int,
         tmp_path: Path,
-        PROT_MAX_SEQS_PER_LEVEL: int
+        prot_max_seqs_per_level: int
     ):
         self.init_db(secondary_directory, global_time_keeper)
         self.dedup()
         self.translate_fasta_and_write_to_disk(num_threads, tmp_path)
-        self.store_in_db(PROT_MAX_SEQS_PER_LEVEL, global_time_keeper)
+        self.store_in_db(prot_max_seqs_per_level, global_time_keeper)
 
 
 def map_taxa_runs(
@@ -475,13 +456,14 @@ def map_taxa_runs(
     printv: Callable,
     clear_database: int,
     keep_prepared: int,
-    MINIMUM_SEQUENCE_LENGTH: int,
+    minimum_sequence_length: int,
     secondary_directory: Path,
     global_time_keeper: Any,
     num_threads: int,
     tmp_path: Path,
-    PROT_MAX_SEQS_PER_LEVEL: Path,
-    dedup_time: List[int]
+    prot_max_seqs_per_level: Path,
+    dedup_time: List[int],
+    trim_times: TimeKeeper
 ):
     formatted_taxa_out, components = tuple_in
 
@@ -492,14 +474,15 @@ def map_taxa_runs(
         printv,
         clear_database,
         keep_prepared,
-        MINIMUM_SEQUENCE_LENGTH,
-        dedup_time
+        minimum_sequence_length,
+        dedup_time,
+        trim_times
     )(
         secondary_directory,
         global_time_keeper,
         num_threads,
         tmp_path,
-        PROT_MAX_SEQS_PER_LEVEL
+        prot_max_seqs_per_level
     )
 
 
@@ -514,8 +497,8 @@ def main(args):
         printv("ERROR: An existing directory must be provided.", args.verbose, 0)
         return False
 
-    PROT_MAX_SEQS_PER_LEVEL = args.sequences_per_level
-    MINIMUM_SEQUENCE_LENGTH = args.minimum_sequence_length
+    prot_max_seqs_per_level = args.sequences_per_level
+    minimum_sequence_length = args.minimum_sequence_length
     num_threads = args.processes
 
     project_root = Path(__file__).parent.parent
@@ -541,7 +524,7 @@ def main(args):
     secondary_directory.mkdir(parents=True, exist_ok=True)
    
 
-    trim_times = []  # Append computed time for each loop.
+    trim_times = TimeKeeper(KeeperMode.SUM)  # Append computed time for each loop.
     dedup_time = [0]
     global_time_keeper = TimeKeeper(KeeperMode.DIRECT)
 
@@ -555,13 +538,14 @@ def main(args):
             printv,
             args.clear_database,
             args.keep_prepared,
-            MINIMUM_SEQUENCE_LENGTH,
+            minimum_sequence_length,
             secondary_directory,
             global_time_keeper,
             num_threads,
             tmp_path,
-            PROT_MAX_SEQS_PER_LEVEL,
-            dedup_time
+            prot_max_seqs_per_level,
+            dedup_time,
+            trim_times
         )
         for tuple_in in taxa_runs.items()
     ]
@@ -570,7 +554,7 @@ def main(args):
 
     printv(
         f"Finished! Took {global_time_keeper.differential():.2f}s overall.", args.verbose, 0)
-    printv("N_trim time: {} seconds".format(sum(trim_times)), args.verbose, 2)
+    printv(f"N_trim time: {trim_times.time1} seconds", args.verbose, 2)
     printv(f"Dedupe time: {dedup_time[0]}", args.verbose, 2)
 
     msgq.join()
