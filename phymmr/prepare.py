@@ -76,7 +76,11 @@ def get_seq_count(filename, is_gz):
             line = readline()
     return next(counter)
 
-def N_trim(parent_sequence, minimum_sequence_length, tike):
+def N_trim(
+    parent_sequence: str, 
+    minimum_sequence_length: int, 
+    tike: TimeKeeper
+):
     if "N" in parent_sequence:
         # Get N indices and start and end of sequence
         indices = (
@@ -92,7 +96,7 @@ def N_trim(parent_sequence, minimum_sequence_length, tike):
             length = end - start
             if length >= minimum_sequence_length:
                 raw_seq = parent_sequence[start + 1: end]
-                tike.timer1("now")
+                tike[0].timer1("now")
                 yield raw_seq
     else:
         yield parent_sequence
@@ -297,9 +301,9 @@ class DatabasePreparer:
     def init_db(
             self,
             secondary_directory: Path,
-            global_time_keeper: Any
+            global_time_keeper: List[TimeKeeper]
     ) -> Any:
-        global_time_keeper.lap()
+        global_time_keeper[0].lap()
         self.taxa_time_keeper = TimeKeeper(KeeperMode.DIRECT)
         self.printv(f"Preparing: {self.fto}", self.verbose, 0)
         self.printv(
@@ -373,7 +377,7 @@ class DatabasePreparer:
     def store_in_db(
         self,
         prot_max_seqs_per_level: int,
-        global_time_keeper: TimeKeeper
+        global_time_keeper: List[TimeKeeper]
 
     ):
         self.printv(
@@ -381,7 +385,7 @@ class DatabasePreparer:
 
         prot_components = []
         aa_dupe_count = count()
-        global_time_keeper.lap()
+        self.taxa_time_keeper.lap()
 
         out_lines = []
         for _, translate_file in self.translate_files:
@@ -435,12 +439,12 @@ class DatabasePreparer:
         self.db.put("getall:dupes", json.dumps(self.duplicates))
 
         self.printv(
-            f"{self.fto} took {global_time_keeper.lap():.2f}s overall\n", self.verbose)
+            f"{self.fto} took {global_time_keeper[0].lap():.2f}s overall\n", self.verbose)
 
     def __call__(
         self,
         secondary_directory: Path,
-        global_time_keeper: Any,
+        global_time_keeper: List[TimeKeeper],
         num_threads: int,
         tmp_path: Path,
         prot_max_seqs_per_level: int
@@ -459,7 +463,7 @@ def map_taxa_runs(
     keep_prepared: int,
     minimum_sequence_length: int,
     secondary_directory: Path,
-    global_time_keeper: Any,
+    global_time_keeper: List[TimeKeeper],
     num_threads: int,
     tmp_path: Path,
     prot_max_seqs_per_level: Path,
@@ -525,9 +529,9 @@ def main(args):
     secondary_directory.mkdir(parents=True, exist_ok=True)
    
 
-    trim_times = TimeKeeper(KeeperMode.SUM)  # Append computed time for each loop.
+    trim_times = [TimeKeeper(KeeperMode.SUM)]  # Append computed time for each loop.
     dedup_time = [0]
-    global_time_keeper = TimeKeeper(KeeperMode.DIRECT)
+    global_time_keeper = [TimeKeeper(KeeperMode.DIRECT)]
 
     globbed = input_path.glob("*.f[aq]*")
     taxa_runs = glob_for_fasta_and_save_for_runs(globbed)
@@ -554,8 +558,8 @@ def main(args):
     list(map(lambda x: map_taxa_runs(x[0], *x[1:]), ls_args))
 
     printv(
-        f"Finished! Took {global_time_keeper.differential():.2f}s overall.", args.verbose, 0)
-    printv(f"N_trim time: {trim_times.time1} seconds", args.verbose, 2)
+        f"Finished! Took {global_time_keeper[0].differential():.2f}s overall.", args.verbose, 0)
+    printv(f"N_trim time: {trim_times[0].time1} seconds", args.verbose, 2)
     printv(f"Dedupe time: {dedup_time[0]}", args.verbose, 2)
 
     msgq.join()
