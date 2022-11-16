@@ -381,6 +381,7 @@ class DatabasePreparer:
 
         prot_components = []
         aa_dupe_count = count()
+        global_time_keeper.lap()
 
         out_lines = []
         for _, translate_file in self.translate_files:
