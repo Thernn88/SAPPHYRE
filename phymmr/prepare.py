@@ -308,14 +308,6 @@ def main(args):
 
         taxa_time_keeper.lap()
 
-        if os.path.exists("/run/shm"):
-            tmp_path = "/run/shm"
-        elif os.path.exists("/dev/shm"):
-            tmp_path = "/dev/shm"
-        else:
-            tmp_path = os.path.join(folder, "tmp")
-            os.makedirs(tmp_path, exist_ok=True)
-
         sequences_per_thread = math.ceil((len(fa_file_out) / 2) / num_threads) * 2
         tfiles = TempFiles()
         for i in range(0, len(fa_file_out), sequences_per_thread):
