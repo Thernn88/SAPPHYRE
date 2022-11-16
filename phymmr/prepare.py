@@ -258,7 +258,7 @@ def main(args):
                     continue
                 parent_seq = parent_seq.upper()
                 # for seq in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH):
-                for seq, tt in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH, trim_times):
+                for seq in N_trim(parent_seq, MINIMUM_SEQUENCE_LENGTH, trim_times):
                     length = len(seq)
                     header = f"NODE_{this_index}_length_{length}"
 
@@ -305,6 +305,16 @@ def main(args):
                     db.put(xxhash.xxh64_hexdigest(preheader), f"{preheader}\n{seq}")
 
         printv("Translating prepared file", args.verbose)
+
+        taxa_time_keeper.lap()
+
+        if os.path.exists("/run/shm"):
+            tmp_path = "/run/shm"
+        elif os.path.exists("/dev/shm"):
+            tmp_path = "/dev/shm"
+        else:
+            tmp_path = os.path.join(folder, "tmp")
+            os.makedirs(tmp_path, exist_ok=True)
 
         sequences_per_thread = math.ceil((len(fa_file_out) / 2) / num_threads) * 2
         tfiles = TempFiles()

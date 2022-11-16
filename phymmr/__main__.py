@@ -43,7 +43,7 @@ def subcmd_prepare(subparsers):
     par.add_argument(
         "-sl",
         "--sequences_per_level",
-        default=100000,
+        default=500000,
         type=int,
         help="Amount of sequences to store per database entry.",
     )
@@ -162,7 +162,7 @@ def subcmd_hmmsearch(subparsers):
         "--max_hmm_batch_size",
         default=250000,
         type=int,
-        help="Max hits per hmmsearch batch in db. Default: 500 thousand.",
+        help="Max hits per hmmsearch batch in db. Default: 250 thousand.",
     )
     par.add_argument(
         "-d", "--debug", type=int, default=0, help="Output debug logs."
@@ -213,11 +213,11 @@ def subcmd_blastpal(subparsers):
         help="Minimum score filter in blast.",
     )
     par.add_argument(
-        "-be",
-        "--blast_minimum_evalue",
-        type=float,
-        default=0.00001,
-        help="Minimum evalue filter in blast.",
+        "-m",
+        "--max_blast_batch_size",
+        default=250000,
+        type=int,
+        help="Max results per blastpal batch in db. Default: 250 thousand.",
     )
     par.add_argument(
         "-ovw",
