@@ -66,6 +66,7 @@ class GeneConfig:  # FIXME: I am not certain about types.
     blast_path: str
     blast_db_path: str
     blast_minimum_score: float
+    blast_minimum_evalue: float
 
     def __post_init__(self):
         self.blast_file_path = os.path.join(self.blast_path, f"{self.gene}.blast")
@@ -98,6 +99,7 @@ def do(
                 db=gene_conf.blast_db_path,
                 queryfile=gene_conf.fa_file,
                 outfile=gene_conf.blast_file_path,
+                evalue_threshold=gene_conf.blast_minimum_evalue
             )
         )
         os.system(cmd)
@@ -256,6 +258,8 @@ def run_process(args, input_path) -> None:
                     blast_path=blast_path,
                     blast_db_path=blast_db_path,
                     blast_minimum_score=args.blast_minimum_score,
+                    blast_minimum_evalue=args.blast_minimum_evalue
+
                 ),
                 args.verbose
             )
@@ -272,6 +276,7 @@ def run_process(args, input_path) -> None:
                     blast_path=blast_path,
                     blast_db_path=blast_db_path,
                     blast_minimum_score=args.blast_minimum_score,
+                    blast_minimum_evalue=args.blast_minimum_evalue
                 ),
                 args.verbose,
             )

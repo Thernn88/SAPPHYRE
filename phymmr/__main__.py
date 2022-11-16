@@ -213,6 +213,13 @@ def subcmd_blastpal(subparsers):
         help="Minimum score filter in blast.",
     )
     par.add_argument(
+        "-be",
+        "--blast_minimum_evalue",
+        type=float,
+        default=0.00001,
+        help="Minimum evalue filter in blast.",
+    )
+    par.add_argument(
         "-m",
         "--max_blast_batch_size",
         default=250000,
