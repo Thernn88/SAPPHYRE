@@ -72,6 +72,9 @@ class GeneConfig:  # FIXME: I am not certain about types.
         self.blast_file_path = os.path.join(self.blast_path, f"{self.gene}.blast")
         self.blast_file_done = f"{self.blast_file_path}.done"
 
+def insert_sequences(sequences, fp):
+    fp.write("".join([f">{header}\n{sequence}\n" for header, sequence in sequences]))
+    fp.flush()
 
 def do(
     gene_conf: GeneConfig,
@@ -84,8 +87,7 @@ def do(
     ):
         printv(f"Blasted: {gene_conf.gene}", verbose, 2)
         with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmpfile:
-            fw = FastaWriter(tmpfile)
-            fw.write_file(gene_conf.gene_sequences)
+            insert_sequences(tmpfile, gene_conf.gene_sequences)
             cmd = (
                 "{prog} -outfmt '7 qseqid sseqid evalue bitscore qstart qend' "
                 "-evalue '{evalue_threshold}' -threshold '{score_threshold}' "
@@ -224,10 +226,7 @@ def run_process(args, input_path) -> None:
             genes[gene] = genes.get(gene, 0) + 1
 
             gene_to_hits.setdefault(gene, [])
-            gene_to_hits[gene].append(
-                SeqRecord(Seq(hmm_object["hmm_sequence"]), id=header + f"_hmmid{hmm_id}", description="")
-                #SeqRecord(Seq(hmm_object["hmm_sequence"]), id=f"{gene}_"+header + f"_hmmid{hmm_id}", description="")
-            )
+            gene_to_hits[gene].append((header + f"_hmmid{hmm_id}", hmm_object["hmm_sequence"]))
 
     printv(f"Grabbed HMM Data. Took: {time_keeper.lap():.2f}s. Found {sum(genes.values())} hits", args.verbose)
 
