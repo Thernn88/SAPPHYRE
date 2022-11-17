@@ -61,12 +61,12 @@ class Result:
 @dataclass
 class GeneConfig:  # FIXME: I am not certain about types.
     gene: str
-    tmp_path: str
     gene_sequences: list
     ref_names: dict
     blast_path: str
     blast_db_path: str
     blast_minimum_score: float
+    blast_minimum_evalue: float
 
     def __post_init__(self):
         self.blast_file_path = os.path.join(self.blast_path, f"{self.gene}.blast")
@@ -87,7 +87,7 @@ def do(
     ):
         printv(f"Blasted: {gene_conf.gene}", verbose, 2)
         with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmpfile:
-            insert_sequences(tmpfile, gene_conf.gene_sequences)
+            insert_sequences(gene_conf.gene_sequences, tmpfile)
             cmd = (
                 "{prog} -outfmt '7 qseqid sseqid evalue bitscore qstart qend' "
                 "-evalue '{evalue_threshold}' -threshold '{score_threshold}' "
@@ -244,6 +244,7 @@ def run_process(args, input_path) -> None:
                     blast_path=blast_path,
                     blast_db_path=blast_db_path,
                     blast_minimum_score=args.blast_minimum_score,
+                    blast_minimum_evalue=args.blast_minimum_evalue,
                 ),
                 args.verbose
             )
@@ -259,6 +260,7 @@ def run_process(args, input_path) -> None:
                     blast_path=blast_path,
                     blast_db_path=blast_db_path,
                     blast_minimum_score=args.blast_minimum_score,
+                    blast_minimum_evalue=args.blast_minimum_evalue,
                 ),
                 args.verbose,
             )
