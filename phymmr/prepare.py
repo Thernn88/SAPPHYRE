@@ -407,7 +407,8 @@ class DatabasePreparer:
             os.remove(translate_file)
 
         if self.keep_prepared:
-            open(self.prot_path, 'w').writelines(out_lines)
+            with open(self.prot_path, 'w') as fp:
+                fp.writelines(out_lines)
 
         aa_dupes = next(aa_dupe_count)
         self.printv(
