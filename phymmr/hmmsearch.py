@@ -5,12 +5,9 @@ import json
 import math
 import os
 import subprocess
-from contextlib import contextmanager
 from functools import cached_property
 from multiprocessing.pool import Pool
 from pathlib import Path
-from tempfile import SpooledTemporaryFile
-from typing import Optional
 
 import wrap_rocks
 from Bio.SeqIO.FastaIO import SimpleFastaParser
@@ -25,7 +22,6 @@ class ProtFile:
 
     def __init__(self, ortho, verbosity):
         self._ortho = ortho
-        self.content: Optional[SpooledTemporaryFile] = None
         self.temp_file = Path(gettempdir(), f"{self._ortho}.prot")
         self.verbosity = verbosity
 
@@ -50,7 +46,6 @@ class ProtFile:
         """
         sequence_dict = {}
         tike = TimeKeeper(KeeperMode.DIRECT)
-        self.content.seek(0)
         with open(self.temp_file, mode="rb") as fp:
             for header, sequence in SimpleFastaParser(fp):
                 sequence_dict[header] = sequence
@@ -887,11 +882,13 @@ def run_process(args, input_path: str) -> None:
     dupe_counts = json.loads(sequences_db_conn.get("getall:dupes"))
     dupes_per_gene = {}
 
+    this_sequences = protfile.sequences
+
     for gene in transcripts_mapped_to:
         dupe_count_divvy = {}
 
         for hit in transcripts_mapped_to[gene]:
-            if hit.header in protfile.sequences:
+            if hit.header in this_sequences:
                 # Make dupe count gene based
                 if hit.base_header in dupe_counts:  # NT Dupe
                     dupe_count_divvy[hit.base_header] = dupe_counts[hit.base_header]
@@ -899,7 +896,7 @@ def run_process(args, input_path: str) -> None:
                     dupe_count_divvy[hit.header] = dupe_counts[hit.header]
 
                 hit_id += 1
-                hit.hmm_sequence = "".join(protfile.sequences[hit.header])
+                hit.hmm_sequence = "".join(this_sequences[hit.header])
                 hit.hmm_id = hit_id
                 if current_hit_count >= MAX_HMM_BATCH_SIZE:
                     data = json.dumps(current_batch)
