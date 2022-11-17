@@ -251,7 +251,7 @@ class SeqDeduplicator:
                 this_index[0] += 1
 
                 # If no dupe, write to prepared file and db
-                line = ">" + header + "\n" + seq + "\n"
+                line = f">{header}\n{seq}\n"
 
                 fa_file_out.append(line)
 
@@ -368,14 +368,14 @@ class DatabasePreparer:
             )
             self.translate_files.append((in_path, out_path))
             in_path.write_text(
-                "\n".join(self.fa_file_out[i:i + sequences_per_thread]))
+                "".join(self.fa_file_out[i:i + sequences_per_thread]))
 
         with Pool(num_threads) as translate_pool:
             translate_pool.starmap(translate, self.translate_files)
 
         if self.keep_prepared:
             self.prepared_file_destination.write_text(
-                "\n".join(self.fa_file_out))
+                "".join(self.fa_file_out))
 
         self.printv(
             f"Storing translated file in DB. Translate took {self.taxa_time_keeper.lap():.2f}s", self.verbose)
@@ -403,7 +403,7 @@ class DatabasePreparer:
                         continue
                     else:
                         self.transcript_mapped_to[seq] = header
-                    out_lines.append(">" + header + "\n" + seq + "\n")
+                    out_lines.append(f">{header}\n{seq}\n")
             os.remove(translate_file)
 
         if self.keep_prepared:
