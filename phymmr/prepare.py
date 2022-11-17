@@ -15,6 +15,7 @@ from queue import Queue
 from subprocess import call
 from time import time
 from typing import Any, Callable, Dict, Generator, List, Tuple
+from shutil import rmtree
 
 import phymmr_tools
 import wrap_rocks
@@ -316,7 +317,7 @@ class DatabasePreparer:
 
         if self.clear_database and rocksdb_path.exists():
             self.printv("Clearing old database", self.verbose)
-            rocksdb_path.rmdir()
+            rmtree(rocksdb_path)
 
         self.printv("Creating rocksdb database", self.verbose)
         rocksdb_path.mkdir(parents=True, exist_ok=True)
