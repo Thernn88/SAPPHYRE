@@ -351,7 +351,9 @@ class DatabasePreparer:
         tmp_path: Path,
     ):
         self.printv("Translating prepared file", self.verbose)
-
+        
+        self.taxa_time_keeper.lap()
+        
         sequences_per_thread = math.ceil(
             (len(self.fa_file_out) // 2) // num_threads) * 2
         self.translate_files = []
@@ -374,18 +376,18 @@ class DatabasePreparer:
             self.prepared_file_destination.write_text(
                 "\n".join(self.fa_file_out))
 
+        self.printv(
+            f"Storing translated file in DB. Translate took {self.taxa_time_keeper.lap():.2f}s", self.verbose)
+
     def store_in_db(
         self,
         prot_max_seqs_per_level: int,
         global_time_keeper: List[TimeKeeper]
 
-    ):
-        self.printv(
-            f"Storing translated file in DB. Translate took {self.taxa_time_keeper.lap():.2f}s", self.verbose)
+    ):        
 
         prot_components = []
         aa_dupe_count = count()
-        self.taxa_time_keeper.lap()
 
         out_lines = []
         for _, translate_file in self.translate_files:
