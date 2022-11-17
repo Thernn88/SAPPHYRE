@@ -509,7 +509,7 @@ def empty_domtbl_file(path: str) -> bool:
 
 
 def search_prot(
-    protfile: ProtFile,
+    prot_path: str,
     domtbl_path: str,
     hmm_file: str,
     evalue: float,
@@ -539,7 +539,7 @@ def search_prot(
         "--cpu",
         str(threads),
         hmm_file,
-        protfile.temp_file,
+        prot_path,
     ]
     p = subprocess.run(command, stdout=subprocess.PIPE)
     if p.returncode != 0:  # non-zero return code means an error
@@ -550,7 +550,7 @@ def search_prot(
 
 
 def hmm_search(
-    hmm_file: str, domtbl_dir: str, evalue, score, prot: ProtFile, ovw: bool, verbose: bool
+    hmm_file: str, domtbl_dir: str, evalue, score, prot: str, ovw: bool, verbose: bool
 ) -> list:
     """
     Reimplements hmmsearch loop in lines 468 to 538 in orthograph analyzer.
@@ -631,14 +631,14 @@ def run_process(args, input_path: str) -> None:
         arg_tuples = []
         for hmm in hmm_list:
             arg_tuples.append(
-                (hmm, domtbl_dir, args.evalue, args.score, protfile, args.overwrite, args.verbose,)
+                (hmm, domtbl_dir, args.evalue, args.score, protfile.temp_file, args.overwrite, args.verbose,)
             )
         with Pool(num_threads) as search_pool:
             hmm_results = search_pool.starmap(hmm_search, arg_tuples)
     else:
         for hmm in hmm_list:
             hmm_results.append(
-                hmm_search(hmm, domtbl_dir, args.evalue, args.score, protfile, args.overwrite, args.verbose))
+                hmm_search(hmm, domtbl_dir, args.evalue, args.score, protfile.temp_file, args.overwrite, args.verbose))
 
     printv(f"Search time: {time_keeper.lap():.2f}", args.verbose)
 
