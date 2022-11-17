@@ -353,7 +353,7 @@ class DatabasePreparer:
         self.printv("Translating prepared file", self.verbose)
         
         self.taxa_time_keeper.lap()
-        
+
         sequences_per_thread = math.ceil(
             (len(self.fa_file_out) // 2) // num_threads) * 2
         self.translate_files = []
@@ -367,14 +367,14 @@ class DatabasePreparer:
             )
             self.translate_files.append((in_path, out_path))
             in_path.write_text(
-                "\n".join(self.fa_file_out[i:i + sequences_per_thread]))
+                "".join(self.fa_file_out[i:i + sequences_per_thread]))
 
         with Pool(num_threads) as translate_pool:
             translate_pool.starmap(translate, self.translate_files)
 
         if self.keep_prepared:
             self.prepared_file_destination.write_text(
-                "\n".join(self.fa_file_out))
+                "".join(self.fa_file_out))
 
         self.printv(
             f"Storing translated file in DB. Translate took {self.taxa_time_keeper.lap():.2f}s", self.verbose)
