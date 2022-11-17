@@ -72,28 +72,19 @@ class GeneConfig:  # FIXME: I am not certain about types.
         self.blast_file_path = os.path.join(self.blast_path, f"{self.gene}.blast")
         self.blast_file_done = f"{self.blast_file_path}.done"
 
-def insert_sequences(sequences, fp):
-    fp.write("".join([f">{header}\n{sequence}\n" for header, sequence in sequences]))
-    fp.flush()
-
-def do(
+def blast(
     gene_conf: GeneConfig,
     verbose: bool,
-    prog="blastp",
-):
-    if (
-        not os.path.exists(gene_conf.blast_file_done)
-        or os.path.getsize(gene_conf.blast_file_done) == 0
-    ):
-        printv(f"Blasted: {gene_conf.gene}", verbose, 2)
-        with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmpfile:
-            insert_sequences(gene_conf.gene_sequences, tmpfile)
+) -> None:
+    with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmpfile:
+            tmpfile.write("".join([f">{header}\n{sequence}\n" for header, sequence in gene_conf.gene_sequences])) # Write sequences
+            tmpfile.flush() # Flush the internal buffer so it can be read by blastp
+
             cmd = (
-                "{prog} -outfmt '7 qseqid sseqid evalue bitscore qstart qend' "
+                "blastp -outfmt '7 qseqid sseqid evalue bitscore qstart qend' "
                 "-evalue '{evalue_threshold}' -threshold '{score_threshold}' "
                 "-num_threads '{num_threads}' -db '{db}' -query '{queryfile}' "
                 "-out '{outfile}'".format(
-                    prog=prog,
                     evalue_threshold=gene_conf.blast_minimum_evalue,
                     score_threshold=gene_conf.blast_minimum_score,
                     num_threads=2,
@@ -104,6 +95,17 @@ def do(
             )
             os.system(cmd)
             os.rename(gene_conf.blast_file_path, gene_conf.blast_file_done)
+            printv(f"Blasted: {gene_conf.gene}", verbose, 2)
+
+def do(
+    gene_conf: GeneConfig,
+    verbose: bool,
+):
+    if (
+        not os.path.exists(gene_conf.blast_file_done)
+        or os.path.getsize(gene_conf.blast_file_done) == 0
+    ):
+        blast(gene_conf, verbose)
 
     gene_out = []
 
