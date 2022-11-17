@@ -36,7 +36,6 @@ class ProtFile:
         with open(self.temp_file, mode="w+b") as fp:
             for component in recipe:
                 fp.write(bytes(dbconn.get(f"getprot:{component}"), "utf-8"))
-        printv("Retrieved prot data in {:.2f}s".format(tike.differential()), self.verbosity)
 
     @cached_property
     def sequences(self):
@@ -46,7 +45,7 @@ class ProtFile:
         """
         sequence_dict = {}
         tike = TimeKeeper(KeeperMode.DIRECT)
-        with open(self.temp_file, mode="rb") as fp:
+        with open(self.temp_file, mode="r") as fp:
             for header, sequence in SimpleFastaParser(fp):
                 sequence_dict[header] = sequence
         printv('Read prot file in {:.2f}s'.format(tike.differential()), self.verbosity)
