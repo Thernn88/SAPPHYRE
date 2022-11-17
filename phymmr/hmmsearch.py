@@ -5,14 +5,65 @@ import json
 import math
 import os
 import subprocess
+from functools import cached_property
 from multiprocessing.pool import Pool
-from time import time
+from pathlib import Path
 
 import wrap_rocks
 from Bio.SeqIO.FastaIO import SimpleFastaParser
 
-from .utils import printv
 from .timekeeper import TimeKeeper, KeeperMode
+from .utils import printv, gettempdir
+
+
+# NOTE: __slots__ cannot be used because cached_property relies on mutability
+#  see: https://docs.python.org/3/library/functools.html#functools.cached_property
+class ProtFile:
+
+    def __init__(self, ortho, verbosity):
+        self._ortho = ortho
+        self.temp_file = Path(gettempdir(), f"{self._ortho}.prot")
+        self.verbosity = verbosity
+
+    def makeme(self, dbconn):
+        """Dump prot data from db into a file.
+
+        The temporary file will be cleaned as soon as this object is GC'd, if
+        not done manually sooner.
+        """
+        tike = TimeKeeper(KeeperMode.DIRECT)
+        recipe = dbconn.get("getall:prot").split(",")
+        with open(self.temp_file, mode="w+b") as fp:
+            for component in recipe:
+                fp.write(bytes(dbconn.get(f"getprot:{component}"), "utf-8"))
+
+    @cached_property
+    def sequences(self):
+        """Compute a dict of sequence then remove tmp file from memory.
+
+        Effectively moves the data from shared memory into a python dict.
+        """
+        sequence_dict = {}
+        tike = TimeKeeper(KeeperMode.DIRECT)
+        with open(self.temp_file, mode="r") as fp:
+            for header, sequence in SimpleFastaParser(fp):
+                sequence_dict[header] = sequence
+        printv('Read prot file in {:.2f}s'.format(tike.differential()), self.verbosity)
+        self.cleanup()
+        return sequence_dict
+
+    def cleanup(self):
+        """Remove temp file if it exists
+
+        This file is huge, and must be properly removed so to not have issues
+        later.
+        """
+        if self.temp_file.exists():
+            self.temp_file.unlink()
+
+    def __del__(self):
+        self.cleanup()
+
 
 class Hit:
     __slots__ = (
@@ -457,7 +508,7 @@ def empty_domtbl_file(path: str) -> bool:
 
 
 def search_prot(
-    prot_file: str,
+    prot_path: str,
     domtbl_path: str,
     hmm_file: str,
     evalue: float,
@@ -487,9 +538,8 @@ def search_prot(
         "--cpu",
         str(threads),
         hmm_file,
-        prot_file,
+        prot_path,
     ]
-
     p = subprocess.run(command, stdout=subprocess.PIPE)
     if p.returncode != 0:  # non-zero return code means an error
         printv(f"{domtbl_path}:hmmsearch error code {p.returncode}", verbose, 0)
@@ -500,7 +550,7 @@ def search_prot(
 
 def hmm_search(
     hmm_file: str, domtbl_dir: str, evalue, score, prot: str, ovw: bool, verbose: bool
-) -> None:
+) -> list:
     """
     Reimplements hmmsearch loop in lines 468 to 538 in orthograph analyzer.
     """
@@ -508,8 +558,7 @@ def hmm_search(
     hmm_name = get_hmm_name(hmm_file)
     domtbl_path = os.path.join(domtbl_dir, hmm_name + ".hmm.domtbl")
 
-    hits = search_prot(prot, domtbl_path, hmm_file, evalue, score, ovw, verbose)
-    return hits
+    return search_prot(prot, domtbl_path, hmm_file, evalue, score, ovw, verbose)
 
 
 def run_process(args, input_path: str) -> None:
@@ -527,14 +576,6 @@ def run_process(args, input_path: str) -> None:
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
 
     num_threads = args.processes
-    if os.path.exists("/run/shm"):
-        in_ram = "/run/shm"
-    else:
-        in_ram = "/dev/shm"
-    # temp_dir = os.path.join(input_path, "tmp")
-    temp_dir = os.path.join(in_ram, "tmp")
-    if not os.path.exists(temp_dir):
-        os.mkdir(temp_dir)
 
     # get ortholog
     ortholog = os.path.basename(input_path).split(".")[0]
@@ -545,11 +586,6 @@ def run_process(args, input_path: str) -> None:
     hits_path = os.path.join(db_path, "hits")
 
     sequences_db_conn = wrap_rocks.RocksDB(sequences_path)
-
-    # path to domtbl directory
-    domtbl_dir = os.path.join(input_path, "hmmsearch")
-
-    os.makedirs(domtbl_dir, exist_ok=True)
 
     # path to .hmm file directory
     orthoset_dir = os.path.join(args.orthoset_input, args.orthoset)
@@ -574,35 +610,34 @@ def run_process(args, input_path: str) -> None:
         hmm_list = [hmm for hmm in hmm_list if hmm.split(".")[0] in wanted]
 
     hmm_list.sort()
-
     # rejoin file names with directory path
     hmm_list = [os.path.join(hmm_dir, hmm) for hmm in hmm_list]
 
-    # make protfile for hmm_search later
-    printv("Creating protfile", args.verbose)
-    time_keeper.lap()
+    # path to domtbl directory
+    domtbl_dir = os.path.join(input_path, "hmmsearch")
+    os.makedirs(domtbl_dir, exist_ok=True)
 
-    protfile = make_temp_protfile(
-        ortholog, temp_dir, sequences_db_conn
-    )
+    # make protfile for hmm_search later
+    printv("Checking protfile", args.verbose)
+    time_keeper.lap()
+    protfile = ProtFile(ortholog, args.verbose)
+    protfile.makeme(sequences_db_conn)
 
     printv(f"Wrote prot file in {time_keeper.lap():.2f}s", args.verbose)
 
-
     hmm_results = []  # list of lists containing Hit objects
-
     if num_threads > 1:
         arg_tuples = []
         for hmm in hmm_list:
             arg_tuples.append(
-                (hmm, domtbl_dir, args.evalue, args.score, protfile, args.overwrite, args.verbose,)
+                (hmm, domtbl_dir, args.evalue, args.score, protfile.temp_file, args.overwrite, args.verbose,)
             )
         with Pool(num_threads) as search_pool:
             hmm_results = search_pool.starmap(hmm_search, arg_tuples)
     else:
         for hmm in hmm_list:
             hmm_results.append(
-                hmm_search(hmm, domtbl_dir, args.evalue, args.score, protfile, args.overwrite, args.verbose))
+                hmm_search(hmm, domtbl_dir, args.evalue, args.score, protfile.temp_file, args.overwrite, args.verbose))
 
     printv(f"Search time: {time_keeper.lap():.2f}", args.verbose)
 
@@ -834,20 +869,6 @@ def run_process(args, input_path: str) -> None:
     printv(f"Done! Took {filter_timer.lap():.2f}s", args.verbose)
     printv(f"Filtering took {filter_timer.differential():.2f}s overall", args.verbose)
 
-    # Grab the seq dict
-    sequence_dict = {}
-    header = None
-    time_keeper.lap()
-    with open(protfile) as prot_file_handle:
-        fasta_file = SimpleFastaParser(prot_file_handle)
-        for header, sequence in fasta_file:
-            sequence_dict[header] = sequence
-
-    if os.path.exists(protfile):
-        os.remove(protfile)
-
-    printv(f"Read prot file in {time_keeper.lap():.2f}s", args.verbose)
-
     # Seperate hmm hits into seperate levels
     global_hmm_obj_recipe = []
     current_batch = []
@@ -860,11 +881,13 @@ def run_process(args, input_path: str) -> None:
     dupe_counts = json.loads(sequences_db_conn.get("getall:dupes"))
     dupes_per_gene = {}
 
+    this_sequences = protfile.sequences
+
     for gene in transcripts_mapped_to:
         dupe_count_divvy = {}
 
         for hit in transcripts_mapped_to[gene]:
-            if hit.header in sequence_dict:
+            if hit.header in this_sequences:
                 # Make dupe count gene based
                 if hit.base_header in dupe_counts:  # NT Dupe
                     dupe_count_divvy[hit.base_header] = dupe_counts[hit.base_header]
@@ -872,7 +895,7 @@ def run_process(args, input_path: str) -> None:
                     dupe_count_divvy[hit.header] = dupe_counts[hit.header]
 
                 hit_id += 1
-                hit.hmm_sequence = "".join(sequence_dict[hit.header])
+                hit.hmm_sequence = "".join(this_sequences[hit.header])
                 hit.hmm_id = hit_id
                 if current_hit_count >= MAX_HMM_BATCH_SIZE:
                     data = json.dumps(current_batch)
@@ -899,7 +922,7 @@ def run_process(args, input_path: str) -> None:
     data = json.dumps(dupes_per_gene)
     sequences_db_conn.put(key, data)
 
-    del sequence_dict
+    del protfile
 
     if current_batch:
         data = json.dumps(current_batch)

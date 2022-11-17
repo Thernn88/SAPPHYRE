@@ -136,8 +136,7 @@ def do_gene(
             if char != "-":
                 all_dashes_by_index[i] = False
                 
-    if debug:
-        log = ["Gene,Header,Cull To Start,Cull To End,Data Length,Data Removed\n"]
+    log = []
 
     follow_through = {}
     offset = amt_matches - 1
@@ -266,19 +265,13 @@ def do_gene(
                 log.append(gene + "," + header + ",Kicked,Zero Data After Cull,0,\n")
 
     if len(aa_out) == 1:
-        return None #Only refs
+        return log #Only refs
 
     with open(aa_out_path, "w", encoding="UTF-8") as fp:
         fp.write("".join(aa_out))
 
-    if debug:
-        log_out_path = os.path.join(tmp_path, this_gene + ".csv")
-        with open(log_out_path, "w", encoding="UTF-8") as log_out:
-            log_out.writelines(log)
-
     nt_file_name = make_nt(aa_file)
     gene_path = os.path.join(nt_input, nt_file_name)
-    # gene_content = open(gene_path).read()
 
     references, candidates, raw_references = parse_fasta(gene_path)
     nt_out_path = os.path.join(output, "nt", nt_file_name)
@@ -303,32 +296,7 @@ def do_gene(
                 nt_out.write(">" + header + "\n")
                 nt_out.write(out_line + "\n")
 
-
-def consolidate(log_paths: list) -> list[str]:
-    """Consolidates each individual gene log to
-    global log"""
-
-    consolidated_log_out = []
-
-    for i, log_path in enumerate(log_paths):
-        with open(log_path, encoding="UTF-8") as log_in:
-            log_lines = log_in.readlines()
-
-        if i != 0:
-            log_lines = log_lines[1:]
-
-        consolidated_log_out.extend(log_lines)
-
-    return consolidated_log_out
-
-
-def run_command(arg_tuple: tuple) -> None:
-    """
-    Calls the main() function parallel in each thread
-    """
-    # aa_input, nt_input, output, matches, aa_file, tmp_path, debug = arg_tuple
-    do_gene(*arg_tuple)
-
+    return log
 
 def do_folder(folder, args: MainArgs):
     folder_time = TimeKeeper(KeeperMode.DIRECT)
@@ -367,28 +335,28 @@ def do_folder(folder, args: MainArgs):
             )
 
         with Pool(args.processes) as pool:
-            pool.map(run_command, arguments, chunksize=1)
+            log_components = pool.starmap(do_gene, arguments, chunksize=1)
     else:
-        for input_gene in file_inputs:
-            do_gene(
-                aa_path,
-                nt_path,
-                output_path,
-                args.matches,
-                input_gene,
-                available_tmp_path,
-                args.debug,
-                args.base_pair,
-                args.verbose,
-            )
+        log_components = [do_gene(
+                            aa_path,
+                            nt_path,
+                            output_path,
+                            args.matches,
+                            input_gene,
+                            available_tmp_path,
+                            args.debug,
+                            args.base_pair,
+                            args.verbose,
+                        ) for input_gene in file_inputs]
 
     if args.debug:
-        logs = [
-            os.path.join(available_tmp_path, log_present)
-            for log_present in os.listdir(available_tmp_path)
-        ]
-        log_global = consolidate(logs)
+        log_global = []
+
+        for component in log_components:
+            log_global.extend(component)
+
         log_global.sort()
+        log_global.insert(0, "Gene,Header,Cull To Start,Cull To End,Data Length,Data Removed\n")
         log_out = os.path.join(output_path, 'Culls.csv')
         with open(log_out,'w') as fp:
             fp.writelines(log_global)

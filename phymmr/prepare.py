@@ -12,6 +12,8 @@ from multiprocessing.pool import Pool
 from pathlib import Path
 from queue import Queue
 from subprocess import call
+from shutil import rmtree
+from tempfile import TemporaryDirectory
 from time import time
 from typing import Any, Callable, Dict, Generator, List, Tuple
 from shutil import rmtree
@@ -24,7 +26,56 @@ from Bio.SeqIO.QualityIO import FastqGeneralIterator
 from tqdm import tqdm
 
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import ConcurrentLogger
+from .timekeeper import TimeKeeper, KeeperMode
+from .utils import printv, gettempdir,ConcurrentLogger
+
+
+class TempFiles:
+    def __init__(self):
+        self.translate_files = []
+        self.tmppath = TemporaryDirectory(dir=gettempdir())
+
+    def makefile(self, taxa, infile_content):
+        inpath = Path(self.tmppath.name, f"{taxa}_{len(self.translate_files)}.fa")
+        outpath = Path(self.tmppath.name, f"{taxa}_prot_{len(self.translate_files)}.fa")
+        self.translate_files.append((inpath, outpath))
+        with open(inpath, 'w') as fp:
+            fp.writelines(infile_content)
+
+    def build_sequences(self, tmt: dict, dup: dict):
+        """Build a list of strings containing the sequence header and the sequence itself.
+
+        Args:
+            tmt: "Transcript mapped to" header indexed on sequences.
+            dup: Count amount of duplicate headers found.
+
+        Returns:
+            A tuple containing a list of header/sequence, the tmt dict, the
+             duplicate dict and an integer representing the amount of aa
+             duplicate found.
+        """
+        aa_dupe_count = count()
+        out_lines = []
+        for _, translate_file in self.translate_files:
+            with open(translate_file, "r+", encoding="utf-8") as fp:
+                for header, seq in SimpleFastaParser(fp):
+                    header = header.replace(" ", "|")
+                    if seq in tmt:
+                        dup.setdefault(tmt[seq], 1)
+                        dup[tmt[seq]] += 1
+                        next(aa_dupe_count)
+                        continue
+                    else:
+                        tmt[seq] = header
+                    out_lines.append(">" + header + "\n" + seq + "\n")
+        return out_lines, tmt, dup, next(aa_dupe_count)
+
+    def cleanup(self):
+        if os.path.exists(self.tmppath.name):
+            self.tmppath.cleanup()
+
+    def __del__(self):
+        self.cleanup()
 
 ROCKSDB_FOLDER_NAME = "rocksdb"
 SEQUENCES_DB_NAME = "sequences"
@@ -348,7 +399,6 @@ class DatabasePreparer:
     def translate_fasta_and_write_to_disk(
         self,
         num_threads: int,
-        tmp_path: Path,
     ):
         self.printv("Translating prepared file", self.verbose)
         
@@ -356,21 +406,14 @@ class DatabasePreparer:
         
         sequences_per_thread = math.ceil(
             (len(self.fa_file_out) // 2) // num_threads) * 2
-        self.translate_files = []
 
+        self.tfiles = TempFiles()
+        
         for i in range(0, len(self.fa_file_out), sequences_per_thread):
-            in_path = tmp_path.joinpath(
-                self.fto + f'_{len(self.translate_files)}.fa'
-            )
-            out_path = tmp_path.joinpath(
-                self.fto + f'_prot_{len(self.translate_files)}.fa'
-            )
-            self.translate_files.append((in_path, out_path))
-            in_path.write_text(
-                "".join(self.fa_file_out[i:i + sequences_per_thread]))
+            self.tfiles.makefile(self.fto, self.fa_file_out[i:i + sequences_per_thread])
 
         with Pool(num_threads) as translate_pool:
-            translate_pool.starmap(translate, self.translate_files)
+            translate_pool.starmap(translate, self.tfiles.translate_files)
 
         if self.keep_prepared:
             self.prepared_file_destination.write_text(
@@ -387,39 +430,22 @@ class DatabasePreparer:
     ):        
 
         prot_components = []
-        aa_dupe_count = count()
-
-        out_lines = []
-        for _, translate_file in self.translate_files:
-            with open(translate_file, "r+", encoding="utf-8") as fp:
-                for header, seq in SimpleFastaParser(fp):
-                    header = header.replace(" ", "|")
-                    if seq in self.transcript_mapped_to:
-                        self.duplicates.setdefault(
-                            self.transcript_mapped_to[seq], 1)
-                        self.duplicates[self.transcript_mapped_to[seq]] += 1
-                        next(aa_dupe_count)
-                        continue
-                    else:
-                        self.transcript_mapped_to[seq] = header
-                    out_lines.append(f">{header}\n{seq}\n")
-            os.remove(translate_file)
+        out_lines, self.transcript_mapped_to, self.duplicates, aa_dupes = self.tfiles.build_sequences(self.transcript_mapped_to, self.duplicates)
 
         if self.keep_prepared:
             with open(self.prot_path, 'w') as fp:
                 fp.writelines(out_lines)
 
-        aa_dupes = next(aa_dupe_count)
         self.printv(
             f"AA dedupe took {self.taxa_time_keeper.lap():.2f}s. Kicked {aa_dupes} dupes", self.verbose, 2)
 
         levels = math.ceil(len(out_lines) / prot_max_seqs_per_level)
         per_level = math.ceil(len(out_lines) / levels)
 
+        prot_components = []
         component = 0
         for i in range(0, len(out_lines), per_level):
             component += 1
-
             data = out_lines[i: i + per_level]
             prot_components.append(str(component))
             self.db.put(f"getprot:{component}", "".join(data))
@@ -449,12 +475,11 @@ class DatabasePreparer:
         secondary_directory: Path,
         global_time_keeper: List[TimeKeeper],
         num_threads: int,
-        tmp_path: Path,
         prot_max_seqs_per_level: int
     ):
         self.init_db(secondary_directory, global_time_keeper)
         self.dedup()
-        self.translate_fasta_and_write_to_disk(num_threads, tmp_path)
+        self.translate_fasta_and_write_to_disk(num_threads)
         self.store_in_db(prot_max_seqs_per_level, global_time_keeper)
 
 
@@ -468,7 +493,6 @@ def map_taxa_runs(
     secondary_directory: Path,
     global_time_keeper: List[TimeKeeper],
     num_threads: int,
-    tmp_path: Path,
     prot_max_seqs_per_level: Path,
     dedup_time: List[int],
     trim_times: TimeKeeper
@@ -489,7 +513,6 @@ def map_taxa_runs(
         secondary_directory,
         global_time_keeper,
         num_threads,
-        tmp_path,
         prot_max_seqs_per_level
     )
 
@@ -512,20 +535,6 @@ def main(args):
     project_root = Path(__file__).parent.parent
     core_directory = Path(CORE_FOLDER).joinpath(input_path.parts[-1])
     secondary_directory = project_root.joinpath(core_directory)
-
-    path_run_tmp = Path("/run/shm")
-    path_dev_tmp = Path("/dev/shm")
-    path_tmp_tmp = Path("/tmp")
-
-    if path_dev_tmp.exists() and path_dev_tmp.is_dir():
-        tmp_path = path_dev_tmp
-    elif path_run_tmp.exists() and path_run_tmp.is_dir():
-        tmp_path = path_run_tmp
-    elif path_tmp_tmp.exists() and path_tmp_tmp.is_dir():
-        tmp_path = path_tmp_tmp
-    else:
-        tmp_path = project_root.joinpath("tmp")
-        tmp_path.mkdir(parents=True, exist_ok=True)
 
     # Create necessary directories
     printv("Creating directories", args.verbose)
@@ -550,7 +559,6 @@ def main(args):
             secondary_directory,
             global_time_keeper,
             num_threads,
-            tmp_path,
             prot_max_seqs_per_level,
             dedup_time,
             trim_times

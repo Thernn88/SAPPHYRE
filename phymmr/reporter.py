@@ -10,6 +10,7 @@ from collections import namedtuple
 from multiprocessing.pool import Pool
 from time import time
 from typing import List, Optional
+from tempfile import TemporaryDirectory, NamedTemporaryFile
 
 import phymmr_tools
 import xxhash
@@ -17,7 +18,7 @@ from Bio.Seq import Seq
 
 from . import rocky
 from .timekeeper import TimeKeeper, KeeperMode
-from .utils import printv
+from .utils import printv, gettempdir
 
 MainArgs = namedtuple(
     "MainArgs",
@@ -345,18 +346,6 @@ def crop_to_hmm_alignment(seq, header, hit):
 
 ### EXONERATE FUNCTIONS
 
-
-def fastaify(headers, sequences, tmp_path):
-    name = str(uuid.uuid4()) + ".tmp"  # Super unique name
-    path = os.path.join(tmp_path, name)
-
-    with open(path, "w") as fp:
-        for header, seq in zip(headers, sequences):
-            fp.write(">" + header + "\n" + seq + "\n")
-
-    return path
-
-
 def translate_cdna(cdna_seq, verbose):
     if not cdna_seq:
         return None
@@ -413,6 +402,7 @@ def parse_nodes(lines):
 def parse_multi_results(handle):
     extended_result = []
     result = []
+    handle.seek(0)
     nodes = parse_nodes(handle)
     for key in nodes:
         node = nodes[key]
@@ -442,8 +432,11 @@ def parse_multi_results(handle):
             )
     return extended_result, result
 
+def insert_sequences(sequences, fp):
+    fp.write("".join([f">{header}\n{sequence}\n" for header, sequence in sequences]))
+    fp.flush()
 
-def get_multi_orf(query, targets, score_threshold, tmp_path, include_extended=False):
+def get_multi_orf(query, targets, score_threshold, include_extended=False):
     exonerate_ryo = ">cdna %tcb %tce\n%tcs>aa %qab %qae\n%qas"
     genetic_code = 1
     exonerate_model = "protein2genome"
@@ -456,20 +449,15 @@ def get_multi_orf(query, targets, score_threshold, tmp_path, include_extended=Fa
     if include_extended:
         sequences.extend([i.est_sequence_complete for i in targets])
 
-    queryfile = fastaify(["query"], [query], tmp_path)
-    targetfile = fastaify(headers, sequences, tmp_path)
+    with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmpquery, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmptarget, NamedTemporaryFile(dir=tmpdir, mode="r") as tmpout:
+        insert_sequences(zip(headers, sequences), tmptarget)
+        insert_sequences([("query", query)], tmpquery)
 
-    outfile = os.path.join(tmp_path, str(uuid.uuid4()) + ".exonerateout")
+        exonerate_cmd = f"exonerate --score {score_threshold} --ryo '{exonerate_ryo}' --subopt 0 --geneticcode {genetic_code} --model '{exonerate_model}' --querytype 'protein' --targettype 'dna' --verbose 0 --showalignment 'no' --showvulgar 'yes' --query '{tmpquery.name}' --target '{tmptarget.name}' > {tmpout.name}"
 
-    exonerate_cmd = f"exonerate --score {score_threshold} --ryo '{exonerate_ryo}' --subopt 0 --geneticcode {genetic_code} --model '{exonerate_model}' --querytype 'protein' --targettype 'dna' --verbose 0 --showalignment 'no' --showvulgar 'yes' --query '{queryfile}' --target '{targetfile}' > {outfile}"
+        os.system(exonerate_cmd)
 
-    os.system(exonerate_cmd)
-
-    with open(outfile) as fp:
-        extended_results, results = parse_multi_results(fp)
-    os.remove(queryfile)
-    os.remove(targetfile)
-    os.remove(outfile)
+        extended_results, results = parse_multi_results(tmpout)
 
     return extended_results, results
 
@@ -742,7 +730,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
         total_results += len(hits)
         query = reftaxon_to_proteome_sequence[taxon_hit]
         extended_results, results = get_multi_orf(
-            query, hits, eargs.min_score, eargs.tmp_path, include_extended=extend_orf
+            query, hits, eargs.min_score, include_extended=extend_orf
         )
 
         for hit in hits:
