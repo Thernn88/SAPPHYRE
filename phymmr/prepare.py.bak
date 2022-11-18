@@ -128,8 +128,8 @@ def get_seq_count(filename, is_gz):
     return next(counter)
 
 def N_trim(
-    parent_sequence: str,
-    minimum_sequence_length: int,
+    parent_sequence: str, 
+    minimum_sequence_length: int, 
     tike: TimeKeeper
 ):
     if "N" in parent_sequence:
@@ -222,7 +222,7 @@ class SeqDeduplicator:
         self.fa_file_path = fa_file_path
         self.minimum_sequence_length = minimum_sequence_length
         self.verbose = verbose
-        self.db = db
+        self.db = db       
 
     def __call__(
         self,
@@ -401,14 +401,14 @@ class DatabasePreparer:
         num_threads: int,
     ):
         self.printv("Translating prepared file", self.verbose)
-
+        
         self.taxa_time_keeper.lap()
-
+        
         sequences_per_thread = math.ceil(
             (len(self.fa_file_out) // 2) // num_threads) * 2
 
         self.tfiles = TempFiles()
-
+        
         for i in range(0, len(self.fa_file_out), sequences_per_thread):
             self.tfiles.makefile(self.fto, self.fa_file_out[i:i + sequences_per_thread])
 
@@ -427,7 +427,7 @@ class DatabasePreparer:
         prot_max_seqs_per_level: int,
         global_time_keeper: List[TimeKeeper]
 
-    ):
+    ):        
 
         prot_components = []
         out_lines, self.transcript_mapped_to, self.duplicates, aa_dupes = self.tfiles.build_sequences(self.transcript_mapped_to, self.duplicates)
@@ -510,7 +510,7 @@ def map_taxa_runs(
         dedup_time,
         trim_times
     )
-
+    
     db_prep(
         secondary_directory,
         global_time_keeper,
@@ -543,7 +543,7 @@ def main(args):
     # Create necessary directories
     printv("Creating directories", args.verbose)
     secondary_directory.mkdir(parents=True, exist_ok=True)
-
+   
 
     trim_times = [TimeKeeper(KeeperMode.SUM)]  # Append computed time for each loop.
     dedup_time = [0]
