@@ -445,7 +445,7 @@ def get_multi_orf(query, targets, score_threshold, include_extended):
         tmptarget.write("".join([f">{header}\n{sequence}\n" for header, sequence in sequences]))
         tmptarget.flush() # Flush the internal buffer so it can be read by exonerate
 
-        tmptarget.write(">query\n{query}\n")
+        tmptarget.write(f">query\n{query}\n")
         tmptarget.flush() # Flush the internal buffer so it can be read by exonerate
 
         exonerate_cmd = f"exonerate --score {score_threshold} --ryo '{exonerate_ryo}' --subopt 0 --geneticcode {genetic_code} --model '{exonerate_model}' --querytype 'protein' --targettype 'dna' --verbose 0 --showalignment 'no' --showvulgar 'yes' --query '{tmpquery.name}' --target '{tmptarget.name}' > {tmpout.name}"
