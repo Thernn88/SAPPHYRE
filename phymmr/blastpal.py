@@ -6,8 +6,10 @@ import os
 import sqlite3
 from collections import Counter
 from dataclasses import dataclass
+from itertools import count
 from multiprocessing.pool import Pool
 from shutil import rmtree
+from tempfile import TemporaryDirectory, NamedTemporaryFile
 from time import time
 
 import wrap_rocks
@@ -15,7 +17,7 @@ from Bio.Seq import Seq
 from Bio.SeqIO.FastaIO import FastaWriter
 from Bio.SeqRecord import SeqRecord
 
-from .utils import printv
+from .utils import printv, gettempdir
 from .timekeeper import TimeKeeper, KeeperMode
 
 
@@ -29,11 +31,14 @@ class Result:
         "blast_start", 
         "blast_end",
         "reftaxon",
-        "ref_sequence"
+        "ref_sequence",
+        "hmmsearch_id",
+        "gene"
     )
 
-    def __init__(self, query_id, subject_id, evalue, bit_score, q_start, q_end):
-        self.query_id = str(query_id)
+    def __init__(self, gene, query_id, subject_id, evalue, bit_score, q_start, q_end):
+        self.gene = gene
+        self.query_id, self.hmmsearch_id = str(query_id).split('_hmmid')
         self.target = int(subject_id)
         self.evalue = float(evalue)
         self.log_evalue = math.log(self.evalue) if self.evalue != 0 else -999.0
@@ -45,6 +50,8 @@ class Result:
 
     def to_json(self):
         return {
+                    "hmm_id": self.hmmsearch_id,
+                    "gene": self.gene,
                     "target": self.target,
                     "reftaxon": self.reftaxon,
                     "ref_sequence": self.ref_sequence
@@ -54,7 +61,6 @@ class Result:
 @dataclass
 class GeneConfig:  # FIXME: I am not certain about types.
     gene: str
-    tmp_path: str
     gene_sequences: list
     ref_names: dict
     blast_path: str
@@ -65,44 +71,43 @@ class GeneConfig:  # FIXME: I am not certain about types.
     def __post_init__(self):
         self.blast_file_path = os.path.join(self.blast_path, f"{self.gene}.blast")
         self.blast_file_done = f"{self.blast_file_path}.done"
-        self.fa_file = os.path.join(self.tmp_path, f"{self.gene}.fa")
 
+def blast(
+    gene_conf: GeneConfig,
+    verbose: bool,
+) -> None:
+    with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmpfile:
+            tmpfile.write("".join([f">{header}\n{sequence}\n" for header, sequence in gene_conf.gene_sequences])) # Write sequences
+            tmpfile.flush() # Flush the internal buffer so it can be read by blastp
+
+            cmd = (
+                "blastp -outfmt '7 qseqid sseqid evalue bitscore qstart qend' "
+                "-evalue '{evalue_threshold}' -threshold '{score_threshold}' "
+                "-num_threads '{num_threads}' -db '{db}' -query '{queryfile}' "
+                "-out '{outfile}'".format(
+                    evalue_threshold=gene_conf.blast_minimum_evalue,
+                    score_threshold=gene_conf.blast_minimum_score,
+                    num_threads=2,
+                    db=gene_conf.blast_db_path,
+                    queryfile=tmpfile.name,
+                    outfile=gene_conf.blast_file_path,
+                )
+            )
+            os.system(cmd)
+            os.rename(gene_conf.blast_file_path, gene_conf.blast_file_done)
+            printv(f"Blasted: {gene_conf.gene}", verbose, 2)
 
 def do(
     gene_conf: GeneConfig,
     verbose: bool,
-    prog="blastp",
 ):
     if (
         not os.path.exists(gene_conf.blast_file_done)
         or os.path.getsize(gene_conf.blast_file_done) == 0
     ):
-        printv(f"Blasted: {gene_conf.gene}", verbose, 2)
-        with open(gene_conf.fa_file, "w") as fp:
-            fw = FastaWriter(fp)
-            fw.write_file(gene_conf.gene_sequences)
+        blast(gene_conf, verbose)
 
-        cmd = (
-            "{prog} -outfmt '7 qseqid sseqid evalue bitscore qstart qend' "
-            "-evalue '{evalue_threshold}' -threshold '{score_threshold}' "
-            "-num_threads '{num_threads}' -db '{db}' -query '{queryfile}' "
-            "-out '{outfile}'".format(
-                prog=prog,
-                evalue_threshold=gene_conf.blast_minimum_evalue,
-                score_threshold=gene_conf.blast_minimum_score,
-                num_threads=2,
-                db=gene_conf.blast_db_path,
-                queryfile=gene_conf.fa_file,
-                outfile=gene_conf.blast_file_path,
-            )
-        )
-        os.system(cmd)
-        os.remove(gene_conf.fa_file)
-
-        os.rename(gene_conf.blast_file_path, gene_conf.blast_file_done)
-
-    gene_out = {}
-    this_return = []
+    gene_out = []
 
     with open(gene_conf.blast_file_done, "r") as fp:
         for line in fp:
@@ -110,7 +115,7 @@ def do(
                 continue
             fields = line.split("\t")
 
-            this_result = Result(*fields)
+            this_result = Result(gene_conf.gene, *fields)
 
             if this_result.target in gene_conf.ref_names: # Hit target not valid
                 this_result.reftaxon, this_result.ref_sequence = gene_conf.ref_names[this_result.target]
@@ -118,22 +123,10 @@ def do(
                 # Although we have a threshold in the Blast call. Some still get through.
                 if (
                     this_result.score >= gene_conf.blast_minimum_score
-                    and this_result.evalue <= gene_conf.blast_minimum_evalue
                 ):
-                    _, hmmsearch_id = this_result.query_id.split("_hmmid")
+                    gene_out.append(this_result.to_json())
 
-                    gene_out.setdefault(hmmsearch_id, [])
-                    gene_out[hmmsearch_id].append(this_result.to_json())
-
-    for hmmsearch_id in gene_out:
-        this_out_results = gene_out[hmmsearch_id]
-        key = "blastfor:{}".format(hmmsearch_id)
-
-        data = json.dumps(this_out_results)
-
-        this_return.append((key, data, len(this_out_results)))
-    
-    return this_return
+    return gene_out
 
 
 def get_set_id(orthoset_db_con, orthoset):
@@ -202,14 +195,6 @@ def run_process(args, input_path) -> None:
             rmtree(blast_path)
     os.makedirs(blast_path, exist_ok=True)
 
-    if os.path.exists("/run/shm"):
-        tmp_path = "/run/shm"
-    elif os.path.exists("/dev/shm"):
-        tmp_path = "/dev/shm"
-    else:
-        tmp_path = os.path.join(input_path, "tmp")
-        os.makedirs(tmp_path, exist_ok=True)
-
     # grab gene reftaxon
     orthoset_db_path = os.path.join(orthosets_dir, orthoset + ".sqlite")
     orthoset_db_con = sqlite3.connect(orthoset_db_path)
@@ -243,9 +228,7 @@ def run_process(args, input_path) -> None:
             genes[gene] = genes.get(gene, 0) + 1
 
             gene_to_hits.setdefault(gene, [])
-            gene_to_hits[gene].append(
-                SeqRecord(Seq(hmm_object["hmm_sequence"]), id=header + f"_hmmid{hmm_id}", description="")
-            )
+            gene_to_hits[gene].append((header + f"_hmmid{hmm_id}", hmm_object["hmm_sequence"]))
 
     printv(f"Grabbed HMM Data. Took: {time_keeper.lap():.2f}s. Found {sum(genes.values())} hits", args.verbose)
 
@@ -258,7 +241,6 @@ def run_process(args, input_path) -> None:
             do(
                 GeneConfig(
                     gene=gene,
-                    tmp_path=tmp_path,
                     gene_sequences=gene_to_hits[gene],
                     ref_names=ref_taxon[gene],
                     blast_path=blast_path,
@@ -275,7 +257,6 @@ def run_process(args, input_path) -> None:
             (
                 GeneConfig(
                     gene=gene,
-                    tmp_path=tmp_path,
                     gene_sequences=gene_to_hits[gene],
                     ref_names=ref_taxon[gene],
                     blast_path=blast_path,
@@ -293,13 +274,30 @@ def run_process(args, input_path) -> None:
 
     printv(f"Got Blast Results. Took {time_keeper.lap():.2f}s. Writing to DB", args.verbose)
 
-    i = 0
+    total = count()
+    counter = count()
+    this_batch = []
+    recipe = []
+    batch_i = 1
     for batch in to_write:
-        for key, data, count in batch:
-            db.put(key, data)
-            i += count
+        for result in batch:
+            this_batch.append(result)
+            if next(counter) == args.max_blast_batch_size:
+                recipe.append(batch_i)
+                db.put(f'blastbatch:{batch_i}', json.dumps(this_batch))
+                batch_i += 1
+                counter = count()
+                this_batch = []
+            next(total)
+    
+    if this_batch:
+        recipe.append(batch_i)
+        db.put(f'blastbatch:{batch_i}', json.dumps(this_batch))
+        batch_i += 1
 
-    printv(f"Writing {i} results took {time_keeper.lap():.2f}s", args.verbose)
+    db.put('blastbatch:all', ','.join(map(str, recipe)))
+
+    printv(f"Writing {next(total)} results over {batch_i} batches took {time_keeper.lap():.2f}s", args.verbose)
     printv(f"Done! Took {time_keeper.differential():.2f}s overall", args.verbose)
 
 
