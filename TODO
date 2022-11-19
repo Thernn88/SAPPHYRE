@@ -1,7 +1,7 @@
 TODO
 -----------
 HIGH PRIORITY!!!!
-	[ ] Allow Pal2Nal through MergeOverlap to function when Reference NT sequences are absent.
+	[x] Allow Pal2Nal through MergeOverlap to function when Reference NT sequences are absent. @done (~08-11-22)
 	[x] Move orthosets folder out of PhyMMR to the same level as the phymmr and PhyMMR folder. Update paths to reflect this. @done (04-11-22 14:15)
 	[ ] Populate ReadMe with detailed instructions and examples. (assigned to Kevin)
 
@@ -24,14 +24,15 @@ __main__.py:
    
 All Scripts
    [ ] Add total runtime spent processing a batch.
-
+   [x] Changeover to pathlib. @done (17-11-22)
 PrepareDB
-  [ ] Fix Verbosity. Complex... Talk to me in Discord.
-  [ ] Read fasta files using Bio. This will also help with fastq.gz/.fq.gz extraction
-  [ ] Experiment with using MapReduce to speed up AA dedupe.
+  [ ] Memory efficiency pass
+  [x] Fix Verbosity. Complex... Talk to me in Discord. @done
+  [ ] Read input files using Bio.
+  [ ] Dedupe in rust. (At least AA).
   [ ] Incorporate HammingDist dedupe.
   [ ] Move the dup hits table from sequences DB to hits DB?
-  [ ] Incorporate .fastq/.fq.gz extraction @low
+  [x] Incorporate .fastq/.fq.gz extraction @done
   [ ] Regex taxa filenames so they don't bork the script. @low
   [ ] Allow path to maintain sequence ID for references. @low
 
@@ -39,27 +40,35 @@ Hmmsearch
   [x] Fix Verbosity. Lock gene prints behind -vv
   
 BlastPalDB
-  [x] Fix Verbosity
-  [ ] Can someone check and see if the Blast External is sorted to do genes with most Hmmsearch results first?
-  [ ] Should also add a post blast sort to start the heaviest workloads first.
+  [x] Fix Verbosity @done
+  [x] Added smart compression. Reduced memory and storage footprints by >10x. Brought large speed increase as well. @done
+  [x] Can someone check and see if the Blast External is sorted to do genes with most Hmmsearch results first? @done
+  [x] Should also add a post blast sort to start the heaviest workloads first.@done
 
 ReporterDB
   [ ] Incorporate HamDups into Exonerate.
   [ ] Experiement with splitting largest work units into multiple work units. 
 
 mafft
-  [x] Fix Verbosity. Lock gene prints behind -v.
+  [x] Fix Verbosity. Lock gene prints behind -v. @done
 
 Pal2Nal
   [x] Full blown rewrite. Python version is at least 4x slower than Perl version. (A lot of poor design decisions in Pal2Nal.py) Perhaps rewrite in Golang or Rust? @done (31-10-22 22:10)
   [ ] Fix error prints to always tell which gene had the error!
+
+FlexCull
+  [ ] Memory efficiency pass
   
 OutlierCheck
+  [ ] Memory efficiency pass
   [ ] Add additional outlier check methodology.
   
 CrossContamination
   [ ] TODO
   
+MergeOverlap
+  [ ] Memory efficiency pass
+
 MergeGenes
   [ ] So slow! Please speed up. Multiprocessing?
   
