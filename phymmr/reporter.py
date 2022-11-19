@@ -10,6 +10,7 @@ from collections import namedtuple
 from multiprocessing.pool import Pool
 from time import time
 from typing import List, Optional
+from tempfile import TemporaryDirectory, NamedTemporaryFile
 
 import phymmr_tools
 import xxhash
@@ -17,6 +18,7 @@ from Bio.Seq import Seq
 
 from . import rocky
 from .timekeeper import TimeKeeper, KeeperMode
+from .utils import printv, gettempdir
 
 MainArgs = namedtuple(
     "MainArgs",
@@ -91,7 +93,7 @@ class Hit:
         self.extended_orf_cdna_start = None
         self.extended_orf_cdna_end = None
 
-    def add_extended_orf(self, exonerate_record):
+    def add_extended_orf(self, exonerate_record, verbose):
         (
             _,
             self.extended_orf_cdna_sequence,
@@ -110,9 +112,9 @@ class Hit:
             (self.extended_orf_cdna_end - 1) / 3
         ) + 1
 
-        self.extended_orf_aa_sequence = translate_cdna(self.extended_orf_cdna_sequence)
+        self.extended_orf_aa_sequence = translate_cdna(self.extended_orf_cdna_sequence, verbose)
 
-    def add_orf(self, exonerate_record):
+    def add_orf(self, exonerate_record, verbose):
         (
             _,
             self.orf_cdna_sequence,
@@ -123,7 +125,7 @@ class Hit:
             self.orf_aa_end,
         ) = exonerate_record
 
-        self.orf_aa_sequence = translate_cdna(self.orf_cdna_sequence)
+        self.orf_aa_sequence = translate_cdna(self.orf_cdna_sequence, verbose)
 
         self.orf_cdna_start_on_transcript = (
             self.orf_cdna_start + (self.ali_start * 3) - 3
@@ -180,11 +182,11 @@ def get_set_id(orthoset_db_con, orthoset):
 
     orthoset_db_cur = orthoset_db_con.cursor()
     rows = orthoset_db_cur.execute(
-        'SELECT id FROM orthograph_set_details WHERE name = "{}";'.format(orthoset)
+        f'SELECT id FROM orthograph_set_details WHERE name = "{orthoset}";'
     )
 
     if not rows:
-        raise Exception("Orthoset {} id cant be retrieved".format(orthoset))
+        raise Exception(f"Orthoset {orthoset} id cant be retrieved")
 
     # Return first result
     return next(rows)[0]
@@ -209,11 +211,11 @@ def get_taxa_in_set(set_id, orthoset_db_con):
     return [row[1] for row in rows]
 
 
-def get_scores_list(score_threshold, min_length, rocks_hits_db, debug):
+def get_hmmresults(score_threshold, min_length, rocks_hits_db, debug):
     batches = rocks_hits_db.get("hmmbatch:all")
     batches = batches.split(",")
 
-    score_based_results = {}
+    gene_based_results = {}
     ufr_out = [["Gene", "Hash", "Header", "Score", "Start", "End"]]
 
     for batch_i in batches:
@@ -222,6 +224,7 @@ def get_scores_list(score_threshold, min_length, rocks_hits_db, debug):
         for this_row in batch_rows:
             length = this_row["env_end"] - this_row["env_start"]
             hmm_score = this_row["score"]
+            gene = this_row["gene"]
 
             if hmm_score > score_threshold and length > min_length:
                 if debug:
@@ -233,37 +236,53 @@ def get_scores_list(score_threshold, min_length, rocks_hits_db, debug):
                     else:
                         out_header = this_row["header"]
 
-                    ufr_out.append(
-                        [
-                            this_row["gene"],
-                            out_header,
-                            str(hmm_score),
-                            str(hmm_start),
-                            str(hmm_end),
-                        ]
-                    )
+                    if debug:
+                        ufr_out.append(
+                            [
+                                this_row["gene"],
+                                out_header,
+                                str(hmm_score),
+                                str(hmm_start),
+                                str(hmm_end),
+                            ]
+                        )
 
                 this_hit = Hit(this_row)
 
-                score_based_results.setdefault(hmm_score, [])
-                score_based_results[hmm_score].append(this_hit)
+                gene_based_results.setdefault(gene, [])
+                gene_based_results[gene].append(this_hit)
 
     if debug:
         ufr_out = sorted(ufr_out, key=lambda x: (x[0], x[1], x[3], x[4]))
 
-    return score_based_results, ufr_out
+    return gene_based_results, ufr_out
 
 
-def get_blastresults_for_hmmsearch_id(hmmsearch_id):
-    key = "blastfor:{}".format(hmmsearch_id)
-    db_entry = rocky.get_rock("rocks_hits_db").get(key)
+def get_blastresults(rocks_hits_db):
+    batches = rocks_hits_db.get("blastbatch:all")
+    batches = batches.split(",")
 
-    if not db_entry:
-        return []
+    blast_results = {}
 
-    result = json.loads(db_entry)
-    return result
+    for batch_i in batches:
+        batch_rows = rocks_hits_db.get(f"blastbatch:{batch_i}")
+        batch_rows = json.loads(batch_rows)
+        for result in batch_rows:
+            gene = result["gene"]
+            hmm_id = result["hmm_id"]
+            blast_results.setdefault(gene, {})
+            blast_results[gene].setdefault(hmm_id, [])
+            blast_results[gene][hmm_id].append(result)
 
+    return blast_results
+
+
+def get_reference_data(rocks_hits_db):
+    raw_data = rocks_hits_db.get("getall:refseqs")
+
+    processed = json.loads(raw_data)
+
+    return processed
 
 def get_reftaxon_name(hit_id, orthoset_db_path):
     query = f"""SELECT {orthoset_taxa}.{db_col_name}
@@ -289,22 +308,6 @@ def calculate_length_of_ali(
 def transcript_not_long_enough(result, minimum_transcript_length):
     length = calculate_length_of_ali(result)
     return length < minimum_transcript_length
-
-
-def get_reference_sequence(hit_id, orthoset_db_con):
-    orthoset_db_cur = orthoset_db_con.cursor()
-
-    query = f'''SELECT
-            {orthoset_aaseqs}.{db_col_sequence}, 
-            {orthoset_taxa}.{db_col_name}
-        FROM {orthoset_aaseqs}
-        INNER JOIN {orthoset_taxa}
-            ON {orthoset_aaseqs}.{db_col_taxid} = {orthoset_taxa}.id
-        WHERE {orthoset_aaseqs}.{db_col_id} = "{hit_id}"'''
-
-    rows = orthoset_db_cur.execute(query)
-
-    return next(rows)
 
 
 def reverse_complement(nt_seq):
@@ -333,24 +336,12 @@ def crop_to_hmm_alignment(seq, header, hit):
 
 ### EXONERATE FUNCTIONS
 
-
-def fastaify(headers, sequences, tmp_path):
-    name = str(uuid.uuid4()) + ".tmp"  # Super unique name
-    path = os.path.join(tmp_path, name)
-
-    with open(path, "w") as fp:
-        for header, seq in zip(headers, sequences):
-            fp.write(">" + header + "\n" + seq + "\n")
-
-    return path
-
-
-def translate_cdna(cdna_seq):
+def translate_cdna(cdna_seq, verbose):
     if not cdna_seq:
         return None
 
     if len(cdna_seq) % 3 != 0:
-        print("WARNING: NT Sequence length is not divisable by 3")
+        printv("WARNING: NT Sequence length is not divisable by 3", verbose, 0)
 
     return str(Seq(cdna_seq).translate())
 
@@ -401,6 +392,7 @@ def parse_nodes(lines):
 def parse_multi_results(handle):
     extended_result = []
     result = []
+    handle.seek(0)
     nodes = parse_nodes(handle)
     for key in nodes:
         node = nodes[key]
@@ -430,34 +422,27 @@ def parse_multi_results(handle):
             )
     return extended_result, result
 
-
-def get_multi_orf(query, targets, score_threshold, tmp_path, include_extended=False):
+def get_multi_orf(query, targets, score_threshold, include_extended):
     exonerate_ryo = ">cdna %tcb %tce\n%tcs>aa %qab %qae\n%qas"
     genetic_code = 1
     exonerate_model = "protein2genome"
 
-    headers = [i.header for i in targets]
+    sequences = [(i.header, i.est_sequence_hmm_region) for i in targets]
     if include_extended:
-        headers.extend(["extended_" + i.header for i in targets])
+        sequences.extend([("extended_" + i.header, i.est_sequence_complete) for i in targets])
 
-    sequences = [i.est_sequence_hmm_region for i in targets]
-    if include_extended:
-        sequences.extend([i.est_sequence_complete for i in targets])
+    with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmpquery, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmptarget, NamedTemporaryFile(dir=tmpdir, mode="r") as tmpout:
+        tmptarget.write("".join([f">{header}\n{sequence}\n" for header, sequence in sequences]))
+        tmptarget.flush() # Flush the internal buffer so it can be read by exonerate
 
-    queryfile = fastaify(["query"], [query], tmp_path)
-    targetfile = fastaify(headers, sequences, tmp_path)
+        tmpquery.write(f">query\n{query}\n")
+        tmpquery.flush() # Flush the internal buffer so it can be read by exonerate
 
-    outfile = os.path.join(tmp_path, str(uuid.uuid4()) + ".exonerateout")
+        exonerate_cmd = f"exonerate --score {score_threshold} --ryo '{exonerate_ryo}' --subopt 0 --geneticcode {genetic_code} --model '{exonerate_model}' --querytype 'protein' --targettype 'dna' --verbose 0 --showalignment 'no' --showvulgar 'yes' --query '{tmpquery.name}' --target '{tmptarget.name}' > {tmpout.name}"
 
-    exonerate_cmd = f"exonerate --score {score_threshold} --ryo '{exonerate_ryo}' --subopt 0 --geneticcode {genetic_code} --model '{exonerate_model}' --querytype 'protein' --targettype 'dna' --verbose 0 --showalignment 'no' --showvulgar 'yes' --query '{queryfile}' --target '{targetfile}' > {outfile}"
+        os.system(exonerate_cmd)
 
-    os.system(exonerate_cmd)
-
-    with open(outfile) as fp:
-        extended_results, results = parse_multi_results(fp)
-    os.remove(queryfile)
-    os.remove(targetfile)
-    os.remove(outfile)
+        extended_results, results = parse_multi_results(tmpout)
 
     return extended_results, results
 
@@ -689,6 +674,7 @@ ExonerateArgs = namedtuple(
         "nt_out_path",
         "tmp_path",
         "verbose",
+        "reference_sequences",
     ]
 )
 
@@ -698,15 +684,15 @@ def run_exonerate(arg_tuple: ExonerateArgs):
 
 
 def exonerate_gene_multi(eargs: ExonerateArgs):
-    if eargs.verbose >= 2:
-        print("Exonerating and doing output for: ", eargs.orthoid)
-        t_gene_start = TimeKeeper(KeeperMode.DIRECT)
+    t_gene_start = TimeKeeper(KeeperMode.DIRECT)
+    printv(f"Exonerating and doing output for: {eargs.orthoid}", eargs.verbose, 2)
 
     orthoset_db_con = sqlite3.connect(eargs.orthoset_db_path)
     reftaxon_related_transcripts = {}
     reftaxon_to_proteome_sequence = {}
     for hit in eargs.list_of_hits:
         this_reftaxon = hit.reftaxon
+        hit.proteome_sequence = eargs.reference_sequences[this_reftaxon]
 
         est_header, est_sequence_complete = get_nucleotide_transcript_for(
             hit.header
@@ -718,6 +704,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
         hit.est_header = est_header
         hit.est_sequence_complete = est_sequence_complete
         hit.est_sequence_hmm_region = est_sequence_hmm_region
+
 
         if this_reftaxon not in reftaxon_related_transcripts:
             reftaxon_to_proteome_sequence[this_reftaxon] = hit.proteome_sequence
@@ -731,13 +718,13 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
         total_results += len(hits)
         query = reftaxon_to_proteome_sequence[taxon_hit]
         extended_results, results = get_multi_orf(
-            query, hits, eargs.min_score, eargs.tmp_path, include_extended=extend_orf
+            query, hits, eargs.min_score, include_extended=extend_orf
         )
 
         for hit in hits:
             matching_alignment = get_match(hit.header, results)
             if matching_alignment:
-                hit.add_orf(matching_alignment)
+                hit.add_orf(matching_alignment, eargs.verbose)
 
                 if hit.orf_cdna_sequence:
                     if extend_orf:
@@ -746,7 +733,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                         )
 
                         if matching_extended_alignment:
-                            hit.add_extended_orf(matching_extended_alignment)
+                            hit.add_extended_orf(matching_extended_alignment, eargs.verbose)
 
                             if extended_orf_contains_original_orf(hit):
                                 orf_overlap = overlap_by_orf(hit)
@@ -756,7 +743,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                             # Does not contain original orf or does not overlap enough.
                             hit.remove_extended_orf()
                         else: # No alignment returned
-                            print("Failed to extend orf on {}".format(hit.header))
+                            printv(f"WARNING: Failed to extend orf on {hit.header}. Using trimmed sequence", eargs.verbose)
                     output_sequences.append(hit)
     if len(output_sequences) > 0:
         output_sequences = sorted(output_sequences, key=lambda d: d.hmm_start)
@@ -786,75 +773,53 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                 fp.writelines(print_core_sequences(eargs.orthoid, core_sequences_nt))
                 fp.writelines(nt_output)
 
-    if eargs.verbose >= 2:
-        print(
-            "{} took {:.2f}s. Had {} sequences".format(
-                eargs.orthoid, t_gene_start.differential(), len(output_sequences)
-            )
-        )
-
-
-def is_reciprocal_match(blast_results, reference_taxa: List[str]):
-    reftaxon_count = {ref_taxa: 0 for ref_taxa in reference_taxa}
-    ref_taxon_to_target = {}
-
-    for result in blast_results:
-        ref_taxon = result["reftaxon"]
-
-        if ref_taxon in reftaxon_count:
-            if not strict_search_mode:
-                return ref_taxon, result["ref_sequence"]
-            if ref_taxon not in ref_taxon_to_target:
-                ref_taxon_to_target[ref_taxon] = (ref_taxon, result["ref_sequence"])
-            reftaxon_count[ref_taxon] += 1  # only need the one
-            if all(reftaxon_count.values()):  # Everything's been counted
-                return ref_taxon_to_target[
-                    max(reftaxon_count)
-                ]  # Grab most hit reftaxon
-    return None, None
-
+    printv(f"{eargs.orthoid} took {t_gene_start.differential():.2f}s. Had {len(output_sequences)} sequences", eargs.verbose, 2)
 
 def reciprocal_search(
-    hmmresults, list_of_wanted_orthoids, reference_taxa, score, verbose
+    hmmresults, gene_blast_results, reference_taxa, gene, verbose
 ):
-    if verbose >= 3:
-        t_reciprocal_start = TimeKeeper(KeeperMode.DIRECT)
-        print("Ensuring reciprocal hit for hmmresults in {}".format(score))
-
+    t_reciprocal_start = TimeKeeper(KeeperMode.DIRECT)
+    printv(f"Ensuring reciprocal hit for hmmresults in {gene}", verbose, 2)
     results = []
-    for result in hmmresults:
-        orthoid = result.gene
+    for hit in hmmresults:
+        hmm_id = str(hit.hmm_id)
 
-        if list_of_wanted_orthoids and orthoid not in list_of_wanted_orthoids:
+        if hmm_id not in gene_blast_results:
             continue
 
-        result_hmmsearch_id = result.hmm_id
-        blast_results = get_blastresults_for_hmmsearch_id(
-            result_hmmsearch_id
-        )
-        this_match_reftaxon, this_match_ref_sequence = is_reciprocal_match(
-            blast_results, reference_taxa
-        )
+        blast_results = gene_blast_results[hmm_id]
 
+        reftaxon_count = {ref_taxa: 0 for ref_taxa in reference_taxa}
+        ref_taxon_to_target = {}
+
+        this_match_reftaxon = None
+
+        for result in blast_results:
+            ref_taxon = result["reftaxon"]
+
+            if ref_taxon in reftaxon_count:
+                if not strict_search_mode:
+                    this_match_reftaxon, this_match_ref_sequence = ref_taxon, result["ref_sequence"]
+                    break
+                if ref_taxon not in ref_taxon_to_target:
+                    ref_taxon_to_target[ref_taxon] = (ref_taxon, result["ref_sequence"])
+                reftaxon_count[ref_taxon] += 1  # only need the one
+                if all(reftaxon_count.values()):  # Everything's been counted
+                    this_match_reftaxon, this_match_ref_sequence = ref_taxon_to_target[max(reftaxon_count)]  # Grab most hit reftaxon
+                    break
+        
         if this_match_reftaxon:
-            result.proteome_sequence = this_match_ref_sequence
-            result.reftaxon = this_match_reftaxon
-            results.append(result)
+            hit.proteome_sequence = this_match_ref_sequence
+            hit.reftaxon = this_match_reftaxon
+            results.append(hit)
 
-    if verbose >= 3:
-        print(
-            "Checked reciprocal hits for {}. Took {:.2f}s.".format(
-                score, t_reciprocal_start.differential()
-            )
-        )
+    printv(f"Checked reciprocal hits for {gene}. Took {t_reciprocal_start.differential():.2f}s.", verbose, 2)
     return results
 
 
 def do_taxa(path, taxa_id, args):
-    print("Doing {}.".format(taxa_id))
-    t_taxa_start = TimeKeeper(KeeperMode.DIRECT)
-    if args.verbose >= 1:
-        t_init_db = TimeKeeper(KeeperMode.DIRECT)
+    printv(f"Processing: {taxa_id}", args.verbose, 0)
+    time_keeper = TimeKeeper(KeeperMode.DIRECT)
 
     num_threads = args.processes
     if not isinstance(num_threads, int) or num_threads < 1:
@@ -871,10 +836,8 @@ def do_taxa(path, taxa_id, args):
     if orthoid_list_file:  # TODO orthoid_list_file must be passed as argument
         with open(orthoid_list_file) as fp:
             list_of_wanted_orthoids = fp.read().split("\n")
-        wanted_orthoid_only = True
     else:
         list_of_wanted_orthoids = []
-        wanted_orthoid_only = False
 
     orthoset_path = args.orthoset_input
     orthoset = args.orthoset
@@ -907,27 +870,13 @@ def do_taxa(path, taxa_id, args):
     os.makedirs(aa_out_path, exist_ok=True)
     os.makedirs(nt_out_path, exist_ok=True)
 
-    if args.verbose >= 1:
-        t_reference_taxa = TimeKeeper(KeeperMode.DIRECT)
-        print(
-            "Initialized databases. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing reference taxa in set.".format(
-                t_taxa_start.differential(), t_init_db.differential()
-            )
-        )
-        del t_init_db
+    printv(f"Initialized databases. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing reference taxa in set.", args.verbose)
 
     reference_taxa = get_taxa_in_set(orthoset_id, orthoset_db_con)
 
-    if args.verbose >= 1:
-        t_hmmresults = TimeKeeper(KeeperMode.DIRECT)
-        print(
-            "Got reference taxa in set. Elapsed time {:.2f}s. Took {:.2f}s. Grabbing hmmresults".format(
-                t_taxa_start.differential(), t_reference_taxa.differential()
-            )
-        )
-        del t_reference_taxa
+    printv(f"Got reference taxa in set. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing hmmresults.", args.verbose)
 
-    score_based_results, ufr_rows = get_scores_list(
+    gene_based_results, ufr_rows = get_hmmresults(
         args.min_score, args.min_length, rocky.get_rock("rocks_hits_db"), args.debug
     )
 
@@ -939,32 +888,30 @@ def do_taxa(path, taxa_id, args):
         with open(ufr_path, "w") as fp:
             fp.writelines(ufr_out)
 
-    ####################################
-    if args.verbose >= 1:
-        print(
-            "Got hmmresults. Elapsed time {:.2f}s. Took {:.2f}s. Doing reciprocal check.".format(
-                t_taxa_start.differential(), t_hmmresults.differential()
-            )
-        )
-        t_reciprocal_search = TimeKeeper(KeeperMode.DIRECT)
-        del t_hmmresults
+    printv(f"Got hmmresults. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing Blast results.", args.verbose)
 
-    scores = list(score_based_results.keys())
-    scores.sort(reverse=True)  # Ascending
+    blast_resultss = get_blastresults(rocky.get_rock("rocks_hits_db"))
+
+    printv(f"Got Blast results. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Doing reciprocal check.", args.verbose)
+
+    genes = list(gene_based_results.keys())
+    genes.sort(key = lambda x: len(x), reverse=True)  # Ascending
     transcripts_mapped_to = {}
 
     argmnts = []
-    for score in scores:
-        hmmresults = score_based_results[score]
+    for gene, hmmresults in gene_based_results.items():
+        if list_of_wanted_orthoids and gene not in list_of_wanted_orthoids:
+            continue
         argmnts.append(
             (
                 hmmresults,
-                list_of_wanted_orthoids,
+                blast_resultss.get(gene, []),
                 reference_taxa,
-                score,
+                gene,
                 args.verbose,
             )
         )
+
     with Pool(num_threads) as pool:
         reciprocal_data = pool.starmap(reciprocal_search, argmnts, chunksize=1)
 
@@ -973,7 +920,6 @@ def do_taxa(path, taxa_id, args):
         brh_count += len(data)
         for this_match in data:
             orthoid = this_match.gene
-
             if transcript_not_long_enough(this_match, args.min_length):
                 continue
 
@@ -982,14 +928,11 @@ def do_taxa(path, taxa_id, args):
 
             transcripts_mapped_to[orthoid].append(this_match)
 
-    if args.verbose >= 1:
-        print(
-            "Reciprocal check done, found {} reciprocal hits. Elapsed time {:.2f}s. Took {:.2f}s. Exonerating genes.".format(
-                brh_count, t_taxa_start.differential(), t_reciprocal_search.differential()
-            )
-        )
+    printv(f"Reciprocal check done, found {brh_count} reciprocal hits. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing references sequences.", args.verbose)
 
-    t_exonerate_genes = TimeKeeper(KeeperMode.DIRECT)
+    gene_reference_data = get_reference_data(rocky.get_rock("rocks_hits_db"))
+
+    printv(f"Got reference data. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Exonerating genes.", args.verbose)
 
     if num_threads > 1:
         arguments: list[Optional[ExonerateArgs]] = []
@@ -998,15 +941,15 @@ def do_taxa(path, taxa_id, args):
         func = exonerate_gene_multi
 
     # this sorting the list so that the ones with the most hits are first
-    for orthoids in sorted(
+    for orthoid in sorted(
         transcripts_mapped_to,
         key=lambda k: len(transcripts_mapped_to[k]),
         reverse=True
     ):
         func(
             ExonerateArgs(
-                orthoids,
-                transcripts_mapped_to[orthoids],
+                orthoid,
+                transcripts_mapped_to[orthoid],
                 orthoset_db_path,
                 args.min_score,
                 orthoset_id,
@@ -1016,21 +959,16 @@ def do_taxa(path, taxa_id, args):
                 nt_out_path,
                 tmp_path,
                 args.verbose,
+                gene_reference_data[orthoid]
             )
         )
 
     if num_threads > 1:
         with Pool(num_threads) as pool:
             pool.map(run_exonerate, arguments, chunksize=1)
+    
+    printv(f"Done! Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s. Exonerating genes.", args.verbose)
 
-    if args.verbose >= 1:
-        print(
-            "Done. Final time {:.2f}s. Exonerate took {:.2f}s.".format(
-                t_taxa_start.differential(), t_exonerate_genes.differential()
-            )
-        )
-    else:
-        print("Done took {:.2f}s.".format(t_taxa_start.differential()))
 
 
 ####
@@ -1081,11 +1019,11 @@ header_seperator = "|"
 
 
 def main(args):
+    global_time = TimeKeeper(KeeperMode.DIRECT)
     if not all(os.path.exists(i) for i in args.INPUT):
-        print("ERROR: All folders passed as argument must exist.")
+        printv("ERROR: All folders passed as argument must exist.", args.verbose, 0)
         return False
     for input_path in args.INPUT:
-        #print(f"### Processing path '{input_path}'.")
         rocks_db_path = os.path.join(input_path, "rocksdb")
         rocky.create_pointer("rocks_sequence_db", os.path.join(rocks_db_path, "sequences"))
         rocky.create_pointer("rocks_hits_db", os.path.join(rocks_db_path, "hits"))
@@ -1094,6 +1032,8 @@ def main(args):
             taxa_id=os.path.basename(input_path).split(".")[0],
             args=args,
         )
+    if len(args.INPUT) > 1 or not args.verbose:
+        printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
     return True
 
 

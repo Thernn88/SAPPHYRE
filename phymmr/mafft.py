@@ -8,6 +8,7 @@ from threading import Lock
 from time import time
 
 from .utils import printv, gettempdir
+from .timekeeper import TimeKeeper, KeeperMode
 
 MAFFT_FOLDER = "mafft"
 AA_FOLDER = "aa"
@@ -34,9 +35,9 @@ CmdArgs = namedtuple(
 def run_command(args: CmdArgs) -> None:
     if args.lock is not None:
         with args.lock:
-            printv(args.gene, args.verbose)
+            printv(f"Doing: {args.gene}", args.verbose, 2)
     else:
-        printv(args.gene, args.verbose)
+        printv(f"Doing: {args.gene}", args.verbose, 2)
 
     with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(mode="w+", dir=tmpdir) as tmpfile:
         ref_og_hashmap = process_genefile(tmpfile, args.gene_file)
@@ -69,17 +70,25 @@ def run_command(args: CmdArgs) -> None:
 
 
 def do_folder(folder, args):
-    print(f"### Processing folder {folder}")
-    start = time()
+    printv(f"Processing: {os.path.basename(folder)}", args.verbose)
+    time_keeper = TimeKeeper(KeeperMode.DIRECT)
     mafft_path = os.path.join(folder, MAFFT_FOLDER)
     aa_path = os.path.join(folder, AA_FOLDER)
     if not os.path.exists(aa_path):
-        print(f"Can't find aa ({aa_path}) folder. Abort")
+        printv(f"ERROR: Can't find aa ({aa_path}) folder. Abort", args.verbose, 0)
         return
     os.makedirs(mafft_path, exist_ok=True)
 
     genes = [gene.split(".")[0] for gene in os.listdir(aa_path) if ".aa" in gene]
-    aln_path = os.path.join(args.orthoset_input, args.orthoset, ALN_FOLDER)
+    genes.sort(key = lambda x : os.path.getsize(os.path.join(aa_path, x + ".aa.fa")), reverse=True)
+    orthoset_path = os.path.join(args.orthoset_input, args.orthoset)
+    aln_path = os.path.join(orthoset_path, ALN_FOLDER)
+    if not os.path.exists(orthoset_path):
+        printv('ERROR: Orthoset path not found.', args.verbose, 0)
+        return False
+    if not os.path.exists(aln_path):
+        printv("ERROR: Aln folder not found.", args.verbose, 0)
+        return False
     cmd = "mafft"
     if args.linsi:
         cmd = "mafft-linsi"
@@ -107,15 +116,22 @@ def do_folder(folder, args):
         with ThreadPool(args.processes) as pool:
             pool.map(run_command, arguments, chunksize=1)
 
-    print("Took {:.2f}s".format(time() - start))
+    printv(f"Done! Took {time_keeper.differential():.2f}s", args.verbose)
+    return True
 
 
 def main(args):
     if not all(os.path.exists(i) for i in args.INPUT):
-        print("ERROR: All folders passed as argument must exists.")
+        printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
+    time_keeper = TimeKeeper(KeeperMode.DIRECT)
     for folder in args.INPUT:
-        do_folder(folder, args)
+        success = do_folder(folder, args)
+        if not success:
+            return False
+    
+    if len(args.INPUT) > 1 or not args.verbose:
+        printv(f"Took {time_keeper.differential():.2f}s overall.", args.verbose, 0)
     return True
 
 

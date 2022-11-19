@@ -15,6 +15,9 @@ from typing import Union, Literal
 import wrap_rocks
 from Bio.Seq import Seq
 
+from .utils import printv
+from .timekeeper import TimeKeeper, KeeperMode
+
 TMP_PATH = None
 if os.path.exists("/run/shm"):
     TMP_PATH = "/run/shm"
@@ -307,13 +310,14 @@ def do_protein(
 
     gene_out = []
 
-    # Grab all the reference sequences
-    comparison_sequences = {}
-    for header, sequence in references:
-        gene_out.append(header)
-        gene_out.append(sequence)
-        taxon = header.split("|")[1]
-        comparison_sequences[taxon] = sequence
+    if protein == "aa":
+        # Grab all the reference sequences
+        comparison_sequences = {}
+        for header, sequence in references:
+            gene_out.append(header)
+            gene_out.append(sequence)
+            taxon = header.split("|")[1]
+            comparison_sequences[taxon] = sequence
 
     # Grab all the candidate sequences and sort into reference taxa based groups
     taxa_groups = {}
@@ -333,7 +337,7 @@ def do_protein(
             overlap_groups = grab_merge_start_end(sequences_to_merge)
         else:
             overlap_groups = disperse_into_overlap_groups(sequences_to_merge)
-            
+
         for overlap_region, this_sequences in overlap_groups:
             # Use the header of the sequence that starts first as the base
             base_header = this_sequences[0][2]
@@ -391,16 +395,17 @@ def do_protein(
                         header.split("|")[1] for (header, _) in sequences_at_current_point
                     ]
 
-                    most_occuring = most_common_element_with_count(taxons_of_split)
-                    if most_occuring[1] == 1:  # No taxa occur more than once
-                        comparison_taxa = fallback_taxa
-                    else:
-                        comparison_taxa = most_occuring[0]
+                    if protein == "aa":
+                        most_occuring = most_common_element_with_count(taxons_of_split)
+                        if most_occuring[1] == 1:  # No taxa occur more than once
+                            comparison_taxa = fallback_taxa
+                        else:
+                            comparison_taxa = most_occuring[0]
 
-                    # Grab the reference sequence for the mode taxon
-                    comparison_sequence = comparison_sequences.get(
-                        comparison_taxa, comparison_sequences[fallback_taxa]
-                    )
+                        # Grab the reference sequence for the mode taxon
+                        comparison_sequence = comparison_sequences.get(
+                            comparison_taxa, comparison_sequences[fallback_taxa]
+                        )
 
                     next_character = sequences_at_current_point[0][1][cursor]
 
@@ -415,6 +420,8 @@ def do_protein(
 
                         split_key = header_a + header_b
 
+                        
+
                         if protein == "aa":
                             if split_key in already_calculated_splits:
                                 split_position = already_calculated_splits[split_key]
@@ -425,6 +432,7 @@ def do_protein(
                                 already_calculated_splits[split_key] = split_position
 
                         elif protein == "nt":
+                            
                             split_position = already_calculated_splits[split_key] * 3
 
                         if cursor >= split_position:
@@ -578,9 +586,7 @@ def do_gene(
     Merge main loop. Opens fasta file, parses sequences and merges based on taxa
     """
     already_calculated_splits = {}
-
-    if verbosity:
-        print("Doing:",gene)
+    printv(f"Doing: {gene}", verbosity, 2)
 
     path, data = do_protein(
         "aa",
@@ -623,15 +629,15 @@ def run_command(arg_tuple: tuple) -> None:
 
 
 def do_folder(folder: Path, args):
-    start_time = time()
+    folder_time = TimeKeeper(KeeperMode.DIRECT)
 
-    print(f"### Processing {folder}")
+    printv(f"Processing: {os.path.basename(folder)}", args.verbose, 0)
     input_path = Path(folder, "outlier")
     aa_input = Path(input_path, args.aa_input)
     nt_input = Path(input_path, args.nt_input)
 
     if not os.path.exists(aa_input):
-        print(f"Can't find aa folder for taxa, {folder}")
+        printv(f"WARNING: Can't find aa folder for taxa, {folder}", args.verbose, 0)
         return
 
     tmp_dir = directory_check(folder)
@@ -641,8 +647,6 @@ def do_folder(folder: Path, args):
     dupe_counts = json.loads(rocksdb_db.get("getall:gene_dupes"))
 
     target_genes = []
-    # NOTE: Path returns a Path object, which __repr__ is the string of the
-    # path itself.
     for item in Path(aa_input).glob("*.fa"):
         target_genes.append(item.name)
     target_genes.sort(key=lambda x: Path(aa_input, x).stat().st_size, reverse=True)
@@ -688,20 +692,21 @@ def do_folder(folder: Path, args):
                 args.verbose,
                 args.ignore_overlap_chunks,
             )
-
-    timed = round(time() - start_time)
-    print(f"Finished in {timed} seconds")
+    printv(f"Done! Took {folder_time.differential():.2f}s", args.verbose)
 
     if os.path.exists(dupe_tmp_file):
         os.remove(dupe_tmp_file)
 
 
 def main(args):
+    global_time = TimeKeeper(KeeperMode.DIRECT)
     if not all(os.path.exists(i) for i in args.INPUT):
-        print("ERROR: All folders passed as argument must exists.")
+        printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
     for folder in args.INPUT:
         do_folder(Path(folder), args)
+    if len(args.INPUT) > 1 or not args.verbose:
+        printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
     return True
 
 

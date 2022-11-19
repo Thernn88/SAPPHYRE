@@ -43,7 +43,7 @@ def subcmd_prepare(subparsers):
     par.add_argument(
         "-sl",
         "--sequences_per_level",
-        default=100000,
+        default=500000,
         type=int,
         help="Amount of sequences to store per database entry.",
     )
@@ -162,7 +162,7 @@ def subcmd_hmmsearch(subparsers):
         "--max_hmm_batch_size",
         default=250000,
         type=int,
-        help="Max hits per hmmsearch batch in db. Default: 500 thousand.",
+        help="Max hits per hmmsearch batch in db. Default: 250 thousand.",
     )
     par.add_argument(
         "-d", "--debug", type=int, default=0, help="Output debug logs."
@@ -218,6 +218,13 @@ def subcmd_blastpal(subparsers):
         type=float,
         default=0.00001,
         help="Minimum evalue filter in blast.",
+    )
+    par.add_argument(
+        "-m",
+        "--max_blast_batch_size",
+        default=250000,
+        type=int,
+        help="Max results per blastpal batch in db. Default: 250 thousand.",
     )
     par.add_argument(
         "-ovw",
@@ -547,6 +554,26 @@ def flexcull(args):
         print(args.formathelp())
 
 
+def subcmd_sradownload(sp):
+    par = sp.add_parser("SRADownload", help="Download fastq files from www.ncbi.nlm.nih.gov")
+    par.add_argument(
+        "INPUT", help="Path to the CSV file input",
+    )
+    par.add_argument(
+        '-b', '--bin',
+        help="Path to SRA Toolkit. Will try system's PATH if not used.",
+        required=False
+    )
+    par.set_defaults(func=sradownload, formathelp=par.format_help)
+
+
+def sradownload(argsobj):
+    from . import sradownload
+    if not sradownload.main(argsobj):
+        print()
+        print(argsobj.formathelp())
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog="phymmr",
@@ -591,6 +618,7 @@ if __name__ == "__main__":
     subcmd_outliercheck(subparsers)
     subcmd_mergeoverlap(subparsers)
     subcmd_mergegenes(subparsers)
+    subcmd_sradownload(subparsers)
 
     args = parser.parse_args()
     if not hasattr(args, "func"):
