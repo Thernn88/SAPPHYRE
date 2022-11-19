@@ -118,7 +118,7 @@ def do(
             this_result = Result(gene_conf.gene, *fields)
 
             if this_result.target in gene_conf.ref_names: # Hit target not valid
-                this_result.reftaxon, this_result.ref_sequence = gene_conf.ref_names[this_result.target]
+                this_result.reftaxon = gene_conf.ref_names[this_result.target]
 
                 # Although we have a threshold in the Blast call. Some still get through.
                 if (
@@ -151,7 +151,9 @@ def get_ref_taxon_for_genes(set_id, orthoset_db_con):
         id, sequence = row
         data[id] = sequence
 
-    result = {}
+    target_to_taxon = {}
+    taxon_to_sequences = {}
+
     query = f'''SELECT DISTINCT
         orthograph_taxa.name,
         orthograph_orthologs.ortholog_gene_id,
@@ -172,12 +174,15 @@ def get_ref_taxon_for_genes(set_id, orthoset_db_con):
     for row in rows:
         name, gene, id = row
         
-        if gene not in result:
-            result[gene] = {id:(name, data[id])}
+        if gene not in target_to_taxon:
+            target_to_taxon[gene] = {id:name}
         else:
-            result[gene][id] = (name, data[id])
+            target_to_taxon[gene][id] = name
 
-    return result
+        taxon_to_sequences.setdefault(gene, {})
+        taxon_to_sequences[gene][name] = data[id]
+
+    return target_to_taxon, taxon_to_sequences
 
 
 def run_process(args, input_path) -> None:
@@ -201,14 +206,19 @@ def run_process(args, input_path) -> None:
 
     orthoset_id = get_set_id(orthoset_db_con, orthoset)
 
-    ref_taxon = get_ref_taxon_for_genes(orthoset_id, orthoset_db_con)
+    target_to_taxon, taxon_to_sequences = get_ref_taxon_for_genes(orthoset_id, orthoset_db_con)
 
     blast_db_path = os.path.join(orthosets_dir, orthoset, "blast", orthoset)
 
-    printv(f"Done! Took {time_keeper.lap():.2f}s. Grabbing HMM data from DB", args.verbose)
+    printv(f"Done! Took {time_keeper.lap():.2f}s. Writing reference data to DB", args.verbose)
 
     db_path = os.path.join(input_path, "rocksdb", "hits")
     db = wrap_rocks.RocksDB(db_path)
+
+    db.put("getall:refseqs", json.dumps(taxon_to_sequences))
+    del taxon_to_sequences
+
+    printv(f"Done! Took {time_keeper.lap():.2f}s. Grabbing HMM data from DB", args.verbose)
 
     gene_to_hits = {}
 
@@ -242,7 +252,7 @@ def run_process(args, input_path) -> None:
                 GeneConfig(
                     gene=gene,
                     gene_sequences=gene_to_hits[gene],
-                    ref_names=ref_taxon[gene],
+                    ref_names=target_to_taxon[gene],
                     blast_path=blast_path,
                     blast_db_path=blast_db_path,
                     blast_minimum_score=args.blast_minimum_score,
@@ -258,7 +268,7 @@ def run_process(args, input_path) -> None:
                 GeneConfig(
                     gene=gene,
                     gene_sequences=gene_to_hits[gene],
-                    ref_names=ref_taxon[gene],
+                    ref_names=target_to_taxon[gene],
                     blast_path=blast_path,
                     blast_db_path=blast_db_path,
                     blast_minimum_score=args.blast_minimum_score,
