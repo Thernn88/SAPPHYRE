@@ -29,8 +29,6 @@ from .timekeeper import KeeperMode, TimeKeeper
 from .timekeeper import TimeKeeper, KeeperMode
 from .utils import printv, gettempdir,ConcurrentLogger
 
-from memory_profiler import profile #THIS IS JUST FOR DEBUG
-
 ROCKSDB_FOLDER_NAME = "rocksdb"
 SEQUENCES_DB_NAME = "sequences"
 CORE_FOLDER = "PhyMMR"
@@ -162,13 +160,14 @@ class SeqBuilder:
 
     def add_sequence(self, header, seq):
         header = header.replace(" ", "|")
+        compressed_header = header.replace("length_","").replace("NODE_", "")
         if seq in self.tmt:
             self.dup.setdefault(self.tmt[seq], 1)
             self.dup[self.tmt[seq]] += 1
             next(self.aa_dupe_count)
             return
         else:
-            self.tmt[seq] = header
+            self.tmt[seq] = compressed_header
         self.prot_handle.write(f">{header}\n{seq}\n")
         next(self.num_sequences)
     
@@ -254,7 +253,9 @@ class SeqDeduplicator:
 
             for seq in N_trim(parent_seq, self.minimum_sequence_length, trim_times):
                 length = len(seq)
-                header = f"NODE_{next(this_index)}_length_{length}"
+                header_index = next(this_index)
+                header = f"NODE_{header_index}_length_{length}"
+                compressed_header = f"{header_index}_{length}"
 
                 # Check for dupe, if so save how many times that sequence occured
                 seq_start = time()
@@ -263,10 +264,10 @@ class SeqDeduplicator:
                     duplicates.setdefault(
                         transcript_mapped_to[seq], 1)
                     duplicates[transcript_mapped_to[seq]] += 1
-                    next(dupes[0])
+                    next(dupes)
                     continue
                 else:
-                    transcript_mapped_to[seq] = header
+                    transcript_mapped_to[seq] = compressed_header
 
                 # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
                     # sequence so we don't have to rev-comp this unique sequence again
@@ -281,27 +282,24 @@ class SeqDeduplicator:
                     duplicates.setdefault(
                         transcript_mapped_to[rev_seq], 1)
                     duplicates[transcript_mapped_to[rev_seq]] += 1
-                    next(dupes[0])
+                    next(dupes)
                     continue
                 else:
-                    transcript_mapped_to[rev_seq] = header
+                    transcript_mapped_to[rev_seq] = compressed_header
 
                 seq_end = time()
                 dedup_time[0] += seq_end - seq_start
-                next(this_index)
 
                 # If no dupe, write to prepared file and db
                 line = f">{header}\n{seq}\n"
 
                 fa_file_out.append(line)
 
-                # Get rid of space and > in header (blast/hmmer doesn't like it) Need to push modified external to remove this. ToDo.
+                # Get rid of space and > in header (blast/hmmer doesn't like it) Need to push modified external to remove this.
                 preheader = header.replace(" ", "|")  # pre-hash header
                 # Key is a hash of the header
-
-                #TODO ADD THIS BACK IN
-                #self.db.put(xxhash.xxh64_hexdigest(
-                #    preheader), f"{preheader}\n{seq}")
+                self.db.put(xxhash.xxh64_hexdigest(
+                    preheader), f"{preheader}\n{seq}")
 
 
 class DatabasePreparer:
@@ -378,33 +376,17 @@ class DatabasePreparer:
                 self.dedup_time
             )
 
-    @profile
     def translate_fasta_and_write_to_disk(
         self,
-        num_threads: int, # Make this "batches"
     ):
         self.printv("Translating and Deduping prepared files", self.verbose)
         
         self.taxa_time_keeper.lap()
-        
-        sequences_per_batch = math.ceil(
-            (len(self.fa_file_out) // 2) // num_threads) * 2
 
         self.tsequences = SeqBuilder(self.transcript_mapped_to, self.duplicates, self.prot_path)
 
-        for i in range(0, len(self.fa_file_out), sequences_per_batch):
-        #     sequences_per_thread = math.ceil(len(batch_sequences) / num_threads)
-        #     arguments = []
-        #     for j in range(0, len(batch_sequences), sequences_per_thread):
-        #         arguments.append((batch_sequences[j: j+sequences_per_thread], ))
-
-        #     with Pool(num_threads) as translate_pool:
-        #         tfiles = translate_pool.starmap(translate, arguments)
-
-            t_generator = translate(self.fa_file_out[i:i + sequences_per_batch])
-
-            for header, sequence in t_generator:
-                self.tsequences.add_sequence(header, sequence)
+        for header, sequence in translate(self.fa_file_out):
+            self.tsequences.add_sequence(header, sequence)
 
         if self.keep_prepared:
             self.prepared_file_destination.write_text(
@@ -423,8 +405,6 @@ class DatabasePreparer:
         prot_components = []
         num_sequences, self.transcript_mapped_to, self.duplicates, aa_dupes = self.tsequences.finalise()
         del self.tsequences
-
-        input("Memory should be near 0 here wtf")
 
         num_lines = num_sequences * 2
 
@@ -482,12 +462,11 @@ class DatabasePreparer:
     def __call__(
         self,
         secondary_directory: Path,
-        num_threads: int,
         prot_max_seqs_per_level: int
     ):
         self.init_db(secondary_directory)
         self.dedup()
-        self.translate_fasta_and_write_to_disk(num_threads)
+        self.translate_fasta_and_write_to_disk()
         self.store_in_db(prot_max_seqs_per_level)
 
 
@@ -499,7 +478,6 @@ def map_taxa_runs(
     keep_prepared: int,
     minimum_sequence_length: int,
     secondary_directory: Path,
-    num_threads: int,
     prot_max_seqs_per_level: Path,
     dedup_time: List[int],
     trim_times: TimeKeeper
@@ -518,7 +496,6 @@ def map_taxa_runs(
         trim_times
     )(
         secondary_directory,
-        num_threads,
         prot_max_seqs_per_level
     )
 
@@ -536,7 +513,6 @@ def main(args):
 
     prot_max_seqs_per_level = args.sequences_per_level
     minimum_sequence_length = args.minimum_sequence_length
-    num_threads = args.processes
 
     project_root = Path(__file__).parent.parent
     core_directory = Path(CORE_FOLDER).joinpath(input_path.parts[-1])
@@ -563,7 +539,6 @@ def main(args):
             args.keep_prepared,
             minimum_sequence_length,
             secondary_directory,
-            num_threads,
             prot_max_seqs_per_level,
             dedup_time,
             trim_times
