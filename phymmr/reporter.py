@@ -277,6 +277,12 @@ def get_blastresults(rocks_hits_db):
     return blast_results
 
 
+def get_reference_data(rocks_hits_db):
+    raw_data = rocks_hits_db.get("getall:refseqs")
+
+    processed = json.loads(raw_data)
+
+    return processed
 
 def get_reftaxon_name(hit_id, orthoset_db_path):
     query = f"""SELECT {orthoset_taxa}.{db_col_name}
@@ -302,22 +308,6 @@ def calculate_length_of_ali(
 def transcript_not_long_enough(result, minimum_transcript_length):
     length = calculate_length_of_ali(result)
     return length < minimum_transcript_length
-
-
-def get_reference_sequence(hit_id, orthoset_db_con):
-    orthoset_db_cur = orthoset_db_con.cursor()
-
-    query = f'''SELECT
-            {orthoset_aaseqs}.{db_col_sequence}, 
-            {orthoset_taxa}.{db_col_name}
-        FROM {orthoset_aaseqs}
-        INNER JOIN {orthoset_taxa}
-            ON {orthoset_aaseqs}.{db_col_taxid} = {orthoset_taxa}.id
-        WHERE {orthoset_aaseqs}.{db_col_id} = "{hit_id}"'''
-
-    rows = orthoset_db_cur.execute(query)
-
-    return next(rows)
 
 
 def reverse_complement(nt_seq):
@@ -684,6 +674,7 @@ ExonerateArgs = namedtuple(
         "nt_out_path",
         "tmp_path",
         "verbose",
+        "reference_sequences",
     ]
 )
 
@@ -701,6 +692,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
     reftaxon_to_proteome_sequence = {}
     for hit in eargs.list_of_hits:
         this_reftaxon = hit.reftaxon
+        hit.proteome_sequence = eargs.reference_sequences[this_reftaxon]
 
         est_header, est_sequence_complete = get_nucleotide_transcript_for(
             hit.header
@@ -712,6 +704,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
         hit.est_header = est_header
         hit.est_sequence_complete = est_sequence_complete
         hit.est_sequence_hmm_region = est_sequence_hmm_region
+
 
         if this_reftaxon not in reftaxon_related_transcripts:
             reftaxon_to_proteome_sequence[this_reftaxon] = hit.proteome_sequence
@@ -934,7 +927,13 @@ def do_taxa(path, taxa_id, args):
                 transcripts_mapped_to[orthoid] = []
 
             transcripts_mapped_to[orthoid].append(this_match)
-    printv(f"Reciprocal check done, found {brh_count} reciprocal hits. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Exonerating genes.", args.verbose)
+
+    printv(f"Reciprocal check done, found {brh_count} reciprocal hits. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing references sequences.", args.verbose)
+
+    gene_reference_data = get_reference_data(rocky.get_rock("rocks_hits_db"))
+
+    printv(f"Got reference data. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Exonerating genes.", args.verbose)
+
     if num_threads > 1:
         arguments: list[Optional[ExonerateArgs]] = []
         func = arguments.append
@@ -942,15 +941,15 @@ def do_taxa(path, taxa_id, args):
         func = exonerate_gene_multi
 
     # this sorting the list so that the ones with the most hits are first
-    for orthoids in sorted(
+    for orthoid in sorted(
         transcripts_mapped_to,
         key=lambda k: len(transcripts_mapped_to[k]),
         reverse=True
     ):
         func(
             ExonerateArgs(
-                orthoids,
-                transcripts_mapped_to[orthoids],
+                orthoid,
+                transcripts_mapped_to[orthoid],
                 orthoset_db_path,
                 args.min_score,
                 orthoset_id,
@@ -960,6 +959,7 @@ def do_taxa(path, taxa_id, args):
                 nt_out_path,
                 tmp_path,
                 args.verbose,
+                gene_reference_data[orthoid]
             )
         )
 
