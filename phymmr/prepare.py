@@ -161,13 +161,14 @@ class SeqBuilder:
     def add_sequence(self, header, seq):
         header = header.replace(" ", "|")
         compressed_header = header.replace("length_","").replace("NODE_", "")
-        if seq in self.tmt:
-            self.dup.setdefault(self.tmt[seq], 1)
-            self.dup[self.tmt[seq]] += 1
+        seq_hash = xxhash.xxh64(seq).hexdigest()
+        if seq_hash in self.tmt:
+            self.dup.setdefault(self.tmt[seq_hash], 1)
+            self.dup[self.tmt[seq_hash]] += 1
             next(self.aa_dupe_count)
             return
         else:
-            self.tmt[seq] = compressed_header
+            self.tmt[seq_hash] = compressed_header
         self.prot_handle.write(f">{header}\n{seq}\n")
         next(self.num_sequences)
     
@@ -256,36 +257,37 @@ class SeqDeduplicator:
                 header_index = next(this_index)
                 header = f"NODE_{header_index}_length_{length}"
                 compressed_header = f"{header_index}_{length}"
+                seq_hash = xxhash.xxh64(seq).hexdigest()
 
                 # Check for dupe, if so save how many times that sequence occured
                 seq_start = time()
 
-                if seq in transcript_mapped_to:
+                if seq_hash in transcript_mapped_to:
                     duplicates.setdefault(
-                        transcript_mapped_to[seq], 1)
-                    duplicates[transcript_mapped_to[seq]] += 1
+                        transcript_mapped_to[seq_hash], 1)
+                    duplicates[transcript_mapped_to[seq_hash]] += 1
                     next(dupes)
                     continue
                 else:
-                    transcript_mapped_to[seq] = compressed_header
+                    transcript_mapped_to[seq_hash] = compressed_header
 
                 # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
                     # sequence so we don't have to rev-comp this unique sequence again
-                if seq in rev_comp_save:
-                    rev_seq = rev_comp_save[seq]
+                if seq_hash in rev_comp_save:
+                    rev_seq_hash = rev_comp_save[seq_hash]
                 else:
-                    rev_seq = phymmr_tools.bio_revcomp(seq)
-                    rev_comp_save[seq] = rev_seq
+                    rev_seq_hash = xxhash.xxh64(phymmr_tools.bio_revcomp(seq))
+                    rev_comp_save[seq_hash] = rev_seq_hash
 
                 # Check for revcomp dupe, if so save how many times that sequence occured
-                if rev_seq in transcript_mapped_to:
+                if rev_seq_hash in transcript_mapped_to:
                     duplicates.setdefault(
-                        transcript_mapped_to[rev_seq], 1)
-                    duplicates[transcript_mapped_to[rev_seq]] += 1
+                        transcript_mapped_to[rev_seq_hash], 1)
+                    duplicates[transcript_mapped_to[rev_seq_hash]] += 1
                     next(dupes)
                     continue
                 else:
-                    transcript_mapped_to[rev_seq] = compressed_header
+                    transcript_mapped_to[rev_seq_hash] = compressed_header
 
                 seq_end = time()
                 dedup_time[0] += seq_end - seq_start
