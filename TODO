@@ -5,6 +5,22 @@ HIGH PRIORITY!!!!
 	[x] Move orthosets folder out of PhyMMR to the same level as the phymmr and PhyMMR folder. Update paths to reflect this. @done (04-11-22 14:15)
 	[ ] Populate ReadMe with detailed instructions and examples. (assigned to Kevin)
 
+MergeOverlap
+   [ ] Experiment with filling internal gaps with X characters and doing full merge. This should prevent Mafft from moving sequences improperly. Would prevent a second run of Merge.
+
+Finalize Dataset Section
+     [ ] TaxaKick.py
+     [ ] ColumnTrim.py
+     [ ] StopCodonRemove.py
+     [ ] Renamer.py
+     [ ] Concatenate.py
+
+MergeGenes
+  [ ] So slow! Please speed up. Multiprocessing?
+
+CrossContamination
+  [ ] TODO
+
 __main__.py:
  [x] Use upper cases for sub commands @done (31-10-22 23:15)
  [ ] Write a proper description for the software
@@ -26,7 +42,7 @@ All Scripts
    [ ] Add total runtime spent processing a batch.
    [x] Changeover to pathlib. @done (17-11-22)
 PrepareDB
-  [ ] Memory efficiency pass
+  [x] Memory efficiency pass @done (20-11-22)
   [x] Fix Verbosity. Complex... Talk to me in Discord. @done
   [ ] Read input files using Bio.
   [ ] Dedupe in rust. (At least AA).
