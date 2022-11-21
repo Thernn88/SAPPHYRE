@@ -799,7 +799,8 @@ def run_process(args, input_path: str) -> None:
                     )
                 )
         with Pool(num_threads) as pool:
-            internal_multi_data = pool.starmap(internal_multi_filter, arguments, chunksize=1)
+            if not args.disable_multi:
+                internal_multi_data = pool.starmap(internal_multi_filter, arguments, chunksize=1)
 
     for data in internal_multi_data:
         gene = data["Gene"]
@@ -843,8 +844,7 @@ def run_process(args, input_path: str) -> None:
                 )
             )
         with Pool(num_threads) as pool:
-            if not args.disable_multi:
-                internal_data = pool.starmap(internal_filter_gene, arguments, chunksize=1)
+            internal_data = pool.starmap(internal_filter_gene, arguments, chunksize=1)
 
     transcripts_mapped_to = {}
     for data in internal_data:
