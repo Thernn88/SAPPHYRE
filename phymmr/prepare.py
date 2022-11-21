@@ -160,7 +160,6 @@ class SeqBuilder:
 
     def add_sequence(self, header, seq):
         header = header.replace(" ", "|")
-        compressed_header = header.replace("length_","").replace("NODE_", "")
         seq_hash = xxhash.xxh64(seq).hexdigest()
         if seq_hash in self.tmt:
             self.dup.setdefault(self.tmt[seq_hash], 1)
@@ -168,7 +167,7 @@ class SeqBuilder:
             next(self.aa_dupe_count)
             return
         else:
-            self.tmt[seq_hash] = compressed_header
+            self.tmt[seq_hash] = header
         self.prot_handle.write(f">{header}\n{seq}\n")
         next(self.num_sequences)
     
@@ -256,7 +255,6 @@ class SeqDeduplicator:
                 length = len(seq)
                 header_index = next(this_index)
                 header = f"NODE_{header_index}_length_{length}"
-                compressed_header = f"{header_index}_{length}"
                 seq_hash = xxhash.xxh64(seq).hexdigest()
 
                 # Check for dupe, if so save how many times that sequence occured
@@ -269,7 +267,7 @@ class SeqDeduplicator:
                     next(dupes)
                     continue
                 else:
-                    transcript_mapped_to[seq_hash] = compressed_header
+                    transcript_mapped_to[seq_hash] = header
 
                 # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
                     # sequence so we don't have to rev-comp this unique sequence again
@@ -287,7 +285,7 @@ class SeqDeduplicator:
                     next(dupes)
                     continue
                 else:
-                    transcript_mapped_to[rev_seq_hash] = compressed_header
+                    transcript_mapped_to[rev_seq_hash] = header
 
                 seq_end = time()
                 dedup_time[0] += seq_end - seq_start
