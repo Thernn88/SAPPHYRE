@@ -766,50 +766,53 @@ def run_process(args, input_path: str) -> None:
             transcripts_mapped_to[match.gene].append(match)
 
     printv(f"Looking for internal duplicates over {len(required_internal_multi_genes)} flagged genes", args.verbose)
-
+    if args.disable_multi:
+        print(f'Skipping internal multi filter.')
     if num_threads == 1:
-        internal_multi_data = []
-        for gene in required_internal_multi_genes:
-            if gene in transcripts_mapped_to:
-                this_gene_transcripts = transcripts_mapped_to[gene]
-                check_headers = required_internal_multi_genes[gene]
-                internal_multi_data.append(  #
-                    internal_multi_filter(
-                        check_headers,
-                        this_gene_transcripts,
-                        args.minimum_overlap_internal_multi,
-                        debug,
-                        gene,
+        if not args.disable_multi:
+
+            internal_multi_data = []
+            for gene in required_internal_multi_genes:
+                if gene in transcripts_mapped_to:
+                    this_gene_transcripts = transcripts_mapped_to[gene]
+                    check_headers = required_internal_multi_genes[gene]
+                    internal_multi_data.append(  #
+                        internal_multi_filter(
+                            check_headers,
+                            this_gene_transcripts,
+                            args.minimum_overlap_internal_multi,
+                            debug,
+                            gene,
+                        )
                     )
-                )
 
     else:
-        arguments = []
-        for gene in required_internal_multi_genes:
-            if gene in transcripts_mapped_to:
-                this_gene_transcripts = transcripts_mapped_to[gene]
-                check_headers = required_internal_multi_genes[gene]
-                arguments.append(
-                    (
-                        check_headers,
-                        this_gene_transcripts,
-                        args.minimum_overlap_internal_multi,
-                        debug,
-                        gene,
+        if not args.disable_multi:
+            arguments = []
+            for gene in required_internal_multi_genes:
+                if gene in transcripts_mapped_to:
+                    this_gene_transcripts = transcripts_mapped_to[gene]
+                    check_headers = required_internal_multi_genes[gene]
+                    arguments.append(
+                        (
+                            check_headers,
+                            this_gene_transcripts,
+                            args.minimum_overlap_internal_multi,
+                            debug,
+                            gene,
+                        )
                     )
-                )
-        with Pool(num_threads) as pool:
-            if not args.disable_multi:
-                internal_multi_data = pool.starmap(internal_multi_filter, arguments, chunksize=1)
+            with Pool(num_threads) as pool:
+                    internal_multi_data = pool.starmap(internal_multi_filter, arguments, chunksize=1)
 
-    for data in internal_multi_data:
-        gene = data["Gene"]
+            for data in internal_multi_data:
+                gene = data["Gene"]
 
-        transcripts_mapped_to[gene] = data["Passes"]
-        if debug:
-            filtered_sequences_log.extend(data["Log"])
+            transcripts_mapped_to[gene] = data["Passes"]
+            if debug:
+                filtered_sequences_log.extend(data["Log"])
 
-    printv(f"Done! Took {filter_timer.lap():.2f}s", args.verbose)
+        printv(f"Done! Took {filter_timer.lap():.2f}s", args.verbose)
     printv("Doing internal overlap filter", args.verbose)
 
     total_hits = 0
