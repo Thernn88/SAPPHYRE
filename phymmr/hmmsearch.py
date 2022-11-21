@@ -843,7 +843,8 @@ def run_process(args, input_path: str) -> None:
                 )
             )
         with Pool(num_threads) as pool:
-            internal_data = pool.starmap(internal_filter_gene, arguments, chunksize=1)
+            if not args.disable_multi:
+                internal_data = pool.starmap(internal_filter_gene, arguments, chunksize=1)
 
     transcripts_mapped_to = {}
     for data in internal_data:
