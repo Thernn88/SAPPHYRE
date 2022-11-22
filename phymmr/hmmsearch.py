@@ -766,10 +766,10 @@ def run_process(args, input_path: str) -> None:
             transcripts_mapped_to[match.gene].append(match)
 
     printv(f"Looking for internal duplicates over {len(required_internal_multi_genes)} flagged genes", args.verbose)
-    if args.disable_multi:
+    if not args.enable_multi_internal:
         print(f'Skipping internal multi filter.')
     if num_threads == 1:
-        if not args.disable_multi:
+        if args.enable_multi_internal:
 
             internal_multi_data = []
             for gene in required_internal_multi_genes:
@@ -787,7 +787,7 @@ def run_process(args, input_path: str) -> None:
                     )
 
     else:
-        if not args.disable_multi:
+        if args.enable_multi_internal:
             arguments = []
             for gene in required_internal_multi_genes:
                 if gene in transcripts_mapped_to:

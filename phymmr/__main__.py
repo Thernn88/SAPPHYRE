@@ -168,8 +168,8 @@ def subcmd_hmmsearch(subparsers):
         "-d", "--debug", type=int, default=0, help="Output debug logs."
     )
     par.add_argument(
-        "--disable-multi", default=False, action='store_true',
-        help="disable internal_multi_filter"
+        "--enable-multi-internal", default=False, action='store_true',
+        help="Enable Hmmsearch internal multi filter"
     )
     par.set_defaults(
         func=hmmsearch, formathelp=par.format_help
