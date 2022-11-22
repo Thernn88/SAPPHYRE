@@ -584,9 +584,9 @@ def print_unmerged_sequences(
                     if aa_seq in already_mapped_sequence:
                         continue
 
-                if header in header_mapped_x_times:
+                if base_header in header_mapped_x_times:
                     # Make header unique
-                    old_header = header
+                    old_header = base_header
                     header = format_candidate_header(
                         orthoid,
                         hit.reftaxon,
@@ -595,7 +595,7 @@ def print_unmerged_sequences(
                         reference_frame,
                     )
 
-                    header_mapped_x_times[old_header] += 1
+                    header_mapped_x_times[base_header] += 1
             else:
                 base_header_mapped_already[base_header] = header, aa_seq
 
@@ -603,7 +603,7 @@ def print_unmerged_sequences(
             aa_result.append(f">{header}\n{aa_seq}\n" )
             nt_result.append(f">{header}\n{nt_seq}\n" )
 
-            header_mapped_x_times[header] = 1
+            header_mapped_x_times.setdefault(base_header, 1)
             exact_hit_mapped_already.add(unique_hit)
 
     return aa_result, nt_result
