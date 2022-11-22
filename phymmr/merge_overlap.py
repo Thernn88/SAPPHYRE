@@ -364,7 +364,10 @@ def do_protein(
             )
 
             most_occuring = most_common_element_with_count([i[2].split('|')[1] for i in this_sequences])
-            this_taxa = most_occuring[0]
+            if most_occuring[1] == 1:  # No taxa occur more than once
+                this_taxa = fallback_taxa
+            else:
+                this_taxa = most_occuring[0]
 
             base_header = "|".join([this_gene, this_taxa, this_taxa_id, node])
 
