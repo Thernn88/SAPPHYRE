@@ -302,7 +302,7 @@ def do_protein(
     gene,
     majority,
     minimum_mr_amount,
-    merge_all_candidates,
+    merge_taxons_only,
     debug=None,
 ):
     with open(path, encoding="UTF-8") as fp:
@@ -326,14 +326,17 @@ def do_protein(
         start, end = get_start_end(sequence)
         this_object = (start, end, header, sequence)
         taxa = get_taxa(header)
-        taxa_groups.setdefault(taxa, []).append(this_object)
+        if merge_taxons_only:
+            taxa_groups.setdefault(taxa, []).append(this_object)
+        else:
+            taxa_groups.setdefault("all", []).append(this_object)
 
     for this_taxa, sequences_to_merge in taxa_groups.items():
         # Sort by start position
         sequences_to_merge.sort(key=lambda x: x[0])
 
         # Disperse sequences into clusters of overlap
-        if merge_all_candidates:
+        if merge_taxons_only:
             overlap_groups = grab_merge_start_end(sequences_to_merge)
         else:
             overlap_groups = disperse_into_overlap_groups(sequences_to_merge)
@@ -343,7 +346,7 @@ def do_protein(
             base_header = this_sequences[0][2]
 
             this_gene, _, this_taxa_id, node, frame = base_header.split("|")
-            base_header = "|".join([this_gene, this_taxa, this_taxa_id, node])
+            
 
             # Create a list of each header and sequence that is present in this overlap region
             consists_of = []
@@ -359,6 +362,11 @@ def do_protein(
             stitch = "&&".join(
                 [sequence[2].split("|")[3] for sequence in this_sequences[1:]]
             )
+
+            most_occuring = most_common_element_with_count([i[2].split('|')[1] for i in this_sequences])
+            this_taxa = most_occuring[0]
+
+            base_header = "|".join([this_gene, this_taxa, this_taxa_id, node])
 
             if stitch != "":
                 final_header = f"{base_header}&&{stitch}"
@@ -580,7 +588,7 @@ def do_gene(
     majority,
     minimum_mr_amount,
     verbosity,
-    merge_all_candidates
+    merge_taxons_only
 ) -> None:
     """
     Merge main loop. Opens fasta file, parses sequences and merges based on taxa
@@ -598,7 +606,7 @@ def do_gene(
         gene,
         majority,
         minimum_mr_amount,
-        merge_all_candidates,
+        merge_taxons_only,
         debug=debug,
     )
     with open(path, "w", encoding="UTF-8") as output_file:
@@ -614,7 +622,7 @@ def do_gene(
         make_nt_name(gene),
         majority,
         minimum_mr_amount,
-        merge_all_candidates,
+        merge_taxons_only,
         debug=debug,
     )
     with open(path, "w", encoding="UTF-8") as output_file:
