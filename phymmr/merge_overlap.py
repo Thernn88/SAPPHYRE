@@ -310,12 +310,12 @@ def do_protein(
 
     gene_out = []
 
-    if protein == "aa":
-        # Grab all the reference sequences
-        comparison_sequences = {}
-        for header, sequence in references:
-            gene_out.append(header)
-            gene_out.append(sequence)
+    # Grab all the reference sequences
+    comparison_sequences = {}
+    for header, sequence in references:
+        gene_out.append(header)
+        gene_out.append(sequence)
+        if protein == "aa":
             taxon = header.split("|")[1]
             comparison_sequences[taxon] = sequence
 
