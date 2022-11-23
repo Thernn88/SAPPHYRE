@@ -215,13 +215,13 @@ def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
     return result
 
 
-def find_overlap(tuple_a: tuple, tuple_b: tuple) -> Union[tuple, None]:
+def find_overlap(tuple_a: tuple, tuple_b: tuple, allowed_deviation: int = 1) -> Union[tuple, None]:
     """
     Takes two start/end pairs and returns the overlap.
     """
     start = max(tuple_a[0], tuple_b[0])
     end = min(tuple_a[1], tuple_b[1])
-    if end - start < 0:
+    if end - start < -allowed_deviation:
         return None
     return start, end
 
@@ -240,7 +240,7 @@ def calculate_split(sequence_a: str, sequence_b: str, comparison_sequence: str) 
     pair_a = get_start_end(sequence_a)
     pair_b = get_start_end(sequence_b)
 
-    overlap_start, overlap_end = find_overlap(pair_a, pair_b)
+    overlap_start, overlap_end = find_overlap(pair_a, pair_b, 0)
 
     sequence_a_overlap = sequence_a[overlap_start : overlap_end + 1]
     sequence_b_overlap = sequence_b[overlap_start : overlap_end + 1]
@@ -419,8 +419,6 @@ def do_protein(
                         header_b, sequence_b = sequences_at_current_point[split_count + 1]
 
                         split_key = header_a + header_b
-
-                        
 
                         if protein == "aa":
                             if split_key in already_calculated_splits:
@@ -643,8 +641,11 @@ def do_folder(folder: Path, args):
     tmp_dir = directory_check(folder)
     dupe_tmp_file = Path(tmp_dir, "DupeSeqs.tmp")
     rocks_db_path = Path(folder, "rocksdb", "sequences")
-    rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
-    dupe_counts = json.loads(rocksdb_db.get("getall:gene_dupes"))
+    if rocks_db_path.exists():
+        rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
+        dupe_counts = json.loads(rocksdb_db.get("getall:gene_dupes"))
+    else:
+        dupe_counts = {}
 
     target_genes = []
     for item in Path(aa_input).glob("*.fa"):
