@@ -4,19 +4,11 @@ HIGH PRIORITY!!!!
 	[x] Allow Pal2Nal through MergeOverlap to function when Reference NT sequences are absent. @done (~08-11-22)
 	[x] Move orthosets folder out of PhyMMR to the same level as the phymmr and PhyMMR folder. Update paths to reflect this. @done (04-11-22 14:15)
 	[ ] Populate ReadMe with detailed instructions and examples. (assigned to Kevin)
+Hmmsearch
+	[ ] Add sorts to Multi-gene filter and Internal Filter so that heaviest workloads are first in the pool.
 
 MergeOverlap
    [ ] Experiment with filling internal gaps with X characters and doing full merge. This should prevent Mafft from moving sequences improperly. Would prevent a second run of Merge.
-
-Finalize Dataset Section
-     [ ] TaxaKick.py
-     [ ] ColumnTrim.py
-     [ ] StopCodonRemove.py
-     [ ] Renamer.py
-     [ ] Concatenate.py
-
-MergeGenes
-  [ ] So slow! Please speed up. Multiprocessing?
 
 CrossContamination
   [ ] TODO
@@ -39,7 +31,7 @@ __main__.py:
    [x] MergeOverlap @done (2022-11-01 23:08)
    
 All Scripts
-   [ ] Add total runtime spent processing a batch.
+   [x] Add total runtime spent processing a batch. @done
    [x] Changeover to pathlib. @done (17-11-22)
 PrepareDB
   [x] Memory efficiency pass @done (20-11-22)
@@ -86,12 +78,12 @@ MergeOverlap
   [ ] Memory efficiency pass
 
 MergeGenes
-  [ ] So slow! Please speed up. Multiprocessing?
+  [x] So slow! Please speed up. Multiprocessing? @done
   
 Finalize Dataset Section
-  1. Heavy refactor and script combination
-     [ ] TaxaKick.py
-     [ ] ColumnTrim.py
-     [ ] StopCodonRemove.py
-     [ ] Renamer.py
-     [ ] Concatenate.py
+     [X] TaxaKick.py @done
+     [X] ColumnTrim.py @done
+     [X] StopCodonRemove.py @done
+     [X] Renamer.py @done
+     [X] Concatenate.py @done
+     [ ] Integrate and Test
