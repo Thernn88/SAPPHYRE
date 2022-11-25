@@ -80,7 +80,7 @@ def do_folder(folder, args):
     os.makedirs(mafft_path, exist_ok=True)
 
     genes = [gene.split(".")[0] for gene in os.listdir(aa_path) if ".aa" in gene]
-    genes.sort(key = lambda x : os.path.getsize(os.path.join(aa_path, x + ".aa.fa")), reverse=True)
+    #genes.sort(key = lambda x : os.path.getsize(os.path.join(aa_path, x + ".aa.fa")), reverse=True)
     orthoset_path = os.path.join(args.orthoset_input, args.orthoset)
     aln_path = os.path.join(orthoset_path, ALN_FOLDER)
     if not os.path.exists(orthoset_path):
