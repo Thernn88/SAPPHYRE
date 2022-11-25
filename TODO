@@ -9,6 +9,7 @@ Hmmsearch
 
 MergeOverlap
    [ ] Experiment with filling internal gaps with X characters and doing full merge. This should prevent Mafft from moving sequences improperly. Would prevent a second run of Merge.
+   [ ] Find alternative method of choosing fallback merge reference for MergeOverlap'
 
 CrossContamination
   [ ] TODO
