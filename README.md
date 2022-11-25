@@ -50,68 +50,74 @@ Generic Commands
 	python3 -m phymmr <args> OutlierCheck <args> PhyMMR/<DIR>/*.fa
 	python3 -m phymmr <args> MergeOverlap <args> PhyMMR/<DIR>/*.fa
 
-##HELP
+## Help
 
-#Main
-python3 -m phymmr -h
-usage: phymmr [-h] [-v] [-p PROCESSES]
-              {Prepare,Hmmsearch,BlastPal,Reporter,mafft,Pal2Nal,FlexCull,OutlierCheck,MergeOverlap,MergeGenes,SRADownload}
+	# Main
+		python3 -m phymmr -h
+		usage: phymmr [-h] [-v] [-p PROCESSES]
+            		  {Prepare,Hmmsearch,BlastPal,Reporter,mafft,Pal2Nal,FlexCull,OutlierCheck,MergeOverlap,MergeGenes,SRADownload}
               ...
 
-Order: Prepare, Hmmsearch, BlastPal, Reporter, mafft, pal2nal, FlexCull (optional), OutlierCheck, MergeOverlap, MergeGenes
+	Order: Prepare, Hmmsearch, BlastPal, Reporter, mafft, pal2nal, FlexCull (optional), OutlierCheck, MergeOverlap, MergeGenes
 
-positional arguments:
-  {Prepare,Hmmsearch,BlastPal,Reporter,mafft,Pal2Nal,FlexCull,OutlierCheck,MergeOverlap,MergeGenes,SRADownload}
+	positional arguments:
+  	{Prepare,Hmmsearch,BlastPal,Reporter,mafft,Pal2Nal,FlexCull,OutlierCheck,MergeOverlap,MergeGenes,SRADownload}
+	
     Prepare             Loads NT input files (.fa, .fas or .fasta) into a rocksdb database. Unique NT sequences stored
                         with a duplicate count stored for later use. Performs six-fold translation of base NT
                         sequences into AA translation. Unique AA translation stored with duplicate counts stored for
                         later use.
+			
     Hmmsearch           Queries protein translations against profile HMMs using the HMMER3 external. Filters HMMER3
                         output using 3 custom filters: MultiGene, InternalMulti & InternalSubpar to remove LQ hits and
                         prevent sequence reuse. Loads hits into RocksDB after filters finish.
+			
     BlastPal            Blasts Hmmsearch hits using NCBI-Blast against reference sequences. Loads resulting output
-                        into RocksDB
+                        into RocksDB.
+			
     Reporter            Checks Blast results to ensure a hit is reciprocal. Queries a sequence using exonerate to
                         align it against a target reference and trim it to mapped region. Produces aa and nt output.
     mafft               Aligns AA sequences against existing reference alignment.
+    
     Pal2Nal             Mirrors Amino Acid Alignment to Nucleotide data using specified NCBI table. Also performs
                         basic error checking on data.
+			
     FlexCull            Adaptive End Trimming algorithm that trims the start and end of candidate reads to remove
                         introns and/or other LQ bases.
+			
     OutlierCheck        Calculates a Blosum62 distance matrix which are used to remove outlier sequences above a
                         threshold.
+			
     MergeOverlap        Reference-guided De-novo Assembly Algorithm which merges overlapping reads into contiguous
                         segments (Contigs).
+			
     MergeGenes          Initial Dataset Construction: Merges AA and NT data files across multiple taxa into a single
                         AA and NT pair per gene.
+			
     SRADownload         Download fastq files from www.ncbi.nlm.nih.gov
 
-options:
-  -h, --help            show this help message and exit
-  -v, --verbose         Verbosity level. Repeat for increased verbosity.
-  -p PROCESSES, --processes PROCESSES
-                        Number of threads used to call processes.
-
-phymmr  Copyright (C) 2022  PhyMMR Team
-License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.
-This program comes with ABSOLUTELY NO WARRANTY.
-This is free software, and you are welcome to redistribute it under certain conditions.
+	options:
+ 	 -h, --help            show this help message and exit
+ 	 -v, --verbose         Verbosity level. Repeat for increased verbosity.
+ 	 -p PROCESSES, --processes PROCESSES
+         	               Number of threads used to call processes.
 
 #Prepare
-python3 -m phymmr Prepare -h
-usage: phymmr Prepare [-h] [-c] [-ml MINIMUM_SEQUENCE_LENGTH] [-sl SEQUENCES_PER_LEVEL] [-k] INPUT
+	
+	python3 -m phymmr Prepare -h
+	usage: phymmr Prepare [-h] [-c] [-ml MINIMUM_SEQUENCE_LENGTH] [-sl SEQUENCES_PER_LEVEL] [-k] INPUT
 
-positional arguments:
-  INPUT                 Path to directory of Input folder
+	positional arguments:
+	  INPUT                 Path to directory of Input folder
 
-options:
-  -h, --help            show this help message and exit
-  -c, --clear_database  Overwrite existing rocksdb database.
-  -ml MINIMUM_SEQUENCE_LENGTH, --minimum_sequence_length MINIMUM_SEQUENCE_LENGTH
+	options:
+ 	 -h, --help            show this help message and exit
+  	-c, --clear_database  Overwrite existing rocksdb database.
+  	-ml MINIMUM_SEQUENCE_LENGTH, --minimum_sequence_length MINIMUM_SEQUENCE_LENGTH
                         Minimum input sequence length.
-  -sl SEQUENCES_PER_LEVEL, --sequences_per_level SEQUENCES_PER_LEVEL
+  	-sl SEQUENCES_PER_LEVEL, --sequences_per_level SEQUENCES_PER_LEVEL
                         Amount of sequences to store per database entry.
-  -k, --keep_prepared   Writes the prepared input fasta into the output taxa directory.
+  	-k, --keep_prepared   Writes the prepared input fasta into the output taxa directory.
 
 ---------------------
 
