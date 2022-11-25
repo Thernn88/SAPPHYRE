@@ -52,7 +52,7 @@ Generic Commands
 
 ## Help
 
-Main
+**Main**
 		python3 -m phymmr -h
 		usage: phymmr [-h] [-v] [-p PROCESSES]
             		  {Prepare,Hmmsearch,BlastPal,Reporter,mafft,Pal2Nal,FlexCull,OutlierCheck,MergeOverlap,MergeGenes,SRADownload}
@@ -102,7 +102,7 @@ Main
  	 -p PROCESSES, --processes PROCESSES
          	               Number of threads used to call processes.
 
-Prepare
+**Prepare**
 	
 	python3 -m phymmr Prepare -h
 	usage: phymmr Prepare [-h] [-c] [-ml MINIMUM_SEQUENCE_LENGTH] [-sl SEQUENCES_PER_LEVEL] [-k] INPUT
@@ -119,7 +119,8 @@ Prepare
                         Amount of sequences to store per database entry.
   	-k, --keep_prepared   Writes the prepared input fasta into the output taxa directory.
 
-Hmmsearch
+**Hmmsearch**
+	
 	python3 -m phymmr Hmmsearch -h
 	usage: phymmr Hmmsearch [-h] [-oi ORTHOSET_INPUT] [-o ORTHOSET] [-ovw] [-s SCORE] [-e EVALUE]
                         [--excluded-list EXCLUDED_LIST] [--wanted-list WANTED_LIST] [--remake-protfile]
@@ -164,7 +165,8 @@ Hmmsearch
 	--enable-multi-internal
 							Enable Hmmsearch internal multi filter
 							
-BlastPal
+**BlastPal**
+	
 	python3 -m phymmr BlastPal -h
 	usage: phymmr BlastPal [-h] [-oi ORTHOSET_INPUT] [-o ORTHOSET] [-bs BLAST_MINIMUM_SCORE] [-be BLAST_MINIMUM_EVALUE]
 						[-m MAX_BLAST_BATCH_SIZE] [-ovw]
@@ -187,7 +189,7 @@ BlastPal
 							Max results per blastpal batch in db. Default: 250 thousand.
 	-ovw, --overwrite     Overwrite existing blast results.
 
-Reporter
+**Reporter**
 
 	python3 -m phymmr Reporter -h
 	usage: phymmr Reporter [-h] [-oi ORTHOSET_INPUT] [-o ORTHOSET] [-ml MIN_LENGTH] [-ms MIN_SCORE] [-d DEBUG]
@@ -209,7 +211,8 @@ Reporter
 	-d DEBUG, --debug DEBUG
 							Verbose debug.
 							
-mafft
+**mafft**
+	
 	python3 -m phymmr mafft -h
 	usage: phymmr mafft [-h] [-oi ORTHOSET_INPUT] [-o ORTHOSET] [-l] INPUT [INPUT ...]
 
@@ -224,7 +227,8 @@ mafft
 							Orthoset
 	-l, --linsi           Enable the use of mafft-linsi.
 	
-Pal2Nal	
+**Pal2Nal**
+	
 	python3 -m phymmr Pal2Nal -h
 	usage: phymmr Pal2Nal [-h] [-t TABLE] INPUT [INPUT ...]
 
@@ -236,7 +240,8 @@ Pal2Nal
 	-t TABLE, --table TABLE
 							Table ID.
 							
-FlexCull							
+**FlexCull**
+	
 	python3 -m phymmr FlexCull -h
 		usage: phymmr FlexCull [-h] [-o OUTPUT] [-aa AMINO_ACID] [-nt NUCLEOTIDE] [-m MATCHES] [-bp BASE_PAIR] [-d]
 						INPUT [INPUT ...]
@@ -258,7 +263,7 @@ FlexCull
 							Minimum bp after cull.
 	-d, --debug           Enable debug. When enabled output log of culls.		
 
-OutlierCheck
+**OutlierCheck**
 		
 	python3 -m phymmr OutlierCheck -h
 	usage: phymmr OutlierCheck [-h] [-o OUTPUT] [-t THRESHOLD] [--no-references] [-s {cluster,original}] [-d]
@@ -278,7 +283,8 @@ OutlierCheck
 							Sort candidate output by cluster and taxa, or preserver original order.
 	-d, --debug           Log outliers to csv files
 	
-MergeOverlap
+**MergeOverlap**
+	
 	python3 -m phymmr MergeOverlap -h
 	usage: phymmr MergeOverlap [-h] [-aa AA_INPUT] [-nt NT_INPUT] [-d] [-c COMPARISON] [-io] [-m MAJORITY]
 							[-mc MAJORITY_COUNT]
