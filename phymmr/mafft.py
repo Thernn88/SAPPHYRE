@@ -93,7 +93,7 @@ def do_folder(folder, args):
     if args.linsi:
         cmd = "mafft-linsi"
     command = (
-        "%s --anysymbol --quiet --linelength -1 --addfragments {tmpfile} --thread -1 %s/{gene}.aln.fa > {resultfile}"
+        "%s --anysymbol --quiet --addfragments {tmpfile} --thread -1 %s/{gene}.aln.fa > {resultfile}"
         % (cmd, aln_path)
     )
 
