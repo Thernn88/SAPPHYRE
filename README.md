@@ -52,12 +52,11 @@ Generic Commands
 
 ## Help
 
-**Main**
-		python3 -m phymmr -h
-		usage: phymmr [-h] [-v] [-p PROCESSES]
-            		  {Prepare,Hmmsearch,BlastPal,Reporter,mafft,Pal2Nal,FlexCull,OutlierCheck,MergeOverlap,MergeGenes,SRADownload}
-              ...
-
+   **Main**
+		
+	python3 -m phymmr -h
+	usage: phymmr [-h] [-v] [-p PROCESSES]
+	
 	Order: Prepare, Hmmsearch, BlastPal, Reporter, mafft, pal2nal, FlexCull (optional), OutlierCheck, MergeOverlap, MergeGenes
 
 	positional arguments:
