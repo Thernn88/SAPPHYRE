@@ -274,7 +274,7 @@ class SeqDeduplicator:
                 if seq_hash in rev_comp_save:
                     rev_seq_hash = rev_comp_save[seq_hash]
                 else:
-                    rev_seq_hash = xxhash.xxh64(phymmr_tools.bio_revcomp(seq))
+                    rev_seq_hash = xxhash.xxh64(phymmr_tools.bio_revcomp(seq)).hexdigest()
                     rev_comp_save[seq_hash] = rev_seq_hash
 
                 # Check for revcomp dupe, if so save how many times that sequence occured
