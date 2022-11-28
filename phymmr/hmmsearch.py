@@ -69,6 +69,7 @@ class Hit:
     __slots__ = (
         "header",
         "base_header",
+        "frame",
         "gene",
         "evalue",
         "score",
@@ -97,7 +98,7 @@ class Hit:
         env_end,
     ):
         self.header = str(target).replace(">", "").replace(" ", "|")
-        self.base_header = self.header.split('|')[0].strip()
+        self.base_header, self.frame = self.header.split('|')
         self.gene = str(query)
         self.evalue = float(evalue)
         self.score = float(score)
@@ -226,9 +227,7 @@ def internal_filter_gene(this_gene_hits, gene, min_overlap_internal, score_diff_
                                 ]
                             )
 
-    this_out_data = {'Passes': [i for i in this_gene_hits if i is not None], 'Log': filtered_sequences_log,
-                     'Gene': gene}
-    return this_out_data
+    return ([i for i in this_gene_hits if i is not None], filtered_sequences_log, gene)
 
 
 def multi_filter_dupes(
@@ -236,6 +235,7 @@ def multi_filter_dupes(
     debug,
     min_overlap_multi,
     score_diff_multi,
+    header,
 ):
     kick_happend = True
     filtered_sequences_log = []
@@ -347,11 +347,8 @@ def multi_filter_dupes(
                                     str(master.hmm_end),
                                 ]
                             )
-    multi_data = {
-        "Log": filtered_sequences_log,
-        "Remaining": [i for i in this_hits if i is not None],
-    }
-    return multi_data
+
+    return [i for i in this_hits if i is not None], filtered_sequences_log, header 
 
 
 def internal_multi_filter(flagged_headers, this_gene_hits, minimum_overlap_multi_internal, debug, gene):
@@ -379,6 +376,9 @@ def internal_multi_filter(flagged_headers, this_gene_hits, minimum_overlap_multi
                 if not hit_b:
                     continue
 
+                # if hit_a.frame == "[revcomp]:"+hit_b.frame or hit_b.frame == "[revcomp]:"+hit_a.frame: # Just a revcomp of itself
+                #     continue
+
                 overlap_amount = get_overlap(hit_a.ali_start, hit_a.ali_end, hit_b.ali_start, hit_b.ali_end)
                 distance = (hit_b.ali_end - hit_b.ali_start) + 1
 
@@ -393,10 +393,7 @@ def internal_multi_filter(flagged_headers, this_gene_hits, minimum_overlap_multi
                              'Internal Multi Overlapped with Lowest Score', hit_a.gene, hit_a.header, str(hit_a.score),
                              str(hit_a.ali_start), str(hit_a.ali_end)])
 
-    this_out_data = {'Passes': [i for i in this_gene_hits if i is not None], 'Log': filtered_sequences_log,
-                     'Gene': gene}
-
-    return this_out_data
+    return ([i for i in this_gene_hits if i is not None], filtered_sequences_log, gene)
 
 
 def get_hmm_name(hmmfile: str) -> str:
@@ -666,7 +663,10 @@ def run_process(args, input_path: str) -> None:
     required_internal_multi_genes = {}
     rimg_set = set()
 
-    for gene in gene_based_results:
+    gene_work_order = list(gene_based_results.keys())
+    # gene_work_order.sort(key=lambda x: len(gene_based_results[x]))
+
+    for gene in gene_work_order:
         this_gene_baseheaders = set()
         requires_internal_multi_filter = {}
         this_requires = False
@@ -721,23 +721,20 @@ def run_process(args, input_path: str) -> None:
     if debug:
         filtered_sequences_log = []
 
+    multi_work_headers = list(f_duplicates.keys())
+    multi_work_headers.sort(key=lambda x: len(f_duplicates[x]))
     if num_threads == 1:
-        for header in f_duplicates:
-            this_hits = f_duplicates[header]
-            data = multi_filter_dupes(
-                this_hits,
+            multi_data = [multi_filter_dupes(
+                f_duplicates[header],
                 debug,
                 min_overlap_multi,
                 score_diff_multi,
-            )
-
-            if debug:
-                filtered_sequences_log.extend(data["Log"])
-            header_based_results[data["Remaining"][0].header] = data["Remaining"]
+                header
+            )  for header in multi_work_headers]
 
     else:
         arguments = []
-        for header in f_duplicates:
+        for header in multi_work_headers:
             this_hits = f_duplicates[header]
             arguments.append(
                 (
@@ -745,16 +742,17 @@ def run_process(args, input_path: str) -> None:
                     debug,
                     min_overlap_multi,
                     score_diff_multi,
+                    header
                 )
             )
 
         with Pool(num_threads) as pool:
             multi_data = pool.starmap(multi_filter_dupes, arguments, chunksize=1)
 
-        for data in multi_data:
-            if debug:
-                filtered_sequences_log.extend(data["Log"])
-            header_based_results[data["Remaining"][0].header] = data["Remaining"]
+    for remaining, log, header in multi_data:
+        if debug:
+            filtered_sequences_log.extend(log)
+        header_based_results[header] = remaining
 
     printv(f"Done! Took {filter_timer.lap():.2f}s", args.verbose)
     transcripts_mapped_to = {}
@@ -765,29 +763,27 @@ def run_process(args, input_path: str) -> None:
                 transcripts_mapped_to[match.gene] = []
             transcripts_mapped_to[match.gene].append(match)
 
-    printv(f"Looking for internal duplicates over {len(required_internal_multi_genes)} flagged genes", args.verbose)
+    printv(f"Looking for internal multi duplicates over {len(required_internal_multi_genes)} flagged genes", args.verbose)
     if not args.enable_multi_internal:
         print(f'Skipping internal multi filter.')
-    if num_threads == 1:
-        if args.enable_multi_internal:
-
-            internal_multi_data = []
-            for gene in required_internal_multi_genes:
-                if gene in transcripts_mapped_to:
-                    this_gene_transcripts = transcripts_mapped_to[gene]
-                    check_headers = required_internal_multi_genes[gene]
-                    internal_multi_data.append(  #
-                        internal_multi_filter(
-                            check_headers,
-                            this_gene_transcripts,
-                            args.minimum_overlap_internal_multi,
-                            debug,
-                            gene,
+    if args.enable_multi_internal:
+        if num_threads == 1:
+                internal_multi_data = []
+                for gene in required_internal_multi_genes:
+                    if gene in transcripts_mapped_to:
+                        this_gene_transcripts = transcripts_mapped_to[gene]
+                        check_headers = required_internal_multi_genes[gene]
+                        internal_multi_data.append(  #
+                            internal_multi_filter(
+                                check_headers,
+                                this_gene_transcripts,
+                                args.minimum_overlap_internal_multi,
+                                debug,
+                                gene,
+                            )
                         )
-                    )
 
-    else:
-        if args.enable_multi_internal:
+        else:
             arguments = []
             for gene in required_internal_multi_genes:
                 if gene in transcripts_mapped_to:
@@ -805,20 +801,21 @@ def run_process(args, input_path: str) -> None:
             with Pool(num_threads) as pool:
                     internal_multi_data = pool.starmap(internal_multi_filter, arguments, chunksize=1)
 
-            for data in internal_multi_data:
-                gene = data["Gene"]
+        for passes, log, gene in internal_multi_data:
 
-            transcripts_mapped_to[gene] = data["Passes"]
+            transcripts_mapped_to[gene] = passes
             if debug:
-                filtered_sequences_log.extend(data["Log"])
+                filtered_sequences_log.extend(log)
 
         printv(f"Done! Took {filter_timer.lap():.2f}s", args.verbose)
     printv("Doing internal overlap filter", args.verbose)
 
+    internal_work_genes = list(transcripts_mapped_to.keys())
+    internal_work_genes.sort(key=lambda x: len(transcripts_mapped_to[x]))
     total_hits = 0
     if num_threads == 1:
         internal_data = []
-        for gene in transcripts_mapped_to:
+        for gene in internal_work_genes:
             this_gene_transcripts = transcripts_mapped_to[gene]
             sort = gene not in rimg_set
             internal_data.append(
@@ -833,7 +830,7 @@ def run_process(args, input_path: str) -> None:
             )
     else:
         arguments = []
-        for gene in transcripts_mapped_to:
+        for gene in internal_work_genes:
             this_gene_transcripts = transcripts_mapped_to[gene]
             sort = gene not in rimg_set
             arguments.append(
@@ -848,20 +845,20 @@ def run_process(args, input_path: str) -> None:
             )
         with Pool(num_threads) as pool:
             internal_data = pool.starmap(internal_filter_gene, arguments, chunksize=1)
-
+ 
     transcripts_mapped_to = {}
-    for data in internal_data:
-        gene = data["Gene"]
+    for passes, log, gene in internal_data:
 
         if gene not in transcripts_mapped_to:
             transcripts_mapped_to[gene] = []
 
-        transcripts_mapped_to[gene] = data["Passes"]
-        total_hits += len(data["Passes"])
+        transcripts_mapped_to[gene] = passes
+        total_hits += len(passes)
         if debug:
-            filtered_sequences_log.extend(data["Log"])
+            filtered_sequences_log.extend(log)
 
     if debug:
+        filtered_sequences_log.sort()
         filtered_sequences_log_out = []
         for line in filtered_sequences_log:
             filtered_sequences_log_out.append(",".join(line) + "\n")
