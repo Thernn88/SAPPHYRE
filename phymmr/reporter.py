@@ -318,7 +318,7 @@ def get_nucleotide_transcript_for(header):
     base_header = header.split("|")[0]
     hash_of_header = xxhash.xxh64_hexdigest(base_header)
 
-    row_data = rocky.get_rock("rocks_sequence_db").get(hash_of_header)
+    row_data = rocky.get_rock("rocks_nt_db").get(hash_of_header)
     _, sequence = row_data.split("\n")
 
     if "revcomp" in header:
@@ -1025,7 +1025,7 @@ def main(args):
         return False
     for input_path in args.INPUT:
         rocks_db_path = os.path.join(input_path, "rocksdb")
-        rocky.create_pointer("rocks_sequence_db", os.path.join(rocks_db_path, "sequences"))
+        rocky.create_pointer("rocks_nt_db", os.path.join(rocks_db_path, "sequences", "nt"))
         rocky.create_pointer("rocks_hits_db", os.path.join(rocks_db_path, "hits"))
         do_taxa(
             path=input_path,
