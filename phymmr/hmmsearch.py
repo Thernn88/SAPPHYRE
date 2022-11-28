@@ -427,7 +427,7 @@ def make_exclusion_list(path: str) -> set:
 def make_temp_protfile(
     ortholog: str,
     temp: str,
-    sequences_db_conn
+    aa_db_conn
 ) -> str:
     """
     Looks up the digest and sequence in the orthodb est table, then
@@ -437,11 +437,11 @@ def make_temp_protfile(
     prot_name = ortholog + "_prot.tmp"
     prot_path = os.path.join(temp, prot_name)
 
-    recipe = sequences_db_conn.get("getall:prot").split(',')
+    recipe = aa_db_conn.get("getall:prot").split(',')
 
     with open(prot_path, "w") as prot_file_handle:
         for component in recipe:
-            prot_file_handle.write(sequences_db_conn.get(f"getprot:{component}"))
+            prot_file_handle.write(aa_db_conn.get(f"getprot:{component}"))
 
     return prot_path
 
@@ -580,9 +580,10 @@ def run_process(args, input_path: str) -> None:
     # if database not set, make expected path to database
     db_path = os.path.join(input_path, "rocksdb")
     sequences_path = os.path.join(db_path, "sequences")
+    aa_db_path = os.path.join(sequences_path, "aa")
     hits_path = os.path.join(db_path, "hits")
 
-    sequences_db_conn = wrap_rocks.RocksDB(sequences_path)
+    aa_db_conn = wrap_rocks.RocksDB(aa_db_path)
 
     # path to .hmm file directory
     orthoset_dir = os.path.join(args.orthoset_input, args.orthoset)
@@ -618,7 +619,7 @@ def run_process(args, input_path: str) -> None:
     printv("Checking protfile", args.verbose)
     time_keeper.lap()
     protfile = ProtFile(ortholog, args.verbose)
-    protfile.makeme(sequences_db_conn)
+    protfile.makeme(aa_db_conn)
 
     printv(f"Wrote prot file in {time_keeper.lap():.2f}s", args.verbose)
 
@@ -879,7 +880,7 @@ def run_process(args, input_path: str) -> None:
 
     hits_db_conn = wrap_rocks.RocksDB(hits_path)
 
-    dupe_counts = json.loads(sequences_db_conn.get("getall:dupes"))
+    dupe_counts = json.loads(aa_db_conn.get("getall:dupes"))
     dupes_per_gene = {}
 
     this_sequences = protfile.sequences
@@ -921,9 +922,10 @@ def run_process(args, input_path: str) -> None:
             dupes_per_gene[gene] = dupe_count_divvy
     key = "getall:gene_dupes"
     data = json.dumps(dupes_per_gene)
-    sequences_db_conn.put(key, data)
+    aa_db_conn.put(key, data)
 
     del protfile
+    del aa_db_conn
 
     if current_batch:
         data = json.dumps(current_batch)
