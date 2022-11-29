@@ -179,17 +179,6 @@ def get_taxa_local(aa_content: list) -> set:
     
     return taxa_local
 
-def main(args):
-    global_time = TimeKeeper(KeeperMode.DIRECT)
-    if not all(os.path.exists(i) for i in args.INPUT):
-        printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
-        return False
-    for input_path in args.INPUT:
-        process_folder(args, input_path)
-    if len(args.INPUT) > 1 or not args.verbose:
-        printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
-    return True
-
 def process_folder(args, input_path):
     tk = TimeKeeper(KeeperMode.DIRECT)
     taxa_folder = Path(input_path)
@@ -309,6 +298,17 @@ def process_folder(args, input_path):
             fp.write('end;\n')
 
     printv(f"Done! Took {tk.lap():.2f}s", 1)
+
+def main(args):
+    global_time = TimeKeeper(KeeperMode.DIRECT)
+    if not all(os.path.exists(i) for i in args.INPUT):
+        printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
+        return False
+    for input_path in args.INPUT:
+        process_folder(args, input_path)
+    if len(args.INPUT) > 1 or not args.verbose:
+        printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
+    return True
 
 if __name__ == "__main__":
     raise Exception(
