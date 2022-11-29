@@ -678,6 +678,35 @@ def sradownload(argsobj):
         print()
         print(argsobj.formathelp())
 
+def subcmd_archiver(sp):
+    par = sp.add_parser("Archiver", help="Recursive archiver/unarchiver") # TODO add me
+    par.add_argument(
+        "INPUT",
+        help="Path to input directory.",
+        action="extend",
+        nargs="+",
+    )
+    par.add_argument(
+        "-sd",
+        "--specific_directories",
+        help="Directories to archive/unarchive.",
+        action="extend",
+        nargs="+"
+    )
+    par.add_argument(
+        "-u",
+        "--unarchive",
+        default=False,
+        action="store_true",
+        help="Unarchive directories.",
+    )
+    par.set_defaults(func=archiver, formathelp=par.format_help)
+
+def archiver(argsobj):
+    from . import archiver
+    if not archiver.main(argsobj):
+        print()
+        print(argsobj.formathelp())
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -724,6 +753,7 @@ if __name__ == "__main__":
     subcmd_mergeoverlap(subparsers)
     subcmd_mergegenes(subparsers)
     subcmd_sradownload(subparsers)
+    subcmd_archiver(subparsers)
 
     # Finalize
     subcmd_finalize(subparsers)
