@@ -13,6 +13,7 @@ from time import time
 
 import numpy as np
 import phymmr_tools as bd
+from Bio import AlignIO
 
 from .utils import printv
 from .timekeeper import TimeKeeper, KeeperMode
@@ -92,7 +93,7 @@ def get_headers(lines: list) -> list:
     return result
 
 
-def split_sequences(lines: list, excluded: set) -> tuple:
+def split_sequences(fp, excluded: set) -> tuple:
     """
     Reads over a fasta record in the given list and returns a tuple of two smaller lists.
     The first returned list is the reference sequences found, the second returned list
@@ -103,24 +104,25 @@ def split_sequences(lines: list, excluded: set) -> tuple:
     candidates = []
 
     end_of_references = False
-    for i in range(0, len(lines), 2):
-        header = lines[i].strip()
-        sequence = lines[i + 1].strip()
+    for seq_record in AlignIO.parse(fp, "fasta"):
+        for seq in seq_record:
+            header = ">"+seq.name
+            sequence = str(seq.seq)
 
-        if end_of_references is False:
-            # The reference header identifier is present in the header
-            if header[-1] == ".":
-                if header.split("|")[1].lower() in bad_names:
-                    excluded.add(header)
+            if end_of_references is False:
+                # The reference header identifier is present in the header
+                if header[-1] == ".":
+                    if header.split("|")[1].lower() in bad_names:
+                        excluded.add(header)
 
-                references.append(header)
-                references.append(sequence)
-            else:
-                end_of_references = True
+                    references.append(header)
+                    references.append(sequence)
+                else:
+                    end_of_references = True
 
-        if end_of_references is True:
-            candidates.append(header)
-            candidates.append(sequence)
+            if end_of_references is True:
+                candidates.append(header)
+                candidates.append(sequence)
 
     return references, candidates
 
@@ -405,14 +407,13 @@ def main_process(
     aa_output = os.path.join(args_output, "aa")
     aa_output = os.path.join(aa_output, filename)
 
+    to_be_excluded = set()
     outliers_csv_path = os.path.join(args_output, "logs", "outliers_" + name + ".csv")
     with open(file_input, encoding="UTF-8") as fasta_in:
-        lines = fasta_in.readlines()
+        reference_sequences, candidate_sequences = split_sequences(
+            fasta_in, to_be_excluded
+        )
 
-    to_be_excluded = set()
-    reference_sequences, candidate_sequences = split_sequences(
-        lines, to_be_excluded
-    )
     candidate_headers = [
         header for header in candidate_sequences if header[0] == ">"
     ]
@@ -455,11 +456,17 @@ def main_process(
 
         with open(nt_output_path, "w+", encoding="UTF-8") as nt_output_handle:
             with open(nt_input_path, encoding="UTF-8") as nt_input_handle:
-                lines = nt_input_handle.readlines()
-                non_empty_lines = remove_excluded_sequences(
-                    lines, to_be_excluded
-                )
-                non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
+                lines = []
+                #Deinterleave
+                for seq_record in AlignIO.parse(nt_input_handle, "fasta"):
+                    for seq in seq_record:
+                        lines.append(">"+seq.name)
+                        lines.append(str(seq.seq))
+
+            non_empty_lines = remove_excluded_sequences(
+                lines, to_be_excluded
+            )
+            non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
 
             for i in range(0, len(non_empty_lines), 2):
                 nt_output_handle.write(non_empty_lines[i])
