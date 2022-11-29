@@ -168,7 +168,7 @@ def subcmd_hmmsearch(subparsers):
         "-d", "--debug", type=int, default=0, help="Output debug logs."
     )
     par.add_argument(
-        "--enable-multi-internal", default=False, action='store_true',
+        "--enable-multi-internal", default=False, action="store_true",
         help="Enable Hmmsearch internal multi filter"
     )
     par.set_defaults(
@@ -557,6 +557,107 @@ def flexcull(args):
         print()
         print(args.formathelp())
 
+def finalize(args):
+    from . import finalize
+    if not finalize.main(args):
+        print(args.formathelp())
+
+
+def subcmd_finalize(subparsers):
+    par = subparsers.add_parser(
+        "Finalize",
+        help="Contains a handful of useful functions to finalize a dataset. "
+        "Kick taxa: Exclude taxa listed in the kick txt file. "
+        "Kick columns: Removes columns where there is greater than or equal to "
+        "a supplied percentage of gap characters over data characters. Also "
+        "kicks sequences with less than a supplied integer of data characters. "
+        "Stop codon: Replaces stop characters with X for AA and N for NT. "
+        "Rename taxon: Uses the supplied names csv file to replace reference taxon "
+        "names using the taxa id. "
+        "Sort: Sorts genes based on presence in the supplied target txt file. "
+        "Concat: Merges all the final sequences together into a single fasta file.",
+    )
+    
+    par.add_argument(
+        "INPUT",
+        help="Path to directory of Input folder",
+        action="extend",
+        nargs="+"
+    )
+    par.add_argument(
+        "-k",
+        "--kick_file",
+        type=str,
+        default="TaxaKick.txt",
+        help="Percent"
+    )
+    par.add_argument(
+        "-t",
+        "--target_file",
+        type=str,
+        default="TARGET_GENES_SYRPHID.txt",
+        help="Percent"
+    )
+    par.add_argument(
+        "-n",
+        "--names_csv",
+        type=str,
+        default="names.csv",
+        help="Percent"
+    )
+    par.add_argument(
+        "-kp",
+        "--kick_percentage",
+        type=float,
+        default=0.85,
+        help="Adjustable value for kick columns. Float value of minimum percentage of non-gap characters"
+    )
+    par.add_argument(
+        "-mb",
+        "--minimum_bp",
+        type=int,
+        default=30,
+        help="Adjustable value for kick columns. Integer value of minimum base pairs"
+    )
+    par.add_argument(
+        "-s",
+        "--sort",
+        action="store_true",
+        help="Sort taxa based on target file provided.",
+    )
+    par.add_argument(
+        "-kt",
+        "--kick_taxa",
+        action="store_true",
+        help="Kick taxa present in kick file provided.",
+    )
+    par.add_argument(
+        "-kc",
+        "--kick_columns",
+        action="store_true",
+        help="Kick columns based on amount of gap characters.",
+    )
+    par.add_argument(
+        "-stop",
+        "--stopcodon",
+        action="store_true",
+        help="Replace Stop Codons with X for AA and N for NT.",
+    )
+    par.add_argument(
+        "-r",
+        "--rename",
+        action="store_true",
+        help="Rename reference taxa using names csv file provided.",
+    )
+    par.add_argument(
+        "-c",
+        "--concat",
+        action="store_true",
+        help="Merge resulting on target genes into a final fasta file.",
+    )
+    par.set_defaults(
+        func=finalize, formathelp=par.format_help
+    )
 
 def subcmd_sradownload(sp):
     par = sp.add_parser("SRADownload", help="Download fastq files from www.ncbi.nlm.nih.gov")
@@ -564,7 +665,7 @@ def subcmd_sradownload(sp):
         "INPUT", help="Path to the CSV file input",
     )
     par.add_argument(
-        '-b', '--bin',
+        "-b", "--bin",
         help="Path to SRA Toolkit. Will try system's PATH if not used.",
         required=False
     )
@@ -623,6 +724,9 @@ if __name__ == "__main__":
     subcmd_mergeoverlap(subparsers)
     subcmd_mergegenes(subparsers)
     subcmd_sradownload(subparsers)
+
+    # Finalize
+    subcmd_finalize(subparsers)
 
     args = parser.parse_args()
     if not hasattr(args, "func"):
