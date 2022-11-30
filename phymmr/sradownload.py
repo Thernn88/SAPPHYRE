@@ -1,7 +1,9 @@
 import csv
 import os
+from concurrent.futures import ThreadPoolExecutor
 from multiprocessing.pool import Pool
 from pathlib import Path
+from subprocess import Popen, PIPE
 
 import requests
 from bs4 import BeautifulSoup
@@ -9,10 +11,11 @@ from bs4 import BeautifulSoup
 from phymmr.utils import printv
 
 
-def download_parallel(command, srr_acession, path_to_download, verbose):
+def download_parallel(arguments):
+    command, srr_acession, path_to_download, verbose = arguments
     printv(f"Download {srr_acession} to {path_to_download}...", verbose)
-    r = os.system(f"{command} {srr_acession} -O {path_to_download}")
-    print(r)
+    p = Popen(f"{command} {srr_acession} -O {path_to_download}", shell=True, stdout=PIPE)
+    print(p.stdout.read().decode())
 
 
 def main(args):
@@ -52,5 +55,5 @@ def main(args):
                     # expected_directory = Path(path_to_download, f'{srr_acession}.fastq')
                     arguments.append((cmd, srr_acession, path_to_download, args.verbose))
 
-        with Pool(args.processes) as pool:
-            pool.starmap(download_parallel, arguments, chunksize=1)
+        with ThreadPoolExecutor(args.processes) as pool:
+            pool.map(download_parallel, arguments, chunksize=1)
