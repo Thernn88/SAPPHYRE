@@ -425,12 +425,11 @@ def do_protein(
                         header_a, sequence_a = sequences_at_current_point[split_count]
                         header_b, sequence_b = sequences_at_current_point[split_count + 1]
 
-                        if not comparison_taxa:
-                            comparison_sequence = comparison_sequences[get_ref(header_b)]
-
                         split_key = header_a + header_b
 
                         if protein == "aa":
+                            if not comparison_taxa:
+                                comparison_sequence = comparison_sequences[get_ref(header_b)]
                             if split_key in already_calculated_splits:
                                 split_position = already_calculated_splits[split_key]
                             else:
