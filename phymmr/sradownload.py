@@ -57,3 +57,4 @@ def main(args):
 
         with ThreadPoolExecutor(args.processes) as pool:
             pool.map(download_parallel, arguments, chunksize=1)
+    return True
