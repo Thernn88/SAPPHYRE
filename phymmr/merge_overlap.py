@@ -411,7 +411,8 @@ def do_protein(
                             comparison_taxa = taxons_of_split[0]
 
                         # Grab the reference sequence for the mode taxon
-                        comparison_sequence = comparison_sequences[comparison_taxa]
+                        if comparison_taxa:
+                            comparison_sequence = comparison_sequences[comparison_taxa]
 
                     next_character = sequences_at_current_point[0][1][cursor]
 
