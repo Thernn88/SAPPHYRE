@@ -443,7 +443,7 @@ def main_process(
             if grade == "Fail":
                 to_be_excluded.add(header)
             if debug:
-                with open(outliers_csv_path, "w+", encoding="UTF-8") as outliers_csv:
+                with open(outliers_csv_path, "w" if not os.path.exists(outliers_csv_path) else "a", encoding="UTF-8") as outliers_csv:
                     header = header[1:]
                     result = [header, str(distance), str(ref_dist), str(iqr), grade]
                     outliers_csv.write(",".join(result) + "\n")
