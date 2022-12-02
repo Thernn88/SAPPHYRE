@@ -310,6 +310,8 @@ def do_protein(
 
     gene_out = []
 
+    get_ref = lambda header: header.split("|")[1]
+
     # Grab all the reference sequences
     comparison_sequences = {}
     for header, sequence in references:
@@ -395,22 +397,22 @@ def do_protein(
                     # If there is more than one sequence at this current index
                     splits = amount_of_seqs_at_cursor - 1
 
-                    # Grab most occurring taxon
-                    taxons_of_split = [
-                        header.split("|")[1] for (header, _) in sequences_at_current_point
-                    ]
-
                     if protein == "aa":
+                        # Grab most occurring taxon
+                        taxons_of_split = [
+                            get_ref(header) for (header, _) in sequences_at_current_point
+                        ]
+
+                        comparison_taxa = None
                         most_occuring = most_common_element_with_count(taxons_of_split)
-                        if most_occuring[1] == 1:  # No taxa occur more than once
-                            comparison_taxa = fallback_taxa
-                        else:
+                        if len(taxons_of_split) > 1 and most_occuring[1] > 1:
                             comparison_taxa = most_occuring[0]
+                        elif len(taxons_of_split) == 1:
+                            comparison_taxa = taxons_of_split[0]
 
                         # Grab the reference sequence for the mode taxon
-                        comparison_sequence = comparison_sequences.get(
-                            comparison_taxa, comparison_sequences[fallback_taxa]
-                        )
+                        if comparison_taxa:
+                            comparison_sequence = comparison_sequences[comparison_taxa]
 
                     next_character = sequences_at_current_point[0][1][cursor]
 
@@ -426,6 +428,8 @@ def do_protein(
                         split_key = header_a + header_b
 
                         if protein == "aa":
+                            if not comparison_taxa:
+                                comparison_sequence = comparison_sequences[get_ref(header_b)]
                             if split_key in already_calculated_splits:
                                 split_position = already_calculated_splits[split_key]
                             else:
