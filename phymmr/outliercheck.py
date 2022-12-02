@@ -279,14 +279,22 @@ def compare_means(
             ref_distances.append(bd.blosum62_distance(ref1, ref2))
         # First quartile (Q1)
         try:
-            Q1 = np.percentile(ref_distances, 25, method="midpoint")
+            Q1 = np.nanpercentile(ref_distances, 25, method="midpoint")
         except IndexError:
             Q1 = 0.0
+            print(f'Q1 Runtime Error caused by references in {ref_alignments[0].id.split("|")[0]}')
+        except RuntimeError:
+            Q1 = 0.0
+            print(f'Index Error caused by references in {ref_alignments[0].id.split("|")[0]}')
         # Third quartile (Q3)
         try:
-            Q3 = np.percentile(ref_distances, 75, method="midpoint")
+            Q3 = np.nanpercentile(ref_distances, 75, method="midpoint")
         except IndexError:
             Q3 = 0.0
+            print(f'Index Error caused by references in {ref_alignments[0].id.split("|")[0]}')
+        except RuntimeError:
+            Q3 = 0.0
+            print(f'Runtime Error caused by references in {ref_alignments[0].id.split("|")[0]}')
         # Interquartile range (IQR)
         IQR = Q3 - Q1
         upper_bound = Q3 + (threshold * IQR) + 0.02
@@ -438,15 +446,15 @@ def main_process(
             aa_output.writelines(regulars)
 
         to_be_excluded = set()
-        for outlier in outliers:
-            header, distance, ref_dist, grade, iqr = outlier
-            if grade == "Fail":
-                to_be_excluded.add(header)
-            if debug:
-                with open(outliers_csv_path, "w" if not os.path.exists(outliers_csv_path) else "a", encoding="UTF-8") as outliers_csv:
-                    header = header[1:]
-                    result = [header, str(distance), str(ref_dist), str(iqr), grade]
-                    outliers_csv.write(",".join(result) + "\n")
+        with open(outliers_csv_path, "w", encoding="UTF-8") as outliers_csv:
+            for outlier in outliers:
+                header, distance, ref_dist, grade, iqr = outlier
+                if grade == "Fail":
+                    to_be_excluded.add(header)
+                if debug:
+                        header = header[1:]
+                        result = [header, str(distance), str(ref_dist), str(iqr), grade]
+                        outliers_csv.write(",".join(result) + "\n")
 
         nt_file = filename.replace(".aa.", ".nt.")
         nt_input_path = os.path.join(nt_input, nt_file)
