@@ -4,11 +4,13 @@ Outlier Check
 from __future__ import annotations
 
 import os
+import warnings
 from copy import deepcopy
 from itertools import combinations
 from multiprocessing.pool import Pool
 from pathlib import Path
 from statistics import mean
+
 from time import time
 
 import numpy as np
@@ -18,6 +20,7 @@ from Bio import AlignIO
 from .utils import printv
 from .timekeeper import TimeKeeper, KeeperMode
 ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta")
+
 
 
 class Record:
@@ -274,34 +277,39 @@ def compare_means(
         ]
         ref_distances = []
         for seq1, seq2 in combinations(ref_alignments, 2):
+            #potential speedup
             ref1 = str(seq1)
             ref2 = str(seq2)
-            ref_distances.append(bd.blosum62_distance(ref1, ref2))
+            ref_d = bd.blosum62_distance(ref1, ref2)
+            ref_distances.append(ref_d)
+        if len(ref_distances) < 1:
+            continue
+        assert len(ref_distances) > 0, "ref_distances is too short"
         # First quartile (Q1)
         try:
             Q1 = np.nanpercentile(ref_distances, 25, method="midpoint")
         except IndexError:
             Q1 = 0.0
-            print(f'Q1 Runtime Error caused by references in {ref_alignments[0].id.split("|")[0]}')
-        except RuntimeError:
+            print(f'Q1 Index Error caused by references in {ref_alignments[0].id.split("|")[0]}')
+        except RuntimeWarning:
             Q1 = 0.0
-            print(f'Index Error caused by references in {ref_alignments[0].id.split("|")[0]}')
+            print(f'Runtime Warning caused by references in {ref_alignments[0].id.split("|")[0]}')
         # Third quartile (Q3)
         try:
             Q3 = np.nanpercentile(ref_distances, 75, method="midpoint")
         except IndexError:
             Q3 = 0.0
             print(f'Index Error caused by references in {ref_alignments[0].id.split("|")[0]}')
-        except RuntimeError:
+        except RuntimeWarning:
             Q3 = 0.0
-            print(f'Runtime Error caused by references in {ref_alignments[0].id.split("|")[0]}')
+            print(f'Runtime Warning caused by references in {ref_alignments[0].id.split("|")[0]}')
         # Interquartile range (IQR)
         IQR = Q3 - Q1
         upper_bound = Q3 + (threshold * IQR) + 0.02
         intermediate_list = []
         for candidate in candidates_at_index:
             candidate_distances = candidate_pairwise_calls(candidate, ref_alignments)
-            mean_distance = mean(candidate_distances)
+            mean_distance = np.nanmean(candidate_distances)
             header = candidate.id
             raw_sequence = candidate.raw
             grade = "Fail"
@@ -567,6 +575,7 @@ def do_folder(folder, args):
 
 
 def main(args):
+    warnings.filterwarnings("error")
     global_time = TimeKeeper(KeeperMode.DIRECT)
     if not all(os.path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
