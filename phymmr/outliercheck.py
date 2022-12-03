@@ -8,8 +8,6 @@ from copy import deepcopy
 from itertools import combinations
 from multiprocessing.pool import Pool
 from pathlib import Path
-from statistics import mean
-from time import time
 
 import numpy as np
 import phymmr_tools as bd
@@ -323,7 +321,7 @@ def compare_means(
             grade = "Fail"
             if has_ref_distances:
                 candidate_distances = candidate_pairwise_calls(candidate, ref_alignments)
-                mean_distance = mean(candidate_distances)
+                mean_distance = np.nanmean(candidate_distances)
 
                 if mean_distance <= upper_bound:
                     if sort == "original":
