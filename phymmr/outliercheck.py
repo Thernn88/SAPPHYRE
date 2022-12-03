@@ -8,7 +8,7 @@ from copy import deepcopy
 from itertools import combinations
 from multiprocessing.pool import Pool
 from pathlib import Path
-
+from statistics import mean
 import numpy as np
 import phymmr_tools as bd
 from Bio import AlignIO
@@ -464,16 +464,20 @@ def main_process(
             aa_output.writelines(regulars)
 
     to_be_excluded = set()
-    with open(outliers_csv_path, "w", encoding="UTF-8") as outliers_csv:
+    if debug:
+        with open(outliers_csv_path, "w", encoding="UTF-8") as outliers_csv:
+            for outlier in outliers:
+                header, distance, ref_dist, grade, iqr = outlier
+                if grade == "Fail":
+                    to_be_excluded.add(header)
+                    header = header[1:]
+                result = [header, str(distance), str(ref_dist), str(iqr), grade]
+                outliers_csv.write(",".join(result) + "\n")
+    else:
         for outlier in outliers:
             header, distance, ref_dist, grade, iqr = outlier
             if grade == "Fail":
                 to_be_excluded.add(header)
-            if debug:
-                    header = header[1:]
-                    result = [header, str(distance), str(ref_dist), str(iqr), grade]
-                    outliers_csv.write(",".join(result) + "\n")
-
         nt_file = filename.replace(".aa.", ".nt.")
         nt_input_path = os.path.join(nt_input, nt_file)
         if not os.path.exists(nt_output_path):
