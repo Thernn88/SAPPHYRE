@@ -113,26 +113,32 @@ def split_sequences(fp, excluded: set) -> tuple:
     candidates = []
 
     end_of_references = False
-    for seq_record in AlignIO.parse(fp, "fasta"):
-        for seq in seq_record:
-            header = ">"+seq.name
-            sequence = str(seq.seq)
+    try:
+        for seq_record in AlignIO.parse(fp, "fasta"):
+            for seq in seq_record:
+                header = ">"+seq.name
+                sequence = str(seq.seq)
 
-            if end_of_references is False:
-                # The reference header identifier is present in the header
-                if header[-1] == ".":
-                    if header.split("|")[1].lower() in bad_names:
-                        excluded.add(header)
+                if end_of_references is False:
+                    # The reference header identifier is present in the header
+                    if header[-1] == ".":
+                        if header.split("|")[1].lower() in bad_names:
+                            excluded.add(header)
 
-                    references.append(header)
-                    references.append(sequence)
-                else:
-                    end_of_references = True
+                        references.append(header)
+                        references.append(sequence)
+                    else:
+                        end_of_references = True
 
-            if end_of_references is True:
-                candidates.append(header)
-                candidates.append(sequence)
-
+                if end_of_references is True:
+                    candidates.append(header)
+                    candidates.append(sequence)
+    except ValueError:
+        print(f'Error in file: {fp.name}')
+        raise ValueError("Found sequences of different length")
+    except TypeError:
+        print(f'Wrong IO type: {fp.name}')
+        raise TypeError
     return references, candidates
 
 
