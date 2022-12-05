@@ -18,8 +18,7 @@ def unarchive_worker(file_to_unarchive: Path, verbosity) -> None:
     if file_to_unarchive.exists():
         printv(f"Unarchiving {file_to_unarchive}", verbosity, 2)
         with tarfile.open(str(file_to_unarchive)) as tf:
-            tf.extractall(str(file_to_unarchive).rstrip('.tar.gz'))
-
+            tf.extractall(str(file_to_unarchive.parent))
         os.remove(file_to_unarchive)
 
 def process_folder(args, superfolder_path):
