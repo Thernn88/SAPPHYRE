@@ -649,7 +649,7 @@ def do_folder(folder: Path, args):
 
     tmp_dir = directory_check(folder)
     dupe_tmp_file = Path(tmp_dir, "DupeSeqs.tmp")
-    rocks_db_path = Path(folder, "rocksdb", "sequences")
+    rocks_db_path = Path(folder, "rocksdb", "sequences", "aa")
     if rocks_db_path.exists():
         rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
         dupe_counts = json.loads(rocksdb_db.get("getall:gene_dupes"))

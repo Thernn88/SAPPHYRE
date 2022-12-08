@@ -30,7 +30,9 @@ from .timekeeper import TimeKeeper, KeeperMode
 from .utils import printv, gettempdir,ConcurrentLogger
 
 ROCKSDB_FOLDER_NAME = "rocksdb"
-SEQUENCES_DB_NAME = "sequences"
+SEQUENCES_FOLDER_NAME  = "sequences"
+AA_DB_NAME = "aa"
+NT_DB_NAME = "nt"
 CORE_FOLDER = "PhyMMR"
 ALLOWED_FILETYPES_NORMAL = [
     ".fa",
@@ -211,7 +213,7 @@ class SeqDeduplicator:
         self.fa_file_path = fa_file_path
         self.minimum_sequence_length = minimum_sequence_length
         self.verbose = verbose
-        self.db = db       
+        self.nt_db = db       
 
     def __call__(
         self,
@@ -298,7 +300,7 @@ class SeqDeduplicator:
                 # Get rid of space and > in header (blast/hmmer doesn't like it) Need to push modified external to remove this.
                 preheader = header.replace(" ", "|")  # pre-hash header
                 # Key is a hash of the header
-                self.db.put(xxhash.xxh64_hexdigest(
+                self.nt_db.put(xxhash.xxh64_hexdigest(
                     preheader), f"{preheader}\n{seq}")
 
 
@@ -343,7 +345,9 @@ class DatabasePreparer:
         taxa_destination_directory = secondary_directory.joinpath(self.fto)
 
         rocksdb_path = taxa_destination_directory.joinpath(ROCKSDB_FOLDER_NAME)
-        sequences_db_path = rocksdb_path.joinpath(SEQUENCES_DB_NAME)
+        sequences_folder = rocksdb_path.joinpath(SEQUENCES_FOLDER_NAME)
+        aa_db_path = sequences_folder.joinpath(AA_DB_NAME)
+        nt_db_path = sequences_folder.joinpath(NT_DB_NAME)
 
         if self.clear_database and rocksdb_path.exists():
             self.printv("Clearing old database", self.verbose)
@@ -351,7 +355,8 @@ class DatabasePreparer:
 
         self.printv("Creating rocksdb database", self.verbose)
         rocksdb_path.mkdir(parents=True, exist_ok=True)
-        self.db = wrap_rocks.RocksDB(str(sequences_db_path))
+        self.aa_db = wrap_rocks.RocksDB(str(aa_db_path))
+        self.nt_db = wrap_rocks.RocksDB(str(nt_db_path))
         taxa_destination_directory.mkdir(parents=True, exist_ok=True)
         self.prepared_file_destination = taxa_destination_directory.joinpath(
             self.fto)
@@ -362,7 +367,7 @@ class DatabasePreparer:
         for fa_file_path in self.comp:
             SeqDeduplicator(
                 fa_file_path,
-                self.db,
+                self.nt_db,
                 self.minimum_sequence_length,
                 self.verbose
             )(
@@ -425,7 +430,7 @@ class DatabasePreparer:
                 if next(current_count) == per_level:
                     component += 1
                     prot_components.append(str(component))
-                    self.db.put(f"getprot:{component}", "".join(current_out))
+                    self.aa_db.put(f"getprot:{component}", "".join(current_out))
 
                     #Reset counter and output
                     current_out = []
@@ -434,12 +439,12 @@ class DatabasePreparer:
             if current_out:
                 component += 1
                 prot_components.append(str(component))
-                self.db.put(f"getprot:{component}", "".join(current_out))
+                self.aa_db.put(f"getprot:{component}", "".join(current_out))
             
         if not self.keep_prepared:
             self.prot_path.unlink()
 
-        self.db.put("getall:prot", ",".join(prot_components))
+        self.aa_db.put("getall:prot", ",".join(prot_components))
 
         self.printv(
             f"Translation and storing done! Took {self.taxa_time_keeper.lap():.2f}s", self.verbose)
@@ -454,7 +459,7 @@ class DatabasePreparer:
         )
 
         # Store the count of dupes in the database
-        self.db.put("getall:dupes", json.dumps(self.duplicates))
+        self.aa_db.put("getall:dupes", json.dumps(self.duplicates))
 
         self.printv(
             f"{self.fto} took {self.taxa_time_keeper.differential():.2f}s overall\n", self.verbose)
