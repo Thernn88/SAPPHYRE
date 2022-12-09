@@ -12,6 +12,7 @@ from multiprocessing.pool import Pool
 from time import time
 from typing import List, Optional
 from tempfile import TemporaryDirectory, NamedTemporaryFile
+from concurrent.futures import ThreadPoolExecutor, wait
 
 import phymmr_tools
 import xxhash
@@ -787,8 +788,9 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
     printv(f"{eargs.orthoid} took {t_gene_start.differential():.2f}s. Had {len(output_sequences)} sequences", eargs.verbose, 2)
 
 def reciprocal_search(
-    hmmresults, gene_blast_results, reference_taxa, gene, verbose
+    arg_tuple
 ):
+    hmmresults, gene_blast_results, reference_taxa, gene, verbose = arg_tuple
     t_reciprocal_start = TimeKeeper(KeeperMode.DIRECT)
     printv(f"Ensuring reciprocal hit for hmmresults in {gene}", verbose, 2)
     results = []
@@ -922,9 +924,10 @@ def do_taxa(path, taxa_id, args):
                 args.verbose,
             )
         )
-
-    with Pool(num_threads) as pool:
-        reciprocal_data = pool.starmap(reciprocal_search, argmnts, chunksize=1)
+    with ThreadPoolExecutor(num_threads) as pool:
+        reciprocal_data = pool.map(reciprocal_search, argmnts)
+    # with Pool(num_threads) as pool:
+    #     reciprocal_data = pool.starmap(reciprocal_search, argmnts, chunksize=1)
 
     brh_count = 0
     for data in reciprocal_data:
