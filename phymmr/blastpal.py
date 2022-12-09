@@ -31,7 +31,6 @@ class Result:
         "blast_start", 
         "blast_end",
         "reftaxon",
-        "ref_sequence",
         "hmmsearch_id",
         "gene"
     )
@@ -46,16 +45,9 @@ class Result:
         self.blast_start = int(q_start)
         self.blast_end = int(q_end)
         self.reftaxon = None
-        self.ref_sequence = None
 
-    def to_json(self):
-        return {
-                    "hmm_id": self.hmmsearch_id,
-                    "gene": self.gene,
-                    "target": self.target,
-                    "reftaxon": self.reftaxon,
-                    "ref_sequence": self.ref_sequence
-                }
+    def to_csv(self):
+        return f"{self.hmmsearch_id},{self.gene},{self.reftaxon}"
 
 
 @dataclass
@@ -124,7 +116,7 @@ def do(
                 if (
                     this_result.score >= gene_conf.blast_minimum_score
                 ):
-                    gene_out.append(this_result.to_json())
+                    gene_out.append(this_result.to_csv())
 
     return gene_out
 
@@ -294,7 +286,7 @@ def run_process(args, input_path) -> None:
             this_batch.append(result)
             if next(counter) == args.max_blast_batch_size:
                 recipe.append(batch_i)
-                db.put(f'blastbatch:{batch_i}', json.dumps(this_batch))
+                db.put(f'blastbatch:{batch_i}', "\n".join(this_batch))
                 batch_i += 1
                 counter = count()
                 this_batch = []
@@ -302,7 +294,7 @@ def run_process(args, input_path) -> None:
     
     if this_batch:
         recipe.append(batch_i)
-        db.put(f'blastbatch:{batch_i}', json.dumps(this_batch))
+        db.put(f'blastbatch:{batch_i}', "\n".join(this_batch))
         batch_i += 1
 
     db.put('blastbatch:all', ','.join(map(str, recipe)))
