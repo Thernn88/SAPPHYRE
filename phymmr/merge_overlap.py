@@ -351,10 +351,10 @@ def do_protein(
             consists_of = []
 
             for sequence in this_sequences:
-                if protein == "aa":
-                    count = dupe_counts.get(sequence[4], 0) + dupe_counts.get(sequence[4] + "|" + sequence[5], 0) + 1
-                else:
-                    count = dupe_counts.get(sequence[4], 0) + 1
+                # if protein == "aa":
+                count = dupe_counts.get(sequence[4], 0) + dupe_counts.get(sequence[4] + "|" + sequence[5], 0) + 1
+                # else:
+                    # count = dupe_counts.get(sequence[4], 0) + 1
                 consists_of.append((sequence[2], sequence[3], count))
 
             # Gets last pipe of each component of a merge
