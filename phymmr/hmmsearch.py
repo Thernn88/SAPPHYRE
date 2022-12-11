@@ -160,14 +160,12 @@ class Hit:
             "header": self.header,
             "gene": self.gene,
             "score": self.score,
-            "hmm_evalue": self.evalue,
             "hmm_start": self.hmm_start,
             "hmm_end": self.hmm_end,
             "ali_start": self.ali_start,
             "ali_end": self.ali_end,
             "env_start": self.env_start,
             "env_end": self.env_end,
-            "uuid": self.uuid,
             "hmm_id": self.hmm_id,
             "hmm_sequence": self.hmm_sequence
         }
