@@ -282,7 +282,7 @@ def get_blastresults(rocks_hits_db):
         batch_rows = json.loads(batch_rows)
         for result in batch_rows:
             gene = result["gene"]
-            hmm_id = result["hmm_id"]
+            hmm_id = result["hmmId"]
             this_result = Result(result)
             blast_results.setdefault(gene, {})
             blast_results[gene].setdefault(hmm_id, [])

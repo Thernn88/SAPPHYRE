@@ -291,7 +291,7 @@ def run_process(args, input_path) -> None:
             this_batch.append(result)
             if next(counter) == args.max_blast_batch_size:
                 recipe.append(batch_i)
-                db.put(f'blastbatch:{batch_i}', "\n".join(this_batch))
+                db.put(f'blastbatch:{batch_i}', json.dumps(this_batch))
                 batch_i += 1
                 counter = count()
                 this_batch = []
@@ -299,7 +299,7 @@ def run_process(args, input_path) -> None:
     
     if this_batch:
         recipe.append(batch_i)
-        db.put(f'blastbatch:{batch_i}', "\n".join(this_batch))
+        db.put(f'blastbatch:{batch_i}', json.dumps(this_batch))
         batch_i += 1
 
     db.put('blastbatch:all', ','.join(map(str, recipe)))
