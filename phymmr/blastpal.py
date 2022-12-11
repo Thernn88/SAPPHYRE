@@ -31,7 +31,6 @@ class Result:
         "blast_start", 
         "blast_end",
         "reftaxon",
-        "ref_sequence",
         "hmmsearch_id",
         "gene"
     )
@@ -46,15 +45,13 @@ class Result:
         self.blast_start = int(q_start)
         self.blast_end = int(q_end)
         self.reftaxon = None
-        self.ref_sequence = None
 
     def to_json(self):
         return {
-                    "hmm_id": self.hmmsearch_id,
+                    "hmmId": self.hmmsearch_id,
                     "gene": self.gene,
                     "target": self.target,
-                    "reftaxon": self.reftaxon,
-                    "ref_sequence": self.ref_sequence
+                    "refTaxon": self.reftaxon,
                 }
 
 

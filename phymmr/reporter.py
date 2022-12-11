@@ -5,12 +5,14 @@ import math
 import os
 import shutil
 import sqlite3
+import sys
 import uuid
 from collections import namedtuple
 from multiprocessing.pool import Pool
 from time import time
 from typing import List, Optional
 from tempfile import TemporaryDirectory, NamedTemporaryFile
+from concurrent.futures import ThreadPoolExecutor, wait
 
 import phymmr_tools
 import xxhash
@@ -34,6 +36,17 @@ MainArgs = namedtuple(
     ]
 )
 
+class Result:
+    __slots__ = (
+        "hmm_id",
+        "gene",
+        "ref_taxon"
+        )
+
+    def __init__(self, as_json) -> None:
+        self.hmm_id = as_json["hmmId"]
+        self.gene = as_json["gene"]
+        self.ref_taxon = as_json["refTaxon"]
 
 class Hit:
     __slots__ = (
@@ -269,10 +282,11 @@ def get_blastresults(rocks_hits_db):
         batch_rows = json.loads(batch_rows)
         for result in batch_rows:
             gene = result["gene"]
-            hmm_id = result["hmm_id"]
+            hmm_id = result["hmmId"]
+            this_result = Result(result)
             blast_results.setdefault(gene, {})
             blast_results[gene].setdefault(hmm_id, [])
-            blast_results[gene][hmm_id].append(result)
+            blast_results[gene][hmm_id].append(this_result)
 
     return blast_results
 
@@ -776,11 +790,13 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
     printv(f"{eargs.orthoid} took {t_gene_start.differential():.2f}s. Had {len(output_sequences)} sequences", eargs.verbose, 2)
 
 def reciprocal_search(
-    hmmresults, gene_blast_results, reference_taxa, gene, verbose
+    arg_tuple
 ):
+    hmmresults, gene_blast_results, reference_taxa, gene, verbose = arg_tuple
     t_reciprocal_start = TimeKeeper(KeeperMode.DIRECT)
     printv(f"Ensuring reciprocal hit for hmmresults in {gene}", verbose, 2)
     results = []
+
     for hit in hmmresults:
         hmm_id = str(hit.hmm_id)
 
@@ -795,21 +811,20 @@ def reciprocal_search(
         this_match_reftaxon = None
 
         for result in blast_results:
-            ref_taxon = result["reftaxon"]
+            ref_taxon = result.ref_taxon
 
             if ref_taxon in reftaxon_count:
                 if not strict_search_mode:
-                    this_match_reftaxon, this_match_ref_sequence = ref_taxon, result["ref_sequence"]
+                    this_match_reftaxon = ref_taxon
                     break
                 if ref_taxon not in ref_taxon_to_target:
-                    ref_taxon_to_target[ref_taxon] = (ref_taxon, result["ref_sequence"])
+                    ref_taxon_to_target[ref_taxon] = ref_taxon
                 reftaxon_count[ref_taxon] += 1  # only need the one
                 if all(reftaxon_count.values()):  # Everything's been counted
-                    this_match_reftaxon, this_match_ref_sequence = ref_taxon_to_target[max(reftaxon_count)]  # Grab most hit reftaxon
+                    this_match_reftaxon = ref_taxon_to_target[max(reftaxon_count)]  # Grab most hit reftaxon
                     break
         
         if this_match_reftaxon:
-            hit.proteome_sequence = this_match_ref_sequence
             hit.reftaxon = this_match_reftaxon
             results.append(hit)
 
@@ -911,9 +926,10 @@ def do_taxa(path, taxa_id, args):
                 args.verbose,
             )
         )
-
-    with Pool(num_threads) as pool:
-        reciprocal_data = pool.starmap(reciprocal_search, argmnts, chunksize=1)
+    with ThreadPoolExecutor(num_threads) as pool:
+        reciprocal_data = pool.map(reciprocal_search, argmnts)
+    # with Pool(num_threads) as pool:
+    #     reciprocal_data = pool.starmap(reciprocal_search, argmnts, chunksize=1)
 
     brh_count = 0
     for data in reciprocal_data:
