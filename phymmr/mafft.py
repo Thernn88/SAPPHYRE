@@ -17,14 +17,19 @@ ALN_FOLDER = "aln"
 
 def process_genefile(filewrite, fileread):
     ref_og_hashmap = {}
+    cand_og_hashmap = {}
     with open(fileread) as fp:
         for line in fp:
-            if line[0] == ">" and line[-2] == ".":
-                ref_og_hashmap[line.split("|")[2]] = line
-                next(fp)  # Skip this line and next line
+            if line[0] == ">":
+                if line[-2] == ".":
+                    ref_og_hashmap[line.split("|")[2]] = line
+                    next(fp)  # Skip this line and next line
+                else:
+                    cand_og_hashmap[line[:244]] = line
+                    filewrite.write(line)
             else:
                 filewrite.write(line)
-    return ref_og_hashmap
+    return ref_og_hashmap, cand_og_hashmap
 
 
 CmdArgs = namedtuple(
@@ -40,7 +45,7 @@ def run_command(args: CmdArgs) -> None:
         printv(f"Doing: {args.gene}", args.verbose, 2)
 
     with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(mode="w+", dir=tmpdir) as tmpfile:
-        ref_og_hashmap = process_genefile(tmpfile, args.gene_file)
+        ref_og_hashmap, cand_og_hashmap = process_genefile(tmpfile, args.gene_file)
         tmpfile.file.flush()
         command = args.string.format(
             tmpfile=tmpfile.name,
@@ -51,14 +56,12 @@ def run_command(args: CmdArgs) -> None:
         os.system(command)
 
     # Overwrite reference headers with original headers
-    non_ref_found = False
     with open(args.result_file, "r+") as fp_out:
         out = []
         for line in fp_out:
-            if line[0] == ">" and not non_ref_found:
+            if line[0] == ">":
                 if "|" in line:
-                    non_ref_found = True
-                    out.append(line)
+                    out.append(cand_og_hashmap[line[:244]])
                 else:
                     out.append(ref_og_hashmap[line[1:].strip()])
             else:
