@@ -46,8 +46,13 @@ class Result:
         self.blast_end = int(q_end)
         self.reftaxon = None
 
-    def to_csv(self):
-        return f"{self.hmmsearch_id},{self.gene},{self.reftaxon}"
+    def to_json(self):
+        return {
+                    "hmmId": self.hmmsearch_id,
+                    "gene": self.gene,
+                    "target": self.target,
+                    "refTaxon": self.reftaxon,
+                }
 
 
 @dataclass
@@ -116,7 +121,7 @@ def do(
                 if (
                     this_result.score >= gene_conf.blast_minimum_score
                 ):
-                    gene_out.append(this_result.to_csv())
+                    gene_out.append(this_result.to_json())
 
     return gene_out
 

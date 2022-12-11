@@ -43,8 +43,10 @@ class Result:
         "ref_taxon"
         )
 
-    def __init__(self, as_csv) -> None:
-        self.hmm_id, self.gene, self.ref_taxon = as_csv.split(',')
+    def __init__(self, as_json) -> None:
+        self.hmm_id = as_json["hmmId"]
+        self.gene = as_json["gene"]
+        self.ref_taxon = as_json["refTaxon"]
 
 class Hit:
     __slots__ = (
@@ -277,11 +279,11 @@ def get_blastresults(rocks_hits_db):
 
     for batch_i in batches:
         batch_rows = rocks_hits_db.get(f"blastbatch:{batch_i}")
-        batch_rows = batch_rows.split("\n")
+        batch_rows = json.loads(batch_rows)
         for result in batch_rows:
+            gene = result["gene"]
+            hmm_id = result["hmm_id"]
             this_result = Result(result)
-            gene = this_result.gene
-            hmm_id = this_result.hmm_id
             blast_results.setdefault(gene, {})
             blast_results[gene].setdefault(hmm_id, [])
             blast_results[gene][hmm_id].append(this_result)
