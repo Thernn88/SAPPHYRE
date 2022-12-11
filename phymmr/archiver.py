@@ -1,29 +1,28 @@
 import os
 from multiprocessing.pool import Pool
 import tarfile
-from pathlib import Path
 from shutil import rmtree
 from .utils import printv
 from .timekeeper import TimeKeeper, KeeperMode
 
-def archive_worker(folder_to_archive: Path, verbosity) -> None:
-    if folder_to_archive.is_dir():
+def archive_worker(folder_to_archive, verbosity) -> None:
+    if os.path.isdir(folder_to_archive):
         printv(f"Archiving {folder_to_archive}", verbosity, 2)
         with tarfile.open(str(folder_to_archive) + ".tar.gz", "w:gz") as tf:
-            tf.add(str(folder_to_archive), arcname=folder_to_archive.parts[-1])
+            tf.add(str(folder_to_archive), arcname=os.path.split(folder_to_archive)[-1])
             
         rmtree(folder_to_archive)
 
-def unarchive_worker(file_to_unarchive: Path, verbosity) -> None:
-    if file_to_unarchive.exists():
+def unarchive_worker(file_to_unarchive, verbosity) -> None:
+    if os.path.exists(file_to_unarchive):
         printv(f"Unarchiving {file_to_unarchive}", verbosity, 2)
-        with tarfile.open(str(file_to_unarchive)) as tf:
-            tf.extractall(str(file_to_unarchive.parent))
+        with tarfile.open(file_to_unarchive) as tf:
+            tf.extractall(os.path.split(file_to_unarchive)[0])
 
 def process_folder(args, superfolder_path):
     tk = TimeKeeper(KeeperMode.DIRECT)
     if not args.specific_directories:
-        directories_to_archive = ['*/aa', '*/nt', '*/mafft', '*/nt_aligned','*/outlier','*/trimmed','*/aa_merged','*/nt_merged','*/hmmsearch','*/rocksdb','*/blast']
+        directories_to_archive = ['mafft', 'nt_aligned','outlier','trimmed','aa_merged','nt_merged','hmmsearch','rocksdb','blast','aa', 'nt']
     else:
         directories_to_archive = args.specific_directories
 
@@ -31,31 +30,39 @@ def process_folder(args, superfolder_path):
         directories_to_archive = [i+'.tar.gz' for i in directories_to_archive]
     
     arguments = []
-    for gp in directories_to_archive:
-        for folder in superfolder_path.glob(gp):
-            arguments.append((folder, args.verbose))
+    for root, _, files in os.walk(superfolder_path):
+        if args.unarchive:
+            for file in files:
+                if '.tar.gz' in file:
+                    arguments.append((os.path.join(root, file), args.verbose,))
+        else:
+            if os.path.basename(root) in directories_to_archive:
+                if os.path.basename(os.path.split(root)[0]) in directories_to_archive: 
+                    continue
+                if os.path.basename(os.path.split(root)[0]) == "sequences": #rocksdb/sequences
+                    continue
 
-    if args.unarchive:
-        printv(f"Found {len(arguments)} directories to unarchive", args.verbose)
-    else:
-        printv(f"Found {len(arguments)} directories to archive", args.verbose)
-
-    command = unarchive_worker if args.unarchive else archive_worker
-    with Pool(args.processes) as pool:
-        pool.starmap(command, arguments)
-    
-    printv(f"Done! Took {tk.lap():.2f}s overall.", args.verbose)
+                arguments.append((root, args.verbose,))
+    return arguments
             
 def main(args):
     global_time = TimeKeeper(KeeperMode.DIRECT)
     if not all(os.path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
-        
+    
+    arguments = []
     for input_path in args.INPUT:
-        process_folder(args, Path(input_path))
-    if len(args.INPUT) > 1 or not args.verbose:
-        printv(f"Done! Took {global_time.differential():.2f}s overall.", args.verbose, 0)
+        arguments.extend(process_folder(args, input_path))
+    command = unarchive_worker if args.unarchive else archive_worker
+    if args.unarchive:
+        printv(f"Found {len(arguments)} directories to unarchive", args.verbose)
+    else:
+        printv(f"Found {len(arguments)} directories to archive", args.verbose)
+    with Pool(args.processes) as pool:
+        pool.starmap(command, arguments)
+        
+    printv(f"Done! Took {global_time.differential():.2f}s overall.", args.verbose, 0)
     return True
 
 if __name__ == "__main__":
