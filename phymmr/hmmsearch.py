@@ -6,6 +6,7 @@ import math
 import os
 import subprocess
 from functools import cached_property
+from concurrent.futures import ThreadPoolExecutor
 from multiprocessing.pool import Pool
 from pathlib import Path
 
@@ -349,7 +350,8 @@ def multi_filter_dupes(
     return [i for i in this_hits if i is not None], filtered_sequences_log, header 
 
 
-def internal_multi_filter(flagged_headers, this_gene_hits, minimum_overlap_multi_internal, debug, gene):
+def internal_multi_filter(arg_tuple):
+    flagged_headers, this_gene_hits, minimum_overlap_multi_internal, debug, gene = arg_tuple
     this_gene_hits.sort(key=lambda hit: hit.score, reverse=True)
 
     bh_based_results = {}
@@ -797,8 +799,8 @@ def run_process(args, input_path: str) -> None:
                             gene,
                         )
                     )
-            with Pool(num_threads) as pool:
-                    internal_multi_data = pool.starmap(internal_multi_filter, arguments, chunksize=1)
+            with ThreadPoolExecutor(num_threads) as pool:
+                    internal_multi_data = pool.map(internal_multi_filter, arguments)
 
         for passes, log, gene in internal_multi_data:
 
