@@ -46,6 +46,14 @@ ALLOWED_FILETYPES_GZ = [f"{ft}.gz" for ft in ALLOWED_FILETYPES_NORMAL]
 
 ALLOWED_FILETYPES = ALLOWED_FILETYPES_NORMAL + ALLOWED_FILETYPES_GZ
 
+class IndexIter:
+	def __init__(self):
+		self.x = 1
+	def __str__(self):
+		return str(self.x)
+	def __next__(self):
+		self.x += 1
+
 def truncate_taxa(header: str, extension=None) -> str:
     """
     Given a fasta header, checks the end for problematic tails.
@@ -222,7 +230,7 @@ class SeqDeduplicator:
         rev_comp_save: Dict[str, int],
         transcript_mapped_to: Dict[str, str],
         dupes: count[int],
-        this_index: int,
+        this_index: IndexIter,
         fa_file_out: List[str],
         dedup_time: List[int],
     ):
@@ -255,8 +263,7 @@ class SeqDeduplicator:
 
             for seq in N_trim(parent_seq, self.minimum_sequence_length, trim_times):
                 length = len(seq)
-                header_index = next(this_index)
-                header = f"NODE_{header_index}_length_{length}"
+                header = f"NODE_{this_index}_length_{length}"
                 seq_hash = xxhash.xxh64(seq).hexdigest()
 
                 # Check for dupe, if so save how many times that sequence occured
@@ -294,6 +301,7 @@ class SeqDeduplicator:
 
                 # If no dupe, write to prepared file and db
                 line = f">{header}\n{seq}\n"
+                next(this_index)
 
                 fa_file_out.append(line)
 
@@ -330,7 +338,7 @@ class DatabasePreparer:
         self.rev_comp_save = {}
         self.transcript_mapped_to = {}
         self.dupes = count()
-        self.this_index = count(1)
+        self.this_index = IndexIter()
         self.dedup_time = dedup_time
 
     def init_db(
@@ -449,7 +457,7 @@ class DatabasePreparer:
         self.printv(
             f"Translation and storing done! Took {self.taxa_time_keeper.lap():.2f}s", self.verbose)
 
-        sequence_count = next(self.this_index)
+        sequence_count = str(self.this_index)
 
         self.printv(
             "Inserted {} sequences over {} batches. Found {} NT and {} AA dupes.".format(
