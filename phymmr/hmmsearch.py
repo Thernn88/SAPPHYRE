@@ -896,7 +896,7 @@ def run_process(args, input_path: str) -> None:
 
                 hit_id += 1
                 hit.hmm_sequence = "".join(this_sequences[hit.header])
-                hit.hmm_id = hit_id
+                hit.hmm_id = hit.header.split("_")[1]
                 if current_hit_count >= MAX_HMM_BATCH_SIZE:
                     data = json.dumps(current_batch)
                     del current_batch
