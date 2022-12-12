@@ -31,10 +31,12 @@ def process_folder(args, superfolder_path):
     
     arguments = []
     for root, _, files in os.walk(superfolder_path):
+        #  unarchive logic
         if args.unarchive:
             for file in files:
-                if '.tar.gz' in file:
+                if file in directories_to_archive:
                     arguments.append((os.path.join(root, file), args.verbose,))
+        #  archive logic
         else:
             if os.path.basename(root) in directories_to_archive:
                 if os.path.basename(os.path.split(root)[0]) in directories_to_archive: 
