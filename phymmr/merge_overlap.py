@@ -14,6 +14,7 @@ from typing import Union, Literal
 
 import wrap_rocks
 from Bio.Seq import Seq
+from Bio import AlignIO
 
 from .utils import printv
 from .timekeeper import TimeKeeper, KeeperMode
@@ -124,32 +125,32 @@ def most_common_element_with_count(iterable) -> tuple:
     return winner
 
 
-def parse_fasta(text_input: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+def parse_fasta(fasta_io) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """
     Returns references from raw fasta text input.
     """
-    lines = text_input.split("\n")
-
     references: list[tuple[str, str]] = []
     candidates: list[tuple[str, str]] = []
-
-    while "" in lines:
-        lines.remove("")  # Remove blank lines
-
     end_of_references = False
-    for i in range(0, len(lines), 2):
-        header = lines[i]
-        sequence = lines[i + 1]
+    try:
+        fasta_file = AlignIO.parse(fasta_io, "fasta")
+        for seq_record in fasta_file:
+            for seq in seq_record:
+                header = seq.name
+                sequence = str(seq.seq)
 
-        if end_of_references is False:
-            # the reference header identifier is present in the header
-            if header[-1] == ".":
-                references.append((header, sequence))
-            else:
-                end_of_references = True
+            if end_of_references is False:
+                # the reference header identifier is present in the header
+                if header[-1] == ".":
+                    references.append((header, sequence))
+                else:
+                    end_of_references = True
 
-        if end_of_references is True:
-            candidates.append((header, sequence))
+            if end_of_references is True:
+                candidates.append((header, sequence))
+    except ValueError as e:
+        print(f"Fatal error in {os.path.basename(fasta_io.name)}: {e}")
+
 
     return references, candidates
 
@@ -314,7 +315,7 @@ def do_protein(
     debug=None,
 ):
     with open(path, encoding="UTF-8") as fp:
-        references, candidates = parse_fasta(fp.read())
+        references, candidates = parse_fasta(fp)
 
     gene_out = []
 
