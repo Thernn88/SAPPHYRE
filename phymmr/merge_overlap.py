@@ -197,7 +197,11 @@ def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
     current_region = None
 
     for start, end, header, sequence in taxa_pair:
-        node, frame = header.split('|')[-2:]
+        if "NODE" in header.split("|")[-1]:
+            node = header.split("|")[-1]
+            frame = ""
+        else:
+            node, frame = header.split('|')[-2:]
         this_object = (start, end, header, sequence, node, frame)
 
         if current_region is None or find_overlap((start, end), current_region) is None:
@@ -286,7 +290,11 @@ def grab_merge_start_end(taxa_pair: list) -> list[tuple]:
     merge_end = max(seq[1] for seq in taxa_pair)
     sequences = []
     for start, end, header, sequence in taxa_pair:
-        node, frame = header.split('|')[-2:]
+        if "NODE" in header.split("|")[-1]:
+            node = header.split("|")[-1]
+            frame = ""
+        else:
+            node, frame = header.split('|')[-2:]
         this_object = (start, end, header, sequence, node, frame)
         sequences.append(this_object)
     
@@ -344,7 +352,10 @@ def do_protein(
             # Use the header of the sequence that starts first as the base
             base_header = this_sequences[0][2]
 
-            this_gene, _, this_taxa_id, node, frame = base_header.split("|")
+            try:
+                this_gene, _, this_taxa_id, node, frame = base_header.split("|")
+            except ValueError:
+                this_gene, _, this_taxa_id, node = base_header.split("|")
             
 
             # Create a list of each header and sequence that is present in this overlap region
@@ -567,7 +578,11 @@ def do_protein(
                 gene_out.append(">" + this_taxa_id + "|MajorityRulesAssigned")
                 gene_out.append("".join(majority_assignments))
                 for header, sequence, count in consists_of:
-                    node, frame = header.split("|")[3:]
+                    if "NODE" in header.split("|")[-1]:
+                        node = header.split("|")[-1]
+                        frame = ""
+                    else:
+                        node, frame = header.split('|')[-2:]
                     gene_out.append(f">{node}|{frame}|{count}")
                     gene_out.append(sequence)
     
@@ -639,11 +654,12 @@ def do_folder(folder: Path, args):
     folder_time = TimeKeeper(KeeperMode.DIRECT)
 
     printv(f"Processing: {os.path.basename(folder)}", args.verbose, 0)
-    input_path = Path(folder, "outlier")
+    input_path = Path(folder)
     aa_input = Path(input_path, args.aa_input)
     nt_input = Path(input_path, args.nt_input)
 
     if not os.path.exists(aa_input):
+        print(aa_input)
         printv(f"WARNING: Can't find aa folder for taxa, {folder}", args.verbose, 0)
         return
 

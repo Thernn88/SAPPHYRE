@@ -362,14 +362,14 @@ def subcmd_mergeoverlap(subparsers):
         "-aa",
         "--aa_input",
         type=str,
-        default="aa",
+        default="outlier/aa",
         help="Path to directory of AA folder",
     )
     par.add_argument(
         "-nt",
         "--nt_input",
         type=str,
-        default="nt",
+        default="outlier/nt",
         help="Path to directory of NT folder",
     )
     par.add_argument(
