@@ -139,15 +139,15 @@ def parse_fasta(fasta_io) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]
                 header = seq.name
                 sequence = str(seq.seq)
 
-            if end_of_references is False:
-                # the reference header identifier is present in the header
-                if header[-1] == ".":
-                    references.append((header, sequence))
-                else:
-                    end_of_references = True
+                if end_of_references is False:
+                    # the reference header identifier is present in the header
+                    if header[-1] == ".":
+                        references.append((header, sequence))
+                    else:
+                        end_of_references = True
 
-            if end_of_references is True:
-                candidates.append((header, sequence))
+                if end_of_references is True:
+                    candidates.append((header, sequence))
     except ValueError as e:
         print(f"Fatal error in {os.path.basename(fasta_io.name)}: {e}")
 
