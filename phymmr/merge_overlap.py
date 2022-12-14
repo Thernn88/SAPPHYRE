@@ -586,7 +586,20 @@ def do_protein(
                         node, frame = header.split('|')[-2:]
                     gene_out.append(f">{node}|{frame}|{count}")
                     gene_out.append(sequence)
-    
+
+    if protein == "nt": #Remove empty columns
+        to_keep = set()
+        for i in range(len(gene_out[-1])):
+            keep_this = False
+            for j in range(0, len(gene_out), 2): #Every second element will be a sequence
+                if gene_out[j+1][i] != "-":
+                    keep_this = True
+                    break
+            if keep_this: to_keep.add(i)
+        
+        for i in range(0, len(gene_out), 2):
+            gene_out[i+1] = "".join([let for i, let in enumerate(gene_out[i+1]) if i in to_keep])
+
     output_path = os.path.join(output_dir, f"{protein}_merged", gene)
 
     return output_path, gene_out
