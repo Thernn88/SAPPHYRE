@@ -159,23 +159,25 @@ def do_gene(
         sequence_length = len(sequence)
 
         for i, char in enumerate(sequence):
-            all_dashes_at_position = all_dashes_by_index[i]
             if i == sequence_length - offset:
                 kick = True
                 break
 
             # Don't allow cull to point of all dashes
-            if not all_dashes_at_position and char != "-":
-                if not char in character_at_each_pos[i]:
-                    continue
-            else:
+            if char == "-":
+                continue
+            
+            all_dashes_at_position = all_dashes_by_index[i]
+            if all_dashes_at_position:
+                continue
+            if not char in character_at_each_pos[i]:
                 continue
 
             pass_all = True
             for match_i in range(1, amt_matches):
-                if (not sequence[i + match_i] in character_at_each_pos[i + match_i]):
-                    pass_all = False
-                    break
+                    if sequence[i + match_i] == "-" or (not sequence[i + match_i] in character_at_each_pos[i + match_i]):
+                        pass_all = False
+                        break
 
             if pass_all:
                 cull_start = i
@@ -189,22 +191,24 @@ def do_gene(
 
                 char = sequence[i]
 
-                all_dashes_at_position = all_dashes_by_index[i]
+                
                 
                 if i < cull_start + offset:
                     kick = True
                     break
+                if char == "-":
+                    continue
 
-                if not all_dashes_at_position and char != "-":
+                all_dashes_at_position = all_dashes_by_index[i]
+                if all_dashes_at_position:
                     # Don't allow cull to point of all dashes
-                    if not char in character_at_each_pos[i]:
-                        continue
-                else:
+                    continue
+                if not char in character_at_each_pos[i]:
                     continue
 
                 pass_all = True
                 for match_i in range(1, amt_matches):
-                    if (not sequence[i - match_i] in character_at_each_pos[i - match_i]):
+                    if sequence[i - match_i] == "-" or (not sequence[i - match_i] in character_at_each_pos[i - match_i]):
                         pass_all = False
                         break
 
