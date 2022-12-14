@@ -142,7 +142,7 @@ def parse_fasta(fasta_io) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]
                 if end_of_references is False:
                     # the reference header identifier is present in the header
                     if header[-1] == ".":
-                        references.append((header, sequence))
+                        references.append((f">{header}", sequence))
                     else:
                         end_of_references = True
 
@@ -330,16 +330,16 @@ def do_protein(
             taxon = header.split("|")[1]
             comparison_sequences[taxon] = sequence
 
-    # Grab all the candidate sequences and sort into reference taxa based groups
+    # Grab all the candidate sequences and sort into taxa id based groups
     taxa_groups = {}
-    get_taxa = lambda header: header.split('|')[1]
+    get_taxa = lambda header: header.split('|')[2]
     for header, sequence in candidates:
         start, end = get_start_end(sequence)
         this_object = (start, end, header, sequence)
         taxa = get_taxa(header)
-        taxa_groups.setdefault("all", []).append(this_object)
+        taxa_groups.setdefault(taxa, []).append(this_object)
 
-    for this_taxa, sequences_to_merge in taxa_groups.items():
+    for _, sequences_to_merge in taxa_groups.items():
         # Sort by start position
         sequences_to_merge.sort(key=lambda x: x[0])
 
@@ -364,7 +364,7 @@ def do_protein(
 
             for sequence in this_sequences:
                 # if protein == "aa":
-                count = dupe_counts.get(sequence[4], 0) + dupe_counts.get(sequence[4] + "|" + sequence[5], 0) + 1
+                count = dupe_counts.get(sequence[4], 0) + dupe_counts.get(f"{sequence[4]}|{sequence[5]}", 0) + 1
                 # else:
                     # count = dupe_counts.get(sequence[4], 0) + 1
                 consists_of.append((sequence[2], sequence[3], count))
@@ -571,12 +571,12 @@ def do_protein(
 
             new_merge = Seq("").join(new_merge)
 
-            gene_out.append(final_header)
+            gene_out.append(f">{final_header}")
             gene_out.append(str(new_merge))
 
             if debug:
                 # If debug enabled add each component under final merge
-                gene_out.append(">" + this_taxa_id + "|MajorityRulesAssigned")
+                gene_out.append(f">{this_taxa_id}|MajorityRulesAssigned")
                 gene_out.append("".join(majority_assignments))
                 for header, sequence, count in consists_of:
                     if "NODE" in header.split("|")[-1]:
