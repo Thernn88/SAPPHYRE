@@ -27,6 +27,7 @@ MainArgs = namedtuple(
         'nucleotide',
         'matches',
         'base_pair',
+        'match_percent'
     ]
 )
 
@@ -101,7 +102,7 @@ def do_gene(
     output: str,
     amt_matches: int,
     aa_file: str,
-    tmp_path: str,
+    match_percent: bool,
     debug: bool,
     bp: int,
     verbosity: int,
@@ -129,9 +130,9 @@ def do_gene(
     for header, sequence in references:
         for i, char in enumerate(sequence):
             if i not in character_at_each_pos:
-                character_at_each_pos[i] = {char}
+                character_at_each_pos[i] = [char]
             else:
-                character_at_each_pos[i].add(char)
+                character_at_each_pos[i].append(char)
             #  if char isnt a hyphen, this positions can't be all dashes
             if char != "-":
                 all_dashes_by_index[i] = False
@@ -170,12 +171,12 @@ def do_gene(
             all_dashes_at_position = all_dashes_by_index[i]
             if all_dashes_at_position:
                 continue
-            if not char in character_at_each_pos[i]:
+            if not character_at_each_pos[i].count(char) / len(character_at_each_pos[i]) >= match_percent:
                 continue
 
             pass_all = True
             for match_i in range(1, amt_matches):
-                    if sequence[i + match_i] == "-" or (not sequence[i + match_i] in character_at_each_pos[i + match_i]):
+                    if sequence[i + match_i] == "-" or (not character_at_each_pos[i + match_i].count(sequence[i + match_i]) / len(character_at_each_pos[i + match_i]) >= match_percent):
                         pass_all = False
                         break
 
@@ -191,8 +192,6 @@ def do_gene(
 
                 char = sequence[i]
 
-                
-                
                 if i < cull_start + offset:
                     kick = True
                     break
@@ -203,12 +202,12 @@ def do_gene(
                 if all_dashes_at_position:
                     # Don't allow cull to point of all dashes
                     continue
-                if not char in character_at_each_pos[i]:
+                if not character_at_each_pos[i].count(char) / len(character_at_each_pos[i]) >= match_percent:
                     continue
 
                 pass_all = True
                 for match_i in range(1, amt_matches):
-                    if sequence[i - match_i] == "-" or (not sequence[i - match_i] in character_at_each_pos[i - match_i]):
+                    if sequence[i - match_i] == "-" or (not character_at_each_pos[i - match_i].count(sequence[i - match_i]) / len(character_at_each_pos[i - match_i]) >= match_percent):
                         pass_all = False
                         break
 
@@ -331,7 +330,7 @@ def do_folder(folder, args: MainArgs):
                     output_path,
                     args.matches,
                     input_gene,
-                    available_tmp_path,
+                    args.match_percent,
                     args.debug,
                     args.base_pair,
                     args.verbose,
@@ -347,7 +346,7 @@ def do_folder(folder, args: MainArgs):
                             output_path,
                             args.matches,
                             input_gene,
-                            available_tmp_path,
+                            args.match_percent,
                             args.debug,
                             args.base_pair,
                             args.verbose,

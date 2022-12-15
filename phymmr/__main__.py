@@ -526,7 +526,14 @@ def subcmd_flexcull(subparsers):
         "--matches",
         type=int,
         default=3,
-        help="Amount of nucleotides that have to match reference.",
+        help="Amount of base pairs that have to match reference.",
+    )
+    par.add_argument(
+        "-mp",
+        "--match_percent",
+        type=float,
+        default=0.02,
+        help="Percentage of references that must contain the base pair to match.",
     )
     par.add_argument(
         "-bp", "--base-pair", type=int, default=15, help="Minimum bp after cull."
@@ -551,7 +558,8 @@ def flexcull(args):
         args.amino_acid,
         args.nucleotide,
         args.matches,
-        args.base_pair
+        args.base_pair,
+        args.match_percent
     )
     if not flexcull.main(flexargs):
         print()
