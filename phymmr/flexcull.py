@@ -113,7 +113,7 @@ def do_gene(
     gene_path = os.path.join(aa_input, aa_file)
     this_gene = aa_file.split(".")[0]
 
-    printv("Doing: {this_gene}", verbosity, 2)
+    printv(f"Doing: {this_gene}", verbosity, 2)
 
     references, candidates, raw_references = parse_fasta(gene_path)
 
@@ -175,10 +175,21 @@ def do_gene(
                 continue
 
             pass_all = True
-            for match_i in range(1, amt_matches):
-                    if sequence[i + match_i] == "-" or (not character_at_each_pos[i + match_i].count(sequence[i + match_i]) / len(character_at_each_pos[i + match_i]) >= match_percent):
-                        pass_all = False
-                        break
+            checks = amt_matches - 1
+            match_i = 1
+            while checks > 0:
+                if i + match_i >= len(sequence):
+                    pass_all = False
+                    break
+
+                if sequence[i + match_i] == "-":
+                    match_i += 1
+                elif not character_at_each_pos[i + match_i].count(sequence[i + match_i]) / len(character_at_each_pos[i + match_i]) >= match_percent:
+                    pass_all = False
+                    break
+                else:
+                    match_i += 1
+                    checks -= 1
 
             if pass_all:
                 cull_start = i
@@ -206,10 +217,21 @@ def do_gene(
                     continue
 
                 pass_all = True
-                for match_i in range(1, amt_matches):
-                    if sequence[i - match_i] == "-" or (not character_at_each_pos[i - match_i].count(sequence[i - match_i]) / len(character_at_each_pos[i - match_i]) >= match_percent):
+                checks = amt_matches - 1
+                match_i = 1
+                while checks > 0:
+                    if i - match_i < 0:
                         pass_all = False
                         break
+
+                    if sequence[i - match_i] == "-":
+                        match_i += 1
+                    elif not character_at_each_pos[i - match_i].count(sequence[i - match_i]) / len(character_at_each_pos[i - match_i]) >= match_percent:
+                        pass_all = False
+                        break
+                    else:
+                        match_i += 1
+                        checks -= 1
 
                 if pass_all:
                     cull_end = i + 1 #Inclusive
