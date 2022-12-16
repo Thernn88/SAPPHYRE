@@ -9,6 +9,7 @@ import json
 import os
 from multiprocessing.pool import Pool
 from pathlib import Path
+from shutil import rmtree
 from time import time
 from typing import Union, Literal
 
@@ -274,8 +275,12 @@ def directory_check(target_output_path) -> str:
     """
     Creates necessary directories for merge output.
     """
-    os.makedirs(os.path.join(target_output_path, "aa_merged"), exist_ok=True)
-    os.makedirs(os.path.join(target_output_path, "nt_merged"), exist_ok=True)
+    aa_merged_path = os.path.join(target_output_path, "aa_merged")
+    nt_merged_path = os.path.join(target_output_path, "nt_merged")
+    rmtree(aa_merged_path, ignore_errors=True)
+    rmtree(nt_merged_path, ignore_errors=True)
+    os.mkdir(aa_merged_path)
+    os.mkdir(nt_merged_path)
     if not TMP_PATH:
         tmp_path = os.path.join(target_output_path, "tmp")
         os.makedirs(tmp_path, exist_ok=True)

@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 from collections import namedtuple
 from multiprocessing.pool import Pool
+from shutil import rmtree
 from time import time
 
 from Bio import AlignIO
@@ -46,8 +47,10 @@ def folder_check(output_target_path: str, input_target_path: str) -> str:
     """
     output_aa_path = os.path.join(output_target_path, "aa")
     output_nt_path = os.path.join(output_target_path, "nt")
-    os.makedirs(output_aa_path, exist_ok=True)
-    os.makedirs(output_nt_path, exist_ok=True)
+    rmtree(output_aa_path, ignore_errors=True)
+    rmtree(output_nt_path, ignore_errors=True)
+    os.mkdir(output_aa_path)
+    os.mkdir(output_nt_path)
 
     target_tmp_path = "/run/shm"
 

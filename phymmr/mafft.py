@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from collections import namedtuple
 from multiprocessing.pool import ThreadPool
+from shutil import rmtree
 from tempfile import TemporaryDirectory, NamedTemporaryFile
 from threading import Lock
 from time import time
@@ -80,7 +81,8 @@ def do_folder(folder, args):
     if not os.path.exists(aa_path):
         printv(f"ERROR: Can't find aa ({aa_path}) folder. Abort", args.verbose, 0)
         return
-    os.makedirs(mafft_path, exist_ok=True)
+    rmtree(mafft_path, ignore_errors = True)
+    os.mkdir(mafft_path)
 
     genes = [gene.split(".")[0] for gene in os.listdir(aa_path) if ".aa" in gene]
     #genes.sort(key = lambda x : os.path.getsize(os.path.join(aa_path, x + ".aa.fa")), reverse=True)
