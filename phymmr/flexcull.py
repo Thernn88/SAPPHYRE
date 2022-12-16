@@ -49,8 +49,8 @@ def folder_check(output_target_path: str, input_target_path: str) -> str:
     output_nt_path = os.path.join(output_target_path, "nt")
     rmtree(output_aa_path, ignore_errors=True)
     rmtree(output_nt_path, ignore_errors=True)
-    os.mkdir(output_aa_path)
-    os.mkdir(output_nt_path)
+    os.makedirs(output_aa_path, exist_ok=True)
+    os.makdirs(output_nt_path, exist_ok=True)
 
     target_tmp_path = "/run/shm"
 
