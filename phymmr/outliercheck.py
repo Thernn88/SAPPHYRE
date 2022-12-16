@@ -484,6 +484,7 @@ def main_process(
             header, distance, ref_dist, grade, iqr = outlier
             if grade == "Fail":
                 to_be_excluded.add(header)
+    if to_add:
         nt_file = filename.replace(".aa.", ".nt.")
         nt_input_path = os.path.join(nt_input, nt_file)
         if not os.path.exists(nt_output_path):
