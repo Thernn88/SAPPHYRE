@@ -8,6 +8,7 @@ from copy import deepcopy
 from itertools import combinations
 from multiprocessing.pool import Pool
 from pathlib import Path
+from shutil import rmtree
 from statistics import mean
 import numpy as np
 import phymmr_tools as bd
@@ -82,6 +83,9 @@ def folder_check(path: Path, debug: bool) -> None:
     """Create subfolders 'aa' and 'nt' to given path."""
     aa_folder = Path(path, "aa")
     nt_folder = Path(path, "nt")
+
+    rmtree(aa_folder, ignore_errors = True)
+    rmtree(nt_folder, ignore_errors = True)
 
     aa_folder.mkdir(parents=True, exist_ok=True)
     nt_folder.mkdir(parents=True, exist_ok=True)
