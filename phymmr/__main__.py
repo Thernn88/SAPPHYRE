@@ -379,12 +379,11 @@ def subcmd_mergeoverlap(subparsers):
         help="Enable debug. When enabled displays each component of merged headers.",
     )
     par.add_argument(
-        "-c",
-        "--comparison",
-        type=str,
-        default="Drosophila_melanogaster",
-        help="Fallback Comparison Taxa. Sequence in which Sequence A and Sequence B is "
-        "compared to in split calculation.",
+        "-ml",
+        "--minimum_length",
+        type=int,
+        default=30,
+        help="Minimum after merge bp length.",
     )
     par.add_argument(
         "-io",

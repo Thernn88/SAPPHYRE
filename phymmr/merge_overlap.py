@@ -310,7 +310,7 @@ def do_protein(
     protein: Literal["aa", "nt"],
     path,
     output_dir: Path,
-    fallback_taxa,
+    minimum_length,
     dupe_counts,
     already_calculated_splits,
     gene,
@@ -574,10 +574,16 @@ def do_protein(
                                 if debug:
                                     majority_assignments[raw_i] = mode_cand_raw_character
 
-            new_merge = Seq("").join(new_merge)
+            new_merge = str(Seq("").join(new_merge))
+
+            if protein == "nt":
+                minimum_length *= 3
+
+            if len(new_merge) - new_merge.count("-") < minimum_length:
+                continue
 
             gene_out.append(f">{final_header}")
-            gene_out.append(str(new_merge))
+            gene_out.append(new_merge)
 
             if debug:
                 # If debug enabled add each component under final merge
@@ -592,7 +598,7 @@ def do_protein(
                     gene_out.append(f">{node}|{frame}|{count}")
                     gene_out.append(sequence)
 
-    if protein == "nt": #Remove empty columns
+    if protein == "nt" and gene_out: #Remove empty columns
         to_keep = set()
         for i in range(len(gene_out[-1])):
             keep_this = False
@@ -615,7 +621,7 @@ def do_gene(
     output_dir: Path,
     aa_path,
     nt_path,
-    fallback_taxa,
+    minimum_length,
     dupe_counts,
     debug,
     majority,
@@ -629,11 +635,11 @@ def do_gene(
     already_calculated_splits = {}
     printv(f"Doing: {gene}", verbosity, 2)
 
-    path, data = do_protein(
+    aa_path, aa_data = do_protein(
         "aa",
         aa_path,
         output_dir,
-        fallback_taxa,
+        minimum_length,
         dupe_counts,
         already_calculated_splits,
         gene,
@@ -642,14 +648,13 @@ def do_gene(
         ignore_overlap_chunks,
         debug=debug,
     )
-    with open(path, "w", encoding="UTF-8") as output_file:
-        output_file.write("\n".join(data))
+    
 
-    path, data = do_protein(
+    nt_path, nt_data = do_protein(
         "nt",
         nt_path,
         output_dir,
-        fallback_taxa,
+        minimum_length,
         dupe_counts,
         already_calculated_splits,
         make_nt_name(gene),
@@ -658,8 +663,11 @@ def do_gene(
         ignore_overlap_chunks,
         debug=debug,
     )
-    with open(path, "w", encoding="UTF-8") as output_file:
-        output_file.write("\n".join(data))
+    if nt_data:
+        with open(aa_path, "w", encoding="UTF-8") as output_file:
+            output_file.write("\n".join(aa_data))
+        with open(nt_path, "w", encoding="UTF-8") as output_file:
+            output_file.write("\n".join(nt_data))
 
 
 def run_command(arg_tuple: tuple) -> None:
@@ -708,7 +716,7 @@ def do_folder(folder: Path, args):
                     folder,
                     target_aa_path,
                     target_nt_path,
-                    args.comparison,
+                    args.minimum_length,
                     dupes_in_this_gene,
                     args.debug,
                     args.majority,
@@ -729,7 +737,7 @@ def do_folder(folder: Path, args):
                 folder,
                 target_aa_path,
                 target_nt_path,
-                args.comparison,
+                args.minimum_length,
                 dupes_in_this_gene,
                 args.debug,
                 args.majority,
