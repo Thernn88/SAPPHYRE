@@ -1,4 +1,5 @@
 from __future__ import annotations
+from shutil import rmtree
 
 import sys
 import time
@@ -3617,8 +3618,8 @@ def prepare_taxa_and_genes(input: str, specified_dna_table, verbose) -> Tuple[Ge
     joined_nt = input_path.joinpath(Path("nt"))
     joined_nt_aligned = input_path.joinpath(Path("nt_aligned"))
 
-    if not joined_nt_aligned.exists():
-        joined_nt_aligned.mkdir()
+    rmtree(joined_nt_aligned, ignore_errors=True)
+    joined_nt_aligned.mkdir()
 
     glob_genes = sorted(list(joined_mafft.glob("*aa.fa")))
     glob_taxa = sorted(list(joined_nt.glob("*nt.fa")))
