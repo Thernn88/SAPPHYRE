@@ -272,7 +272,7 @@ def subcmd_reporter(subparsers):
         help="Orthoset",
     )
     par.add_argument(
-        "-ml", "--min_length", type=int, default=30, help="Minimum Transcript Length"
+        "-ml", "--min_length", type=int, default=25, help="Minimum Transcript Length"
     )
     par.add_argument(
         "-ms", "--min_score", type=float, default=40, help="Minimum Hit Domain Score"
@@ -379,12 +379,11 @@ def subcmd_mergeoverlap(subparsers):
         help="Enable debug. When enabled displays each component of merged headers.",
     )
     par.add_argument(
-        "-c",
-        "--comparison",
-        type=str,
-        default="Drosophila_melanogaster",
-        help="Fallback Comparison Taxa. Sequence in which Sequence A and Sequence B is "
-        "compared to in split calculation.",
+        "-ml",
+        "--minimum_length",
+        type=int,
+        default=30,
+        help="Minimum after merge bp length.",
     )
     par.add_argument(
         "-io",
