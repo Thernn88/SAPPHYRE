@@ -809,7 +809,7 @@ def do_taxa(path, taxa_id, args):
 
     printv(f"Reciprocal check done, found {brh_count} reciprocal hits. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing references sequences.", args.verbose)
 
-    gene_reference_data = get_reference_data(rocky.get_rock("rocks_hits_db"))
+    gene_reference_data = get_reference_data(rocky.get_rock("rocks_orthoset_db"))
 
     printv(f"Got reference data. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Exonerating genes.", args.verbose)
 
