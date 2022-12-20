@@ -278,6 +278,12 @@ def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
     return result
 
 
+def does_overlap(seq1, seq2, min_overlap) -> bool:
+    a1, b1 = make_indices(seq1)
+    a2, b2 = make_indices(seq2)
+    return (min(b1, b2) - max(a1, a2)) > min_overlap
+
+
 def compare_means(
     references: list,
     candidates: list,
@@ -285,6 +291,8 @@ def compare_means(
     excluded_headers: set,
     keep_refs: bool,
     sort: str,
+    candidate_distance: int,
+    candidate_overlap: int
 ) -> tuple:
     """
     For each candidate record, finds the index of the first non-gap bp and makes
@@ -298,11 +306,11 @@ def compare_means(
             regulars.append(line)
     records = [Record(candidates[i], candidates[i+1]) for i in range(0,len(candidates),2)]
     current = []
-    for cand1 in records:
-        current.append([bd.blosum62_distance(cand1.sequence, cand2.sequence) for cand2 in records])
-    distances = [np.nanmean(row) for row in current]
-
-    candidate_distances = []
+    # for cand1 in records:
+    #     current.append([bd.blosum62_distance(cand1.sequence, cand2.sequence) for cand2 in records])
+    # distances = [np.nanmean(row) for row in current]
+    #
+    # candidate_distances = []
     ref_dict, candidates_dict = find_index_groups(references, candidates)
     to_add_later = []
     for index_pair, current_refs in ref_dict.items():
@@ -368,7 +376,19 @@ def compare_means(
         if sort == "cluster":
             intermediate_list = taxa_sort(intermediate_list)
             to_add_later.extend(intermediate_list)
-    return regulars, to_add_later, outliers
+
+    # candidate distance checks
+    passing_candidates = set()
+    for i in range(0,len(to_add_later),2):
+        cand_distances = [bd.blosum62_distance(to_add_later[i+1], to_add_later[j+1]) for j in range(0,len(to_add_later),2) if does_overlap(to_add_later[i], to_add_later[j], candidate_overlap)]
+        avg_cand_distance = np.nanmean(cand_distances)
+        if avg_cand_distance >= candidate_distance:
+            passing_candidates.add(i)
+    final_candidates = []
+    for i in range(0,len(to_add_later),2):
+        if i in passing_candidates:
+            final_candidates.extend([to_add_later[i], to_add_later[i+1]])
+    return regulars, final_candidates, outliers
 
 
 def delete_empty_columns(raw_fed_sequences: list, verbose: bool) -> tuple[list, list]:
@@ -453,6 +473,8 @@ def main_process(
     nt_output_path: str,
     debug: bool,
     verbose: int,
+    candidate_distance: int,
+    candidate_overlap: int
 ):
     keep_refs = not args_references
 
@@ -478,13 +500,14 @@ def main_process(
     ]
     # raw_regulars, to_add, outliers = compare_means(
     compare_means(
-
         reference_sequences,
         candidate_sequences,
         threshold,
         to_be_excluded,
         keep_refs,
         sort,
+        candidate_distance,
+        candidate_overlap,
     )
     # if sort == "original":
     #     to_add = original_sort(candidate_headers, to_add)
@@ -583,6 +606,8 @@ def do_folder(folder, args):
                     nt_output_path,
                     args.debug,
                     args.verbose,
+                    args.candidate_distance,
+                    args.candidate_overlap
                 )
             )
 
@@ -600,6 +625,8 @@ def do_folder(folder, args):
                 nt_output_path,
                 args.debug,
                 args.verbose,
+                args.candidate_distance,
+                args.candidate_overlap
             )
     if args.debug:
         log_folder_path = os.path.join(output_path, "logs")

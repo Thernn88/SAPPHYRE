@@ -24,9 +24,7 @@ def subcmd_prepare(subparsers):
         "Performs six-fold translation of base NT sequences into AA translation. "
         "Unique AA translation stored with duplicate counts stored for later use.",
     )
-    par.add_argument(
-        "INPUT", help="Path to directory of Input folder", action="store"
-    )
+    par.add_argument("INPUT", help="Path to directory of Input folder", action="store")
     par.add_argument(
         "-c",
         "--clear_database",
@@ -53,9 +51,7 @@ def subcmd_prepare(subparsers):
         action="store_true",
         help="Writes the prepared input fasta into the output taxa directory.",
     )
-    par.set_defaults(
-        func=prepare, formathelp=par.format_help
-    )
+    par.set_defaults(func=prepare, formathelp=par.format_help)
 
 
 def prepare(args):
@@ -164,20 +160,19 @@ def subcmd_hmmsearch(subparsers):
         type=int,
         help="Max hits per hmmsearch batch in db. Default: 250 thousand.",
     )
+    par.add_argument("-d", "--debug", type=int, default=0, help="Output debug logs.")
     par.add_argument(
-        "-d", "--debug", type=int, default=0, help="Output debug logs."
+        "--enable-multi-internal",
+        default=False,
+        action="store_true",
+        help="Enable Hmmsearch internal multi filter",
     )
-    par.add_argument(
-        "--enable-multi-internal", default=False, action="store_true",
-        help="Enable Hmmsearch internal multi filter"
-    )
-    par.set_defaults(
-        func=hmmsearch, formathelp=par.format_help
-    )
+    par.set_defaults(func=hmmsearch, formathelp=par.format_help)
 
 
 def hmmsearch(args):
     from . import hmmsearch
+
     if not hmmsearch.main(args):
         print(args.formathelp())
 
@@ -236,13 +231,12 @@ def subcmd_blastpal(subparsers):
         action="store_true",
         help="Overwrite existing blast results.",
     )
-    par.set_defaults(
-        func=blastpal, formathelp=par.format_help
-    )
+    par.set_defaults(func=blastpal, formathelp=par.format_help)
 
 
 def blastpal(args):
     from . import blastpal
+
     if not blastpal.main(args):
         print(args.formathelp())
 
@@ -278,13 +272,12 @@ def subcmd_reporter(subparsers):
         "-ms", "--min_score", type=float, default=40, help="Minimum Hit Domain Score"
     )
     par.add_argument("-d", "--debug", type=int, default=0, help="Verbose debug.")
-    par.set_defaults(
-        func=reporter, formathelp=par.format_help
-    )
+    par.set_defaults(func=reporter, formathelp=par.format_help)
 
 
 def reporter(args):
     from . import reporter
+
     mainargs = reporter.MainArgs(
         args.verbose,
         args.processes,
@@ -293,7 +286,7 @@ def reporter(args):
         args.orthoset_input,
         args.orthoset,
         args.min_length,
-        args.min_score
+        args.min_score,
     )
     if not reporter.main(mainargs):
         print(args.formathelp())
@@ -305,12 +298,8 @@ def subcmd_outliercheck(subparsers):
         help="Calculates a Blosum62 distance matrix which are used to remove outlier "
         "sequences above a threshold.",
     )
-    par.add_argument(
-        "INPUT", help="Path to taxa", action="extend", nargs="+"
-    )
-    par.add_argument(
-        "-o", "--output", default="outlier", help="Output folder"
-    )
+    par.add_argument("INPUT", help="Path to taxa", action="extend", nargs="+")
+    par.add_argument("-o", "--output", default="outlier", help="Output folder")
     par.add_argument(
         "-t",
         "--threshold",
@@ -331,19 +320,32 @@ def subcmd_outliercheck(subparsers):
         help="Sort candidate output by cluster and taxa, or preserver original order.",
     )
     par.add_argument(
+        "-cd",
+        "--candidate-distance",
+        type=int,
+        default=40,
+        help="Cutoff for mean distance in candidate to candidate check.",
+    )
+    par.add_argument(
+        "-co",
+        "--candidate-overlap",
+        type=int,
+        default=40,
+        help="Minimum candidate overlap for candidate distance checks.",
+    )
+    par.add_argument(
         "-d",
         "--debug",
         action="store_true",
         default=False,
         help="Log outliers to csv files",
     )
-    par.set_defaults(
-        func=outliercheck, formathelp=par.format_help
-    )
+    par.set_defaults(func=outliercheck, formathelp=par.format_help)
 
 
 def outliercheck(args):
     from . import outliercheck
+
     if not outliercheck.main(args):
         print()
         print(args.formathelp)
@@ -388,9 +390,9 @@ def subcmd_mergeoverlap(subparsers):
     par.add_argument(
         "-io",
         "--ignore_overlap_chunks",
-        action="store_true", 
+        action="store_true",
         default=False,
-        help="Ignore overlapping chunks and merge all candidates for a reference taxon."
+        help="Ignore overlapping chunks and merge all candidates for a reference taxon.",
     )
     par.add_argument(
         "-m",
@@ -406,42 +408,45 @@ def subcmd_mergeoverlap(subparsers):
         default=4,
         help="Percentage for majority ruling.",
     )
-    par.set_defaults(
-        func=mergeoverlap, formathelp=par.format_help
-    )
+    par.set_defaults(func=mergeoverlap, formathelp=par.format_help)
 
 
 def mergeoverlap(args):
     from . import merge_overlap
+
     if not merge_overlap.main(args):
         print()
         print(args.formathelp())
 
 
 def subcmd_mergegenes(subparsers):
-    dsc = "Initial Dataset Construction: Merges AA and NT data files across "\
-          "multiple taxa into a single AA and NT pair per gene."
-    par = subparsers.add_parser(
-        "MergeGenes", help=dsc, description=dsc
+    dsc = (
+        "Initial Dataset Construction: Merges AA and NT data files across "
+        "multiple taxa into a single AA and NT pair per gene."
+    )
+    par = subparsers.add_parser("MergeGenes", help=dsc, description=dsc)
+    par.add_argument("INPUT", help="Paths of directories.", action="extend", nargs="+")
+    par.add_argument(
+        "-t",
+        "--prepend-directory",
+        action="store",
+        type=str,
+        dest="DIRECTORY",
+        help="Prepend DIRECTORY to the list of INPUT.",
     )
     par.add_argument(
-        "INPUT", help="Paths of directories.", action="extend", nargs="+"
+        "-o",
+        "--output-directory",
+        type=str,
+        required=True,
+        help="Target directory for merged output. (Example: MergedGenes)",
     )
-    par.add_argument(
-        "-t", "--prepend-directory", action="store", type=str, dest="DIRECTORY",
-        help="Prepend DIRECTORY to the list of INPUT."
-    )
-    par.add_argument(
-        "-o", "--output-directory", type=str, required=True,
-        help="Target directory for merged output. (Example: MergedGenes)"
-    )
-    par.set_defaults(
-        func=mergegenes, formathelp=par.format_help
-    )
+    par.set_defaults(func=mergegenes, formathelp=par.format_help)
 
 
 def mergegenes(args):
     from . import merge_genes
+
     if not merge_genes.main(args):
         print()
         print(args.formathelp())
@@ -469,14 +474,18 @@ def subcmd_mafft(subparsers):
         help="Orthoset",
     )
     par.add_argument(
-        "-l", "--linsi", action="store_true", default=False,
-        help="Enable the use of mafft-linsi."
+        "-l",
+        "--linsi",
+        action="store_true",
+        default=False,
+        help="Enable the use of mafft-linsi.",
     )
     par.set_defaults(func=mafft, formathelp=par.format_help)
 
 
 def mafft(args):
     from . import mafft
+
     if not mafft.main(args):
         print()
         print(args.formathelp())
@@ -497,6 +506,7 @@ def subcmd_pal2nal(subparsers):
 
 def pal2nal(args):
     from . import pal2nal
+
     if not pal2nal.main(args):
         print()
         print(args.formathelp())
@@ -548,6 +558,7 @@ def subcmd_flexcull(subparsers):
 
 def flexcull(args):
     from . import flexcull
+
     flexargs = flexcull.MainArgs(
         args.verbose,
         args.processes,
@@ -558,14 +569,16 @@ def flexcull(args):
         args.nucleotide,
         args.matches,
         args.base_pair,
-        args.match_percent
+        args.match_percent,
     )
     if not flexcull.main(flexargs):
         print()
         print(args.formathelp())
 
+
 def finalize(args):
     from . import finalize
+
     if not finalize.main(args):
         print(args.formathelp())
 
@@ -584,47 +597,34 @@ def subcmd_finalize(subparsers):
         "Sort: Sorts genes based on presence in the supplied target txt file. "
         "Concat: Merges all the final sequences together into a single fasta file.",
     )
-    
+
     par.add_argument(
-        "INPUT",
-        help="Path to directory of Input folder",
-        action="extend",
-        nargs="+"
+        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
     )
     par.add_argument(
-        "-k",
-        "--kick_file",
-        type=str,
-        default="TaxaKick.txt",
-        help="Percent"
+        "-k", "--kick_file", type=str, default="TaxaKick.txt", help="Percent"
     )
     par.add_argument(
         "-t",
         "--target_file",
         type=str,
         default="TARGET_GENES_SYRPHID.txt",
-        help="Percent"
+        help="Percent",
     )
-    par.add_argument(
-        "-n",
-        "--names_csv",
-        type=str,
-        default="names.csv",
-        help="Percent"
-    )
+    par.add_argument("-n", "--names_csv", type=str, default="names.csv", help="Percent")
     par.add_argument(
         "-kp",
         "--kick_percentage",
         type=float,
         default=0.85,
-        help="Adjustable value for kick columns. Float value of minimum percentage of non-gap characters"
+        help="Adjustable value for kick columns. Float value of minimum percentage of non-gap characters",
     )
     par.add_argument(
         "-mb",
         "--minimum_bp",
         type=int,
         default=30,
-        help="Adjustable value for kick columns. Integer value of minimum base pairs"
+        help="Adjustable value for kick columns. Integer value of minimum base pairs",
     )
     par.add_argument(
         "-s",
@@ -662,31 +662,36 @@ def subcmd_finalize(subparsers):
         action="store_true",
         help="Merge resulting on target genes into a final fasta file.",
     )
-    par.set_defaults(
-        func=finalize, formathelp=par.format_help
-    )
+    par.set_defaults(func=finalize, formathelp=par.format_help)
+
 
 def subcmd_sradownload(sp):
-    par = sp.add_parser("SRADownload", help="Download fastq files from www.ncbi.nlm.nih.gov")
-    par.add_argument(
-        "INPUT", help="Path to the CSV file input",
+    par = sp.add_parser(
+        "SRADownload", help="Download fastq files from www.ncbi.nlm.nih.gov"
     )
     par.add_argument(
-        "-b", "--bin",
+        "INPUT",
+        help="Path to the CSV file input",
+    )
+    par.add_argument(
+        "-b",
+        "--bin",
         help="Path to SRA Toolkit. Will try system's PATH if not used.",
-        required=False
+        required=False,
     )
     par.set_defaults(func=sradownload, formathelp=par.format_help)
 
 
 def sradownload(argsobj):
     from . import sradownload
+
     if not sradownload.main(argsobj):
         print()
         print(argsobj.formathelp())
 
+
 def subcmd_archiver(sp):
-    par = sp.add_parser("Archiver", help="Recursive archiver/unarchiver") # TODO add me
+    par = sp.add_parser("Archiver", help="Recursive archiver/unarchiver")  # TODO add me
     par.add_argument(
         "INPUT",
         help="Path to input directory.",
@@ -698,7 +703,7 @@ def subcmd_archiver(sp):
         "--specific_directories",
         help="Directories to archive/unarchive.",
         action="extend",
-        nargs="+"
+        nargs="+",
     )
     par.add_argument(
         "-u",
@@ -709,11 +714,14 @@ def subcmd_archiver(sp):
     )
     par.set_defaults(func=archiver, formathelp=par.format_help)
 
+
 def archiver(argsobj):
     from . import archiver
+
     if not archiver.main(argsobj):
         print()
         print(argsobj.formathelp())
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
