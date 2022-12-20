@@ -506,7 +506,7 @@ def main_process(
         to_be_excluded,
         keep_refs,
         sort,
-        candidate_distance,
+        candidate_distance/100,
         candidate_overlap,
     )
     if sort == "original":
