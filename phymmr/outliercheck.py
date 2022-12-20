@@ -14,7 +14,7 @@ import numpy as np
 import phymmr_tools as bd
 from Bio import AlignIO
 
-from .utils import printv
+from phymmr.utils import printv
 from .timekeeper import TimeKeeper, KeeperMode
 ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta")
 
@@ -228,6 +228,22 @@ def find_index_groups(references: list, candidates: list) -> tuple:
         reference_dict[key] = ref_lines
     return reference_dict, candidate_dict
 
+def find_candidate_indexes(candidates: list) -> dict:
+    """
+    Iterate over a list of candidate fastas as lines of text and finds their start
+    and stop indices. Makes a tuple out of the pairs, then uses the
+    tuple as a key in two dictionaries. One dictionary stores lists of
+    candidates with identical indices, and the other dictionary stores
+    the ref set after constraining to those indices.
+    """
+    candidate_dict = {}
+    for i in range(0, len(candidates), 2):
+        sequence = candidates[i + 1]
+        raw_seq = sequence
+        index_tuple = make_indices(sequence)
+        start, stop = index_tuple
+        candidate_dict[candidates[i]] = (start, stop)
+    return candidate_dict
 
 def make_ref_mean(matrix: list, ignore_zeros=False) -> float:
     """
@@ -280,6 +296,13 @@ def compare_means(
     if keep_refs:
         for line in references:
             regulars.append(line)
+    records = [Record(candidates[i], candidates[i+1]) for i in range(0,len(candidates),2)]
+    current = []
+    for cand1 in records:
+        current.append([bd.blosum62_distance(cand1.sequence, cand2.sequence) for cand2 in records])
+    distances = [np.nanmean(row) for row in current]
+
+    candidate_distances = []
     ref_dict, candidates_dict = find_index_groups(references, candidates)
     to_add_later = []
     for index_pair, current_refs in ref_dict.items():
@@ -453,7 +476,9 @@ def main_process(
     candidate_headers = [
         header for header in candidate_sequences if header[0] == ">"
     ]
-    raw_regulars, to_add, outliers = compare_means(
+    # raw_regulars, to_add, outliers = compare_means(
+    compare_means(
+
         reference_sequences,
         candidate_sequences,
         threshold,
@@ -461,57 +486,57 @@ def main_process(
         keep_refs,
         sort,
     )
-    if sort == "original":
-        to_add = original_sort(candidate_headers, to_add)
-
-    for line in to_add:
-        raw_regulars.append(line)
-
-    regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
-
-    if to_add:  # If candidate added to fasta
-        with open(aa_output, "w+", encoding="UTF-8") as aa_output:
-            aa_output.writelines(regulars)
-
-    to_be_excluded = set()
-    if debug:
-        with open(outliers_csv_path, "w", encoding="UTF-8") as outliers_csv:
-            for outlier in outliers:
-                header, distance, ref_dist, grade, iqr = outlier
-                if grade == "Fail":
-                    to_be_excluded.add(header)
-                    header = header[1:]
-                result = [header, str(distance), str(ref_dist), str(iqr), grade]
-                outliers_csv.write(",".join(result) + "\n")
-    else:
-        for outlier in outliers:
-            header, distance, ref_dist, grade, iqr = outlier
-            if grade == "Fail":
-                to_be_excluded.add(header)
-    if to_add:
-        nt_file = filename.replace(".aa.", ".nt.")
-        nt_input_path = os.path.join(nt_input, nt_file)
-        if not os.path.exists(nt_output_path):
-            os.mkdir(nt_output_path)
-        nt_output_path = os.path.join(nt_output_path, nt_file)
-
-        with open(nt_output_path, "w+", encoding="UTF-8") as nt_output_handle:
-            with open(nt_input_path, encoding="UTF-8") as nt_input_handle:
-                lines = []
-                #Deinterleave
-                for seq_record in AlignIO.parse(nt_input_handle, "fasta"):
-                    for seq in seq_record:
-                        lines.append(">"+seq.name)
-                        lines.append(str(seq.seq))
-
-            non_empty_lines = remove_excluded_sequences(
-                lines, to_be_excluded
-            )
-            non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
-
-            for i in range(0, len(non_empty_lines), 2):
-                nt_output_handle.write(non_empty_lines[i])
-                nt_output_handle.write(non_empty_lines[i + 1])
+    # if sort == "original":
+    #     to_add = original_sort(candidate_headers, to_add)
+    #
+    # for line in to_add:
+    #     raw_regulars.append(line)
+    #
+    # regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
+    #
+    # if to_add:  # If candidate added to fasta
+    #     with open(aa_output, "w+", encoding="UTF-8") as aa_output:
+    #         aa_output.writelines(regulars)
+    #
+    # to_be_excluded = set()
+    # if debug:
+    #     with open(outliers_csv_path, "w", encoding="UTF-8") as outliers_csv:
+    #         for outlier in outliers:
+    #             header, distance, ref_dist, grade, iqr = outlier
+    #             if grade == "Fail":
+    #                 to_be_excluded.add(header)
+    #                 header = header[1:]
+    #             result = [header, str(distance), str(ref_dist), str(iqr), grade]
+    #             outliers_csv.write(",".join(result) + "\n")
+    # else:
+    #     for outlier in outliers:
+    #         header, distance, ref_dist, grade, iqr = outlier
+    #         if grade == "Fail":
+    #             to_be_excluded.add(header)
+    # if to_add:
+    #     nt_file = filename.replace(".aa.", ".nt.")
+    #     nt_input_path = os.path.join(nt_input, nt_file)
+    #     if not os.path.exists(nt_output_path):
+    #         os.mkdir(nt_output_path)
+    #     nt_output_path = os.path.join(nt_output_path, nt_file)
+    #
+    #     with open(nt_output_path, "w+", encoding="UTF-8") as nt_output_handle:
+    #         with open(nt_input_path, encoding="UTF-8") as nt_input_handle:
+    #             lines = []
+    #             #Deinterleave
+    #             for seq_record in AlignIO.parse(nt_input_handle, "fasta"):
+    #                 for seq in seq_record:
+    #                     lines.append(">"+seq.name)
+    #                     lines.append(str(seq.seq))
+    #
+    #         non_empty_lines = remove_excluded_sequences(
+    #             lines, to_be_excluded
+    #         )
+    #         non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
+    #
+    #         for i in range(0, len(non_empty_lines), 2):
+    #             nt_output_handle.write(non_empty_lines[i])
+    #             nt_output_handle.write(non_empty_lines[i + 1])
 
 
 def run_command(arg_tuple: tuple) -> None:
