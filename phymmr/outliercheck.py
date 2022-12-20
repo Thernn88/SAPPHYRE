@@ -305,13 +305,22 @@ def compare_means(
     if keep_refs:
         for line in references:
             regulars.append(line)
-    records = [Record(candidates[i], candidates[i+1]) for i in range(0,len(candidates),2)]
-    current = []
-    # for cand1 in records:
-    #     current.append([bd.blosum62_distance(cand1.sequence, cand2.sequence) for cand2 in records])
-    # distances = [np.nanmean(row) for row in current]
-    #
-    # candidate_distances = []
+
+    # candidate distance checks
+    remember_cand_distances = {}
+    to_kick = set()
+    for i in range(0,len(candidates),2):
+        cand_distances = [bd.blosum62_distance(candidates[i+1], candidates[j+1]) for j in range(0,len(candidates),2) if does_overlap(candidates[i], candidates[j], candidate_overlap)]
+        avg_cand_distance = np.nanmean(cand_distances)
+        remember_cand_distances[candidates[i][1:]] = avg_cand_distance
+        if avg_cand_distance > candidate_distance:
+            to_kick.add(candidates[i])
+    # final_candidates = []
+    # for i in range(0,len(to_add_later),2):
+    #     if i in passing_candidates:
+    #         final_candidates.extend([to_add_later[i], to_add_later[i+1]])
+
+
     ref_dict, candidates_dict = find_index_groups(references, candidates)
     to_add_later = []
     for index_pair, current_refs in ref_dict.items():
@@ -357,11 +366,10 @@ def compare_means(
             IQR = "N/A"
         intermediate_list = []
         for candidate in candidates_at_index:
-            mean_distance = "No refs"
             header = candidate.id
             raw_sequence = candidate.raw
             grade = "Fail"
-            if has_ref_distances:
+            if has_ref_distances and candidate.id not in to_kick:
                 candidate_distances = candidate_pairwise_calls(candidate, ref_alignments)
                 mean_distance = np.nanmean(candidate_distances)
 
@@ -373,23 +381,12 @@ def compare_means(
                         intermediate_list.append(header)
                         intermediate_list.append(raw_sequence)
                     grade = "Pass"
-            outliers.append((header, mean_distance, upper_bound, grade, IQR))
+            outliers.append((header, mean_distance, upper_bound, grade, IQR, remember_cand_distances[header]))
         if sort == "cluster":
             intermediate_list = taxa_sort(intermediate_list)
             to_add_later.extend(intermediate_list)
 
-    # candidate distance checks
-    passing_candidates = set()
-    for i in range(0,len(to_add_later),2):
-        cand_distances = [bd.blosum62_distance(to_add_later[i+1], to_add_later[j+1]) for j in range(0,len(to_add_later),2) if does_overlap(to_add_later[i], to_add_later[j], candidate_overlap)]
-        avg_cand_distance = np.nanmean(cand_distances)
-        if avg_cand_distance <= candidate_distance:
-            passing_candidates.add(i)
-    final_candidates = []
-    for i in range(0,len(to_add_later),2):
-        if i in passing_candidates:
-            final_candidates.extend([to_add_later[i], to_add_later[i+1]])
-    return regulars, final_candidates, outliers
+    return regulars, to_add_later, outliers
 
 
 def delete_empty_columns(raw_fed_sequences: list, verbose: bool) -> tuple[list, list]:
@@ -525,15 +522,15 @@ def main_process(
     if debug:
         with open(outliers_csv_path, "w", encoding="UTF-8") as outliers_csv:
             for outlier in outliers:
-                header, distance, ref_dist, grade, iqr = outlier
+                header, distance, ref_dist, grade, iqr, mean_cand_dist = outlier
                 if grade == "Fail":
                     to_be_excluded.add(header)
                     header = header[1:]
-                result = [header, str(distance), str(ref_dist), str(iqr), grade]
+                result = [header, str(distance), str(ref_dist), str(iqr), grade, str(mean_cand_dist)]
                 outliers_csv.write(",".join(result) + "\n")
     else:
         for outlier in outliers:
-            header, distance, ref_dist, grade, iqr = outlier
+            header, distance, ref_dist, grade, iqr, mean_cand_dist = outlier
             if grade == "Fail":
                 to_be_excluded.add(header)
     if to_add:
