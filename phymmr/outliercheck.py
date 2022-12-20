@@ -312,7 +312,7 @@ def compare_means(
     for i in range(0,len(candidates),2):
         cand_distances = [bd.blosum62_distance(candidates[i+1], candidates[j+1]) for j in range(0,len(candidates),2) if does_overlap(candidates[i], candidates[j], candidate_overlap)]
         avg_cand_distance = np.nanmean(cand_distances)
-        remember_cand_distances[candidates[i][1:]] = avg_cand_distance
+        remember_cand_distances[candidates[i]] = avg_cand_distance
         if avg_cand_distance > candidate_distance:
             to_kick.add(candidates[i])
     # final_candidates = []
@@ -369,6 +369,7 @@ def compare_means(
             header = candidate.id
             raw_sequence = candidate.raw
             grade = "Fail"
+            mean_distance = "N/A"
             if has_ref_distances and candidate.id not in to_kick:
                 candidate_distances = candidate_pairwise_calls(candidate, ref_alignments)
                 mean_distance = np.nanmean(candidate_distances)
