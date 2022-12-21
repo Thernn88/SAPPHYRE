@@ -121,9 +121,10 @@ def do(
                 if (
                     this_result.score >= gene_conf.blast_minimum_score
                 ):
-                    gene_out.append(this_result.to_json())
+                    gene_out.append(this_result)
+    gene_out.sort(key = lambda x: x.score, reverse= True)
 
-    return gene_out
+    return [i.to_json() for i in gene_out]
 
 
 def get_set_id(orthoset_db_con, orthoset):
