@@ -41,14 +41,12 @@ class Result:
         "hmm_id",
         "gene",
         "ref_taxon",
-        "target"
         )
 
     def __init__(self, as_json) -> None:
         self.hmm_id = as_json["hmmId"]
         self.gene = as_json["gene"]
         self.ref_taxon = as_json["refTaxon"]
-        self.target = as_json["target"]
 
 class Hit:
     __slots__ = (
@@ -767,7 +765,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                             if hit.extended_orf_aa_sequence is not None
                             else hit.orf_aa_sequence
                         )
-                        
+
                     if len(aa_seq) >= eargs.min_length:
                         if taxon_hit == hit.second_closest:
                             hit.reftaxon = hit.second_closest
@@ -864,10 +862,10 @@ def reciprocal_search(
             if ref_taxon in reftaxon_count:
                 if not this_match_reftaxon:
                     this_match_reftaxon = ref_taxon
-                elif not this_second_match:
+                elif not this_second_match and ref_taxon != this_match_reftaxon:
                     this_second_match = ref_taxon
                 
-                if this_match_reftaxon and this_second_match:
+                if not strict_search_mode and this_match_reftaxon and this_second_match:
                     break
                 elif all(reftaxon_count.values()):
                     break
