@@ -773,6 +773,9 @@ if __name__ == "__main__":
     # Finalize
     subcmd_finalize(subparsers)
 
+    #Makeref
+    subcmd_makeref(subparsers)
+
     args = parser.parse_args()
     if not hasattr(args, "func"):
         parser.print_help()
