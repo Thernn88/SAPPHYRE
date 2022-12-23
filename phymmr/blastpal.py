@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from itertools import count
 from multiprocessing.pool import Pool
 from shutil import rmtree
+import sys
 from tempfile import TemporaryDirectory, NamedTemporaryFile
 from time import time
 
@@ -124,19 +125,6 @@ def do(
 
     return gene_out
 
-
-def get_set_id(orthoset_db_con, orthoset):
-    """
-    Retrieves orthoset id from orthoset db
-    """
-    orthoset_db_cur = orthoset_db_con.cursor()
-    rows = orthoset_db_cur.execute(f'SELECT id FROM orthograph_set_details WHERE name = "{orthoset}";')
-    for row in rows:
-        return row[0]
-
-    raise Exception("Orthoset {} id cant be retrieved".format(orthoset))
-
-
 def run_process(args, input_path) -> None:
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     orthoset = args.orthoset
@@ -152,7 +140,17 @@ def run_process(args, input_path) -> None:
             rmtree(blast_path)
     os.makedirs(blast_path, exist_ok=True)
 
+    num_threads = args.processes
+
     db_path = os.path.join(orthosets_dir, orthoset, "rocksdb")
+    #Spud check
+    if not os.path.exists(db_path):
+        if input(f"Could not find orthoset DB at {db_path}. Would you like to generate it? Y/N: ").lower() == "y":
+            print("Attempting to generate DB")
+            os.system(f"python3 -m phymmr -p {num_threads} Makeref {orthoset}.sqlite -s {orthoset}")
+        else:
+            print("Aborting")
+            sys.exit(1)
     orthoset_db = wrap_rocks.RocksDB(db_path)
 
     target_to_taxon = json.loads(orthoset_db.get("getall:targetreference"))
@@ -192,7 +190,6 @@ def run_process(args, input_path) -> None:
 
     del global_hmm_object_raw
 
-    num_threads = args.processes
     # Run
     if num_threads <= 1:
         to_write = [
