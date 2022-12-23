@@ -722,6 +722,46 @@ def archiver(argsobj):
         print()
         print(argsobj.formathelp())
 
+def subcmd_makeref(sp):
+    par = sp.add_parser("Makeref", help="Reference set generation tool") # TODO add me
+    par.add_argument(
+        "INPUT",
+        type=str,
+        help="Input file for current set (Either .fa or .sqlite)",
+    )
+    par.add_argument(
+        "-m",
+        "--align_method",
+        choices=["clustal", "mafft"],
+        default="clustal",
+        help="What alignment method to use.",
+    )
+    par.add_argument(
+        "-s",
+        "--set",
+        type=str,
+        help="Name of the current set being produced/modified."
+    )
+    par.add_argument(
+        "-od",
+        "--orthoset_dir",
+        type=str,
+        default="orthosets",
+        help="Path to the Orthosets dir."
+    )
+    par.add_argument(
+        "-ovw",
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing files."
+    )
+    par.set_defaults(func=makeref, formathelp=par.format_help)
+
+def makeref(argsobj):
+    from . import makeref
+    if not makeref.main(argsobj):
+        print()
+        print(argsobj.formathelp())
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
