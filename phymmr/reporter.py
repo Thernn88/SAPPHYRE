@@ -41,14 +41,12 @@ class Result:
         "hmm_id",
         "gene",
         "ref_taxon",
-        "target"
         )
 
     def __init__(self, as_json) -> None:
         self.hmm_id = as_json["hmmId"]
         self.gene = as_json["gene"]
         self.ref_taxon = as_json["refTaxon"]
-        self.target = as_json["target"]
 
 class Hit:
     __slots__ = (
@@ -77,7 +75,6 @@ class Hit:
         "extended_orf_aa_sequence",
         "orf_aa_sequence",
         "reftaxon",
-        "proteome_sequence",
         "est_header",
         "est_sequence_complete",
         "est_sequence_hmm_region",
@@ -85,7 +82,10 @@ class Hit:
         "orf_cdna_end",
         "orf_aa_start",
         "orf_aa_end",
-        "retry",
+        "second_closest",
+        "mapped_to",
+        "second_alignment",
+        "second_extended_alignment"
     )
 
     def __init__(self, as_json):
@@ -97,8 +97,20 @@ class Hit:
         self.hmm_end = as_json["hmm_end"]
         self.ali_start = as_json["ali_start"]
         self.ali_end = as_json["ali_end"]
+        self.second_closest = None
+        self.mapped_to = None
+        self.second_alignment = None
+        self.second_extended_alignment = None
         self.remove_extended_orf() #Set values to null
         
+    def reset(self):
+        self.remove_extended_orf()
+        self.orf_cdna_sequence = None
+        self.orf_cdna_start = None
+        self.orf_cdna_end = None
+        self.orf_aa_sequence = None
+        self.orf_aa_start = None
+        self.orf_aa_end = None
 
     def remove_extended_orf(self):
         self.extended_orf_aa_sequence = None
@@ -532,7 +544,7 @@ def print_core_sequences(orthoid, core_sequences):
     return result
 
 def print_unmerged_sequences(
-    hits, orthoid, minimum_seq_data_length, taxa_id
+    hits, orthoid, taxa_id
 ):
     aa_result = []
     nt_result = []
@@ -571,7 +583,6 @@ def print_unmerged_sequences(
 
         if (
             unique_hit not in exact_hit_mapped_already
-            and len(aa_seq) - aa_seq.count("-") >= minimum_seq_data_length
         ):
             if base_header in base_header_mapped_already:
                 already_mapped_header, already_mapped_sequence = base_header_mapped_already[base_header]
@@ -684,11 +695,9 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
     printv(f"Exonerating and doing output for: {eargs.orthoid}", eargs.verbose, 2)
 
     orthoset_db_con = sqlite3.connect(eargs.orthoset_db_path)
-    reftaxon_related_transcripts = {}
-    reftaxon_to_proteome_sequence = {}
+    reftaxon_related_transcripts = {i: [] for i in eargs.reference_sequences.keys()}
     for hit in eargs.list_of_hits:
         this_reftaxon = hit.reftaxon
-        hit.proteome_sequence = eargs.reference_sequences[this_reftaxon]
 
         est_header, est_sequence_complete = get_nucleotide_transcript_for(
             hit.header
@@ -701,23 +710,33 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
         hit.est_sequence_complete = est_sequence_complete
         hit.est_sequence_hmm_region = est_sequence_hmm_region
 
-
-        if this_reftaxon not in reftaxon_related_transcripts:
-            reftaxon_to_proteome_sequence[this_reftaxon] = hit.proteome_sequence
-            reftaxon_related_transcripts[this_reftaxon] = []
-
         reftaxon_related_transcripts[this_reftaxon].append(hit)
+
+        # If it doesn't align to closest ref fall back to this ref and try again
+        if hit.second_closest is not None:
+            reftaxon_related_transcripts[hit.second_closest].append(hit)
 
     output_sequences = []
     total_results = 0
     for taxon_hit, hits in reftaxon_related_transcripts.items():
+        hits_to_exonerate = [i for i in hits if i.mapped_to is None]
+        if len(hits_to_exonerate) == 0:
+            continue
+
         total_results += len(hits)
-        query = reftaxon_to_proteome_sequence[taxon_hit]
+        query = eargs.reference_sequences[taxon_hit]
         extended_results, results = get_multi_orf(
-            query, hits, eargs.min_score, include_extended=extend_orf
+            query, hits_to_exonerate, eargs.min_score, include_extended=extend_orf
         )
 
-        for hit in hits:
+        for hit in hits_to_exonerate:
+            # We still want to see the first results first not the second closest
+            # so save them for later
+            if taxon_hit == hit.second_closest and hit.mapped_to is None:
+                hit.second_alignment = get_match(hit.header, results)
+                hit.second_extended_alignment = get_match(hit.header, extended_results)
+                continue
+
             matching_alignment = get_match(hit.header, results)
             if matching_alignment:
                 hit.add_orf(matching_alignment, eargs.verbose)
@@ -740,7 +759,53 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                             hit.remove_extended_orf()
                         else: # No alignment returned
                             printv(f"WARNING: Failed to extend orf on {hit.header}. Using trimmed sequence", eargs.verbose)
-                    output_sequences.append(hit)
+
+                    aa_seq = (
+                            hit.extended_orf_aa_sequence
+                            if hit.extended_orf_aa_sequence is not None
+                            else hit.orf_aa_sequence
+                        )
+
+                    if len(aa_seq) >= eargs.min_length:
+                        if taxon_hit == hit.second_closest:
+                            hit.reftaxon = hit.second_closest
+                        hit.mapped_to = hit.reftaxon
+                        output_sequences.append(hit)
+                    else:
+                        if hit.second_alignment is not None: # If first failed check to see if second check is saved
+                            matching_alignment = hit.second_alignment
+                            if matching_alignment:
+                                hit.add_orf(matching_alignment, eargs.verbose)
+
+                                if hit.orf_cdna_sequence:
+                                    if extend_orf:
+                                        matching_extended_alignment = hit.second_extended_alignment
+
+                                        if matching_extended_alignment:
+                                            hit.add_extended_orf(matching_extended_alignment, eargs.verbose)
+
+                                            if extended_orf_contains_original_orf(hit):
+                                                orf_overlap = overlap_by_orf(hit)
+                                                if orf_overlap >= orf_overlap_minimum:
+                                                    continue
+                                            
+                                            # Does not contain original orf or does not overlap enough.
+                                            hit.remove_extended_orf()
+                                        else: # No alignment returned
+                                            printv(f"WARNING: Failed to extend orf on {hit.header}. Using trimmed sequence", eargs.verbose)
+
+                                    aa_seq = (
+                                            hit.extended_orf_aa_sequence
+                                            if hit.extended_orf_aa_sequence is not None
+                                            else hit.orf_aa_sequence
+                                        )
+                                        
+                                    if len(aa_seq) >= eargs.min_length:
+                                        if taxon_hit == hit.second_closest:
+                                            hit.reftaxon = hit.second_closest
+                                        hit.mapped_to = hit.reftaxon
+                                        output_sequences.append(hit)
+
     if len(output_sequences) > 0:
         output_sequences = sorted(output_sequences, key=lambda d: d.hmm_start)
         core_sequences = get_ortholog_group(
@@ -750,7 +815,6 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
         aa_output, nt_output = print_unmerged_sequences(
             output_sequences,
             eargs.orthoid,
-            eargs.min_length,
             eargs.taxa_id,
         )
 
@@ -789,26 +853,29 @@ def reciprocal_search(
         blast_results = gene_blast_results[hmm_id]
 
         reftaxon_count = {ref_taxa: 0 for ref_taxa in reference_taxa}
-        ref_taxon_to_target = {}
-
         this_match_reftaxon = None
+        this_second_match = None
 
         for result in blast_results:
             ref_taxon = result.ref_taxon
 
             if ref_taxon in reftaxon_count:
-                if not strict_search_mode:
+                if not this_match_reftaxon:
                     this_match_reftaxon = ref_taxon
+                elif not this_second_match and ref_taxon != this_match_reftaxon:
+                    this_second_match = ref_taxon
+                
+                if not strict_search_mode and this_match_reftaxon and this_second_match:
                     break
-                if ref_taxon not in ref_taxon_to_target:
-                    ref_taxon_to_target[ref_taxon] = ref_taxon
-                reftaxon_count[ref_taxon] += 1  # only need the one
-                if all(reftaxon_count.values()):  # Everything's been counted
-                    this_match_reftaxon = ref_taxon_to_target[max(reftaxon_count)]  # Grab most hit reftaxon
+                elif all(reftaxon_count.values()):
                     break
+
+                reftaxon_count[ref_taxon] = 1  # only need the one
         
         if this_match_reftaxon:
             hit.reftaxon = this_match_reftaxon
+            if this_second_match:
+                hit.second_closest = this_second_match
             results.append(hit)
 
     printv(f"Checked reciprocal hits for {gene}. Took {t_reciprocal_start.differential():.2f}s.", verbose, 2)
