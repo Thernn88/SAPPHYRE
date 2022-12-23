@@ -132,7 +132,7 @@ def run_process(args, input_path) -> None:
 
     taxa = os.path.basename(input_path)
     printv(f'Processing: {taxa}', args.verbose, 0)
-    printv("Grabbing Reference data from SQL.", args.verbose)
+    printv("Grabbing reference data from Orthoset DB.", args.verbose)
     # make dirs
     blast_path = os.path.join(input_path, "blast")
     if args.overwrite:
