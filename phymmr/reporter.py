@@ -40,13 +40,15 @@ class Result:
     __slots__ = (
         "hmm_id",
         "gene",
-        "ref_taxon"
+        "ref_taxon",
+        "target"
         )
 
     def __init__(self, as_json) -> None:
         self.hmm_id = as_json["hmmId"]
         self.gene = as_json["gene"]
         self.ref_taxon = as_json["refTaxon"]
+        self.target = as_json["target"]
 
 class Hit:
     __slots__ = (
@@ -83,7 +85,7 @@ class Hit:
         "orf_cdna_end",
         "orf_aa_start",
         "orf_aa_end",
-        "target",
+        "retry",
     )
 
     def __init__(self, as_json):
@@ -230,7 +232,6 @@ def get_hmmresults(score_threshold, min_length, rocks_hits_db, debug):
 
     gene_based_results = {}
     ufr_out = [["Gene", "Hash", "Header", "Score", "Start", "End"]]
-
     for batch_i in batches:
         batch_rows = rocks_hits_db.get(f"hmmbatch:{batch_i}")
         batch_rows = json.loads(batch_rows)
@@ -238,8 +239,7 @@ def get_hmmresults(score_threshold, min_length, rocks_hits_db, debug):
             length = this_row["env_end"] - this_row["env_start"]
             hmm_score = this_row["score"]
             gene = this_row["gene"]
-
-            if hmm_score > score_threshold and length > min_length:
+            if hmm_score > score_threshold and length >= min_length:
                 if debug:
                     hmm_start = this_row["hmm_start"]
                     hmm_end = this_row["hmm_end"]
@@ -267,7 +267,6 @@ def get_hmmresults(score_threshold, min_length, rocks_hits_db, debug):
 
     if debug:
         ufr_out = sorted(ufr_out, key=lambda x: (x[0], x[1], x[3], x[4]))
-
     return gene_based_results, ufr_out
 
 
@@ -311,18 +310,6 @@ WHERE {orthoset_aaseqs}.{db_col_id} = ?"""
 
     # Return first result
     return next(rows)[0]
-
-
-def calculate_length_of_ali(
-    result,
-):  # XXX: could be merged with transcript_not_long_enough
-    return abs(result.ali_end - result.ali_start) + 1
-
-
-def transcript_not_long_enough(result, minimum_transcript_length):
-    length = calculate_length_of_ali(result)
-    return length < minimum_transcript_length
-
 
 def reverse_complement(nt_seq):
     return phymmr_tools.bio_revcomp(nt_seq)
@@ -584,7 +571,7 @@ def print_unmerged_sequences(
 
         if (
             unique_hit not in exact_hit_mapped_already
-            and len(aa_seq) - aa_seq.count("-") > minimum_seq_data_length
+            and len(aa_seq) - aa_seq.count("-") >= minimum_seq_data_length
         ):
             if base_header in base_header_mapped_already:
                 already_mapped_header, already_mapped_sequence = base_header_mapped_already[base_header]
@@ -692,11 +679,6 @@ ExonerateArgs = namedtuple(
     ]
 )
 
-
-def run_exonerate(arg_tuple: ExonerateArgs):
-    exonerate_gene_multi(arg_tuple)
-
-
 def exonerate_gene_multi(eargs: ExonerateArgs):
     t_gene_start = TimeKeeper(KeeperMode.DIRECT)
     printv(f"Exonerating and doing output for: {eargs.orthoid}", eargs.verbose, 2)
@@ -788,6 +770,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                 fp.writelines(nt_output)
 
     printv(f"{eargs.orthoid} took {t_gene_start.differential():.2f}s. Had {len(output_sequences)} sequences", eargs.verbose, 2)
+    return len(output_sequences)
 
 def reciprocal_search(
     arg_tuple
@@ -936,9 +919,6 @@ def do_taxa(path, taxa_id, args):
         brh_count += len(data)
         for this_match in data:
             orthoid = this_match.gene
-            if transcript_not_long_enough(this_match, args.min_length):
-                continue
-
             if orthoid not in transcripts_mapped_to:
                 transcripts_mapped_to[orthoid] = []
 
@@ -950,20 +930,14 @@ def do_taxa(path, taxa_id, args):
 
     printv(f"Got reference data. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Exonerating genes.", args.verbose)
 
-    if num_threads > 1:
-        arguments: list[Optional[ExonerateArgs]] = []
-        func = arguments.append
-    else:
-        func = exonerate_gene_multi
-
-    # this sorting the list so that the ones with the most hits are first
+    arguments: list[Optional[ExonerateArgs]] = []
     for orthoid in sorted(
         transcripts_mapped_to,
         key=lambda k: len(transcripts_mapped_to[k]),
         reverse=True
     ):
-        func(
-            ExonerateArgs(
+        arguments.append(
+            (ExonerateArgs(
                 orthoid,
                 transcripts_mapped_to[orthoid],
                 orthoset_db_path,
@@ -976,14 +950,19 @@ def do_taxa(path, taxa_id, args):
                 tmp_path,
                 args.verbose,
                 gene_reference_data[orthoid]
-            )
+            ),)
         )
 
+    # this sorting the list so that the ones with the most hits are first
     if num_threads > 1:
-        with Pool(num_threads) as pool:
-            pool.map(run_exonerate, arguments, chunksize=1)
+        if num_threads > 1:
+            with Pool(num_threads) as pool:
+                recovered = pool.starmap(exonerate_gene_multi, arguments, chunksize=1)
     
-    printv(f"Done! Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s. Exonerating genes.", args.verbose)
+    else:
+        recovered = [exonerate_gene_multi(i) for i in arguments]
+
+    printv(f"Done! Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s and found {sum(recovered)} sequences. Exonerating genes.", args.verbose)
 
 
 
