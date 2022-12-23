@@ -279,11 +279,28 @@ def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
 
 
 def does_overlap(seq1, seq2, min_overlap) -> bool:
+
     a1, b1 = make_indices(seq1)
     a2, b2 = make_indices(seq2)
     x = (min(b1, b2) - max(a1, a2)) > min_overlap
     return x
 
+def candidate_distance_check(distances: list, max_distance: float, limit=0.5) -> float:
+    """
+    Checks cross comparison distances and decides if the sequence should be kicked.
+    Calculates the percentage of elements in distances which are over the maximum
+    distance threshold. If the percentage is over the limit, kick the sequence.
+    Returns True if the percentage is over the threshold, otherwise returns False.
+    """
+    #  I am certain there are numpy operations for this
+    #  They are probably faster than this method
+    #  A rayon rust-ffi would also work
+    num_over = 0
+    for distance in distances:
+        if distance > max_distance:
+            num_over += 1
+    percentage = num_over/len(distances)
+    return percentage
 
 def compare_means(
     references: list,
@@ -292,7 +309,7 @@ def compare_means(
     excluded_headers: set,
     keep_refs: bool,
     sort: str,
-    candidate_distance: int,
+    candidate_distance_max: int,
     candidate_overlap: int
 ) -> tuple:
     """
@@ -306,20 +323,22 @@ def compare_means(
         for line in references:
             regulars.append(line)
 
-    # candidate distance checks
+    # cross-comparison candidate distance checks
     remember_cand_distances = {}
     to_kick = set()
-    for i in range(0,len(candidates),2):
-        cand_distances = [bd.blosum62_distance(candidates[i+1], candidates[j+1]) for j in range(0,len(candidates),2) if does_overlap(candidates[i], candidates[j], candidate_overlap)]
-        avg_cand_distance = np.nanmean(cand_distances)
-        remember_cand_distances[candidates[i]] = avg_cand_distance
-        if avg_cand_distance > candidate_distance:
-            to_kick.add(candidates[i])
-    # final_candidates = []
-    # for i in range(0,len(to_add_later),2):
-    #     if i in passing_candidates:
-    #         final_candidates.extend([to_add_later[i], to_add_later[i+1]])
 
+    for i in range(0,len(candidates),2):
+        cand_distances = [bd.blosum62_distance(candidates[i+1], candidates[j+1]) for j in range(0,len(candidates),2) if does_overlap(candidates[i+1], candidates[j+1], candidate_overlap)]
+        #  if no valid cross-comparisons, pass the candidate onto reference checks
+        if not cand_distances:
+            remember_cand_distances[candidates[i]] = "N/A"
+            continue
+        #  if the majority of distance values > threshold, kick_sequence
+        distance_percentage = candidate_distance_check(cand_distances, candidate_distance_max)
+        #  TODO: make this limit an argument?
+        if distance_percentage > 0.5:
+            to_kick.add(candidates[i])
+        remember_cand_distances[candidates[i]] = distance_percentage
 
     ref_dict, candidates_dict = find_index_groups(references, candidates)
     to_add_later = []
@@ -365,6 +384,7 @@ def compare_means(
             upper_bound = "N/A"
             IQR = "N/A"
         intermediate_list = []
+
         for candidate in candidates_at_index:
             header = candidate.id
             raw_sequence = candidate.raw

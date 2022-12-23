@@ -330,7 +330,7 @@ def subcmd_outliercheck(subparsers):
         "-co",
         "--candidate-overlap",
         type=int,
-        default=40,
+        default=30,
         help="Minimum candidate overlap for candidate distance checks.",
     )
     par.add_argument(
