@@ -100,7 +100,7 @@ class Sequence_Set:
             blast_data.append(f">{seq.id}\n{seq.aa_sequence}\n")
             target_to_taxon.setdefault(seq.gene,{})[seq.id] = seq.taxa
 
-            taxon_to_sequences.setdefault(seq.gene, {}).setdefault(seq.taxa, []).append(seq.aa_sequence)
+            taxon_to_sequences.setdefault(seq.gene, {})[seq.taxa] = seq.aa_sequence
 
         return "".join(blast_data), target_to_taxon, taxon_to_sequences
 
