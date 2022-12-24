@@ -14,7 +14,7 @@ import numpy as np
 import phymmr_tools as bd
 from Bio import AlignIO
 
-from phymmr.utils import printv
+from .utils import printv
 from .timekeeper import TimeKeeper, KeeperMode
 ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta")
 
@@ -228,22 +228,6 @@ def find_index_groups(references: list, candidates: list) -> tuple:
         reference_dict[key] = ref_lines
     return reference_dict, candidate_dict
 
-def find_candidate_indexes(candidates: list) -> dict:
-    """
-    Iterate over a list of candidate fastas as lines of text and finds their start
-    and stop indices. Makes a tuple out of the pairs, then uses the
-    tuple as a key in two dictionaries. One dictionary stores lists of
-    candidates with identical indices, and the other dictionary stores
-    the ref set after constraining to those indices.
-    """
-    candidate_dict = {}
-    for i in range(0, len(candidates), 2):
-        sequence = candidates[i + 1]
-        raw_seq = sequence
-        index_tuple = make_indices(sequence)
-        start, stop = index_tuple
-        candidate_dict[candidates[i]] = (start, stop)
-    return candidate_dict
 
 def make_ref_mean(matrix: list, ignore_zeros=False) -> float:
     """
@@ -278,30 +262,6 @@ def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
     return result
 
 
-def does_overlap(seq1, seq2, min_overlap) -> bool:
-
-    a1, b1 = make_indices(seq1)
-    a2, b2 = make_indices(seq2)
-    x = (min(b1, b2) - max(a1, a2)) > min_overlap
-    return x
-
-def candidate_distance_check(distances: list, max_distance: float, limit=0.5) -> float:
-    """
-    Checks cross comparison distances and decides if the sequence should be kicked.
-    Calculates the percentage of elements in distances which are over the maximum
-    distance threshold. If the percentage is over the limit, kick the sequence.
-    Returns True if the percentage is over the threshold, otherwise returns False.
-    """
-    #  I am certain there are numpy operations for this
-    #  They are probably faster than this method
-    #  A rayon rust-ffi would also work
-    num_over = 0
-    for distance in distances:
-        if distance > max_distance:
-            num_over += 1
-    percentage = num_over/len(distances)
-    return percentage
-
 def compare_means(
     references: list,
     candidates: list,
@@ -309,8 +269,6 @@ def compare_means(
     excluded_headers: set,
     keep_refs: bool,
     sort: str,
-    candidate_distance_max: int,
-    candidate_overlap: int
 ) -> tuple:
     """
     For each candidate record, finds the index of the first non-gap bp and makes
@@ -322,24 +280,6 @@ def compare_means(
     if keep_refs:
         for line in references:
             regulars.append(line)
-
-    # cross-comparison candidate distance checks
-    remember_cand_distances = {}
-    to_kick = set()
-
-    for i in range(0,len(candidates),2):
-        cand_distances = [bd.blosum62_distance(candidates[i+1], candidates[j+1]) for j in range(0,len(candidates),2) if does_overlap(candidates[i+1], candidates[j+1], candidate_overlap)]
-        #  if no valid cross-comparisons, pass the candidate onto reference checks
-        if not cand_distances:
-            remember_cand_distances[candidates[i]] = "N/A"
-            continue
-        #  if the majority of distance values > threshold, kick_sequence
-        distance_percentage = candidate_distance_check(cand_distances, candidate_distance_max)
-        #  TODO: make this limit an argument?
-        if distance_percentage > 0.5:
-            to_kick.add(candidates[i])
-        remember_cand_distances[candidates[i]] = distance_percentage
-
     ref_dict, candidates_dict = find_index_groups(references, candidates)
     to_add_later = []
     for index_pair, current_refs in ref_dict.items():
@@ -384,13 +324,12 @@ def compare_means(
             upper_bound = "N/A"
             IQR = "N/A"
         intermediate_list = []
-
         for candidate in candidates_at_index:
+            mean_distance = "No refs"
             header = candidate.id
             raw_sequence = candidate.raw
             grade = "Fail"
-            mean_distance = "N/A"
-            if has_ref_distances and candidate.id not in to_kick:
+            if has_ref_distances:
                 candidate_distances = candidate_pairwise_calls(candidate, ref_alignments)
                 mean_distance = np.nanmean(candidate_distances)
 
@@ -402,11 +341,10 @@ def compare_means(
                         intermediate_list.append(header)
                         intermediate_list.append(raw_sequence)
                     grade = "Pass"
-            outliers.append((header, mean_distance, upper_bound, grade, IQR, remember_cand_distances[header]))
+            outliers.append((header, mean_distance, upper_bound, grade, IQR))
         if sort == "cluster":
             intermediate_list = taxa_sort(intermediate_list)
             to_add_later.extend(intermediate_list)
-
     return regulars, to_add_later, outliers
 
 
@@ -492,8 +430,6 @@ def main_process(
     nt_output_path: str,
     debug: bool,
     verbose: int,
-    candidate_distance: int,
-    candidate_overlap: int
 ):
     keep_refs = not args_references
 
@@ -524,8 +460,6 @@ def main_process(
         to_be_excluded,
         keep_refs,
         sort,
-        candidate_distance/100,
-        candidate_overlap,
     )
     if sort == "original":
         to_add = original_sort(candidate_headers, to_add)
@@ -543,15 +477,15 @@ def main_process(
     if debug:
         with open(outliers_csv_path, "w", encoding="UTF-8") as outliers_csv:
             for outlier in outliers:
-                header, distance, ref_dist, grade, iqr, mean_cand_dist = outlier
+                header, distance, ref_dist, grade, iqr = outlier
                 if grade == "Fail":
                     to_be_excluded.add(header)
                     header = header[1:]
-                result = [header, str(distance), str(ref_dist), str(iqr), grade, str(mean_cand_dist)]
+                result = [header, str(distance), str(ref_dist), str(iqr), grade]
                 outliers_csv.write(",".join(result) + "\n")
     else:
         for outlier in outliers:
-            header, distance, ref_dist, grade, iqr, mean_cand_dist = outlier
+            header, distance, ref_dist, grade, iqr = outlier
             if grade == "Fail":
                 to_be_excluded.add(header)
     if to_add:
@@ -624,8 +558,6 @@ def do_folder(folder, args):
                     nt_output_path,
                     args.debug,
                     args.verbose,
-                    args.candidate_distance,
-                    args.candidate_overlap
                 )
             )
 
@@ -643,8 +575,6 @@ def do_folder(folder, args):
                 nt_output_path,
                 args.debug,
                 args.verbose,
-                args.candidate_distance,
-                args.candidate_overlap
             )
     if args.debug:
         log_folder_path = os.path.join(output_path, "logs")
