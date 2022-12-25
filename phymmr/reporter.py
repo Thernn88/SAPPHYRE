@@ -891,7 +891,7 @@ def do_taxa(path, taxa_id, args):
     else:
         recovered = [exonerate_gene_multi(i) for i in arguments]
 
-    printv(f"Done! Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s and found {sum(recovered)} sequences. Exonerating genes.", args.verbose)
+    printv(f"Done! Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s and found {sum(recovered)} sequences.", args.verbose)
 
 
 

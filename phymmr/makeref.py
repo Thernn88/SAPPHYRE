@@ -87,7 +87,9 @@ class Sequence_Set:
         core_sequences = {}
         for sequence in self.sequences:
             core_sequences.setdefault(sequence.gene, {}).setdefault("aa", []).append((sequence.taxa, sequence.header, sequence.aa_sequence))
-            core_sequences.setdefault(sequence.gene, {}).setdefault("nt", []).append((sequence.taxa, sequence.header, sequence.aa_sequence))
+            core_sequences.setdefault(sequence.gene, {}).setdefault("nt", [])
+            if sequence.nt_sequence:
+                core_sequences[sequence.gene]["nt"].append((sequence.taxa, sequence.header, sequence.nt_sequence))
 
         return core_sequences
 
@@ -255,14 +257,21 @@ def main(args):
         orthoset_db_con = sqlite3.connect(input_path)
         cursor = orthoset_db_con.cursor()
 
-        query = f'''SELECT t.name, o.ortholog_gene_id, a.header, a.sequence,  n.sequence, a.id
+        nt_data = {}
+        query = f'''SELECT n.id, n.sequence FROM orthograph_ntseqs AS n'''
+            
+        rows = cursor.execute(query)
+
+        nt_data = {id: seq for id, seq in rows}
+
+        cursor = orthoset_db_con.cursor()
+
+        query = f'''SELECT p.nt_seq, t.name, o.ortholog_gene_id, a.header, a.sequence,  a.id
                 FROM orthograph_orthologs         AS o
             INNER JOIN orthograph_sequence_pairs    AS p
             ON o.sequence_pair = p.id
             INNER JOIN orthograph_aaseqs      AS a
             ON a.id = p.aa_seq
-            INNER JOIN orthograph_ntseqs      AS n
-            ON n.id = p.nt_seq
             INNER JOIN orthograph_taxa AS t
             ON a.taxid = t.id
            '''
@@ -270,7 +279,10 @@ def main(args):
         rows = cursor.execute(query)
 
         for row in rows:
-            taxa, gene, header, aa_seq, nt_seq, id = row
+            nt_seq = None
+            nt_id, taxa, gene, header, aa_seq, id = row
+            if nt_id in nt_data:
+                nt_seq = nt_data[nt_id]
             this_set.add_sequence(Sequence(header, aa_seq, nt_seq, taxa, gene, id))
     #
 
