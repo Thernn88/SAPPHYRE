@@ -947,16 +947,19 @@ def main(args):
     if not all(os.path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exist.", args.verbose, 0)
         return False
+    rocky.create_pointer("rocks_orthoset_db", os.path.join(args.orthoset_input, args.orthoset, "rocksdb"))
     for input_path in args.INPUT:
         rocks_db_path = os.path.join(input_path, "rocksdb")
         rocky.create_pointer("rocks_nt_db", os.path.join(rocks_db_path, "sequences", "nt"))
         rocky.create_pointer("rocks_hits_db", os.path.join(rocks_db_path, "hits"))
-        rocky.create_pointer("rocks_orthoset_db", os.path.join(args.orthoset_input, args.orthoset, "rocksdb"))
         do_taxa(
             path=input_path,
             taxa_id=os.path.basename(input_path).split(".")[0],
             args=args,
         )
+        rocky.close_pointer("rocks_nt_db")
+        rocky.close_pointer("rocks_hits_db")
+    rocky.close_pointer("rocks_orthoset_db")
     if len(args.INPUT) > 1 or not args.verbose:
         printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
     return True
