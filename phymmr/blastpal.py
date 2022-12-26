@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 import math
 import os
-import sqlite3
 from collections import Counter
 from dataclasses import dataclass
 from itertools import count
 from multiprocessing.pool import Pool
 from shutil import rmtree
+import sys
 from tempfile import TemporaryDirectory, NamedTemporaryFile
 from time import time
 
@@ -38,7 +38,7 @@ class Result:
     def __init__(self, gene, query_id, subject_id, evalue, bit_score, q_start, q_end):
         self.gene = gene
         self.query_id, self.hmmsearch_id = str(query_id).split('_hmmid')
-        self.target = int(subject_id)
+        self.target = str(subject_id)
         self.evalue = float(evalue)
         self.log_evalue = math.log(self.evalue) if self.evalue != 0 else -999.0
         self.score = float(bit_score)
@@ -126,63 +126,6 @@ def do(
 
     return [i.to_json() for i in gene_out]
 
-
-def get_set_id(orthoset_db_con, orthoset):
-    """
-    Retrieves orthoset id from orthoset db
-    """
-    orthoset_db_cur = orthoset_db_con.cursor()
-    rows = orthoset_db_cur.execute(f'SELECT id FROM orthograph_set_details WHERE name = "{orthoset}";')
-    for row in rows:
-        return row[0]
-
-    raise Exception("Orthoset {} id cant be retrieved".format(orthoset))
-
-
-def get_ref_taxon_for_genes(set_id, orthoset_db_con):
-    data = {}
-    orthoset_db_cur = orthoset_db_con.cursor()
-    query = 'SELECT id, sequence FROM orthograph_aaseqs'
-    rows = orthoset_db_cur.execute(query)
-
-    for row in rows:
-        id, sequence = row
-        data[id] = sequence
-
-    target_to_taxon = {}
-    taxon_to_sequences = {}
-
-    query = f'''SELECT DISTINCT
-        orthograph_taxa.name,
-        orthograph_orthologs.ortholog_gene_id,
-        orthograph_aaseqs.id
-        FROM orthograph_orthologs
-        INNER JOIN orthograph_sequence_pairs
-            ON orthograph_orthologs.sequence_pair = orthograph_sequence_pairs.id
-        INNER JOIN orthograph_aaseqs
-            ON orthograph_sequence_pairs.aa_seq = orthograph_aaseqs.id
-        INNER JOIN orthograph_set_details
-            ON orthograph_orthologs.setid = orthograph_set_details.id
-        INNER JOIN orthograph_taxa
-            ON orthograph_aaseqs.taxid = orthograph_taxa.id
-        WHERE orthograph_set_details.id = "{set_id}"'''
-
-    rows = orthoset_db_cur.execute(query)
-
-    for row in rows:
-        name, gene, id = row
-        
-        if gene not in target_to_taxon:
-            target_to_taxon[gene] = {id:name}
-        else:
-            target_to_taxon[gene][id] = name
-
-        taxon_to_sequences.setdefault(gene, {})
-        taxon_to_sequences[gene][name] = data[id]
-
-    return target_to_taxon, taxon_to_sequences
-
-
 def run_process(args, input_path) -> None:
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     orthoset = args.orthoset
@@ -190,7 +133,7 @@ def run_process(args, input_path) -> None:
 
     taxa = os.path.basename(input_path)
     printv(f'Processing: {taxa}', args.verbose, 0)
-    printv("Grabbing Reference data from SQL.", args.verbose)
+    printv("Grabbing reference data from Orthoset DB.", args.verbose)
     # make dirs
     blast_path = os.path.join(input_path, "blast")
     if args.overwrite:
@@ -198,13 +141,22 @@ def run_process(args, input_path) -> None:
             rmtree(blast_path)
     os.makedirs(blast_path, exist_ok=True)
 
-    # grab gene reftaxon
-    orthoset_db_path = os.path.join(orthosets_dir, orthoset + ".sqlite")
-    orthoset_db_con = sqlite3.connect(orthoset_db_path)
+    num_threads = args.processes
 
-    orthoset_id = get_set_id(orthoset_db_con, orthoset)
+    db_path = os.path.join(orthosets_dir, orthoset, "rocksdb")
+    #Spud check
+    if not os.path.exists(db_path):
+        if input(f"Could not find orthoset DB at {db_path}. Would you like to generate it? Y/N: ").lower() == "y":
+            print("Attempting to generate DB")
+            os.system(f"python3 -m phymmr -p {num_threads} Makeref {orthoset}.sqlite -s {orthoset}")
+        else:
+            print("Aborting")
+            sys.exit(1)
+    orthoset_db = wrap_rocks.RocksDB(db_path)
 
-    target_to_taxon, taxon_to_sequences = get_ref_taxon_for_genes(orthoset_id, orthoset_db_con)
+    target_to_taxon = json.loads(orthoset_db.get("getall:targetreference"))
+
+    del orthoset_db
 
     blast_db_path = os.path.join(orthosets_dir, orthoset, "blast", orthoset)
 
@@ -212,9 +164,6 @@ def run_process(args, input_path) -> None:
 
     db_path = os.path.join(input_path, "rocksdb", "hits")
     db = wrap_rocks.RocksDB(db_path)
-
-    db.put("getall:refseqs", json.dumps(taxon_to_sequences))
-    del taxon_to_sequences
 
     printv(f"Done! Took {time_keeper.lap():.2f}s. Grabbing HMM data from DB", args.verbose)
 
@@ -242,7 +191,6 @@ def run_process(args, input_path) -> None:
 
     del global_hmm_object_raw
 
-    num_threads = args.processes
     # Run
     if num_threads <= 1:
         to_write = [

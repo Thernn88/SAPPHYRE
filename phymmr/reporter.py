@@ -4,7 +4,6 @@ import json
 import math
 import os
 import shutil
-import sqlite3
 import sys
 import uuid
 from collections import namedtuple
@@ -193,51 +192,6 @@ class NodeRecord:
     def __le__(self, other):
         return self.score <= other.score
 
-
-def get_set_id(orthoset_db_con, orthoset):
-    """
-    Retrieves orthoset id from orthoset's name.
-
-    Args:
-        orthoset_db_con: SQLite db pointer
-        orthoset (str): name of the thing.
-
-    Returns:
-        (int) id
-    """
-    orthoset_id = None
-
-    orthoset_db_cur = orthoset_db_con.cursor()
-    rows = orthoset_db_cur.execute(
-        f'SELECT id FROM orthograph_set_details WHERE name = "{orthoset}";'
-    )
-
-    if not rows:
-        raise Exception(f"Orthoset {orthoset} id cant be retrieved")
-
-    # Return first result
-    return next(rows)[0]
-
-
-def get_taxa_in_set(set_id, orthoset_db_con):
-    reference_taxa = []
-
-    query = f'''SELECT DISTINCT {orthoset_set_details}.name, {orthoset_taxa}.name
-        FROM {orthoset_seqpairs}
-        INNER JOIN {orthoset_taxa}
-            ON {orthoset_seqpairs}.taxid = {orthoset_taxa}.id
-        INNER JOIN {orthoset_orthologs}
-            ON {orthoset_orthologs}.sequence_pair = {orthoset_seqpairs}.id 
-        INNER JOIN {orthoset_set_details}
-            ON {orthoset_orthologs}.setid = {orthoset_set_details}.id
-        WHERE {orthoset_set_details}.id = "{set_id}"'''
-
-    orthoset_db_cur = orthoset_db_con.cursor()
-    rows = orthoset_db_cur.execute(query)
-
-    return [row[1] for row in rows]
-
-
 def get_hmmresults(score_threshold, min_length, rocks_hits_db, debug):
     batches = rocks_hits_db.get("hmmbatch:all")
     batches = batches.split(",")
@@ -308,20 +262,6 @@ def get_reference_data(rocks_hits_db):
     processed = json.loads(raw_data)
 
     return processed
-
-def get_reftaxon_name(hit_id, orthoset_db_path):
-    query = f"""SELECT {orthoset_taxa}.{db_col_name}
-FROM {orthoset_taxa}
-    INNER JOIN {orthoset_aaseqs} ON {orthoset_taxa}.{db_col_id} = {orthoset_aaseqs}.{db_col_taxid}
-WHERE {orthoset_aaseqs}.{db_col_id} = ?"""
-
-    orthoset_db_con = sqlite3.connect(orthoset_db_path)
-    orthoset_db_cur = orthoset_db_con.cursor()
-
-    rows = orthoset_db_cur.execute(query, (hit_id,))
-
-    # Return first result
-    return next(rows)[0]
 
 def reverse_complement(nt_seq):
     return phymmr_tools.bio_revcomp(nt_seq)
@@ -498,32 +438,9 @@ def overlap_by_orf(candidate):
 ### FIN
 
 
-def get_ortholog_group(orthoset_id, orthoid, orthoset_db_con):
-    query = f"""SELECT 
-            {orthoset_taxa}.{db_col_name},
-            {orthoset_aaseqs}.{db_col_header},
-            {orthoset_aaseqs}.{db_col_sequence}
-        FROM {orthoset_aaseqs}
-        INNER JOIN {orthoset_seqpairs}
-            ON {orthoset_aaseqs}.{db_col_id} = {orthoset_seqpairs}.{db_col_aaseq}
-        INNER JOIN {orthoset_orthologs}
-            ON {orthoset_seqpairs}.{db_col_id} = {orthoset_orthologs}.{db_col_seqpair}
-        INNER JOIN {orthoset_taxa}
-            ON {orthoset_aaseqs}.{db_col_taxid} = {orthoset_taxa}.{db_col_id}
-        AND   {orthoset_orthologs}.{db_col_setid} = ?
-        AND   {orthoset_orthologs}.{db_col_orthoid} = ?
-        ORDER BY {orthoset_taxa}.{db_col_name}"""
-
-    orthoset_db_cur = orthoset_db_con.cursor()
-    rows = orthoset_db_cur.execute(
-        query,
-        (
-            orthoset_id,
-            orthoid,
-        ),
-    )
-    return rows
-
+def get_ortholog_group(orthoid, orthoset_db):
+    core_seqs = json.loads(orthoset_db.get(f"getcore:{orthoid}"))
+    return core_seqs["aa"], core_seqs["nt"]
 
 def format_candidate_header(gene, taxa_name, taxa_id, sequence_id, frame):
     return header_seperator.join([gene, taxa_name, taxa_id, sequence_id, frame])
@@ -621,34 +538,6 @@ def print_unmerged_sequences(
     return aa_result, nt_result
 
 
-def get_ortholog_group_nucleotide(orthoset_id, orthoid, orthoset_db_con):
-    query = f"""SELECT 
-            {orthoset_taxa}.{db_col_name},
-            {orthoset_ntseqs}.{db_col_header},
-            {orthoset_ntseqs}.{db_col_sequence}
-        FROM {orthoset_ntseqs}
-        INNER JOIN {orthoset_seqpairs}
-            ON {orthoset_ntseqs}.{db_col_id} = {orthoset_seqpairs}.{db_col_ntseq}
-        INNER JOIN {orthoset_orthologs}
-            ON {orthoset_seqpairs}.{db_col_id} = {orthoset_orthologs}.{db_col_seqpair}
-        INNER JOIN {orthoset_taxa}
-            ON {orthoset_ntseqs}.{db_col_taxid} = {orthoset_taxa}.{db_col_id}
-        AND   {orthoset_orthologs}.{db_col_setid} = ?
-        AND   {orthoset_orthologs}.{db_col_orthoid} = ?
-        ORDER BY {orthoset_taxa}.{db_col_name}"""
-
-    orthoset_db_cur = orthoset_db_con.cursor()
-    rows = orthoset_db_cur.execute(
-        query,
-        (
-            orthoset_id,
-            orthoid,
-        ),
-    )
-
-    return rows
-
-
 def get_difference(score_a, score_b):
     """
     Returns decimal difference of two scores
@@ -677,9 +566,7 @@ ExonerateArgs = namedtuple(
     [
         "orthoid",
         "list_of_hits",
-        "orthoset_db_path",
         "min_score",
-        "orthoset_id",
         "aa_out_path",
         "min_length",
         "taxa_id",
@@ -691,10 +578,10 @@ ExonerateArgs = namedtuple(
 )
 
 def exonerate_gene_multi(eargs: ExonerateArgs):
+
     t_gene_start = TimeKeeper(KeeperMode.DIRECT)
     printv(f"Exonerating and doing output for: {eargs.orthoid}", eargs.verbose, 2)
 
-    orthoset_db_con = sqlite3.connect(eargs.orthoset_db_path)
     reftaxon_related_transcripts = {i: [] for i in eargs.reference_sequences.keys()}
     for hit in eargs.list_of_hits:
         this_reftaxon = hit.reftaxon
@@ -808,9 +695,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
 
     if len(output_sequences) > 0:
         output_sequences = sorted(output_sequences, key=lambda d: d.hmm_start)
-        core_sequences = get_ortholog_group(
-            eargs.orthoset_id, eargs.orthoid, orthoset_db_con
-        )
+        core_sequences, core_sequences_nt = get_ortholog_group(eargs.orthoid, rocky.get_rock("rocks_orthoset_db"))
         this_aa_path = os.path.join(eargs.aa_out_path, eargs.orthoid + ".aa.fa")
         aa_output, nt_output = print_unmerged_sequences(
             output_sequences,
@@ -822,10 +707,6 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
             with open(this_aa_path, "w") as fp:
                 fp.writelines(print_core_sequences(eargs.orthoid, core_sequences))
                 fp.writelines(aa_output)
-
-            core_sequences_nt = get_ortholog_group_nucleotide(
-                eargs.orthoset_id, eargs.orthoid, orthoset_db_con
-            )
 
             this_nt_path = os.path.join(eargs.nt_out_path, eargs.orthoid + ".nt.fa")
 
@@ -851,7 +732,6 @@ def reciprocal_search(
             continue
 
         blast_results = gene_blast_results[hmm_id]
-
         reftaxon_count = {ref_taxa: 0 for ref_taxa in reference_taxa}
         this_match_reftaxon = None
         this_second_match = None
@@ -904,22 +784,6 @@ def do_taxa(path, taxa_id, args):
     else:
         list_of_wanted_orthoids = []
 
-    orthoset_path = args.orthoset_input
-    orthoset = args.orthoset
-
-    orthoset_db_path = os.path.join(orthoset_path, orthoset + ".sqlite")
-    orthoset_db_con = sqlite3.connect(orthoset_db_path)
-
-    cache_size = 16000000
-
-    orthoset_db_con.execute("PRAGMA journal_mode = OFF;")
-    orthoset_db_con.execute("PRAGMA synchronous = 0;")
-    orthoset_db_con.execute(f"PRAGMA cache_size = {cache_size};")
-    orthoset_db_con.execute("PRAGMA locking_mode = EXCLUSIVE;")
-    orthoset_db_con.execute("PRAGMA temp_store = MEMORY;")
-
-    orthoset_id = get_set_id(orthoset_db_con, orthoset)
-
     aa_out = "aa"
     nt_out = "nt"
 
@@ -937,7 +801,7 @@ def do_taxa(path, taxa_id, args):
 
     printv(f"Initialized databases. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing reference taxa in set.", args.verbose)
 
-    reference_taxa = get_taxa_in_set(orthoset_id, orthoset_db_con)
+    reference_taxa = json.loads(rocky.get_rock("rocks_orthoset_db").get("getall:taxainset"))
 
     printv(f"Got reference taxa in set. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing hmmresults.", args.verbose)
 
@@ -993,7 +857,7 @@ def do_taxa(path, taxa_id, args):
 
     printv(f"Reciprocal check done, found {brh_count} reciprocal hits. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing references sequences.", args.verbose)
 
-    gene_reference_data = get_reference_data(rocky.get_rock("rocks_hits_db"))
+    gene_reference_data = get_reference_data(rocky.get_rock("rocks_orthoset_db"))
 
     printv(f"Got reference data. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Exonerating genes.", args.verbose)
 
@@ -1007,9 +871,7 @@ def do_taxa(path, taxa_id, args):
             (ExonerateArgs(
                 orthoid,
                 transcripts_mapped_to[orthoid],
-                orthoset_db_path,
                 args.min_score,
-                orthoset_id,
                 aa_out_path,
                 args.min_length,
                 taxa_id,
@@ -1029,7 +891,7 @@ def do_taxa(path, taxa_id, args):
     else:
         recovered = [exonerate_gene_multi(i) for i in arguments]
 
-    printv(f"Done! Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s and found {sum(recovered)} sequences. Exonerating genes.", args.verbose)
+    printv(f"Done! Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s and found {sum(recovered)} sequences.", args.verbose)
 
 
 
@@ -1085,6 +947,7 @@ def main(args):
     if not all(os.path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exist.", args.verbose, 0)
         return False
+    rocky.create_pointer("rocks_orthoset_db", os.path.join(args.orthoset_input, args.orthoset, "rocksdb"))
     for input_path in args.INPUT:
         rocks_db_path = os.path.join(input_path, "rocksdb")
         rocky.create_pointer("rocks_nt_db", os.path.join(rocks_db_path, "sequences", "nt"))
@@ -1094,6 +957,9 @@ def main(args):
             taxa_id=os.path.basename(input_path).split(".")[0],
             args=args,
         )
+        rocky.close_pointer("rocks_nt_db")
+        rocky.close_pointer("rocks_hits_db")
+    rocky.close_pointer("rocks_orthoset_db")
     if len(args.INPUT) > 1 or not args.verbose:
         printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
     return True
