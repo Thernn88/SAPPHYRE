@@ -26,7 +26,7 @@ def subcmd_prepare(subparsers):
     )
     par.add_argument("INPUT", help="Path to directory of Input folder", action="store")
     par.add_argument(
-        "-c",
+        "-clear",
         "--clear_database",
         action="store_true",
         help="Overwrite existing rocksdb database.",
@@ -287,6 +287,7 @@ def reporter(args):
         args.orthoset,
         args.min_length,
         args.min_score,
+        args.compress,
     )
     if not reporter.main(mainargs):
         print(args.formathelp())
@@ -570,6 +571,7 @@ def flexcull(args):
         args.matches,
         args.base_pair,
         args.match_percent,
+        args.compress
     )
     if not flexcull.main(flexargs):
         print()
@@ -657,7 +659,7 @@ def subcmd_finalize(subparsers):
         help="Rename reference taxa using names csv file provided.",
     )
     par.add_argument(
-        "-c",
+        "-con",
         "--concat",
         action="store_true",
         help="Merge resulting on target genes into a final fasta file.",
@@ -776,7 +778,13 @@ if __name__ == "__main__":
         "under certain conditions.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-
+    parser.add_argument(
+        "-c",
+        "--compress",
+        action="store_true",
+        default=False,
+        help="Output fasta files as compressed files using gzip"
+    )
     parser.add_argument(
         "-v",
         "--verbose",
