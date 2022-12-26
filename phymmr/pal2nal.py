@@ -9,11 +9,10 @@ from pathlib import Path
 from typing import Any, Dict, Generator, List, Tuple
 from os import path as ospath
 
-from Bio.SeqIO.FastaIO import SimpleFastaParser
 from pro2codon import pn2codon
 
 from .timekeeper import TimeKeeper, KeeperMode
-from .utils import printv
+from .utils import printv, parseFasta, writeFasta
 
 DICT_TABLES = {
     "1": {
@@ -3586,28 +3585,31 @@ def return_aligned_paths(
     glob_paths_genes: List[Path],
     path_aligned: Path,
     specified_dna_table: dict,
-    verbose: bool
+    verbose: bool,
+    compress: bool
 ) -> Generator[Path, Any, Any]:
     for path_nt, path_aa in zip(glob_paths_taxa, glob_paths_genes):
         if not path_nt.is_file() or not path_aa.is_file():
+            
             continue
 
-        stem_taxon = Path(path_nt.stem).stem
-        stem_gene = Path(path_aa.stem).stem
-
-        if stem_taxon != stem_gene:
+        nt_gene = str(path_nt.parts[-1]).split(".")[0]
+        aa_gene = str(path_aa.parts[-1]).split(".")[0]
+        
+        if nt_gene != aa_gene:
             continue
 
         yield (
             path_aa,
             path_nt,
-            path_aligned.joinpath(Path(f"{stem_taxon}.nt.fa")),
+            path_aligned.joinpath(Path(f"{nt_gene}.nt.fa")),
             specified_dna_table,
             verbose,
+            compress,
         )
 
 
-def prepare_taxa_and_genes(input: str, specified_dna_table, verbose) -> Tuple[Generator[
+def prepare_taxa_and_genes(input: str, specified_dna_table, verbose, compress) -> Tuple[Generator[
     Tuple[Path, Path, Path],
     Any,
     Any
@@ -3621,18 +3623,19 @@ def prepare_taxa_and_genes(input: str, specified_dna_table, verbose) -> Tuple[Ge
     rmtree(joined_nt_aligned, ignore_errors=True)
     joined_nt_aligned.mkdir()
 
-    glob_genes = sorted(list(joined_mafft.glob("*aa.fa")))
-    glob_taxa = sorted(list(joined_nt.glob("*nt.fa")))
+    glob_aa = sorted([i for i in joined_mafft.iterdir() if i.suffix in [".fa", ".gz", ".fq", ".fastq", ".fasta"]], key= lambda x: x.name.split('.')[0])
+    glob_nt = sorted([i for i in joined_nt.iterdir() if i.suffix in [".fa", ".gz", ".fq", ".fastq", ".fasta"]], key= lambda x: x.name.split('.')[0])
 
     out_generator = return_aligned_paths(
-        glob_taxa,
-        glob_genes,
+        glob_nt,
+        glob_aa,
         joined_nt_aligned,
         specified_dna_table,
-        verbose
+        verbose,
+        compress
     )
 
-    return out_generator, len(glob_genes)
+    return out_generator, len(glob_aa)
 
 
 def read_and_convert_fasta_files(
@@ -3645,27 +3648,22 @@ def read_and_convert_fasta_files(
             List[Tuple[str, str]]
         ]
 ]:
-    nt_seqs = SimpleFastaParser(open(nt_file))
-    aa_seqs = SimpleFastaParser(open(aa_file))
 
     aas = []
     nts = {}
 
     nt_has_refs = False
-    for i, nt in enumerate(nt_seqs):
+    for i, nt in enumerate(parseFasta(nt_file)):
+        nt_header = nt[0]
         if i == 0:
-            if nt[0][-1] == ".": 
+            if nt_header[-1] == ".": 
                 nt_has_refs = True
 
-        nt_header, nt_seq = nt
-        nt_header, nt_seq = nt_header.strip(), nt_seq.strip()
-        nts[nt_header] = (nt_header, nt_seq)
+        nts[nt_header] = nt
 
     
-    for aa in aa_seqs:
-        aa_header, aa_seq = aa
-
-        if aa_header[-1] == "." and not nt_has_refs:
+    for aa_header, aa_seq in parseFasta(aa_file):
+        if not nt_has_refs and aa_header[-1] == ".":
             continue
 
         aa_header, aa_seq = aa_header.strip(), aa_seq.strip()
@@ -3674,12 +3672,11 @@ def read_and_convert_fasta_files(
 
     result = {}
     i = -1
-    for aa in aas:
-        header = aa[0]
+    for header, sequence in aas:
         try:
             if header not in result:
                 i += 1
-            result[aa[0]] = (aa, (i, *nts[aa[0]]))
+            result[header] = ((header, sequence), (i, *nts[header]))
         except KeyError as e:
             printv("ERROR CAUGHT: There is a single header in PEP sequence FASTA file that does not exist in NUC sequence FASTA file", verbose, 0)
             printv(f"SEQUENCE MISSING: {e}", verbose, 0)
@@ -3687,7 +3684,7 @@ def read_and_convert_fasta_files(
     return result
 
 
-def worker(aa_file: str, nt_file: str, out_file: Path, specified_dna_table: dict, verbose: bool) -> bool:
+def worker(aa_file: str, nt_file: str, out_file: Path, specified_dna_table: dict, verbose: bool, compress: bool) -> bool:
     gene = ospath.basename(aa_file).split(".")[0]
     printv(f"Doing: {gene}", verbose, 2)
     seqs = read_and_convert_fasta_files(
@@ -3701,8 +3698,13 @@ def worker(aa_file: str, nt_file: str, out_file: Path, specified_dna_table: dict
 
     outfile_stem = out_file.stem
     aligned_result = pn2codon(outfile_stem, specified_dna_table, seqs)
+    aligned_lines = aligned_result.split("\n")
 
-    out_file.write_text(aligned_result)    
+    records = []
+    for i in range(0, len(aligned_lines)-1, 2):
+        records.append((aligned_lines[i].lstrip(">"), aligned_lines[i+1]))
+
+    writeFasta(str(out_file), records, compress)
 
     return True
 
@@ -3719,7 +3721,8 @@ def main(args):
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     for folder in args.INPUT:
         printv(f"Processing: {ospath.basename(folder)}", args.verbose, 0)
-        this_taxa_jobs, _ = prepare_taxa_and_genes(folder, specified_dna_table, args.verbose)
+        this_taxa_jobs, _ = prepare_taxa_and_genes(folder, specified_dna_table, args.verbose, args.compress)
+
         success = run_batch_threaded(num_threads=args.processes, ls=this_taxa_jobs)
 
         if not success:

@@ -27,7 +27,7 @@ from tqdm import tqdm
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .timekeeper import TimeKeeper, KeeperMode
-from .utils import printv, gettempdir,ConcurrentLogger
+from .utils import printv, gettempdir,ConcurrentLogger, parseFasta, writeFasta
 
 ROCKSDB_FOLDER_NAME = "rocksdb"
 SEQUENCES_FOLDER_NAME  = "sequences"
@@ -69,25 +69,6 @@ def truncate_taxa(header: str, extension=None) -> str:
     if extension:
         result = result + extension
     return result
-
-
-def get_seq_count(filename, is_gz):
-    counter = count()
-    if is_gz:
-        f = gzip.open(filename, "r+")
-        for line in f:
-            if line[0] == ord(">") or line[0] == ord("+"):
-                next(counter)
-    else: # We can grab it cheaper
-        f = open(filename, "r+")
-        buf = mmap.mmap(f.fileno(), 0)
-        readline = buf.readline
-        line = readline()
-        while line:
-            if line[0] == ord(">") or line[0] == ord("+"):
-                next(counter)
-            line = readline()
-    return next(counter)
 
 def N_trim(
     parent_sequence: str, 
@@ -234,25 +215,9 @@ class SeqDeduplicator:
         fa_file_out: List[str],
         dedup_time: List[int],
     ):
+        fasta_file = parseFasta(self.fa_file_path)
 
-        suffix = self.fa_file_path.suffix
-
-        read_method = SimpleFastaParser
-        if any([s in self.fa_file_path.stem for s in (".fq", ".fastq")]):
-            read_method = FastqGeneralIterator
-
-        is_compressed = suffix == '.gz'
-        if is_compressed:
-            fasta_file = list(read_method(gzip.open(str(self.fa_file_path), "rt")))
-        else:
-            fasta_file = read_method(open(str(self.fa_file_path), "r"))
-
-        if self.verbose:
-            seq_grab_count = get_seq_count(
-                self.fa_file_path, is_compressed)
-
-        for_loop = tqdm(
-            fasta_file, total=seq_grab_count) if self.verbose else fasta_file
+        for_loop = tqdm(fasta_file) if self.verbose else fasta_file
 
         for row in for_loop:
             header, parent_seq = row[:2]

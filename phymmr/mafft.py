@@ -8,7 +8,7 @@ from tempfile import TemporaryDirectory, NamedTemporaryFile
 from threading import Lock
 from time import time
 
-from .utils import printv, gettempdir
+from .utils import printv, gettempdir, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
 
 MAFFT_FOLDER = "mafft"
@@ -19,22 +19,19 @@ ALN_FOLDER = "aln"
 def process_genefile(filewrite, fileread):
     ref_og_hashmap = {}
     cand_og_hashmap = {}
-    with open(fileread) as fp:
-        for line in fp:
-            if line[0] == ">":
-                if line[-2] == ".":
-                    ref_og_hashmap[line.split("|")[2]] = line
-                    next(fp)  # Skip this line and next line
-                else:
-                    cand_og_hashmap[line[:244]] = line
-                    filewrite.write(line)
-            else:
-                filewrite.write(line)
+    for header, sequence in parseFasta(fileread):
+        if header.endswith("."):
+            ref_og_hashmap[header.split("|")[2]] = header
+        else:
+            cand_og_hashmap[header[:243]] = header
+            filewrite.write(f">{header}\n")
+            filewrite.write(sequence+"\n")
+                
     return ref_og_hashmap, cand_og_hashmap
 
 
 CmdArgs = namedtuple(
-    "CmdArgs", ["string", "gene_file", "result_file", "gene", "lock", "verbose"]
+    "CmdArgs", ["string", "gene_file", "result_file", "gene", "lock", "verbose", "compress"]
 )
 
 
@@ -57,21 +54,16 @@ def run_command(args: CmdArgs) -> None:
         os.system(command)
 
     # Overwrite reference headers with original headers
-    with open(args.result_file, "r+") as fp_out:
-        out = []
-        for line in fp_out:
-            if line[0] == ">":
-                if "|" in line:
-                    out.append(cand_og_hashmap[line[:244]])
-                else:
-                    out.append(ref_og_hashmap[line[1:].strip()])
-            else:
-                out.append(line)
+    out = []
+    for header, sequence in parseFasta(args.result_file):
+        if "|" in header:
+            out.append((cand_og_hashmap[header[:243]],sequence))
+        else:
+            out.append((ref_og_hashmap[header.strip()],sequence))
 
-        fp_out.seek(0)
-        fp_out.writelines(out)
-        fp_out.truncate()
-
+    if args.compress:
+        os.unlink(args.result_file)
+    writeFasta(args.result_file, out, args.compress)
 
 def do_folder(folder, args):
     printv(f"Processing: {os.path.basename(folder)}", args.verbose)
@@ -84,7 +76,7 @@ def do_folder(folder, args):
     rmtree(mafft_path, ignore_errors = True)
     os.mkdir(mafft_path)
 
-    genes = [gene.split(".")[0] for gene in os.listdir(aa_path) if ".aa" in gene]
+    genes = [gene for gene in os.listdir(aa_path) if gene.split('.')[-1] in ["fa", "gz", "fq", "fastq", "fasta"]]
     #genes.sort(key = lambda x : os.path.getsize(os.path.join(aa_path, x + ".aa.fa")), reverse=True)
     orthoset_path = os.path.join(args.orthoset_input, args.orthoset)
     aln_path = os.path.join(orthoset_path, ALN_FOLDER)
@@ -110,11 +102,12 @@ def do_folder(folder, args):
         func = run_command
         lock = None
 
-    for gene in genes:
-        gene_file = os.path.join(aa_path, gene + ".aa.fa")
-        result_file = os.path.join(mafft_path, gene + ".aa.fa")
+    for file in genes:
+        gene = file.split(".")[0]
+        gene_file = os.path.join(aa_path, file)
+        result_file = os.path.join(mafft_path, file.rstrip('.gz'))
         func(
-            CmdArgs(command, gene_file, result_file, gene, lock, args.verbose)
+            CmdArgs(command, gene_file, result_file, gene, lock, args.verbose, args.compress)
         )
 
     if args.processes > 1:

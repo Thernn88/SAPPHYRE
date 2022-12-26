@@ -3,7 +3,7 @@ from time import time
 from pathlib import Path
 from multiprocessing.pool import Pool
 
-from .utils import printv
+from .utils import printv, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
 
 def prepend(inputs, directory):
@@ -11,17 +11,12 @@ def prepend(inputs, directory):
 
 def parse_gene(path, grab_references = False):
     this_out = []
-    with path.open() as fp:
+    for header, sequence in parseFasta(str(path)):
         if grab_references:
-            for line in fp:
-                if line != "\n":
-                    this_out.append(line.strip())
+            this_out.append((header,sequence))
         else:
-            for line in fp:
-                if line[0] == ">" and line.strip()[-1] != '.':
-                    this_out.append(line.strip())
-                    sequence = next(fp)
-                    this_out.append(sequence.strip())
+            if header[-1] != ".":
+                this_out.append((header,sequence))
     return {path: this_out}
 
 def main(args):
@@ -76,11 +71,11 @@ def main(args):
 
     for gene in aa_out:
         gene_out = Path(aa_out_path, gene)
-        gene_out.write_text("\n".join(aa_out[gene]))
+        writeFasta(gene_out, aa_out[gene], args.compress)
 
     for gene in nt_out:
         gene_out = Path(nt_out_path, gene)
-        gene_out.write_text("\n".join(nt_out[gene]))
+        writeFasta(gene_out, nt_out[gene], args.compress)
     printv(f"Finished took {main_keeper.differential():.2f}s overall.", args.verbose, 0)
     return True
 
