@@ -601,7 +601,7 @@ def do_protein(
         for i, record in enumerate(gene_out):
             gene_out[i] = (record[0], "".join([let for i, let in enumerate(record[1]) if i in to_keep]))
 
-    output_path = os.path.join(output_dir, f"{protein}_merged", gene)
+    output_path = os.path.join(output_dir, f"{protein}_merged", gene.rstrip(".gz"))
 
     return output_path, gene_out
 
