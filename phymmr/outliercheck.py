@@ -393,13 +393,13 @@ def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
     result = []
 
     for i in range(0, len(raw_sequences), 2):
-        result.append(raw_sequences[i]+"\n")
+        result.append(raw_sequences[i])
 
         sequence = raw_sequences[i + 1]
 
         sequence = [sequence[i*3:(i*3)+3] for i in positions_to_keep]
         
-        result.append("".join(sequence)+"\n")
+        result.append("".join(sequence))
     
     return result
 
@@ -493,7 +493,7 @@ def main_process(
 
         lines = []
         for header, sequence in parseFasta(nt_input_path):
-            lines.append(header)
+            lines.append(">"+header)
             lines.append(sequence)
 
         non_empty_lines = remove_excluded_sequences(
