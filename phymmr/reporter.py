@@ -57,32 +57,17 @@ class Hit:
         "hmm_end",
         "ali_start",
         "ali_end",
-        "est_sequence_hmm_region",
-        "est_sequence_complete",
-        "extended_orf_cdna_start",
-        "orf_cdna_end_on_transcript",
-        "extended_orf_cdna_end",
-        "orf_cdna_start_on_transcript",
-        "extended_orf_aa_start_on_transcript",
-        "extended_orf_aa_end_on_transcript",
-        "extended_orf_aa_end",
-        "extended_orf_aa_start",
-        "orf_aa_start_on_transcript",
-        "orf_aa_end_on_transcript",
-        "extended_orf_cdna_sequence",
-        "orf_cdna_sequence",
-        "extended_orf_aa_sequence",
-        "orf_aa_sequence",
-        "reftaxon",
         "est_header",
+        "est_sequence_hmm_region",
+        "est_sequence_complete",
         "est_sequence_complete",
         "est_sequence_hmm_region",
-        "orf_cdna_start",
-        "orf_cdna_end",
-        "orf_aa_start",
-        "orf_aa_end",
+        "reftaxon",
+        "first_closest",
         "second_closest",
         "mapped_to",
+        "first_alignment",
+        "first_extended_alignment",
         "second_alignment",
         "second_extended_alignment"
     )
@@ -98,37 +83,48 @@ class Hit:
         self.ali_end = as_json["ali_end"]
         self.second_closest = None
         self.mapped_to = None
+        self.first_alignment = None
+        self.first_extended_alignment = None
         self.second_alignment = None
         self.second_extended_alignment = None
-        self.remove_extended_orf() #Set values to null
-        
-    def reset(self):
-        self.remove_extended_orf()
-        self.orf_cdna_sequence = None
+
+    def add_orf(self, exonerate_record): 
+        exonerate_record.orf_cdna_start_on_transcript = (
+            exonerate_record.orf_cdna_start + (self.ali_start * 3) - 3
+        )
+        exonerate_record.orf_cdna_end_on_transcript = exonerate_record.orf_cdna_end + (self.ali_start * 3) - 3
+        exonerate_record.orf_aa_start_on_transcript = (
+            exonerate_record.orf_cdna_start + (self.ali_start * 3) - 3
+        ) / 3
+        exonerate_record.orf_aa_end_on_transcript = (
+            exonerate_record.orf_cdna_end + (self.ali_start * 3) - 3
+        ) / 3
+        self.first_alignment = exonerate_record
+
+class NodeRecord:
+    def __init__(self, header, is_extension):
+        self.header = header
+        self.score = -math.inf
         self.orf_cdna_start = None
         self.orf_cdna_end = None
-        self.orf_aa_sequence = None
+        self.orf_cdna_sequence = ""
         self.orf_aa_start = None
         self.orf_aa_end = None
-
-    def remove_extended_orf(self):
-        self.extended_orf_aa_sequence = None
-        self.extended_orf_aa_start = None
-        self.extended_orf_aa_end = None
+        self.orf_aa_sequence = ""
+        self.is_extension = is_extension
+        self.orf_cdna_end_on_transcript = None
+        self.orf_aa_start_on_transcript = None
         self.extended_orf_cdna_sequence = None
-        self.extended_orf_cdna_start = None
-        self.extended_orf_cdna_end = None
-
-    def add_extended_orf(self, exonerate_record, verbose):
-        (
-            _,
-            self.extended_orf_cdna_sequence,
-            self.extended_orf_cdna_start,
-            self.extended_orf_cdna_end,
-            self.extended_orf_aa_sequence,
-            self.extended_orf_aa_start,
-            self.extended_orf_aa_end,
-        ) = exonerate_record
+        self.extended_orf_aa_sequence = None
+        
+    def check_extend(self):
+        if self.is_extension:
+            self.extended_orf_cdna_sequence = self.orf_cdna_sequence
+            self.extended_orf_cdna_start = self.orf_cdna_start
+            self.extended_orf_cdna_end = self.orf_cdna_end
+            self.extended_orf_aa_sequence = self.orf_aa_sequence
+            self.extended_orf_aa_start = self.orf_aa_start
+            self.extended_orf_aa_end = self.orf_aa_end
 
         self.extended_orf_aa_start_on_transcript = (
             (self.extended_orf_cdna_start - 1) / 3
@@ -138,44 +134,7 @@ class Hit:
             (self.extended_orf_cdna_end - 1) / 3
         ) + 1
 
-        self.extended_orf_aa_sequence = translate_cdna(self.extended_orf_cdna_sequence, verbose)
-
-    def add_orf(self, exonerate_record, verbose):
-        (
-            _,
-            self.orf_cdna_sequence,
-            self.orf_cdna_start,
-            self.orf_cdna_end,
-            self.orf_aa_sequence,
-            self.orf_aa_start,
-            self.orf_aa_end,
-        ) = exonerate_record
-
-        self.orf_aa_sequence = translate_cdna(self.orf_cdna_sequence, verbose)
-
-        self.orf_cdna_start_on_transcript = (
-            self.orf_cdna_start + (self.ali_start * 3) - 3
-        )
-        self.orf_cdna_end_on_transcript = self.orf_cdna_end + (self.ali_start * 3) - 3
-        self.orf_aa_start_on_transcript = (
-            self.orf_cdna_start + (self.ali_start * 3) - 3
-        ) / 3
-        self.orf_aa_end_on_transcript = (
-            self.orf_cdna_end + (self.ali_start * 3) - 3
-        ) / 3
-
-
-class NodeRecord:
-    def __init__(self, header, is_extension):
-        self.header = header
-        self.score = -math.inf
-        self.cdna_start = None
-        self.cdna_end = None
-        self.cdna_sequence = ""
-        self.aa_start = None
-        self.aa_end = None
-        self.aa_sequence = ""
-        self.is_extension = is_extension
+        self.extended_orf_aa_sequence = translate_cdna(self.extended_orf_cdna_sequence)
 
     def __lt__(self, other):
         return self.score < other.score
@@ -289,12 +248,12 @@ def crop_to_hmm_alignment(seq, header, hit):
 
 ### EXONERATE FUNCTIONS
 
-def translate_cdna(cdna_seq, verbose):
+def translate_cdna(cdna_seq):
     if not cdna_seq:
         return None
 
     if len(cdna_seq) % 3 != 0:
-        printv("WARNING: NT Sequence length is not divisable by 3", verbose, 0)
+        printv("WARNING: NT Sequence length is not divisable by 3", 0)
 
     return str(Seq(cdna_seq).translate())
 
@@ -327,18 +286,18 @@ def parse_nodes(lines):
                 nodes[raw_header] = this_node
         elif ">cdna" in line:  # if cdna, set cdna values
             fields = line.split()
-            this_node.cdna_start = int(fields[1])
-            this_node.cdna_end = int(fields[2])
+            this_node.orf_cdna_start = int(fields[1])
+            this_node.orf_cdna_end = int(fields[2])
             state = 1
         elif ">aa" in line:  # if aa in line, set aa values
             fields = line.split()
-            this_node.aa_start = int(fields[1])
-            this_node.aa_end = int(fields[2])
+            this_node.orf_aa_start = int(fields[1])
+            this_node.orf_aa_end = int(fields[2])
             state = 2
         elif state == 1:  # if cdna data line
-            this_node.cdna_sequence += line
+            this_node.orf_cdna_sequence += line
         elif state == 2:  # if aa data line
-            this_node.aa_sequence += line
+            this_node.orf_aa_sequence += line
     return nodes
 
 
@@ -347,30 +306,19 @@ def parse_multi_results(handle):
     result = []
     handle.seek(0)
     nodes = parse_nodes(handle)
-    for key in nodes:
-        node = nodes[key]
+    for node in nodes.values():
         if node.is_extension:
+            node.check_extend()
             extended_result.append(
                 (
-                    node.header,
-                    node.cdna_sequence,
-                    node.cdna_start,
-                    node.cdna_end,
-                    node.aa_sequence,
-                    node.aa_start,
-                    node.aa_end,
+                    node
                 )
             )
         else:
+            node.orf_aa_sequence = translate_cdna(node.orf_cdna_sequence)
             result.append(
                 (
-                    node.header,
-                    node.cdna_sequence,
-                    node.cdna_start,
-                    node.cdna_end,
-                    node.aa_sequence,
-                    node.aa_start,
-                    node.aa_end,
+                    node
                 )
             )
     return extended_result, result
@@ -400,26 +348,26 @@ def get_multi_orf(query, targets, score_threshold, include_extended):
     return extended_results, results
 
 
-def extended_orf_contains_original_orf(hit):
+def extended_orf_contains_original_orf(extended_alignment, alignment):
     return (
-        hit.extended_orf_cdna_start > hit.orf_cdna_end_on_transcript
-        or hit.extended_orf_cdna_end < hit.orf_cdna_start_on_transcript
+        extended_alignment.extended_orf_cdna_start > alignment.orf_cdna_end_on_transcript
+        or extended_alignment.extended_orf_cdna_end < alignment.orf_cdna_start_on_transcript
     )
 
 
-def get_overlap_length(candidate):
+def get_overlap_length(candidate, alignment):
     if (
-        candidate.extended_orf_aa_start_on_transcript <= candidate.ali_end
-        and candidate.extended_orf_aa_end_on_transcript >= candidate.ali_start
+        alignment.extended_orf_aa_start_on_transcript <= candidate.ali_end
+        and alignment.extended_orf_aa_end_on_transcript >= candidate.ali_start
     ):
         overlap_start = (
-            candidate.extended_orf_aa_start_on_transcript
-            if candidate.extended_orf_aa_start_on_transcript > candidate.ali_start
+            alignment.extended_orf_aa_start_on_transcript
+            if alignment.extended_orf_aa_start_on_transcript > candidate.ali_start
             else candidate.ali_start
         )
         overlap_end = (
-            candidate.extended_orf_aa_end_on_transcript
-            if candidate.extended_orf_aa_end_on_transcript > candidate.ali_end
+            alignment.extended_orf_aa_end_on_transcript
+            if alignment.extended_orf_aa_end_on_transcript > candidate.ali_end
             else candidate.ali_end
         )
 
@@ -428,9 +376,9 @@ def get_overlap_length(candidate):
     return 0
 
 
-def overlap_by_orf(candidate):
-    orf_length = abs(candidate.extended_orf_aa_end - candidate.extended_orf_aa_start)
-    overlap_length = get_overlap_length(candidate)
+def overlap_by_orf(candidate, alignment):
+    orf_length = abs(alignment.extended_orf_aa_end - alignment.extended_orf_aa_start)
+    overlap_length = get_overlap_length(candidate, alignment)
 
     return overlap_length / orf_length
 
@@ -480,19 +428,21 @@ def print_unmerged_sequences(
             reference_frame,
         )
 
+        alignment = hit.first_alignment if hit.mapped_to == hit.first_closest else hit.second_alignment
+        extended_alignment = hit.first_extended_alignment if hit.mapped_to == hit.first_closest else hit.second_extended_alignment
         nt_seq = (
-            hit.extended_orf_cdna_sequence
-            if hit.extended_orf_cdna_sequence is not None
-            else hit.orf_cdna_sequence
+            extended_alignment.extended_orf_cdna_sequence
+            if extended_alignment and extended_alignment.extended_orf_cdna_sequence is not None
+            else alignment.orf_cdna_sequence
         )
 
         # De-interleave
         nt_seq = nt_seq.replace('\n', '')
 
         aa_seq = (
-            hit.extended_orf_aa_sequence
-            if hit.extended_orf_aa_sequence is not None
-            else hit.orf_aa_sequence
+            extended_alignment.extended_orf_aa_sequence
+            if extended_alignment and extended_alignment.extended_orf_aa_sequence is not None
+            else alignment.orf_aa_sequence
         )
 
         aa_seq = aa_seq.replace('\n', '')
@@ -553,13 +503,12 @@ def get_difference(score_a, score_b):
     except ZeroDivisionError:
         return 0
 
-
-def get_match(header, results):
+def parse_results(results):
+    res = {}
     for result in results:
-        if result[0] == header:
-            return result
-    return None
-
+        res[result.header] = result
+    
+    return res
 
 ExonerateArgs = namedtuple(
     "ExonerateArgs",
@@ -616,83 +565,68 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
             query, hits_to_exonerate, eargs.min_score, include_extended=extend_orf
         )
 
+        extended_results = parse_results(extended_results)
+        results = parse_results(results)
+
         for hit in hits_to_exonerate:
-            # We still want to see the first results first not the second closest
-            # so save them for later
+            # We still want to see the first results before rerun
             if taxon_hit == hit.second_closest and hit.mapped_to is None:
-                hit.second_alignment = get_match(hit.header, results)
-                hit.second_extended_alignment = get_match(hit.header, extended_results)
+                hit.second_alignment = results.get(hit.header, None)
+                hit.second_extended_alignment = extended_results.get(hit.header, None)
                 continue
 
-            matching_alignment = get_match(hit.header, results)
-            if matching_alignment:
-                hit.add_orf(matching_alignment, eargs.verbose)
-
-                if hit.orf_cdna_sequence:
+            if hit.header in results:
+                matching_alignment = results.get(hit.header, None)
+                if matching_alignment.orf_cdna_sequence:
+                    hit.add_orf(matching_alignment)
                     if extend_orf:
-                        matching_extended_alignment = get_match(
-                            hit.header, extended_results
-                        )
+                        if hit.header in extended_results:
+                            hit.first_extended_alignment = extended_results.get(hit.header, None)
 
-                        if matching_extended_alignment:
-                            hit.add_extended_orf(matching_extended_alignment, eargs.verbose)
-
-                            if extended_orf_contains_original_orf(hit):
-                                orf_overlap = overlap_by_orf(hit)
+                            if extended_orf_contains_original_orf(hit.first_extended_alignment, matching_alignment):
+                                orf_overlap = overlap_by_orf(hit, hit.first_extended_alignment)
                                 if orf_overlap >= orf_overlap_minimum:
                                     continue
                             
                             # Does not contain original orf or does not overlap enough.
-                            hit.remove_extended_orf()
-                        else: # No alignment returned
-                            printv(f"WARNING: Failed to extend orf on {hit.header}. Using trimmed sequence", eargs.verbose)
+                            hit.first_extended_alignment = None
 
                     aa_seq = (
-                            hit.extended_orf_aa_sequence
-                            if hit.extended_orf_aa_sequence is not None
-                            else hit.orf_aa_sequence
+                            hit.first_extended_alignment.extended_orf_aa_sequence
+                            if hit.first_extended_alignment and hit.first_extended_alignment.extended_orf_aa_sequence is not None
+                            else hit.first_alignment.orf_aa_sequence
                         )
 
                     if len(aa_seq) >= eargs.min_length:
-                        if taxon_hit == hit.second_closest:
-                            hit.reftaxon = hit.second_closest
                         hit.mapped_to = hit.reftaxon
                         output_sequences.append(hit)
                     else:
-                        if hit.second_alignment is not None: # If first failed check to see if second check is saved
+                        if hit.second_alignment is not None: # If first run doesn't pass check if rerun does
                             matching_alignment = hit.second_alignment
                             if matching_alignment:
-                                hit.add_orf(matching_alignment, eargs.verbose)
+                                hit.add_orf(matching_alignment)
 
-                                if hit.orf_cdna_sequence:
+                                if matching_alignment.orf_cdna_sequence:
                                     if extend_orf:
-                                        matching_extended_alignment = hit.second_extended_alignment
-
-                                        if matching_extended_alignment:
-                                            hit.add_extended_orf(matching_extended_alignment, eargs.verbose)
-
-                                            if extended_orf_contains_original_orf(hit):
-                                                orf_overlap = overlap_by_orf(hit)
+                                        if hit.second_extended_alignment:
+                                            if extended_orf_contains_original_orf(hit.second_extended_alignment, matching_alignment):
+                                                orf_overlap = overlap_by_orf(hit, hit.second_extended_alignment)
                                                 if orf_overlap >= orf_overlap_minimum:
                                                     continue
                                             
                                             # Does not contain original orf or does not overlap enough.
-                                            hit.remove_extended_orf()
-                                        else: # No alignment returned
-                                            printv(f"WARNING: Failed to extend orf on {hit.header}. Using trimmed sequence", eargs.verbose)
+                                            hit.second_extended_alignment = None
 
                                     aa_seq = (
-                                            hit.extended_orf_aa_sequence
-                                            if hit.extended_orf_aa_sequence is not None
-                                            else hit.orf_aa_sequence
+                                            hit.second_extended_alignment.extended_orf_aa_sequence
+                                            if hit.second_extended_alignment and hit.second_extended_alignment.extended_orf_aa_sequence is not None
+                                            else hit.second_alignment.orf_aa_sequence
                                         )
                                         
                                     if len(aa_seq) >= eargs.min_length:
-                                        if taxon_hit == hit.second_closest:
-                                            hit.reftaxon = hit.second_closest
+                                        hit.reftaxon = hit.second_closest
                                         hit.mapped_to = hit.reftaxon
                                         output_sequences.append(hit)
-
     if len(output_sequences) > 0:
         output_sequences = sorted(output_sequences, key=lambda d: d.hmm_start)
         core_sequences, core_sequences_nt = get_ortholog_group(eargs.orthoid, rocky.get_rock("rocks_orthoset_db"))
@@ -702,7 +636,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
             eargs.orthoid,
             eargs.taxa_id,
         )
-
+        
         if aa_output:
             with open(this_aa_path, "w") as fp:
                 fp.writelines(print_core_sequences(eargs.orthoid, core_sequences))
@@ -752,8 +686,9 @@ def reciprocal_search(
 
                 reftaxon_count[ref_taxon] = 1  # only need the one
         
-        if this_match_reftaxon:
+        if not strict_search_mode and this_match_reftaxon or all(reftaxon_count.values()):
             hit.reftaxon = this_match_reftaxon
+            hit.first_closest = this_match_reftaxon
             if this_second_match:
                 hit.second_closest = this_second_match
             results.append(hit)
@@ -889,48 +824,9 @@ def do_taxa(path, taxa_id, args):
                 recovered = pool.starmap(exonerate_gene_multi, arguments, chunksize=1)
     
     else:
-        recovered = [exonerate_gene_multi(i) for i in arguments]
+        recovered = [exonerate_gene_multi(i[0]) for i in arguments]
 
     printv(f"Done! Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s and found {sum(recovered)} sequences.", args.verbose)
-
-
-
-####
-db_col_name = "name"
-db_col_target = "target"
-db_col_score = "score"
-db_col_evalue = "evalue"
-db_col_start = "start"
-db_col_end = "end"
-db_col_env_start = "env_start"
-db_col_env_end = "env_end"
-db_col_ali_start = "ali_start"
-db_col_ali_end = "ali_end"
-db_col_hmm_start = "hmm_start"
-db_col_hmm_end = "hmm_end"
-db_col_header = "header"
-db_col_hmmsearch_id = "hmmsearch_id"
-db_col_id = "id"
-db_col_digest = "digest"
-db_col_orthoid = "ortholog_gene_id"
-db_col_taxid = "taxid"
-db_col_query = "query"
-db_col_setid = "setid"
-db_col_sequence = "sequence"
-db_col_aaseq = "aa_seq"
-db_col_seqpair = "sequence_pair"
-db_col_ntseq = "nt_seq"
-
-orthoset_set_details = "orthograph_set_details"
-orthoset_taxa = "orthograph_taxa"
-orthoset_seqpairs = "orthograph_sequence_pairs"
-orthoset_orthologs = "orthograph_orthologs"
-orthoset_aaseqs = "orthograph_aaseqs"
-orthoset_ntseqs = "orthograph_ntseqs"
-
-####
-# Misc Settings
-####
 
 # TODO Make these argparse variables
 strict_search_mode = False
