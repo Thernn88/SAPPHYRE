@@ -11,10 +11,9 @@ from multiprocessing.pool import Pool
 from pathlib import Path
 
 import wrap_rocks
-from Bio.SeqIO.FastaIO import SimpleFastaParser
 
 from .timekeeper import TimeKeeper, KeeperMode
-from .utils import printv, gettempdir
+from .utils import printv, gettempdir, parseFasta
 
 
 # NOTE: __slots__ cannot be used because cached_property relies on mutability
@@ -46,9 +45,8 @@ class ProtFile:
         """
         sequence_dict = {}
         tike = TimeKeeper(KeeperMode.DIRECT)
-        with open(self.temp_file, mode="r") as fp:
-            for header, sequence in SimpleFastaParser(fp):
-                sequence_dict[header] = sequence
+        for header, sequence in parseFasta(str(self.temp_file)):
+            sequence_dict[header] = sequence
         printv('Read prot file in {:.2f}s'.format(tike.differential()), self.verbosity)
         self.cleanup()
         return sequence_dict

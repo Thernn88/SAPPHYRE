@@ -14,9 +14,9 @@ import numpy as np
 import phymmr_tools as bd
 from Bio import AlignIO
 
-from .utils import printv
+from .utils import parseFasta, printv, write2Line2Fasta
 from .timekeeper import TimeKeeper, KeeperMode
-ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta")
+ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta", ".fa", ".gz", ".fq", ".fastq")
 
 
 class Record:
@@ -106,7 +106,7 @@ def get_headers(lines: list) -> list:
     return result
 
 
-def split_sequences(fp, excluded: set) -> tuple:
+def split_sequences(path: str, excluded: set) -> tuple:
     """
     Reads over a fasta record in the given list and returns a tuple of two smaller lists.
     The first returned list is the reference sequences found, the second returned list
@@ -118,30 +118,28 @@ def split_sequences(fp, excluded: set) -> tuple:
 
     end_of_references = False
     try:
-        for seq_record in AlignIO.parse(fp, "fasta"):
-            for seq in seq_record:
-                header = ">"+seq.name
-                sequence = str(seq.seq)
+        for header, sequence in parseFasta(path):
+            header = ">"+header
 
-                if end_of_references is False:
-                    # The reference header identifier is present in the header
-                    if header[-1] == ".":
-                        if header.split("|")[1].lower() in bad_names:
-                            excluded.add(header)
+            if end_of_references is False:
+                # The reference header identifier is present in the header
+                if header[-1] == ".":
+                    if header.split("|")[1].lower() in bad_names:
+                        excluded.add(header)
 
-                        references.append(header)
-                        references.append(sequence)
-                    else:
-                        end_of_references = True
+                    references.append(header)
+                    references.append(sequence)
+                else:
+                    end_of_references = True
 
-                if end_of_references is True:
-                    candidates.append(header)
-                    candidates.append(sequence)
+            if end_of_references is True:
+                candidates.append(header)
+                candidates.append(sequence)
     except ValueError:
-        print(f'Error in file: {fp.name}')
+        print(f'Error in file: {path}')
         raise ValueError("Found sequences of different length")
     except TypeError:
-        print(f'Wrong IO type: {fp.name}')
+        print(f'Wrong IO type: {path}')
         raise TypeError
     return references, candidates
 
@@ -373,11 +371,10 @@ def delete_empty_columns(raw_fed_sequences: list, verbose: bool) -> tuple[list, 
         for i in range(0, len(raw_sequences), 2):
             try:
                 sequence = [raw_sequences[i + 1][x] for x in positions_to_keep]
-                result.append(raw_sequences[i] + "\n")
+                result.append(raw_sequences[i])
             except IndexError:
                 printv(f"WARNING: Sequence length is not the same as other sequences: {raw_sequences[i]}", verbose, 0)
                 continue
-            sequence.append("\n")
             sequence = "".join(sequence)
 
             result.append(sequence)
@@ -396,13 +393,13 @@ def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
     result = []
 
     for i in range(0, len(raw_sequences), 2):
-        result.append(raw_sequences[i]+"\n")
+        result.append(raw_sequences[i])
 
         sequence = raw_sequences[i + 1]
 
         sequence = [sequence[i*3:(i*3)+3] for i in positions_to_keep]
         
-        result.append("".join(sequence)+"\n")
+        result.append("".join(sequence))
     
     return result
 
@@ -430,6 +427,7 @@ def main_process(
     nt_output_path: str,
     debug: bool,
     verbose: int,
+    compress: bool
 ):
     keep_refs = not args_references
 
@@ -441,14 +439,13 @@ def main_process(
     name = filename.split(".")[0]
     threshold = args_threshold / 100
     aa_output = os.path.join(args_output, "aa")
-    aa_output = os.path.join(aa_output, filename)
+    aa_output = os.path.join(aa_output, filename.rstrip(".gz"))
 
     to_be_excluded = set()
     outliers_csv_path = os.path.join(args_output, "logs", "outliers_" + name + ".csv")
-    with open(file_input, encoding="UTF-8") as fasta_in:
-        reference_sequences, candidate_sequences = split_sequences(
-            fasta_in, to_be_excluded
-        )
+    reference_sequences, candidate_sequences = split_sequences(
+        file_input, to_be_excluded
+    )
 
     candidate_headers = [
         header for header in candidate_sequences if header[0] == ">"
@@ -470,8 +467,7 @@ def main_process(
     regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
 
     if to_add:  # If candidate added to fasta
-        with open(aa_output, "w+", encoding="UTF-8") as aa_output:
-            aa_output.writelines(regulars)
+        write2Line2Fasta(aa_output, regulars, compress)
 
     to_be_excluded = set()
     if debug:
@@ -493,25 +489,19 @@ def main_process(
         nt_input_path = os.path.join(nt_input, nt_file)
         if not os.path.exists(nt_output_path):
             os.mkdir(nt_output_path)
-        nt_output_path = os.path.join(nt_output_path, nt_file)
+        nt_output_path = os.path.join(nt_output_path, nt_file.rstrip(".gz"))
 
-        with open(nt_output_path, "w+", encoding="UTF-8") as nt_output_handle:
-            with open(nt_input_path, encoding="UTF-8") as nt_input_handle:
-                lines = []
-                #Deinterleave
-                for seq_record in AlignIO.parse(nt_input_handle, "fasta"):
-                    for seq in seq_record:
-                        lines.append(">"+seq.name)
-                        lines.append(str(seq.seq))
+        lines = []
+        for header, sequence in parseFasta(nt_input_path):
+            lines.append(">"+header)
+            lines.append(sequence)
 
-            non_empty_lines = remove_excluded_sequences(
-                lines, to_be_excluded
-            )
-            non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
+        non_empty_lines = remove_excluded_sequences(
+            lines, to_be_excluded
+        )
+        non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
 
-            for i in range(0, len(non_empty_lines), 2):
-                nt_output_handle.write(non_empty_lines[i])
-                nt_output_handle.write(non_empty_lines[i + 1])
+        write2Line2Fasta(nt_output_path, non_empty_lines, compress)
 
 
 def run_command(arg_tuple: tuple) -> None:
@@ -558,6 +548,7 @@ def do_folder(folder, args):
                     nt_output_path,
                     args.debug,
                     args.verbose,
+                    args.compress
                 )
             )
 
@@ -575,6 +566,7 @@ def do_folder(folder, args):
                 nt_output_path,
                 args.debug,
                 args.verbose,
+                args.compress
             )
     if args.debug:
         log_folder_path = os.path.join(output_path, "logs")

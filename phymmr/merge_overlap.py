@@ -15,9 +15,8 @@ from typing import Union, Literal
 
 import wrap_rocks
 from Bio.Seq import Seq
-from Bio import AlignIO
 
-from .utils import printv
+from .utils import printv, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
 
 TMP_PATH = None
@@ -126,7 +125,7 @@ def most_common_element_with_count(iterable) -> tuple:
     return winner
 
 
-def parse_fasta(fasta_io) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+def parse_fasta(path: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """
     Returns references from raw fasta text input.
     """
@@ -134,23 +133,18 @@ def parse_fasta(fasta_io) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]
     candidates: list[tuple[str, str]] = []
     end_of_references = False
     try:
-        fasta_file = AlignIO.parse(fasta_io, "fasta")
-        for seq_record in fasta_file:
-            for seq in seq_record:
-                header = seq.name
-                sequence = str(seq.seq)
+        for header, sequence in parseFasta(path):
+            if end_of_references is False:
+                # the reference header identifier is present in the header
+                if header[-1] == ".":
+                    references.append((header, sequence))
+                else:
+                    end_of_references = True
 
-                if end_of_references is False:
-                    # the reference header identifier is present in the header
-                    if header[-1] == ".":
-                        references.append((f">{header}", sequence))
-                    else:
-                        end_of_references = True
-
-                if end_of_references is True:
-                    candidates.append((header, sequence))
+            if end_of_references is True:
+                candidates.append((header, sequence))
     except ValueError as e:
-        print(f"Fatal error in {os.path.basename(fasta_io.name)}: {e}")
+        print(f"Fatal error in {os.path.basename(path)}: {e}")
 
 
     return references, candidates
@@ -319,8 +313,7 @@ def do_protein(
     ignore_overlap_chunks,
     debug=None,
 ):
-    with open(path, encoding="UTF-8") as fp:
-        references, candidates = parse_fasta(fp)
+    references, candidates = parse_fasta(path)
 
     gene_out = []
 
@@ -329,8 +322,7 @@ def do_protein(
     # Grab all the reference sequences
     comparison_sequences = {}
     for header, sequence in references:
-        gene_out.append(header)
-        gene_out.append(sequence)
+        gene_out.append((header,sequence))
         if protein == "aa":
             taxon = header.split("|")[1]
             comparison_sequences[taxon] = sequence
@@ -584,36 +576,32 @@ def do_protein(
             if len(new_merge) - new_merge.count("-") < minimum_length:
                 continue
 
-            gene_out.append(f">{final_header}")
-            gene_out.append(new_merge)
-
+            gene_out.append((final_header,new_merge))
             if debug:
                 # If debug enabled add each component under final merge
-                gene_out.append(f">{this_taxa_id}|MajorityRulesAssigned")
-                gene_out.append("".join(majority_assignments))
+                gene_out.append((f"{this_taxa_id}|MajorityRulesAssigned", "".join(majority_assignments)))
                 for header, sequence, count in consists_of:
                     if "NODE" in header.split("|")[-1]:
                         node = header.split("|")[-1]
                         frame = ""
                     else:
                         node, frame = header.split('|')[-2:]
-                    gene_out.append(f">{node}|{frame}|{count}")
-                    gene_out.append(sequence)
+                    gene_out.append((f"{node}|{frame}|{count}",sequence))
 
     if protein == "nt" and gene_out: #Remove empty columns
         to_keep = set()
-        for i in range(len(gene_out[-1])):
+        for i in range(len(gene_out[-1][1])):
             keep_this = False
-            for j in range(0, len(gene_out), 2): #Every second element will be a sequence
-                if gene_out[j+1][i] != "-":
+            for record in gene_out: #Every second element will be a sequence
+                if record[1][i] != "-":
                     keep_this = True
                     break
             if keep_this: to_keep.add(i)
         
-        for i in range(0, len(gene_out), 2):
-            gene_out[i+1] = "".join([let for i, let in enumerate(gene_out[i+1]) if i in to_keep])
+        for i, record in enumerate(gene_out):
+            gene_out[i] = (record[0], "".join([let for i, let in enumerate(record[1]) if i in to_keep]))
 
-    output_path = os.path.join(output_dir, f"{protein}_merged", gene)
+    output_path = os.path.join(output_dir, f"{protein}_merged", gene.rstrip(".gz"))
 
     return output_path, gene_out
 
@@ -629,7 +617,8 @@ def do_gene(
     majority,
     minimum_mr_amount,
     verbosity,
-    ignore_overlap_chunks
+    ignore_overlap_chunks,
+    compress
 ) -> None:
     """
     Merge main loop. Opens fasta file, parses sequences and merges based on taxa
@@ -651,6 +640,7 @@ def do_gene(
         debug=debug,
     )
     
+    #print(already_calculated_splits)
 
     nt_path, nt_data = do_protein(
         "nt",
@@ -666,11 +656,8 @@ def do_gene(
         debug=debug,
     )
     if nt_data:
-        with open(aa_path, "w", encoding="UTF-8") as output_file:
-            output_file.write("\n".join(aa_data))
-        with open(nt_path, "w", encoding="UTF-8") as output_file:
-            output_file.write("\n".join(nt_data))
-
+        writeFasta(aa_path, aa_data, compress)
+        writeFasta(nt_path, nt_data, compress)
 
 def run_command(arg_tuple: tuple) -> None:
     """
@@ -702,8 +689,10 @@ def do_folder(folder: Path, args):
         dupe_counts = {}
 
     target_genes = []
-    for item in Path(aa_input).glob("*.fa"):
-        target_genes.append(item.name)
+    for item in Path(aa_input).iterdir():
+        if item.suffix in [".fa", ".gz", ".fq", ".fastq", ".fasta"]:
+            target_genes.append(item.name)
+
     target_genes.sort(key=lambda x: Path(aa_input, x).stat().st_size, reverse=True)
 
     if args.processes > 1:
@@ -725,6 +714,7 @@ def do_folder(folder: Path, args):
                     args.majority_count,
                     args.verbose,
                     args.ignore_overlap_chunks,
+                    args.compress
                 )
             )
         with Pool(args.processes) as pool:
@@ -746,6 +736,7 @@ def do_folder(folder: Path, args):
                 args.majority_count,
                 args.verbose,
                 args.ignore_overlap_chunks,
+                args.compress
             )
     printv(f"Done! Took {folder_time.differential():.2f}s", args.verbose)
 

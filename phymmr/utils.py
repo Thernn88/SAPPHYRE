@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 # © 2022 GPLv3+ PhyMMR Team
+import gzip
 import os
+from pathlib import Path
 from threading import Thread
 from queue import Queue
+from typing import Generator
 
 class ConcurrentLogger(Thread):
     def __init__(self, inq: Queue):
@@ -29,3 +32,64 @@ def gettempdir():
     elif os.path.exists("/dev/shm"):
         return "/dev/shm"
     return None
+
+def get_records(fp, type: str) -> Generator[tuple[str, str], None, None]:
+    """
+    Iterates over every line of a file and returns each sequence record.
+    Forces sequences to be uppercase.
+    """
+    current_header = None
+    if type == "fasta":
+        for line in fp:
+            if line.startswith(b">"):
+                if current_header:
+                    yield (current_header[1:].decode(), b"".join(this_sequence).replace(b" ",b"").replace(b"\r",b"").upper().decode())
+                this_sequence = []
+                current_header = line.rstrip()
+                continue
+            
+            this_sequence.append(line.rstrip())
+
+        yield (current_header[1:].decode(), b"".join(this_sequence).replace(b" ",b"").replace(b"\r",b"").upper().decode())
+
+    elif type == "fastq":
+        for line in fp:
+            if line.startswith(b"@"):
+                yield (current_header[1:].decode(), next(fp).replace(b" ",b"").replace(b"\r",b"").upper().decode())
+
+def parseFasta(path: str) -> Generator[tuple[str, str], None, None]:
+    """
+    Iterate over a Fasta file returning sequence records as string tuples.
+    Designed in order to handle .gz and .fasta files with potential interleave.
+    """
+    func = open
+    suffixes = Path(path).suffixes
+    if ".gz" in suffixes:
+        func = gzip.open
+
+    type = "fastq" if ".fastq" in suffixes or ".fq" in suffixes else "fasta"
+
+    return get_records(func(path, "rb"), type)
+
+def writeFasta(path: str, records: tuple[str, str], compress = False):
+    """
+    Writes sequence records to a Fasta format file.
+    """
+    func = open
+    if compress:
+        path += ".gz"
+        func = gzip.open
+
+    with func(path, "wb") as fp:
+        for header, sequence in records:
+            fp.write(f">{header}\n{sequence}\n".encode())
+
+def write2Line2Fasta(path: str, records: list[str], compress = False):
+    func = open
+    if compress:
+        path += ".gz"
+        func = gzip.open
+
+    with func(path, "wb") as fp:
+        for i in range(0, len(records), 2):
+            fp.write(f"{records[i]}\n{records[i+1]}\n".encode())

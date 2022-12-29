@@ -19,7 +19,7 @@ from Bio.Seq import Seq
 
 from . import rocky
 from .timekeeper import TimeKeeper, KeeperMode
-from .utils import printv, gettempdir
+from .utils import printv, gettempdir, writeFasta
 
 MainArgs = namedtuple(
     "MainArgs",
@@ -32,6 +32,7 @@ MainArgs = namedtuple(
         'orthoset',
         'min_length',
         'min_score',
+        "compress"
     ]
 )
 
@@ -399,12 +400,10 @@ def format_reference_header(gene, taxa_name, taxa_id, identifier="."):
 
 
 def print_core_sequences(orthoid, core_sequences):
-    core_sequences = sorted(core_sequences)
-
     result = []
-    for core in core_sequences:
+    for core in sorted(core_sequences):
         header = format_reference_header(orthoid, core[0], core[1])
-        result.append(f">{header}\n{core[2]}\n")
+        result.append((header,core[2]))
 
     return result
 
@@ -456,8 +455,8 @@ def print_unmerged_sequences(
 
                 if len(aa_seq) > len(already_mapped_sequence):
                     if already_mapped_sequence in aa_seq:
-                        aa_result[header_maps_to_where[already_mapped_header]] = f">{header}\n{aa_seq}\n" 
-                        nt_result[header_maps_to_where[already_mapped_header]] = f">{header}\n{nt_seq}\n" 
+                        aa_result[header_maps_to_where[already_mapped_header]] = (header, aa_seq)
+                        nt_result[header_maps_to_where[already_mapped_header]] = (header, nt_seq)
                         continue
                 else:
                     if aa_seq in already_mapped_sequence:
@@ -479,8 +478,8 @@ def print_unmerged_sequences(
                 base_header_mapped_already[base_header] = header, aa_seq
 
             header_maps_to_where[header] = len(aa_result) # Save the index of the sequence output
-            aa_result.append(f">{header}\n{aa_seq}\n" )
-            nt_result.append(f">{header}\n{nt_seq}\n" )
+            aa_result.append((header, aa_seq))
+            nt_result.append((header, nt_seq))
 
             header_mapped_x_times.setdefault(base_header, 1)
             exact_hit_mapped_already.add(unique_hit)
@@ -523,6 +522,7 @@ ExonerateArgs = namedtuple(
         "tmp_path",
         "verbose",
         "reference_sequences",
+        "compress"
     ]
 )
 
@@ -638,15 +638,13 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
         )
         
         if aa_output:
-            with open(this_aa_path, "w") as fp:
-                fp.writelines(print_core_sequences(eargs.orthoid, core_sequences))
-                fp.writelines(aa_output)
+            aa_core_sequences = print_core_sequences(eargs.orthoid, core_sequences)
+            writeFasta(this_aa_path, aa_core_sequences + aa_output, eargs.compress)
 
             this_nt_path = os.path.join(eargs.nt_out_path, eargs.orthoid + ".nt.fa")
 
-            with open(this_nt_path, "w") as fp:
-                fp.writelines(print_core_sequences(eargs.orthoid, core_sequences_nt))
-                fp.writelines(nt_output)
+            nt_core_sequences = print_core_sequences(eargs.orthoid, core_sequences_nt)
+            writeFasta(this_nt_path, nt_core_sequences + nt_output, eargs.compress)
 
     printv(f"{eargs.orthoid} took {t_gene_start.differential():.2f}s. Had {len(output_sequences)} sequences", eargs.verbose, 2)
     return len(output_sequences)
@@ -802,6 +800,7 @@ def do_taxa(path, taxa_id, args):
         key=lambda k: len(transcripts_mapped_to[k]),
         reverse=True
     ):
+
         arguments.append(
             (ExonerateArgs(
                 orthoid,
@@ -813,7 +812,8 @@ def do_taxa(path, taxa_id, args):
                 nt_out_path,
                 tmp_path,
                 args.verbose,
-                gene_reference_data[orthoid]
+                gene_reference_data[orthoid],
+                args.compress
             ),)
         )
 

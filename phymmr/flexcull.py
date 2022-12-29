@@ -11,9 +11,7 @@ from multiprocessing.pool import Pool
 from shutil import rmtree
 from time import time
 
-from Bio import AlignIO
-
-from .utils import printv
+from .utils import printv, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
 
 MainArgs = namedtuple(
@@ -28,10 +26,10 @@ MainArgs = namedtuple(
         'nucleotide',
         'matches',
         'base_pair',
-        'match_percent'
+        'match_percent',
+        'compress',
     ]
 )
-
 
 def folder_check(output_target_path: str, input_target_path: str) -> str:
     """
@@ -77,26 +75,15 @@ def parse_fasta(fasta_path: str) -> tuple:
     """
     references = []
     candidates = []
-    raw_references = []
 
-    with open(fasta_path, encoding="UTF-8") as fasta_io:
-        fasta_file = AlignIO.parse(fasta_io, "fasta")
-        for seq_record in fasta_file:
-            for seq in seq_record:
-                header = seq.name
-                sequence = str(seq.seq)
+    for header, sequence in parseFasta(fasta_path):
+        if header[-1] == '.':  #Is reference
+            references.append((header, sequence))
 
-                if header[-1] == '.':  #Is reference
-                    references.append((header, sequence))
+        else:
+            candidates.append((header, sequence))
 
-                    raw_references.append(">"+header+"\n"+sequence+"\n")
-
-                else:
-                    candidates.append((header, sequence))
-
-    raw_references = "".join(raw_references)
-
-    return references, candidates, raw_references
+    return references, candidates
 
 
 def do_gene(
@@ -109,6 +96,7 @@ def do_gene(
     debug: bool,
     bp: int,
     verbosity: int,
+    compress: bool,
 ) -> None:
     """
     FlexCull main function. Culls input aa and nt using specified amount of matches
@@ -118,7 +106,7 @@ def do_gene(
 
     printv(f"Doing: {this_gene}", verbosity, 2)
 
-    references, candidates, raw_references = parse_fasta(gene_path)
+    references, candidates = parse_fasta(gene_path)
 
     character_at_each_pos = {}
 
@@ -145,11 +133,11 @@ def do_gene(
     follow_through = {}
     offset = amt_matches - 1
 
-    aa_out_path = os.path.join(output, "aa", aa_file)
-    aa_out = [raw_references]
+    aa_out_path = os.path.join(output, "aa", aa_file.rstrip(".gz"))
+    aa_out = references.copy()
 
     for header, sequence in candidates:
-        gene = header.split("|")[0].replace(">", "")
+        gene = header.split("|")[0]
 
         if gene not in follow_through:
             follow_through[gene] = {}
@@ -255,8 +243,7 @@ def do_gene(
             if bp_after_cull >= bp:
                 follow_through[gene][header] = False, cull_start, cull_end
 
-                aa_out.append(">" + header + "\n")
-                aa_out.append(out_line + "\n")
+                aa_out.append((header, out_line))
 
                 if debug:
                     removed_section = sequence[:cull_start] + sequence[cull_end:]
@@ -295,34 +282,35 @@ def do_gene(
     if len(aa_out) == 1:
         return log #Only refs
 
-    with open(aa_out_path, "w", encoding="UTF-8") as fp:
-        fp.write("".join(aa_out))
+    writeFasta(aa_out_path, aa_out, compress)
 
     nt_file_name = make_nt(aa_file)
     gene_path = os.path.join(nt_input, nt_file_name)
 
-    references, candidates, raw_references = parse_fasta(gene_path)
-    nt_out_path = os.path.join(output, "nt", nt_file_name)
-    with open(nt_out_path, "w", encoding="UTF-8") as nt_out:
-        nt_out.write(raw_references)
-        for header, sequence in candidates:
-            gene = header.split("|")[0].replace(">", "")
+    references, candidates = parse_fasta(gene_path)
 
-            kick, cull_start, cull_end = follow_through[gene][header]
+    nt_out_path = os.path.join(output, "nt", nt_file_name.rstrip(".gz"))
+    nt_out = references.copy()
+    for header, sequence in candidates:
+        #print(header)
+        gene = header.split("|")[0]
 
-            if not kick:
-                cull_start_adjusted = cull_start * 3
-                cull_end_adjusted = cull_end * 3
+        kick, cull_start, cull_end = follow_through[gene][header]
 
-                out_line = ("-" * cull_start_adjusted) + sequence[cull_start_adjusted:cull_end_adjusted]
+        if not kick:
+            cull_start_adjusted = cull_start * 3
+            cull_end_adjusted = cull_end * 3
 
-                characters_till_end = len(sequence) - len(out_line)
-                out_line += (
-                    "-" * characters_till_end
-                )  # Add dashes till reached input distance
+            out_line = ("-" * cull_start_adjusted) + sequence[cull_start_adjusted:cull_end_adjusted]
 
-                nt_out.write(">" + header + "\n")
-                nt_out.write(out_line + "\n")
+            characters_till_end = len(sequence) - len(out_line)
+            out_line += (
+                "-" * characters_till_end
+            )  # Add dashes till reached input distance
+
+            nt_out.append((header, out_line))
+
+    writeFasta(nt_out_path, nt_out, compress)
 
     return log
 
@@ -335,11 +323,11 @@ def do_folder(folder, args: MainArgs):
     if not os.path.exists(aa_path) or not os.path.exists(nt_path):
         printv(f"WARNING: Can't find aa ({aa_path}) and nt ({nt_path}) folders. Abort", args.verbose)
         return
-    available_tmp_path = folder_check(output_path, folder)
+    folder_check(output_path, folder)
     file_inputs = [
         input_gene
         for input_gene in os.listdir(aa_path)
-        if ".aa" in input_gene
+        if input_gene.split('.')[-1] in ["fa", "gz", "fq", "fastq", "fasta"]
     ]
     file_inputs.sort(
         key=lambda x : os.path.getsize(os.path.join(aa_path, x)), reverse=True
@@ -359,6 +347,7 @@ def do_folder(folder, args: MainArgs):
                     args.debug,
                     args.base_pair,
                     args.verbose,
+                    args.compress
                 )
             )
 
@@ -375,6 +364,7 @@ def do_folder(folder, args: MainArgs):
                             args.debug,
                             args.base_pair,
                             args.verbose,
+                            args.compress
                         ) for input_gene in file_inputs]
 
     if args.debug:
