@@ -93,18 +93,18 @@ class Sequence_Set:
 
         return core_sequences
 
-    def get_blast_data(self):
-        blast_data = []
+    def get_diamond_data(self):
+        diamond_data = []
         target_to_taxon = {}
         taxon_to_sequences = {}
 
         for seq in self.sequences:
-            blast_data.append(f">{seq.id}\n{seq.aa_sequence}\n")
-            target_to_taxon.setdefault(seq.gene,{})[seq.id] = seq.taxa
+            diamond_data.append(f">{seq.header}\n{seq.aa_sequence}\n")
+            target_to_taxon[seq.header] = seq.gene, seq.taxa
 
             taxon_to_sequences.setdefault(seq.gene, {})[seq.taxa] = seq.aa_sequence
 
-        return "".join(blast_data), target_to_taxon, taxon_to_sequences
+        return "".join(diamond_data), target_to_taxon, taxon_to_sequences
 
     def __str__(self):
         return "".join(map(str, self.sequences))
@@ -202,23 +202,23 @@ def hmmbuild(stockhfile: Path, hmm_file: Path, overwrite):
     if not hmm_file.exists() or overwrite:
         os.system(f"hmmbuild -n '{hmmname}' '{hmm_file}' '{stockhfile}'")
 
-def make_blastdb(set: Sequence_Set, overwrite):
-    blast_dir = Path(SETS_DIR, set.name, 'blast')
-    blast_dir.mkdir(exist_ok=True)
+def make_diamonddb(set: Sequence_Set, overwrite, threads):
+    diamond_dir = Path(SETS_DIR, set.name, 'diamond')
+    diamond_dir.mkdir(exist_ok=True)
 
-    db_file = blast_dir.joinpath(set.name)
+    db_file = diamond_dir.joinpath(set.name+".dmnd")
 
-    blast_db_data, target_to_taxon, taxon_to_sequences = set.get_blast_data()
+    diamond_db_data, target_to_taxon, taxon_to_sequences = set.get_diamond_data()
 
-    if db_file.with_suffix('.psq').exists():
+    if db_file.exists():
         if not overwrite:
             return target_to_taxon, taxon_to_sequences
     
     with NamedTemporaryFile(mode="w") as fp:
-        fp.write(blast_db_data)
+        fp.write(diamond_db_data)
         fp.flush()
 
-        os.system(f"makeblastdb -in '{fp.name}' -out '{db_file}' -input_type fasta -dbtype prot -title '{set.name}'")#-parse_seqids
+        os.system(f"diamond makedb --in '{fp.name}' --db '{db_file}' --threads {threads}")
 
     return target_to_taxon, taxon_to_sequences
 
@@ -295,8 +295,8 @@ def main(args):
     print("Generating Hmms")
     generate_hmms(this_set, stockh_files, threads, overwrite)
 
-    print("Making blast DB")
-    target_to_taxon, taxon_to_sequences = make_blastdb(this_set, overwrite)
+    print("Making Diamond DB")
+    target_to_taxon, taxon_to_sequences = make_diamonddb(this_set, overwrite, threads)
 
     print("Writing to DB")
     rocks_db_path = get_set_path(set_name).joinpath("rocksdb")

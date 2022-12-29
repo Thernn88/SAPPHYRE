@@ -23,10 +23,9 @@ from .timekeeper import TimeKeeper, KeeperMode
 
 class Result:
     __slots__ = (
-        "query_id",
+        "header",
         "target", 
         "evalue", 
-        "log_evalue", 
         "score", 
         "blast_start", 
         "blast_end",
@@ -35,16 +34,16 @@ class Result:
         "gene"
     )
 
-    def __init__(self, gene, query_id, subject_id, evalue, bit_score, q_start, q_end):
+    def __init__(self, gene, hmmsearch_id, header, reftaxon, target, evalue, bit_score, q_start, q_end):
         self.gene = gene
-        self.query_id, self.hmmsearch_id = str(query_id).split('_hmmid')
-        self.target = str(subject_id)
+        self.target = target
+        self.header = header
+        self.hmmsearch_id = hmmsearch_id
+        self.reftaxon = reftaxon
         self.evalue = float(evalue)
-        self.log_evalue = math.log(self.evalue) if self.evalue != 0 else -999.0
         self.score = float(bit_score)
         self.blast_start = int(q_start)
         self.blast_end = int(q_end)
-        self.reftaxon = None
 
     def to_json(self):
         return {
@@ -53,78 +52,6 @@ class Result:
                     "target": self.target,
                     "refTaxon": self.reftaxon,
                 }
-
-
-@dataclass
-class GeneConfig:  # FIXME: I am not certain about types.
-    gene: str
-    gene_sequences: list
-    ref_names: dict
-    blast_path: str
-    blast_db_path: str
-    blast_minimum_score: float
-    blast_minimum_evalue: float
-
-    def __post_init__(self):
-        self.blast_file_path = os.path.join(self.blast_path, f"{self.gene}.blast")
-        self.blast_file_done = f"{self.blast_file_path}.done"
-
-def blast(
-    gene_conf: GeneConfig,
-    verbose: bool,
-) -> None:
-    with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmpfile:
-            tmpfile.write("".join([f">{header}\n{sequence}\n" for header, sequence in gene_conf.gene_sequences])) # Write sequences
-            tmpfile.flush() # Flush the internal buffer so it can be read by blastp
-
-            cmd = (
-                "blastp -outfmt '7 qseqid sseqid evalue bitscore qstart qend' "
-                "-evalue '{evalue_threshold}' -threshold '{score_threshold}' "
-                "-num_threads '{num_threads}' -db '{db}' -query '{queryfile}' "
-                "-out '{outfile}'".format(
-                    evalue_threshold=gene_conf.blast_minimum_evalue,
-                    score_threshold=gene_conf.blast_minimum_score,
-                    num_threads=2,
-                    db=gene_conf.blast_db_path,
-                    queryfile=tmpfile.name,
-                    outfile=gene_conf.blast_file_path,
-                )
-            )
-            os.system(cmd)
-            os.rename(gene_conf.blast_file_path, gene_conf.blast_file_done)
-            printv(f"Blasted: {gene_conf.gene}", verbose, 2)
-
-def do(
-    gene_conf: GeneConfig,
-    verbose: bool,
-):
-    if (
-        not os.path.exists(gene_conf.blast_file_done)
-        or os.path.getsize(gene_conf.blast_file_done) == 0
-    ):
-        blast(gene_conf, verbose)
-
-    gene_out = []
-
-    with open(gene_conf.blast_file_done, "r") as fp:
-        for line in fp:
-            if line == "\n" or line[0] == "#":
-                continue
-            fields = line.split("\t")
-
-            this_result = Result(gene_conf.gene, *fields)
-
-            if this_result.target in gene_conf.ref_names: # Hit target not valid
-                this_result.reftaxon = gene_conf.ref_names[this_result.target]
-
-                # Although we have a threshold in the Blast call. Some still get through.
-                if (
-                    this_result.score >= gene_conf.blast_minimum_score
-                ):
-                    gene_out.append(this_result)
-    gene_out.sort(key = lambda x: x.score, reverse= True)
-
-    return [i.to_json() for i in gene_out]
 
 def run_process(args, input_path) -> None:
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
@@ -158,7 +85,7 @@ def run_process(args, input_path) -> None:
 
     del orthoset_db
 
-    blast_db_path = os.path.join(orthosets_dir, orthoset, "blast", orthoset)
+    diamond_db_path = os.path.join(orthosets_dir, orthoset, "diamond", orthoset+'.dmnd')
 
     printv(f"Done! Took {time_keeper.lap():.2f}s. Writing reference data to DB", args.verbose)
 
@@ -167,84 +94,49 @@ def run_process(args, input_path) -> None:
 
     printv(f"Done! Took {time_keeper.lap():.2f}s. Grabbing HMM data from DB", args.verbose)
 
-    gene_to_hits = {}
-
     global_hmm_object_raw = db.get("hmmbatch:all")
     global_hmm_batches = global_hmm_object_raw.split(",")
-    genes = Counter()
 
-    for batch_i in global_hmm_batches:
-        key = f"hmmbatch:{batch_i}"
-        hmm_json = db.get(key)
-        hmm_hits = json.loads(hmm_json)
+    with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmpfile: #seq_hits
+        out_lines = []
+        for batch_i in global_hmm_batches:
+            key = f"diamondbatch:{batch_i}"
+            seq_json = db.get(key)
+            seq_hits = json.loads(seq_json)
+            for hit in seq_hits:
+                out_lines.append(hit)
+        tmpfile.writelines(out_lines)
+        tmpfile.flush()
 
-        for hmm_object in hmm_hits:
-            hmm_id = hmm_object["hmm_id"]
-            header = hmm_object["header"].strip()
-            gene = hmm_object["gene"]
-            genes[gene] = genes.get(gene, 0) + 1
+        os.system(f"diamond blastp --db {diamond_db_path} --query {tmpfile.name} --outfmt 6 qseqid sseqid evalue bitscore qstart qend --threads {num_threads} --out {os.path.join(blast_path, 'blast.tsv')}")
 
-            gene_to_hits.setdefault(gene, [])
-            gene_to_hits[gene].append((header + f"_hmmid{hmm_id}", hmm_object["hmm_sequence"]))
+    to_write = []
+    with open(os.path.join(blast_path, 'blast.tsv'), "r") as fp:
+        for line in fp:
+            header, reference, evalue, score, start, end = line.strip().split("\t")
+            
+            gene, reftaxon = target_to_taxon[reference]
 
-    printv(f"Grabbed HMM Data. Took: {time_keeper.lap():.2f}s. Found {sum(genes.values())} hits", args.verbose)
+            header,hmmsearch_id = header.split("_hmmid")
 
-    del global_hmm_object_raw
+            this_result = Result(gene, hmmsearch_id, header, reftaxon, reference, evalue, score, start, end)
 
-    # Run
-    if num_threads <= 1:
-        to_write = [
-            do(
-                GeneConfig(
-                    gene=gene,
-                    gene_sequences=gene_to_hits[gene],
-                    ref_names=target_to_taxon[gene],
-                    blast_path=blast_path,
-                    blast_db_path=blast_db_path,
-                    blast_minimum_score=args.blast_minimum_score,
-                    blast_minimum_evalue=args.blast_minimum_evalue,
-                ),
-                args.verbose
-            )
-            for gene, _ in genes.most_common()
-        ]
-    else:
-        arguments = [
-            (
-                GeneConfig(
-                    gene=gene,
-                    gene_sequences=gene_to_hits[gene],
-                    ref_names=target_to_taxon[gene],
-                    blast_path=blast_path,
-                    blast_db_path=blast_db_path,
-                    blast_minimum_score=args.blast_minimum_score,
-                    blast_minimum_evalue=args.blast_minimum_evalue,
-                ),
-                args.verbose,
-            )
-            for gene, _ in genes.most_common()
-        ]
-
-        with Pool(num_threads) as pool:
-            to_write = pool.starmap(do, arguments, chunksize=1)
-
-    printv(f"Got Blast Results. Took {time_keeper.lap():.2f}s. Writing to DB", args.verbose)
+            to_write.append(this_result.to_json())
 
     total = count()
     counter = count()
     this_batch = []
     recipe = []
     batch_i = 1
-    for batch in to_write:
-        for result in batch:
-            this_batch.append(result)
-            if next(counter) == args.max_blast_batch_size:
-                recipe.append(batch_i)
-                db.put(f'blastbatch:{batch_i}', json.dumps(this_batch))
-                batch_i += 1
-                counter = count()
-                this_batch = []
-            next(total)
+    for result in to_write:
+        this_batch.append(result)
+        if next(counter) == args.max_blast_batch_size:
+            recipe.append(batch_i)
+            db.put(f'blastbatch:{batch_i}', json.dumps(this_batch))
+            batch_i += 1
+            counter = count()
+            this_batch = []
+        next(total)
     
     if this_batch:
         recipe.append(batch_i)
@@ -255,7 +147,6 @@ def run_process(args, input_path) -> None:
 
     printv(f"Writing {next(total)} results over {batch_i} batches took {time_keeper.lap():.2f}s", args.verbose)
     printv(f"Done! Took {time_keeper.differential():.2f}s overall", args.verbose)
-
 
 def main(args):
     global_time = TimeKeeper(KeeperMode.DIRECT)

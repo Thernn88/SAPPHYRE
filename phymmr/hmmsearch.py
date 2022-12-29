@@ -884,6 +884,7 @@ def run_process(args, input_path: str) -> None:
     dupes_per_gene = {}
 
     this_sequences = protfile.sequences
+    diamond_all_vs_all = []
 
     for gene in transcripts_mapped_to:
         dupe_count_divvy = {}
@@ -897,13 +898,21 @@ def run_process(args, input_path: str) -> None:
                     dupe_count_divvy[hit.header] = dupe_counts[hit.header]
 
                 hit_id += 1
-                hit.hmm_sequence = "".join(this_sequences[hit.header])
                 translate = ""
                 if "translate" in hit.header:
                     translate = hit.header.split("translate(")[1].split(")")[0]
                 revcomp = "r" if "revcomp" in hit.header else ""
                 hit.hmm_id = "".join([hit.header.split("_")[1],revcomp,translate])
+                diamond_all_vs_all.append(f">{hit.header}_hmmid{hit.hmm_id}\n{this_sequences[hit.header]}\n")
                 if current_hit_count >= MAX_HMM_BATCH_SIZE:
+
+                    key = f"diamondbatch:{batch_i}"
+                    data = json.dumps(diamond_all_vs_all)
+
+                    hits_db_conn.put(key, data)
+                    diamond_all_vs_all = []
+                    
+
                     data = json.dumps(current_batch)
                     del current_batch
 
@@ -936,6 +945,12 @@ def run_process(args, input_path: str) -> None:
         key = f'hmmbatch:{batch_i}'
         global_hmm_obj_recipe.append(str(batch_i))
         hits_db_conn.put(key, data)
+
+        key = f"diamondbatch:{batch_i}"
+        data = json.dumps(diamond_all_vs_all)
+
+        hits_db_conn.put(key, data)
+        diamond_all_vs_all = []
 
     del current_batch
 
