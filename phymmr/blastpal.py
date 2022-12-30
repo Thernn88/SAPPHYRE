@@ -108,7 +108,7 @@ def run_process(args, input_path) -> None:
         tmpfile.writelines(out_lines)
         tmpfile.flush()
 
-        os.system(f"diamond blastp --db {diamond_db_path} --query {tmpfile.name} --outfmt 6 qseqid sseqid evalue bitscore qstart qend --threads {num_threads} --out {os.path.join(blast_path, 'blast.tsv')}")
+        os.system(f"diamond blastp --db {diamond_db_path} --query {tmpfile.name} --outfmt 6 qseqid sseqid evalue bitscore qstart qend --very-sensitive --threads {num_threads} --out {os.path.join(blast_path, 'blast.tsv')}")
 
     to_write = []
     with open(os.path.join(blast_path, 'blast.tsv'), "r") as fp:
