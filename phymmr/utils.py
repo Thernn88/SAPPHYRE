@@ -55,7 +55,8 @@ def get_records(fp, type: str) -> Generator[tuple[str, str], None, None]:
     elif type == "fastq":
         for line in fp:
             if line.startswith(b"@"):
-                yield (current_header[1:].decode(), next(fp).replace(b" ",b"").replace(b"\r",b"").upper().decode())
+                sequence = next(fp).rstrip()
+                yield (line[1:].rstrip().decode(), sequence.replace(b" ",b"").replace(b"\r",b"").upper().decode())
 
 def parseFasta(path: str) -> Generator[tuple[str, str], None, None]:
     """
