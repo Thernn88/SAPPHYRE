@@ -177,9 +177,6 @@ def crop_to_alignment(seq, hit):
     start = hit.ali_start - 1  # Adjust for zero based number
     end = hit.ali_end
 
-    print(start, end)
-    print(seq)
-
     return seq[start:end]
 
 
@@ -514,7 +511,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                                     continue
                             
                             # Does not contain original orf or does not overlap enough.
-                            hit.first_extended_alignment = None
+                            #hit.first_extended_alignment = None # Disabled due to potential bug
 
                     aa_seq = (
                             hit.first_extended_alignment.extended_orf_aa_sequence
@@ -541,7 +538,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                                                     continue
                                             
                                             # Does not contain original orf or does not overlap enough.
-                                            hit.second_extended_alignment = None
+                                            #hit.second_extended_alignment = None # Disabled due to potential bug
 
                                     aa_seq = (
                                             hit.second_extended_alignment.extended_orf_aa_sequence
