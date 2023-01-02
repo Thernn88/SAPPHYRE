@@ -135,7 +135,7 @@ def run_process(args, input_path) -> None:
             head_to_seq[lines[i][1:]] = lines[i+1]
 
     out_path = os.path.join(diamond_path, f"{sensitivity}.tsv")
-    if not os.path.exists(out_path):
+    if not os.path.exists(out_path) or os.stat(out_path).st_size == 0:
         with TemporaryDirectory(dir=gettempdir()) as dir, NamedTemporaryFile(dir=dir) as input_file:
             input_file.write("".join(out).encode())
             input_file.flush()
