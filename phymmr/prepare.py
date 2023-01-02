@@ -298,7 +298,7 @@ class DatabasePreparer:
             ))
 
         if self.keep_prepared:
-            writeFasta(self.prepared_file_destination. self.fa_file_out)
+            writeFasta(self.prepared_file_destination, self.fa_file_out)
 
         recipe_data = ",".join(recipe)
         self.nt_db.put("getall:batches", recipe_data)
