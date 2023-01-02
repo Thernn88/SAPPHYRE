@@ -2,9 +2,8 @@
 """
 Order:
     1. Prepare
-    2. Hmmsearch
-    3. BlastPal
-    4. Reporter
+    2. Diamond
+    3. Reporter
 Post-processing:
     5. mafft
     6. pal2nal
@@ -39,11 +38,11 @@ def subcmd_prepare(subparsers):
         help="Minimum input sequence length.",
     )
     par.add_argument(
-        "-sl",
-        "--sequences_per_level",
+        "-cs",
+        "--chunk_size",
         default=500000,
         type=int,
-        help="Amount of sequences to store per database entry.",
+        help="Sequences per chunk in DB.",
     )
     par.add_argument(
         "-k",
@@ -61,17 +60,39 @@ def prepare(args):
         print()
         print(args.formathelp())
 
-
-def subcmd_hmmsearch(subparsers):
+def subcmd_diamond(subparsers):
     par = subparsers.add_parser(
-        "Hmmsearch",
-        help="Queries protein translations against profile HMMs using the HMMER3 "
-        "external. Filters HMMER3 output using 3 custom filters: MultiGene, "
-        "InternalMulti & InternalSubpar to remove LQ hits and prevent sequence reuse. "
-        "Loads hits into RocksDB after filters finish.",
+        "Diamond",
+        help="To be written.",
     )
     par.add_argument(
-        "INPUT", help="Path to input directory.", action="extend", nargs="+"
+        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
+    )
+    par.add_argument(
+        "-ovw",
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing files."
+    )
+    par.add_argument(
+        "-strict",
+        "--strict-search-mode",
+        action="store_true",
+        help="Only allow sequences that hit on every present taxa."
+    )
+    par.add_argument(
+        "-s",
+        "--sensitivity",
+        choices=["very", "ultra"],
+        default="ultra",
+        help="Diamond blast sensitivty.",
+    )#strict_search_mode
+    par.add_argument(
+        "-t",
+        "--top",
+        type=int,
+        default=10,
+        help="Diamond blast top percentage cull.",
     )
     par.add_argument(
         "-oi",
@@ -87,159 +108,15 @@ def subcmd_hmmsearch(subparsers):
         default="Ortholog_set_Mecopterida_v4",
         help="Orthoset",
     )
-    par.add_argument(
-        "-ovw",
-        "--overwrite",
-        default=False,
-        action="store_true",
-        help="Remake domtbl files even if previous file exists.",
-    )
-    par.add_argument(
-        "-s", "--score", type=float, default=40, help="Score threshold. Defaults to 40"
-    )
-    par.add_argument(
-        "-e",
-        "--evalue",
-        type=float,
-        default=0,
-        help="Evalue threshold. Defaults to 0",
-    )
-    par.add_argument(
-        "--excluded-list",
-        default=False,
-        help="File containing names of genes to be excluded",
-    )
-    par.add_argument(
-        "--wanted-list", default=False, help="File containing list of wanted genes"
-    )
-    par.add_argument(
-        "--remake-protfile",
-        default=False,
-        action="store_true",
-        help="Force creation of a new protfile even if one already exists.",
-    )
-    par.add_argument(
-        "-sdm",
-        "--score_diff_multi",
-        type=float,
-        default=1.05,
-        help="Multi-gene Score Difference Adjustment",
-    )
-    par.add_argument(
-        "-mom",
-        "--min_overlap_multi",
-        type=float,
-        default=0.3,
-        help="Multi-gene Minimum Overlap Adjustment",
-    )
-    par.add_argument(
-        "-momi",
-        "--minimum_overlap_internal_multi",
-        type=float,
-        default=0.5,
-        help="Internal Multi Minimum Overlap Adjustment",
-    )
-    par.add_argument(
-        "-sdi",
-        "--score_diff_internal",
-        type=float,
-        default=1.5,
-        help="Internal Score Difference Adjustmen",
-    )
-    par.add_argument(
-        "-moi",
-        "--min_overlap_internal",
-        type=float,
-        default=0.9,
-        help="Internal Minimum Overlap Adjustment",
-    )
-    par.add_argument(
-        "-m",
-        "--max_hmm_batch_size",
-        default=250000,
-        type=int,
-        help="Max hits per hmmsearch batch in db. Default: 250 thousand.",
-    )
-    par.add_argument("-d", "--debug", type=int, default=0, help="Output debug logs.")
-    par.add_argument(
-        "--enable-multi-internal",
-        default=False,
-        action="store_true",
-        help="Enable Hmmsearch internal multi filter",
-    )
-    par.set_defaults(func=hmmsearch, formathelp=par.format_help)
+    par.set_defaults(func=diamond, formathelp=par.format_help)
 
 
-def hmmsearch(args):
-    from . import hmmsearch
+def diamond(args):
+    from . import diamond
 
-    if not hmmsearch.main(args):
+    if not diamond.main(args):
+        print()
         print(args.formathelp())
-
-
-def subcmd_blastpal(subparsers):
-    par = subparsers.add_parser(
-        "BlastPal",
-        help="Blasts Hmmsearch hits using NCBI-Blast against reference sequences. "
-        "Loads resulting output into RocksDB",
-    )
-
-    par.add_argument(
-        "INPUT",
-        action="extend",
-        nargs="+",
-        help="Path to directory of Input folder",
-    )
-    par.add_argument(
-        "-oi",
-        "--orthoset_input",
-        type=str,
-        default="orthosets",
-        help="Path to directory of Orthosets folder",
-    )
-    par.add_argument(
-        "-o",
-        "--orthoset",
-        type=str,
-        default="Ortholog_set_Mecopterida_v4",
-        help="Orthoset",
-    )
-    par.add_argument(
-        "-bs",
-        "--blast_minimum_score",
-        type=float,
-        default=40.0,
-        help="Minimum score filter in blast.",
-    )
-    par.add_argument(
-        "-be",
-        "--blast_minimum_evalue",
-        type=float,
-        default=0.00001,
-        help="Minimum evalue filter in blast.",
-    )
-    par.add_argument(
-        "-m",
-        "--max_blast_batch_size",
-        default=250000,
-        type=int,
-        help="Max results per blastpal batch in db. Default: 250 thousand.",
-    )
-    par.add_argument(
-        "-ovw",
-        "--overwrite",
-        action="store_true",
-        help="Overwrite existing blast results.",
-    )
-    par.set_defaults(func=blastpal, formathelp=par.format_help)
-
-
-def blastpal(args):
-    from . import blastpal
-
-    if not blastpal.main(args):
-        print(args.formathelp())
-
 
 def subcmd_reporter(subparsers):
     par = subparsers.add_parser(
@@ -804,8 +681,7 @@ if __name__ == "__main__":
     # The order in which those functions are called define the order in which
     # the subcommands will be displayed.
     subcmd_prepare(subparsers)
-    subcmd_hmmsearch(subparsers)
-    subcmd_blastpal(subparsers)
+    subcmd_diamond(subparsers)
     subcmd_reporter(subparsers)
 
     # mafft > pal2nal > FlexCull (optional) > OutlierCheck > MergeOverlap

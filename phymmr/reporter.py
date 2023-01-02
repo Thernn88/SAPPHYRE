@@ -36,69 +36,56 @@ MainArgs = namedtuple(
     ]
 )
 
-class Result:
-    __slots__ = (
-        "hmm_id",
-        "gene",
-        "ref_taxon",
-        )
-
-    def __init__(self, as_json) -> None:
-        self.hmm_id = as_json["hmmId"]
-        self.gene = as_json["gene"]
-        self.ref_taxon = as_json["refTaxon"]
-
 class Hit:
     __slots__ = (
-        "hmm_id",
         "header",
         "gene",
         "score",
-        "hmm_start",
-        "hmm_end",
         "ali_start",
         "ali_end",
-        "est_header",
-        "est_sequence_hmm_region",
+        "est_sequence_trimmed",
         "est_sequence_complete",
-        "est_sequence_complete",
-        "est_sequence_hmm_region",
         "reftaxon",
-        "first_closest",
-        "second_closest",
-        "mapped_to",
+        "f_ref_taxon",
+        "s_ref_taxon",
+        "second_alignment",
+        "second_extended_alignment",
         "first_alignment",
         "first_extended_alignment",
-        "second_alignment",
-        "second_extended_alignment"
+        "mapped_to",
     )
 
-    def __init__(self, as_json):
-        self.hmm_id = as_json["hmm_id"]
-        self.header = as_json["header"]
-        self.gene = as_json["gene"]
-        self.score = as_json["score"]
-        self.hmm_start = as_json["hmm_start"]
-        self.hmm_end = as_json["hmm_end"]
-        self.ali_start = as_json["ali_start"]
-        self.ali_end = as_json["ali_end"]
-        self.second_closest = None
-        self.mapped_to = None
-        self.first_alignment = None
-        self.first_extended_alignment = None
+    def __init__(self, first_hit, second_hit):
+        self.header = first_hit["header"]
+        self.gene = first_hit["gene"]
+        self.ali_start = int(first_hit["ali_start"])
+        self.ali_end = int(first_hit["ali_end"])
+        
+        self.f_ref_taxon = first_hit["ref_taxon"]
+        if second_hit:
+            self.s_ref_taxon = second_hit["ref_taxon"]
+        else:
+            self.s_ref_taxon = None
+        
+        self.reftaxon = None
+        self.est_sequence_complete = first_hit["full_seq"]
+        self.est_sequence_trimmed = first_hit["trim_seq"]
         self.second_alignment = None
         self.second_extended_alignment = None
+        self.first_alignment = None
+        self.first_extended_alignment = None
+        self.mapped_to = None
 
     def add_orf(self, exonerate_record): 
         exonerate_record.orf_cdna_start_on_transcript = (
-            exonerate_record.orf_cdna_start + (self.ali_start * 3) - 3
+            exonerate_record.orf_cdna_start + self.ali_start - 3
         )
-        exonerate_record.orf_cdna_end_on_transcript = exonerate_record.orf_cdna_end + (self.ali_start * 3) - 3
+        exonerate_record.orf_cdna_end_on_transcript = exonerate_record.orf_cdna_end + self.ali_start - 3
         exonerate_record.orf_aa_start_on_transcript = (
-            exonerate_record.orf_cdna_start + (self.ali_start * 3) - 3
+            exonerate_record.orf_cdna_start + self.ali_start - 3
         ) / 3
         exonerate_record.orf_aa_end_on_transcript = (
-            exonerate_record.orf_cdna_end + (self.ali_start * 3) - 3
+            exonerate_record.orf_cdna_end + self.ali_start - 3
         ) / 3
         self.first_alignment = exonerate_record
 
@@ -152,68 +139,15 @@ class NodeRecord:
     def __le__(self, other):
         return self.score <= other.score
 
-def get_hmmresults(score_threshold, min_length, rocks_hits_db, debug):
-    batches = rocks_hits_db.get("hmmbatch:all")
-    batches = batches.split(",")
-
+def get_diamondhits(rocks_hits_db, list_of_wanted_orthoids):
     gene_based_results = {}
-    ufr_out = [["Gene", "Hash", "Header", "Score", "Start", "End"]]
-    for batch_i in batches:
-        batch_rows = rocks_hits_db.get(f"hmmbatch:{batch_i}")
-        batch_rows = json.loads(batch_rows)
-        for this_row in batch_rows:
-            length = this_row["env_end"] - this_row["env_start"]
-            hmm_score = this_row["score"]
-            gene = this_row["gene"]
-            if hmm_score > score_threshold and length >= min_length:
-                if debug:
-                    hmm_start = this_row["hmm_start"]
-                    hmm_end = this_row["hmm_end"]
-                    components = this_row["header"].split("|")
-                    if "[" in components[-1]:
-                        out_header = "|".join(components[:-1]) + " " + components[-1]
-                    else:
-                        out_header = this_row["header"]
+    for gene in rocks_hits_db.get("getall:presentgenes").split(','):
+        if list_of_wanted_orthoids and gene not in list_of_wanted_orthoids:
+            continue
 
-                    if debug:
-                        ufr_out.append(
-                            [
-                                this_row["gene"],
-                                out_header,
-                                str(hmm_score),
-                                str(hmm_start),
-                                str(hmm_end),
-                            ]
-                        )
+        gene_based_results[gene] = [Hit(this_data["f"], this_data["s"]) for this_data in json.loads(rocks_hits_db.get(f"gethits:{gene}"))]
 
-                this_hit = Hit(this_row)
-
-                gene_based_results.setdefault(gene, [])
-                gene_based_results[gene].append(this_hit)
-
-    if debug:
-        ufr_out = sorted(ufr_out, key=lambda x: (x[0], x[1], x[3], x[4]))
-    return gene_based_results, ufr_out
-
-
-def get_blastresults(rocks_hits_db):
-    batches = rocks_hits_db.get("blastbatch:all")
-    batches = batches.split(",")
-
-    blast_results = {}
-
-    for batch_i in batches:
-        batch_rows = rocks_hits_db.get(f"blastbatch:{batch_i}")
-        batch_rows = json.loads(batch_rows)
-        for result in batch_rows:
-            gene = result["gene"]
-            hmm_id = result["hmmId"]
-            this_result = Result(result)
-            blast_results.setdefault(gene, {})
-            blast_results[gene].setdefault(hmm_id, [])
-            blast_results[gene][hmm_id].append(this_result)
-
-    return blast_results
+    return gene_based_results
 
 
 def get_reference_data(rocks_hits_db):
@@ -235,14 +169,16 @@ def get_nucleotide_transcript_for(header):
     _, sequence = row_data.split("\n")
 
     if "revcomp" in header:
-        return base_header, reverse_complement(sequence)
-    return base_header, sequence
+        return reverse_complement(sequence)
+    return sequence
 
 
-def crop_to_hmm_alignment(seq, header, hit):
+def crop_to_alignment(seq, hit):
     start = hit.ali_start - 1  # Adjust for zero based number
-    start = start * 3
-    end = hit.ali_end * 3
+    end = hit.ali_end
+
+    print(start, end)
+    print(seq)
 
     return seq[start:end]
 
@@ -329,7 +265,7 @@ def get_multi_orf(query, targets, score_threshold, include_extended):
     genetic_code = 1
     exonerate_model = "protein2genome"
 
-    sequences = [(i.header, i.est_sequence_hmm_region) for i in targets]
+    sequences = [(i.header, i.est_sequence_trimmed) for i in targets]
     if include_extended:
         sequences.extend([("extended_" + i.header, i.est_sequence_complete) for i in targets])
 
@@ -427,8 +363,8 @@ def print_unmerged_sequences(
             reference_frame,
         )
 
-        alignment = hit.first_alignment if hit.mapped_to == hit.first_closest else hit.second_alignment
-        extended_alignment = hit.first_extended_alignment if hit.mapped_to == hit.first_closest else hit.second_extended_alignment
+        alignment = hit.first_alignment if hit.mapped_to == hit.f_ref_taxon else hit.second_alignment
+        extended_alignment = hit.first_extended_alignment if hit.mapped_to == hit.f_ref_taxon else hit.second_extended_alignment
         nt_seq = (
             extended_alignment.extended_orf_cdna_sequence
             if extended_alignment and extended_alignment.extended_orf_cdna_sequence is not None
@@ -533,24 +469,13 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
 
     reftaxon_related_transcripts = {i: [] for i in eargs.reference_sequences.keys()}
     for hit in eargs.list_of_hits:
-        this_reftaxon = hit.reftaxon
-
-        est_header, est_sequence_complete = get_nucleotide_transcript_for(
-            hit.header
-        )
-        est_sequence_hmm_region = crop_to_hmm_alignment(
-            est_sequence_complete, est_header, hit
-        )
-
-        hit.est_header = est_header
-        hit.est_sequence_complete = est_sequence_complete
-        hit.est_sequence_hmm_region = est_sequence_hmm_region
+        this_reftaxon = hit.f_ref_taxon
 
         reftaxon_related_transcripts[this_reftaxon].append(hit)
 
         # If it doesn't align to closest ref fall back to this ref and try again
-        if hit.second_closest is not None:
-            reftaxon_related_transcripts[hit.second_closest].append(hit)
+        if hit.s_ref_taxon is not None:
+            reftaxon_related_transcripts[hit.s_ref_taxon].append(hit)
 
     output_sequences = []
     total_results = 0
@@ -570,7 +495,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
 
         for hit in hits_to_exonerate:
             # We still want to see the first results before rerun
-            if taxon_hit == hit.second_closest and hit.mapped_to is None:
+            if taxon_hit == hit.s_ref_taxon and hit.mapped_to is None:
                 hit.second_alignment = results.get(hit.header, None)
                 hit.second_extended_alignment = extended_results.get(hit.header, None)
                 continue
@@ -598,7 +523,8 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                         )
 
                     if len(aa_seq) >= eargs.min_length:
-                        hit.mapped_to = hit.reftaxon
+                        hit.reftaxon = hit.f_ref_taxon
+                        hit.mapped_to = hit.f_ref_taxon
                         output_sequences.append(hit)
                     else:
                         if hit.second_alignment is not None: # If first run doesn't pass check if rerun does
@@ -624,11 +550,11 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                                         )
                                         
                                     if len(aa_seq) >= eargs.min_length:
-                                        hit.reftaxon = hit.second_closest
-                                        hit.mapped_to = hit.reftaxon
+                                        hit.reftaxon = hit.s_ref_taxon
+                                        hit.mapped_to = hit.s_ref_taxon
                                         output_sequences.append(hit)
     if len(output_sequences) > 0:
-        output_sequences = sorted(output_sequences, key=lambda d: d.hmm_start)
+        output_sequences = sorted(output_sequences, key=lambda d: d.second_alignment.orf_cdna_start_on_transcript if d.second_alignment else d.first_alignment.orf_cdna_start_on_transcript)
         core_sequences, core_sequences_nt = get_ortholog_group(eargs.orthoid, rocky.get_rock("rocks_orthoset_db"))
         this_aa_path = os.path.join(eargs.aa_out_path, eargs.orthoid + ".aa.fa")
         aa_output, nt_output = print_unmerged_sequences(
@@ -648,51 +574,6 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
 
     printv(f"{eargs.orthoid} took {t_gene_start.differential():.2f}s. Had {len(output_sequences)} sequences", eargs.verbose, 2)
     return len(output_sequences)
-
-def reciprocal_search(
-    arg_tuple
-):
-    hmmresults, gene_blast_results, reference_taxa, gene, verbose = arg_tuple
-    t_reciprocal_start = TimeKeeper(KeeperMode.DIRECT)
-    printv(f"Ensuring reciprocal hit for hmmresults in {gene}", verbose, 2)
-    results = []
-
-    for hit in hmmresults:
-        hmm_id = str(hit.hmm_id)
-
-        if hmm_id not in gene_blast_results:
-            continue
-
-        blast_results = gene_blast_results[hmm_id]
-        reftaxon_count = {ref_taxa: 0 for ref_taxa in reference_taxa}
-        this_match_reftaxon = None
-        this_second_match = None
-
-        for result in blast_results:
-            ref_taxon = result.ref_taxon
-
-            if ref_taxon in reftaxon_count:
-                if not this_match_reftaxon:
-                    this_match_reftaxon = ref_taxon
-                elif not this_second_match and ref_taxon != this_match_reftaxon:
-                    this_second_match = ref_taxon
-                
-                if not strict_search_mode and this_match_reftaxon and this_second_match:
-                    break
-                elif all(reftaxon_count.values()):
-                    break
-
-                reftaxon_count[ref_taxon] = 1  # only need the one
-        
-        if not strict_search_mode and this_match_reftaxon or all(reftaxon_count.values()):
-            hit.reftaxon = this_match_reftaxon
-            hit.first_closest = this_match_reftaxon
-            if this_second_match:
-                hit.second_closest = this_second_match
-            results.append(hit)
-
-    printv(f"Checked reciprocal hits for {gene}. Took {t_reciprocal_start.differential():.2f}s.", verbose, 2)
-    return results
 
 
 def do_taxa(path, taxa_id, args):
@@ -732,63 +613,11 @@ def do_taxa(path, taxa_id, args):
     os.makedirs(aa_out_path, exist_ok=True)
     os.makedirs(nt_out_path, exist_ok=True)
 
-    printv(f"Initialized databases. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing reference taxa in set.", args.verbose)
+    printv(f"Initialized databases. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing reciprocal diamond hits.", args.verbose)
 
-    reference_taxa = json.loads(rocky.get_rock("rocks_orthoset_db").get("getall:taxainset"))
+    transcripts_mapped_to = get_diamondhits(rocky.get_rock("rocks_hits_db"), list_of_wanted_orthoids)
 
-    printv(f"Got reference taxa in set. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing hmmresults.", args.verbose)
-
-    gene_based_results, ufr_rows = get_hmmresults(
-        args.min_score, args.min_length, rocky.get_rock("rocks_hits_db"), args.debug
-    )
-
-    if args.debug:
-        ufr_path = os.path.join(path, "unfiltered-hits.csv")
-        ufr_out = ["Gene,Header,Score,Start,End\n"]
-        for row in ufr_rows:
-            ufr_out.append(",".join(row) + "\n")
-        with open(ufr_path, "w") as fp:
-            fp.writelines(ufr_out)
-
-    printv(f"Got hmmresults. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing Blast results.", args.verbose)
-
-    blast_resultss = get_blastresults(rocky.get_rock("rocks_hits_db"))
-
-    printv(f"Got Blast results. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Doing reciprocal check.", args.verbose)
-
-    genes = list(gene_based_results.keys())
-    genes.sort(key = lambda x: len(x), reverse=True)  # Ascending
-    transcripts_mapped_to = {}
-
-    argmnts = []
-    for gene, hmmresults in gene_based_results.items():
-        if list_of_wanted_orthoids and gene not in list_of_wanted_orthoids:
-            continue
-        argmnts.append(
-            (
-                hmmresults,
-                blast_resultss.get(gene, []),
-                reference_taxa,
-                gene,
-                args.verbose,
-            )
-        )
-    with ThreadPoolExecutor(num_threads) as pool:
-        reciprocal_data = pool.map(reciprocal_search, argmnts)
-    # with Pool(num_threads) as pool:
-    #     reciprocal_data = pool.starmap(reciprocal_search, argmnts, chunksize=1)
-
-    brh_count = 0
-    for data in reciprocal_data:
-        brh_count += len(data)
-        for this_match in data:
-            orthoid = this_match.gene
-            if orthoid not in transcripts_mapped_to:
-                transcripts_mapped_to[orthoid] = []
-
-            transcripts_mapped_to[orthoid].append(this_match)
-
-    printv(f"Reciprocal check done, found {brh_count} reciprocal hits. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing references sequences.", args.verbose)
+    printv(f"Got hits. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing reference data.", args.verbose)
 
     gene_reference_data = get_reference_data(rocky.get_rock("rocks_orthoset_db"))
 
