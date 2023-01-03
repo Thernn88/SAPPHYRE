@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory, NamedTemporaryFile
 import json
 from multiprocessing.pool import Pool
 import wrap_rocks
+import phymmr_tools
 
 from . import rocky
 from .utils import printv, gettempdir, parseFasta
@@ -17,7 +18,7 @@ def reciprocal_check(hits, strict, taxa_present):
     second = None
     hit_on_taxas = {i:0 for i in taxa_present}
 
-    for hit in hits:
+    for hit in sorted(hits, key = lambda x: x.score, reverse=True):
         if not first:
             first = hit
         elif not second and first.reftaxon != hit.reftaxon:
@@ -132,7 +133,9 @@ def run_process(args, input_path) -> None:
         for i in range(0, len(lines), 2):
             if lines[i] == "":
                 continue
-            head_to_seq[lines[i][1:]] = lines[i+1]
+
+            header = lines[i][1:]
+            head_to_seq[header] = lines[i+1]
 
     out_path = os.path.join(diamond_path, f"{sensitivity}.tsv")
     if not os.path.exists(out_path) or os.stat(out_path).st_size == 0:
@@ -165,12 +168,14 @@ def run_process(args, input_path) -> None:
             if int(frame) < 0:
                 qstart = int(qlen) - qstart
                 qend = int(qlen) - qend
+
+                nuc_seq = phymmr_tools.bio_revcomp(nuc_seq)
                 
                 header = raw_header + f"|[revcomp]:[translate({abs(int(frame))})]"
             else:
                 header = raw_header + f"|[translate({abs(int(frame))})]"
 
-            trimmed_sequence = nuc_seq[qstart:qend]
+            trimmed_sequence = nuc_seq[qstart-1 : qend]
 
             this_header_out.setdefault(header, []).append(Hit(header, ref_header, evalue, score, nuc_seq, trimmed_sequence, gene, reftaxon, qstart, qend))
 
