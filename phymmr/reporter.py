@@ -284,8 +284,8 @@ def get_multi_orf(query, targets, score_threshold, include_extended):
 
 def extended_orf_contains_original_orf(extended_alignment, alignment):
     return (
-        extended_alignment.extended_orf_cdna_start > alignment.orf_cdna_end_on_transcript
-        or extended_alignment.extended_orf_cdna_end < alignment.orf_cdna_start_on_transcript
+        extended_alignment.extended_orf_cdna_start >= alignment.orf_cdna_end_on_transcript
+        or extended_alignment.extended_orf_cdna_end >= alignment.orf_cdna_start_on_transcript
     )
 
 
@@ -350,6 +350,7 @@ def print_unmerged_sequences(
     base_header_mapped_already = {}
     exact_hit_mapped_already = set()
     for hit in hits:
+        
         base_header, reference_frame = hit.header.split('|')
 
         header = format_candidate_header(
@@ -379,10 +380,10 @@ def print_unmerged_sequences(
 
         aa_seq = aa_seq.replace('\n', '')
         unique_hit = base_header+aa_seq
-
         if (
             unique_hit not in exact_hit_mapped_already
         ):
+            
             if base_header in base_header_mapped_already:
                 already_mapped_header, already_mapped_sequence = base_header_mapped_already[base_header]
 
@@ -500,18 +501,21 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
             if hit.header in results:
                 matching_alignment = results.get(hit.header, None)
                 if matching_alignment.orf_cdna_sequence:
+                    
                     hit.add_orf(matching_alignment)
                     if extend_orf:
                         if hit.header in extended_results:
                             hit.first_extended_alignment = extended_results.get(hit.header, None)
 
+                            correct_extend = False
                             if extended_orf_contains_original_orf(hit.first_extended_alignment, matching_alignment):
                                 orf_overlap = overlap_by_orf(hit, hit.first_extended_alignment)
                                 if orf_overlap >= orf_overlap_minimum:
-                                    continue
+                                    correct_extend = True
                             
                             # Does not contain original orf or does not overlap enough.
-                            #hit.first_extended_alignment = None # Disabled due to potential bug
+                            if not correct_extend:
+                                hit.first_extended_alignment = None # Disabled due to potential bug
 
                     aa_seq = (
                             hit.first_extended_alignment.extended_orf_aa_sequence
@@ -532,13 +536,15 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                                 if matching_alignment.orf_cdna_sequence:
                                     if extend_orf:
                                         if hit.second_extended_alignment:
+                                            correct_extend = False
                                             if extended_orf_contains_original_orf(hit.second_extended_alignment, matching_alignment):
                                                 orf_overlap = overlap_by_orf(hit, hit.second_extended_alignment)
                                                 if orf_overlap >= orf_overlap_minimum:
-                                                    continue
+                                                    correct_extend = True
                                             
                                             # Does not contain original orf or does not overlap enough.
-                                            #hit.second_extended_alignment = None # Disabled due to potential bug
+                                            if not correct_extend:
+                                                hit.second_extended_alignment = None # Disabled due to potential bug
 
                                     aa_seq = (
                                             hit.second_extended_alignment.extended_orf_aa_sequence
@@ -626,7 +632,6 @@ def do_taxa(path, taxa_id, args):
         key=lambda k: len(transcripts_mapped_to[k]),
         reverse=True
     ):
-
         arguments.append(
             (ExonerateArgs(
                 orthoid,
