@@ -104,7 +104,9 @@ class NodeRecord:
         self.orf_aa_start_on_transcript = None
         self.extended_orf_cdna_sequence = None
         self.extended_orf_aa_sequence = None
-        
+        self.extended_orf_cdna_start_on_transcript = None
+        self.extended_orf_cdna_end_on_transcript = None
+
     def check_extend(self):
         if self.is_extension:
             self.extended_orf_cdna_sequence = self.orf_cdna_sequence
@@ -113,14 +115,6 @@ class NodeRecord:
             self.extended_orf_aa_sequence = self.orf_aa_sequence
             self.extended_orf_aa_start = self.orf_aa_start
             self.extended_orf_aa_end = self.orf_aa_end
-
-        self.extended_orf_aa_start_on_transcript = (
-            (self.extended_orf_cdna_start - 1) / 3
-        ) + 1
-
-        self.extended_orf_aa_end_on_transcript = (
-            (self.extended_orf_cdna_end - 1) / 3
-        ) + 1
 
         self.extended_orf_aa_sequence = translate_cdna(self.extended_orf_cdna_sequence)
 
@@ -291,17 +285,17 @@ def extended_orf_contains_original_orf(extended_alignment, alignment):
 
 def get_overlap_length(candidate, alignment):
     if (
-        alignment.extended_orf_aa_start_on_transcript <= candidate.ali_end
-        and alignment.extended_orf_aa_end_on_transcript >= candidate.ali_start
+        alignment.extended_orf_aa_start <= candidate.ali_end
+        and alignment.extended_orf_aa_end >= candidate.ali_start
     ):
         overlap_start = (
-            alignment.extended_orf_aa_start_on_transcript
-            if alignment.extended_orf_aa_start_on_transcript > candidate.ali_start
+            alignment.extended_orf_aa_start
+            if alignment.extended_orf_aa_start > candidate.ali_start
             else candidate.ali_start
         )
         overlap_end = (
-            alignment.extended_orf_aa_end_on_transcript
-            if alignment.extended_orf_aa_end_on_transcript > candidate.ali_end
+            alignment.extended_orf_aa_end
+            if alignment.extended_orf_aa_end > candidate.ali_end
             else candidate.ali_end
         )
 
@@ -312,7 +306,9 @@ def get_overlap_length(candidate, alignment):
 
 def overlap_by_orf(candidate, alignment):
     orf_length = abs(alignment.extended_orf_aa_end - alignment.extended_orf_aa_start)
-    overlap_length = get_overlap_length(candidate, alignment)
+    overlap_length = min(alignment.extended_orf_cdna_end, candidate.ali_end) - max(alignment.extended_orf_cdna_start, candidate.ali_start)
+    if overlap_length < 0:
+        overlap_length = 0
 
     return overlap_length / orf_length
 
@@ -528,6 +524,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                         hit.mapped_to = hit.f_ref_taxon
                         output_sequences.append(hit)
                     else:
+                        
                         if hit.second_alignment is not None: # If first run doesn't pass check if rerun does
                             matching_alignment = hit.second_alignment
                             if matching_alignment:
