@@ -175,7 +175,7 @@ def run_process(args, input_path) -> None:
             else:
                 header = raw_header + f"|[translate({abs(int(frame))})]"
 
-            trimmed_sequence = nuc_seq[qstart-1 : qend]
+            trimmed_sequence = nuc_seq[qstart : qend]
 
             this_header_out.setdefault(header, []).append(Hit(header, ref_header, evalue, score, nuc_seq, trimmed_sequence, gene, reftaxon, qstart, qend))
 
