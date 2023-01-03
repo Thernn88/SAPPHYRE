@@ -126,8 +126,10 @@ def run_process(args, input_path) -> None:
     else:
         raise ValueError("Nucleotide sequence not found in database. Did Prepare succesfully finish?")
     out = [nt_db.get(f"ntbatch:{i}") for i in recipe]
-    head_to_seq = {}
 
+    dupe_counts = json.loads(nt_db.get("getall:dupes"))
+
+    head_to_seq = {}
     for content in out:
         lines = content.split("\n")
         for i in range(0, len(lines), 2):
@@ -156,6 +158,7 @@ def run_process(args, input_path) -> None:
     del out
 
     this_header_out = {}
+    header_maps_to = {}
     with open(out_path) as fp:
         for line in fp:
             raw_header, ref_header, frame, evalue, score, qstart, qend, sstart, send, length, qlen = line.strip().split("\t")
@@ -175,11 +178,16 @@ def run_process(args, input_path) -> None:
             else:
                 header = raw_header + f"|[translate({abs(int(frame))})]"
 
+            header_maps_to.setdefault(header, []).append(gene)
+
             trimmed_sequence = nuc_seq[qstart : qend]
 
             this_header_out.setdefault(header, []).append(Hit(header, ref_header, evalue, score, nuc_seq, trimmed_sequence, gene, reftaxon, qstart, qend))
 
     #Multi filter
+    requires_multi = [header for header, genes in header_maps_to.items() if len(genes) > 1]
+    # for header in requires_multi:
+    #     this_header_out[header] = multi_filter(this_header_out[header])
     #Internal filter
     #Reciprocal filter
     printv(f"Read diamond output. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing Reciprocal Check", args.verbose)
@@ -198,9 +206,15 @@ def run_process(args, input_path) -> None:
     db = wrap_rocks.RocksDB(os.path.join(input_path, "rocksdb", "hits"))
 
     present_genes = []
+    gene_dupe_count = {}
     for gene, hits in final_gene_out.items():
         output = []
         for first_hit, rerun_hit in hits:
+            base_header = first_hit.header.split("|")[0]
+            if base_header in dupe_counts:
+                gene_dupe_count.setdefault(gene, {})[base_header] = dupe_counts[base_header]
+            
+
             rerun_hit = rerun_hit.to_json() if rerun_hit else None
             output.append({"f":first_hit.to_json(), "s":rerun_hit})
         db.put(f"gethits:{gene}", json.dumps(output))
@@ -208,7 +222,12 @@ def run_process(args, input_path) -> None:
 
     db.put("getall:presentgenes", ",".join(present_genes))
 
+    key = "getall:gene_dupes"
+    data = json.dumps(gene_dupe_count)
+    nt_db.put(key, data)
+
     del db
+    del nt_db
 
     printv(f"Took {time_keeper.differential():.2f}s overall.", args.verbose)
 
