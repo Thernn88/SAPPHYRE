@@ -140,10 +140,11 @@ def run_process(args, input_path) -> None:
             input_file.write("".join(out).encode())
             input_file.flush()
             
+            quiet = "--quiet" if args.verbose == 0 else ""
 
             printv(f"Done! Running Diamond. Elapsed time {time_keeper.differential():.2f}s.", args.verbose)
             time_keeper.lap() #Reset timer
-            os.system(f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send length qlen --top {top_amount} --max-hsps 0 -p {num_threads}")
+            os.system(f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send length qlen {quiet} --top {top_amount} --max-hsps 0 -p {num_threads}")
             input_file.seek(0)
 
         printv(f"Diamond done. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s", args.verbose)
