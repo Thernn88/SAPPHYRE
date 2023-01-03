@@ -84,7 +84,7 @@ def subcmd_diamond(subparsers):
         "-s",
         "--sensitivity",
         choices=["very", "ultra"],
-        default="ultra",
+        default="very",
         help="Diamond blast sensitivty.",
     )#strict_search_mode
     par.add_argument(
