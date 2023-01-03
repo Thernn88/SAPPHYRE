@@ -18,7 +18,7 @@ def reciprocal_check(hits, strict, taxa_present):
     second = None
     hit_on_taxas = {i:0 for i in taxa_present}
 
-    for hit in sorted(hits, key = lambda x: x.score, reverse=True):
+    for hit in hits:
         if not first:
             first = hit
         elif not second and first.reftaxon != hit.reftaxon:
@@ -49,19 +49,24 @@ class Hit:
         "gene",
         "reftaxon",
         "full_seq",
-        "trim_seq"
+        "trim_seq",
+        "sstart",
+        "send"
     )
-    def __init__(self, header, ref_header, evalue, score, full_seq, trim_seq, gene, reftaxon, qstart, qend):
+    def __init__(self, header, ref_header, evalue, score, full_seq, trim_seq, gene, reftaxon, qstart, qend, sstart, send):
         self.header = header
         self.ref_header = ref_header
         self.evalue = evalue
-        self.score = score
+        self.score = float(score)
         self.gene = gene
         self.reftaxon = reftaxon
         self.full_seq = full_seq
         self.trim_seq = trim_seq
-        self.qstart = qstart
-        self.qend = qend
+        self.qstart = int(qstart)
+        self.qend = int(qend)
+
+        self.sstart = int(sstart)
+        self.send = int(send)
 
 
     def to_json(self):
@@ -74,6 +79,69 @@ class Hit:
                     "ali_start": self.qstart,
                     "ali_end": self.qend,
                 }
+
+def get_overlap(a_start, a_end, b_start, b_end):
+    overlap_end = min(a_end, b_end)
+    overlap_start = max(a_start, b_start)
+    amount = (overlap_end - overlap_start) + 1  # inclusive
+
+    return 0 if amount < 0 else amount
+
+def get_difference(scoreA, scoreB):
+    """
+    Returns decimal difference of two scores
+    """
+    try:
+        if scoreA / scoreB > 1:
+            return scoreA / scoreB
+        if scoreB / scoreA > 1:
+            return scoreB / scoreA
+        if scoreA == scoreB:
+            return 1
+    except ZeroDivisionError:
+        return 0
+
+def multi_filter(hits, debug):
+    kick_happend = True
+
+    log = []
+
+    while kick_happend:
+        kick_happend = False
+        master = hits[0]
+        candidates = hits[1:]
+
+        master_env_start = master.sstart
+        master_env_end = master.send
+
+        miniscule_score = False
+        for i, candidate in enumerate(candidates, 1):
+            if candidate:
+                if master.gene != candidate.gene:
+                    distance = (master_env_end - master_env_start) + 1  # Inclusive
+                    amount_of_overlap = get_overlap(master_env_start, master_env_end, candidate.sstart,
+                                                    candidate.send)
+
+                    percentage_of_overlap = amount_of_overlap / distance
+
+                    if percentage_of_overlap >= 0.5:#min_overlap_multi:
+                        score_difference = get_difference(master.score, candidate.score)
+                        if score_difference >= 1.05:
+                            kick_happend = True
+                            hits[i] = None
+                            candidates[i-1] = None
+                            if debug:
+                                log.append((candidate.gene, candidate.header, candidate.reftaxon, candidate.score, "Kicked out by", master.gene, master.header, master.reftaxon, master.score))
+                        else:
+                            miniscule_score = True
+                            break
+        if miniscule_score:
+            if debug:
+                log.extend([(candidate.gene, candidate.header, candidate.reftaxon, candidate.score, "Kicked due to miniscule score", master.gene, master.header, master.reftaxon, master.score) for hit in hits if hit])
+            return [], len(hits), log
+
+    passes = [i for i in hits if i]
+    return passes, len(hits) - len(passes), log
 
 def run_process(args, input_path) -> None:
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
@@ -182,12 +250,34 @@ def run_process(args, input_path) -> None:
 
             trimmed_sequence = nuc_seq[qstart : qend]
 
-            this_header_out.setdefault(header, []).append(Hit(header, ref_header, evalue, score, nuc_seq, trimmed_sequence, gene, reftaxon, qstart, qend))
+            this_header_out.setdefault(header, []).append(Hit(header, ref_header, evalue, score, nuc_seq, trimmed_sequence, gene, reftaxon, qstart, qend, sstart, send))
+
+    for header in this_header_out:
+        this_header_out[header] = sorted(this_header_out[header], key = lambda x: x.score, reverse=True)
 
     #Multi filter
-    requires_multi = [header for header, genes in header_maps_to.items() if len(genes) > 1]
-    # for header in requires_multi:
-    #     this_header_out[header] = multi_filter(this_header_out[header])
+    time_keeper.lap()
+    if not args.multi:
+        print("Skipping multi")
+        requires_multi = []
+    else:
+        requires_multi = [header for header, genes in header_maps_to.items() if len(genes) > 1]
+    kicks = 0 
+    passes = 0
+    global_log = []
+    for header in requires_multi:
+        results, this_kicks, log = multi_filter(this_header_out[header], args.debug)
+        if args.debug:
+            global_log.extend(log)
+        this_header_out[header] = results
+        passes += len(results)
+        kicks += this_kicks
+    
+    if global_log:
+        with open(os.path.join(input_path, "multi.log"), "w") as fp:
+            fp.write("\n".join([",".join([str(i) for i in line]) for line in global_log]))
+
+    print(f"Took {time_keeper.lap():.2f} for {kicks} kicks leaving {passes} results")
     #Internal filter
     #Reciprocal filter
     printv(f"Read diamond output. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing Reciprocal Check", args.verbose)

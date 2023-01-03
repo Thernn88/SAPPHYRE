@@ -75,6 +75,18 @@ def subcmd_diamond(subparsers):
         help="Overwrite existing files."
     )
     par.add_argument(
+        "-d",
+        "--debug",
+        action="store_true",
+        help="Enable debug out."
+    )
+    par.add_argument(
+        "-m",
+        "--multi",
+        action="store_true",
+        help="Enable multi filter."
+    )
+    par.add_argument(
         "-strict",
         "--strict-search-mode",
         action="store_true",
