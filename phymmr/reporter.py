@@ -359,6 +359,8 @@ def print_unmerged_sequences(
 
         alignment = hit.first_alignment if hit.mapped_to == hit.f_ref_taxon else hit.second_alignment
         extended_alignment = hit.first_extended_alignment if hit.mapped_to == hit.f_ref_taxon else hit.second_extended_alignment
+        if not (alignment and extended_alignment):
+            continue
         nt_seq = (
             extended_alignment.extended_orf_cdna_sequence
             if extended_alignment and extended_alignment.extended_orf_cdna_sequence is not None
@@ -570,7 +572,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                         output_sequences.append(hit)
 
     if len(output_sequences) > 0:
-        output_sequences = sorted(output_sequences, key=lambda d: d.second_alignment.orf_cdna_start_on_transcript if d.second_alignment else d.first_alignment.orf_cdna_start_on_transcript)
+        # output_sequences = sorted(output_sequences, key=lambda d: d.second_alignment.orf_cdna_start_on_transcript if d.second_alignment else d.first_alignment.orf_cdna_start_on_transcript)
         core_sequences, core_sequences_nt = get_ortholog_group(eargs.orthoid, rocky.get_rock("rocks_orthoset_db"))
         this_aa_path = os.path.join(eargs.aa_out_path, eargs.orthoid + ".aa.fa")
         aa_output, nt_output = print_unmerged_sequences(
