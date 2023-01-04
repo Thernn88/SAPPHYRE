@@ -532,7 +532,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                     hit.reftaxon = hit.f_ref_taxon
                     hit.mapped_to = hit.f_ref_taxon
                     output_sequences.append(hit)
-                    continue
+                    continue # Orf orig + extend orig
 
             if hit.second_alignment is not None: # If first run doesn't pass check if rerun does
                 has_orf = False
@@ -567,7 +567,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                             hit.reftaxon = hit.f_ref_taxon
                             hit.mapped_to = hit.f_ref_taxon
                             output_sequences.append(hit)
-                            continue
+                            continue # Orf rerun + extend orig
 
                     aa_seq = (
                             hit.second_extended_alignment.extended_orf_aa_sequence
@@ -578,8 +578,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                         hit.reftaxon = hit.s_ref_taxon
                         hit.mapped_to = hit.s_ref_taxon
                         output_sequences.append(hit)
-                    else:
-                        hit.
+                        continue # Orf rerun + extend rerun
 
 
     if len(output_sequences) > 0:
