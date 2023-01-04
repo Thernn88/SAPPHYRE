@@ -54,7 +54,7 @@ def get_records(fp, type: str) -> Generator[tuple[str, str], None, None]:
 
     elif type == "fastq":
         for line in fp:
-            if line.startswith(b"@"):
+            if line.startswith(b"@") and "length=" in line:
                 sequence = next(fp).rstrip()
                 yield (line[1:].rstrip().decode(), sequence.replace(b" ",b"").replace(b"\r",b"").upper().decode())
 

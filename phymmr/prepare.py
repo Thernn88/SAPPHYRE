@@ -382,7 +382,8 @@ def main(args):
     dedup_time = [0]
     global_time_keeper = TimeKeeper(KeeperMode.DIRECT)
 
-    globbed = input_path.glob("*.f[aq]*")
+    globbed = list(input_path.glob("*.f[aq]*"))
+    globbed.sort()
     taxa_runs = glob_for_fasta_and_save_for_runs(globbed)
 
     ls_args = [
