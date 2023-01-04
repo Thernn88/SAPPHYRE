@@ -521,10 +521,10 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                     else:
                         has_extend = True
 
-            if has_orf or has_extend:
+            if has_orf:
                 aa_seq = (
                         hit.first_extended_alignment.extended_orf_aa_sequence
-                        if hit.first_extended_alignment and hit.first_extended_alignment.extended_orf_aa_sequence is not None
+                        if hit.first_extended_alignment and hit.first_extended_alignment.extended_orf_aa_sequence is not None and has_orf
                         else hit.first_alignment.orf_aa_sequence
                     )
 
@@ -560,16 +560,27 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                             has_extend = True
 
                 if has_orf or has_extend:
+                    
+                    if hit.first_extended_alignment and hit.first_extended_alignment.extended_orf_aa_sequence is not None:
+                        aa_seq = hit.first_alignment.orf_aa_sequence
+                        if len(aa_seq) >= eargs.min_length:
+                            hit.reftaxon = hit.f_ref_taxon
+                            hit.mapped_to = hit.f_ref_taxon
+                            output_sequences.append(hit)
+                            continue
+
                     aa_seq = (
                             hit.second_extended_alignment.extended_orf_aa_sequence
                             if hit.second_extended_alignment and hit.second_extended_alignment.extended_orf_aa_sequence is not None
                             else hit.second_alignment.orf_aa_sequence
                         )
-                        
                     if len(aa_seq) >= eargs.min_length:
                         hit.reftaxon = hit.s_ref_taxon
                         hit.mapped_to = hit.s_ref_taxon
                         output_sequences.append(hit)
+                    else:
+                        hit.
+
 
     if len(output_sequences) > 0:
         # output_sequences = sorted(output_sequences, key=lambda d: d.second_alignment.orf_cdna_start_on_transcript if d.second_alignment else d.first_alignment.orf_cdna_start_on_transcript)
