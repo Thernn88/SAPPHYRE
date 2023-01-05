@@ -29,15 +29,15 @@ def reciprocal_check(hits, strict, taxa_present):
         
         if strict:
             if all(hit_on_taxas.values()):
-                return [first, second]
+                return first, second
         else:
             if first and second:
-                return [first, second] #Return early if we have 2 hits
+                return first, second #Return early if we have 2 hits
     
     if any(hit_on_taxas.values()):
-        return [first, second]
+        return first, second
 
-    return None
+    return None, None
 
 class Hit:
     __slots__ = (
@@ -104,6 +104,42 @@ def get_difference(scoreA, scoreB):
             return 1
     except ZeroDivisionError:
         return 0
+
+def get_sequence_results(fp, target_to_taxon, head_to_seq):
+    hits = []
+    header_maps_to = {}
+    this_header = None
+    for line in fp:
+        raw_header, ref_header, frame, evalue, score, qstart, qend, sstart, send, length, qlen = line.strip().split("\t")
+        qstart = int(qstart)
+        qend = int(qend)
+        gene, reftaxon = target_to_taxon[ref_header]
+        nuc_seq = head_to_seq[raw_header] #Todo move later
+        
+
+        if int(frame) < 0:
+            qstart = int(qlen) - qstart
+            qend = int(qlen) - qend
+
+            nuc_seq = phymmr_tools.bio_revcomp(nuc_seq)
+            
+            header = raw_header + f"|[revcomp]:[translate({abs(int(frame))})]"
+        else:
+            header = raw_header + f"|[translate({abs(int(frame))})]"
+
+        if not this_header: 
+            this_header = header
+        else:
+            if this_header != header:
+                yield sorted(hits, key = lambda x: x.score, reverse=True), sum(list(header_maps_to.values()))    
+
+                hits = []
+                header_maps_to = {}
+                this_header = header
+
+        header_maps_to[gene] = 1
+        trimmed_sequence = nuc_seq[qstart : qend]
+        hits.append(Hit(header, ref_header, evalue, score, nuc_seq, trimmed_sequence, gene, reftaxon, qstart, qend, sstart, send))
 
 def multi_filter(hits, debug):
     kick_happend = True
@@ -228,91 +264,46 @@ def run_process(args, input_path) -> None:
         printv(f"Found existing Diamond output. Elapsed time {time_keeper.differential():.2f}s", args.verbose)
     del out
 
-    this_header_out = {}
-    header_maps_to = {}
-    with open(out_path) as fp:
-        for line in fp:
-            raw_header, ref_header, frame, evalue, score, qstart, qend, sstart, send, length, qlen = line.strip().split("\t")
-            qstart = int(qstart)
-            qend = int(qend)
-            gene, reftaxon = target_to_taxon[ref_header]
-            nuc_seq = head_to_seq[raw_header] #Todo move later
-            
-
-            if int(frame) < 0:
-                qstart = int(qlen) - qstart
-                qend = int(qlen) - qend
-
-                nuc_seq = phymmr_tools.bio_revcomp(nuc_seq)
-                
-                header = raw_header + f"|[revcomp]:[translate({abs(int(frame))})]"
-            else:
-                header = raw_header + f"|[translate({abs(int(frame))})]"
-
-            header_maps_to.setdefault(header, []).append(gene)
-
-            trimmed_sequence = nuc_seq[qstart : qend]
-
-            this_header_out.setdefault(header, []).append(Hit(header, ref_header, evalue, score, nuc_seq, trimmed_sequence, gene, reftaxon, qstart, qend, sstart, send))
-
-    for header in this_header_out:
-        this_header_out[header] = sorted(this_header_out[header], key = lambda x: x.score, reverse=True)
-
-    #Multi filter
-    time_keeper.lap()
-    if not args.multi:
-        print("Skipping multi")
-        requires_multi = []
-    else:
-        requires_multi = [header for header, genes in header_maps_to.items() if len(genes) > 1]
+    db = wrap_rocks.RocksDB(os.path.join(input_path, "rocksdb", "hits"))
+    output = {}
     kicks = 0 
     passes = 0
     global_log = []
-    for header in requires_multi:
-        results, this_kicks, log = multi_filter(this_header_out[header], args.debug)
-        if args.debug:
-            global_log.extend(log)
-        this_header_out[header] = results
-        passes += len(results)
-        kicks += this_kicks
-    
+    dupe_divy_headers = {}
+    with open(out_path) as fp:
+        for hits, requires_multi in get_sequence_results(fp, target_to_taxon, head_to_seq):
+            if requires_multi:
+                hits, this_kicks, log = multi_filter(hits, args.debug)
+                if args.debug:
+                    global_log.extend(log)
+                    passes += len(hits)
+                    kicks += this_kicks
+            
+            first_hit, rerun_hit = reciprocal_check(hits, strict_search_mode, reference_taxa)
+
+            if first_hit:
+                dupe_divy_headers.setdefault(first_hit.gene, []).append(first_hit.header)
+
+                rerun_hit = rerun_hit.to_json() if rerun_hit else None
+                output.setdefault(first_hit.gene, []).append({"f":first_hit.to_json(), "s":rerun_hit})
+
+    for gene, hits in output.items():
+        db.put(f"gethits:{gene}", json.dumps(hits))
+
     if global_log:
         with open(os.path.join(input_path, "multi.log"), "w") as fp:
             fp.write("\n".join([",".join([str(i) for i in line]) for line in global_log]))
 
-    print(f"Took {time_keeper.lap():.2f} for {kicks} kicks leaving {passes} results")
-    #Internal filter
-    #Reciprocal filter
-    printv(f"Read diamond output. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing Reciprocal Check", args.verbose)
-    arguments = [(data, strict_search_mode, reference_taxa,) for data in this_header_out.values()]
-
-    with Pool(num_threads) as pool:
-        results = pool.starmap(reciprocal_check, arguments)
-
-    final_gene_out = {}
-    for result in results:
-        if result:
-            final_gene_out.setdefault(result[0].gene, []).append(result)
-
-    printv(f"Reciprocal done. Took {time_keeper.lap():.2f}s. Doing output.", args.verbose)
+    print(f"Took {time_keeper.lap():.2f}s for {kicks} kicks leaving {passes} results. Writing to DB")
             
-    db = wrap_rocks.RocksDB(os.path.join(input_path, "rocksdb", "hits"))
-
-    present_genes = []
     gene_dupe_count = {}
-    for gene, hits in final_gene_out.items():
-        output = []
-        for first_hit, rerun_hit in hits:
-            base_header = first_hit.header.split("|")[0]
+    for gene, headers in dupe_divy_headers.items():
+        for header in headers:
+            base_header = header.split("|")[0]
             if base_header in dupe_counts:
                 gene_dupe_count.setdefault(gene, {})[base_header] = dupe_counts[base_header]
 
-            rerun_hit = rerun_hit.to_json() if rerun_hit else None
-            output.append({"f":first_hit.to_json(), "s":rerun_hit})
-        db.put(f"gethits:{gene}", json.dumps(output))
-        present_genes.append(gene)
-
-    db.put("getall:presentgenes", ",".join(present_genes))
+    db.put("getall:presentgenes", ",".join(list(output.keys())))
 
     key = "getall:gene_dupes"
     data = json.dumps(gene_dupe_count)
