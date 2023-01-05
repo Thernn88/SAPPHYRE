@@ -274,13 +274,13 @@ def run_process(args, input_path) -> None:
         printv("Skipping multi-filtering", args.verbose)
     with open(out_path) as fp:
         for hits, requires_multi in get_sequence_results(fp, target_to_taxon, head_to_seq):
-            passes += len(hits)
             if requires_multi and args.multi:
                 hits, this_kicks, log = multi_filter(hits, args.debug)
+                kicks += this_kicks
                 if args.debug:
                     global_log.extend(log)
-                    kicks += this_kicks
-            
+
+            passes += len(hits)
             first_hit, rerun_hit = reciprocal_check(hits, strict_search_mode, reference_taxa)
 
             if first_hit:
