@@ -53,6 +53,7 @@ class Hit:
         "first_alignment",
         "first_extended_alignment",
         "mapped_to",
+        "attempted_first"
     )
 
     def __init__(self, first_hit, second_hit):
@@ -75,6 +76,7 @@ class Hit:
         self.first_alignment = None
         self.first_extended_alignment = None
         self.mapped_to = None
+        self.attempted_first = False
 
     def add_orf(self, exonerate_record): 
         exonerate_record.orf_cdna_start_on_transcript = (
@@ -487,14 +489,15 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
         extended_results = parse_results(extended_results)
         results = parse_results(results)
 
+
         for hit in hits_to_exonerate:
             # We still want to see the first results before rerun
-            if taxon_hit == hit.s_ref_taxon and hit.mapped_to is None:
+            if taxon_hit == hit.s_ref_taxon:
                 hit.second_alignment = results.get(hit.header, None)
                 hit.second_extended_alignment = extended_results.get(hit.header, None)
-                continue
 
             if hit.header in results and taxon_hit == hit.f_ref_taxon:
+                hit.attempted_first = True
                 matching_alignment = results.get(hit.header, None)
                 if matching_alignment.orf_cdna_sequence:
                     
@@ -525,7 +528,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                         output_sequences.append(hit)
                         continue
 
-            if hit.second_alignment is not None: # If first run doesn't pass check if rerun does
+            if hit.second_alignment is not None and hit.attempted_first: # If first run doesn't pass check if rerun does
                 matching_alignment = hit.second_alignment
                 if matching_alignment:
                     hit.add_orf(matching_alignment)
@@ -553,6 +556,8 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                             hit.reftaxon = hit.s_ref_taxon
                             hit.mapped_to = hit.s_ref_taxon
                             output_sequences.append(hit)
+                            continue
+                        
     if len(output_sequences) > 0:
         output_sequences = sorted(output_sequences, key=lambda d: d.second_alignment.orf_cdna_start_on_transcript if d.second_alignment else d.first_alignment.orf_cdna_start_on_transcript)
         core_sequences, core_sequences_nt = get_ortholog_group(eargs.orthoid, rocky.get_rock("rocks_orthoset_db"))
