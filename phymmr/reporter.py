@@ -559,7 +559,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                             continue
                         
     if len(output_sequences) > 0:
-        output_sequences = sorted(output_sequences, key=lambda d: d.second_alignment.orf_cdna_start_on_transcript if d.second_alignment else d.first_alignment.orf_cdna_start_on_transcript)
+        output_sequences = sorted(output_sequences, key=lambda d: d.second_alignment.orf_cdna_start_on_transcript if d.mapped_to == d.s_ref_taxon else d.first_alignment.orf_cdna_start_on_transcript)
         core_sequences, core_sequences_nt = get_ortholog_group(eargs.orthoid, rocky.get_rock("rocks_orthoset_db"))
         this_aa_path = os.path.join(eargs.aa_out_path, eargs.orthoid + ".aa.fa")
         aa_output, nt_output = print_unmerged_sequences(

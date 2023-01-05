@@ -21,8 +21,9 @@ def reciprocal_check(hits, strict, taxa_present):
     for hit in hits:
         if not first:
             first = hit
-        elif not second and first.reftaxon != hit.reftaxon:
-            second = hit
+        elif not second:
+            if first.reftaxon != hit.reftaxon and first.gene == hit.gene:
+                second = hit
 
         hit_on_taxas[hit.reftaxon] = 1 # Just need 1 hit
         
@@ -30,9 +31,12 @@ def reciprocal_check(hits, strict, taxa_present):
             if all(hit_on_taxas.values()):
                 return [first, second]
         else:
-            if any(hit_on_taxas.values()):
-                return [first, second]
+            if first and second:
+                return [first, second] #Return early if we have 2 hits
     
+    if any(hit_on_taxas.values()):
+        return [first, second]
+
     return None
 
 class Hit:
@@ -111,17 +115,16 @@ def multi_filter(hits, debug):
         master = hits[0]
         candidates = hits[1:]
 
-        master_env_start = master.sstart
-        master_env_end = master.send
+        master_env_start = master.qstart
+        master_env_end = master.qend
 
         miniscule_score = False
         for i, candidate in enumerate(candidates, 1):
             if candidate:
                 if master.gene != candidate.gene:
                     distance = (master_env_end - master_env_start) + 1  # Inclusive
-                    amount_of_overlap = get_overlap(master_env_start, master_env_end, candidate.sstart,
-                                                    candidate.send)
-
+                    amount_of_overlap = get_overlap(master_env_start, master_env_end, candidate.qstart,
+                                                    candidate.qend)
                     percentage_of_overlap = amount_of_overlap / distance
 
                     if percentage_of_overlap >= 0.5:#min_overlap_multi:
@@ -131,13 +134,13 @@ def multi_filter(hits, debug):
                             hits[i] = None
                             candidates[i-1] = None
                             if debug:
-                                log.append((candidate.gene, candidate.header, candidate.reftaxon, candidate.score, "Kicked out by", master.gene, master.header, master.reftaxon, master.score))
+                                log.append((candidate.gene, candidate.header, candidate.reftaxon, candidate.score, candidate.qstart, candidate.qend, "Kicked out by", master.gene, master.header, master.reftaxon, master.score, master.qstart, master.qend))
                         else:
                             miniscule_score = True
                             break
         if miniscule_score:
             if debug:
-                log.extend([(candidate.gene, candidate.header, candidate.reftaxon, candidate.score, "Kicked due to miniscule score", master.gene, master.header, master.reftaxon, master.score) for hit in hits if hit])
+                log.extend([(candidate.gene, candidate.header, candidate.reftaxon, candidate.score, candidate.qstart, candidate.qend, "Kicked due to miniscule score", master.gene, master.header, master.reftaxon, master.score, master.qstart, master.qend) for hit in hits if hit])
             return [], len(hits), log
 
     passes = [i for i in hits if i]
@@ -303,7 +306,6 @@ def run_process(args, input_path) -> None:
             base_header = first_hit.header.split("|")[0]
             if base_header in dupe_counts:
                 gene_dupe_count.setdefault(gene, {})[base_header] = dupe_counts[base_header]
-            
 
             rerun_hit = rerun_hit.to_json() if rerun_hit else None
             output.append({"f":first_hit.to_json(), "s":rerun_hit})
