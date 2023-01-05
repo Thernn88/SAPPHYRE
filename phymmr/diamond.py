@@ -53,15 +53,15 @@ class Hit:
         "sstart",
         "send"
     )
-    def __init__(self, header, ref_header, evalue, score, gene, reftaxon, qstart, qend, sstart, send):
+    def __init__(self, header, ref_header, evalue, score, full_seq, trim_seq, gene, reftaxon, qstart, qend, sstart, send):
         self.header = header
         self.ref_header = ref_header
         self.evalue = evalue
         self.score = float(score)
         self.gene = gene
         self.reftaxon = reftaxon
-        self.full_seq = None
-        self.trim_seq = None
+        self.full_seq = full_seq
+        self.trim_seq = trim_seq
         self.qstart = int(qstart)
         self.qend = int(qend)
 
@@ -233,17 +233,24 @@ def run_process(args, input_path) -> None:
             qstart = int(qstart)
             qend = int(qend)
             gene, reftaxon = target_to_taxon[ref_header]
+            nuc_seq = head_to_seq[raw_header] #Todo move later
+            
 
             if int(frame) < 0:
                 qstart = int(qlen) - qstart
                 qend = int(qlen) - qend
+
+                nuc_seq = phymmr_tools.bio_revcomp(nuc_seq)
                 
                 header = raw_header + f"|[revcomp]:[translate({abs(int(frame))})]"
             else:
                 header = raw_header + f"|[translate({abs(int(frame))})]"
 
             header_maps_to.setdefault(header, []).append(gene)
-            this_header_out.setdefault(header, []).append(Hit(header, ref_header, evalue, score, gene, reftaxon, qstart, qend, sstart, send))
+
+            trimmed_sequence = nuc_seq[qstart : qend]
+
+            this_header_out.setdefault(header, []).append(Hit(header, ref_header, evalue, score, nuc_seq, trimmed_sequence, gene, reftaxon, qstart, qend, sstart, send))
 
     for header in this_header_out:
         this_header_out[header] = sorted(this_header_out[header], key = lambda x: x.score, reverse=True)
@@ -297,15 +304,6 @@ def run_process(args, input_path) -> None:
             if base_header in dupe_counts:
                 gene_dupe_count.setdefault(gene, {})[base_header] = dupe_counts[base_header]
             
-            nuc_seq = head_to_seq[raw_header]
-
-            if "revcomp" in first_hit.header:
-                nuc_seq = phymmr_tools.bio_revcomp(nuc_seq)
-
-            trimmed_sequence = nuc_seq[qstart : qend]
-
-            first_hit.full_seq = nuc_seq
-            first_hit.trim_seq = trimmed_sequence
 
             rerun_hit = rerun_hit.to_json() if rerun_hit else None
             output.append({"f":first_hit.to_json(), "s":rerun_hit})
