@@ -270,13 +270,15 @@ def run_process(args, input_path) -> None:
     passes = 0
     global_log = []
     dupe_divy_headers = {}
+    if not args.multi:
+        printv("Skipping multi-filtering", args.verbose)
     with open(out_path) as fp:
         for hits, requires_multi in get_sequence_results(fp, target_to_taxon, head_to_seq):
-            if requires_multi:
+            passes += len(hits)
+            if requires_multi and args.multi:
                 hits, this_kicks, log = multi_filter(hits, args.debug)
                 if args.debug:
                     global_log.extend(log)
-                    passes += len(hits)
                     kicks += this_kicks
             
             first_hit, rerun_hit = reciprocal_check(hits, strict_search_mode, reference_taxa)
