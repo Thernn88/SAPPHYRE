@@ -489,15 +489,17 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
         extended_results = parse_results(extended_results)
         results = parse_results(results)
 
-
         for hit in hits_to_exonerate:
+            if hit.header == "NODE_430619_length_302|[revcomp]:[translate(2)]":
+                print(hit.gene)
             # We still want to see the first results before rerun
             if taxon_hit == hit.s_ref_taxon:
                 hit.second_alignment = results.get(hit.header, None)
                 hit.second_extended_alignment = extended_results.get(hit.header, None)
+            else:
+                hit.attempted_first = True
 
             if hit.header in results and taxon_hit == hit.f_ref_taxon:
-                hit.attempted_first = True
                 matching_alignment = results.get(hit.header, None)
                 if matching_alignment.orf_cdna_sequence:
                     
@@ -521,7 +523,6 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                             if hit.first_extended_alignment and hit.first_extended_alignment.extended_orf_aa_sequence is not None
                             else hit.first_alignment.orf_aa_sequence
                         )
-
                     if len(aa_seq) >= eargs.min_length:
                         hit.reftaxon = hit.f_ref_taxon
                         hit.mapped_to = hit.f_ref_taxon
@@ -529,6 +530,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                         continue
 
             if hit.second_alignment is not None and hit.attempted_first: # If first run doesn't pass check if rerun does
+
                 matching_alignment = hit.second_alignment
                 if matching_alignment:
                     hit.add_orf(matching_alignment)
@@ -553,6 +555,8 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                             )
                             
                         if len(aa_seq) >= eargs.min_length:
+                            if "NODE_430619_length_302" in hit.header:
+                                print("Got",hit.gene)
                             hit.reftaxon = hit.s_ref_taxon
                             hit.mapped_to = hit.s_ref_taxon
                             output_sequences.append(hit)
