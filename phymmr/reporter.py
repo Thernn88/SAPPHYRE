@@ -255,14 +255,12 @@ def parse_multi_results(handle):
     return extended_result, result
 
 
-def call_fastatranslate(target) -> str:
+def call_fastatranslate(old,new):
     """
     Calls fastatranslate on file to convert dna into protein. This greatly increases
-    the speed of the following exonerate calls Returns name of new target file.
+    the speed of the following exonerate calls.
     """
-    new_name = target.replace("_nt.fa", "_aa.fa")
-    os.system(f'fastatranslate {target} > {new_name}')
-    return new_name
+    os.system(f'fastatranslate {old} > {new}')
 
 
 
@@ -277,17 +275,21 @@ def get_multi_orf(query, targets, score_threshold, include_extended):
     if include_extended:
         sequences.extend([("extended_" + i.header, i.est_sequence_complete) for i in targets])
 
-    with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmpquery, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmptarget, NamedTemporaryFile(dir=tmpdir, mode="r") as tmpout:
-        tmptarget.write("".join([f">{header}\n{sequence}\n" for header, sequence in sequences]))
-        tmptarget.flush() # Flush the internal buffer so it can be read by exonerate
-        tmptarget = call_fastatranslate(tmptarget)
-        tmptarget.flush()
+    with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmpquery, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmptarget1, NamedTemporaryFile(dir=tmpdir, mode="r") as tmpout:
+        tmptarget1.write("".join([f">{header}\n{sequence}\n" for header, sequence in sequences]))
+        tmptarget1.flush() # Flush the internal buffer so it can be read by exonerate
 
+        #  call fastatranslate on second temptarget to make a protein file for exonerate
+        tmptarget2 = NamedTemporaryFile(dir=tmpdir, mode="w+")
+        call_fastatranslate(tmptarget1, tmptarget2)
+        tmptarget2.flush()
+
+        #  write temporary query file for exonerate
         tmpquery.write(f">query\n{query}\n")
         tmpquery.flush() # Flush the internal buffer so it can be read by exonerate
 
         # exonerate_cmd = f"exonerate --score {score_threshold} --ryo '{exonerate_ryo}' --subopt 0 --geneticcode {genetic_code} --model '{exonerate_model}' --querytype 'protein' --targettype 'dna' --verbose 0 --showalignment 'no' --showvulgar 'yes' --query '{tmpquery.name}' --target '{tmptarget.name}' > {tmpout.name}"
-        exonerate_cmd = f"exonerate --ryo '{exonerate_ryo}' --geneticcode {genetic_code} --model '{exonerate_model}' --querytype 'protein' --targettype 'protein' --verbose 0 --showalignment 'no' --showvulgar 'yes' --query '{tmpquery.name}' --target '{tmptarget.name}' > {tmpout.name}"
+        exonerate_cmd = f"exonerate --score {score_threshold} --ryo '{exonerate_ryo}' --geneticcode {genetic_code} --model '{exonerate_model}' --querytype 'protein' --targettype 'protein' --verbose 0 --showalignment 'no' --showvulgar 'yes' --query '{tmpquery.name}' --target '{tmptarget.name}' > {tmpout.name}"
         os.system(exonerate_cmd)
 
         extended_results, results = parse_multi_results(tmpout)
