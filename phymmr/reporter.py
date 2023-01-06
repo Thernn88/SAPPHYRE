@@ -261,7 +261,7 @@ def call_fastatranslate(old):
     the speed of the following exonerate calls.
     """
     args = ["fastatranslate",
-            old]
+            old.name]
     p = subprocess.run(args, capture_output=True, shell=True)
     return p.stdout.decode()
 
