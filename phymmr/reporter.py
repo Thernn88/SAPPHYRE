@@ -261,7 +261,7 @@ def call_fastatranslate(old):
     the speed of the following exonerate calls.
     """
     args = ["fastatranslate",
-            old.name]
+            old]
     p = subprocess.run(args, capture_output=True, shell=True)
     return p.stdout.decode()
 
@@ -283,7 +283,7 @@ def get_multi_orf(query, targets, score_threshold, include_extended):
         tmptarget1.flush() # Flush the internal buffer so it can be read by exonerate
 
         #  call fastatranslate on second temptarget to make a protein file for exonerate
-        tmptarget2.write(call_fastatranslate(tmptarget1))
+        tmptarget2.write(call_fastatranslate(tmptarget1.name))
         tmptarget2.flush()
 
         #  write temporary query file for exonerate
