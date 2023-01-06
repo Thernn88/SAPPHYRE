@@ -1,5 +1,5 @@
 from __future__ import annotations
-
+import subprocess
 import json
 import math
 import os
@@ -255,12 +255,15 @@ def parse_multi_results(handle):
     return extended_result, result
 
 
-def call_fastatranslate(old,new):
+def call_fastatranslate(old):
     """
     Calls fastatranslate on file to convert dna into protein. This greatly increases
     the speed of the following exonerate calls.
     """
-    os.system(f'fastatranslate {old} >> {new}')
+    args = ["fastatranslate",
+            old]
+    p = subprocess.run(args, capture_output=True, shell=True)
+    return p.stdout
 
 
 
@@ -275,13 +278,12 @@ def get_multi_orf(query, targets, score_threshold, include_extended):
     if include_extended:
         sequences.extend([("extended_" + i.header, i.est_sequence_complete) for i in targets])
 
-    with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmpquery, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmptarget1, NamedTemporaryFile(dir=tmpdir, mode="r") as tmpout:
+    with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmpquery, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmptarget1, NamedTemporaryFile(dir=tmpdir, mode="r") as tmpout, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmptarget2:
         tmptarget1.write("".join([f">{header}\n{sequence}\n" for header, sequence in sequences]))
         tmptarget1.flush() # Flush the internal buffer so it can be read by exonerate
 
         #  call fastatranslate on second temptarget to make a protein file for exonerate
-        tmptarget2 = NamedTemporaryFile(dir=tmpdir, mode="w+")
-        call_fastatranslate(tmptarget1, tmptarget2)
+        tmptarget2.write(call_fastatranslate(tmptarget1))
         tmptarget2.flush()
 
         #  write temporary query file for exonerate
