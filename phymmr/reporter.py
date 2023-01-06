@@ -254,10 +254,24 @@ def parse_multi_results(handle):
             )
     return extended_result, result
 
+
+def call_fastatranslate(target) -> str:
+    """
+    Calls fastatranslate on file to convert dna into protein. This greatly increases
+    the speed of the following exonerate calls Returns name of new target file.
+    """
+    new_name = target.replace("_nt.fa", "_aa.fa")
+    os.system(f'fastatranslate {target} > {new_name}')
+    return new_name
+
+
+
+
 def get_multi_orf(query, targets, score_threshold, include_extended):
     exonerate_ryo = ">cdna %tcb %tce\n%tcs>aa %qab %qae\n%qas"
     genetic_code = 1
-    exonerate_model = "protein2genome"
+    exonerate_model = "affine:local"
+
 
     sequences = [(i.header, i.est_sequence_trimmed) for i in targets]
     if include_extended:
@@ -266,12 +280,14 @@ def get_multi_orf(query, targets, score_threshold, include_extended):
     with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmpquery, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmptarget, NamedTemporaryFile(dir=tmpdir, mode="r") as tmpout:
         tmptarget.write("".join([f">{header}\n{sequence}\n" for header, sequence in sequences]))
         tmptarget.flush() # Flush the internal buffer so it can be read by exonerate
+        tmptarget = call_fastatranslate(tmptarget)
+        tmptarget.flush()
 
         tmpquery.write(f">query\n{query}\n")
         tmpquery.flush() # Flush the internal buffer so it can be read by exonerate
 
-        exonerate_cmd = f"exonerate --score {score_threshold} --ryo '{exonerate_ryo}' --subopt 0 --geneticcode {genetic_code} --model '{exonerate_model}' --querytype 'protein' --targettype 'dna' --verbose 0 --showalignment 'no' --showvulgar 'yes' --query '{tmpquery.name}' --target '{tmptarget.name}' > {tmpout.name}"
-
+        # exonerate_cmd = f"exonerate --score {score_threshold} --ryo '{exonerate_ryo}' --subopt 0 --geneticcode {genetic_code} --model '{exonerate_model}' --querytype 'protein' --targettype 'dna' --verbose 0 --showalignment 'no' --showvulgar 'yes' --query '{tmpquery.name}' --target '{tmptarget.name}' > {tmpout.name}"
+        exonerate_cmd = f"exonerate --ryo '{exonerate_ryo}' --geneticcode {genetic_code} --model '{exonerate_model}' --querytype 'protein' --targettype 'protein' --verbose 0 --showalignment 'no' --showvulgar 'yes' --query '{tmpquery.name}' --target '{tmptarget.name}' > {tmpout.name}"
         os.system(exonerate_cmd)
 
         extended_results, results = parse_multi_results(tmpout)
