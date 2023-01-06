@@ -289,7 +289,7 @@ def get_multi_orf(query, targets, score_threshold, include_extended):
         tmpquery.flush() # Flush the internal buffer so it can be read by exonerate
 
         # exonerate_cmd = f"exonerate --score {score_threshold} --ryo '{exonerate_ryo}' --subopt 0 --geneticcode {genetic_code} --model '{exonerate_model}' --querytype 'protein' --targettype 'dna' --verbose 0 --showalignment 'no' --showvulgar 'yes' --query '{tmpquery.name}' --target '{tmptarget.name}' > {tmpout.name}"
-        exonerate_cmd = f"exonerate --score {score_threshold} --ryo '{exonerate_ryo}' --geneticcode {genetic_code} --model '{exonerate_model}' --querytype 'protein' --targettype 'protein' --verbose 0 --showalignment 'no' --showvulgar 'yes' --query '{tmpquery.name}' --target '{tmptarget.name}' > {tmpout.name}"
+        exonerate_cmd = f"exonerate --score {score_threshold} --ryo '{exonerate_ryo}' --geneticcode {genetic_code} --model '{exonerate_model}' --querytype 'protein' --targettype 'protein' --verbose 0 --showalignment 'no' --showvulgar 'yes' --query '{tmpquery.name}' --target '{tmptarget2.name}' > {tmpout.name}"
         os.system(exonerate_cmd)
 
         extended_results, results = parse_multi_results(tmpout)
