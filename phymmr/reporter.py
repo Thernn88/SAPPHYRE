@@ -260,7 +260,7 @@ def call_fastatranslate(old,new):
     Calls fastatranslate on file to convert dna into protein. This greatly increases
     the speed of the following exonerate calls.
     """
-    os.system(f'fastatranslate {old} > {new}')
+    os.system(f'fastatranslate {old} >> {new}')
 
 
 
