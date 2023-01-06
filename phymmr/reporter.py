@@ -263,7 +263,7 @@ def call_fastatranslate(old):
     args = ["fastatranslate",
             old]
     p = subprocess.run(args, capture_output=True, shell=True)
-    return p.stdout
+    return p.stdout.decode()
 
 
 
