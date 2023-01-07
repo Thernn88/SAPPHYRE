@@ -33,7 +33,6 @@ MainArgs = namedtuple(
         'min_length',
         'min_score',
         "compress",
-        "sequences_per_query"
     ]
 )
 
@@ -478,8 +477,7 @@ ExonerateArgs = namedtuple(
         "tmp_path",
         "verbose",
         "reference_sequences",
-        "compress",
-        "sequences_per_query"
+        "compress", 
     ]
 )
 
@@ -504,28 +502,12 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
         if len(hits_to_exonerate) == 0:
                 continue
         query = eargs.reference_sequences[taxon_hit]
+        extended_results, results = get_multi_orf(
+            query, hits_to_exonerate, eargs.min_score, include_extended=extend_orf
+        )
 
-        if len(hits_to_exonerate) >= eargs.sequences_per_query * 1.5:
-            extended_results = {}
-            results = {}
-            for i in range(0, len(hits_to_exonerate), eargs.sequences_per_query):
-                intermediate_extended_results, intermediate_results = get_multi_orf(
-                    query, hits_to_exonerate[i:i+eargs.sequences_per_query], eargs.min_score, include_extended=extend_orf
-                )
-
-                intermediate_extended_results = parse_results(intermediate_extended_results)
-                intermediate_results = parse_results(intermediate_results)
-
-                extended_results.update(intermediate_extended_results)
-                results.update(intermediate_results)
-        else:
-            
-            extended_results, results = get_multi_orf(
-                query, hits_to_exonerate, eargs.min_score, include_extended=extend_orf
-            )
-
-            extended_results = parse_results(extended_results)
-            results = parse_results(results)
+        extended_results = parse_results(extended_results)
+        results = parse_results(results)
 
         for hit in hits_to_exonerate:
             # We still want to see the first results before rerun
@@ -685,7 +667,6 @@ def do_taxa(path, taxa_id, args):
                 args.verbose,
                 gene_reference_data[orthoid],
                 args.compress,
-                args.sequences_per_query
             ),)
         )
 
