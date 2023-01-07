@@ -262,8 +262,9 @@ def call_fastatranslate(old):
     """
     args = ["fastatranslate",
             old]
-    p = subprocess.run(args, capture_output=True, shell=True)
-    return p.stdout.decode()
+    p = subprocess.run(["fastatranslate",
+            old], capture_output=True, shell=True)
+    p.stdout.decode()
 
 
 
@@ -278,12 +279,13 @@ def get_multi_orf(query, targets, score_threshold, include_extended):
     if include_extended:
         sequences.extend([("extended_" + i.header, i.est_sequence_complete) for i in targets])
 
-    with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmpquery, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmptarget1, NamedTemporaryFile(dir=tmpdir, mode="r") as tmpout, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmptarget2:
-        tmptarget1.write("".join([f">{header}\n{sequence}\n" for header, sequence in sequences]))
-        tmptarget1.flush() # Flush the internal buffer so it can be read by exonerate
+    with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmpquery, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmptarget, NamedTemporaryFile(dir=tmpdir, mode="r") as tmpout, NamedTemporaryFile(dir=tmpdir, mode="w+") as tmptarget2:
+        tmptarget.write("".join([f">{header}\n{sequence}\n" for header, sequence in sequences]))
+        tmptarget.flush() # Flush the internal buffer so it can be read by exonerate
 
         #  call fastatranslate on second temptarget to make a protein file for exonerate
-        tmptarget2.write(call_fastatranslate(tmptarget1.name))
+        p = subprocess.run(["fastatranslate", tmptarget.name], capture_output=True)
+        tmptarget2.write(p.stdout.decode())
         tmptarget2.flush()
 
         #  write temporary query file for exonerate
@@ -713,6 +715,7 @@ def main(args):
     if not all(os.path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exist.", args.verbose, 0)
         return False
+    print(os.path.join(args.orthoset_input, args.orthoset, "rocksdb"))
     rocky.create_pointer("rocks_orthoset_db", os.path.join(args.orthoset_input, args.orthoset, "rocksdb"))
     for input_path in args.INPUT:
         rocks_db_path = os.path.join(input_path, "rocksdb")
