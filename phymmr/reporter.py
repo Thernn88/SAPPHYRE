@@ -510,7 +510,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
             results = {}
             for i in range(0, len(hits_to_exonerate), eargs.sequences_per_query):
                 intermediate_extended_results, intermediate_results = get_multi_orf(
-                    query, hits_to_exonerate, eargs.min_score, include_extended=extend_orf
+                    query, hits_to_exonerate[i:i+eargs.sequences_per_query], eargs.min_score, include_extended=extend_orf
                 )
 
                 intermediate_extended_results = parse_results(intermediate_extended_results)
