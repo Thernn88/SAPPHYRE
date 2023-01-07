@@ -78,7 +78,8 @@ class Hit:
         self.mapped_to = None
         self.attempted_first = False
 
-    def add_orf(self, exonerate_record): 
+    def add_orf(self, exonerate_record, nucleotide_sequence): 
+        exonerate_record.orf_cdna_sequence = nucleotide_sequence[exonerate_record.query_start*3 : exonerate_record.query_end*3]
         exonerate_record.orf_cdna_start_on_transcript = (
             exonerate_record.orf_cdna_start + self.ali_start - 3
         )
@@ -95,12 +96,14 @@ class NodeRecord:
     def __init__(self, header, is_extension):
         self.header = header
         self.score = -math.inf
-        self.orf_cdna_start = None
-        self.orf_cdna_end = None
         self.orf_cdna_sequence = ""
         self.orf_aa_start = None
         self.orf_aa_end = None
+        self.orf_cdna_start = None
+        self.orf_cdna_end = None
         self.orf_aa_sequence = ""
+        self.query_start = None
+        self.query_end = None
         self.is_extension = is_extension
         self.orf_cdna_end_on_transcript = None
         self.orf_aa_start_on_transcript = None
@@ -108,17 +111,16 @@ class NodeRecord:
         self.extended_orf_aa_sequence = None
         self.extended_orf_cdna_start_on_transcript = None
         self.extended_orf_cdna_end_on_transcript = None
+        
 
-    def check_extend(self):
-        if self.is_extension:
-            self.extended_orf_cdna_sequence = self.orf_cdna_sequence
-            self.extended_orf_cdna_start = self.orf_cdna_start
-            self.extended_orf_cdna_end = self.orf_cdna_end
-            self.extended_orf_aa_sequence = self.orf_aa_sequence
-            self.extended_orf_aa_start = self.orf_aa_start
-            self.extended_orf_aa_end = self.orf_aa_end
-
-        self.extended_orf_aa_sequence = translate_cdna(self.extended_orf_cdna_sequence)
+    def check_extend(self, nucleotide_sequence):
+        self.extended_orf_cdna_sequence = nucleotide_sequence[self.query_start*3 : self.query_end*3]
+        self.extended_orf_aa_sequence = self.orf_aa_sequence
+        self.extended_orf_aa_start = self.orf_aa_start
+        self.extended_orf_aa_end = self.orf_aa_end
+        self.extended_orf_cdna_start = self.orf_cdna_start        
+        self.extended_orf_cdna_end = self.orf_cdna_end
+        
 
     def __lt__(self, other):
         return self.score < other.score
@@ -190,12 +192,12 @@ def translate_cdna(cdna_seq):
 
 def parse_nodes(lines):
     """
-    vulgar => cdna => aa => vulgar
+    vulgar => aa data => sequence => vulgar
     0 => 1 => 2 => 0
     """
     nodes = dict()
     this_node = None
-    state = 0
+    stage = 0
     for line in lines:
         line = line.strip()
         if "vulgar:" in line:  # if vulgar line, start new record
@@ -208,26 +210,25 @@ def parse_nodes(lines):
                 current_header = raw_header
 
             this_node = NodeRecord(current_header, is_extension)
+            this_node.query_start = int(line.split()[6])
+            this_node.query_end = int(line.split()[7])
             this_node.score = int(line.split()[9])
             previously_seen = nodes.get(raw_header, False)
             if previously_seen:
                 nodes[raw_header] = max(this_node, previously_seen)
             else:
                 nodes[raw_header] = this_node
-        elif ">cdna" in line:  # if cdna, set cdna values
+            stage = 0
+        elif stage == 0:
             fields = line.split()
-            this_node.orf_cdna_start = int(fields[1])
-            this_node.orf_cdna_end = int(fields[2])
-            state = 1
-        elif ">aa" in line:  # if aa in line, set aa values
-            fields = line.split()
-            this_node.orf_aa_start = int(fields[1])
-            this_node.orf_aa_end = int(fields[2])
-            state = 2
-        elif state == 1:  # if cdna data line
-            this_node.orf_cdna_sequence += line
-        elif state == 2:  # if aa data line
+            this_node.orf_cdna_start = int(fields[1]) * 3
+            this_node.orf_cdna_end = int(fields[2]) * 3
+            this_node.orf_aa_start = int(fields[4])
+            this_node.orf_aa_end = int(fields[5])
+            stage = 1
+        elif stage == 1:
             this_node.orf_aa_sequence += line
+            
     return nodes
 
 
@@ -238,14 +239,12 @@ def parse_multi_results(handle):
     nodes = parse_nodes(handle)
     for node in nodes.values():
         if node.is_extension:
-            node.check_extend()
             extended_result.append(
                 (
                     node
                 )
             )
         else:
-            node.orf_aa_sequence = translate_cdna(node.orf_cdna_sequence)
             result.append(
                 (
                     node
@@ -253,23 +252,8 @@ def parse_multi_results(handle):
             )
     return extended_result, result
 
-
-def call_fastatranslate(old):
-    """
-    Calls fastatranslate on file to convert dna into protein. This greatly increases
-    the speed of the following exonerate calls.
-    """
-    args = ["fastatranslate",
-            old]
-    p = subprocess.run(["fastatranslate",
-            old], capture_output=True, shell=True)
-    p.stdout.decode()
-
-
-
-
 def get_multi_orf(query, targets, score_threshold, include_extended):
-    exonerate_ryo = ">cdna %tcb %tce\n%tcs>aa %qab %qae\n%qas"
+    exonerate_ryo = ">aa %tab %tae ref %qab %qae\n%tas"
     genetic_code = 1
     exonerate_model = "affine:local"
 
@@ -284,7 +268,19 @@ def get_multi_orf(query, targets, score_threshold, include_extended):
 
         #  call fastatranslate on second temptarget to make a protein file for exonerate
         p = subprocess.run(["fastatranslate", tmptarget.name], capture_output=True)
-        tmptarget2.write(p.stdout.decode())
+
+        lines = p.stdout.decode().split("\n")
+        out_lines = []
+        for i in range(0, len(lines), 2): #Filter to only target frames.
+            header = lines[i]
+            if header:
+                sequence = lines[i + 1]
+                parts = header.split("|")
+                if parts[-1] == parts[-2]:
+                    header = "|".join(parts[:-1])
+                    out_lines.append(f"{header}\n{sequence}")
+
+        tmptarget2.write("\n".join(out_lines))
         tmptarget2.flush()
 
         #  write temporary query file for exonerate
@@ -296,6 +292,7 @@ def get_multi_orf(query, targets, score_threshold, include_extended):
         os.system(exonerate_cmd)
 
         extended_results, results = parse_multi_results(tmpout)
+
 
     return extended_results, results
 
@@ -519,64 +516,63 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
 
             if hit.header in results and taxon_hit == hit.f_ref_taxon:
                 matching_alignment = results.get(hit.header, None)
-                if matching_alignment.orf_cdna_sequence:
-                    
-                    hit.add_orf(matching_alignment)
-                    if extend_orf:
-                        if hit.header in extended_results:
-                            hit.first_extended_alignment = extended_results.get(hit.header, None)
+                hit.add_orf(matching_alignment, hit.est_sequence_trimmed)
+                if extend_orf:
+                    if hit.header in extended_results:
+                        hit.first_extended_alignment = extended_results.get(hit.header, None)
+                        hit.first_extended_alignment.check_extend(hit.est_sequence_complete)
 
-                            correct_extend = False
-                            if extended_orf_contains_original_orf(hit.first_extended_alignment, matching_alignment):
-                                orf_overlap = overlap_by_orf(hit, hit.first_extended_alignment)
-                                if orf_overlap >= orf_overlap_minimum:
-                                    correct_extend = True
-                            
-                            # Does not contain original orf or does not overlap enough.
-                            if not correct_extend:
-                                hit.first_extended_alignment = None # Disabled due to potential bug
+                        correct_extend = False
+                        if extended_orf_contains_original_orf(hit.first_extended_alignment, matching_alignment):
+                            orf_overlap = overlap_by_orf(hit, hit.first_extended_alignment)
+                            if orf_overlap >= orf_overlap_minimum:
+                                correct_extend = True
+                        
+                        # Does not contain original orf or does not overlap enough.
+                        if not correct_extend:
+                            hit.first_extended_alignment = None # Disabled due to potential bug
 
-                    aa_seq = (
-                            hit.first_extended_alignment.extended_orf_aa_sequence
-                            if hit.first_extended_alignment and hit.first_extended_alignment.extended_orf_aa_sequence is not None
-                            else hit.first_alignment.orf_aa_sequence
-                        )
-                    if len(aa_seq) >= eargs.min_length:
-                        hit.reftaxon = hit.f_ref_taxon
-                        hit.mapped_to = hit.f_ref_taxon
-                        output_sequences.append(hit)
-                        continue
+                aa_seq = (
+                        hit.first_extended_alignment.extended_orf_aa_sequence
+                        if hit.first_extended_alignment and hit.first_extended_alignment.extended_orf_aa_sequence is not None
+                        else hit.first_alignment.orf_aa_sequence
+                    )
+                
+                if len(aa_seq) >= eargs.min_length:
+                    hit.reftaxon = hit.f_ref_taxon
+                    hit.mapped_to = hit.f_ref_taxon
+                    output_sequences.append(hit)
+                    continue
 
             if hit.second_alignment is not None and hit.attempted_first: # If first run doesn't pass check if rerun does
 
                 matching_alignment = hit.second_alignment
                 if matching_alignment:
-                    hit.add_orf(matching_alignment)
-
-                    if matching_alignment.orf_cdna_sequence:
-                        if extend_orf:
-                            if hit.second_extended_alignment:
-                                correct_extend = False
-                                if extended_orf_contains_original_orf(hit.second_extended_alignment, matching_alignment):
-                                    orf_overlap = overlap_by_orf(hit, hit.second_extended_alignment)
-                                    if orf_overlap >= orf_overlap_minimum:
-                                        correct_extend = True
-                                
-                                # Does not contain original orf or does not overlap enough.
-                                if not correct_extend:
-                                    hit.second_extended_alignment = None # Disabled due to potential bug
-
-                        aa_seq = (
-                                hit.second_extended_alignment.extended_orf_aa_sequence
-                                if hit.second_extended_alignment and hit.second_extended_alignment.extended_orf_aa_sequence is not None
-                                else hit.second_alignment.orf_aa_sequence
-                            )
+                    hit.add_orf(matching_alignment, hit.est_sequence_trimmed)
+                    if extend_orf:
+                        if hit.second_extended_alignment:
+                            hit.second_extended_alignment.check_extend(hit.est_sequence_complete)
+                            correct_extend = False
+                            if extended_orf_contains_original_orf(hit.second_extended_alignment, matching_alignment):
+                                orf_overlap = overlap_by_orf(hit, hit.second_extended_alignment)
+                                if orf_overlap >= orf_overlap_minimum:
+                                    correct_extend = True
                             
-                        if len(aa_seq) >= eargs.min_length:
-                            hit.reftaxon = hit.s_ref_taxon
-                            hit.mapped_to = hit.s_ref_taxon
-                            output_sequences.append(hit)
-                            continue
+                            # Does not contain original orf or does not overlap enough.
+                            if not correct_extend:
+                                hit.second_extended_alignment = None # Disabled due to potential bug
+
+                    aa_seq = (
+                            hit.second_extended_alignment.extended_orf_aa_sequence
+                            if hit.second_extended_alignment and hit.second_extended_alignment.extended_orf_aa_sequence is not None
+                            else hit.second_alignment.orf_aa_sequence
+                        )
+                        
+                    if len(aa_seq) >= eargs.min_length:
+                        hit.reftaxon = hit.s_ref_taxon
+                        hit.mapped_to = hit.s_ref_taxon
+                        output_sequences.append(hit)
+                        continue
                         
     if len(output_sequences) > 0:
         output_sequences = sorted(output_sequences, key=lambda d: d.second_alignment.orf_cdna_start_on_transcript if d.mapped_to == d.s_ref_taxon else d.first_alignment.orf_cdna_start_on_transcript)
