@@ -32,7 +32,8 @@ MainArgs = namedtuple(
         'orthoset',
         'min_length',
         'min_score',
-        "compress"
+        "compress",
+        "sequences_per_query"
     ]
 )
 
@@ -437,7 +438,8 @@ def get_difference(score_a, score_b):
 def parse_results(results):
     res = {}
     for result in results:
-        res[result.header] = result
+        if result.header not in res:
+            res[result.header] = result
     
     return res
 
@@ -454,7 +456,8 @@ ExonerateArgs = namedtuple(
         "tmp_path",
         "verbose",
         "reference_sequences",
-        "compress"
+        "compress",
+        "sequences_per_query"
     ]
 )
 
@@ -474,24 +477,35 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
             reftaxon_related_transcripts[hit.s_ref_taxon].append(hit)
 
     output_sequences = []
-    total_results = 0
     for taxon_hit, hits in reftaxon_related_transcripts.items():
         hits_to_exonerate = [i for i in hits if i.mapped_to is None]
         if len(hits_to_exonerate) == 0:
-            continue
-
-        total_results += len(hits)
+                continue
         query = eargs.reference_sequences[taxon_hit]
-        extended_results, results = get_multi_orf(
-            query, hits_to_exonerate, eargs.min_score, include_extended=extend_orf
-        )
 
-        extended_results = parse_results(extended_results)
-        results = parse_results(results)
+        if len(hits_to_exonerate) >= eargs.sequences_per_query * 1.5:
+            extended_results = {}
+            results = {}
+            for i in range(0, len(hits_to_exonerate), eargs.sequences_per_query):
+                intermediate_extended_results, intermediate_results = get_multi_orf(
+                    query, hits_to_exonerate[i : i+eargs.sequences_per_query], eargs.min_score, include_extended=extend_orf
+                )
+
+                intermediate_extended_results = parse_results(intermediate_extended_results)
+                intermediate_results = parse_results(intermediate_results)
+
+                extended_results.update(intermediate_extended_results)
+                results.update(intermediate_results)
+        else:
+            
+            extended_results, results = get_multi_orf(
+                query, hits_to_exonerate, eargs.min_score, include_extended=extend_orf
+            )
+
+            extended_results = parse_results(extended_results)
+            results = parse_results(results)
 
         for hit in hits_to_exonerate:
-            if hit.header == "NODE_430619_length_302|[revcomp]:[translate(2)]":
-                print(hit.gene)
             # We still want to see the first results before rerun
             if taxon_hit == hit.s_ref_taxon:
                 hit.second_alignment = results.get(hit.header, None)
@@ -555,8 +569,6 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                             )
                             
                         if len(aa_seq) >= eargs.min_length:
-                            if "NODE_430619_length_302" in hit.header:
-                                print("Got",hit.gene)
                             hit.reftaxon = hit.s_ref_taxon
                             hit.mapped_to = hit.s_ref_taxon
                             output_sequences.append(hit)
@@ -650,7 +662,8 @@ def do_taxa(path, taxa_id, args):
                 tmp_path,
                 args.verbose,
                 gene_reference_data[orthoid],
-                args.compress
+                args.compress,
+                args.sequences_per_query
             ),)
         )
 
