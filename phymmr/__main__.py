@@ -160,9 +160,6 @@ def subcmd_reporter(subparsers):
     par.add_argument(
         "-ms", "--min_score", type=float, default=40, help="Minimum Hit Domain Score"
     )
-    par.add_argument(
-        "-qs", "--sequences_per_query", type=int, default=100, help="Sequences per query"
-    )
     par.add_argument("-d", "--debug", type=int, default=0, help="Verbose debug.")
     par.set_defaults(func=reporter, formathelp=par.format_help)
 
@@ -180,7 +177,6 @@ def reporter(args):
         args.min_length,
         args.min_score,
         args.compress,
-        args.sequences_per_query,
     )
     if not reporter.main(mainargs):
         print(args.formathelp())
