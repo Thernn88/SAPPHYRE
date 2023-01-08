@@ -98,7 +98,14 @@ def subcmd_diamond(subparsers):
         choices=["very", "ultra"],
         default="very",
         help="Diamond blast sensitivty.",
-    )#strict_search_mode
+    )
+    par.add_argument(
+        "-e",
+        "--evalue",
+        type=float,
+        default=0.000005,
+        help="Diamond blast evalue threshold.",
+    )
     par.add_argument(
         "-t",
         "--top",
