@@ -260,6 +260,15 @@ def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
     return result
 
 
+def has_minimum_data(seq: str, min_data=30, gap="-"):
+    data_chars = 0
+    for character in seq:
+        data_chars += character != gap
+        if data_chars > min_data:
+            return True
+    return False
+
+
 def compare_means(
     references: list,
     candidates: list,
@@ -287,7 +296,7 @@ def compare_means(
         ref_alignments = [
             seq
             for seq in convert_to_record_objects(current_refs)
-            if seq.id not in excluded_headers
+            if seq.id not in excluded_headers and has_minimum_data(seq.sequence)
         ]
         ref_distances = []
 
