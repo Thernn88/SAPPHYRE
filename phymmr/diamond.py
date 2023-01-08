@@ -72,7 +72,6 @@ class Hit:
         self.sstart = int(sstart)
         self.send = int(send)
 
-
     def to_json(self):
         return  {
                     "header": self.header,
@@ -106,7 +105,7 @@ def get_difference(scoreA, scoreB):
         return 0
 
 def get_sequence_results(fp, target_to_taxon, head_to_seq):
-    hits = []
+    header_hits = {}
     header_maps_to = {}
     this_header = None
     for line in fp:
@@ -128,18 +127,19 @@ def get_sequence_results(fp, target_to_taxon, head_to_seq):
             header = raw_header + f"|[translate({abs(int(frame))})]"
 
         if not this_header: 
-            this_header = header
+            this_header = raw_header
         else:
-            if this_header != header:
-                yield sorted(hits, key = lambda x: x.score, reverse=True), sum(list(header_maps_to.values()))    
+            if this_header != raw_header:
+                for header, hits in header_hits.items():
+                    yield sorted(hits, key = lambda x: x.score, reverse=True), sum(list(header_maps_to.values()))    
 
-                hits = []
+                header_hits = {}
                 header_maps_to = {}
-                this_header = header
+                this_header = raw_header
 
         header_maps_to[gene] = 1
         trimmed_sequence = nuc_seq[qstart : qend]
-        hits.append(Hit(header, ref_header, evalue, score, nuc_seq, trimmed_sequence, gene, reftaxon, qstart, qend, sstart, send))
+        header_hits.setdefault(header, []).append(Hit(header, ref_header, evalue, score, nuc_seq, trimmed_sequence, gene, reftaxon, qstart, qend, sstart, send))
 
 def multi_filter(hits, debug):
     kick_happend = True
