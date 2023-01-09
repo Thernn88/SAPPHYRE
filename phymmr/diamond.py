@@ -130,7 +130,7 @@ def get_sequence_results(fp, target_to_taxon, head_to_seq):
             this_header = raw_header
         else:
             if this_header != raw_header:
-                for header, hits in header_hits.items():
+                for hits in header_hits.values():
                     yield sorted(hits, key = lambda x: x.score, reverse=True), sum(list(header_maps_to.values()))    
 
                 header_hits = {}
@@ -140,7 +140,6 @@ def get_sequence_results(fp, target_to_taxon, head_to_seq):
         header_maps_to[gene] = 1
         trimmed_sequence = nuc_seq[qstart : qend]
         header_hits.setdefault(header, []).append(Hit(header, ref_header, evalue, score, nuc_seq, trimmed_sequence, gene, reftaxon, qstart, qend, sstart, send))
-
 def multi_filter(hits, debug):
     kick_happend = True
 
