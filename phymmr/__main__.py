@@ -83,7 +83,7 @@ def subcmd_diamond(subparsers):
     par.add_argument(
         "-sm",
         "--skip-multi",
-        action="store_false",
+        action="store_true",
         help="Skip multi filter."
     )
     par.add_argument(

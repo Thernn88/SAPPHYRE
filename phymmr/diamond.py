@@ -106,8 +106,8 @@ def get_sequence_results(fp, target_to_taxon, head_to_seq):
         
 
         if int(frame) < 0:
-            qstart = int(qlen) - qstart
-            qend = int(qlen) - qend
+            qstart = int(qlen) - (qstart-1)
+            qend = int(qlen) - (qend-1)
 
             header = raw_header + f"|[revcomp]:[translate({abs(int(frame))})]"
         else:
@@ -260,7 +260,7 @@ def run_process(args, input_path) -> None:
         printv("Skipping multi-filtering", args.verbose)
     with open(out_path) as fp:
         for hits, requires_multi in get_sequence_results(fp, target_to_taxon, head_to_seq):
-            if requires_multi and args.skip_multi:
+            if requires_multi and not args.skip_multi:
                 hits, this_kicks, log = multi_filter(hits, args.debug)
                 kicks += this_kicks
                 if args.debug:
@@ -279,9 +279,9 @@ def run_process(args, input_path) -> None:
                 
                 first_hit.full_seq = nuc_seq
 
-                first_hit.trim_seq = nuc_seq[first_hit.qstart : first_hit.qend]
+                first_hit.trim_seq = nuc_seq[first_hit.qstart-1 : first_hit.qend]
                 if rerun_hit:
-                    rerun_hit.trim_seq = nuc_seq[rerun_hit.qstart : rerun_hit.qend]
+                    rerun_hit.trim_seq = nuc_seq[rerun_hit.qstart-1 : rerun_hit.qend]
 
                 rerun_hit = rerun_hit.to_second_json() if rerun_hit else None
                 output.setdefault(first_hit.gene, []).append({"f":first_hit.to_first_json(), "s":rerun_hit})
