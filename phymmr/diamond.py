@@ -42,41 +42,37 @@ def reciprocal_check(hits, strict, taxa_present):
 class Hit:
     __slots__ = (
         "header",
-        "ref_header",
-        "evalue",
-        "score",
         "qstart",
         "qend",
-        "sstart",
-        "send",
-        "length",
         "gene",
+        "score",
         "reftaxon",
         "full_seq",
-        "trim_seq",
-        "sstart",
-        "send"
+        "trim_seq"
     )
-    def __init__(self, header, ref_header, evalue, score, full_seq, trim_seq, gene, reftaxon, qstart, qend, sstart, send):
+    def __init__(self, header, gene, reftaxon, score, qstart, qend):
         self.header = header
-        self.ref_header = ref_header
-        self.evalue = evalue
-        self.score = float(score)
         self.gene = gene
         self.reftaxon = reftaxon
-        self.full_seq = full_seq
-        self.trim_seq = trim_seq
+        self.full_seq = None
+        self.trim_seq = None
+        self.score =score
         self.qstart = int(qstart)
         self.qend = int(qend)
 
-        self.sstart = int(sstart)
-        self.send = int(send)
-
-    def to_json(self):
+    def to_first_json(self):
         return  {
                     "header": self.header,
                     "gene": self.gene,
                     "full_seq": self.full_seq,
+                    "trim_seq": self.trim_seq,
+                    "ref_taxon": self.reftaxon,
+                    "ali_start": self.qstart,
+                    "ali_end": self.qend,
+                }
+
+    def to_second_json(self):
+        return  {
                     "trim_seq": self.trim_seq,
                     "ref_taxon": self.reftaxon,
                     "ali_start": self.qstart,
@@ -94,34 +90,25 @@ def get_difference(scoreA, scoreB):
     """
     Returns decimal difference of two scores
     """
-    try:
-        if scoreA / scoreB > 1:
-            return scoreA / scoreB
-        if scoreB / scoreA > 1:
-            return scoreB / scoreA
-        if scoreA == scoreB:
-            return 1
-    except ZeroDivisionError:
+    if scoreA == 0 or scoreB == 0:
         return 0
+    return max(scoreA, scoreB) / min(scoreA, scoreB)
 
 def get_sequence_results(fp, target_to_taxon, head_to_seq):
     header_hits = {}
     header_maps_to = {}
     this_header = None
     for line in fp:
-        raw_header, ref_header, frame, evalue, score, qstart, qend, sstart, send, length, qlen = line.strip().split("\t")
+        raw_header, ref_header, frame, score, qstart, qend, qlen = line.strip().split("\t")
         qstart = int(qstart)
         qend = int(qend)
         gene, reftaxon = target_to_taxon[ref_header]
-        nuc_seq = head_to_seq[raw_header] #Todo move later
         
 
         if int(frame) < 0:
             qstart = int(qlen) - qstart
             qend = int(qlen) - qend
 
-            nuc_seq = phymmr_tools.bio_revcomp(nuc_seq)
-            
             header = raw_header + f"|[revcomp]:[translate({abs(int(frame))})]"
         else:
             header = raw_header + f"|[translate({abs(int(frame))})]"
@@ -138,8 +125,8 @@ def get_sequence_results(fp, target_to_taxon, head_to_seq):
                 this_header = raw_header
 
         header_maps_to[gene] = 1
-        trimmed_sequence = nuc_seq[qstart : qend]
-        header_hits.setdefault(header, []).append(Hit(header, ref_header, evalue, score, nuc_seq, trimmed_sequence, gene, reftaxon, qstart, qend, sstart, send))
+        
+        header_hits.setdefault(header, []).append(Hit(header, gene, reftaxon, score, qstart, qend))
 def multi_filter(hits, debug):
     kick_happend = True
 
@@ -255,7 +242,7 @@ def run_process(args, input_path) -> None:
 
             printv(f"Done! Running Diamond. Elapsed time {time_keeper.differential():.2f}s.", args.verbose)
             time_keeper.lap() #Reset timer
-            os.system(f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {args.evalue} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send length qlen {quiet} --top {top_amount} --max-hsps 0 -p {num_threads}")
+            os.system(f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {args.evalue} --outfmt 6 qseqid sseqid qframe bitscore qstart qend qlen {quiet} --top {top_amount} --max-hsps 0 -p {num_threads}")
             input_file.seek(0)
 
         printv(f"Diamond done. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s", args.verbose)
@@ -283,10 +270,21 @@ def run_process(args, input_path) -> None:
             first_hit, rerun_hit = reciprocal_check(hits, strict_search_mode, reference_taxa)
 
             if first_hit:
-                dupe_divy_headers.setdefault(first_hit.gene, []).append(first_hit.header)
+                base_header = first_hit.header.split("|")[0]
+                dupe_divy_headers.setdefault(first_hit.gene, {})[base_header] = 1
 
-                rerun_hit = rerun_hit.to_json() if rerun_hit else None
-                output.setdefault(first_hit.gene, []).append({"f":first_hit.to_json(), "s":rerun_hit})
+                nuc_seq = head_to_seq[base_header] #Todo move later
+                if "revcomp" in first_hit.header:
+                    nuc_seq = phymmr_tools.bio_revcomp(nuc_seq)
+                
+                first_hit.full_seq = nuc_seq
+
+                first_hit.trim_seq = nuc_seq[first_hit.qstart : first_hit.qend]
+                if rerun_hit:
+                    rerun_hit.trim_seq = nuc_seq[rerun_hit.qstart : rerun_hit.qend]
+
+                rerun_hit = rerun_hit.to_second_json() if rerun_hit else None
+                output.setdefault(first_hit.gene, []).append({"f":first_hit.to_first_json(), "s":rerun_hit})
 
     for gene, hits in output.items():
         db.put(f"gethits:{gene}", json.dumps(hits))
@@ -299,8 +297,7 @@ def run_process(args, input_path) -> None:
             
     gene_dupe_count = {}
     for gene, headers in dupe_divy_headers.items():
-        for header in headers:
-            base_header = header.split("|")[0]
+        for base_header in headers.keys():
             if base_header in dupe_counts:
                 gene_dupe_count.setdefault(gene, {})[base_header] = dupe_counts[base_header]
 

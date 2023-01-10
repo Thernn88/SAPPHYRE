@@ -43,7 +43,10 @@ class Hit:
         "score",
         "ali_start",
         "ali_end",
-        "est_sequence_trimmed",
+        "s_ali_start",
+        "s_ali_end",
+        "f_est_sequence_trimmed",
+        "s_est_sequence_trimmed",
         "est_sequence_complete",
         "reftaxon",
         "f_ref_taxon",
@@ -65,12 +68,18 @@ class Hit:
         self.f_ref_taxon = first_hit["ref_taxon"]
         if second_hit:
             self.s_ref_taxon = second_hit["ref_taxon"]
+            self.s_est_sequence_trimmed = second_hit["trim_seq"]
+            self.s_ali_start = int(second_hit["ali_start"])
+            self.s_ali_end = int(second_hit["ali_end"])
         else:
             self.s_ref_taxon = None
+            self.s_est_sequence_trimmed = None
+            self.s_ali_start = None
+            self.s_ali_end = None
         
         self.reftaxon = None
         self.est_sequence_complete = first_hit["full_seq"]
-        self.est_sequence_trimmed = first_hit["trim_seq"]
+        self.f_est_sequence_trimmed = first_hit["trim_seq"]
         self.second_alignment = None
         self.second_extended_alignment = None
         self.first_alignment = None
@@ -253,12 +262,15 @@ def parse_multi_results(handle):
             )
     return extended_result, result
 
-def get_multi_orf(query, targets, score_threshold, include_extended):
+def get_multi_orf(query, targets, score_threshold, include_extended, taxon):
     exonerate_ryo = ">cdna %tcb %tce\n%tcs>aa %qab %qae\n%qas"
     genetic_code = 1
     exonerate_model = "protein2genome"
 
-    sequences = [(i.header, i.est_sequence_trimmed) for i in targets]
+    sequences = []
+    for i in targets:
+        this_sequence = i.f_est_sequence_trimmed if taxon == i.f_ref_taxon else i.s_est_sequence_trimmed
+        sequences.append((i.header, this_sequence))
     if include_extended:
         sequences.extend([("extended_" + i.header, i.est_sequence_complete) for i in targets])
 
@@ -481,7 +493,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                 continue
         query = eargs.reference_sequences[taxon_hit]
         extended_results, results = get_multi_orf(
-            query, hits_to_exonerate, eargs.min_score, include_extended=extend_orf
+            query, hits_to_exonerate, eargs.min_score, extend_orf, taxon_hit
         )
 
         extended_results = parse_results(extended_results)
@@ -526,7 +538,8 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
                         continue
 
             if hit.second_alignment is not None and hit.attempted_first: # If first run doesn't pass check if rerun does
-
+                hit.ali_start = hit.s_ali_start
+                hit.ali_end = hit.s_ali_end
                 matching_alignment = hit.second_alignment
                 if matching_alignment:
                     hit.add_orf(matching_alignment)
