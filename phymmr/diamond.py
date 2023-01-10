@@ -56,7 +56,7 @@ class Hit:
         self.reftaxon = reftaxon
         self.full_seq = None
         self.trim_seq = None
-        self.score =score
+        self.score = float(score)
         self.qstart = int(qstart)
         self.qend = int(qend)
 
@@ -99,7 +99,7 @@ def get_sequence_results(fp, target_to_taxon, head_to_seq):
     header_maps_to = {}
     this_header = None
     for line in fp:
-        raw_header, ref_header, frame, score, qstart, qend, qlen = line.strip().split("\t")
+        raw_header, ref_header, frame, evalue, score, qstart, qend, sstart, send, length, qlen = line.strip().split("\t")
         qstart = int(qstart)
         qend = int(qend)
         gene, reftaxon = target_to_taxon[ref_header]
@@ -242,7 +242,7 @@ def run_process(args, input_path) -> None:
 
             printv(f"Done! Running Diamond. Elapsed time {time_keeper.differential():.2f}s.", args.verbose)
             time_keeper.lap() #Reset timer
-            os.system(f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {args.evalue} --outfmt 6 qseqid sseqid qframe bitscore qstart qend qlen {quiet} --top {top_amount} --max-hsps 0 -p {num_threads}")
+            os.system(f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {args.evalue} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send length qlen {quiet} --top {top_amount} --max-hsps 0 -p {num_threads}")
             input_file.seek(0)
 
         printv(f"Diamond done. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s", args.verbose)
@@ -273,7 +273,7 @@ def run_process(args, input_path) -> None:
                 base_header = first_hit.header.split("|")[0]
                 dupe_divy_headers.setdefault(first_hit.gene, {})[base_header] = 1
 
-                nuc_seq = head_to_seq[base_header] #Todo move later
+                nuc_seq = head_to_seq[base_header]
                 if "revcomp" in first_hit.header:
                     nuc_seq = phymmr_tools.bio_revcomp(nuc_seq)
                 
