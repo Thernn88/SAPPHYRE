@@ -98,7 +98,10 @@ class Hit:
         exonerate_record.orf_aa_end_on_transcript = (
             exonerate_record.orf_cdna_end + self.ali_start - 3
         ) / 3
-        self.first_alignment = exonerate_record
+        if not self.first_alignment:
+            self.first_alignment = exonerate_record
+        else:
+            self.second_alignment = exonerate_record
 
 class NodeRecord:
     def __init__(self, header, is_extension):
