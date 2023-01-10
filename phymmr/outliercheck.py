@@ -327,6 +327,8 @@ def compare_means(
             # Interquartile range (IQR)
             IQR = Q3 - Q1
             upper_bound = Q3 + (threshold * IQR) + 0.02
+            if upper_bound > 1:
+                has_ref_distances = False
         else:  # if no ref_distances, this is an orthograph, so reject
             upper_bound = "N/A"
             IQR = "N/A"
