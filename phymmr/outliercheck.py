@@ -264,7 +264,7 @@ def has_minimum_data(seq: str, min_data=.5, gap="-"):
     data_chars = 0
     for character in seq:
         data_chars += character != gap
-    return data_chars/len(seq) >= min_data
+    return  data_chars/len(seq) >= min_data
 
 
 def compare_means(
@@ -274,6 +274,7 @@ def compare_means(
     excluded_headers: set,
     keep_refs: bool,
     sort: str,
+    refs_in_file: int
 ) -> tuple:
     """
     For each candidate record, finds the index of the first non-gap bp and makes
@@ -299,7 +300,7 @@ def compare_means(
         ]
 
         ref_distances = []
-        if len(ref_alignments)/len(ref_records) < 0.5:
+        if len(ref_alignments)/refs_in_file < 0.5:
             has_ref_distances = False
         else:
             for seq1, seq2 in combinations(ref_alignments, 2):
@@ -457,6 +458,7 @@ def main_process(
     reference_sequences, candidate_sequences = split_sequences(
         file_input, to_be_excluded
     )
+    refs_in_file = len(reference_sequences)/2
 
     candidate_headers = [
         header for header in candidate_sequences if header[0] == ">"
@@ -468,6 +470,7 @@ def main_process(
         to_be_excluded,
         keep_refs,
         sort,
+        refs_in_file
     )
     if sort == "original":
         to_add = original_sort(candidate_headers, to_add)
