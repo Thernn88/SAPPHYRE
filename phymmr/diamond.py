@@ -256,11 +256,11 @@ def run_process(args, input_path) -> None:
     passes = 0
     global_log = []
     dupe_divy_headers = {}
-    if not args.multi:
+    if args.skip_multi:
         printv("Skipping multi-filtering", args.verbose)
     with open(out_path) as fp:
         for hits, requires_multi in get_sequence_results(fp, target_to_taxon, head_to_seq):
-            if requires_multi and args.multi:
+            if requires_multi and args.skip_multi:
                 hits, this_kicks, log = multi_filter(hits, args.debug)
                 kicks += this_kicks
                 if args.debug:

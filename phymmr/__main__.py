@@ -81,10 +81,10 @@ def subcmd_diamond(subparsers):
         help="Enable debug out."
     )
     par.add_argument(
-        "-m",
-        "--multi",
-        action="store_true",
-        help="Enable multi filter."
+        "-sm",
+        "--skip-multi",
+        action="store_false",
+        help="Skip multi filter."
     )
     par.add_argument(
         "-strict",
