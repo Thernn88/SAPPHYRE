@@ -442,7 +442,7 @@ def subcmd_flexcull(subparsers):
         help="Percentage of references that must contain the base pair to match.",
     )
     par.add_argument(
-        "-bp", "--base-pair", type=int, default=15, help="Minimum bp after cull."
+        "-bp", "--base-pair", type=int, default=20, help="Minimum bp after cull."
     )
     par.add_argument(
         "-d",
