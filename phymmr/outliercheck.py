@@ -260,13 +260,11 @@ def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
     return result
 
 
-def has_minimum_data(seq: str, min_data=30, gap="-"):
+def has_minimum_data(seq: str, min_data=.5, gap="-"):
     data_chars = 0
     for character in seq:
         data_chars += character != gap
-        if data_chars > min_data:
-            return True
-    return False
+    return data_chars/len(seq) >= min_data
 
 
 def compare_means(
@@ -293,18 +291,22 @@ def compare_means(
         # start, stop = index_pair
         candidates_at_index = candidates_dict[index_pair]
         # first we have to calculate the reference distances to make the ref mean
+        ref_records = convert_to_record_objects(current_refs)
         ref_alignments = [
             seq
-            for seq in convert_to_record_objects(current_refs)
+            for seq in ref_records
             if seq.id not in excluded_headers and has_minimum_data(seq.sequence)
         ]
-        ref_distances = []
 
-        for seq1, seq2 in combinations(ref_alignments, 2):
-            ref1 = str(seq1)
-            ref2 = str(seq2)
-            ref_distances.append(bd.blosum62_distance(ref1, ref2))
-        has_ref_distances = nan_check(ref_distances)
+        ref_distances = []
+        if len(ref_alignments)/len(ref_records) < 0.5:
+            has_ref_distances = False
+        else:
+            for seq1, seq2 in combinations(ref_alignments, 2):
+                ref1 = str(seq1)
+                ref2 = str(seq2)
+                ref_distances.append(bd.blosum62_distance(ref1, ref2))
+            has_ref_distances = nan_check(ref_distances)
         if has_ref_distances:
             # First quartile (Q1)
             try:
