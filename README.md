@@ -5,12 +5,11 @@
 	Externals
 	Mafft 7.489+ https://mafft.cbrc.jp/alignment/software/ sudo apt install mafft
 	Exonerate 2.4.0+ sudo apt install Exonerate
-	HMMer - 3.3+ https://github.com/EddyRivasLab/hmmer - sudo apt install Hmmer
-	Blast - NCBI-Blast 2.2.28+ ftp://ftp.ncbi.nlm.nih.gov/blast/executables/blast+/LATEST/ or sudo apt install ncbi-blast+
+	Diamond - sudo apt install diamond-aligner
 	SQLite3 - sudo apt install sqlite3 (Will be removed later.)
 	sra-toolkit - sudo apt install sra-toolkit
 	
-	Python - 3.8+ (Recommended 3.9+)
+	Python - 3.8+ (Recommended 3.11)
 		Python Modules
 			wrap-rocks
 			tqdm
@@ -27,22 +26,18 @@ All scripts are located in the phymmr directory. You can call them using
 Example commands workflow using Mayer et al. (2021) reference set. Verbose enabled using -v. Multithreading enabled w/ -p <X> threads passed.  
 
 	python3 -m phymmr -p 6 Prepare input/lepidoptera
-	python3 -m phymmr -p 16 -v Hmmsearch -o Lepidoptera_orthoDB9_extended PhyMMR/lepidoptera/*.fa
-	python3 -m phymmr -p 16 -v BlastPal -o Lepidoptera_orthoDB9_extended PhyMMR/lepidoptera/*.fa
+	python3 -m phymmr -p 16 -v Diamond -o Lepidoptera_orthoDB9_extended PhyMMR/lepidoptera/*.fa
 	python3 -m phymmr -p 16 -v Reporter -o Lepidoptera_orthoDB9_extended PhyMMR/lepidoptera/*.fa
 	python3 -m phymmr -p 8 -v mafft -o Lepidoptera_orthoDB9_extended PhyMMR/lepidoptera/*.fa
 	python3 -m phymmr -p 16 -v Pal2Nal PhyMMR/lepidoptera/*.fa
 	python3 -m phymmr -p 16 -v FlexCull PhyMMR/lepidoptera/*.fa
 	python3 -m phymmr -p 16 -v OutlierCheck PhyMMR/lepidoptera/*.fa
-	
-	--------- Breaks below this line as of this moment for this reference set.
 	python3 -m phymmr -p 16 -v MergeOverlap PhyMMR/lepidoptera/*.fa
 
 Generic Commands
 	
 	python3 -m phymmr <args> Prepare <args> input/<DIR>/
-	python3 -m phymmr <args> Hmmsearch <args> PhyMMR/<DIR>/*.fa
-	python3 -m phymmr <args> BlastPal <args> PhyMMR/<DIR>/*.fa
+	python3 -m phymmr <args> Diamond <args> PhyMMR/<DIR>/*.fa
 	python3 -m phymmr <args> Reporter <args> PhyMMR/<DIR>/*.fa
 	python3 -m phymmr <args> mafft <args> PhyMMR/<DIR>/*.fa
 	python3 -m phymmr <args> Pal2Nal <args> PhyMMR/<DIR>/*.fa
@@ -57,25 +52,19 @@ Generic Commands
 	python3 -m phymmr -h
 	usage: phymmr [-h] [-v] [-p PROCESSES]
 	
-	Order: Prepare, Hmmsearch, BlastPal, Reporter, mafft, pal2nal, FlexCull (optional), OutlierCheck, MergeOverlap, MergeGenes
+	Order: Prepare, Diamond, Reporter, mafft, pal2nal, FlexCull (optional), OutlierCheck, MergeOverlap, MergeGenes
 
 	positional arguments:
-  	{Prepare,Hmmsearch,BlastPal,Reporter,mafft,Pal2Nal,FlexCull,OutlierCheck,MergeOverlap,MergeGenes,SRADownload}
+  	{Prepare,Diamond,Reporter,mafft,Pal2Nal,FlexCull,OutlierCheck,MergeOverlap,MergeGenes,SRADownload}
 	
     Prepare             Loads NT input files (.fa, .fas or .fasta) into a rocksdb database. Unique NT sequences stored
-                        with a duplicate count stored for later use. Performs six-fold translation of base NT
-                        sequences into AA translation. Unique AA translation stored with duplicate counts stored for
-                        later use.
+                        with a duplicate count stored for later use. 
 			
-    Hmmsearch           Queries protein translations against profile HMMs using the HMMER3 external. Filters HMMER3
-                        output using 3 custom filters: MultiGene, InternalMulti & InternalSubpar to remove LQ hits and
-                        prevent sequence reuse. Loads hits into RocksDB after filters finish.
+    Diamond             Translates and queries input NT sequences against protein reference sequences using the Diamond external. Filters 
+                        output prevent sequence reuse. Loads hits into RocksDB after filters finish.
 			
-    BlastPal            Blasts Hmmsearch hits using NCBI-Blast against reference sequences. Loads resulting output
-                        into RocksDB.
-			
-    Reporter            Checks Blast results to ensure a hit is reciprocal. Queries a sequence using exonerate to
-                        align it against a target reference and trim it to mapped region. Produces aa and nt output.
+    Reporter            Queries a sequence using exonerate to align it against a target reference and trim it to mapped region. Produces aa and nt output.
+    
     mafft               Aligns AA sequences against existing reference alignment.
     
     Pal2Nal             Mirrors Amino Acid Alignment to Nucleotide data using specified NCBI table. Also performs
@@ -84,7 +73,7 @@ Generic Commands
     FlexCull            Adaptive End Trimming algorithm that trims the start and end of candidate reads to remove
                         introns and/or other LQ bases.
 			
-    OutlierCheck        Calculates a Blosum62 distance matrix which are used to remove outlier sequences above a
+    OutlierCheck        Calculates a Blosum62 distance matrix used to remove outlier sequences above a
                         threshold.
 			
     MergeOverlap        Reference-guided De-novo Assembly Algorithm which merges overlapping reads into contiguous
@@ -164,30 +153,6 @@ Generic Commands
 	--enable-multi-internal
 							Enable Hmmsearch internal multi filter
 							
-**BlastPal**
-	
-	python3 -m phymmr BlastPal -h
-	usage: phymmr BlastPal [-h] [-oi ORTHOSET_INPUT] [-o ORTHOSET] [-bs BLAST_MINIMUM_SCORE] [-be BLAST_MINIMUM_EVALUE]
-						[-m MAX_BLAST_BATCH_SIZE] [-ovw]
-						INPUT [INPUT ...]
-
-	positional arguments:
-	INPUT                 Path to directory of Input folder
-
-	options:
-	-h, --help            	show this help message and exit
-	-oi ORTHOSET_INPUT, --orthoset_input ORTHOSET_INPUT
-							Path to directory of Orthosets folder
-	-o ORTHOSET, --orthoset ORTHOSET
-							Orthoset
-	-bs BLAST_MINIMUM_SCORE, --blast_minimum_score BLAST_MINIMUM_SCORE
-							Minimum score filter in blast.
-	-be BLAST_MINIMUM_EVALUE, --blast_minimum_evalue BLAST_MINIMUM_EVALUE
-							Minimum evalue filter in blast.
-	-m MAX_BLAST_BATCH_SIZE, --max_blast_batch_size MAX_BLAST_BATCH_SIZE
-							Max results per blastpal batch in db. Default: 250 thousand.
-	-ovw, --overwrite     Overwrite existing blast results.
-
 **Reporter**
 
 	python3 -m phymmr Reporter -h
@@ -313,7 +278,7 @@ Generic Commands
 
 ## Development setup
 
-Some dependencies requires a c++ toolset installed, plus various libraries. At the
+Some dependencies require a c++ toolset installed, plus various libraries. At the
 moment of writing, I do not know which additional libraries are needed (please complete
 me later).
 
