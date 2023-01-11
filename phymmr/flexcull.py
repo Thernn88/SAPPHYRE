@@ -279,7 +279,7 @@ def do_gene(
             if debug:
                 log.append(gene + "," + header + ",Kicked,Zero Data After Cull,0,\n")
 
-    if len(aa_out) == 1:
+    if len(aa_out) == len(references):
         return log #Only refs
 
     writeFasta(aa_out_path, aa_out, compress)
