@@ -211,11 +211,11 @@ def find_index_groups(references: list, candidates: list) -> tuple:
         cand_seq = Record(lines[0], lines[1], raw_seq)
         made_already = candidate_dict.get(index_tuple, False)
         if not made_already:
-            seq_set = set()
-            seq_set.add(cand_seq)
-            candidate_dict[index_tuple] = seq_set
+            seq_list = []
+            seq_list.append(cand_seq)
+            candidate_dict[index_tuple] = seq_list
         else:
-            made_already.add(cand_seq)
+            made_already.append(cand_seq)
             candidate_dict[index_tuple] = made_already
     # after processing candidates, make appropriate ref sets
     reference_dict = {}
@@ -260,7 +260,8 @@ def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
     result.append(0.0)
     return result
 
-
+# function now skips any index which was previously rejected
+# do the rejected indices make it to the distance calc? do I have to care at all?
 def has_minimum_data(seq: str, cand_rejected_indices: set, min_data: float, start_offset: int, gap="-"):
     data_chars = []
     for raw_i, character in enumerate(seq):
@@ -303,20 +304,23 @@ def compare_means(
         # start, stop = index_pair
         candidates_at_index = candidates_dict[index_pair]
         # check if first candidate has enough bp
-        for candidate in candidates_at_index:
-            break
-        candidate = str(candidate)
+        # for first_candidate in candidates_at_index:
+        #     break
+        first_candidate = str(candidates_at_index[0])
         bp_count = 0
-        for raw_i in range(len(candidate)):
+        for raw_i in range(len(first_candidate)):
             i = raw_i + index_pair[0]
             if i in cand_rejected_indices:
                continue
-            if candidate[raw_i] != "-":
+            if first_candidate[raw_i] != "-":
                 bp_count += 1
             if bp_count >= index_group_min_bp:
-                break 
+                break
+        # this line kicks the index group if it fails the bp requirement
         if bp_count < index_group_min_bp:
-            continue
+            for candidate in candidates_at_index:
+                mean_distance = "No refs"
+                outliers.append((candidate.id, mean_distance, "N/A", "Fail", "min_cand_bp"))
 
         # first we have to calculate the reference distances to make the ref mean
         ref_records = convert_to_record_objects(current_refs)
@@ -327,6 +331,7 @@ def compare_means(
         ]
 
         ref_distances = []
+        # this < comparison probably needs an arg tied to it
         if len(ref_alignments)/refs_in_file < 0.5:
             has_ref_distances = False
         else:
@@ -497,6 +502,7 @@ def main_process(
     # calculate indices that have valid data columns
     cand_rejected_indices = set()
     ref_rejected_indices = set()
+    ###  currently this is icp, it needs to be imp
     ref_seqs = reference_sequences[1::2]
     for i in range(len(ref_seqs[0])):
         percent_of_non_dash = len([ref[i] for ref in ref_seqs if ref[i] != '-']) /len(reference_sequences)
