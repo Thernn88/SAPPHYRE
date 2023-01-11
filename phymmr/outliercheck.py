@@ -488,11 +488,11 @@ def main_process(
     refs_in_file = len(reference_sequences)/2
 
     ref_dict, candidates_dict, min_start, max_end = find_index_groups(reference_sequences, candidate_sequences)
-    
+
     # calculate indices that have <= min_percent_allowable of non-dashes
     rejected_indices = set()
     ref_seqs = reference_sequences[1::2]
-    for i in range(min_start, max_end+1):
+    for i in range(min_start, max_end):
         percent_of_non_dash = len([ref[i] for ref in ref_seqs if ref[i] != '-']) /len(reference_sequences)
         if percent_of_non_dash <= min_percent_allowable:
             rejected_indices.add(i)
