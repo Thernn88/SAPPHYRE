@@ -261,9 +261,10 @@ def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
     return result
 
 
-def has_minimum_data(seq: str, cand_rejected_indices: set, min_data: float, gap="-"):
+def has_minimum_data(seq: str, cand_rejected_indices: set, min_data: float, start_offset: int, gap="-"):
     data_chars = []
-    for i, character in enumerate(seq):
+    for raw_i, character in enumerate(seq):
+        i = raw_i + start_offset
         if i not in cand_rejected_indices:
             data_chars.append(character != gap)
 
@@ -304,7 +305,6 @@ def compare_means(
         # check if first candidate has enough bp
         for candidate in candidates_at_index:
             break
-
         candidate = str(candidate)
         bp_count = 0
         for raw_i in range(len(candidate)):
@@ -323,7 +323,7 @@ def compare_means(
         ref_alignments = [
             seq
             for seq in ref_records
-            if seq.id not in excluded_headers and has_minimum_data(seq.sequence, ref_rejected_indices, reference_min_percent)
+            if seq.id not in excluded_headers and has_minimum_data(seq.sequence, ref_rejected_indices, reference_min_percent, index_pair[0])
         ]
 
         ref_distances = []
