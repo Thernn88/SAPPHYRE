@@ -199,11 +199,17 @@ def find_index_groups(references: list, candidates: list) -> tuple:
     the ref set after constraining to those indices.
     """
     candidate_dict = {}
+    min_start = None
+    max_end = None
     for i in range(0, len(candidates), 2):
         sequence = candidates[i + 1]
         raw_seq = sequence
         index_tuple = make_indices(sequence)
         start, stop = index_tuple
+
+        min_start = start if min_start is None else min(min_start, start)
+        max_end = stop if max_end is None else max(max_end, stop)
+
         lines = [candidates[i], candidates[i + 1]]
         lines, _ = constrain_data_lines(lines, start, stop)
         cand_seq = Record(lines[0], lines[1], raw_seq)
@@ -224,8 +230,7 @@ def find_index_groups(references: list, candidates: list) -> tuple:
         raw_ref_dict[key] = ref_lines
         ref_lines, _ = constrain_data_lines(ref_lines, start, stop)
         reference_dict[key] = ref_lines
-    return reference_dict, candidate_dict
-
+    return reference_dict, candidate_dict, min_start, max_end
 
 def make_ref_mean(matrix: list, ignore_zeros=False) -> float:
     """
@@ -269,12 +274,15 @@ def has_minimum_data(seq: str, min_data=.5, gap="-"):
 
 def compare_means(
     references: list,
-    candidates: list,
+    ref_dict: dict,
+    candidates_dict: dict,
     threshold: float,
     excluded_headers: set,
     keep_refs: bool,
     sort: str,
-    refs_in_file: int
+    refs_in_file: int,
+    rejected_indices: set,
+    index_group_min_bp: int,
 ) -> tuple:
     """
     For each candidate record, finds the index of the first non-gap bp and makes
@@ -286,11 +294,27 @@ def compare_means(
     if keep_refs:
         for line in references:
             regulars.append(line)
-    ref_dict, candidates_dict = find_index_groups(references, candidates)
     to_add_later = []
     for index_pair, current_refs in ref_dict.items():
         # start, stop = index_pair
         candidates_at_index = candidates_dict[index_pair]
+        # check if first candidate has enough bp
+        for candidate in candidates_at_index:
+            break
+
+        candidate = str(candidate)
+        bp_count = 0
+        for raw_i in range(len(candidate)):
+            i = raw_i + index_pair[0]
+            if i in rejected_indices:
+               continue
+            if candidate[raw_i] != "-":
+                bp_count += 1
+            if bp_count >= index_group_min_bp:
+                break 
+        if bp_count < index_group_min_bp:
+            continue
+
         # first we have to calculate the reference distances to make the ref mean
         ref_records = convert_to_record_objects(current_refs)
         ref_alignments = [
@@ -355,6 +379,7 @@ def compare_means(
         if sort == "cluster":
             intermediate_list = taxa_sort(intermediate_list)
             to_add_later.extend(intermediate_list)
+            
     return regulars, to_add_later, outliers
 
 
@@ -439,7 +464,9 @@ def main_process(
     nt_output_path: str,
     debug: bool,
     verbose: int,
-    compress: bool
+    compress: bool,
+    min_percent_allowable: float,
+    index_group_min_bp: int,
 ):
     keep_refs = not args_references
 
@@ -460,17 +487,31 @@ def main_process(
     )
     refs_in_file = len(reference_sequences)/2
 
+    ref_dict, candidates_dict, min_start, max_end = find_index_groups(reference_sequences, candidate_sequences)
+    
+    # calculate indices that have <= min_percent_allowable of non-dashes
+    rejected_indices = set()
+    ref_seqs = reference_sequences[1::2]
+    for i in range(min_start, max_end+1):
+        percent_of_non_dash = len([ref[i] for ref in ref_seqs if ref[i] != '-']) /len(reference_sequences)
+        if percent_of_non_dash <= min_percent_allowable:
+            rejected_indices.add(i)
+
     candidate_headers = [
         header for header in candidate_sequences if header[0] == ">"
     ]
+
     raw_regulars, to_add, outliers = compare_means(
         reference_sequences,
-        candidate_sequences,
+        ref_dict,
+        candidates_dict,
         threshold,
         to_be_excluded,
         keep_refs,
         sort,
-        refs_in_file
+        refs_in_file,
+        rejected_indices,
+        index_group_min_bp,
     )
     if sort == "original":
         to_add = original_sort(candidate_headers, to_add)
@@ -562,7 +603,9 @@ def do_folder(folder, args):
                     nt_output_path,
                     args.debug,
                     args.verbose,
-                    args.compress
+                    args.compress,
+                    args.ref_col_percent,
+                    args.index_group_min_bp
                 )
             )
 
@@ -580,7 +623,9 @@ def do_folder(folder, args):
                 nt_output_path,
                 args.debug,
                 args.verbose,
-                args.compress
+                args.compress,
+                args.ref_col_percent,
+                args.index_group_min_bp
             )
     if args.debug:
         log_folder_path = os.path.join(output_path, "logs")

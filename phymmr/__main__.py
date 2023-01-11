@@ -231,6 +231,20 @@ def subcmd_outliercheck(subparsers):
         help="Minimum candidate overlap for candidate distance checks.",
     )
     par.add_argument(
+        "-cp",
+        "--ref-col-percent",
+        type=float,
+        default=0.33,
+        help="Minimum percent of non-gap characters in a column to be valid",
+    )
+    par.add_argument(
+        "-ibp",
+        "--index_group_min_bp",
+        type=int,
+        default=20,
+        help="Minimum bp for index group non-gap col check.",
+    )
+    par.add_argument(
         "-d",
         "--debug",
         action="store_true",
