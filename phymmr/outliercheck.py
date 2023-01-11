@@ -206,10 +206,6 @@ def find_index_groups(references: list, candidates: list) -> tuple:
         raw_seq = sequence
         index_tuple = make_indices(sequence)
         start, stop = index_tuple
-
-        min_start = start if min_start is None else min(min_start, start)
-        max_end = stop if max_end is None else max(max_end, stop)
-
         lines = [candidates[i], candidates[i + 1]]
         lines, _ = constrain_data_lines(lines, start, stop)
         cand_seq = Record(lines[0], lines[1], raw_seq)
@@ -265,11 +261,16 @@ def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
     return result
 
 
-def has_minimum_data(seq: str, min_data=.5, gap="-"):
-    data_chars = 0
-    for character in seq:
-        data_chars += character != gap
-    return  data_chars/len(seq) >= min_data
+def has_minimum_data(seq: str, cand_rejected_indices: set, min_data: float, gap="-"):
+    data_chars = []
+    for i, character in enumerate(seq):
+        if i not in cand_rejected_indices:
+            data_chars.append(character != gap)
+
+    if len(data_chars) == 0:
+        return False
+
+    return sum(data_chars) / len(data_chars) >= min_data
 
 
 def compare_means(
@@ -281,8 +282,10 @@ def compare_means(
     keep_refs: bool,
     sort: str,
     refs_in_file: int,
-    rejected_indices: set,
+    cand_rejected_indices: set,
+    ref_rejected_indices: set,
     index_group_min_bp: int,
+    reference_min_percent: int,
 ) -> tuple:
     """
     For each candidate record, finds the index of the first non-gap bp and makes
@@ -306,7 +309,7 @@ def compare_means(
         bp_count = 0
         for raw_i in range(len(candidate)):
             i = raw_i + index_pair[0]
-            if i in rejected_indices:
+            if i in cand_rejected_indices:
                continue
             if candidate[raw_i] != "-":
                 bp_count += 1
@@ -320,7 +323,7 @@ def compare_means(
         ref_alignments = [
             seq
             for seq in ref_records
-            if seq.id not in excluded_headers and has_minimum_data(seq.sequence)
+            if seq.id not in excluded_headers and has_minimum_data(seq.sequence, ref_rejected_indices, reference_min_percent)
         ]
 
         ref_distances = []
@@ -465,8 +468,10 @@ def main_process(
     debug: bool,
     verbose: int,
     compress: bool,
-    min_percent_allowable: float,
+    min_percent_candidate: float,
     index_group_min_bp: int,
+    min_percent_reference: float,
+    reference_min_percent: int
 ):
     keep_refs = not args_references
 
@@ -489,13 +494,16 @@ def main_process(
 
     ref_dict, candidates_dict, min_start, max_end = find_index_groups(reference_sequences, candidate_sequences)
 
-    # calculate indices that have <= min_percent_allowable of non-dashes
-    rejected_indices = set()
+    # calculate indices that have valid data columns
+    cand_rejected_indices = set()
+    ref_rejected_indices = set()
     ref_seqs = reference_sequences[1::2]
-    for i in range(min_start, max_end):
+    for i in range(len(ref_seqs[0])):
         percent_of_non_dash = len([ref[i] for ref in ref_seqs if ref[i] != '-']) /len(reference_sequences)
-        if percent_of_non_dash <= min_percent_allowable:
-            rejected_indices.add(i)
+        if percent_of_non_dash <= min_percent_candidate:
+            cand_rejected_indices.add(i)
+        if percent_of_non_dash <= min_percent_reference:
+            ref_rejected_indices.add(i)
 
     candidate_headers = [
         header for header in candidate_sequences if header[0] == ">"
@@ -510,8 +518,10 @@ def main_process(
         keep_refs,
         sort,
         refs_in_file,
-        rejected_indices,
+        cand_rejected_indices,
+        ref_rejected_indices,
         index_group_min_bp,
+        reference_min_percent
     )
     if sort == "original":
         to_add = original_sort(candidate_headers, to_add)
@@ -604,8 +614,11 @@ def do_folder(folder, args):
                     args.debug,
                     args.verbose,
                     args.compress,
-                    args.ref_col_percent,
-                    args.index_group_min_bp
+                    args.index_cull_percent,
+                    args.index_group_min_bp,
+                    args.ref_cull_percent,
+                    args.ref_min_percent
+
                 )
             )
 
@@ -624,8 +637,10 @@ def do_folder(folder, args):
                 args.debug,
                 args.verbose,
                 args.compress,
-                args.ref_col_percent,
-                args.index_group_min_bp
+                args.index_cull_percent,
+                args.index_group_min_bp,
+                args.ref_cull_percent,
+                args.ref_min_percent
             )
     if args.debug:
         log_folder_path = os.path.join(output_path, "logs")
