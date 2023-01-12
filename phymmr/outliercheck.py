@@ -284,10 +284,10 @@ def compare_means(
     keep_refs: bool,
     sort: str,
     refs_in_file: int,
-    cand_rejected_indices: set,
-    ref_rejected_indices: set,
+    rejected_indices: set,
     index_group_min_bp: int,
-    reference_min_percent: int,
+    ref_gap_percent: float,
+    ref_min_percent: float,
 ) -> tuple:
     """
     For each candidate record, finds the index of the first non-gap bp and makes
@@ -301,16 +301,16 @@ def compare_means(
             regulars.append(line)
     to_add_later = []
     for index_pair, current_refs in ref_dict.items():
-        # start, stop = index_pair
+        # get candidates in this index group
         candidates_at_index = candidates_dict[index_pair]
-        # check if first candidate has enough bp
-        # for first_candidate in candidates_at_index:
-        #     break
+
+        # get first candidate in group and check the amount of bp left after
+        # column cull
         first_candidate = str(candidates_at_index[0])
         bp_count = 0
         for raw_i in range(len(first_candidate)):
             i = raw_i + index_pair[0]
-            if i in cand_rejected_indices:
+            if i in rejected_indices:
                continue
             if first_candidate[raw_i] != "-":
                 bp_count += 1
@@ -321,18 +321,18 @@ def compare_means(
             for candidate in candidates_at_index:
                 mean_distance = "No refs"
                 outliers.append((candidate.id, mean_distance, "N/A", "Fail", "min_cand_bp"))
+            continue
 
         # first we have to calculate the reference distances to make the ref mean
         ref_records = convert_to_record_objects(current_refs)
         ref_alignments = [
             seq
             for seq in ref_records
-            if seq.id not in excluded_headers and has_minimum_data(seq.sequence, ref_rejected_indices, reference_min_percent, index_pair[0])
+            if seq.id not in excluded_headers and has_minimum_data(seq.sequence, rejected_indices, ref_gap_percent, index_pair[0])
         ]
 
         ref_distances = []
-        # this < comparison probably needs an arg tied to it
-        if len(ref_alignments)/refs_in_file < 0.5:
+        if len(ref_alignments)/refs_in_file < ref_min_percent:
             has_ref_distances = False
         else:
             for seq1, seq2 in combinations(ref_alignments, 2):
@@ -473,10 +473,10 @@ def main_process(
     debug: bool,
     verbose: int,
     compress: bool,
-    min_percent_candidate: float,
+    col_cull_percent: float,
     index_group_min_bp: int,
-    min_percent_reference: float,
-    reference_min_percent: int
+    ref_gap_percent: float,
+    ref_min_percent: int
 ):
     keep_refs = not args_references
 
@@ -500,16 +500,12 @@ def main_process(
     ref_dict, candidates_dict, min_start, max_end = find_index_groups(reference_sequences, candidate_sequences)
 
     # calculate indices that have valid data columns
-    cand_rejected_indices = set()
-    ref_rejected_indices = set()
-    ###  currently this is icp, it needs to be imp
+    rejected_indices = set()
     ref_seqs = reference_sequences[1::2]
     for i in range(len(ref_seqs[0])):
         percent_of_non_dash = len([ref[i] for ref in ref_seqs if ref[i] != '-']) /len(reference_sequences)
-        if percent_of_non_dash <= min_percent_candidate:
-            cand_rejected_indices.add(i)
-        if percent_of_non_dash <= min_percent_reference:
-            ref_rejected_indices.add(i)
+        if percent_of_non_dash <= col_cull_percent:
+            rejected_indices.add(i)
 
     candidate_headers = [
         header for header in candidate_sequences if header[0] == ">"
@@ -524,10 +520,10 @@ def main_process(
         keep_refs,
         sort,
         refs_in_file,
-        cand_rejected_indices,
-        ref_rejected_indices,
+        rejected_indices,
         index_group_min_bp,
-        reference_min_percent
+        ref_gap_percent,
+        ref_min_percent
     )
     if sort == "original":
         to_add = original_sort(candidate_headers, to_add)
@@ -620,9 +616,9 @@ def do_folder(folder, args):
                     args.debug,
                     args.verbose,
                     args.compress,
-                    args.index_cull_percent,
+                    args.col_cull_percent,
                     args.index_group_min_bp,
-                    args.ref_cull_percent,
+                    args.ref_gap_percent,
                     args.ref_min_percent
 
                 )
@@ -643,9 +639,9 @@ def do_folder(folder, args):
                 args.debug,
                 args.verbose,
                 args.compress,
-                args.index_cull_percent,
+                args.col_cull_percent,
                 args.index_group_min_bp,
-                args.ref_cull_percent,
+                args.ref_gap_percent,
                 args.ref_min_percent
             )
     if args.debug:

@@ -230,26 +230,27 @@ def subcmd_outliercheck(subparsers):
         default=30,
         help="Minimum candidate overlap for candidate distance checks.",
     )
+    
     par.add_argument(
-        "-refcp",
-        "--ref-cull-percent",
+        "-ccp",
+        "--col-cull-percent",
         type=float,
         default=0.33,
-        help="Minimum percentage of data required not to cull reference column",
+        help="Minimum percentage of data required not to cull column.",
+    )
+    par.add_argument(
+        "-refcp",
+        "--ref-gap-percent",
+        type=float,
+        default=0.5,
+        help="Minimum percent of non-gap characters in a reference sequence after cull to pass.",
     )
     par.add_argument(
         "-refmp",
         "--ref-min-percent",
         type=float,
         default=0.5,
-        help="Minimum percent of non-gap characters in a column to be valid for references.",
-    )
-    par.add_argument(
-        "-icp",
-        "--index-cull-percent",
-        type=float,
-        default=0.33,
-        help="Minimum percentage of data required not to cull candidate column.",
+        help="Minimum percent of references required after kick",
     )
     par.add_argument(
         "-imp",
@@ -258,6 +259,7 @@ def subcmd_outliercheck(subparsers):
         default=20,
         help="Minimum bp for index group after column cull.",
     )
+    
     par.add_argument(
         "-d",
         "--debug",
