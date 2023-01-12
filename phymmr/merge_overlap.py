@@ -306,6 +306,7 @@ def do_protein(
     output_dir: Path,
     initial_minimum_length,
     dupe_counts,
+    ref_stats,
     already_calculated_splits,
     gene,
     majority,
@@ -371,8 +372,17 @@ def do_protein(
                 [sequence[2].split("|")[3] for sequence in this_sequences[1:]]
             )
 
-            most_occuring = most_common_element_with_count([i[2].split('|')[1] for i in this_sequences])
-            this_taxa = most_occuring[0]
+            taxons = [i[2].split('|')[1] for i in this_sequences]
+            most_occuring = most_common_element_with_count(taxons)
+            if len(taxons) > 1 and most_occuring[1] > 1:
+                this_taxa = most_occuring[0]
+            elif len(taxons) == 1:
+                this_taxa = taxons[0]
+            else:
+                for reference, _ in ref_stats:
+                    if reference in taxons:
+                        this_taxa = reference
+                        break
 
             base_header = "|".join([this_gene, this_taxa, this_taxa_id, node])
 
@@ -418,6 +428,11 @@ def do_protein(
                             comparison_taxa = most_occuring[0]
                         elif len(taxons_of_split) == 1:
                             comparison_taxa = taxons_of_split[0]
+                        else:
+                            for reference, _ in ref_stats:
+                                if reference in taxons_of_split:
+                                    comparison_taxa = reference
+                                    break
 
                         # Grab the reference sequence for the mode taxon
                         if comparison_taxa:
@@ -613,6 +628,7 @@ def do_gene(
     nt_path,
     minimum_length,
     dupe_counts,
+    ref_stats,
     debug,
     majority,
     minimum_mr_amount,
@@ -632,6 +648,7 @@ def do_gene(
         output_dir,
         minimum_length,
         dupe_counts,
+        ref_stats,
         already_calculated_splits,
         gene,
         majority,
@@ -648,6 +665,7 @@ def do_gene(
         output_dir,
         minimum_length,
         dupe_counts,
+        ref_stats,
         already_calculated_splits,
         make_nt_name(gene),
         majority,
@@ -685,8 +703,11 @@ def do_folder(folder: Path, args):
     if rocks_db_path.exists():
         rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
         dupe_counts = json.loads(rocksdb_db.get("getall:gene_dupes"))
+        ref_stats = json.loads(rocksdb_db.get("getall:top_refs"))
     else:
         dupe_counts = {}
+        ref_stats = []
+
 
     target_genes = []
     for item in Path(aa_input).iterdir():
@@ -709,6 +730,7 @@ def do_folder(folder: Path, args):
                     target_nt_path,
                     args.minimum_length,
                     dupes_in_this_gene,
+                    ref_stats,
                     args.debug,
                     args.majority,
                     args.majority_count,
@@ -731,6 +753,7 @@ def do_folder(folder: Path, args):
                 target_nt_path,
                 args.minimum_length,
                 dupes_in_this_gene,
+                ref_stats,
                 args.debug,
                 args.majority,
                 args.majority_count,
