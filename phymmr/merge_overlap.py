@@ -379,10 +379,15 @@ def do_protein(
             elif len(taxons) == 1:
                 this_taxa = taxons[0]
             else:
-                for reference, _ in ref_stats:
-                    if reference in taxons:
-                        this_taxa = reference
-                        break
+                if ref_stats:
+                    # Grab most common
+                    for reference, _ in ref_stats:
+                        if reference in taxons:
+                            this_taxa = reference
+                            break
+                else:
+                    # No ref stats, grab first
+                    this_taxa = most_occuring[0]
 
             base_header = "|".join([this_gene, this_taxa, this_taxa_id, node])
 
@@ -429,10 +434,14 @@ def do_protein(
                         elif len(taxons_of_split) == 1:
                             comparison_taxa = taxons_of_split[0]
                         else:
-                            for reference, _ in ref_stats:
-                                if reference in taxons_of_split:
-                                    comparison_taxa = reference
-                                    break
+                            if ref_stats:
+                                for reference, _ in ref_stats:
+                                    if reference in taxons_of_split:
+                                        comparison_taxa = reference
+                                        break
+                            else:
+                                comparison_taxa = most_occuring[0]
+                            
 
                         # Grab the reference sequence for the mode taxon
                         if comparison_taxa:
