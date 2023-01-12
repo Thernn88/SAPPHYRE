@@ -2,6 +2,8 @@
 Outlier Check
 """
 from __future__ import annotations
+from collections import Counter
+import json
 
 import os
 from copy import deepcopy
@@ -12,7 +14,7 @@ from shutil import rmtree
 from statistics import mean
 import numpy as np
 import phymmr_tools as bd
-from Bio import AlignIO
+import wrap_rocks
 
 from .utils import parseFasta, printv, write2Line2Fasta
 from .timekeeper import TimeKeeper, KeeperMode
@@ -491,7 +493,6 @@ def main_process(
     aa_output = os.path.join(aa_output, filename.rstrip(".gz"))
 
     to_be_excluded = set()
-    outliers_csv_path = os.path.join(args_output, "logs", "outliers_" + name + ".csv")
     reference_sequences, candidate_sequences = split_sequences(
         file_input, to_be_excluded
     )
@@ -510,6 +511,11 @@ def main_process(
     candidate_headers = [
         header for header in candidate_sequences if header[0] == ">"
     ]
+
+    ref_count = Counter()
+    for header in candidate_headers:
+        ref = header.split("|")[1]
+        ref_count[ref] += 1
 
     raw_regulars, to_add, outliers = compare_means(
         reference_sequences,
@@ -537,15 +543,15 @@ def main_process(
         write2Line2Fasta(aa_output, regulars, compress)
 
     to_be_excluded = set()
+    logs = []
     if debug:
-        with open(outliers_csv_path, "w", encoding="UTF-8") as outliers_csv:
-            for outlier in outliers:
-                header, distance, ref_dist, grade, iqr = outlier
-                if grade == "Fail":
-                    to_be_excluded.add(header)
-                    header = header[1:]
-                result = [header, str(distance), str(ref_dist), str(iqr), grade]
-                outliers_csv.write(",".join(result) + "\n")
+        for outlier in outliers:
+            header, distance, ref_dist, grade, iqr = outlier
+            if grade == "Fail":
+                to_be_excluded.add(header)
+                header = header[1:]
+            result = [header, str(distance), str(ref_dist), str(iqr), grade]
+            logs.append(",".join(result) + "\n")
     else:
         for outlier in outliers:
             header, distance, ref_dist, grade, iqr = outlier
@@ -569,11 +575,7 @@ def main_process(
         non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
 
         write2Line2Fasta(nt_output_path, non_empty_lines, compress)
-
-
-def run_command(arg_tuple: tuple) -> None:
-    main_process(*arg_tuple)
-
+    return logs, ref_count
 
 def do_folder(folder, args):
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
@@ -619,50 +621,55 @@ def do_folder(folder, args):
                     args.col_cull_percent,
                     args.index_group_min_bp,
                     args.ref_gap_percent,
-                    args.ref_min_percent
+                    args.ref_min_percent,
 
                 )
             )
 
         with Pool(args.processes) as pool:
-            pool.map(run_command, arguments, chunksize=1)
+            process_data = pool.starmap(main_process, arguments, chunksize=1)
     else:
+        process_data = []
         for gene in file_inputs:
-            main_process(
-                gene,
-                nt_input,
-                output_path,
-                args.threshold,
-                args.no_references,
-                args.sort,
-                nt_output_path,
-                args.debug,
-                args.verbose,
-                args.compress,
-                args.col_cull_percent,
-                args.index_group_min_bp,
-                args.ref_gap_percent,
-                args.ref_min_percent
-            )
+            process_data.append(main_process(
+                                    gene,
+                                    nt_input,
+                                    output_path,
+                                    args.threshold,
+                                    args.no_references,
+                                    args.sort,
+                                    nt_output_path,
+                                    args.debug,
+                                    args.verbose,
+                                    args.compress,
+                                    args.col_cull_percent,
+                                    args.index_group_min_bp,
+                                    args.ref_gap_percent,
+                                    args.ref_min_percent
+                                ))
     if args.debug:
         log_folder_path = os.path.join(output_path, "logs")
         global_csv_path = os.path.join(log_folder_path, "outliers_global.csv")
+        global_csv = open(global_csv_path, "w", encoding="UTF-8")
+        global_csv.write("Gene,Header,Mean_Dist,Ref_Mean,IQR\n")
 
-        logs = [
-            x
-            for x in os.listdir(log_folder_path)
-            if "outliers_" in x and "global" not in x
-        ]
-        with open(global_csv_path, "w", encoding="UTF-8") as global_csv:
-            global_csv.write("Gene,Header,Mean_Dist,Ref_Mean,IQR\n")
-            for log in logs:
-                log_file_path = os.path.join(log_folder_path, log)
-                with open(log_file_path, encoding="UTF-8") as log_f:
-                    for line in log_f:
-                        if line.strip().split(",")[-1] == "Fail":
-                            if line[-1] != "\n":
-                                line = f"{line}\n"
-                            global_csv.write(line)
+    final_ref_count = Counter()
+    for log_data, gene_ref_count in process_data:
+        if args.debug:
+            for line in log_data:
+                if line.strip().split(",")[-1] == "Fail":
+                    if line[-1] != "\n":
+                        line = f"{line}\n"
+                    global_csv.write(line)
+        for ref, count in gene_ref_count.items():
+            final_ref_count[ref] += count
+
+    if args.debug:
+        global_csv.close()
+
+    rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
+    rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
+    rocksdb_db.put("getall:top_refs", json.dumps(final_ref_count.most_common()))
 
     printv(f"Done! Took {time_keeper.differential():.2f}s", args.verbose)
 
