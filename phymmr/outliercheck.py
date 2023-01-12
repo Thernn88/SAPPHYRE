@@ -311,7 +311,7 @@ def compare_means(
         for raw_i in range(len(first_candidate)):
             i = raw_i + index_pair[0]
             if i in rejected_indices:
-               continue
+                continue
             if first_candidate[raw_i] != "-":
                 bp_count += 1
             if bp_count >= index_group_min_bp:
@@ -503,7 +503,7 @@ def main_process(
     rejected_indices = set()
     ref_seqs = reference_sequences[1::2]
     for i in range(len(ref_seqs[0])):
-        percent_of_non_dash = len([ref[i] for ref in ref_seqs if ref[i] != '-']) /len(reference_sequences)
+        percent_of_non_dash = len([ref[i] for ref in ref_seqs if ref[i] != '-']) / len(ref_seqs)
         if percent_of_non_dash <= col_cull_percent:
             rejected_indices.add(i)
 
