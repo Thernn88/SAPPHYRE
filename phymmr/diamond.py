@@ -1,4 +1,3 @@
-
 import os
 from math import ceil
 from shutil import rmtree
@@ -48,9 +47,10 @@ class Hit:
         "score",
         "reftaxon",
         "full_seq",
-        "trim_seq"
+        "trim_seq",
+        "evalue"
     )
-    def __init__(self, header, gene, reftaxon, score, qstart, qend):
+    def __init__(self, header, gene, reftaxon, score, qstart, qend, evalue=None):
         self.header = header
         self.gene = gene
         self.reftaxon = reftaxon
@@ -59,6 +59,7 @@ class Hit:
         self.score = float(score)
         self.qstart = int(qstart)
         self.qend = int(qend)
+        self.evalue = float(evalue)
 
     def to_first_json(self):
         return  {
@@ -93,13 +94,12 @@ def get_difference(scoreA, scoreB):
     if scoreA == 0 or scoreB == 0:
         return 0
     return max(scoreA, scoreB) / min(scoreA, scoreB)
-
 def get_sequence_results(fp, target_to_taxon, head_to_seq):
     header_hits = {}
     header_maps_to = {}
     this_header = None
     for line in fp:
-        raw_header, ref_header, frame, evalue, score, qstart, qend, sstart, send, length, qlen = line.strip().split("\t")
+        raw_header, ref_header, frame, evalue, score, qstart, qend, sstart, send, length, qlen = line.split("\t")
         qstart = int(qstart)
         qend = int(qend)
         gene, reftaxon = target_to_taxon[ref_header]
@@ -108,17 +108,16 @@ def get_sequence_results(fp, target_to_taxon, head_to_seq):
         if int(frame) < 0:
             qstart = int(qlen) - (qstart-1)
             qend = int(qlen) - (qend-1)
-
-            header = raw_header + f"|[revcomp]:[translate({abs(int(frame))})]"
+            header = raw_header + f"|[revcomp]:[translate({frame[1:]})]"
         else:
-            header = raw_header + f"|[translate({abs(int(frame))})]"
+            header = raw_header + f"|[translate({frame})]"
 
         if not this_header: 
             this_header = raw_header
         else:
             if this_header != raw_header:
                 for hits in header_hits.values():
-                    yield sorted(hits, key = lambda x: x.score, reverse=True), sum(list(header_maps_to.values()))    
+                    yield sorted(hits, key=lambda x: x.score, reverse=True), sum(list(header_maps_to.values()))
 
                 header_hits = {}
                 header_maps_to = {}
@@ -126,7 +125,7 @@ def get_sequence_results(fp, target_to_taxon, head_to_seq):
 
         header_maps_to[gene] = 1
         
-        header_hits.setdefault(header, []).append(Hit(header, gene, reftaxon, score, qstart, qend))
+        header_hits.setdefault(header, []).append(Hit(header, gene, reftaxon, score, qstart, qend, evalue=evalue))
 def multi_filter(hits, debug):
     kick_happend = True
 
@@ -167,6 +166,21 @@ def multi_filter(hits, debug):
 
     passes = [i for i in hits if i]
     return passes, len(hits) - len(passes), log
+
+
+def hits_are_bad(hits: list, min_length=4, min_evalue=float("1e-6")) -> bool:
+    """
+    Checks a list of hits for minimum length and score. If below both, kick.
+    Returns True is checks fail, otherwise returns False.
+    """
+    if len(hits) > min_length:
+        return False
+    for hit in hits:
+        if hit.evalue > min_evalue:
+            return False
+    return True
+
+
 
 def run_process(args, input_path) -> None:
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
@@ -262,6 +276,9 @@ def run_process(args, input_path) -> None:
         for hits, requires_multi in get_sequence_results(fp, target_to_taxon, head_to_seq):
             if requires_multi and not args.skip_multi:
                 hits, this_kicks, log = multi_filter(hits, args.debug)
+                if hits_are_bad(hits):
+                    kicks += len(hits) + this_kicks
+                    continue
                 kicks += this_kicks
                 if args.debug:
                     global_log.extend(log)
