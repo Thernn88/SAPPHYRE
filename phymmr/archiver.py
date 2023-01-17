@@ -23,7 +23,6 @@ def unarchive_worker(file_to_unarchive, verbosity) -> None:
 
 
 def process_folder(args, superfolder_path):
-    tk = TimeKeeper(KeeperMode.DIRECT)
     if not args.specific_directories:
         directories_to_archive = [
             "mafft",

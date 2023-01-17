@@ -3,12 +3,10 @@ import json
 from pathlib import Path
 import os
 from tempfile import NamedTemporaryFile
-from Bio import SeqIO
 from multiprocessing.pool import Pool
 import sqlite3
-import argparse
 import wrap_rocks
-
+from Bio import SeqIO
 
 class Sequence:
     __slots__ = ("header", "aa_sequence", "nt_sequence", "taxa", "gene", "id")

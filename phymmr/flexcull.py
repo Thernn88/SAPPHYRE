@@ -9,7 +9,6 @@ import os
 from collections import namedtuple
 from multiprocessing.pool import Pool
 from shutil import rmtree
-from time import time
 
 from .utils import printv, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode

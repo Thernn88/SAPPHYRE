@@ -6,7 +6,6 @@ from multiprocessing.pool import ThreadPool
 from shutil import rmtree
 from tempfile import TemporaryDirectory, NamedTemporaryFile
 from threading import Lock
-from time import time
 
 from .utils import printv, gettempdir, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode

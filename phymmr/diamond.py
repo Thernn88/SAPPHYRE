@@ -1,15 +1,12 @@
 import os
-from math import ceil
 from shutil import rmtree
 import sys
 from tempfile import TemporaryDirectory, NamedTemporaryFile
 import json
-from multiprocessing.pool import Pool
 import wrap_rocks
 import phymmr_tools
 
-from . import rocky
-from .utils import printv, gettempdir, parseFasta
+from .utils import printv, gettempdir
 from .timekeeper import TimeKeeper, KeeperMode
 
 
@@ -101,7 +98,7 @@ def get_difference(scoreA, scoreB):
     return max(scoreA, scoreB) / min(scoreA, scoreB)
 
 
-def get_sequence_results(fp, target_to_taxon, head_to_seq):
+def get_sequence_results(fp, target_to_taxon):
     header_hits = {}
     header_maps_to = {}
     this_header = None
@@ -114,9 +111,6 @@ def get_sequence_results(fp, target_to_taxon, head_to_seq):
             score,
             qstart,
             qend,
-            sstart,
-            send,
-            length,
             qlen,
         ) = line.split("\t")
         qstart = int(qstart)
@@ -354,7 +348,7 @@ def run_process(args, input_path) -> None:
             )
             time_keeper.lap()  # Reset timer
             os.system(
-                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {args.evalue} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send length qlen {quiet} --top {top_amount} --max-hsps 0 -p {num_threads}"
+                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {args.evalue} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend qlen {quiet} --top {top_amount} --max-hsps 0 -p {num_threads}"
             )
             input_file.seek(0)
 
@@ -380,8 +374,7 @@ def run_process(args, input_path) -> None:
         printv("Skipping multi-filtering", args.verbose)
     with open(out_path) as fp:
         for hits, requires_multi in get_sequence_results(
-            fp, target_to_taxon, head_to_seq
-        ):
+            fp, target_to_taxon):
             if requires_multi and not args.skip_multi:
                 hits, this_kicks, log = multi_filter(hits, args.debug)
                 # filter hits by min length and evalue

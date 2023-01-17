@@ -11,7 +11,6 @@ from itertools import combinations
 from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import rmtree
-from statistics import mean
 import numpy as np
 import phymmr_tools as bd
 import wrap_rocks
@@ -202,8 +201,6 @@ def find_index_groups(references: list, candidates: list) -> tuple:
     the ref set after constraining to those indices.
     """
     candidate_dict = {}
-    min_start = None
-    max_end = None
     for i in range(0, len(candidates), 2):
         sequence = candidates[i + 1]
         raw_seq = sequence
@@ -229,7 +226,7 @@ def find_index_groups(references: list, candidates: list) -> tuple:
         raw_ref_dict[key] = ref_lines
         ref_lines, _ = constrain_data_lines(ref_lines, start, stop)
         reference_dict[key] = ref_lines
-    return reference_dict, candidate_dict, min_start, max_end
+    return reference_dict, candidate_dict
 
 
 def make_ref_mean(matrix: list, ignore_zeros=False) -> float:
@@ -513,7 +510,6 @@ def main_process(
 
     printv(f"Doing: {filename}", verbose, 2)
 
-    name = filename.split(".")[0]
     threshold = args_threshold / 100
     aa_output = os.path.join(args_output, "aa")
     aa_output = os.path.join(aa_output, filename.rstrip(".gz"))
@@ -524,7 +520,7 @@ def main_process(
     )
     refs_in_file = len(reference_sequences) / 2
 
-    ref_dict, candidates_dict, min_start, max_end = find_index_groups(
+    ref_dict, candidates_dict = find_index_groups(
         reference_sequences, candidate_sequences
     )
 

@@ -4,14 +4,10 @@ import json
 import math
 import os
 import shutil
-import sys
-import uuid
 from collections import namedtuple
 from multiprocessing.pool import Pool
-from time import time
-from typing import List, Optional
+from typing import Optional
 from tempfile import TemporaryDirectory, NamedTemporaryFile
-from concurrent.futures import ThreadPoolExecutor, wait
 
 import phymmr_tools
 import xxhash

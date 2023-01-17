@@ -1,7 +1,6 @@
 import csv
 import os
 from concurrent.futures import ThreadPoolExecutor
-from multiprocessing.pool import Pool
 from pathlib import Path
 from subprocess import Popen, PIPE
 

@@ -1,10 +1,9 @@
-import argparse
 import os
 from pathlib import Path
 from multiprocessing.pool import Pool
 from shutil import rmtree
 from dataclasses import dataclass
-from .utils import printv, gettempdir
+from .utils import printv
 from .timekeeper import TimeKeeper, KeeperMode
 
 AA_FOLDER = "aa_merged"

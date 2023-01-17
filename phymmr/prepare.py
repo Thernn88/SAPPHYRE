@@ -6,20 +6,17 @@ import re
 from itertools import count
 from pathlib import Path
 from queue import Queue
-from subprocess import call
 from shutil import rmtree
 from time import time
 from typing import Any, Callable, Dict, Generator, List, Tuple
-from shutil import rmtree
 
 import phymmr_tools
 import wrap_rocks
 import xxhash
 from tqdm import tqdm
 
-from .timekeeper import KeeperMode, TimeKeeper
 from .timekeeper import TimeKeeper, KeeperMode
-from .utils import printv, gettempdir, ConcurrentLogger, parseFasta, writeFasta
+from .utils import ConcurrentLogger, parseFasta, writeFasta
 
 ROCKSDB_FOLDER_NAME = "rocksdb"
 SEQUENCES_FOLDER_NAME = "sequences"
@@ -164,8 +161,7 @@ class SeqDeduplicator:
                     duplicates[transcript_mapped_to[seq_hash]] += 1
                     next(dupes)
                     continue
-                else:
-                    transcript_mapped_to[seq_hash] = header
+                transcript_mapped_to[seq_hash] = header
 
                 # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
                 # sequence so we don't have to rev-comp this unique sequence again
@@ -183,8 +179,7 @@ class SeqDeduplicator:
                     duplicates[transcript_mapped_to[rev_seq_hash]] += 1
                     next(dupes)
                     continue
-                else:
-                    transcript_mapped_to[rev_seq_hash] = header
+                transcript_mapped_to[rev_seq_hash] = header
 
                 seq_end = time()
                 dedup_time[0] += seq_end - seq_start
@@ -303,9 +298,7 @@ class DatabasePreparer:
         sequence_count = str(self.this_index)
 
         self.printv(
-            "Inserted {} sequences. Found {} duplicates.".format(
-                sequence_count, next(self.dupes)
-            ),
+            f"Inserted {sequence_count} sequences. Found {next(self.dupes)} duplicates.",
             self.verbose,
         )
 
