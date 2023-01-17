@@ -168,7 +168,7 @@ def multi_filter(hits, debug):
     return passes, len(hits) - len(passes), log
 
 
-def hits_are_bad(hits: list, debug: bool, min_length=4, min_evalue=float("1e-5")) -> bool:
+def hits_are_bad(hits: list, debug: bool, min_length=4, min_evalue=float("1e-6")) -> bool:
     """
     Checks a list of hits for minimum length and score. If below both, kick.
     Returns True is checks fail, otherwise returns False.
@@ -177,7 +177,7 @@ def hits_are_bad(hits: list, debug: bool, min_length=4, min_evalue=float("1e-5")
     if len(hits) > min_length:
         return False, evalue_log
     for hit in hits:
-        if hit.evalue > min_evalue:
+        if hit.evalue < min_evalue:
             return False, evalue_log
     if debug:
         evalue_log = [(
