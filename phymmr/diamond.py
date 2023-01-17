@@ -181,7 +181,7 @@ def hits_are_bad(hits: list, debug: bool, min_length=4, min_evalue=float("1e-5")
             return False, evalue_log
     if debug:
         evalue_log = [(
-                candidate.gene, candidate.header, candidate.reftaxon, candidate.score, candidate.qstart, candidate.qend,
+                candidate.gene, candidate.header, candidate.reftaxon, candidate.score, candidate.qstart, candidate.qend, str(candidate.evalue), str(len(hits)),
                 "Group kicked due to length and evalue") for candidate in hits]
     return True, evalue_log
 
@@ -273,6 +273,7 @@ def run_process(args, input_path) -> None:
     output = {}
     kicks = 0 
     passes = 0
+    evalue_kicks = 0
     global_log = []
     dupe_divy_headers = {}
     if args.skip_multi:
@@ -284,6 +285,7 @@ def run_process(args, input_path) -> None:
                 # filter hits by min length and evalue
                 hits_bad, evalue_Log = hits_are_bad(hits, args.debug)
                 if hits_bad:
+                    evalue_kicks += len(hits)
                     kicks += len(hits) + this_kicks
                     if args.debug:
                         global_log.extend(evalue_Log)
@@ -319,7 +321,7 @@ def run_process(args, input_path) -> None:
     if global_log:
         with open(os.path.join(input_path, "multi.log"), "w") as fp:
             fp.write("\n".join([",".join([str(i) for i in line]) for line in global_log]))
-
+    print(f'{evalue_kicks} evalue kicks')
     print(f"Took {time_keeper.lap():.2f}s for {kicks} kicks leaving {passes} results. Writing to DB")
             
     gene_dupe_count = {}
