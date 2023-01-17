@@ -304,7 +304,7 @@ def do_protein(
     protein: Literal["aa", "nt"],
     path,
     output_dir: Path,
-    initial_minimum_length,
+    initial_minimum_length,  # this one 2
     dupe_counts,
     ref_stats,
     already_calculated_splits,
@@ -592,13 +592,13 @@ def do_protein(
 
             new_merge = str(Seq("").join(new_merge))
 
-            if protein == "nt":
-                minimum_length = initial_minimum_length*3
-            else:
-                minimum_length = initial_minimum_length
-
-            if len(new_merge) - new_merge.count("-") < minimum_length:
-                continue
+            # if protein == "nt":
+            #     minimum_length = initial_minimum_length*3
+            # else:
+            #     minimum_length = initial_minimum_length
+            #
+            # if len(new_merge) - new_merge.count("-") < minimum_length:
+            #     continue
 
             gene_out.append((final_header,new_merge))
             if debug:
@@ -635,7 +635,7 @@ def do_gene(
     output_dir: Path,
     aa_path,
     nt_path,
-    minimum_length,
+    minimum_length,  # this one
     dupe_counts,
     ref_stats,
     debug,
