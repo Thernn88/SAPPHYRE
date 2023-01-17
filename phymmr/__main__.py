@@ -103,7 +103,7 @@ def subcmd_diamond(subparsers):
         "-e",
         "--evalue",
         type=float,
-        default=0.00001,
+        default=0.000005,
         help="Diamond blast evalue threshold.",
     )
     par.add_argument(
@@ -162,7 +162,7 @@ def subcmd_reporter(subparsers):
         help="Orthoset",
     )
     par.add_argument(
-        "-ml", "--min_length", type=int, default=30, help="Minimum Transcript Length"
+        "-ml", "--min_length", type=int, default=25, help="Minimum Transcript Length"
     )
     par.add_argument(
         "-ms", "--min_score", type=float, default=40, help="Minimum Hit Domain Score"
