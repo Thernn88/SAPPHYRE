@@ -168,17 +168,22 @@ def multi_filter(hits, debug):
     return passes, len(hits) - len(passes), log
 
 
-def hits_are_bad(hits: list, min_length=4, min_evalue=float("1e-5")) -> bool:
+def hits_are_bad(hits: list, debug: bool, min_length=4, min_evalue=float("1e-5")) -> bool:
     """
     Checks a list of hits for minimum length and score. If below both, kick.
     Returns True is checks fail, otherwise returns False.
     """
+    evalue_log = []
     if len(hits) > min_length:
-        return False
+        return False, evalue_log
     for hit in hits:
         if hit.evalue > min_evalue:
-            return False
-    return True
+            return False, evalue_log
+    if debug:
+        evalue_log = [(
+                candidate.gene, candidate.header, candidate.reftaxon, candidate.score, candidate.qstart, candidate.qend,
+                "Group kicked due to length and evalue") for candidate in hits]
+    return True, evalue_log
 
 
 
@@ -276,9 +281,14 @@ def run_process(args, input_path) -> None:
         for hits, requires_multi in get_sequence_results(fp, target_to_taxon, head_to_seq):
             if requires_multi and not args.skip_multi:
                 hits, this_kicks, log = multi_filter(hits, args.debug)
-                if hits_are_bad(hits):
+                # filter hits by min length and evalue
+                hits_bad, evalue_Log = hits_are_bad(hits, args.debug)
+                if hits_bad:
                     kicks += len(hits) + this_kicks
+                    if args.debug:
+                        global_log.extend(evalue_Log)
                     continue
+
                 kicks += this_kicks
                 if args.debug:
                     global_log.extend(log)
