@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# © 2022 GPLv3+ PhyMMR Team 
+# © 2022 GPLv3+ PhyMMR Team
 """Simple helper class to measure the time a piece of code takes to execute.
 
 It can either work with 2 time point, or a series of them.
@@ -108,6 +108,7 @@ class TimeKeeper:
 
 if __name__ == "__main__":
     from time import sleep
+
     tike = TimeKeeper(KeeperMode.DIRECT)
     tiks = 0
     print("Ticking to 10.")

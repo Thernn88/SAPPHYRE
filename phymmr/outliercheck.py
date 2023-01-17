@@ -18,6 +18,7 @@ import wrap_rocks
 
 from .utils import parseFasta, printv, write2Line2Fasta
 from .timekeeper import TimeKeeper, KeeperMode
+
 ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta", ".fa", ".gz", ".fq", ".fastq")
 
 
@@ -86,8 +87,8 @@ def folder_check(path: Path, debug: bool) -> None:
     aa_folder = Path(path, "aa")
     nt_folder = Path(path, "nt")
 
-    rmtree(aa_folder, ignore_errors = True)
-    rmtree(nt_folder, ignore_errors = True)
+    rmtree(aa_folder, ignore_errors=True)
+    rmtree(nt_folder, ignore_errors=True)
 
     aa_folder.mkdir(parents=True, exist_ok=True)
     nt_folder.mkdir(parents=True, exist_ok=True)
@@ -121,7 +122,7 @@ def split_sequences(path: str, excluded: set) -> tuple:
     end_of_references = False
     try:
         for header, sequence in parseFasta(path):
-            header = ">"+header
+            header = ">" + header
 
             if end_of_references is False:
                 # The reference header identifier is present in the header
@@ -138,10 +139,10 @@ def split_sequences(path: str, excluded: set) -> tuple:
                 candidates.append(header)
                 candidates.append(sequence)
     except ValueError:
-        print(f'Error in file: {path}')
+        print(f"Error in file: {path}")
         raise ValueError("Found sequences of different length")
     except TypeError:
-        print(f'Wrong IO type: {path}')
+        print(f"Wrong IO type: {path}")
         raise TypeError
     return references, candidates
 
@@ -230,6 +231,7 @@ def find_index_groups(references: list, candidates: list) -> tuple:
         reference_dict[key] = ref_lines
     return reference_dict, candidate_dict, min_start, max_end
 
+
 def make_ref_mean(matrix: list, ignore_zeros=False) -> float:
     """
     Iterates over a distance matrix and calculates the mean value of all found
@@ -262,9 +264,12 @@ def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
     result.append(0.0)
     return result
 
+
 # function now skips any index which was previously rejected
 # do the rejected indices make it to the distance calc? do I have to care at all?
-def has_minimum_data(seq: str, cand_rejected_indices: set, min_data: float, start_offset: int, gap="-"):
+def has_minimum_data(
+    seq: str, cand_rejected_indices: set, min_data: float, start_offset: int, gap="-"
+):
     data_chars = []
     for raw_i, character in enumerate(seq):
         i = raw_i + start_offset
@@ -322,7 +327,9 @@ def compare_means(
         if bp_count < index_group_min_bp:
             for candidate in candidates_at_index:
                 mean_distance = "No refs"
-                outliers.append((candidate.id, mean_distance, "N/A", "Fail", "min_cand_bp"))
+                outliers.append(
+                    (candidate.id, mean_distance, "N/A", "Fail", "min_cand_bp")
+                )
             continue
 
         # first we have to calculate the reference distances to make the ref mean
@@ -330,11 +337,14 @@ def compare_means(
         ref_alignments = [
             seq
             for seq in ref_records
-            if seq.id not in excluded_headers and has_minimum_data(seq.sequence, rejected_indices, ref_gap_percent, index_pair[0])
+            if seq.id not in excluded_headers
+            and has_minimum_data(
+                seq.sequence, rejected_indices, ref_gap_percent, index_pair[0]
+            )
         ]
 
         ref_distances = []
-        if len(ref_alignments)/refs_in_file < ref_min_percent:
+        if len(ref_alignments) / refs_in_file < ref_min_percent:
             has_ref_distances = False
         else:
             for seq1, seq2 in combinations(ref_alignments, 2):
@@ -348,19 +358,27 @@ def compare_means(
                 Q1 = np.nanpercentile(ref_distances, 25, method="midpoint")
             except IndexError:
                 Q1 = 0.0
-                print(f'Q1 Runtime Error caused by references in {ref_alignments[0].id.split("|")[0]}')
+                print(
+                    f'Q1 Runtime Error caused by references in {ref_alignments[0].id.split("|")[0]}'
+                )
             except RuntimeError:
                 Q1 = 0.0
-                print(f'Index Error caused by references in {ref_alignments[0].id.split("|")[0]}')
+                print(
+                    f'Index Error caused by references in {ref_alignments[0].id.split("|")[0]}'
+                )
             # Third quartile (Q3)
             try:
                 Q3 = np.nanpercentile(ref_distances, 75, method="midpoint")
             except IndexError:
                 Q3 = 0.0
-                print(f'Index Error caused by references in {ref_alignments[0].id.split("|")[0]}')
+                print(
+                    f'Index Error caused by references in {ref_alignments[0].id.split("|")[0]}'
+                )
             except RuntimeError:
                 Q3 = 0.0
-                print(f'Runtime Error caused by references in {ref_alignments[0].id.split("|")[0]}')
+                print(
+                    f'Runtime Error caused by references in {ref_alignments[0].id.split("|")[0]}'
+                )
             # Interquartile range (IQR)
             IQR = Q3 - Q1
             upper_bound = Q3 + (threshold * IQR) + 0.02
@@ -374,7 +392,9 @@ def compare_means(
             raw_sequence = candidate.raw
             grade = "Fail"
             if has_ref_distances:
-                candidate_distances = candidate_pairwise_calls(candidate, ref_alignments)
+                candidate_distances = candidate_pairwise_calls(
+                    candidate, ref_alignments
+                )
                 mean_distance = np.nanmean(candidate_distances)
 
                 if mean_distance <= upper_bound:
@@ -389,7 +409,7 @@ def compare_means(
         if sort == "cluster":
             intermediate_list = taxa_sort(intermediate_list)
             to_add_later.extend(intermediate_list)
-            
+
     return regulars, to_add_later, outliers
 
 
@@ -414,19 +434,24 @@ def delete_empty_columns(raw_fed_sequences: list, verbose: bool) -> tuple[list, 
                 if sequence[i] != "-":
                     positions_to_keep.append(i)
                     break
-                
+
         for i in range(0, len(raw_sequences), 2):
             try:
                 sequence = [raw_sequences[i + 1][x] for x in positions_to_keep]
                 result.append(raw_sequences[i])
             except IndexError:
-                printv(f"WARNING: Sequence length is not the same as other sequences: {raw_sequences[i]}", verbose, 0)
+                printv(
+                    f"WARNING: Sequence length is not the same as other sequences: {raw_sequences[i]}",
+                    verbose,
+                    0,
+                )
                 continue
             sequence = "".join(sequence)
 
             result.append(sequence)
 
     return result, positions_to_keep
+
 
 def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
     """
@@ -444,11 +469,12 @@ def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
 
         sequence = raw_sequences[i + 1]
 
-        sequence = [sequence[i*3:(i*3)+3] for i in positions_to_keep]
-        
+        sequence = [sequence[i * 3 : (i * 3) + 3] for i in positions_to_keep]
+
         result.append("".join(sequence))
-    
+
     return result
+
 
 def remove_excluded_sequences(lines: list, excluded: set) -> list:
     """
@@ -478,7 +504,7 @@ def main_process(
     col_cull_percent: float,
     index_group_min_bp: int,
     ref_gap_percent: float,
-    ref_min_percent: int
+    ref_min_percent: int,
 ):
     keep_refs = not args_references
 
@@ -496,21 +522,23 @@ def main_process(
     reference_sequences, candidate_sequences = split_sequences(
         file_input, to_be_excluded
     )
-    refs_in_file = len(reference_sequences)/2
+    refs_in_file = len(reference_sequences) / 2
 
-    ref_dict, candidates_dict, min_start, max_end = find_index_groups(reference_sequences, candidate_sequences)
+    ref_dict, candidates_dict, min_start, max_end = find_index_groups(
+        reference_sequences, candidate_sequences
+    )
 
     # calculate indices that have valid data columns
     rejected_indices = set()
     ref_seqs = reference_sequences[1::2]
     for i in range(len(ref_seqs[0])):
-        percent_of_non_dash = len([ref[i] for ref in ref_seqs if ref[i] != '-']) / len(ref_seqs)
+        percent_of_non_dash = len([ref[i] for ref in ref_seqs if ref[i] != "-"]) / len(
+            ref_seqs
+        )
         if percent_of_non_dash <= col_cull_percent:
             rejected_indices.add(i)
 
-    candidate_headers = [
-        header for header in candidate_sequences if header[0] == ">"
-    ]
+    candidate_headers = [header for header in candidate_sequences if header[0] == ">"]
 
     ref_count = Counter()
     for header in candidate_headers:
@@ -529,7 +557,7 @@ def main_process(
         rejected_indices,
         index_group_min_bp,
         ref_gap_percent,
-        ref_min_percent
+        ref_min_percent,
     )
     if sort == "original":
         to_add = original_sort(candidate_headers, to_add)
@@ -566,16 +594,15 @@ def main_process(
 
         lines = []
         for header, sequence in parseFasta(nt_input_path):
-            lines.append(">"+header)
+            lines.append(">" + header)
             lines.append(sequence)
 
-        non_empty_lines = remove_excluded_sequences(
-            lines, to_be_excluded
-        )
+        non_empty_lines = remove_excluded_sequences(lines, to_be_excluded)
         non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
 
         write2Line2Fasta(nt_output_path, non_empty_lines, compress)
     return logs, ref_count
+
 
 def do_folder(folder, args):
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
@@ -590,7 +617,11 @@ def do_folder(folder, args):
     printv(f"Processing: {os.path.basename(folder)}", args.verbose, 0)
 
     if not aa_input.exists():  # exit early
-        printv(f"WARNING: Can't find aa folder for taxa {folder}: '{wanted_aa_path}'. Aborting", args.verbose, 0)
+        printv(
+            f"WARNING: Can't find aa folder for taxa {folder}: '{wanted_aa_path}'. Aborting",
+            args.verbose,
+            0,
+        )
         return
 
     file_inputs = [
@@ -622,7 +653,6 @@ def do_folder(folder, args):
                     args.index_group_min_bp,
                     args.ref_gap_percent,
                     args.ref_min_percent,
-
                 )
             )
 
@@ -631,22 +661,24 @@ def do_folder(folder, args):
     else:
         process_data = []
         for gene in file_inputs:
-            process_data.append(main_process(
-                                    gene,
-                                    nt_input,
-                                    output_path,
-                                    args.threshold,
-                                    args.no_references,
-                                    args.sort,
-                                    nt_output_path,
-                                    args.debug,
-                                    args.verbose,
-                                    args.compress,
-                                    args.col_cull_percent,
-                                    args.index_group_min_bp,
-                                    args.ref_gap_percent,
-                                    args.ref_min_percent
-                                ))
+            process_data.append(
+                main_process(
+                    gene,
+                    nt_input,
+                    output_path,
+                    args.threshold,
+                    args.no_references,
+                    args.sort,
+                    nt_output_path,
+                    args.debug,
+                    args.verbose,
+                    args.compress,
+                    args.col_cull_percent,
+                    args.index_group_min_bp,
+                    args.ref_gap_percent,
+                    args.ref_min_percent,
+                )
+            )
     if args.debug:
         log_folder_path = os.path.join(output_path, "logs")
         global_csv_path = os.path.join(log_folder_path, "outliers_global.csv")
@@ -681,7 +713,7 @@ def main(args):
         return False
     for folder in args.INPUT:
         do_folder(Path(folder), args)
-    if len(args.INPUT) > 1 or not args.verbose :
+    if len(args.INPUT) > 1 or not args.verbose:
         printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
     return True
 

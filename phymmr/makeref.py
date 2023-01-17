@@ -9,15 +9,10 @@ import sqlite3
 import argparse
 import wrap_rocks
 
+
 class Sequence:
-    __slots__ = (
-        "header",
-        "aa_sequence",
-        "nt_sequence",
-        "taxa",
-        "gene",
-        "id"
-    )
+    __slots__ = ("header", "aa_sequence", "nt_sequence", "taxa", "gene", "id")
+
     def __init__(self, header, aa_sequence, nt_sequence, taxa, gene, id):
         self.header = header
         self.aa_sequence = aa_sequence
@@ -32,6 +27,7 @@ class Sequence:
     def __str__(self) -> str:
         return f">{self.header}\n{self.aa_sequence}\n"
 
+
 class Sequence_Set:
     def __init__(self, name):
         self.name = name
@@ -41,7 +37,7 @@ class Sequence_Set:
     def add_sequence(self, seq: Sequence) -> None:
         self.sequences.append(seq)
 
-    def add_aligned_sequences(self, gene:str, aligned_sequences: str) -> None:
+    def add_aligned_sequences(self, gene: str, aligned_sequences: str) -> None:
         self.aligned_sequences[gene] = aligned_sequences
 
     def get_aligned_sequences(self) -> str:
@@ -54,7 +50,7 @@ class Sequence_Set:
         data = {}
         for sequence in self.sequences:
             data[sequence.taxa] = 1
-        
+
         return list(data.keys())
 
     def get_genes(self) -> list:
@@ -64,10 +60,10 @@ class Sequence_Set:
         data = {}
         for sequence in self.sequences:
             data[sequence.gene] = 1
-    
+
         return list(data.keys())
 
-    def get_gene_dict(self, raw = False) -> dict:
+    def get_gene_dict(self, raw=False) -> dict:
         """
         Returns a dictionary with every gene and its corresponding sequences
         """
@@ -86,10 +82,14 @@ class Sequence_Set:
         """
         core_sequences = {}
         for sequence in self.sequences:
-            core_sequences.setdefault(sequence.gene, {}).setdefault("aa", []).append((sequence.taxa, sequence.header, sequence.aa_sequence))
+            core_sequences.setdefault(sequence.gene, {}).setdefault("aa", []).append(
+                (sequence.taxa, sequence.header, sequence.aa_sequence)
+            )
             core_sequences.setdefault(sequence.gene, {}).setdefault("nt", [])
             if sequence.nt_sequence:
-                core_sequences[sequence.gene]["nt"].append((sequence.taxa, sequence.header, sequence.nt_sequence))
+                core_sequences[sequence.gene]["nt"].append(
+                    (sequence.taxa, sequence.header, sequence.nt_sequence)
+                )
 
         return core_sequences
 
@@ -109,10 +109,12 @@ class Sequence_Set:
     def __str__(self):
         return "".join(map(str, self.sequences))
 
+
 def get_set_path(set_name):
     set_path = SETS_DIR.joinpath(set_name)
     set_path.mkdir(exist_ok=True)
     return set_path
+
 
 def generate_aln(set: Sequence_Set, align_method, threads, overwrite):
     sequences = set.get_gene_dict()
@@ -124,29 +126,40 @@ def generate_aln(set: Sequence_Set, align_method, threads, overwrite):
 
     arguments = []
     for gene, fasta in sequences.items():
-        arguments.append((gene, fasta, aln_path, align_method, overwrite,))
+        arguments.append(
+            (
+                gene,
+                fasta,
+                aln_path,
+                align_method,
+                overwrite,
+            )
+        )
 
     with Pool(threads) as pool:
         aligned_sequences_components = pool.starmap(aln_function, arguments)
 
     for gene, aligned_sequences in aligned_sequences_components:
         set.add_aligned_sequences(gene, aligned_sequences)
-        
+
+
 def aln_function(gene, content, aln_path, align_method, overwrite):
-    fa_file = aln_path.joinpath(gene+".fa")
-    aln_file = fa_file.with_suffix('.aln.fa')
+    fa_file = aln_path.joinpath(gene + ".fa")
+    aln_file = fa_file.with_suffix(".aln.fa")
     if not aln_file.exists() or overwrite:
         print(f"Generating: {gene}")
         with fa_file.open(mode="w") as fp:
             fp.writelines(content)
 
         if align_method == "clustal":
-            os.system(f"clustalo -i '{fa_file}' -o '{aln_file}'  --full --iter=5 --full-iter --threads=4 --force")#--verbose
+            os.system(
+                f"clustalo -i '{fa_file}' -o '{aln_file}'  --full --iter=5 --full-iter --threads=4 --force"
+            )  # --verbose
         else:
             os.system(f"mafft-linsi '{fa_file}' > '{aln_file}'")
-    
+
     aligned_result = []
-    file = aln_file if aln_file.exists() else fa_file # No alignment required
+    file = aln_file if aln_file.exists() else fa_file  # No alignment required
     for seq_record in SeqIO.parse(file, "fasta"):
         header = seq_record.description
         seq = str(seq_record.seq)
@@ -165,36 +178,52 @@ def generate_stockholm(set: Sequence_Set, threads, overwrite):
 
     arguments = []
     for gene, raw_fasta in aligned_sequences.items():
-        arguments.append((aln_path, gene, raw_fasta, overwrite, ))
-        
+        arguments.append(
+            (
+                aln_path,
+                gene,
+                raw_fasta,
+                overwrite,
+            )
+        )
+
     with Pool(threads) as pool:
         stockh_files = pool.starmap(f2s, arguments)
 
     return stockh_files
 
+
 def f2s(aln_path, gene, raw_fasta, overwrite):
-    stockh_file = aln_path.joinpath(gene+".stockh")
+    stockh_file = aln_path.joinpath(gene + ".stockh")
     if not stockh_file.exists() or overwrite:
         with stockh_file.open(mode="w") as fp:
             fp.write("# STOCKHOLM 1.0\n")
             for seq_tuple in raw_fasta:
-                header,aa_sequence = seq_tuple
+                header, aa_sequence = seq_tuple
                 fp.write(f"{header: <50}{aa_sequence}\n")
             fp.write("//")
-    return (gene,stockh_file)
+    return (gene, stockh_file)
 
-def generate_hmms(set:Sequence_Set, stockh_files, threads, overwrite):
+
+def generate_hmms(set: Sequence_Set, stockh_files, threads, overwrite):
     set_path = get_set_path(set.name)
     hmm_path = set_path.joinpath("hmms")
     hmm_path.mkdir(exist_ok=True)
     arguments = []
     for gene, stockh_file in stockh_files:
-        hmm_file = hmm_path.joinpath(gene).with_suffix('.hmm')
+        hmm_file = hmm_path.joinpath(gene).with_suffix(".hmm")
 
-        arguments.append((stockh_file, hmm_file, overwrite, ))
+        arguments.append(
+            (
+                stockh_file,
+                hmm_file,
+                overwrite,
+            )
+        )
 
     with Pool(threads) as pool:
         pool.starmap(hmmbuild, arguments)
+
 
 def hmmbuild(stockhfile: Path, hmm_file: Path, overwrite):
     hmmname = hmm_file.with_suffix("").name
@@ -202,25 +231,29 @@ def hmmbuild(stockhfile: Path, hmm_file: Path, overwrite):
     if not hmm_file.exists() or overwrite:
         os.system(f"hmmbuild -n '{hmmname}' '{hmm_file}' '{stockhfile}'")
 
+
 def make_diamonddb(set: Sequence_Set, overwrite, threads):
-    diamond_dir = Path(SETS_DIR, set.name, 'diamond')
+    diamond_dir = Path(SETS_DIR, set.name, "diamond")
     diamond_dir.mkdir(exist_ok=True)
 
-    db_file = diamond_dir.joinpath(set.name+".dmnd")
+    db_file = diamond_dir.joinpath(set.name + ".dmnd")
 
     diamond_db_data, target_to_taxon, taxon_to_sequences = set.get_diamond_data()
 
     if db_file.exists():
         if not overwrite:
             return target_to_taxon, taxon_to_sequences
-    
+
     with NamedTemporaryFile(mode="w") as fp:
         fp.write(diamond_db_data)
         fp.flush()
 
-        os.system(f"diamond makedb --in '{fp.name}' --db '{db_file}' --threads {threads}")
+        os.system(
+            f"diamond makedb --in '{fp.name}' --db '{db_file}' --threads {threads}"
+        )
 
     return target_to_taxon, taxon_to_sequences
+
 
 def main(args):
     global SETS_DIR
@@ -231,23 +264,23 @@ def main(args):
     if not args.set:
         print("Fatal: Missing set name (-s)")
 
-    set_name = args.set#"Ortholog_set_Mecopterida_v4"
-    input_file = args.INPUT#"Ortholog_set_Mecopterida_v4.sqlite"
-    align_method = args.align_method#"clustal"
-    threads = args.processes#2 
-    overwrite = args.overwrite#False
+    set_name = args.set  # "Ortholog_set_Mecopterida_v4"
+    input_file = args.INPUT  # "Ortholog_set_Mecopterida_v4.sqlite"
+    align_method = args.align_method  # "clustal"
+    threads = args.processes  # 2
+    overwrite = args.overwrite  # False
     this_set = Sequence_Set(set_name)
 
     index = count()
 
-    if input_file.split('.')[-1] == "fa":
+    if input_file.split(".")[-1] == "fa":
         for seq_record in SeqIO.parse(input_file, "fasta"):
-            header, data = seq_record.description.split(' ', 1)
+            header, data = seq_record.description.split(" ", 1)
             data = json.loads(data)
             seq = str(seq_record.seq)
             taxa = data["organism_name"].replace(" ", "_")
             gene = data["pub_og_id"]
-            
+
             this_set.add_sequence(Sequence(header, seq, "", taxa, gene, next(index)))
     else:
         input_path = Path(input_file)
@@ -258,15 +291,15 @@ def main(args):
         cursor = orthoset_db_con.cursor()
 
         nt_data = {}
-        query = f'''SELECT n.id, n.sequence FROM orthograph_ntseqs AS n'''
-            
+        query = f"""SELECT n.id, n.sequence FROM orthograph_ntseqs AS n"""
+
         rows = cursor.execute(query)
 
         nt_data = {id: seq for id, seq in rows}
 
         cursor = orthoset_db_con.cursor()
 
-        query = f'''SELECT p.nt_seq, t.name, o.ortholog_gene_id, a.header, a.sequence,  a.id
+        query = f"""SELECT p.nt_seq, t.name, o.ortholog_gene_id, a.header, a.sequence,  a.id
                 FROM orthograph_orthologs         AS o
             INNER JOIN orthograph_sequence_pairs    AS p
             ON o.sequence_pair = p.id
@@ -274,8 +307,8 @@ def main(args):
             ON a.id = p.aa_seq
             INNER JOIN orthograph_taxa AS t
             ON a.taxid = t.id
-           '''
-            
+           """
+
         rows = cursor.execute(query)
 
         for row in rows:
@@ -286,7 +319,7 @@ def main(args):
             this_set.add_sequence(Sequence(header, aa_seq, nt_seq, taxa, gene, id))
     #
 
-    print('Generating aln')
+    print("Generating aln")
     generate_aln(this_set, align_method, threads, overwrite)
 
     print("Creating HMM's Stockholm Alignment Files")

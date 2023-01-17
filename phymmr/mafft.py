@@ -25,13 +25,14 @@ def process_genefile(filewrite, fileread):
         else:
             cand_og_hashmap[header[:243]] = header
             filewrite.write(f">{header}\n")
-            filewrite.write(sequence+"\n")
-                
+            filewrite.write(sequence + "\n")
+
     return ref_og_hashmap, cand_og_hashmap
 
 
 CmdArgs = namedtuple(
-    "CmdArgs", ["string", "gene_file", "result_file", "gene", "lock", "verbose", "compress"]
+    "CmdArgs",
+    ["string", "gene_file", "result_file", "gene", "lock", "verbose", "compress"],
 )
 
 
@@ -42,13 +43,13 @@ def run_command(args: CmdArgs) -> None:
     else:
         printv(f"Doing: {args.gene}", args.verbose, 2)
 
-    with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(mode="w+", dir=tmpdir) as tmpfile:
+    with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(
+        mode="w+", dir=tmpdir
+    ) as tmpfile:
         ref_og_hashmap, cand_og_hashmap = process_genefile(tmpfile, args.gene_file)
         tmpfile.file.flush()
         command = args.string.format(
-            tmpfile=tmpfile.name,
-            resultfile=args.result_file,
-            gene=args.gene
+            tmpfile=tmpfile.name, resultfile=args.result_file, gene=args.gene
         )
         printv(f"Executing command: {command}", args.verbose, 2)
         os.system(command)
@@ -57,13 +58,14 @@ def run_command(args: CmdArgs) -> None:
     out = []
     for header, sequence in parseFasta(args.result_file):
         if "|" in header:
-            out.append((cand_og_hashmap[header[:243]],sequence))
+            out.append((cand_og_hashmap[header[:243]], sequence))
         else:
-            out.append((ref_og_hashmap[header.strip()],sequence))
+            out.append((ref_og_hashmap[header.strip()], sequence))
 
     if args.compress:
         os.unlink(args.result_file)
     writeFasta(args.result_file, out, args.compress)
+
 
 def do_folder(folder, args):
     printv(f"Processing: {os.path.basename(folder)}", args.verbose)
@@ -73,15 +75,19 @@ def do_folder(folder, args):
     if not os.path.exists(aa_path):
         printv(f"ERROR: Can't find aa ({aa_path}) folder. Abort", args.verbose, 0)
         return
-    rmtree(mafft_path, ignore_errors = True)
+    rmtree(mafft_path, ignore_errors=True)
     os.mkdir(mafft_path)
 
-    genes = [gene for gene in os.listdir(aa_path) if gene.split('.')[-1] in ["fa", "gz", "fq", "fastq", "fasta"]]
-    #genes.sort(key = lambda x : os.path.getsize(os.path.join(aa_path, x + ".aa.fa")), reverse=True)
+    genes = [
+        gene
+        for gene in os.listdir(aa_path)
+        if gene.split(".")[-1] in ["fa", "gz", "fq", "fastq", "fasta"]
+    ]
+    # genes.sort(key = lambda x : os.path.getsize(os.path.join(aa_path, x + ".aa.fa")), reverse=True)
     orthoset_path = os.path.join(args.orthoset_input, args.orthoset)
     aln_path = os.path.join(orthoset_path, ALN_FOLDER)
     if not os.path.exists(orthoset_path):
-        printv('ERROR: Orthoset path not found.', args.verbose, 0)
+        printv("ERROR: Orthoset path not found.", args.verbose, 0)
         return False
     if not os.path.exists(aln_path):
         printv("ERROR: Aln folder not found.", args.verbose, 0)
@@ -105,9 +111,11 @@ def do_folder(folder, args):
     for file in genes:
         gene = file.split(".")[0]
         gene_file = os.path.join(aa_path, file)
-        result_file = os.path.join(mafft_path, file.rstrip('.gz'))
+        result_file = os.path.join(mafft_path, file.rstrip(".gz"))
         func(
-            CmdArgs(command, gene_file, result_file, gene, lock, args.verbose, args.compress)
+            CmdArgs(
+                command, gene_file, result_file, gene, lock, args.verbose, args.compress
+            )
         )
 
     if args.processes > 1:
@@ -127,13 +135,11 @@ def main(args):
         success = do_folder(folder, args)
         if not success:
             return False
-    
+
     if len(args.INPUT) > 1 or not args.verbose:
         printv(f"Took {time_keeper.differential():.2f}s overall.", args.verbose, 0)
     return True
 
 
 if __name__ == "__main__":
-    raise Exception(
-        "Cannot be called directly, please use the module:\nphymmr mafft"
-    )
+    raise Exception("Cannot be called directly, please use the module:\nphymmr mafft")
