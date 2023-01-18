@@ -6,7 +6,7 @@ from multiprocessing.pool import ThreadPool
 from shutil import rmtree
 from tempfile import TemporaryDirectory, NamedTemporaryFile
 from threading import Lock
-from time import time
+# from time import time
 
 from .utils import printv, gettempdir, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
@@ -20,13 +20,16 @@ def process_genefile(filewrite, fileread):
     ref_og_hashmap = {}
     cand_og_hashmap = {}
     for header, sequence in parseFasta(fileread):
+
         if header.endswith("."):
             ref_og_hashmap[header.split("|")[2]] = header
         else:
-            cand_og_hashmap[header[:243]] = header
-            filewrite.write(f">{header}\n")
-            filewrite.write(sequence+"\n")
-                
+            try:
+                cand_og_hashmap[header[:242]] = header
+                filewrite.write(f">{header}\n")
+                filewrite.write(sequence+"\n")
+            except KeyError:
+                pass
     return ref_og_hashmap, cand_og_hashmap
 
 
@@ -57,7 +60,9 @@ def run_command(args: CmdArgs) -> None:
     out = []
     for header, sequence in parseFasta(args.result_file):
         if "|" in header:
-            out.append((cand_og_hashmap[header[:243]],sequence))
+
+            out.append((cand_og_hashmap[header[:242]],sequence))
+
         else:
             out.append((ref_og_hashmap[header.strip()],sequence))
 
