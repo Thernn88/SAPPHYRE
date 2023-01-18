@@ -149,8 +149,7 @@ class SeqDeduplicator:
             parent_seq = parent_seq.upper()
 
             for seq in N_trim(parent_seq, self.minimum_sequence_length, trim_times):
-                length = len(seq)
-                header = f"NODE_{this_index}_length_{length}"
+                header = f"NODE_{this_index}"
                 seq_hash = xxhash.xxh64(seq).hexdigest()
 
                 # Check for dupe, if so save how many times that sequence occured
