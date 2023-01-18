@@ -55,7 +55,7 @@ def truncate_taxa(header: str, extension=None) -> str:
     """
     # search for _# and _R#, where # is digits
     result = header
-    m = re.search(r'(_L001){0,1}(_R?\\d+){0,1}(_001){0,1}$', header)
+    m = re.search(r'(_L001){0,1}(_R?\d+){0,1}(_001){0,1}$', header)
     if m:
         tail_length = m.end() - m.start()
         result = result[0:-tail_length]
