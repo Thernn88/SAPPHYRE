@@ -23,12 +23,9 @@ def process_genefile(filewrite, fileread):
         if header.endswith("."):
             ref_og_hashmap[header.split("|")[2]] = header
         else:
-            try:
-                cand_og_hashmap[header[:242]] = header
-                filewrite.write(f">{header}\n")
-                filewrite.write(sequence+"\n")
-            except KeyError:
-                pass
+             cand_og_hashmap[header[:242]] = header
+             filewrite.write(f">{header}\n")
+             filewrite.write(sequence+"\n")
     return ref_og_hashmap, cand_og_hashmap
 
 
