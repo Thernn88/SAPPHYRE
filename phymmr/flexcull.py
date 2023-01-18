@@ -9,7 +9,6 @@ import os
 from collections import namedtuple
 from multiprocessing.pool import Pool
 from shutil import rmtree
-from time import time
 
 from .utils import printv, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
@@ -17,19 +16,20 @@ from .timekeeper import TimeKeeper, KeeperMode
 MainArgs = namedtuple(
     "MainArgs",
     [
-        'verbose',
-        'processes',
-        'debug',
-        'INPUT',
-        'output',
-        'amino_acid',
-        'nucleotide',
-        'matches',
-        'base_pair',
-        'match_percent',
-        'compress',
-    ]
+        "verbose",
+        "processes",
+        "debug",
+        "INPUT",
+        "output",
+        "amino_acid",
+        "nucleotide",
+        "matches",
+        "base_pair",
+        "match_percent",
+        "compress",
+    ],
 )
+
 
 def folder_check(output_target_path: str, input_target_path: str) -> str:
     """
@@ -53,7 +53,7 @@ def folder_check(output_target_path: str, input_target_path: str) -> str:
     target_tmp_path = "/run/shm"
 
     if not os.path.exists(target_tmp_path):
-        target_tmp_path = '/dev/shm'
+        target_tmp_path = "/dev/shm"
 
     if not os.path.exists(target_tmp_path):
         target_tmp_path = os.path.join(input_target_path, "tmp")
@@ -77,7 +77,7 @@ def parse_fasta(fasta_path: str) -> tuple:
     candidates = []
 
     for header, sequence in parseFasta(fasta_path):
-        if header[-1] == '.':  #Is reference
+        if header[-1] == ".":  # Is reference
             references.append((header, sequence))
 
         else:
@@ -117,7 +117,7 @@ def do_gene(
     for _, sequence in references:
         max_ref_length = max(max_ref_length, len(sequence))
     all_dashes_by_index = [True] * max_ref_length
-    
+
     for header, sequence in references:
         for i, char in enumerate(sequence):
             if i not in character_at_each_pos:
@@ -127,7 +127,7 @@ def do_gene(
             #  if char isnt a hyphen, this positions can't be all dashes
             if char != "-":
                 all_dashes_by_index[i] = False
-                
+
     log = []
 
     follow_through = {}
@@ -158,11 +158,14 @@ def do_gene(
             # Don't allow cull to point of all dashes
             if char == "-":
                 continue
-            
+
             all_dashes_at_position = all_dashes_by_index[i]
             if all_dashes_at_position:
                 continue
-            if not character_at_each_pos[i].count(char) / len(character_at_each_pos[i]) >= match_percent:
+            if (
+                not character_at_each_pos[i].count(char) / len(character_at_each_pos[i])
+                >= match_percent
+            ):
                 continue
 
             pass_all = True
@@ -175,7 +178,11 @@ def do_gene(
 
                 if sequence[i + match_i] == "-":
                     match_i += 1
-                elif not character_at_each_pos[i + match_i].count(sequence[i + match_i]) / len(character_at_each_pos[i + match_i]) >= match_percent:
+                elif (
+                    not character_at_each_pos[i + match_i].count(sequence[i + match_i])
+                    / len(character_at_each_pos[i + match_i])
+                    >= match_percent
+                ):
                     pass_all = False
                     break
                 else:
@@ -204,7 +211,11 @@ def do_gene(
                 if all_dashes_at_position:
                     # Don't allow cull to point of all dashes
                     continue
-                if not character_at_each_pos[i].count(char) / len(character_at_each_pos[i]) >= match_percent:
+                if (
+                    not character_at_each_pos[i].count(char)
+                    / len(character_at_each_pos[i])
+                    >= match_percent
+                ):
                     continue
 
                 pass_all = True
@@ -217,7 +228,13 @@ def do_gene(
 
                     if sequence[i - match_i] == "-":
                         match_i += 1
-                    elif not character_at_each_pos[i - match_i].count(sequence[i - match_i]) / len(character_at_each_pos[i - match_i]) >= match_percent:
+                    elif (
+                        not character_at_each_pos[i - match_i].count(
+                            sequence[i - match_i]
+                        )
+                        / len(character_at_each_pos[i - match_i])
+                        >= match_percent
+                    ):
                         pass_all = False
                         break
                     else:
@@ -225,14 +242,14 @@ def do_gene(
                         checks -= 1
 
                 if pass_all:
-                    cull_end = i + 1 #Inclusive
+                    cull_end = i + 1  # Inclusive
                     break
 
         if not kick:  # If also passed Cull End Calc. Finish
-            out_line = ("-" * cull_start) + sequence[cull_start:cull_end] 
-            
+            out_line = ("-" * cull_start) + sequence[cull_start:cull_end]
+
             characters_till_end = sequence_length - len(out_line)
-            out_line += ("-" * characters_till_end)
+            out_line += "-" * characters_till_end
 
             # The cull replaces data positions with dashes to maintain the same alignment
             # while removing the bad data
@@ -280,7 +297,7 @@ def do_gene(
                 log.append(gene + "," + header + ",Kicked,Zero Data After Cull,0,\n")
 
     if len(aa_out) == len(references):
-        return log #Only refs
+        return log  # Only refs
 
     writeFasta(aa_out_path, aa_out, compress)
 
@@ -292,7 +309,7 @@ def do_gene(
     nt_out_path = os.path.join(output, "nt", nt_file_name.rstrip(".gz"))
     nt_out = references.copy()
     for header, sequence in candidates:
-        #print(header)
+        # print(header)
         gene = header.split("|")[0]
 
         kick, cull_start, cull_end = follow_through[gene][header]
@@ -301,7 +318,9 @@ def do_gene(
             cull_start_adjusted = cull_start * 3
             cull_end_adjusted = cull_end * 3
 
-            out_line = ("-" * cull_start_adjusted) + sequence[cull_start_adjusted:cull_end_adjusted]
+            out_line = ("-" * cull_start_adjusted) + sequence[
+                cull_start_adjusted:cull_end_adjusted
+            ]
 
             characters_till_end = len(sequence) - len(out_line)
             out_line += (
@@ -314,6 +333,7 @@ def do_gene(
 
     return log
 
+
 def do_folder(folder, args: MainArgs):
     folder_time = TimeKeeper(KeeperMode.DIRECT)
     printv(f"Processing: {folder}", args.verbose, 0)
@@ -321,16 +341,19 @@ def do_folder(folder, args: MainArgs):
     nt_path = os.path.join(folder, args.nucleotide)
     output_path = os.path.join(folder, args.output)
     if not os.path.exists(aa_path) or not os.path.exists(nt_path):
-        printv(f"WARNING: Can't find aa ({aa_path}) and nt ({nt_path}) folders. Abort", args.verbose)
+        printv(
+            f"WARNING: Can't find aa ({aa_path}) and nt ({nt_path}) folders. Abort",
+            args.verbose,
+        )
         return
     folder_check(output_path, folder)
     file_inputs = [
         input_gene
         for input_gene in os.listdir(aa_path)
-        if input_gene.split('.')[-1] in ["fa", "gz", "fq", "fastq", "fasta"]
+        if input_gene.split(".")[-1] in ["fa", "gz", "fq", "fastq", "fasta"]
     ]
     file_inputs.sort(
-        key=lambda x : os.path.getsize(os.path.join(aa_path, x)), reverse=True
+        key=lambda x: os.path.getsize(os.path.join(aa_path, x)), reverse=True
     )
 
     if args.processes > 1:
@@ -347,25 +370,28 @@ def do_folder(folder, args: MainArgs):
                     args.debug,
                     args.base_pair,
                     args.verbose,
-                    args.compress
+                    args.compress,
                 )
             )
 
         with Pool(args.processes) as pool:
             log_components = pool.starmap(do_gene, arguments, chunksize=1)
     else:
-        log_components = [do_gene(
-                            aa_path,
-                            nt_path,
-                            output_path,
-                            args.matches,
-                            input_gene,
-                            args.match_percent,
-                            args.debug,
-                            args.base_pair,
-                            args.verbose,
-                            args.compress
-                        ) for input_gene in file_inputs]
+        log_components = [
+            do_gene(
+                aa_path,
+                nt_path,
+                output_path,
+                args.matches,
+                input_gene,
+                args.match_percent,
+                args.debug,
+                args.base_pair,
+                args.verbose,
+                args.compress,
+            )
+            for input_gene in file_inputs
+        ]
 
     if args.debug:
         log_global = []
@@ -374,12 +400,15 @@ def do_folder(folder, args: MainArgs):
             log_global.extend(component)
 
         log_global.sort()
-        log_global.insert(0, "Gene,Header,Cull To Start,Cull To End,Data Length,Data Removed\n")
-        log_out = os.path.join(output_path, 'Culls.csv')
-        with open(log_out,'w') as fp:
+        log_global.insert(
+            0, "Gene,Header,Cull To Start,Cull To End,Data Length,Data Removed\n"
+        )
+        log_out = os.path.join(output_path, "Culls.csv")
+        with open(log_out, "w") as fp:
             fp.writelines(log_global)
 
     printv(f"Done! Took {folder_time.differential():.2f}s", args.verbose)
+
 
 def main(args):
     global_time = TimeKeeper(KeeperMode.DIRECT)
@@ -397,4 +426,3 @@ if __name__ == "__main__":
     raise Exception(
         "Cannot be called directly, please use the module:\nphymmr FlexCull"
     )
-

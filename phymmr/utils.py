@@ -7,6 +7,7 @@ from threading import Thread
 from queue import Queue
 from typing import Generator
 
+
 class ConcurrentLogger(Thread):
     def __init__(self, inq: Queue):
         super().__init__(daemon=True)
@@ -14,12 +15,13 @@ class ConcurrentLogger(Thread):
 
     def run(self):
         while True:
-            message, verbosity, reqv = self.inq.get()            
+            message, verbosity, reqv = self.inq.get()
             printv(message, verbosity, reqv)
             self.inq.task_done()
 
     def __call__(self, msg: str, verbosity: int, reqv=1):
         self.inq.put((msg, verbosity, reqv))
+
 
 def printv(msg, verbosity, reqverb=1) -> None:
     if verbosity >= reqverb:
@@ -33,6 +35,7 @@ def gettempdir():
         return "/dev/shm"
     return None
 
+
 def get_records(fp, type: str) -> Generator[tuple[str, str], None, None]:
     """
     Iterates over every line of a file and returns each sequence record.
@@ -43,20 +46,38 @@ def get_records(fp, type: str) -> Generator[tuple[str, str], None, None]:
         for line in fp:
             if line.startswith(b">"):
                 if current_header:
-                    yield (current_header[1:].decode(), b"".join(this_sequence).replace(b" ",b"").replace(b"\r",b"").upper().decode())
+                    yield (
+                        current_header[1:].decode(),
+                        b"".join(this_sequence)
+                        .replace(b" ", b"")
+                        .replace(b"\r", b"")
+                        .upper()
+                        .decode(),
+                    )
                 this_sequence = []
                 current_header = line.rstrip()
                 continue
-            
+
             this_sequence.append(line.rstrip())
 
-        yield (current_header[1:].decode(), b"".join(this_sequence).replace(b" ",b"").replace(b"\r",b"").upper().decode())
+        yield (
+            current_header[1:].decode(),
+            b"".join(this_sequence)
+            .replace(b" ", b"")
+            .replace(b"\r", b"")
+            .upper()
+            .decode(),
+        )
 
     elif type == "fastq":
         for line in fp:
             if line.startswith(b"@") and b"length=" in line:
                 sequence = next(fp).rstrip()
-                yield (line[1:].rstrip().decode(), sequence.replace(b" ",b"").replace(b"\r",b"").upper().decode())
+                yield (
+                    line[1:].rstrip().decode(),
+                    sequence.replace(b" ", b"").replace(b"\r", b"").upper().decode(),
+                )
+
 
 def parseFasta(path: str) -> Generator[tuple[str, str], None, None]:
     """
@@ -72,7 +93,8 @@ def parseFasta(path: str) -> Generator[tuple[str, str], None, None]:
 
     return get_records(func(path, "rb"), type)
 
-def writeFasta(path: str, records: tuple[str, str], compress = False):
+
+def writeFasta(path: str, records: tuple[str, str], compress=False):
     """
     Writes sequence records to a Fasta format file.
     """
@@ -85,7 +107,8 @@ def writeFasta(path: str, records: tuple[str, str], compress = False):
         for header, sequence in records:
             fp.write(f">{header}\n{sequence}\n".encode())
 
-def write2Line2Fasta(path: str, records: list[str], compress = False):
+
+def write2Line2Fasta(path: str, records: list[str], compress=False):
     func = open
     if compress:
         path += ".gz"

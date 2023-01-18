@@ -60,6 +60,7 @@ def prepare(args):
         print()
         print(args.formathelp())
 
+
 def subcmd_diamond(subparsers):
     par = subparsers.add_parser(
         "Diamond",
@@ -69,28 +70,17 @@ def subcmd_diamond(subparsers):
         "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
     )
     par.add_argument(
-        "-ovw",
-        "--overwrite",
-        action="store_true",
-        help="Overwrite existing files."
+        "-ovw", "--overwrite", action="store_true", help="Overwrite existing files."
     )
+    par.add_argument("-d", "--debug", action="store_true", help="Enable debug out.")
     par.add_argument(
-        "-d",
-        "--debug",
-        action="store_true",
-        help="Enable debug out."
-    )
-    par.add_argument(
-        "-sm",
-        "--skip-multi",
-        action="store_true",
-        help="Skip multi filter."
+        "-sm", "--skip-multi", action="store_true", help="Skip multi filter."
     )
     par.add_argument(
         "-strict",
         "--strict-search-mode",
         action="store_true",
-        help="Only allow sequences that hit on every present taxa."
+        help="Only allow sequences that hit on every present taxa.",
     )
     par.add_argument(
         "-s",
@@ -136,6 +126,7 @@ def diamond(args):
     if not diamond.main(args):
         print()
         print(args.formathelp())
+
 
 def subcmd_reporter(subparsers):
     par = subparsers.add_parser(
@@ -230,7 +221,7 @@ def subcmd_outliercheck(subparsers):
         default=30,
         help="Minimum candidate overlap for candidate distance checks.",
     )
-    
+
     par.add_argument(
         "-ccp",
         "--col-cull-percent",
@@ -259,7 +250,7 @@ def subcmd_outliercheck(subparsers):
         default=20,
         help="Minimum bp for index group after column cull.",
     )
-    
+
     par.add_argument(
         "-d",
         "--debug",
@@ -497,7 +488,7 @@ def flexcull(args):
         args.matches,
         args.base_pair,
         args.match_percent,
-        args.compress
+        args.compress,
     )
     if not flexcull.main(flexargs):
         print()
@@ -650,8 +641,9 @@ def archiver(argsobj):
         print()
         print(argsobj.formathelp())
 
+
 def subcmd_makeref(sp):
-    par = sp.add_parser("Makeref", help="Reference set generation tool") # TODO add me
+    par = sp.add_parser("Makeref", help="Reference set generation tool")  # TODO add me
     par.add_argument(
         "INPUT",
         type=str,
@@ -665,31 +657,28 @@ def subcmd_makeref(sp):
         help="What alignment method to use.",
     )
     par.add_argument(
-        "-s",
-        "--set",
-        type=str,
-        help="Name of the current set being produced/modified."
+        "-s", "--set", type=str, help="Name of the current set being produced/modified."
     )
     par.add_argument(
         "-od",
         "--orthoset_dir",
         type=str,
         default="orthosets",
-        help="Path to the Orthosets dir."
+        help="Path to the Orthosets dir.",
     )
     par.add_argument(
-        "-ovw",
-        "--overwrite",
-        action="store_true",
-        help="Overwrite existing files."
+        "-ovw", "--overwrite", action="store_true", help="Overwrite existing files."
     )
     par.set_defaults(func=makeref, formathelp=par.format_help)
 
+
 def makeref(argsobj):
     from . import makeref
+
     if not makeref.main(argsobj):
         print()
         print(argsobj.formathelp())
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -709,7 +698,7 @@ if __name__ == "__main__":
         "--compress",
         action="store_true",
         default=False,
-        help="Output fasta files as compressed files using gzip"
+        help="Output fasta files as compressed files using gzip",
     )
     parser.add_argument(
         "-v",
@@ -746,7 +735,7 @@ if __name__ == "__main__":
     # Finalize
     subcmd_finalize(subparsers)
 
-    #Makeref
+    # Makeref
     subcmd_makeref(subparsers)
 
     args = parser.parse_args()
