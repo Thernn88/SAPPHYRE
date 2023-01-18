@@ -227,14 +227,14 @@ def multi_filter(hits, debug):
 
 
 def hits_are_bad(
-    hits: list, debug: bool, min_length=4, min_evalue=float("1e-6")
+    hits: list, debug: bool, min_size=4, min_evalue=float("1e-6")
 ) -> bool:
     """
-    Checks a list of hits for minimum length and score. If below both, kick.
+    Checks a list of hits for minimum size and score. If below both, kick.
     Returns True is checks fail, otherwise returns False.
     """
     evalue_log = []
-    if len(hits) > min_length:
+    if len(hits) > min_size:
         return False, evalue_log
     for hit in hits:
         if hit.evalue < min_evalue:
