@@ -17,8 +17,7 @@ def reciprocal_check(hits, strict, taxa_present):
     for hit in hits:
         if not strict:
             return hit
-        else:
-            first = hit
+        first = hit
 
         hit_on_taxas[hit.reftaxon] = 1  # Just need 1 hit
 

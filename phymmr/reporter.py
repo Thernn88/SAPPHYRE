@@ -1,21 +1,18 @@
 from __future__ import annotations
 
 import json
-import math
 import os
 import shutil
 from collections import namedtuple
 from multiprocessing.pool import Pool
 from typing import Optional
-from tempfile import TemporaryDirectory, NamedTemporaryFile
 
 import phymmr_tools
-import xxhash
 from Bio.Seq import Seq
 
 from . import rocky
 from .timekeeper import TimeKeeper, KeeperMode
-from .utils import printv, gettempdir, writeFasta
+from .utils import printv, writeFasta
 
 MainArgs = namedtuple(
     "MainArgs",

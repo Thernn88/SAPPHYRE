@@ -2,11 +2,11 @@
 # © 2022 GPLv3+ PhyMMR Team
 import gzip
 import os
-from Bio.SeqIO.QualityIO import FastqGeneralIterator
 from pathlib import Path
 from threading import Thread
 from queue import Queue
 from typing import Generator
+from Bio.SeqIO.QualityIO import FastqGeneralIterator
 
 class ConcurrentLogger(Thread):
     def __init__(self, inq: Queue):
@@ -31,7 +31,7 @@ def printv(msg, verbosity, reqverb=1) -> None:
 def gettempdir():
     if os.path.exists("/run/shm"):
         return "/run/shm"
-    elif os.path.exists("/dev/shm"):
+    if os.path.exists("/dev/shm"):
         return "/dev/shm"
     return None
 
