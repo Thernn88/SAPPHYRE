@@ -74,7 +74,7 @@ class Hit:
             self.s_ali_start = None
             self.s_ali_end = None
 
-        self.reftaxon = None
+        self.reftaxon = first_hit["ref_taxon"]
         self.est_sequence_complete = first_hit["full_seq"]
         self.f_est_sequence_trimmed = first_hit["trim_seq"]
         self.second_alignment = None
@@ -372,7 +372,7 @@ def print_core_sequences(orthoid, core_sequences):
     return result
 
 
-def print_unmerged_sequences(hits, orthoid, taxa_id):
+def print_unmerged_sequences(hits, orthoid, taxa_id, minimum_length):
     aa_result = []
     nt_result = []
     header_maps_to_where = {}
@@ -391,34 +391,11 @@ def print_unmerged_sequences(hits, orthoid, taxa_id):
             reference_frame,
         )
 
-        alignment = (
-            hit.first_alignment
-            if hit.mapped_to == hit.f_ref_taxon
-            else hit.second_alignment
-        )
-        extended_alignment = (
-            hit.first_extended_alignment
-            if hit.mapped_to == hit.f_ref_taxon
-            else hit.second_extended_alignment
-        )
-        nt_seq = (
-            extended_alignment.extended_orf_cdna_sequence
-            if extended_alignment
-            and extended_alignment.extended_orf_cdna_sequence is not None
-            else alignment.orf_cdna_sequence
-        )
+        nt_seq = hit.s_est_sequence_trimmed if len(hit.f_est_sequence_trimmed) < minimum_length else hit.f_est_sequence_trimmed
+        if len(nt_seq) < minimum_length:
+            continue
+        aa_seq = translate_cdna(nt_seq)
 
-        # De-interleave
-        nt_seq = nt_seq.replace("\n", "")
-
-        aa_seq = (
-            extended_alignment.extended_orf_aa_sequence
-            if extended_alignment
-            and extended_alignment.extended_orf_aa_sequence is not None
-            else alignment.orf_aa_sequence
-        )
-
-        aa_seq = aa_seq.replace("\n", "")
         unique_hit = base_header + aa_seq
         if unique_hit not in exact_hit_mapped_already:
 
@@ -518,126 +495,9 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
     t_gene_start = TimeKeeper(KeeperMode.DIRECT)
     printv(f"Exonerating and doing output for: {eargs.orthoid}", eargs.verbose, 2)
 
-    reftaxon_related_transcripts = {i: [] for i in eargs.reference_sequences.keys()}
-    for hit in eargs.list_of_hits:
-        this_reftaxon = hit.f_ref_taxon
-
-        reftaxon_related_transcripts[this_reftaxon].append(hit)
-
-        # If it doesn't align to closest ref fall back to this ref and try again
-        if hit.s_ref_taxon is not None:
-            reftaxon_related_transcripts[hit.s_ref_taxon].append(hit)
-
-    output_sequences = []
-    for taxon_hit, hits in reftaxon_related_transcripts.items():
-        hits_to_exonerate = [i for i in hits if i.mapped_to is None]
-        if len(hits_to_exonerate) == 0:
-            continue
-        query = eargs.reference_sequences[taxon_hit]
-        extended_results, results = get_multi_orf(
-            query, hits_to_exonerate, eargs.min_score, extend_orf, taxon_hit
-        )
-
-        extended_results = parse_results(extended_results)
-        results = parse_results(results)
-
-        for hit in hits_to_exonerate:
-            # We still want to see the first results before rerun
-            if taxon_hit == hit.s_ref_taxon:
-                hit.second_alignment = results.get(hit.header, None)
-                hit.second_extended_alignment = extended_results.get(hit.header, None)
-            else:
-                hit.attempted_first = True
-
-            if hit.header in results and taxon_hit == hit.f_ref_taxon:
-                matching_alignment = results.get(hit.header, None)
-                if matching_alignment.orf_cdna_sequence:
-
-                    hit.add_orf(matching_alignment)
-                    if extend_orf:
-                        if hit.header in extended_results:
-                            hit.first_extended_alignment = extended_results.get(
-                                hit.header, None
-                            )
-
-                            correct_extend = False
-                            if extended_orf_contains_original_orf(
-                                hit.first_extended_alignment, matching_alignment
-                            ):
-                                orf_overlap = overlap_by_orf(
-                                    hit, hit.first_extended_alignment
-                                )
-                                if orf_overlap >= orf_overlap_minimum:
-                                    correct_extend = True
-
-                            # Does not contain original orf or does not overlap enough.
-                            if not correct_extend:
-                                hit.first_extended_alignment = (
-                                    None  # Disabled due to potential bug
-                                )
-
-                    aa_seq = (
-                        hit.first_extended_alignment.extended_orf_aa_sequence
-                        if hit.first_extended_alignment
-                        and hit.first_extended_alignment.extended_orf_aa_sequence
-                        is not None
-                        else hit.first_alignment.orf_aa_sequence
-                    )
-                    if len(aa_seq) >= eargs.min_length:
-                        hit.reftaxon = hit.f_ref_taxon
-                        hit.mapped_to = hit.f_ref_taxon
-                        output_sequences.append(hit)
-                        continue
-
-            if (
-                hit.second_alignment is not None and hit.attempted_first
-            ):  # If first run doesn't pass check if rerun does
-                hit.ali_start = hit.s_ali_start
-                hit.ali_end = hit.s_ali_end
-                matching_alignment = hit.second_alignment
-                if matching_alignment:
-                    hit.add_orf(matching_alignment)
-
-                    if matching_alignment.orf_cdna_sequence:
-                        if extend_orf:
-                            if hit.second_extended_alignment:
-                                correct_extend = False
-                                if extended_orf_contains_original_orf(
-                                    hit.second_extended_alignment, matching_alignment
-                                ):
-                                    orf_overlap = overlap_by_orf(
-                                        hit, hit.second_extended_alignment
-                                    )
-                                    if orf_overlap >= orf_overlap_minimum:
-                                        correct_extend = True
-
-                                # Does not contain original orf or does not overlap enough.
-                                if not correct_extend:
-                                    hit.second_extended_alignment = (
-                                        None  # Disabled due to potential bug
-                                    )
-
-                        aa_seq = (
-                            hit.second_extended_alignment.extended_orf_aa_sequence
-                            if hit.second_extended_alignment
-                            and hit.second_extended_alignment.extended_orf_aa_sequence
-                            is not None
-                            else hit.second_alignment.orf_aa_sequence
-                        )
-
-                        if len(aa_seq) >= eargs.min_length:
-                            hit.reftaxon = hit.s_ref_taxon
-                            hit.mapped_to = hit.s_ref_taxon
-                            output_sequences.append(hit)
-                            continue
+    output_sequences = eargs.list_of_hits
 
     if len(output_sequences) > 0:
-        output_sequences = sorted(
-            output_sequences,
-            key=lambda d: d.second_alignment.orf_cdna_start_on_transcript
-            if d.mapped_to == d.s_ref_taxon
-            else d.first_alignment.orf_cdna_start_on_transcript,
-        )
         core_sequences, core_sequences_nt = get_ortholog_group(
             eargs.orthoid, rocky.get_rock("rocks_orthoset_db")
         )
@@ -646,6 +506,7 @@ def exonerate_gene_multi(eargs: ExonerateArgs):
             output_sequences,
             eargs.orthoid,
             eargs.taxa_id,
+            eargs.min_length
         )
 
         if aa_output:
