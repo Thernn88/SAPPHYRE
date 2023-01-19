@@ -74,7 +74,7 @@ def do_folder(folder, args):
     aa_path = os.path.join(folder, AA_FOLDER)
     if not os.path.exists(aa_path):
         printv(f"ERROR: Can't find aa ({aa_path}) folder. Abort", args.verbose, 0)
-        return
+        return False
     rmtree(mafft_path, ignore_errors=True)
     os.mkdir(mafft_path)
 
@@ -96,8 +96,7 @@ def do_folder(folder, args):
     if args.linsi:
         cmd = "mafft-linsi"
     command = (
-        "%s --anysymbol --quiet --addfragments {tmpfile} --thread -1 %s/{gene}.aln.fa > {resultfile}"
-        % (cmd, aln_path)
+        f"{cmd} --anysymbol --quiet --addfragments {{tmpfile}} --thread -1 {aln_path}/{{gene}}.aln.fa > {{resultfile}}"
     )
 
     if args.processes > 1:

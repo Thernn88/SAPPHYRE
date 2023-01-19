@@ -1,8 +1,9 @@
 import csv
 import os
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from subprocess import Popen, PIPE
+from subprocess import PIPE, Popen
 
 import requests
 from bs4 import BeautifulSoup
@@ -13,11 +14,15 @@ from phymmr.utils import printv
 def download_parallel(arguments):
     command, srr_acession, path_to_download, verbose = arguments
     printv(f"Download {srr_acession} to {path_to_download}...", verbose)
-    p = Popen(
+    
+    with Popen(
         f"{command} {srr_acession} -O {path_to_download}", shell=True, stdout=PIPE
-    )
-    print(p.stdout.read().decode())
-
+    ) as p: 
+        try: 
+            print(p.stdout.read().decode())
+        except UnicodeDecodeError:
+            print("ErrUnicode decoding error, UTF-8 charset does not contain the bytecode for gotten character")
+            sys.exit(1)
 
 def main(args):
     cmd = "fastq-dump --gzip"
@@ -40,9 +45,9 @@ def main(args):
                 acession = fields[0]
                 print(f"Searching for runs in SRA: {acession}")
 
-                url = "https://www.ncbi.nlm.nih.gov/sra/{}[accn]".format(acession)
+                url = f"https://www.ncbi.nlm.nih.gov/sra/{acession}[accn]"
                 # TODO handle network errors
-                req = requests.get(url)
+                req = requests.get(url, timeout=500)
                 soup = BeautifulSoup(req.content, "html.parser")
                 for srr_acession in (
                     a.contents[0]

@@ -41,11 +41,11 @@ def get_records(fp, type: str) -> Generator[tuple[str, str], None, None]:
     Iterates over every line of a file and returns each sequence record.
     Forces sequences to be uppercase.
     """
-    current_header = None
+    current_header = ""
     if type == "fasta":
         for line in fp:
             if line.startswith(b">"):
-                if current_header:
+                if len(current_header) > 0:
                     yield (
                         current_header[1:].decode(),
                         b"".join(this_sequence)

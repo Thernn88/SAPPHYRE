@@ -85,11 +85,11 @@ def main(args):
     aa_out_path.mkdir(parents=True, exist_ok=True)
     nt_out_path.mkdir(parents=True, exist_ok=True)
 
-    for gene in aa_out:
+    for gene in aa_out.items():
         gene_out = Path(aa_out_path, gene)
         writeFasta(gene_out, aa_out[gene], args.compress)
 
-    for gene in nt_out:
+    for gene in nt_out.items():
         gene_out = Path(nt_out_path, gene)
         writeFasta(gene_out, nt_out[gene], args.compress)
     printv(f"Finished took {main_keeper.differential():.2f}s overall.", args.verbose, 0)

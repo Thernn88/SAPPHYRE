@@ -322,7 +322,8 @@ def do_protein(
 
     gene_out = []
 
-    get_ref = lambda header: header.split("|")[1]
+    def get_ref(header: str) -> str:
+        return header.split("|")[1]
 
     # Grab all the reference sequences
     comparison_sequences = {}
@@ -334,7 +335,8 @@ def do_protein(
 
     # Grab all the candidate sequences and sort into taxa id based groups
     taxa_groups = {}
-    get_taxa = lambda header: header.split("|")[2]
+    def get_taxa(header: str) -> str:
+        return header.split("|")[2]
     for header, sequence in candidates:
         start, end = get_start_end(sequence)
         this_object = (start, end, header, sequence)
