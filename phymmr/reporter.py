@@ -26,8 +26,6 @@ MainArgs = namedtuple(
         "INPUT",
         "orthoset_input",
         "orthoset",
-        "min_length",
-        "min_score",
         "compress",
     ],
 )
@@ -37,116 +35,27 @@ class Hit:
     __slots__ = (
         "header",
         "gene",
-        "score",
         "ali_start",
         "ali_end",
-        "s_ali_start",
-        "s_ali_end",
-        "f_est_sequence_trimmed",
-        "s_est_sequence_trimmed",
-        "est_sequence_complete",
-        "reftaxon",
-        "f_ref_taxon",
-        "s_ref_taxon",
-        "second_alignment",
-        "second_extended_alignment",
-        "first_alignment",
-        "first_extended_alignment",
-        "mapped_to",
-        "attempted_first",
+        "est_sequence",
+        "ref_taxon",
     )
 
-    def __init__(self, first_hit, second_hit):
+    def __init__(self, first_hit, gene):
         self.header = first_hit["header"]
-        self.gene = first_hit["gene"]
+        self.gene = gene
         self.ali_start = int(first_hit["ali_start"])
         self.ali_end = int(first_hit["ali_end"])
+        self.ref_taxon = first_hit["ref_taxon"]
 
-        self.f_ref_taxon = first_hit["ref_taxon"]
-        if second_hit:
-            self.s_ref_taxon = second_hit["ref_taxon"]
-            self.s_est_sequence_trimmed = second_hit["trim_seq"]
-            self.s_ali_start = int(second_hit["ali_start"])
-            self.s_ali_end = int(second_hit["ali_end"])
+        self.est_sequence = first_hit["seq"]
+
+    def trim_to_coords(self):
+        if "revcomp" in self.header:
+            self.est_sequence = self.est_sequence[self.ali_end - 1 : self.ali_start]
+            self.est_sequence = phymmr_tools.bio_revcomp(self.est_sequence)
         else:
-            self.s_ref_taxon = None
-            self.s_est_sequence_trimmed = None
-            self.s_ali_start = None
-            self.s_ali_end = None
-
-        self.reftaxon = first_hit["ref_taxon"]
-        self.est_sequence_complete = first_hit["full_seq"]
-        self.f_est_sequence_trimmed = first_hit["trim_seq"]
-        self.second_alignment = None
-        self.second_extended_alignment = None
-        self.first_alignment = None
-        self.first_extended_alignment = None
-        self.mapped_to = None
-        self.attempted_first = False
-
-    def add_orf(self, exonerate_record):
-        exonerate_record.orf_cdna_start_on_transcript = (
-            exonerate_record.orf_cdna_start + self.ali_start - 3
-        )
-        exonerate_record.orf_cdna_end_on_transcript = (
-            exonerate_record.orf_cdna_end + self.ali_start - 3
-        )
-        exonerate_record.orf_aa_start_on_transcript = (
-            exonerate_record.orf_cdna_start + self.ali_start - 3
-        ) / 3
-        exonerate_record.orf_aa_end_on_transcript = (
-            exonerate_record.orf_cdna_end + self.ali_start - 3
-        ) / 3
-        if not self.first_alignment:
-            self.first_alignment = exonerate_record
-        else:
-            self.second_alignment = exonerate_record
-
-
-class NodeRecord:
-    def __init__(self, header, is_extension):
-        self.header = header
-        self.score = -math.inf
-        self.orf_cdna_start = None
-        self.orf_cdna_end = None
-        self.orf_cdna_sequence = ""
-        self.orf_aa_start = None
-        self.orf_aa_end = None
-        self.orf_aa_sequence = ""
-        self.is_extension = is_extension
-        self.orf_cdna_end_on_transcript = None
-        self.orf_aa_start_on_transcript = None
-        self.extended_orf_cdna_sequence = None
-        self.extended_orf_aa_sequence = None
-        self.extended_orf_cdna_start_on_transcript = None
-        self.extended_orf_cdna_end_on_transcript = None
-
-    def check_extend(self):
-        if self.is_extension:
-            self.extended_orf_cdna_sequence = self.orf_cdna_sequence
-            self.extended_orf_cdna_start = self.orf_cdna_start
-            self.extended_orf_cdna_end = self.orf_cdna_end
-            self.extended_orf_aa_sequence = self.orf_aa_sequence
-            self.extended_orf_aa_start = self.orf_aa_start
-            self.extended_orf_aa_end = self.orf_aa_end
-
-        self.extended_orf_aa_sequence = translate_cdna(self.extended_orf_cdna_sequence)
-
-    def __lt__(self, other):
-        return self.score < other.score
-
-    def __eq__(self, other):
-        return self.score == other.score
-
-    def __gt__(self, other):
-        return self.score > other.score
-
-    def __ge__(self, other):
-        return self.score >= other.score
-
-    def __le__(self, other):
-        return self.score <= other.score
-
+            self.est_sequence = self.est_sequence[self.ali_start - 1 : self.ali_end]
 
 def get_diamondhits(rocks_hits_db, list_of_wanted_orthoids):
     gene_based_results = {}
@@ -155,7 +64,7 @@ def get_diamondhits(rocks_hits_db, list_of_wanted_orthoids):
             continue
 
         gene_based_results[gene] = [
-            Hit(this_data["f"], this_data["s"])
+            Hit(this_data, gene)
             for this_data in json.loads(rocks_hits_db.get(f"gethits:{gene}"))
         ]
 
@@ -169,33 +78,6 @@ def get_reference_data(rocks_hits_db):
 
     return processed
 
-
-def reverse_complement(nt_seq):
-    return phymmr_tools.bio_revcomp(nt_seq)
-
-
-def get_nucleotide_transcript_for(header):
-    base_header = header.split("|")[0]
-    hash_of_header = xxhash.xxh64_hexdigest(base_header)
-
-    row_data = rocky.get_rock("rocks_nt_db").get(hash_of_header)
-    _, sequence = row_data.split("\n")
-
-    if "revcomp" in header:
-        return reverse_complement(sequence)
-    return sequence
-
-
-def crop_to_alignment(seq, hit):
-    start = hit.ali_start - 1  # Adjust for zero based number
-    end = hit.ali_end
-
-    return seq[start:end]
-
-
-### EXONERATE FUNCTIONS
-
-
 def translate_cdna(cdna_seq):
     if not cdna_seq:
         return None
@@ -204,151 +86,6 @@ def translate_cdna(cdna_seq):
         printv("WARNING: NT Sequence length is not divisable by 3", 0)
 
     return str(Seq(cdna_seq).translate())
-
-
-def parse_nodes(lines):
-    """
-    vulgar => cdna => aa => vulgar
-    0 => 1 => 2 => 0
-    """
-    nodes = dict()
-    this_node = None
-    state = 0
-    for line in lines:
-        line = line.strip()
-        if "vulgar:" in line:  # if vulgar line, start new record
-            raw_header = line.split(" . ")[1].split(" ")[0]
-            is_extension = False
-            if "extended_" in raw_header:
-                current_header = raw_header.replace("extended_", "")
-                is_extension = True
-            else:
-                current_header = raw_header
-
-            this_node = NodeRecord(current_header, is_extension)
-            this_node.score = int(line.split()[9])
-            previously_seen = nodes.get(raw_header, False)
-            if previously_seen:
-                nodes[raw_header] = max(this_node, previously_seen)
-            else:
-                nodes[raw_header] = this_node
-        elif ">cdna" in line:  # if cdna, set cdna values
-            fields = line.split()
-            this_node.orf_cdna_start = int(fields[1])
-            this_node.orf_cdna_end = int(fields[2])
-            state = 1
-        elif ">aa" in line:  # if aa in line, set aa values
-            fields = line.split()
-            this_node.orf_aa_start = int(fields[1])
-            this_node.orf_aa_end = int(fields[2])
-            state = 2
-        elif state == 1:  # if cdna data line
-            this_node.orf_cdna_sequence += line
-        elif state == 2:  # if aa data line
-            this_node.orf_aa_sequence += line
-    return nodes
-
-
-def parse_multi_results(handle):
-    extended_result = []
-    result = []
-    handle.seek(0)
-    nodes = parse_nodes(handle)
-    for node in nodes.values():
-        if node.is_extension:
-            node.check_extend()
-            extended_result.append((node))
-        else:
-            node.orf_aa_sequence = translate_cdna(node.orf_cdna_sequence)
-            result.append((node))
-    return extended_result, result
-
-
-def get_multi_orf(query, targets, score_threshold, include_extended, taxon):
-    exonerate_ryo = ">cdna %tcb %tce\n%tcs>aa %qab %qae\n%qas"
-    genetic_code = 1
-    exonerate_model = "protein2genome"
-
-    sequences = []
-    for i in targets:
-        this_sequence = (
-            i.f_est_sequence_trimmed
-            if taxon == i.f_ref_taxon
-            else i.s_est_sequence_trimmed
-        )
-        sequences.append((i.header, this_sequence))
-    if include_extended:
-        sequences.extend(
-            [("extended_" + i.header, i.est_sequence_complete) for i in targets]
-        )
-
-    with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(
-        dir=tmpdir, mode="w+"
-    ) as tmpquery, NamedTemporaryFile(
-        dir=tmpdir, mode="w+"
-    ) as tmptarget, NamedTemporaryFile(
-        dir=tmpdir, mode="r"
-    ) as tmpout:
-        tmptarget.write(
-            "".join([f">{header}\n{sequence}\n" for header, sequence in sequences])
-        )
-        tmptarget.flush()  # Flush the internal buffer so it can be read by exonerate
-
-        tmpquery.write(f">query\n{query}\n")
-        tmpquery.flush()  # Flush the internal buffer so it can be read by exonerate
-
-        exonerate_cmd = f"exonerate --score {score_threshold} --ryo '{exonerate_ryo}' --subopt 0 --geneticcode {genetic_code} --model '{exonerate_model}' --querytype 'protein' --targettype 'dna' --verbose 0 --showalignment 'no' --showvulgar 'yes' --query '{tmpquery.name}' --target '{tmptarget.name}' > {tmpout.name}"
-
-        os.system(exonerate_cmd)
-
-        extended_results, results = parse_multi_results(tmpout)
-
-    return extended_results, results
-
-
-def extended_orf_contains_original_orf(extended_alignment, alignment):
-    return (
-        extended_alignment.extended_orf_cdna_start
-        >= alignment.orf_cdna_end_on_transcript
-        or extended_alignment.extended_orf_cdna_end
-        >= alignment.orf_cdna_start_on_transcript
-    )
-
-
-def get_overlap_length(candidate, alignment):
-    if (
-        alignment.extended_orf_aa_start <= candidate.ali_end
-        and alignment.extended_orf_aa_end >= candidate.ali_start
-    ):
-        overlap_start = (
-            alignment.extended_orf_aa_start
-            if alignment.extended_orf_aa_start > candidate.ali_start
-            else candidate.ali_start
-        )
-        overlap_end = (
-            alignment.extended_orf_aa_end
-            if alignment.extended_orf_aa_end > candidate.ali_end
-            else candidate.ali_end
-        )
-
-        overlap_length = overlap_end - overlap_start
-        return overlap_length
-    return 0
-
-
-def overlap_by_orf(candidate, alignment):
-    orf_length = abs(alignment.extended_orf_aa_end - alignment.extended_orf_aa_start)
-    overlap_length = min(alignment.extended_orf_cdna_end, candidate.ali_end) - max(
-        alignment.extended_orf_cdna_start, candidate.ali_start
-    )
-    if overlap_length < 0:
-        overlap_length = 0
-
-    return overlap_length / orf_length
-
-
-### FIN
-
 
 def get_ortholog_group(orthoid, orthoset_db):
     core_seqs = json.loads(orthoset_db.get(f"getcore:{orthoid}"))
@@ -372,7 +109,7 @@ def print_core_sequences(orthoid, core_sequences):
     return result
 
 
-def print_unmerged_sequences(hits, orthoid, taxa_id, minimum_length):
+def print_unmerged_sequences(hits, orthoid, taxa_id):
     aa_result = []
     nt_result = []
     header_maps_to_where = {}
@@ -385,15 +122,13 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, minimum_length):
 
         header = format_candidate_header(
             orthoid,
-            hit.reftaxon,
+            hit.ref_taxon,
             taxa_id,
             base_header,
             reference_frame,
         )
 
-        nt_seq = hit.s_est_sequence_trimmed if len(hit.f_est_sequence_trimmed) < minimum_length else hit.f_est_sequence_trimmed
-        if len(nt_seq) < minimum_length:
-            continue
+        nt_seq = hit.est_sequence
         aa_seq = translate_cdna(nt_seq)
 
         unique_hit = base_header + aa_seq
@@ -425,7 +160,7 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, minimum_length):
                     old_header = base_header
                     header = format_candidate_header(
                         orthoid,
-                        hit.reftaxon,
+                        hit.ref_taxon,
                         taxa_id,
                         base_header + f"_{header_mapped_x_times[old_header]}",
                         reference_frame,
@@ -447,83 +182,54 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, minimum_length):
     return aa_result, nt_result
 
 
-def get_difference(score_a, score_b):
-    """
-    Returns decimal difference of two scores
-    """
 
-    try:
-        if score_a / score_b > 1:
-            return score_a / score_b
-        if score_b / score_a > 1:
-            return score_b / score_a
-        if score_a == score_b:
-            return 1
-    except ZeroDivisionError:
-        return 0
-
-
-def parse_results(results):
-    res = {}
-    for result in results:
-        if result.header not in res:
-            res[result.header] = result
-
-    return res
-
-
-ExonerateArgs = namedtuple(
-    "ExonerateArgs",
+OutputArgs = namedtuple(
+    "OutputArgs",
     [
-        "orthoid",
+        "gene",
         "list_of_hits",
-        "min_score",
         "aa_out_path",
-        "min_length",
         "taxa_id",
         "nt_out_path",
-        "tmp_path",
         "verbose",
         "reference_sequences",
         "compress",
     ],
 )
 
-
-def exonerate_gene_multi(eargs: ExonerateArgs):
-
+def trim_and_write(oargs: OutputArgs):
     t_gene_start = TimeKeeper(KeeperMode.DIRECT)
-    printv(f"Exonerating and doing output for: {eargs.orthoid}", eargs.verbose, 2)
+    printv(f"Doing output for: {oargs.gene}", oargs.verbose, 2)
 
-    output_sequences = eargs.list_of_hits
+    for sequence in oargs.list_of_hits:
+        sequence.trim_to_coords()
 
-    if len(output_sequences) > 0:
-        core_sequences, core_sequences_nt = get_ortholog_group(
-            eargs.orthoid, rocky.get_rock("rocks_orthoset_db")
-        )
-        this_aa_path = os.path.join(eargs.aa_out_path, eargs.orthoid + ".aa.fa")
-        aa_output, nt_output = print_unmerged_sequences(
-            output_sequences,
-            eargs.orthoid,
-            eargs.taxa_id,
-            eargs.min_length
-        )
+    core_sequences, core_sequences_nt = get_ortholog_group(
+        oargs.gene, rocky.get_rock("rocks_orthoset_db")
+    )
 
-        if aa_output:
-            aa_core_sequences = print_core_sequences(eargs.orthoid, core_sequences)
-            writeFasta(this_aa_path, aa_core_sequences + aa_output, eargs.compress)
+    this_aa_path = os.path.join(oargs.aa_out_path, oargs.gene + ".aa.fa")
+    aa_output, nt_output = print_unmerged_sequences(
+        oargs.list_of_hits,
+        oargs.gene,
+        oargs.taxa_id,
+    )
 
-            this_nt_path = os.path.join(eargs.nt_out_path, eargs.orthoid + ".nt.fa")
+    if aa_output:
+        aa_core_sequences = print_core_sequences(oargs.gene, core_sequences)
+        writeFasta(this_aa_path, aa_core_sequences + aa_output, oargs.compress)
 
-            nt_core_sequences = print_core_sequences(eargs.orthoid, core_sequences_nt)
-            writeFasta(this_nt_path, nt_core_sequences + nt_output, eargs.compress)
+        this_nt_path = os.path.join(oargs.nt_out_path, oargs.gene + ".nt.fa")
+
+        nt_core_sequences = print_core_sequences(oargs.gene, core_sequences_nt)
+        writeFasta(this_nt_path, nt_core_sequences + nt_output, oargs.compress)
 
     printv(
-        f"{eargs.orthoid} took {t_gene_start.differential():.2f}s. Had {len(output_sequences)} sequences",
-        eargs.verbose,
+        f"{oargs.gene} took {t_gene_start.differential():.2f}s. Had {len(aa_output)} sequences",
+        oargs.verbose,
         2,
     )
-    return len(output_sequences)
+    return len(aa_output)
 
 
 def do_taxa(path, taxa_id, args):
@@ -584,21 +290,18 @@ def do_taxa(path, taxa_id, args):
         args.verbose,
     )
 
-    arguments: list[Optional[ExonerateArgs]] = []
+    arguments: list[Optional[OutputArgs]] = []
     for orthoid in sorted(
         transcripts_mapped_to, key=lambda k: len(transcripts_mapped_to[k]), reverse=True
     ):
         arguments.append(
             (
-                ExonerateArgs(
+                OutputArgs(
                     orthoid,
                     transcripts_mapped_to[orthoid],
-                    args.min_score,
                     aa_out_path,
-                    args.min_length,
                     taxa_id,
                     nt_out_path,
-                    tmp_path,
                     args.verbose,
                     gene_reference_data[orthoid],
                     args.compress,
@@ -610,10 +313,10 @@ def do_taxa(path, taxa_id, args):
     if num_threads > 1:
         if num_threads > 1:
             with Pool(num_threads) as pool:
-                recovered = pool.starmap(exonerate_gene_multi, arguments, chunksize=1)
+                recovered = pool.starmap(trim_and_write, arguments, chunksize=1)
 
     else:
-        recovered = [exonerate_gene_multi(i[0]) for i in arguments]
+        recovered = [trim_and_write(i[0]) for i in arguments]
 
     printv(
         f"Done! Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s and found {sum(recovered)} sequences.",
@@ -622,10 +325,7 @@ def do_taxa(path, taxa_id, args):
 
 
 # TODO Make these argparse variables
-strict_search_mode = False
 orthoid_list_file = None
-extend_orf = True
-orf_overlap_minimum = 0.15
 clear_output = True
 
 header_seperator = "|"

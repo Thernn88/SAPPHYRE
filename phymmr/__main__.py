@@ -111,11 +111,17 @@ def subcmd_diamond(subparsers):
         help="Path to directory of Orthosets folder",
     )
     par.add_argument(
-        "-o",
+        "-os",
         "--orthoset",
         type=str,
         default="Ortholog_set_Mecopterida_v4",
         help="Orthoset",
+    )
+    par.add_argument(
+        "-ml", "--min_length", type=int, default=25, help="Minimum Transcript Length"
+    )
+    par.add_argument(
+        "-ms", "--min_score", type=float, default=40, help="Minimum Hit Domain Score"
     )
     par.set_defaults(func=diamond, formathelp=par.format_help)
 
@@ -146,17 +152,11 @@ def subcmd_reporter(subparsers):
         help="Path to directory of Orthosets folder",
     )
     par.add_argument(
-        "-o",
+        "-os",
         "--orthoset",
         type=str,
         default="Ortholog_set_Mecopterida_v4",
         help="Orthoset",
-    )
-    par.add_argument(
-        "-ml", "--min_length", type=int, default=25, help="Minimum Transcript Length"
-    )
-    par.add_argument(
-        "-ms", "--min_score", type=float, default=40, help="Minimum Hit Domain Score"
     )
     par.add_argument("-d", "--debug", type=int, default=0, help="Verbose debug.")
     par.set_defaults(func=reporter, formathelp=par.format_help)
@@ -172,8 +172,6 @@ def reporter(args):
         args.INPUT,
         args.orthoset_input,
         args.orthoset,
-        args.min_length,
-        args.min_score,
         args.compress,
     )
     if not reporter.main(mainargs):
@@ -385,7 +383,7 @@ def subcmd_mafft(subparsers):
         help="Path to directory of Orthosets folder",
     )
     par.add_argument(
-        "-o",
+        "-os",
         "--orthoset",
         type=str,
         default="Ortholog_set_Mecopterida_v4",

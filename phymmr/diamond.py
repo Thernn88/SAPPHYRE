@@ -12,27 +12,22 @@ from .timekeeper import TimeKeeper, KeeperMode
 
 def reciprocal_check(hits, strict, taxa_present):
     first = None
-    second = None
     hit_on_taxas = {i: 0 for i in taxa_present}
 
     for hit in hits:
-        if not first:
+        if not strict:
+            return hit
+        else:
             first = hit
-        elif not second:
-            if first.reftaxon != hit.reftaxon and first.gene == hit.gene:
-                second = hit
 
         hit_on_taxas[hit.reftaxon] = 1  # Just need 1 hit
 
         if strict:
             if all(hit_on_taxas.values()):
-                return first, second
-        else:
-            if first and second:
-                return first, second  # Return early if we have 2 hits
+                return first
 
     if any(hit_on_taxas.values()):
-        return first, second
+        return first
 
     return None, None
 
@@ -45,8 +40,7 @@ class Hit:
         "gene",
         "score",
         "reftaxon",
-        "full_seq",
-        "trim_seq",
+        "seq",
         "evalue",
     )
 
@@ -54,27 +48,16 @@ class Hit:
         self.header = header
         self.gene = gene
         self.reftaxon = reftaxon
-        self.full_seq = None
-        self.trim_seq = None
+        self.seq = None
         self.score = float(score)
         self.qstart = int(qstart)
         self.qend = int(qend)
         self.evalue = float(evalue)
 
-    def to_first_json(self):
+    def to_json(self):
         return {
             "header": self.header,
-            "gene": self.gene,
-            "full_seq": self.full_seq,
-            "trim_seq": self.trim_seq,
-            "ref_taxon": self.reftaxon,
-            "ali_start": self.qstart,
-            "ali_end": self.qend,
-        }
-
-    def to_second_json(self):
-        return {
-            "trim_seq": self.trim_seq,
+            "seq": self.seq,
             "ref_taxon": self.reftaxon,
             "ali_start": self.qstart,
             "ali_end": self.qend,
@@ -98,7 +81,7 @@ def get_difference(scoreA, scoreB):
     return max(scoreA, scoreB) / min(scoreA, scoreB)
 
 
-def get_sequence_results(fp, target_to_taxon):
+def get_sequence_results(fp, target_to_taxon, min_length, min_score):
     header_hits = {}
     header_maps_to = {}
     this_header = None
@@ -111,18 +94,23 @@ def get_sequence_results(fp, target_to_taxon):
             score,
             qstart,
             qend,
-            qlen,
         ) = line.split("\t")
         qstart = int(qstart)
         qend = int(qend)
         gene, reftaxon = target_to_taxon[ref_header]
 
         if int(frame) < 0:
-            qstart = int(qlen) - (qstart - 1)
-            qend = int(qlen) - (qend - 1)
+            length = qstart - qend + 1
             header = raw_header + f"|[revcomp]:[translate({frame[1:]})]"
         else:
+            length = qend - qstart + 1
             header = raw_header + f"|[translate({frame})]"
+
+        if length < min_length:
+            continue
+
+        if float(score) < min_score:
+            continue
 
         if not this_header:
             this_header = raw_header
@@ -348,7 +336,7 @@ def run_process(args, input_path) -> None:
             )
             time_keeper.lap()  # Reset timer
             os.system(
-                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {args.evalue} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend qlen {quiet} --top {top_amount} --max-hsps 0 -p {num_threads}"
+                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {args.evalue} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend {quiet} --top {top_amount} --max-hsps 0 -p {num_threads}"
             )
             input_file.seek(0)
 
@@ -374,7 +362,11 @@ def run_process(args, input_path) -> None:
         printv("Skipping multi-filtering", args.verbose)
     with open(out_path) as fp:
         for hits, requires_multi in get_sequence_results(
-            fp, target_to_taxon):
+                fp,
+                target_to_taxon,
+                args.min_length,
+                args.min_score
+            ):
             if requires_multi and not args.skip_multi:
                 hits, this_kicks, log = multi_filter(hits, args.debug)
                 # filter hits by min length and evalue
@@ -391,27 +383,18 @@ def run_process(args, input_path) -> None:
                     global_log.extend(log)
 
             passes += len(hits)
-            first_hit, rerun_hit = reciprocal_check(
+            best_hit = reciprocal_check(
                 hits, strict_search_mode, reference_taxa
             )
 
-            if first_hit:
-                base_header = first_hit.header.split("|")[0]
-                dupe_divy_headers.setdefault(first_hit.gene, {})[base_header] = 1
+            if best_hit:
+                base_header = best_hit.header.split("|")[0]
+                dupe_divy_headers.setdefault(best_hit.gene, {})[base_header] = 1
 
-                nuc_seq = head_to_seq[base_header]
-                if "revcomp" in first_hit.header:
-                    nuc_seq = phymmr_tools.bio_revcomp(nuc_seq)
+                best_hit.seq = head_to_seq[base_header]
 
-                first_hit.full_seq = nuc_seq
-
-                first_hit.trim_seq = nuc_seq[first_hit.qstart - 1 : first_hit.qend]
-                if rerun_hit:
-                    rerun_hit.trim_seq = nuc_seq[rerun_hit.qstart - 1 : rerun_hit.qend]
-
-                rerun_hit = rerun_hit.to_second_json() if rerun_hit else None
-                output.setdefault(first_hit.gene, []).append(
-                    {"f": first_hit.to_first_json(), "s": rerun_hit}
+                output.setdefault(best_hit.gene, []).append(
+                    best_hit.to_json()
                 )
 
     for gene, hits in output.items():
