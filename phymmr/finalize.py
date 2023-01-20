@@ -318,11 +318,11 @@ def process_folder(args, input_path):
         for gene in sequences:
             this_sequences = sequences[gene]
             for taxa in taxa_global:
-                if taxa not in this_sequences.keys():
+                if taxa not in this_sequences:
                     seq = "-" * gene_lengths[gene]
                 else:
                     seq = this_sequences[taxa]
-                if taxa not in taxa_sequences_global.keys():
+                if taxa not in taxa_sequences_global:
                     start = 1
                     taxa_sequences_global[taxa] = seq
                     end = len(taxa_sequences_global[taxa])

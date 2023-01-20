@@ -4,7 +4,6 @@ import sys
 from tempfile import TemporaryDirectory, NamedTemporaryFile
 import json
 import wrap_rocks
-import phymmr_tools
 
 from .utils import printv, gettempdir
 from .timekeeper import TimeKeeper, KeeperMode

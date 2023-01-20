@@ -311,13 +311,6 @@ def subcmd_mergeoverlap(subparsers):
         help="Enable debug. When enabled displays each component of merged headers.",
     )
     par.add_argument(
-        "-ml",
-        "--minimum_length",
-        type=int,
-        default=30,
-        help="Minimum after merge bp length.",
-    )
-    par.add_argument(
         "-io",
         "--ignore_overlap_chunks",
         action="store_true",

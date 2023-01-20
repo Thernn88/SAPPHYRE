@@ -308,7 +308,6 @@ def do_protein(
     protein: Literal["aa", "nt"],
     path,
     output_dir: Path,
-    initial_minimum_length,  # this one 2
     dupe_counts,
     ref_stats,
     already_calculated_splits,
@@ -607,14 +606,6 @@ def do_protein(
                                     ] = mode_cand_raw_character
 
             new_merge = str(Seq("").join(new_merge))
-            # if protein == "nt":
-            #     minimum_length = initial_minimum_length*3
-            # else:
-            #     minimum_length = initial_minimum_length
-            #
-            # if len(new_merge) - new_merge.count("-") < minimum_length:
-            #     continue
-
             gene_out.append((final_header, new_merge))
             if debug:
                 # If debug enabled add each component under final merge
@@ -658,8 +649,7 @@ def do_gene(
     gene,
     output_dir: Path,
     aa_path,
-    nt_path,
-    minimum_length,  # this one
+    nt_path,  # this one
     dupe_counts,
     ref_stats,
     debug,
@@ -679,7 +669,6 @@ def do_gene(
         "aa",
         aa_path,
         output_dir,
-        minimum_length,
         dupe_counts,
         ref_stats,
         already_calculated_splits,
@@ -696,7 +685,6 @@ def do_gene(
         "nt",
         nt_path,
         output_dir,
-        minimum_length,
         dupe_counts,
         ref_stats,
         already_calculated_splits,
@@ -761,7 +749,6 @@ def do_folder(folder: Path, args):
                     folder,
                     target_aa_path,
                     target_nt_path,
-                    args.minimum_length,
                     dupes_in_this_gene,
                     ref_stats,
                     args.debug,
@@ -784,7 +771,6 @@ def do_folder(folder: Path, args):
                 folder,
                 target_aa_path,
                 target_nt_path,
-                args.minimum_length,
                 dupes_in_this_gene,
                 ref_stats,
                 args.debug,

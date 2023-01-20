@@ -14,11 +14,11 @@ from phymmr.utils import printv
 def download_parallel(arguments):
     command, srr_acession, path_to_download, verbose = arguments
     printv(f"Download {srr_acession} to {path_to_download}...", verbose)
-    
+
     with Popen(
         f"{command} {srr_acession} -O {path_to_download}", shell=True, stdout=PIPE
-    ) as p: 
-        try: 
+    ) as p:
+        try:
             print(p.stdout.read().decode())
         except UnicodeDecodeError:
             print("ErrUnicode decoding error, UTF-8 charset does not contain the bytecode for gotten character")
