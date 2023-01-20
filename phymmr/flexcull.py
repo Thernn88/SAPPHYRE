@@ -27,6 +27,7 @@ MainArgs = namedtuple(
         "base_pair",
         "match_percent",
         "compress",
+        "ref_gap_percent",
     ],
 )
 
@@ -97,6 +98,7 @@ def do_gene(
     bp: int,
     verbosity: int,
     compress: bool,
+    ref_gap_percent: float,
 ) -> None:
     """
     FlexCull main function. Culls input aa and nt using specified amount of matches
@@ -149,6 +151,8 @@ def do_gene(
         data_length = 0
 
         sequence_length = len(sequence)
+        encountered_start = False
+        encountered_end = False
 
         for i, char in enumerate(sequence):
             if i == sequence_length - offset:
@@ -157,7 +161,12 @@ def do_gene(
 
             # Don't allow cull to point of all dashes
             if char == "-":
-                continue
+                if not encountered_start:
+                    continue
+                elif character_at_each_pos[i].count("-") / len(character_at_each_pos[i]) < ref_gap_percent: #Less than 75% of the references contain a dash
+                    continue
+            else:
+                encountered_start = True
 
             all_dashes_at_position = all_dashes_by_index[i]
             if all_dashes_at_position:
@@ -204,8 +213,14 @@ def do_gene(
                 if i < cull_start + offset:
                     kick = True
                     break
+                
                 if char == "-":
-                    continue
+                    if not encountered_end:
+                        continue
+                    elif character_at_each_pos[i].count("-") / len(character_at_each_pos[i]) < ref_gap_percent: #Less than 75% of the references contain a dash
+                        continue
+                else:
+                    encountered_end = True
 
                 all_dashes_at_position = all_dashes_by_index[i]
                 if all_dashes_at_position:
@@ -371,6 +386,7 @@ def do_folder(folder, args: MainArgs):
                     args.base_pair,
                     args.verbose,
                     args.compress,
+                    args.ref_gap_percent,
                 )
             )
 
@@ -389,6 +405,7 @@ def do_folder(folder, args: MainArgs):
                 args.base_pair,
                 args.verbose,
                 args.compress,
+                args.ref_gap_percent,
             )
             for input_gene in file_inputs
         ]
