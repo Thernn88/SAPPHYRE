@@ -450,7 +450,7 @@ def subcmd_flexcull(subparsers):
         "-m",
         "--matches",
         type=int,
-        default=3,
+        default=4,
         help="Amount of base pairs that have to match reference.",
     )
     par.add_argument(
