@@ -214,7 +214,7 @@ def multi_filter(hits, debug):
 
 
 def hits_are_bad(
-    hits: list, debug: bool, min_size=4, min_evalue=float("1e-6")
+    hits: list, debug: bool, min_size, min_evalue
 ) -> bool:
     """
     Checks a list of hits for minimum size and score. If below both, kick.
@@ -369,7 +369,7 @@ def run_process(args, input_path) -> None:
             if requires_multi and not args.skip_multi:
                 hits, this_kicks, log = multi_filter(hits, args.debug)
                 # filter hits by min length and evalue
-                hits_bad, evalue_Log = hits_are_bad(hits, args.debug)
+                hits_bad, evalue_Log = hits_are_bad(hits, args.debug, args.min_amount, args.min_evalue)
                 if hits_bad:
                     evalue_kicks += len(hits)
                     kicks += len(hits) + this_kicks

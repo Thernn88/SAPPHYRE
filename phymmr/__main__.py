@@ -104,6 +104,20 @@ def subcmd_diamond(subparsers):
         help="Diamond blast top percentage cull.",
     )
     par.add_argument(
+        "-me",
+        "--min-evalue",
+        type=float,
+        default=float("1e-6"),
+        help="Diamond blast evalue threshold.",
+    )
+    par.add_argument(
+        "-ma",
+        "--min-amount",
+        type=int,
+        default=10,
+        help="Minimum amount of hits for a sequence to pass.",
+    )
+    par.add_argument(
         "-oi",
         "--orthoset_input",
         type=str,
