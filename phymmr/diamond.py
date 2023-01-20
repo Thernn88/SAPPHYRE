@@ -1,3 +1,4 @@
+import itertools
 import os
 from shutil import rmtree
 import sys
@@ -40,9 +41,11 @@ class Hit:
         "reftaxon",
         "seq",
         "evalue",
+        "length",
+        "kick"
     )
 
-    def __init__(self, header, gene, reftaxon, score, qstart, qend, evalue=None):
+    def __init__(self, header, gene, reftaxon, score, qstart, qend, length, evalue=None):
         self.header = header
         self.gene = gene
         self.reftaxon = reftaxon
@@ -51,6 +54,8 @@ class Hit:
         self.qstart = int(qstart)
         self.qend = int(qend)
         self.evalue = float(evalue)
+        self.length = int(length)
+        self.kick = False
 
     def to_json(self):
         return {
@@ -60,6 +65,24 @@ class Hit:
             "ali_start": self.qstart,
             "ali_end": self.qend,
         }
+
+    def __lt__(self, other):
+        return self.score < other.score
+
+    def __le__(self, other):
+        return self.score <= other.score
+
+    def __eq__(self, other):
+        return self.score == other.score
+
+    def __ne__(self, other):
+        return self.score != other.score
+
+    def __gt__(self, other):
+        return self.score > other.score
+
+    def __ge__(self, other):
+        return self.score >= other.score
 
 
 def get_overlap(a_start, a_end, b_start, b_end):
@@ -99,6 +122,7 @@ def get_sequence_results(fp, target_to_taxon, min_length, min_score):
 
         if int(frame) < 0:
             length = qstart - qend + 1
+            qend, qstart = qstart, qend
             header = raw_header + f"|[revcomp]:[translate({frame[1:]})]"
         else:
             length = qend - qstart + 1
@@ -126,7 +150,7 @@ def get_sequence_results(fp, target_to_taxon, min_length, min_score):
         header_maps_to[gene] = 1
 
         header_hits.setdefault(header, []).append(
-            Hit(header, gene, reftaxon, score, qstart, qend, evalue=evalue)
+            Hit(header, gene, reftaxon, score, qstart, qend, length, evalue=evalue)
         )
 
 
@@ -171,7 +195,7 @@ def multi_filter(hits, debug):
                                         candidate.score,
                                         candidate.qstart,
                                         candidate.qend,
-                                        "Kicked out by",
+                                        "Multi kicked out by",
                                         master.gene,
                                         master.header,
                                         master.reftaxon,
@@ -211,6 +235,42 @@ def multi_filter(hits, debug):
     passes = [i for i in hits if i]
     return passes, len(hits) - len(passes), log
 
+def internal_filter(hits, debug, interal_percent):
+    log = []
+    kicks = 0
+
+    for hit_a, hit_b in itertools.combinations(hits, 2):
+        if hit_a.kick or hit_b.kick:
+            continue
+
+        if hit_a.gene != hit_b.gene:
+            continue
+
+        overlap_amount = get_overlap(hit_a.qstart, hit_a.qend, hit_b.qstart, hit_b.qend)
+        percent = overlap_amount / hit_a.length
+        if percent >= interal_percent:
+            kicks += 1
+            if debug:
+                log.append(
+                    (
+                        hit_a.gene,
+                        hit_a.header,
+                        hit_a.reftaxon,
+                        hit_a.score,
+                        hit_a.qstart,
+                        hit_a.qend,
+                        "Internal kicked out by",
+                        hit_b.gene,
+                        hit_b.header,
+                        hit_b.reftaxon,
+                        hit_b.score,
+                        hit_b.qstart,
+                        hit_b.qend,
+                    )
+                )
+            hit_b.kick = True
+
+    return kicks, [i for i in hits if not i.kick]
 
 def hits_are_bad(
     hits: list, debug: bool, min_size, min_evalue
@@ -356,6 +416,8 @@ def run_process(args, input_path) -> None:
     evalue_kicks = 0
     global_log = []
     dupe_divy_headers = {}
+    multi_kicks = 0
+    internal_kicks = 0
     if args.skip_multi:
         printv("Skipping multi-filtering", args.verbose)
     with open(out_path) as fp:
@@ -371,14 +433,19 @@ def run_process(args, input_path) -> None:
                 hits_bad, evalue_Log = hits_are_bad(hits, args.debug, args.min_amount, args.min_evalue)
                 if hits_bad:
                     evalue_kicks += len(hits)
-                    kicks += len(hits) + this_kicks
+                    kicks += len(hits)
                     if args.debug:
                         global_log.extend(evalue_Log)
                     continue
 
                 kicks += this_kicks
+                multi_kicks += this_kicks
                 if args.debug:
                     global_log.extend(log)
+
+            this_kicks, hits = internal_filter(hits, args.debug, args.internal_percent)
+            internal_kicks += this_kicks
+            kicks += this_kicks
 
             passes += len(hits)
             best_hit = reciprocal_check(
@@ -403,10 +470,12 @@ def run_process(args, input_path) -> None:
             fp.write(
                 "\n".join([",".join([str(i) for i in line]) for line in global_log])
             )
-    print(f"{evalue_kicks} evalue kicks")
     print(
         f"Took {time_keeper.lap():.2f}s for {kicks} kicks leaving {passes} results. Writing to DB"
     )
+    print(f"{evalue_kicks} kicks were due to Evalue Filtering")
+    print(f"{internal_kicks} kicks were due to Internal Filtering")
+    print(f"{multi_kicks} kicks were due to Multi Filtering")
 
     gene_dupe_count = {}
     for gene, headers in dupe_divy_headers.items():

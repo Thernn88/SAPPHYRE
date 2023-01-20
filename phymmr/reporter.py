@@ -48,11 +48,9 @@ class Hit:
         self.est_sequence = first_hit["seq"]
 
     def trim_to_coords(self):
+        self.est_sequence = self.est_sequence[self.ali_start - 1 : self.ali_end]
         if "revcomp" in self.header:
-            self.est_sequence = self.est_sequence[self.ali_end - 1 : self.ali_start]
             self.est_sequence = phymmr_tools.bio_revcomp(self.est_sequence)
-        else:
-            self.est_sequence = self.est_sequence[self.ali_start - 1 : self.ali_end]
 
 def get_diamondhits(rocks_hits_db, list_of_wanted_orthoids):
     gene_based_results = {}

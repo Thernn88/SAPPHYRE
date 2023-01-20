@@ -118,6 +118,13 @@ def subcmd_diamond(subparsers):
         help="Minimum amount of hits for a sequence to pass.",
     )
     par.add_argument(
+        "-ip",
+        "--internal-percent",
+        type=float,
+        default=0.5,
+        help="Percentage of overlap to constitute an internal kick.",
+    )
+    par.add_argument(
         "-oi",
         "--orthoset_input",
         type=str,
