@@ -130,6 +130,10 @@ def do_gene(
             if char != "-":
                 all_dashes_by_index[i] = False
 
+    ref_gap_allowance = {}
+    for i, chars in character_at_each_pos.items():
+        ref_gap_allowance[i] = chars.count("-") / len(chars) >= ref_gap_percent
+
     log = []
 
     follow_through = {}
@@ -163,7 +167,7 @@ def do_gene(
             if char == "-":
                 if not encountered_start:
                     continue
-                elif character_at_each_pos[i].count("-") / len(character_at_each_pos[i]) < ref_gap_percent: #Less than 75% of the references contain a dash
+                elif not ref_gap_allowance[i]:
                     continue
             else:
                 encountered_start = True
@@ -186,7 +190,10 @@ def do_gene(
                     break
 
                 if sequence[i + match_i] == "-":
+                    if not ref_gap_allowance[i + match_i]:
+                        checks -= 1
                     match_i += 1
+                    
                 elif (
                     not character_at_each_pos[i + match_i].count(sequence[i + match_i])
                     / len(character_at_each_pos[i + match_i])
@@ -217,7 +224,7 @@ def do_gene(
                 if char == "-":
                     if not encountered_end:
                         continue
-                    elif character_at_each_pos[i].count("-") / len(character_at_each_pos[i]) < ref_gap_percent: #Less than 75% of the references contain a dash
+                    elif not ref_gap_allowance[i]:
                         continue
                 else:
                     encountered_end = True
@@ -242,6 +249,8 @@ def do_gene(
                         break
 
                     if sequence[i - match_i] == "-":
+                        if not ref_gap_allowance[i - match_i]:
+                            checks -= 1
                         match_i += 1
                     elif (
                         not character_at_each_pos[i - match_i].count(
