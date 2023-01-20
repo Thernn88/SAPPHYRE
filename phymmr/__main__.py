@@ -450,7 +450,7 @@ def subcmd_flexcull(subparsers):
         "-m",
         "--matches",
         type=int,
-        default=4,
+        default=3,
         help="Amount of base pairs that have to match reference.",
     )
     par.add_argument(
@@ -459,13 +459,6 @@ def subcmd_flexcull(subparsers):
         type=float,
         default=0.02,
         help="Percentage of references that must contain the base pair to match.",
-    )
-    par.add_argument(
-        "-rgp",
-        "--ref_gap_percent",
-        type=float,
-        default=0.75,
-        help="Percentage of references that must contain a gap to allow trim to that position.",
     )
     par.add_argument(
         "-bp", "--base-pair", type=int, default=20, help="Minimum bp after cull."
@@ -494,7 +487,6 @@ def flexcull(args):
         args.base_pair,
         args.match_percent,
         args.compress,
-        args.ref_gap_percent
     )
     if not flexcull.main(flexargs):
         print()
