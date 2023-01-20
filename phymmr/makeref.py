@@ -253,6 +253,8 @@ def make_diamonddb(set: Sequence_Set, overwrite, threads):
     return target_to_taxon, taxon_to_sequences
 
 
+SETS_DIR = None
+
 def main(args):
     global SETS_DIR
     SETS_DIR = Path(args.orthoset_dir)
@@ -289,15 +291,15 @@ def main(args):
         cursor = orthoset_db_con.cursor()
 
         nt_data = {}
-        query = f"""SELECT n.id, n.sequence FROM orthograph_ntseqs AS n"""
+        query = """SELECT n.id, n.sequence FROM orthograph_ntseqs AS n"""
 
         rows = cursor.execute(query)
 
-        nt_data = {id: seq for id, seq in rows}
+        nt_data = dict(rows)
 
         cursor = orthoset_db_con.cursor()
 
-        query = f"""SELECT p.nt_seq, t.name, o.ortholog_gene_id, a.header, a.sequence,  a.id
+        query = """SELECT p.nt_seq, t.name, o.ortholog_gene_id, a.header, a.sequence,  a.id
                 FROM orthograph_orthologs         AS o
             INNER JOIN orthograph_sequence_pairs    AS p
             ON o.sequence_pair = p.id

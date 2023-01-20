@@ -52,8 +52,9 @@ def kick_empty_columns(
     fasta_content: list,
     kick_percent: float,
     minimum_bp: int,
-    aa_kicks: set = set(),
+    aa_kicks=None,
 ) -> list:
+    aa_kicks = set()
     kicks = set()
     step = 1 if protein == "aa" else 3
     fasta_data = {}
@@ -75,7 +76,7 @@ def kick_empty_columns(
             to_kick.add(i)
 
     result = []
-    for header in out:
+    for header in out.items():
         sequence = "".join(
             [let for i, let in enumerate(out[header]) if i not in to_kick]
         )
@@ -217,7 +218,8 @@ def process_folder(args, input_path):
     aa_folder = taxa_folder.joinpath(AA_FOLDER)
     nt_folder = taxa_folder.joinpath(NT_FOLDER)
 
-    makent = lambda x: x + ".nt.fa"
+    def makent(x):
+        return x + ".nt.fa"
 
     printv("Grabbing necessary files and directories", args.verbose)
     processed_folder = taxa_folder.joinpath("Processed")
@@ -244,13 +246,13 @@ def process_folder(args, input_path):
 
     to_kick = set()
     if args.kick_taxa and args.kick_file:
-        with open(taxa_folder.joinpath(args.kick_file)) as fp:
+        with open(taxa_folder.joinpath(args.kick_file), encoding="utf-8-sig") as fp:
             for line in fp:
                 to_kick.add(line.strip())
 
     target = set()
     if args.sort:
-        with open(taxa_folder.joinpath(args.target_file)) as fp:
+        with open(taxa_folder.joinpath(args.target_file), encoding="utf-8-sig") as fp:
             for line in fp:
                 target.add(line.strip())
 
@@ -334,14 +336,14 @@ def process_folder(args, input_path):
         output_fas = processed_folder.joinpath(no_suffix + ".fas")
         output_nex = processed_folder.joinpath(no_suffix + ".nex")
 
-        with open(output_fas, "w") as fp:
-            for taxa in taxa_sequences_global.keys():
+        with open(output_fas, "w", encoding="utf-8-sig") as fp:
+            for taxa in taxa_sequences_global:
                 fp.write(">" + taxa + "\n")
                 fp.write(taxa_sequences_global[taxa] + "\n")
 
-        with open(output_nex, "w") as fp:
+        with open(output_nex, "w", encoding="utf-8-sig") as fp:
             fp.write("#nexus\nbegin sets;\n")
-            for gene in log.keys():
+            for gene in log:
                 start, end = log[gene]
                 fp.write(f"CHARSET {gene} = {start}-{end} ;\n")
 

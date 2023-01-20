@@ -11,6 +11,7 @@ from itertools import combinations
 from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import rmtree
+import sys
 import numpy as np
 import phymmr_tools as bd
 import wrap_rocks
@@ -138,11 +139,11 @@ def split_sequences(path: str, excluded: set) -> tuple:
                 candidates.append(header)
                 candidates.append(sequence)
     except ValueError:
-        print(f"Error in file: {path}")
-        raise ValueError("Found sequences of different length")
+        print(f"Error in file: {path}, Found sequences of different length")
+        sys.exit(1)
     except TypeError:
         print(f"Wrong IO type: {path}")
-        raise TypeError
+        sys.exit(1)
     return references, candidates
 
 
@@ -312,7 +313,7 @@ def compare_means(
         # column cull
         first_candidate = str(candidates_at_index[0])
         bp_count = 0
-        for raw_i in range(len(first_candidate)):
+        for raw_i, _ in enumerate(first_candidate):
             i = raw_i + index_pair[0]
             if i in rejected_indices:
                 continue
