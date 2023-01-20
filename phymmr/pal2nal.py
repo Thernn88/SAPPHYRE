@@ -753,8 +753,8 @@ def return_aligned_paths(
 
             continue
 
-        nt_gene = str(path_nt.parts[-1]).split(".", maxsplit=1)
-        aa_gene = str(path_aa.parts[-1]).split(".", maxsplit=1)
+        nt_gene = str(path_nt.parts[-1]).split(".", maxsplit=1)[0]
+        aa_gene = str(path_aa.parts[-1]).split(".", maxsplit=1)[0]
 
         if nt_gene != aa_gene:
             continue
