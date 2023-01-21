@@ -108,7 +108,7 @@ def subcmd_diamond(subparsers):
         "--min-evalue",
         type=float,
         default=float("1e-8"),
-        help="Diamond blast evalue threshold.",
+        help="Filtering evalue threshold.",
     )
     par.add_argument(
         "-ma",

@@ -102,10 +102,16 @@ def get_difference(scoreA, scoreB):
     return max(scoreA, scoreB) / min(scoreA, scoreB)
 
 
-def get_sequence_results(fp, target_to_taxon, min_length, min_score):
+def get_sequence_results(fp, target_to_taxon, min_length, min_score, debug, e_min_size, e_min_evalue, internal_percent):
     header_hits = {}
     header_maps_to = {}
     this_header = None
+    this_header_hits = []
+
+    this_log = []
+    intermediate_multi_kicks = 0
+    intermediate_internal_kicks = 0
+    intermediate_evalue_kicks = 0
     for line in fp:
         (
             raw_header,
@@ -138,20 +144,43 @@ def get_sequence_results(fp, target_to_taxon, min_length, min_score):
             this_header = raw_header
         else:
             if this_header != raw_header:
-                for hits in header_hits.values():
-                    yield sorted(hits, key=lambda x: x.score, reverse=True), sum(
-                        list(header_maps_to.values())
-                    )
+
+                fail_e_check, log = hits_are_bad(this_header_hits, debug, e_min_size, e_min_evalue)
+                if fail_e_check:
+                    intermediate_evalue_kicks += len(this_header_hits)
+                    if debug:
+                        this_log.extend(log)
+                    continue
+
+                if sum(header_maps_to.values()) > 1:
+                    this_header_hits, this_kicks, log = multi_filter(this_header_hits, debug)
+                    if debug:
+                        this_log.extend(log)
+                    
+                    intermediate_multi_kicks += this_kicks
+
+                this_kicks, this_header_hits, log = internal_filter(this_header_hits, debug, internal_percent)
+                if debug:
+                    this_log.extend(log)
+                
+                intermediate_internal_kicks += this_kicks
 
                 header_hits = {}
+                for hit in this_header_hits:
+                    header_hits.setdefault(hit.header, []).append(hit)
+
+                yield header_hits, intermediate_multi_kicks, intermediate_internal_kicks, intermediate_evalue_kicks, this_log
+
                 header_maps_to = {}
                 this_header = raw_header
+                this_log = []
+                intermediate_multi_kicks = 0
+                intermediate_internal_kicks = 0
+                intermediate_evalue_kicks = 0
 
         header_maps_to[gene] = 1
-
-        header_hits.setdefault(header, []).append(
-            Hit(header, gene, reftaxon, score, qstart, qend, length, evalue=evalue)
-        )
+        this_header_hits.append(Hit(header, gene, reftaxon, score, qstart, qend, length, evalue=evalue))
+        
 
 
 def multi_filter(hits, debug):
@@ -243,6 +272,9 @@ def internal_filter(hits, debug, interal_percent):
         if hit_a.kick or hit_b.kick:
             continue
 
+        if hit_a.header == hit_b.header:
+            continue
+
         if hit_a.gene != hit_b.gene:
             continue
 
@@ -270,7 +302,7 @@ def internal_filter(hits, debug, interal_percent):
                 )
             hit_b.kick = True
 
-    return kicks, [i for i in hits if not i.kick]
+    return kicks, [i for i in hits if not i.kick], log
 
 def hits_are_bad(
     hits: list, debug: bool, min_size, min_evalue
@@ -421,46 +453,40 @@ def run_process(args, input_path) -> None:
     if args.skip_multi:
         printv("Skipping multi-filtering", args.verbose)
     with open(out_path) as fp:
-        for hits, requires_multi in get_sequence_results(
+        for header_dict, intermediate_multi_kicks, intermediate_internal_kicks, intermediate_evalue_kicks, this_log in get_sequence_results(
                 fp,
                 target_to_taxon,
                 args.min_length,
-                args.min_score
+                args.min_score,
+                args.debug, 
+                args.min_amount, 
+                args.min_evalue, 
+                args.internal_percent
             ):
-            if requires_multi and not args.skip_multi:
-                hits, this_kicks, log = multi_filter(hits, args.debug)
-                # filter hits by min length and evalue
-                hits_bad, evalue_Log = hits_are_bad(hits, args.debug, args.min_amount, args.min_evalue)
-                if hits_bad:
-                    evalue_kicks += len(hits)
-                    kicks += len(hits)
-                    if args.debug:
-                        global_log.extend(evalue_Log)
-                    continue
 
-                kicks += this_kicks
-                multi_kicks += this_kicks
-                if args.debug:
-                    global_log.extend(log)
+            kicks += (intermediate_multi_kicks + intermediate_internal_kicks + intermediate_evalue_kicks)
+            internal_kicks += intermediate_internal_kicks
+            evalue_kicks += intermediate_evalue_kicks
+            multi_kicks += intermediate_multi_kicks
+            if args.debug:
+                global_log.extend(this_log)
 
-            this_kicks, hits = internal_filter(hits, args.debug, args.internal_percent)
-            internal_kicks += this_kicks
-            kicks += this_kicks
-
-            passes += len(hits)
-            best_hit = reciprocal_check(
-                hits, strict_search_mode, reference_taxa
-            )
-
-            if best_hit:
-                base_header = best_hit.header.split("|")[0]
-                dupe_divy_headers.setdefault(best_hit.gene, {})[base_header] = 1
-
-                best_hit.seq = head_to_seq[base_header]
-
-                output.setdefault(best_hit.gene, []).append(
-                    best_hit.to_json()
+            for hits in header_dict.values():
+                hits.sort(key=lambda x: x.score, reverse=True)
+                passes += len(hits)
+                best_hit = reciprocal_check(
+                    hits, strict_search_mode, reference_taxa
                 )
+
+                if best_hit:
+                    base_header = best_hit.header.split("|")[0]
+                    dupe_divy_headers.setdefault(best_hit.gene, {})[base_header] = 1
+
+                    best_hit.seq = head_to_seq[base_header]
+
+                    output.setdefault(best_hit.gene, []).append(
+                        best_hit.to_json()
+                    )
 
     for gene, hits in output.items():
         db.put(f"gethits:{gene}", json.dumps(hits))
