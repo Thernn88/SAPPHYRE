@@ -241,12 +241,12 @@ def multi_filter(hits, debug):
                 log.extend(
                     [
                         (
-                            candidate.gene,
-                            candidate.header,
-                            candidate.reftaxon,
-                            candidate.score,
-                            candidate.qstart,
-                            candidate.qend,
+                            hit.gene,
+                            hit.header,
+                            hit.reftaxon,
+                            hit.score,
+                            hit.qstart,
+                            hit.qend,
                             "Kicked due to miniscule score",
                             master.gene,
                             master.header,
@@ -256,7 +256,7 @@ def multi_filter(hits, debug):
                             master.qend,
                         )
                         for hit in hits
-                        if hit
+                        if hit is not None
                     ]
                 )
             return [], len(hits), log
