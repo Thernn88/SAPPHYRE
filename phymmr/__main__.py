@@ -464,15 +464,22 @@ def subcmd_flexcull(subparsers):
         "-m",
         "--matches",
         type=int,
-        default=3,
+        default=5,
         help="Amount of base pairs that have to match reference.",
     )
     par.add_argument(
         "-mp",
         "--match_percent",
         type=float,
-        default=0.02,
+        default=0.04,
         help="Percentage of references that must contain the base pair to match.",
+    )
+    par.add_argument(
+        "-gt",
+        "--gap_threshold",
+        type=float,
+        default=0.50,
+        help="Percentage of references that must contain a gap to allow a match to continue.",
     )
     par.add_argument(
         "-bp", "--base-pair", type=int, default=20, help="Minimum bp after cull."
@@ -501,6 +508,7 @@ def flexcull(args):
         args.base_pair,
         args.match_percent,
         args.compress,
+        args.gap_threshold,
     )
     if not flexcull.main(flexargs):
         print()

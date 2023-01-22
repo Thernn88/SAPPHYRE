@@ -27,6 +27,7 @@ MainArgs = namedtuple(
         "base_pair",
         "match_percent",
         "compress",
+        "gap_threshold"
     ],
 )
 
@@ -97,6 +98,7 @@ def do_gene(
     bp: int,
     verbosity: int,
     compress: bool,
+    gap_threshold: float
 ) -> None:
     """
     FlexCull main function. Culls input aa and nt using specified amount of matches
@@ -109,6 +111,7 @@ def do_gene(
     references, candidates = parse_fasta(gene_path)
 
     character_at_each_pos = {}
+    gap_present_threshold = {}
 
     #  make a list, each index will match an index in the reference strings
     #  check this later instead of counting hyphens
@@ -127,6 +130,9 @@ def do_gene(
             #  if char isnt a hyphen, this positions can't be all dashes
             if char != "-":
                 all_dashes_by_index[i] = False
+    
+    for i, chars in character_at_each_pos.items():
+        gap_present_threshold[i] = chars.count("-") / len(chars) >= gap_threshold
 
     log = []
 
@@ -177,6 +183,9 @@ def do_gene(
                     break
 
                 if sequence[i + match_i] == "-":
+                    if gap_present_threshold[i + match_i]:
+                        pass_all = False
+                        break
                     match_i += 1
                 elif (
                     not character_at_each_pos[i + match_i].count(sequence[i + match_i])
@@ -227,6 +236,9 @@ def do_gene(
                         break
 
                     if sequence[i - match_i] == "-":
+                        if gap_present_threshold[i - match_i]:
+                            pass_all = False
+                            break
                         match_i += 1
                     elif (
                         not character_at_each_pos[i - match_i].count(
@@ -371,6 +383,7 @@ def do_folder(folder, args: MainArgs):
                     args.base_pair,
                     args.verbose,
                     args.compress,
+                    args.gap_threshold
                 )
             )
 
@@ -389,6 +402,7 @@ def do_folder(folder, args: MainArgs):
                 args.base_pair,
                 args.verbose,
                 args.compress,
+                args.gap_threshold
             )
             for input_gene in file_inputs
         ]
