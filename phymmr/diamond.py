@@ -258,6 +258,9 @@ def internal_filter(hits: list, debug: bool, internal_percent: float) -> list:
     for hit_a, hit_b in itertools.combinations(hits, 2):
         if hit_a.kick or hit_b.kick:
             continue
+        
+        if hit_a.header.split("|")[0] != hit_b.header.split("|")[0]:
+            continue
 
         overlap_amount = get_overlap(hit_a.qstart, hit_a.qend, hit_b.qstart, hit_b.qend)
         percent = overlap_amount / hit_a.length
