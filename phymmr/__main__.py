@@ -121,7 +121,7 @@ def subcmd_diamond(subparsers):
         "-ip",
         "--internal-percent",
         type=float,
-        default=0.5,
+        default=0.3,
         help="Percentage of overlap required to constitute and internal overlap kick.",
     )
     par.add_argument(

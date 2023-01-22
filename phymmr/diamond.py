@@ -167,7 +167,7 @@ def multi_filter(hits, debug):
                     )
                     percentage_of_overlap = amount_of_overlap / distance
 
-                    if percentage_of_overlap >= 0.5:  # min_overlap_multi:
+                    if percentage_of_overlap >= 0.3:  # min_overlap_multi:
                         score_difference = get_difference(master.score, candidate.score)
                         if score_difference >= 1.05:
                             kick_happend = True
