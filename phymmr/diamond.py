@@ -452,8 +452,17 @@ def run_process(args, input_path) -> None:
                 )
     internal_kicks = 0
     passes = 0
-    for gene, hits in output.items():
-        
+
+    with Pool(args.processes) as pool:
+        to_output = pool.starmap(filter_and_tag, [(gene, hits, args.debug, args.internal_percent) for gene, hits in output.items()])
+
+    for gene, this_kicks, this_log, hits in to_output:
+        passes += len(hits)
+        internal_kicks += this_kicks
+        if args.debug:
+            global_log.extend(this_log)
+        db.put(f"gethits:{gene}", json.dumps(hits))
+
     if global_log:
         with open(os.path.join(input_path, "multi.log"), "w") as fp:
             fp.write(
@@ -465,17 +474,7 @@ def run_process(args, input_path) -> None:
     print(f"{internal_kicks} internal kicks")
     print(
         f"Took {time_keeper.lap():.2f}s for {kicks+internal_kicks} kicks leaving {passes} results. Writing to DB"
-    )
-
-    with Pool(args.processes) as pool:
-        to_output = pool.starmap(filter_and_tag, [(gene, hits, args.debug, args.internal_percent) for gene, hits in output.items()])
-
-    for gene, this_kicks, this_log, hits in to_output:
-        passes += len(hits)
-        internal_kicks += this_kicks
-        if args.debug:
-            global_log.extend(this_log)
-        db.put(f"gethits:{gene}", json.dumps(hits))
+    ) 
 
     gene_dupe_count = {}
     for gene, headers in dupe_divy_headers.items():
