@@ -451,7 +451,9 @@ def run_process(args, input_path) -> None:
             fp.write(
                 "\n".join([",".join([str(i) for i in line]) for line in global_log])
             )
-    print(f"{evalue_kicks} evalue kicks")
+    if not args.skip_multi:
+        print(f"{evalue_kicks} evalue kicks")
+        print(f"{kicks-evalue_kicks} multi kicks")
     print(f"{internal_kicks} internal kicks")
     print(
         f"Took {time_keeper.lap():.2f}s for {kicks+internal_kicks} kicks leaving {passes} results. Writing to DB"
