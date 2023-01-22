@@ -62,9 +62,9 @@ class Hit:
 
     def tag_header(self):
         if int(self.frame) < 0:
-            header = self.header + f"|[revcomp]:[translate({self.frame[1:]})]"
+            self.header = self.header + f"|[revcomp]:[translate({self.frame[1:]})]"
         else:
-            header = self.header + f"|[translate({self.frame})]"
+            self.header = self.header + f"|[translate({self.frame})]"
 
     def to_json(self):
         return {
@@ -262,7 +262,7 @@ def internal_filter(hits: list, debug: bool, internal_percent: float) -> list:
         if hit_a.kick or hit_b.kick:
             continue
 
-        if hit_a.header.split("|")[0] != hit_b.header.split("|")[0]:
+        if hit_a.header != hit_b.header:
             continue
 
         overlap_amount = get_overlap(hit_a.qstart, hit_a.qend, hit_b.qstart, hit_b.qend)
