@@ -5,6 +5,7 @@ import sys
 from tempfile import TemporaryDirectory, NamedTemporaryFile
 import json
 import wrap_rocks
+from multiprocessing.pool import Pool
 
 from .utils import printv, gettempdir
 from .timekeeper import TimeKeeper, KeeperMode
@@ -42,10 +43,11 @@ class Hit:
         "seq",
         "evalue",
         "length",
-        "kick"
+        "kick",
+        "frame"
     )
 
-    def __init__(self, header, gene, reftaxon, score, qstart, qend, length, evalue=None):
+    def __init__(self, header, gene, reftaxon, score, qstart, qend, length, frame, evalue=None):
         self.header = header
         self.gene = gene
         self.reftaxon = reftaxon
@@ -56,6 +58,13 @@ class Hit:
         self.evalue = float(evalue)
         self.length = length
         self.kick = False
+        self.frame = frame
+
+    def tag_header(self):
+        if int(self.frame) < 0:
+            header = self.header + f"|[revcomp]:[translate({self.frame[1:]})]"
+        else:
+            header = self.header + f"|[translate({self.frame})]"
 
     def to_json(self):
         return {
@@ -104,13 +113,7 @@ def get_sequence_results(fp, target_to_taxon, min_length, min_score):
 
         if int(frame) < 0:
             qend, qstart = qstart, qend
-
-            header = raw_header + f"|[revcomp]:[translate({frame[1:]})]"
-        else:
-            
-            header = raw_header + f"|[translate({frame})]"
-
-            length = qend - qstart + 1
+        length = qend - qstart + 1
 
         if length < min_length:
             continue
@@ -133,8 +136,8 @@ def get_sequence_results(fp, target_to_taxon, min_length, min_score):
 
         header_maps_to[gene] = 1
 
-        header_hits.setdefault(header, []).append(
-            Hit(header, gene, reftaxon, score, qstart, qend, length, evalue=evalue)
+        header_hits.setdefault(frame, []).append(
+            Hit(raw_header, gene, reftaxon, score, qstart, qend, length, frame, evalue=evalue)
         )
 
 
@@ -258,7 +261,7 @@ def internal_filter(hits: list, debug: bool, internal_percent: float) -> list:
     for hit_a, hit_b in itertools.combinations(hits, 2):
         if hit_a.kick or hit_b.kick:
             continue
-        
+
         if hit_a.header.split("|")[0] != hit_b.header.split("|")[0]:
             continue
 
@@ -290,6 +293,12 @@ def internal_filter(hits: list, debug: bool, internal_percent: float) -> list:
     
     return [i for i in hits if not i.kick], log, kicks
 
+def filter_and_tag(gene, hits, debug, internal_percent):
+    hits, this_log, this_kicks  = internal_filter(hits, debug, internal_percent)
+    
+    for hit in hits:
+        hit.tag_header()
+    return gene, this_kicks, this_log, [i.to_json() for i in hits]   
 
 def run_process(args, input_path) -> None:
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
@@ -433,7 +442,7 @@ def run_process(args, input_path) -> None:
             )
 
             if best_hit:
-                base_header = best_hit.header.split("|")[0]
+                base_header = best_hit.header
                 dupe_divy_headers.setdefault(best_hit.gene, {})[base_header] = 1
 
                 best_hit.seq = head_to_seq[base_header]
@@ -444,12 +453,7 @@ def run_process(args, input_path) -> None:
     internal_kicks = 0
     passes = 0
     for gene, hits in output.items():
-        hits, this_log, this_kicks  = internal_filter(hits, args.debug, args.internal_percent)
-        if this_log:
-            global_log.extend(this_log)
-        passes += len(hits)
-        internal_kicks += this_kicks
-        db.put(f"gethits:{gene}", json.dumps([i.to_json() for i in hits]))
+        
     if global_log:
         with open(os.path.join(input_path, "multi.log"), "w") as fp:
             fp.write(
@@ -462,6 +466,16 @@ def run_process(args, input_path) -> None:
     print(
         f"Took {time_keeper.lap():.2f}s for {kicks+internal_kicks} kicks leaving {passes} results. Writing to DB"
     )
+
+    with Pool(args.processes) as pool:
+        to_output = pool.starmap(filter_and_tag, [(gene, hits, args.debug, args.internal_percent) for gene, hits in output.items()])
+
+    for gene, this_kicks, this_log, hits in to_output:
+        passes += len(hits)
+        internal_kicks += this_kicks
+        if args.debug:
+            global_log.extend(this_log)
+        db.put(f"gethits:{gene}", json.dumps(hits))
 
     gene_dupe_count = {}
     for gene, headers in dupe_divy_headers.items():
