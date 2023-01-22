@@ -224,7 +224,7 @@ def multi_filter(hits, debug):
 
 
 def hits_are_bad(
-    hits: list, debug: bool, min_size: int, min_evalue: float
+    hits: list, debug: bool, min_size: int, min_evalue: float, top_refs: list
 ) -> bool:
     """
     Checks a list of hits for minimum size and score. If below both, kick.
@@ -235,6 +235,9 @@ def hits_are_bad(
         return False, evalue_log
     for hit in hits:
         if hit.evalue < min_evalue:
+            return False, evalue_log
+    for hit in hits:
+        if hit.reftaxon in top_refs:
             return False, evalue_log
     if debug:
         evalue_log = [
@@ -301,25 +304,22 @@ def filter_and_tag(gene, hits, debug, internal_percent):
     return gene, this_kicks, this_log, [i.to_json() for i in hits]
 
 
-def count_reftaxon(hashmap: dict, hits: list) -> None:
+def count_reftaxon(file_pointer, taxon_lookup: dict) -> list:
     """
-    Iterates over a list of hits and counts the occurences of reftaxons
-    for the purpose of exploring data.
-    Adds the counts to preexisting dictionary.
+    Counts reference taxon in very.tsv file. Returns a list
+    containg the 5 most popular names.
+    Possible speed if we cut the string at the : and only
+    lookup names after we know the counts?
     """
-    for hit in hits:
-        hashmap[hit.reftaxon] = hashmap.get(hit.reftaxon, 0) + 1
-
-
-def merge_dictionaries(dict1: dict, dict2: dict) -> dict:
-    """
-    Folds two dictionaries into a single larger dictionary containing all the
-    key value pairs. Returns the larger dictionary.
-    """
-    for key, value in dict2.items:
-        dict1[key] = dict1.get(key,0) + value
-    return dict1
-
+    rextaxon_count = {}
+    for line in file_pointer:
+        ref_header_pair = line.split('\t')[1]
+        ref_header = taxon_lookup[ref_header_pair][1]
+        rextaxon_count[ref_header] = rextaxon_count.get(ref_header, 0) + 1
+    sorted_counts = [x for x in rextaxon_count.items()]
+    sorted_counts.sort(key=lambda x: x[1], reverse=True)
+    top_names = [x[0] for x in sorted_counts][0:5]
+    return top_names
 
 def run_process(args, input_path) -> None:
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
@@ -437,18 +437,18 @@ def run_process(args, input_path) -> None:
     if args.skip_multi:
         printv("Skipping multi-filtering", args.verbose)
     with open(out_path) as fp:
-        global_ref_count = {}
+        reftaxon_counts = count_reftaxon(fp, target_to_taxon)
+    with open(out_path) as fp:
         for hits, requires_multi in get_sequence_results(
                 fp,
                 target_to_taxon,
                 args.min_length,
                 args.min_score
             ):
-            count_reftaxon(global_ref_count, hits)
             if requires_multi and not args.skip_multi:
                 hits, this_kicks, log = multi_filter(hits, args.debug)
                 # filter hits by min length and evalue
-                hits_bad, evalue_Log = hits_are_bad(hits, args.debug, args.min_amount, args.min_evalue)
+                hits_bad, evalue_Log = hits_are_bad(hits, args.debug, args.min_amount, args.min_evalue, reftaxon_counts)
                 if hits_bad:
                     evalue_kicks += len(hits)
                     kicks += len(hits)
@@ -473,10 +473,10 @@ def run_process(args, input_path) -> None:
                 output.setdefault(best_hit.gene, []).append(
                     best_hit
                 )
-        with open('refcounts.csv','a+') as countf:
-            countf.write("reftaxon, count\n")
-            for key, value in global_ref_count.items():
-                countf.write(f'{key}, {value}\n')
+        # with open('refcounts.csv','a+') as countf:
+        #     countf.write("reftaxon, count\n")
+        #     for key, value in global_ref_count.items():
+        #         countf.write(f'{key}, {value}\n')
     internal_kicks = 0
     passes = 0
 
