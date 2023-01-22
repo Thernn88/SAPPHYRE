@@ -441,7 +441,7 @@ def run_process(args, input_path) -> None:
                 )
     internal_kicks = 0
     for gene, hits in output.items():
-        hits, this_kicks, this_log = internal_filter(hits, args.debug, args.internal_percent)
+        hits, this_log, this_kicks  = internal_filter(hits, args.debug, args.internal_percent)
         if this_log:
             global_log.extend(this_log)
         internal_kicks += this_kicks
