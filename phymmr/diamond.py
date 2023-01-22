@@ -1,3 +1,4 @@
+import itertools
 import os
 from shutil import rmtree
 import sys
@@ -40,9 +41,11 @@ class Hit:
         "reftaxon",
         "seq",
         "evalue",
+        "length",
+        "kick"
     )
 
-    def __init__(self, header, gene, reftaxon, score, qstart, qend, evalue=None):
+    def __init__(self, header, gene, reftaxon, score, qstart, qend, length, evalue=None):
         self.header = header
         self.gene = gene
         self.reftaxon = reftaxon
@@ -51,6 +54,8 @@ class Hit:
         self.qstart = int(qstart)
         self.qend = int(qend)
         self.evalue = float(evalue)
+        self.length = length
+        self.kick = False
 
     def to_json(self):
         return {
@@ -129,7 +134,7 @@ def get_sequence_results(fp, target_to_taxon, min_length, min_score):
         header_maps_to[gene] = 1
 
         header_hits.setdefault(header, []).append(
-            Hit(header, gene, reftaxon, score, qstart, qend, evalue=evalue)
+            Hit(header, gene, reftaxon, score, qstart, qend, length, evalue=evalue)
         )
 
 
@@ -216,7 +221,7 @@ def multi_filter(hits, debug):
 
 
 def hits_are_bad(
-    hits: list, debug: bool, min_size, min_evalue
+    hits: list, debug: bool, min_size: int, min_evalue: float
 ) -> bool:
     """
     Checks a list of hits for minimum size and score. If below both, kick.
@@ -244,6 +249,43 @@ def hits_are_bad(
             for candidate in hits
         ]
     return True, evalue_log
+
+
+def internal_filter(hits: list, debug: bool, internal_percent: float) -> list:
+    log = []
+    kicks = 0
+
+    for hit_a, hit_b in itertools.combinations(hits, 2):
+        if hit_a.kick or hit_b.kick:
+            continue
+
+        overlap_amount = get_overlap(hit_a.qstart, hit_a.qend, hit_b.qstart, hit_b.qend)
+        percent = overlap_amount / hit_a.length
+
+        if percent >= internal_percent:
+            kicks += 1
+            hit_b.kick = True
+
+            if debug:
+                log.append(
+                            (
+                                hit_b.gene,
+                                hit_b.header,
+                                hit_b.reftaxon,
+                                hit_b.score,
+                                hit_b.qstart,
+                                hit_b.qend,
+                                "Kicked out by",
+                                hit_a.gene,
+                                hit_a.header,
+                                hit_a.reftaxon,
+                                hit_a.score,
+                                hit_a.qstart,
+                                hit_a.qend,
+                            )
+                        )
+    
+    return [i for i in hits if not i.kick], log, kicks
 
 
 def run_process(args, input_path) -> None:
@@ -395,20 +437,24 @@ def run_process(args, input_path) -> None:
                 best_hit.seq = head_to_seq[base_header]
 
                 output.setdefault(best_hit.gene, []).append(
-                    best_hit.to_json()
+                    best_hit
                 )
-
+    internal_kicks = 0
     for gene, hits in output.items():
-        db.put(f"gethits:{gene}", json.dumps(hits))
-
+        hits, this_kicks, this_log = internal_filter(hits, args.debug, args.internal_percent)
+        if this_log:
+            global_log.extend(this_log)
+        internal_kicks += this_kicks
+        db.put(f"gethits:{gene}", json.dumps([i.to_json() for i in hits]))
     if global_log:
         with open(os.path.join(input_path, "multi.log"), "w") as fp:
             fp.write(
                 "\n".join([",".join([str(i) for i in line]) for line in global_log])
             )
     print(f"{evalue_kicks} evalue kicks")
+    print(f"{internal_kicks} internal kicks")
     print(
-        f"Took {time_keeper.lap():.2f}s for {kicks} kicks leaving {passes} results. Writing to DB"
+        f"Took {time_keeper.lap():.2f}s for {kicks+internal_kicks} kicks leaving {passes} results. Writing to DB"
     )
 
     gene_dupe_count = {}

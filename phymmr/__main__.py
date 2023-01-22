@@ -108,7 +108,7 @@ def subcmd_diamond(subparsers):
         "--min-evalue",
         type=float,
         default=float("1e-8"),
-        help="Diamond blast evalue threshold.",
+        help="Filter evalue threshold.",
     )
     par.add_argument(
         "-ma",
@@ -116,6 +116,13 @@ def subcmd_diamond(subparsers):
         type=int,
         default=10,
         help="Minimum amount of hits for a sequence to pass.",
+    )
+    par.add_argument(
+        "-ip",
+        "--internal-percent",
+        type=float,
+        default=0.5,
+        help="Percentage of overlap required to constitute and internal overlap kick.",
     )
     par.add_argument(
         "-oi",
