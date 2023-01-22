@@ -298,7 +298,28 @@ def filter_and_tag(gene, hits, debug, internal_percent):
     
     for hit in hits:
         hit.tag_header()
-    return gene, this_kicks, this_log, [i.to_json() for i in hits]   
+    return gene, this_kicks, this_log, [i.to_json() for i in hits]
+
+
+def count_reftaxon(hashmap: dict, hits: list) -> None:
+    """
+    Iterates over a list of hits and counts the occurences of reftaxons
+    for the purpose of exploring data.
+    Adds the counts to preexisting dictionary.
+    """
+    for hit in hits:
+        hashmap[hit.reftaxon] = hashmap.get(hit.reftaxon, 0) + 1
+
+
+def merge_dictionaries(dict1: dict, dict2: dict) -> dict:
+    """
+    Folds two dictionaries into a single larger dictionary containing all the
+    key value pairs. Returns the larger dictionary.
+    """
+    for key, value in dict2.items:
+        dict1[key] = dict1.get(key,0) + value
+    return dict1
+
 
 def run_process(args, input_path) -> None:
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
@@ -416,12 +437,14 @@ def run_process(args, input_path) -> None:
     if args.skip_multi:
         printv("Skipping multi-filtering", args.verbose)
     with open(out_path) as fp:
+        global_ref_count = {}
         for hits, requires_multi in get_sequence_results(
                 fp,
                 target_to_taxon,
                 args.min_length,
                 args.min_score
             ):
+            count_reftaxon(global_ref_count, hits)
             if requires_multi and not args.skip_multi:
                 hits, this_kicks, log = multi_filter(hits, args.debug)
                 # filter hits by min length and evalue
@@ -450,6 +473,10 @@ def run_process(args, input_path) -> None:
                 output.setdefault(best_hit.gene, []).append(
                     best_hit
                 )
+        with open('refcounts.csv','a+') as countf:
+            countf.write("reftaxon, count\n")
+            for key, value in global_ref_count.items():
+                countf.write(f'{key}, {value}\n')
     internal_kicks = 0
     passes = 0
 
