@@ -397,7 +397,7 @@ def run_process(args, input_path) -> None:
     db = wrap_rocks.RocksDB(os.path.join(input_path, "rocksdb", "hits"))
     output = {}
     kicks = 0
-    passes = 0
+    
     evalue_kicks = 0
     global_log = []
     dupe_divy_headers = {}
@@ -425,7 +425,6 @@ def run_process(args, input_path) -> None:
                 if args.debug:
                     global_log.extend(log)
 
-            passes += len(hits)
             best_hit = reciprocal_check(
                 hits, strict_search_mode, reference_taxa
             )
@@ -440,10 +439,12 @@ def run_process(args, input_path) -> None:
                     best_hit
                 )
     internal_kicks = 0
+    passes = 0
     for gene, hits in output.items():
         hits, this_log, this_kicks  = internal_filter(hits, args.debug, args.internal_percent)
         if this_log:
             global_log.extend(this_log)
+        passes += len(hits)
         internal_kicks += this_kicks
         db.put(f"gethits:{gene}", json.dumps([i.to_json() for i in hits]))
     if global_log:
