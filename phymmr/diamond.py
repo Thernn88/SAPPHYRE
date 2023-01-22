@@ -438,7 +438,7 @@ def run_process(args, input_path) -> None:
         printv("Skipping multi-filtering", args.verbose)
     with open(out_path) as fp:
         reftaxon_counts = count_reftaxon(fp, target_to_taxon)
-    with open(out_path) as fp:
+        fp.seek(0)
         for hits, requires_multi in get_sequence_results(
                 fp,
                 target_to_taxon,
