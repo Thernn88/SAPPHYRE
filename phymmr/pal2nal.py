@@ -911,8 +911,9 @@ def main(args):
         success, global_count = run_batch_threaded(num_threads=args.processes, ls=this_taxa_jobs)
 
         rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
-        rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
-        rocksdb_db.put("getall:top_refs", json.dumps(global_count.most_common()))
+        if rocks_db_path.exists():
+            rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
+            rocksdb_db.put("getall:top_refs", json.dumps(global_count.most_common()))
 
 
         if not success:
