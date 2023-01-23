@@ -132,7 +132,10 @@ def do_gene(
                 all_dashes_by_index[i] = False
     
     for i, chars in character_at_each_pos.items():
-        gap_present_threshold[i] = chars.count("-") / len(chars) >= gap_threshold
+        if i == 1936:
+            print(", ".join(chars))
+            print(chars.count("-") / len(chars))
+        gap_present_threshold[i] = chars.count("-") / len(chars) < gap_threshold
 
     log = []
 
@@ -181,6 +184,9 @@ def do_gene(
                 if i + match_i >= len(sequence):
                     pass_all = False
                     break
+
+                if header == "EOG091G0A5N|Bactrocera_cucurbitae|SRR13162790|NODE_682328|[revcomp]:[translate(2)]":
+                    print(i+match_i, sequence[i + match_i], match_percent, gap_present_threshold[i + match_i])
 
                 if sequence[i + match_i] == "-":
                     if gap_present_threshold[i + match_i]:
