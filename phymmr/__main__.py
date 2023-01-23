@@ -107,7 +107,7 @@ def subcmd_diamond(subparsers):
         "-me",
         "--min-evalue",
         type=float,
-        default=float("1e-8"),
+        default=float("1e-12"),
         help="Filter evalue threshold.",
     )
     par.add_argument(
