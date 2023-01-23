@@ -471,7 +471,7 @@ def subcmd_flexcull(subparsers):
         "-mp",
         "--match_percent",
         type=float,
-        default=0.04,
+        default=0.02,
         help="Percentage of references that must contain the base pair to match.",
     )
     par.add_argument(
