@@ -2,9 +2,6 @@
 Outlier Check
 """
 from __future__ import annotations
-from collections import Counter
-import json
-
 import os
 from copy import deepcopy
 from itertools import combinations
@@ -14,7 +11,6 @@ from shutil import rmtree
 import sys
 import numpy as np
 import phymmr_tools as bd
-import wrap_rocks
 
 from .utils import parseFasta, printv, write2Line2Fasta
 from .timekeeper import TimeKeeper, KeeperMode
@@ -537,11 +533,6 @@ def main_process(
 
     candidate_headers = [header for header in candidate_sequences if header[0] == ">"]
 
-    ref_count = Counter()
-    for header in candidate_headers:
-        ref = header.split("|")[1]
-        ref_count[ref] += 1
-
     raw_regulars, to_add, outliers = compare_means(
         reference_sequences,
         ref_dict,
@@ -598,7 +589,7 @@ def main_process(
         non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
 
         write2Line2Fasta(nt_output_path, non_empty_lines, compress)
-    return logs, ref_count
+    return logs
 
 
 def do_folder(folder, args):
@@ -682,24 +673,16 @@ def do_folder(folder, args):
         global_csv = open(global_csv_path, "w", encoding="UTF-8")
         global_csv.write("Gene,Header,Mean_Dist,Ref_Mean,IQR\n")
 
-    final_ref_count = Counter()
-    for log_data, gene_ref_count in process_data:
+    for log_data in process_data:
         if args.debug:
             for line in log_data:
                 if line.strip().split(",")[-1] == "Fail":
                     if line[-1] != "\n":
                         line = f"{line}\n"
                     global_csv.write(line)
-        for ref, count in gene_ref_count.items():
-            final_ref_count[ref] += count
-
     if args.debug:
         global_csv.close()
-
-    rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
-    rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
-    rocksdb_db.put("getall:top_refs", json.dumps(final_ref_count.most_common()))
-
+        
     printv(f"Done! Took {time_keeper.differential():.2f}s", args.verbose)
 
 
