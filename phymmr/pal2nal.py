@@ -855,6 +855,11 @@ def read_and_convert_fasta_files(
     # add candidates to references
     aas.extend(aa_intermediate)
 
+    with open(aa_file,'w') as fa:
+        for header, sequence in aas:
+            fa.write('>'+header+'\n')
+            fa.write(sequence+'\n')
+
     result = {}
     i = -1
     for header, sequence in aas:
