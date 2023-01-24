@@ -450,7 +450,7 @@ def run_process(args, input_path) -> None:
             if requires_multi and not args.skip_multi:
                 hits, this_kicks, log = multi_filter(hits, args.debug)
                 # filter hits by min length and evalue
-                hits_bad, evalue_Log = hits_are_bad(hits, args.debug, args.min_percent, args.min_evalue, reftaxon_counts)
+                hits_bad, evalue_Log = hits_are_bad(hits, args.debug, args.min_amount, args.min_evalue, reftaxon_counts)
                 if hits_bad:
                     evalue_kicks += len(hits)
                     kicks += len(hits)
