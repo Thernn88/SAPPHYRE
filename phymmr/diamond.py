@@ -224,22 +224,27 @@ def multi_filter(hits, debug):
 
 
 def hits_are_bad(
-    hits: list, debug: bool, min_size: int, min_evalue: float, top_refs: list
+    hits: list, debug: bool, min_size: int, min_evalue: float, top_refs: list, total_references: int
 ) -> bool:
     """
     Checks a list of hits for minimum size and score. If below both, kick.
     Returns True is checks fail, otherwise returns False.
     """
     evalue_log = []
-    if len(hits) > min_size:
-        return False, evalue_log
-    for hit in hits:
-        if hit.evalue < min_evalue:
-            return False, evalue_log
-    for hit in hits:
-        if hit.reftaxon in top_refs:
-            return False, evalue_log
-    if debug:
+    reference_hits = list({i.reftaxon for i in hits})
+    return_type = True
+    if len(reference_hits) / total_references >= min_size:
+        return_type = False
+    if return_type:
+        for hit in hits:
+            if hit.evalue < min_evalue:
+                return_type = False
+    if return_type:
+        for hit in hits:
+            if hit.reftaxon in top_refs:
+                return_type = False
+    
+    if debug and return_type:
         evalue_log = [
             (
                 candidate.gene,
@@ -254,7 +259,8 @@ def hits_are_bad(
             )
             for candidate in hits
         ]
-    return True, evalue_log
+
+    return return_type, evalue_log
 
 
 def internal_filter(hits: list, debug: bool, internal_percent: float) -> list:
@@ -320,8 +326,9 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
     sorted_counts.sort(key=lambda x: x[1], reverse=True)
     target_score = min([i[1] for i in sorted_counts[0:5]])
     target_score = target_score - (target_score * percent)
+    total_references = len(sorted_counts)
     top_names = [x[0] for x in sorted_counts if x[1] >= target_score]
-    return top_names
+    return top_names, total_references
 
 def run_process(args, input_path) -> None:
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
@@ -439,7 +446,7 @@ def run_process(args, input_path) -> None:
     if args.skip_multi:
         printv("Skipping multi-filtering", args.verbose)
     with open(out_path) as fp:
-        reftaxon_counts = count_reftaxon(fp, target_to_taxon, args.top_ref)
+        reftaxon_counts, total_references = count_reftaxon(fp, target_to_taxon, args.top_ref)
         fp.seek(0)
         for hits, requires_multi in get_sequence_results(
                 fp,
@@ -450,7 +457,7 @@ def run_process(args, input_path) -> None:
             if requires_multi and not args.skip_multi:
                 hits, this_kicks, log = multi_filter(hits, args.debug)
                 # filter hits by min length and evalue
-                hits_bad, evalue_Log = hits_are_bad(hits, args.debug, args.min_amount, args.min_evalue, reftaxon_counts)
+                hits_bad, evalue_Log = hits_are_bad(hits, args.debug, args.min_percent, args.min_evalue, reftaxon_counts, total_references)
                 if hits_bad:
                     evalue_kicks += len(hits)
                     kicks += len(hits)

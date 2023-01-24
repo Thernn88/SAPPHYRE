@@ -111,11 +111,11 @@ def subcmd_diamond(subparsers):
         help="Filter evalue threshold.",
     )
     par.add_argument(
-        "-ma",
-        "--min-amount",
-        type=int,
-        default=10,
-        help="Minimum amount of hits for a sequence to pass.",
+        "-mp",
+        "--min-percent",
+        type=float,
+        default=0.1,
+        help="Minimum percentage of reference hits required for a sequence.",
     )
     par.add_argument(
         "-tr",
