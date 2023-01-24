@@ -808,6 +808,20 @@ def prepare_taxa_and_genes(
     return out_generator, len(glob_aa)
 
 
+def find_start(sequence: str, gap_character='-') -> int:
+    for i, bp in enumerate(sequence):
+        if bp != gap_character:
+            return i
+    return -1
+
+
+def find_end(sequence: str, gap_character='-') -> int:
+    for i,bp in enumerate(sequence[::-1]):
+        if bp != gap_character:
+            return i
+    return -1
+
+
 def read_and_convert_fasta_files(
     aa_file: str, nt_file: str, verbose: bool
 ) -> Dict[str, Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]]:
@@ -825,16 +839,21 @@ def read_and_convert_fasta_files(
                 nt_has_refs = True
 
         nts[nt_header] = nt
+    # sort shouldn't affect refs, so they need a seperate list
+    aa_intermediate = []
 
     for aa_header, aa_seq in parseFasta(aa_file):
         if aa_header[-1] == ".":
             ref_count[aa_header.split("|")[1]] += 1
             if not nt_has_refs: 
                 continue
-
-        aa_header, aa_seq = aa_header.strip(), aa_seq.strip()
-
-        aas.append((aa_header, aa_seq))
+            aas.append((aa_header.strip(), aa_seq.strip()))
+        else:
+            aa_intermediate.append((aa_header.strip(), aa_seq.strip()))
+    # sort aa candidates by first and last data bp
+    aa_intermediate.sort(key=lambda x: (find_start(x[1]), find_end(x[1])))
+    # add candidates to references
+    aas.extend(aa_intermediate)
 
     result = {}
     i = -1
