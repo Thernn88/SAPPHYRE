@@ -73,9 +73,8 @@ def subcmd_diamond(subparsers):
         "-ovw", "--overwrite", action="store_true", help="Overwrite existing files."
     )
     par.add_argument("-d", "--debug", action="store_true", help="Enable debug out.")
-    par.add_argument(
-        "-sm", "--skip-multi", action="store_true", help="Skip multi filter."
-    )
+    
+    #Should be based on Taxa name. Check TODO.
     par.add_argument(
         "-strict",
         "--strict-search-mode",
@@ -87,7 +86,7 @@ def subcmd_diamond(subparsers):
         "--sensitivity",
         choices=["very", "ultra"],
         default="very",
-        help="Diamond blast sensitivty.",
+        help="Diamond sensitivty.",
     )
     par.add_argument(
         "-e",
@@ -101,7 +100,7 @@ def subcmd_diamond(subparsers):
         "--top",
         type=int,
         default=10,
-        help="Diamond blast top percentage cull.",
+        help="Diamond top percentage cull.",
     )
     par.add_argument(
         "-me",
@@ -115,14 +114,14 @@ def subcmd_diamond(subparsers):
         "--min-percent",
         type=float,
         default=0.3,
-        help="Minimum percentage of reference hits required for a sequence.",
+        help="Minimum percentage of reference hits required for a sequence if it fails min-evalue.",
     )
     par.add_argument(
         "-tr",
         "--top-ref",
         type=float,
-        default=0.3,
-        help="TODO Elaborate here.",
+        default=0.1,
+        help="Dynamically adjusts % of hits a reference is less than our top 5 and still a good ref.",
     )
     par.add_argument(
         "-ip",
@@ -145,14 +144,7 @@ def subcmd_diamond(subparsers):
         default="Ortholog_set_Mecopterida_v4",
         help="Orthoset",
     )
-    par.add_argument(
-        "-ml", "--min_length", type=int, default=25, help="Minimum Transcript Length"
-    )
-    par.add_argument(
-        "-ms", "--min_score", type=float, default=40, help="Minimum Hit Domain Score"
-    )
     par.set_defaults(func=diamond, formathelp=par.format_help)
-
 
 def diamond(args):
     from . import diamond
@@ -165,9 +157,8 @@ def diamond(args):
 def subcmd_reporter(subparsers):
     par = subparsers.add_parser(
         "Reporter",
-        help="Checks Blast results to ensure a hit is reciprocal. Queries a sequence "
-        "using exonerate to align it against a target reference and trim it to mapped "
-        "region. Produces aa and nt output.",
+        help="Trims mapped sequence to mapped region."
+        "Produces aa and nt output.",
     )
     par.add_argument(
         "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"

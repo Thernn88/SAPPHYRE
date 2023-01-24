@@ -93,7 +93,7 @@ def get_difference(scoreA, scoreB):
     return max(scoreA, scoreB) / min(scoreA, scoreB)
 
 
-def get_sequence_results(fp, target_to_taxon, min_length, min_score):
+def get_sequence_results(fp, target_to_taxon):
     header_hits = {}
     header_maps_to = {}
     this_header = None
@@ -114,12 +114,6 @@ def get_sequence_results(fp, target_to_taxon, min_length, min_score):
         if int(frame) < 0:
             qend, qstart = qstart, qend
         length = qend - qstart + 1
-
-        if length < min_length:
-            continue
-
-        if float(score) < min_score:
-            continue
 
         if not this_header:
             this_header = raw_header
@@ -443,18 +437,14 @@ def run_process(args, input_path) -> None:
     evalue_kicks = 0
     global_log = []
     dupe_divy_headers = {}
-    if args.skip_multi:
-        printv("Skipping multi-filtering", args.verbose)
     with open(out_path) as fp:
         reftaxon_counts, total_references = count_reftaxon(fp, target_to_taxon, args.top_ref)
         fp.seek(0)
         for hits, requires_multi in get_sequence_results(
                 fp,
-                target_to_taxon,
-                args.min_length,
-                args.min_score
+                target_to_taxon
             ):
-            if requires_multi and not args.skip_multi:
+            if requires_multi:
                 hits, this_kicks, log = multi_filter(hits, args.debug)
                 # filter hits by min length and evalue
                 hits_bad, evalue_Log = hits_are_bad(hits, args.debug, args.min_percent, args.min_evalue, reftaxon_counts, total_references)
@@ -504,9 +494,8 @@ def run_process(args, input_path) -> None:
             fp.write(
                 "\n".join([",".join([str(i) for i in line]) for line in global_log])
             )
-    if not args.skip_multi:
-        print(f"{evalue_kicks} evalue kicks")
-        print(f"{kicks-evalue_kicks} multi kicks")
+    print(f"{evalue_kicks} evalue kicks")
+    print(f"{kicks-evalue_kicks} multi kicks")
     print(f"{internal_kicks} internal kicks")
     print(
         f"Took {time_keeper.lap():.2f}s for {kicks+internal_kicks} kicks leaving {passes} results. Writing to DB"
