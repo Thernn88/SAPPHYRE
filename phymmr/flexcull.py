@@ -168,12 +168,7 @@ def do_gene(
             all_dashes_at_position = all_dashes_by_index[i]
             if all_dashes_at_position:
                 continue
-            if (
-                not character_at_each_pos[i].count(char) / len(character_at_each_pos[i])
-                >= match_percent
-            ):
-                continue
-
+            
             pass_all = True
             checks = amt_matches - 1
             match_i = 1
@@ -219,12 +214,6 @@ def do_gene(
                 all_dashes_at_position = all_dashes_by_index[i]
                 if all_dashes_at_position:
                     # Don't allow cull to point of all dashes
-                    continue
-                if (
-                    not character_at_each_pos[i].count(char)
-                    / len(character_at_each_pos[i])
-                    >= match_percent
-                ):
                     continue
 
                 pass_all = True
