@@ -107,21 +107,21 @@ def subcmd_diamond(subparsers):
         "-me",
         "--min-evalue",
         type=float,
-        default=float("1e-12"),
+        default=float("1e-18"),
         help="Filter evalue threshold.",
     )
     par.add_argument(
         "-mp",
         "--min-percent",
         type=float,
-        default=0.1,
+        default=0.3,
         help="Minimum percentage of reference hits required for a sequence.",
     )
     par.add_argument(
         "-tr",
         "--top-ref",
         type=float,
-        default=0.1,
+        default=0.3,
         help="TODO Elaborate here.",
     )
     par.add_argument(
@@ -129,7 +129,7 @@ def subcmd_diamond(subparsers):
         "--internal-percent",
         type=float,
         default=0.3,
-        help="Percentage of overlap required to constitute and internal overlap kick.",
+        help="Percentage of overlap required to constitute an internal overlap kick.",
     )
     par.add_argument(
         "-oi",
