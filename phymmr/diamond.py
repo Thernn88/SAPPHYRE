@@ -318,8 +318,9 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
         rextaxon_count[ref_header] = rextaxon_count.get(ref_header, 0) + 1
     sorted_counts = [x for x in rextaxon_count.items()]
     sorted_counts.sort(key=lambda x: x[1], reverse=True)
-    top_score = sorted_counts[0][1] - (sorted_counts[0][1] * percent)
-    top_names = [x[0] for x in sorted_counts if x[1] >= top_score]
+    target_score = min([i[1] for i in sorted_counts[0:5]])
+    target_score = target_score - (target_score * percent)
+    top_names = [x[0] for x in sorted_counts if x[1] >= target_score]
     return top_names
 
 def run_process(args, input_path) -> None:
@@ -449,7 +450,7 @@ def run_process(args, input_path) -> None:
             if requires_multi and not args.skip_multi:
                 hits, this_kicks, log = multi_filter(hits, args.debug)
                 # filter hits by min length and evalue
-                hits_bad, evalue_Log = hits_are_bad(hits, args.debug, args.min_amount, args.min_evalue, reftaxon_counts)
+                hits_bad, evalue_Log = hits_are_bad(hits, args.debug, args.min_percent, args.min_evalue, reftaxon_counts)
                 if hits_bad:
                     evalue_kicks += len(hits)
                     kicks += len(hits)
