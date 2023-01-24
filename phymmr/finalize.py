@@ -223,7 +223,7 @@ def process_folder(args, input_path):
 
     printv("Grabbing necessary files and directories", args.verbose)
     processed_folder = taxa_folder.joinpath("Processed")
-    rmtree(processed_folder)
+    rmtree(processed_folder, ignore_errors=True)
     processed_folder.mkdir(exist_ok=True)
 
     on_target = Path(processed_folder).joinpath("Target")
