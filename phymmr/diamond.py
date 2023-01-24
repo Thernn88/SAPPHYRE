@@ -304,7 +304,7 @@ def filter_and_tag(gene, hits, debug, internal_percent):
     return gene, this_kicks, this_log, [i.to_json() for i in hits]
 
 
-def count_reftaxon(file_pointer, taxon_lookup: dict) -> list:
+def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
     """
     Counts reference taxon in very.tsv file. Returns a list
     containg the 5 most popular names.
@@ -318,7 +318,8 @@ def count_reftaxon(file_pointer, taxon_lookup: dict) -> list:
         rextaxon_count[ref_header] = rextaxon_count.get(ref_header, 0) + 1
     sorted_counts = [x for x in rextaxon_count.items()]
     sorted_counts.sort(key=lambda x: x[1], reverse=True)
-    top_names = [x[0] for x in sorted_counts][0:5]
+    top_score = sorted_counts[0][1] - (sorted_counts[0][1] * percent)
+    top_names = [x[0] for x in sorted_counts if x[1] >= top_score]
     return top_names
 
 def run_process(args, input_path) -> None:
@@ -437,7 +438,7 @@ def run_process(args, input_path) -> None:
     if args.skip_multi:
         printv("Skipping multi-filtering", args.verbose)
     with open(out_path) as fp:
-        reftaxon_counts = count_reftaxon(fp, target_to_taxon)
+        reftaxon_counts = count_reftaxon(fp, target_to_taxon, args.top_ref)
         fp.seek(0)
         for hits, requires_multi in get_sequence_results(
                 fp,

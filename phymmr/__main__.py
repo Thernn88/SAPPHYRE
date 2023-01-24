@@ -118,6 +118,13 @@ def subcmd_diamond(subparsers):
         help="Minimum amount of hits for a sequence to pass.",
     )
     par.add_argument(
+        "-tr",
+        "--top-ref",
+        type=float,
+        default=0.1,
+        help="TODO Elaborate here.",
+    )
+    par.add_argument(
         "-ip",
         "--internal-percent",
         type=float,
