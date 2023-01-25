@@ -204,9 +204,8 @@ def do_gene(
                     if mismatch < 0:
                         pass_all = False
                         break
-                    else:
-                        match_i += 1
-                        checks -= 1
+                    match_i += 1
+                    checks -= 1
                 else:
                     match_i += 1
                     checks -= 1
@@ -269,9 +268,8 @@ def do_gene(
                         if mismatch < 0:
                             pass_all = False
                             break
-                        else:
-                            match_i += 1
-                            checks -= 1
+                        match_i += 1
+                        checks -= 1
                     else:
                         match_i += 1
                         checks -= 1

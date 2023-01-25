@@ -106,7 +106,7 @@ def subcmd_diamond(subparsers):
         "-me",
         "--min-evalue",
         type=float,
-        default=float("1e-18"),
+        default=float("1e-22"),
         help="Filter evalue threshold.",
     )
     par.add_argument(
@@ -469,7 +469,7 @@ def subcmd_flexcull(subparsers):
         "-m",
         "--matches",
         type=int,
-        default=5,
+        default=7,
         help="Amount of base pairs that have to match reference.",
     )
     par.add_argument(

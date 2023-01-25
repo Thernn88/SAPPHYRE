@@ -36,6 +36,7 @@ def process_folder(args, superfolder_path):
             "blast",
             "aa",
             "nt",
+            "diamond",
         ]
     else:
         directories_to_archive = args.specific_directories
