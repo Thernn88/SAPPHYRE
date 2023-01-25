@@ -845,8 +845,6 @@ def read_and_convert_fasta_files(
     for aa_header, aa_seq in parseFasta(aa_file):
         if aa_header[-1] == ".":
             ref_count[aa_header.split("|")[1]] += 1
-            if not nt_has_refs: 
-                continue
             aas.append((aa_header.strip(), aa_seq.strip()))
         else:
             aa_intermediate.append((aa_header.strip(), aa_seq.strip()))
@@ -860,9 +858,14 @@ def read_and_convert_fasta_files(
             fa.write('>'+header+'\n')
             fa.write(sequence+'\n')
 
+    # if no nt refs found, do not process aa refs
+    aa_final = aas
+    if not nt_has_refs:
+        aa_final = aa_intermediate
+
     result = {}
     i = -1
-    for header, sequence in aas:
+    for header, sequence in aa_final:
         try:
             if header not in result:
                 i += 1
