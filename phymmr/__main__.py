@@ -459,6 +459,13 @@ def subcmd_flexcull(subparsers):
         "-nt", "--nucleotide", type=str, default="nt_aligned", help="NT Folder Name."
     )
     par.add_argument(
+        "-mm",
+        "--mismatches",
+        type=int,
+        default=1,
+        help="Amount mismatches allowed per trim.",
+    )
+    par.add_argument(
         "-m",
         "--matches",
         type=int,
@@ -507,6 +514,7 @@ def flexcull(args):
         args.match_percent,
         args.compress,
         args.gap_threshold,
+        args.mismatches,
     )
     if not flexcull.main(flexargs):
         print()

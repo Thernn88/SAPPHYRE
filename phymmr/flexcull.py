@@ -27,7 +27,8 @@ MainArgs = namedtuple(
         "base_pair",
         "match_percent",
         "compress",
-        "gap_threshold"
+        "gap_threshold",
+        "mismatches"
     ],
 )
 
@@ -98,7 +99,8 @@ def do_gene(
     bp: int,
     verbosity: int,
     compress: bool,
-    gap_threshold: float
+    gap_threshold: float,
+    mismatches: int
 ) -> None:
     """
     FlexCull main function. Culls input aa and nt using specified amount of matches
@@ -151,12 +153,12 @@ def do_gene(
         cull_start = None
         kick = False
         data_removed = 0
-
         data_length = 0
 
         sequence_length = len(sequence)
 
         for i, char in enumerate(sequence):
+            mismatch = mismatches
             if i == sequence_length - offset:
                 kick = True
                 break
@@ -168,7 +170,15 @@ def do_gene(
             all_dashes_at_position = all_dashes_by_index[i]
             if all_dashes_at_position:
                 continue
+            if (
+                not character_at_each_pos[i].count(char) / len(character_at_each_pos[i])
+                >= match_percent
+            ):
+                mismatch -= 1
             
+            if mismatch < 0:
+                continue
+
             pass_all = True
             checks = amt_matches - 1
             match_i = 1
@@ -187,8 +197,13 @@ def do_gene(
                     / len(character_at_each_pos[i + match_i])
                     >= match_percent
                 ):
-                    pass_all = False
-                    break
+                    mismatch -= 1
+                    if mismatch < 0:
+                        pass_all = False
+                        break
+                    else:
+                        match_i += 1
+                        checks -= 1
                 else:
                     match_i += 1
                     checks -= 1
@@ -201,6 +216,7 @@ def do_gene(
             # If not kicked from Cull Start Calc. Continue
             cull_end = None
             for i_raw in range(len(sequence)):
+                mismatch = mismatches
                 i = sequence_length - 1 - i_raw  # Start from end
 
                 char = sequence[i]
@@ -214,6 +230,15 @@ def do_gene(
                 all_dashes_at_position = all_dashes_by_index[i]
                 if all_dashes_at_position:
                     # Don't allow cull to point of all dashes
+                    continue
+                if (
+                    not character_at_each_pos[i].count(char)
+                    / len(character_at_each_pos[i])
+                    >= match_percent
+                ):
+                    mismatch -= 1
+
+                if mismatch < 0:
                     continue
 
                 pass_all = True
@@ -236,8 +261,13 @@ def do_gene(
                         / len(character_at_each_pos[i - match_i])
                         >= match_percent
                     ):
-                        pass_all = False
-                        break
+                        mismatch -= 1
+                        if mismatch < 0:
+                            pass_all = False
+                            break
+                        else:
+                            match_i += 1
+                            checks -= 1
                     else:
                         match_i += 1
                         checks -= 1
@@ -372,7 +402,8 @@ def do_folder(folder, args: MainArgs):
                     args.base_pair,
                     args.verbose,
                     args.compress,
-                    args.gap_threshold
+                    args.gap_threshold,
+                    args.mismatches
                 )
             )
 
@@ -391,7 +422,8 @@ def do_folder(folder, args: MainArgs):
                 args.base_pair,
                 args.verbose,
                 args.compress,
-                args.gap_threshold
+                args.gap_threshold,
+                args.mismatches
             )
             for input_gene in file_inputs
         ]
