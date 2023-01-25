@@ -159,6 +159,7 @@ def do_gene(
 
         for i, char in enumerate(sequence):
             mismatch = mismatches
+            skip_first = 0
             if i == sequence_length - offset:
                 kick = True
                 break
@@ -174,14 +175,16 @@ def do_gene(
                 not character_at_each_pos[i].count(char) / len(character_at_each_pos[i])
                 >= match_percent
             ):
+                skip_first = 1
                 mismatch -= 1
-            
+
             if mismatch < 0:
                 continue
 
             pass_all = True
             checks = amt_matches - 1
             match_i = 1
+            
             while checks > 0:
                 if i + match_i >= len(sequence):
                     pass_all = False
@@ -209,7 +212,7 @@ def do_gene(
                     checks -= 1
 
             if pass_all:
-                cull_start = i
+                cull_start = i + skip_first
                 break
 
         if not kick:
@@ -217,10 +220,10 @@ def do_gene(
             cull_end = None
             for i_raw in range(len(sequence)):
                 mismatch = mismatches
+                skip_last = 0
                 i = sequence_length - 1 - i_raw  # Start from end
 
                 char = sequence[i]
-
                 if i < cull_start + offset:
                     kick = True
                     break
@@ -236,6 +239,7 @@ def do_gene(
                     / len(character_at_each_pos[i])
                     >= match_percent
                 ):
+                    skip_last += 1
                     mismatch -= 1
 
                 if mismatch < 0:
@@ -273,7 +277,7 @@ def do_gene(
                         checks -= 1
 
                 if pass_all:
-                    cull_end = i + 1  # Inclusive
+                    cull_end = i - skip_last + 1  # Inclusive
                     break
 
         if not kick:  # If also passed Cull End Calc. Finish
