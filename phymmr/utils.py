@@ -2,6 +2,7 @@
 # © 2022 GPLv3+ PhyMMR Team
 import gzip
 import os
+import sys
 from pathlib import Path
 from threading import Thread
 from queue import Queue
@@ -81,6 +82,10 @@ def get_records(fp, type: str) -> Generator[tuple[str, str], None, None]:
         for line in fp:
             if line.startswith(b"@"):
                 sequence = next(fp).rstrip()
+                next(fp)
+                quality = next(fp).rstrip()
+                if len(quality) != len(sequence):
+                    sys.stderr.write(f"Malformed record in {fp.name}\n{line.decode()}sequence and quality lines differ in length\n")
                 yield (
                     line[1:].rstrip().decode(),
                     sequence.replace(b" ", b"").replace(b"\r", b"").upper().decode(),
