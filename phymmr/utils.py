@@ -6,7 +6,8 @@ from pathlib import Path
 from threading import Thread
 from queue import Queue
 from typing import Generator
-from Bio.SeqIO.QualityIO import FastqGeneralIterator
+# from Bio.SeqIO.QualityIO import FastqGeneralIterator
+
 
 class ConcurrentLogger(Thread):
     def __init__(self, inq: Queue):
@@ -68,19 +69,22 @@ def get_records(fp, type: str) -> Generator[tuple[str, str], None, None]:
             .upper()
             .decode(),
         )
-    ### FIXME: This breaks if the name lines don't include length
     ### currently replaced with FastqGeneralIterator call in parseFasta
+    ### FastqGeneralIterator breaks on bad descripton
     elif type == "fastq":
-        generator = FastqGeneralIterator(fp)
-        for header, seq, description in generator:
-            yield header, seq
-    #     for line in fp:
-    #         if line.startswith(b"@") and b"length=" in line:
-    #             sequence = next(fp).rstrip()
-    #             yield (
-    #                 line[1:].rstrip().decode(),
-    #                 sequence.replace(b" ", b"").replace(b"\r", b"").upper().decode(),
-    #             )
+        # generator = FastqGeneralIterator(fp)
+        # try:
+        #     for header, seq, description in generator:
+        #         yield header, seq
+        # except ValueError:
+        #     pass
+        for line in fp:
+            if line.startswith(b"@"):
+                sequence = next(fp).rstrip()
+                yield (
+                    line[1:].rstrip().decode(),
+                    sequence.replace(b" ", b"").replace(b"\r", b"").upper().decode(),
+                )
 
 
 def parseFasta(path: str) -> Generator[tuple[str, str], None, None]:
@@ -94,8 +98,8 @@ def parseFasta(path: str) -> Generator[tuple[str, str], None, None]:
         func = gzip.open
     file_type = "fastq" if ".fastq" in suffixes or ".fq" in suffixes else "fasta"
     mode = 'rb'
-    if file_type == 'fastq':
-        mode = 'rt'
+    # if file_type == 'fastq':
+    #     mode = 'rt'
     return get_records(func(path, mode), file_type)
 
 
