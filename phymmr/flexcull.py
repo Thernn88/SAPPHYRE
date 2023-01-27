@@ -427,10 +427,7 @@ def do_gene(
 
             positions_to_trim = set()
             for i in range(cull_start, cull_end+1):
-                try:
-                    char = out_line[i]
-                except IndexError:
-                    pass
+                char = out_line[i]
                 if char == "*":
                     kick, positions = trim_around(i, out_line, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold)
                     if kick:
