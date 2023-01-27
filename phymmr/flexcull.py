@@ -455,7 +455,7 @@ def do_gene(
                         + "\n"
                     )
             else:
-                follow_through[gene][header] = True, 0, 0, positions_to_trim
+                follow_through[gene][header] = True, 0, 0, []
                 if debug:
                     log.append(
                         gene
@@ -466,7 +466,7 @@ def do_gene(
                         + ",\n"
                     )
         if kick:
-            follow_through[gene][header] = True, 0, 0, positions_to_trim
+            follow_through[gene][header] = True, 0, 0, []
 
             if debug:
                 log.append(gene + "," + header + ",Kicked,Zero Data After Cull,0,\n")
