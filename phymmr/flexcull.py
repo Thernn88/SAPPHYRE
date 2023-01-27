@@ -426,7 +426,8 @@ def do_gene(
             out_line += ["-"] * characters_till_end
 
             positions_to_trim = set()
-            for i, char in enumerate(out_line):
+            for i in range(cull_start, cull_end+1):
+                char = out_line[i]
                 if char == "*":
                     kick, positions = trim_around(i, out_line, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold)
                     if kick:
@@ -443,14 +444,14 @@ def do_gene(
 
                     if get_data_removed(left_before, left_after) >= 0.33:
                         left_component = ["-"] * len(left_after)
-                        for i in range(0, i):
+                        for i in range(cull_start, i):
                             positions_to_trim.add(i) #mirror to NT
                     else:
                         left_component = left_after
 
                     if get_data_removed(right_before, right_after) >= 0.33:
                         right_component = ["-"] * len(right_after)  
-                        for i in range(i, len(out_line)):
+                        for i in range(i, cull_end+1):
                             positions_to_trim.add(i) #mirror to NT
                     else:
                         right_component = right_after
