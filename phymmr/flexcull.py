@@ -88,6 +88,138 @@ def parse_fasta(fasta_path: str) -> tuple:
     return references, candidates
 
 
+def trim_around(starting_index, sequence, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold) -> None:
+    """
+    Trim around a given position in a sequence
+    """
+    offset = amt_matches - 1
+    cull_end = None
+    for i in range(starting_index, len(sequence)-1):
+        skip_first = 0
+        char = sequence[i]
+        mismatch = mismatches
+
+        if i == len(sequence) - offset:
+            kick = True
+            break
+        
+        if char == "-":
+            continue
+        if all_dashes_by_index[i]:
+            continue
+        if (
+            not character_at_each_pos[i].count(char) / len(character_at_each_pos[i])
+            >= match_percent
+        ):
+            skip_first = 1
+            mismatch -= 1
+
+        if mismatch < 0:
+            continue
+
+        pass_all = True
+        checks = amt_matches - 1
+        match_i = 1
+        
+        while checks > 0:
+            if i + match_i >= len(sequence):
+                pass_all = False
+                break
+            
+            if sequence[i + match_i] == "-":
+                if gap_present_threshold[i + match_i]:
+                    pass_all = False
+                    break
+                match_i += 1
+            elif (
+                not character_at_each_pos[i + match_i].count(sequence[i + match_i])
+                / len(character_at_each_pos[i + match_i])
+                >= match_percent
+            ):
+                mismatch -= 1
+                if mismatch < 0:
+                    pass_all = False
+                    break
+                match_i += 1
+                checks -= 1
+            else:
+                match_i += 1
+                checks -= 1
+
+        if pass_all:
+            cull_end = i + skip_first
+            break
+
+    if not cull_end:
+        return True, None
+
+    cull_start = None
+    kick = False
+    for i in range(starting_index-1, -1, -1):
+        mismatch = mismatches
+        skip_last = 0
+
+        char = sequence[i]
+        if i < 0 + offset:
+            kick = True
+            break
+        if char == "-":
+            continue
+
+        all_dashes_at_position = all_dashes_by_index[i]
+        if all_dashes_at_position:
+            # Don't allow cull to point of all dashes
+            continue
+        if (
+            not character_at_each_pos[i].count(char)
+            / len(character_at_each_pos[i])
+            >= match_percent
+        ):
+            skip_last += 1
+            mismatch -= 1
+
+        if mismatch < 0:
+            continue
+
+        pass_all = True
+        checks = amt_matches - 1
+        match_i = 1
+        
+        while checks > 0:
+            if i - match_i < 0:
+                pass_all = False
+                break
+
+            if sequence[i - match_i] == "-":
+                if gap_present_threshold[i - match_i]:
+                    pass_all = False
+                    break
+                match_i += 1
+            elif (
+                not character_at_each_pos[i - match_i].count(
+                    sequence[i - match_i]
+                )
+                / len(character_at_each_pos[i - match_i])
+                >= match_percent
+            ):
+                mismatch -= 1
+                if mismatch < 0:
+                    pass_all = False
+                    break
+                match_i += 1
+                checks -= 1
+            else:
+                match_i += 1
+                checks -= 1
+
+        if pass_all:
+            cull_start = i - skip_last + 1  # Inclusive
+            break
+    if kick or not cull_start:
+        return True, None
+    return kick, range(cull_start, cull_end)
+
+
 def do_gene(
     aa_input: str,
     nt_input: str,
@@ -145,6 +277,8 @@ def do_gene(
     aa_out = references.copy()
 
     for header, sequence in candidates:
+        sequence = list(sequence)
+        
         gene = header.split("|")[0]
 
         if gene not in follow_through:
@@ -162,14 +296,13 @@ def do_gene(
             skip_first = 0
             if i == sequence_length - offset:
                 kick = True
-                break
+                break          
 
             # Don't allow cull to point of all dashes
             if char == "-":
                 continue
 
-            all_dashes_at_position = all_dashes_by_index[i]
-            if all_dashes_at_position:
+            if all_dashes_by_index[i]:
                 continue
             if (
                 not character_at_each_pos[i].count(char) / len(character_at_each_pos[i])
@@ -217,10 +350,9 @@ def do_gene(
         if not kick:
             # If not kicked from Cull Start Calc. Continue
             cull_end = None
-            for i_raw in range(len(sequence)):
+            for i in range(len(sequence)-1, -1, -1):
                 mismatch = mismatches
                 skip_last = 0
-                i = sequence_length - 1 - i_raw  # Start from end
 
                 char = sequence[i]
                 if i < cull_start + offset:
@@ -229,8 +361,7 @@ def do_gene(
                 if char == "-":
                     continue
 
-                all_dashes_at_position = all_dashes_by_index[i]
-                if all_dashes_at_position:
+                if all_dashes_by_index[i]:
                     # Don't allow cull to point of all dashes
                     continue
                 if (
@@ -279,11 +410,22 @@ def do_gene(
                     break
 
         if not kick:  # If also passed Cull End Calc. Finish
-            out_line = ("-" * cull_start) + sequence[cull_start:cull_end]
+            out_line = ["-"] * cull_start + sequence[cull_start:cull_end]
 
             characters_till_end = sequence_length - len(out_line)
-            out_line += "-" * characters_till_end
+            out_line += ["-"] * characters_till_end
 
+            positions_to_trim = []
+            for i, char in enumerate(out_line):
+                if char == "*":
+                    kick, positions = trim_around(i, out_line, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold)
+                    if kick:
+                        break
+                    for i in positions:
+                        positions_to_trim.append(i)
+                        out_line[i] = "-"
+
+            out_line = "".join(out_line)     
             # The cull replaces data positions with dashes to maintain the same alignment
             # while removing the bad data
 
@@ -291,7 +433,7 @@ def do_gene(
             bp_after_cull = len(out_line) - out_line.count("-")
 
             if bp_after_cull >= bp:
-                follow_through[gene][header] = False, cull_start, cull_end
+                follow_through[gene][header] = False, cull_start, cull_end, positions_to_trim
 
                 aa_out.append((header, out_line))
 
@@ -313,7 +455,7 @@ def do_gene(
                         + "\n"
                     )
             else:
-                follow_through[gene][header] = True, 0, 0
+                follow_through[gene][header] = True, 0, 0, positions_to_trim
                 if debug:
                     log.append(
                         gene
@@ -324,7 +466,7 @@ def do_gene(
                         + ",\n"
                     )
         if kick:
-            follow_through[gene][header] = True, 0, 0
+            follow_through[gene][header] = True, 0, 0, positions_to_trim
 
             if debug:
                 log.append(gene + "," + header + ",Kicked,Zero Data After Cull,0,\n")
@@ -342,10 +484,8 @@ def do_gene(
     nt_out_path = os.path.join(output, "nt", nt_file_name.rstrip(".gz"))
     nt_out = references.copy()
     for header, sequence in candidates:
-        # print(header)
         gene = header.split("|")[0]
-
-        kick, cull_start, cull_end = follow_through[gene][header]
+        kick, cull_start, cull_end, positions_to_trim = follow_through[gene][header]
 
         if not kick:
             cull_start_adjusted = cull_start * 3
@@ -359,6 +499,11 @@ def do_gene(
             out_line += (
                 "-" * characters_till_end
             )  # Add dashes till reached input distance
+
+            out_line = [out_line[i:i+3] for i in range(0, len(out_line), 3)]
+            for pos in positions_to_trim:
+                out_line[pos] = "---"
+            out_line = "".join(out_line)
 
             nt_out.append((header, out_line))
 
