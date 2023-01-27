@@ -33,6 +33,29 @@ MainArgs = namedtuple(
     ],
 )
 
+
+def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
+    """
+    Iterates over each sequence and deletes columns
+    that were removed in the empty column removal.
+    """
+    # raw_sequences = [
+    #     i.replace("\n", "") for i in raw_fed_sequences if i.replace("\n", "") != ""
+    # ]
+
+    result = []
+    raw_sequences = [*chain.from_iterable(raw_fed_sequences)]
+    for i in range(0, len(raw_sequences), 2):
+        # result.append(raw_sequences[i])
+
+        sequence = raw_sequences[i + 1]
+
+        sequence = [sequence[i * 3 : (i * 3) + 3] for i in positions_to_keep]
+        x = ''.join(sequence)
+        result.append((raw_sequences[i], "".join(sequence)))
+
+    return result
+
 def delete_empty_columns(raw_fed_sequences: list, verbose: bool) -> tuple[list, list]:
     """
     Iterates over each sequence and deletes columns
@@ -556,7 +579,7 @@ def do_gene(
                 log.append(gene + "," + header + ",Kicked,Zero Data After Cull,0,\n")
 
     # remove empty columns from refs and
-    aa_out, positions_to_keep = delete_empty_columns(aa_out, False)
+    aa_out, aa_positions_to_keep = delete_empty_columns(aa_out, False)
     if len(aa_out) == len(references):
         return log  # Only refs
 
@@ -590,7 +613,7 @@ def do_gene(
             out_line = "".join(out_line)
 
             nt_out.append((header, out_line))
-    nt_out, positions_to_keep = delete_empty_columns(nt_out, False)
+    nt_out = align_col_removal(nt_out, aa_positions_to_keep)
     writeFasta(nt_out_path, nt_out, compress)
 
     return log
