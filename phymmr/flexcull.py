@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 from collections import namedtuple
+from itertools import chain
 from multiprocessing.pool import Pool
 from shutil import rmtree
 
@@ -32,7 +33,45 @@ MainArgs = namedtuple(
     ],
 )
 
+def delete_empty_columns(raw_fed_sequences: list, verbose: bool) -> tuple[list, list]:
+    """
+    Iterates over each sequence and deletes columns
+    that consist of 100% dashes. In this version, raw_feed_sequences
+    is a list of tuples.
+    """
+    result = []
+    # sequences = []
+    # raw_sequences = [
+    #     i.replace("\n", "") for i in raw_fed_sequences if i.replace("\n", "") != ""
+    # ]
+    # for i in range(0, len(raw_sequences), 2):
+    #     sequences.append(raw_sequences[i + 1])
+    raw_sequences = [*chain.from_iterable(raw_fed_sequences)]
+    sequences = [x[1] for x in raw_fed_sequences]
+    positions_to_keep = []
+    if sequences:
+        for i in range(len(sequences[0])):
+            for sequence in sequences:
+                if sequence[i] != "-":
+                    positions_to_keep.append(i)
+                    break
 
+        for i in range(0, len(raw_sequences), 2):
+            try:
+                sequence = [raw_sequences[i + 1][x] for x in positions_to_keep]
+                # result.append(raw_sequences[i])
+            except IndexError:
+                printv(
+                    f"WARNING: Sequence length is not the same as other sequences: {raw_sequences[i]}",
+                    verbose,
+                    0,
+                )
+                continue
+            sequence = "".join(sequence)
+
+            result.append((raw_sequences[i],sequence))
+
+    return result, positions_to_keep
 def folder_check(output_target_path: str, input_target_path: str) -> str:
     """
     Checks to see if input and output directory has the necessary
@@ -516,6 +555,8 @@ def do_gene(
             if debug:
                 log.append(gene + "," + header + ",Kicked,Zero Data After Cull,0,\n")
 
+    # remove empty columns from refs and
+    aa_out, positions_to_keep = delete_empty_columns(aa_out, False)
     if len(aa_out) == len(references):
         return log  # Only refs
 
@@ -549,7 +590,7 @@ def do_gene(
             out_line = "".join(out_line)
 
             nt_out.append((header, out_line))
-
+    nt_out, positions_to_keep = delete_empty_columns(nt_out, False)
     writeFasta(nt_out_path, nt_out, compress)
 
     return log
