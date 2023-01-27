@@ -425,7 +425,18 @@ def do_gene(
                         positions_to_trim.append(i)
                         out_line[i] = "-"
 
-            out_line = "".join(out_line)     
+            out_line = "".join(out_line)  
+            if kick:
+                follow_through[gene][header] = True, 0, 0, []
+                if debug:
+                    log.append(
+                        gene
+                        + ","
+                        + header
+                        + ",Kicked,Codon cull found no match,0,\n"
+                    )
+                continue
+
             # The cull replaces data positions with dashes to maintain the same alignment
             # while removing the bad data
 
