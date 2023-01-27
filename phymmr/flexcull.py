@@ -220,6 +220,16 @@ def trim_around(starting_index, sequence, amt_matches, mismatches, match_percent
     return kick, range(cull_start, cull_end)
 
 
+def get_data_removed(before:list, after:list) -> float:
+    """
+    Returns the percentage of data removed from a sequence
+    """
+    try:
+        return ((len(before) - before.count("-")) - (len(after) - after.count("-"))) / (len(before) - before.count("-"))
+    except ZeroDivisionError:
+        return 1
+
+
 def do_gene(
     aa_input: str,
     nt_input: str,
@@ -415,15 +425,38 @@ def do_gene(
             characters_till_end = sequence_length - len(out_line)
             out_line += ["-"] * characters_till_end
 
-            positions_to_trim = []
+            positions_to_trim = set()
             for i, char in enumerate(out_line):
                 if char == "*":
                     kick, positions = trim_around(i, out_line, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold)
                     if kick:
                         break
-                    for i in positions:
-                        positions_to_trim.append(i)
-                        out_line[i] = "-"
+                    
+                    left_before = out_line[cull_start:i]
+                    right_before = out_line[i:cull_end]
+                    for x in positions:
+                        positions_to_trim.add(x)
+                        out_line[x] = "-"
+                    
+                    left_after = out_line[cull_start:i]
+                    right_after = out_line[i:cull_end]
+
+                    if get_data_removed(left_before, left_after) >= 0.33:
+                        left_component = ["-"] * len(left_after)
+                        for i in range(0, i):
+                            positions_to_trim.add(i) #mirror to NT
+                    else:
+                        left_component = left_after
+
+                    if get_data_removed(right_before, right_after) >= 0.33:
+                        right_component = ["-"] * len(right_after)  
+                        for i in range(i, len(out_line)):
+                            positions_to_trim.add(i) #mirror to NT
+                    else:
+                        right_component = right_after
+
+                    out_line = ["-"] * cull_start + left_component + right_component
+                    out_line += ["-"] * (sequence_length - len(out_line))
 
             out_line = "".join(out_line)  
             if kick:
@@ -511,9 +544,7 @@ def do_gene(
                 "-" * characters_till_end
             )  # Add dashes till reached input distance
 
-            out_line = [out_line[i:i+3] for i in range(0, len(out_line), 3)]
-            for pos in positions_to_trim:
-                out_line[pos] = "---"
+            out_line = [out_line[i:i+3] if i not in positions_to_trim else "---" for i in range(0, len(out_line), 3)]
             out_line = "".join(out_line)
 
             nt_out.append((header, out_line))
