@@ -498,7 +498,7 @@ def do_gene(
                     left_before = out_line[cull_start:i]
                     right_before = out_line[i:cull_end]
                     for x in positions:
-                        positions_to_trim.add(x)
+                        positions_to_trim.add(x*3)
                         out_line[x] = "-"
                     
                     left_after = out_line[cull_start:i]
@@ -507,14 +507,14 @@ def do_gene(
                     if get_data_removed(left_before, left_after) >= 0.33:
                         left_component = ["-"] * len(left_after)
                         for i in range(cull_start, i):
-                            positions_to_trim.add(i) #mirror to NT
+                            positions_to_trim.add(i*3) #mirror to NT
                     else:
                         left_component = left_after
 
                     if get_data_removed(right_before, right_after) >= 0.33:
                         right_component = ["-"] * len(right_after)  
                         for i in range(i, cull_end+1):
-                            positions_to_trim.add(i) #mirror to NT
+                            positions_to_trim.add(i*3) #mirror to NT
                     else:
                         right_component = right_after
 
