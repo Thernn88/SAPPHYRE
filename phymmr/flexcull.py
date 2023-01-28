@@ -478,7 +478,7 @@ def do_gene(
                         checks -= 1
 
                 if pass_all:
-                    cull_end = i - skip_last # Inclusive
+                    cull_end = i - skip_last + 1 # Inclusive
                     break
 
         if not kick:  # If also passed Cull End Calc. Finish
@@ -488,7 +488,7 @@ def do_gene(
             out_line += ["-"] * characters_till_end
 
             positions_to_trim = set()
-            for i in range(cull_start, cull_end+1):
+            for i in range(cull_start, cull_end):
                 char = out_line[i]
                 if char == "*":
                     kick, positions = trim_around(i, out_line, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold)
