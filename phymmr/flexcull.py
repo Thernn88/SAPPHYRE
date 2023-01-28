@@ -282,14 +282,14 @@ def trim_around(starting_index, sequence, amt_matches, mismatches, match_percent
     return kick, range(cull_start, cull_end)
 
 
-def get_data_removed(before:list, after:list) -> float:
-    """
-    Returns the percentage of data removed from a sequence
-    """
-    try:
-        return ((len(before) - before.count("-")) - (len(after) - after.count("-"))) / (len(before) - before.count("-"))
-    except ZeroDivisionError:
+def get_data_difference(trim, ref):
+    if trim == 0:
+        return 0
+    if ref == 0 and trim != 0:
         return 1
+    if trim == 0 and ref == 0:
+        return 1
+    return trim / ref
 
 
 def do_gene(
@@ -494,9 +494,7 @@ def do_gene(
                     kick, positions = trim_around(i, out_line, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold)
                     if kick:
                         break
-                    
-                    left_before = out_line[cull_start:i]
-                    right_before = out_line[i:cull_end]
+
                     for x in positions:
                         positions_to_trim.add(x*3)
                         out_line[x] = "-"
@@ -504,22 +502,20 @@ def do_gene(
                     left_after = out_line[cull_start:i]
                     right_after = out_line[i:cull_end]
 
-                    if get_data_removed(left_before, left_after) >= 0.33:
-                        left_component = ["-"] * len(left_after)
-                        for i in range(cull_start, i):
-                            positions_to_trim.add(i*3) #mirror to NT
-                    else:
-                        left_component = left_after
+                    left_side_ref_data_columns = sum([(not gap_present_threshold[x]) for x in range(cull_start, i)])
+                    left_of_trim_data_columns = len(left_after) - left_after.count("-")
 
-                    if get_data_removed(right_before, right_after) >= 0.33:
-                        right_component = ["-"] * len(right_after)  
-                        for i in range(i, cull_end+1):
-                            positions_to_trim.add(i*3) #mirror to NT
-                    else:
-                        right_component = right_after
+                    right_side_ref_data_columns = sum([(not gap_present_threshold[x]) for x in range(i, cull_end)])
+                    right_of_trim_data_columns = len(right_after) - right_after.count("-")
 
-                    out_line = ["-"] * cull_start + left_component + right_component
-                    out_line += ["-"] * (sequence_length - len(out_line))
+                    if get_data_difference(left_of_trim_data_columns, left_side_ref_data_columns) < 0.25: # candidate has less than % of data columns compared to reference
+                        for x in range(cull_start, i):
+                            positions_to_trim.add(x*3)
+                            out_line[x] = "-"
+                    if get_data_difference(right_of_trim_data_columns, right_side_ref_data_columns) < 0.25:
+                        for x in range(i, cull_end):
+                            positions_to_trim.add(x*3)
+                            out_line[x] = "-"
 
             out_line = "".join(out_line)  
             if kick:
