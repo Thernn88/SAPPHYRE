@@ -480,7 +480,7 @@ def do_gene(
             out_line += ["-"] * characters_till_end
 
             positions_to_trim = set()
-            for i in range(cull_start, cull_end):
+            for i in range(cull_end-1, cull_start-1, -1):
                 char = out_line[i]
                 if char == "*":
                     positions = trim_around(i, cull_start, cull_end, out_line, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold)
@@ -496,12 +496,12 @@ def do_gene(
 
                     right_side_ref_data_columns = sum([gap_present_threshold[x] for x in range(i, cull_end)])
                     right_of_trim_data_columns = len(right_after) - right_after.count("-")
-                    
-                    if get_data_difference(left_of_trim_data_columns, left_side_ref_data_columns) < 0.4: # candidate has less than % of data columns compared to reference
+
+                    if get_data_difference(left_of_trim_data_columns, left_side_ref_data_columns) < 0.55: # candidate has less than % of data columns compared to reference
                         for x in range(cull_start, i):
                             positions_to_trim.add(x*3)
                             out_line[x] = "-"
-                    if get_data_difference(right_of_trim_data_columns, right_side_ref_data_columns) < 0.4:
+                    if get_data_difference(right_of_trim_data_columns, right_side_ref_data_columns) < 0.55:
                         for x in range(i, cull_end):
                             positions_to_trim.add(x*3)
                             out_line[x] = "-"
