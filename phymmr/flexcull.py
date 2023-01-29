@@ -491,17 +491,17 @@ def do_gene(
                     left_after = out_line[cull_start:i]
                     right_after = out_line[i:cull_end]
 
-                    left_side_ref_data_columns = sum([(not gap_present_threshold[x]) for x in range(cull_start, i)])
+                    left_side_ref_data_columns = sum([gap_present_threshold[x] for x in range(cull_start, i)])
                     left_of_trim_data_columns = len(left_after) - left_after.count("-")
 
-                    right_side_ref_data_columns = sum([(not gap_present_threshold[x]) for x in range(i, cull_end)])
+                    right_side_ref_data_columns = sum([gap_present_threshold[x] for x in range(i, cull_end)])
                     right_of_trim_data_columns = len(right_after) - right_after.count("-")
-
-                    if get_data_difference(left_of_trim_data_columns, left_side_ref_data_columns) < 0.25: # candidate has less than % of data columns compared to reference
+                    
+                    if get_data_difference(left_of_trim_data_columns, left_side_ref_data_columns) < 0.4: # candidate has less than % of data columns compared to reference
                         for x in range(cull_start, i):
                             positions_to_trim.add(x*3)
                             out_line[x] = "-"
-                    if get_data_difference(right_of_trim_data_columns, right_side_ref_data_columns) < 0.25:
+                    if get_data_difference(right_of_trim_data_columns, right_side_ref_data_columns) < 0.4:
                         for x in range(i, cull_end):
                             positions_to_trim.add(x*3)
                             out_line[x] = "-"
