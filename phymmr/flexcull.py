@@ -150,19 +150,18 @@ def parse_fasta(fasta_path: str) -> tuple:
     return references, candidates
 
 
-def trim_around(starting_index, sequence, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold) -> None:
+def trim_around(starting_index, lower_limit, upper_limit, sequence, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold) -> None:
     """
     Trim around a given position in a sequence
     """
     offset = amt_matches - 1
-    cull_end = None
+    cull_end = upper_limit
     for i in range(starting_index, len(sequence)-1):
         skip_first = 0
         char = sequence[i]
         mismatch = mismatches
 
-        if i == len(sequence) - offset:
-            kick = True
+        if i == upper_limit - offset:
             break
         
         if char == "-":
@@ -184,7 +183,7 @@ def trim_around(starting_index, sequence, amt_matches, mismatches, match_percent
         match_i = 1
         
         while checks > 0:
-            if i + match_i >= len(sequence):
+            if i + match_i >= upper_limit:
                 pass_all = False
                 break
             
@@ -212,18 +211,13 @@ def trim_around(starting_index, sequence, amt_matches, mismatches, match_percent
             cull_end = i + skip_first
             break
 
-    if not cull_end:
-        return True, None
-
-    cull_start = None
-    kick = False
+    cull_start = starting_index
     for i in range(starting_index-1, -1, -1):
         mismatch = mismatches
         skip_last = 0
 
         char = sequence[i]
-        if i < 0 + offset:
-            kick = True
+        if i < lower_limit + offset:
             break
         if char == "-":
             continue
@@ -248,7 +242,7 @@ def trim_around(starting_index, sequence, amt_matches, mismatches, match_percent
         match_i = 1
         
         while checks > 0:
-            if i - match_i < 0:
+            if i - match_i < lower_limit:
                 pass_all = False
                 break
 
@@ -277,9 +271,7 @@ def trim_around(starting_index, sequence, amt_matches, mismatches, match_percent
         if pass_all:
             cull_start = i - skip_last + 1  # Inclusive
             break
-    if kick or not cull_start:
-        return True, None
-    return kick, range(cull_start, cull_end)
+    return range(cull_start, cull_end)
 
 
 def get_data_difference(trim, ref):
@@ -491,10 +483,7 @@ def do_gene(
             for i in range(cull_start, cull_end):
                 char = out_line[i]
                 if char == "*":
-                    kick, positions = trim_around(i, out_line, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold)
-                    if kick:
-                        break
-
+                    positions = trim_around(i, cull_start, cull_end, out_line, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold)
                     for x in positions:
                         positions_to_trim.add(x*3)
                         out_line[x] = "-"
