@@ -483,7 +483,7 @@ def do_gene(
 
             positions_to_trim = set()
             codons = []
-            for i in range(cull_end-1, cull_start-1, -1):
+            for i in range(cull_start, cull_end):
                 char = out_line[i]
                 if char == "*":
                     codons.append(i)
