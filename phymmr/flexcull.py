@@ -321,6 +321,8 @@ def do_gene(
 
     for header, sequence in references:
         for i, char in enumerate(sequence):
+            if char == "*":
+                char = "-"
             if i not in character_at_each_pos:
                 character_at_each_pos[i] = [char]
             else:
@@ -511,7 +513,7 @@ def do_gene(
                     for x in range(i, cull_end):
                         positions_to_trim.add(x*3)
                         out_line[x] = "-"
-                        
+
                 non_trimmed_codons = [c for c in codons if c*3 not in positions_to_trim]
 
             out_line = "".join(out_line)  
