@@ -298,7 +298,7 @@ def do_gene(
     compress: bool,
     gap_threshold: float,
     mismatches: int,
-    column_cull: float,
+    column_cull_percent: float,
 ) -> None:
     """
     FlexCull main function. Culls input aa and nt using specified amount of matches
@@ -338,7 +338,7 @@ def do_gene(
     for i, chars in character_at_each_pos.items():
         data_present = 1 - (chars.count("-") / len(chars))
         gap_present_threshold[i] = data_present >= gap_threshold
-        if data_present < column_cull:
+        if data_present < column_cull_percent:
             column_cull.add(i)
 
     log = []
