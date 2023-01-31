@@ -317,11 +317,14 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
         ref_header = taxon_lookup[ref_header_pair][1]
         rextaxon_count[ref_header] = rextaxon_count.get(ref_header, 0) + 1
     sorted_counts = [x for x in rextaxon_count.items()]
-    sorted_counts.sort(key=lambda x: x[1], reverse=True)
-    target_score = min([i[1] for i in sorted_counts[0:5]])
-    target_score = target_score - (target_score * percent)
-    total_references = len(sorted_counts)
-    top_names = [x[0] for x in sorted_counts if x[1] >= target_score]
+    top_names = []
+    total_references = 0
+    if sorted_counts:
+        sorted_counts.sort(key=lambda x: x[1], reverse=True)
+        target_score = min([i[1] for i in sorted_counts[0:5]])
+        target_score = target_score - (target_score * percent)
+        total_references = len(sorted_counts)
+        top_names = [x[0] for x in sorted_counts if x[1] >= target_score]
     return top_names, total_references
 
 def run_process(args, input_path) -> None:
@@ -439,84 +442,85 @@ def run_process(args, input_path) -> None:
     dupe_divy_headers = {}
     with open(out_path) as fp:
         reftaxon_counts, total_references = count_reftaxon(fp, target_to_taxon, args.top_ref)
-        fp.seek(0)
-        for hits, requires_multi in get_sequence_results(
-                fp,
-                target_to_taxon
-            ):
-            if requires_multi:
-                hits, this_kicks, log = multi_filter(hits, args.debug)
-                # filter hits by min length and evalue
-                hits_bad, evalue_Log = hits_are_bad(hits, args.debug, args.min_percent, args.min_evalue, reftaxon_counts, total_references)
-                if hits_bad:
-                    evalue_kicks += len(hits)
-                    kicks += len(hits)
+        if reftaxon_counts:
+            fp.seek(0)
+            for hits, requires_multi in get_sequence_results(
+                    fp,
+                    target_to_taxon
+                ):
+                if requires_multi:
+                    hits, this_kicks, log = multi_filter(hits, args.debug)
+                    # filter hits by min length and evalue
+                    hits_bad, evalue_Log = hits_are_bad(hits, args.debug, args.min_percent, args.min_evalue, reftaxon_counts, total_references)
+                    if hits_bad:
+                        evalue_kicks += len(hits)
+                        kicks += len(hits)
+                        if args.debug:
+                            global_log.extend(evalue_Log)
+                        continue
+
+                    kicks += this_kicks
                     if args.debug:
-                        global_log.extend(evalue_Log)
-                    continue
+                        global_log.extend(log)
 
-                kicks += this_kicks
-                if args.debug:
-                    global_log.extend(log)
-
-            best_hit = reciprocal_check(
-                hits, strict_search_mode, reference_taxa
-            )
-
-            if best_hit:
-                base_header = best_hit.header
-                dupe_divy_headers.setdefault(best_hit.gene, {})[base_header] = 1
-
-                best_hit.seq = head_to_seq[base_header]
-
-                output.setdefault(best_hit.gene, []).append(
-                    best_hit
+                best_hit = reciprocal_check(
+                    hits, strict_search_mode, reference_taxa
                 )
-        # with open('refcounts.csv','a+') as countf:
-        #     countf.write("reftaxon, count\n")
-        #     for key, value in global_ref_count.items():
-        #         countf.write(f'{key}, {value}\n')
-    internal_kicks = 0
-    passes = 0
 
-    with Pool(args.processes) as pool:
-        to_output = pool.starmap(filter_and_tag, [(gene, hits, args.debug, args.internal_percent) for gene, hits in output.items()])
+                if best_hit:
+                    base_header = best_hit.header
+                    dupe_divy_headers.setdefault(best_hit.gene, {})[base_header] = 1
 
-    for gene, this_kicks, this_log, hits in to_output:
-        passes += len(hits)
-        internal_kicks += this_kicks
-        if args.debug:
-            global_log.extend(this_log)
-        db.put(f"gethits:{gene}", json.dumps(hits))
+                    best_hit.seq = head_to_seq[base_header]
 
-    if global_log:
-        with open(os.path.join(input_path, "multi.log"), "w") as fp:
-            fp.write(
-                "\n".join([",".join([str(i) for i in line]) for line in global_log])
-            )
-    print(f"{evalue_kicks} evalue kicks")
-    print(f"{kicks-evalue_kicks} multi kicks")
-    print(f"{internal_kicks} internal kicks")
-    print(
-        f"Took {time_keeper.lap():.2f}s for {kicks+internal_kicks} kicks leaving {passes} results. Writing to DB"
-    ) 
+                    output.setdefault(best_hit.gene, []).append(
+                        best_hit
+                    )
+            # with open('refcounts.csv','a+') as countf:
+            #     countf.write("reftaxon, count\n")
+            #     for key, value in global_ref_count.items():
+            #         countf.write(f'{key}, {value}\n')
+        internal_kicks = 0
+        passes = 0
 
-    gene_dupe_count = {}
-    for gene, headers in dupe_divy_headers.items():
-        for base_header in headers.keys():
-            if base_header in dupe_counts:
-                gene_dupe_count.setdefault(gene, {})[base_header] = dupe_counts[
-                    base_header
-                ]
+        with Pool(args.processes) as pool:
+            to_output = pool.starmap(filter_and_tag, [(gene, hits, args.debug, args.internal_percent) for gene, hits in output.items()])
 
-    db.put("getall:presentgenes", ",".join(list(output.keys())))
+        for gene, this_kicks, this_log, hits in to_output:
+            passes += len(hits)
+            internal_kicks += this_kicks
+            if args.debug:
+                global_log.extend(this_log)
+            db.put(f"gethits:{gene}", json.dumps(hits))
 
-    key = "getall:gene_dupes"
-    data = json.dumps(gene_dupe_count)
-    nt_db.put(key, data)
+        if global_log:
+            with open(os.path.join(input_path, "multi.log"), "w") as fp:
+                fp.write(
+                    "\n".join([",".join([str(i) for i in line]) for line in global_log])
+                )
+        print(f"{evalue_kicks} evalue kicks")
+        print(f"{kicks-evalue_kicks} multi kicks")
+        print(f"{internal_kicks} internal kicks")
+        print(
+            f"Took {time_keeper.lap():.2f}s for {kicks+internal_kicks} kicks leaving {passes} results. Writing to DB"
+        ) 
 
-    del db
-    del nt_db
+        gene_dupe_count = {}
+        for gene, headers in dupe_divy_headers.items():
+            for base_header in headers.keys():
+                if base_header in dupe_counts:
+                    gene_dupe_count.setdefault(gene, {})[base_header] = dupe_counts[
+                        base_header
+                    ]
+
+        db.put("getall:presentgenes", ",".join(list(output.keys())))
+
+        key = "getall:gene_dupes"
+        data = json.dumps(gene_dupe_count)
+        nt_db.put(key, data)
+
+        del db
+        del nt_db
 
     printv(f"Took {time_keeper.differential():.2f}s overall.", args.verbose)
 
