@@ -114,7 +114,7 @@ def split_sequences(path: str, excluded: set) -> tuple:
     bad_names = {"bombyx_mori", "danaus_plexippus"}
     references = []
     candidates = []
-
+    found = set()
     end_of_references = False
     try:
         for header, sequence in parseFasta(path):
@@ -123,8 +123,11 @@ def split_sequences(path: str, excluded: set) -> tuple:
             if end_of_references is False:
                 # The reference header identifier is present in the header
                 if header[-1] == ".":
-                    if header.split("|")[1].lower() in bad_names:
-                        excluded.add(header)
+                    if header.split("|")[1].lower() in bad_names: continue
+                    # ref variant header check
+                    check = header[:header.index(':')]
+                    if check in found: continue
+                    else: found.add(check)
 
                     references.append(header)
                     references.append(sequence)
