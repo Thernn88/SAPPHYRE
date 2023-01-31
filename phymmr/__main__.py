@@ -275,6 +275,13 @@ def subcmd_outliercheck(subparsers):
         default=False,
         help="Log outliers to csv files",
     )
+
+    par.add_argument(
+        "-e",
+        "--exclude",
+        default=None,
+        help="Path to excluded taxa names. File should be line delimited."
+    )
     par.set_defaults(func=outliercheck, formathelp=par.format_help)
 
 

@@ -122,7 +122,7 @@ def split_sequences(path: str, excluded: set) -> tuple:
             if end_of_references is False:
                 # The reference header identifier is present in the header
                 if header[-1] == ".":
-                    if header.split("|")[1].lower() in bad_names: continue
+                    if header.split("|")[1].lower() in excluded: continue
                     # ref variant header check
 
                     references.append(header)
@@ -489,6 +489,19 @@ def remove_excluded_sequences(lines: list, excluded: set) -> list:
     return output
 
 
+def make_exclusion_set(path: str) -> set:
+    """
+    Reads a file at a given path and returns a set containing
+    each line. Used to make a taxa exclusion list.
+    """
+    excluded = set()
+    if not path: return excluded
+    with open(path) as f:
+        for line in f:
+            excluded.add(line.rstrip())
+    return excluded
+
+
 def main_process(
     args_input,
     nt_input,
@@ -504,6 +517,7 @@ def main_process(
     index_group_min_bp: int,
     ref_gap_percent: float,
     ref_min_percent: int,
+    exclusion_file
 ):
     keep_refs = not args_references
 
@@ -516,7 +530,8 @@ def main_process(
     aa_output = os.path.join(args_output, "aa")
     aa_output = os.path.join(aa_output, filename.rstrip(".gz"))
 
-    to_be_excluded = set()
+    to_be_excluded = make_exclusion_set(exclusion_file)
+
     reference_sequences, candidate_sequences = split_sequences(
         file_input, to_be_excluded
     )
@@ -653,6 +668,7 @@ def do_folder(folder, args):
                     args.index_group_min_bp,
                     args.ref_gap_percent,
                     args.ref_min_percent,
+                    args.exclude
                 )
             )
 
@@ -677,6 +693,7 @@ def do_folder(folder, args):
                     args.index_group_min_bp,
                     args.ref_gap_percent,
                     args.ref_min_percent,
+                    args.exclude
                 )
             )
     if args.debug:
