@@ -114,7 +114,6 @@ def split_sequences(path: str, excluded: set) -> tuple:
     bad_names = {"bombyx_mori", "danaus_plexippus"}
     references = []
     candidates = []
-
     end_of_references = False
     try:
         for header, sequence in parseFasta(path):
@@ -123,8 +122,8 @@ def split_sequences(path: str, excluded: set) -> tuple:
             if end_of_references is False:
                 # The reference header identifier is present in the header
                 if header[-1] == ".":
-                    if header.split("|")[1].lower() in bad_names:
-                        excluded.add(header)
+                    if header.split("|")[1].lower() in bad_names: continue
+                    # ref variant header check
 
                     references.append(header)
                     references.append(sequence)
@@ -338,7 +337,13 @@ def compare_means(
         ]
 
         ref_distances = []
-        if len(ref_alignments) / refs_in_file < ref_min_percent:
+
+        # find number of unique ref variants remaining after bp kick
+        found = set()
+        for ref in ref_records:
+            found.add(ref.id[:ref.id.index(':')])
+
+        if len(found) / refs_in_file < ref_min_percent:
             has_ref_distances = False
         else:
             for seq1, seq2 in combinations(ref_alignments, 2):
@@ -515,7 +520,7 @@ def main_process(
     reference_sequences, candidate_sequences = split_sequences(
         file_input, to_be_excluded
     )
-    refs_in_file = len(reference_sequences) / 2
+    # refs_in_file = len(reference_sequences) / 2
 
     ref_dict, candidates_dict = find_index_groups(
         reference_sequences, candidate_sequences
@@ -530,6 +535,13 @@ def main_process(
         )
         if percent_of_non_dash <= col_cull_percent:
             rejected_indices.add(i)
+    ref_headers = reference_sequences[::2]
+
+    # find number of unique reference variants in file, use for refs_in_file
+    found = set()
+    for ref in ref_headers:
+        found.add(ref[:ref.index(':')])
+    refs_in_file = len(found)
 
     candidate_headers = [header for header in candidate_sequences if header[0] == ">"]
 
