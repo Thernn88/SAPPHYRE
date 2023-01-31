@@ -339,7 +339,7 @@ def do_gene(
         data_present = 1 - (chars.count("-") / len(chars))
         gap_present_threshold[i] = data_present >= gap_threshold
         if data_present < column_cull_percent:
-            column_cull.add(i)
+            column_cull.add(i*3)
 
     log = []
 
@@ -350,7 +350,7 @@ def do_gene(
     aa_out = references.copy()
 
     for header, sequence in candidates:
-        sequence = ["-" if i in column_cull else let for i, let in enumerate(sequence)]
+        sequence = ["-" if i*3 in column_cull else let for i, let in enumerate(sequence)]
         
         gene = header.split("|")[0]
 
@@ -612,7 +612,7 @@ def do_gene(
                 "-" * characters_till_end
             )  # Add dashes till reached input distance
 
-            out_line = [out_line[i:i+3] if i not in positions_to_trim else "---" for i in range(0, len(out_line), 3)]
+            out_line = [out_line[i:i+3] if i not in positions_to_trim and i not in column_cull else "---" for i in range(0, len(out_line), 3)]
             out_line = "".join(out_line)
 
             nt_out.append((header, out_line))
