@@ -522,6 +522,7 @@ def flexcull(args):
         args.compress,
         args.gap_threshold,
         args.mismatches,
+        args.column_cull,
     )
     if not flexcull.main(flexargs):
         print()
