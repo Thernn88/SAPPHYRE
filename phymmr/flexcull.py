@@ -29,7 +29,8 @@ MainArgs = namedtuple(
         "match_percent",
         "compress",
         "gap_threshold",
-        "mismatches"
+        "mismatches",
+        "column_cull"
     ],
 )
 
@@ -296,7 +297,8 @@ def do_gene(
     verbosity: int,
     compress: bool,
     gap_threshold: float,
-    mismatches: int
+    mismatches: int,
+    column_cull: float,
 ) -> None:
     """
     FlexCull main function. Culls input aa and nt using specified amount of matches
@@ -319,6 +321,8 @@ def do_gene(
         max_ref_length = max(max_ref_length, len(sequence))
     all_dashes_by_index = [True] * max_ref_length
 
+    column_cull = set()
+
     for header, sequence in references:
         for i, char in enumerate(sequence):
             if char == "*":
@@ -332,7 +336,10 @@ def do_gene(
                 all_dashes_by_index[i] = False
     
     for i, chars in character_at_each_pos.items():
-        gap_present_threshold[i] = chars.count("-") / len(chars) < gap_threshold
+        data_present = 1 - (chars.count("-") / len(chars))
+        gap_present_threshold[i] = data_present >= gap_threshold
+        if data_present < column_cull:
+            column_cull.add(i)
 
     log = []
 
@@ -343,7 +350,7 @@ def do_gene(
     aa_out = references.copy()
 
     for header, sequence in candidates:
-        sequence = list(sequence)
+        sequence = ["-" if i in column_cull else let for i, let in enumerate(sequence)]
         
         gene = header.split("|")[0]
 
@@ -360,6 +367,7 @@ def do_gene(
         for i, char in enumerate(sequence):
             mismatch = mismatches
             skip_first = 0
+
             if i == sequence_length - offset:
                 kick = True
                 break          
@@ -652,7 +660,8 @@ def do_folder(folder, args: MainArgs):
                     args.verbose,
                     args.compress,
                     args.gap_threshold,
-                    args.mismatches
+                    args.mismatches,
+                    args.column_cull
                 )
             )
 
@@ -672,7 +681,8 @@ def do_folder(folder, args: MainArgs):
                 args.verbose,
                 args.compress,
                 args.gap_threshold,
-                args.mismatches
+                args.mismatches,
+                args.column_cull
             )
             for input_gene in file_inputs
         ]

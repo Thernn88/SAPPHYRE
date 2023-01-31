@@ -471,13 +471,20 @@ def subcmd_flexcull(subparsers):
         type=int,
         default=7,
         help="Amount of base pairs that have to match reference.",
-    )
+    )#
     par.add_argument(
         "-mp",
         "--match_percent",
         type=float,
         default=0.02,
         help="Percentage of references that must contain the base pair to match.",
+    )
+    par.add_argument(
+        "-cc",
+        "--column_cull",
+        type=float,
+        default=0.1,
+        help="Percentage of reference columns that must contain data.",
     )
     par.add_argument(
         "-gt",
