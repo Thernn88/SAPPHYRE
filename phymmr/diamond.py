@@ -230,7 +230,7 @@ def internal_filter(hits: list, debug: bool, internal_percent: float) -> list:
             continue
 
         overlap_amount = get_overlap(hit_a.qstart, hit_a.qend, hit_b.qstart, hit_b.qend)
-        percent = overlap_amount / hit_a.length
+        percent = overlap_amount / hit_a.length if overlap_amount > 0 else 0
 
         if percent >= internal_percent:
             kicks += 1
@@ -245,7 +245,7 @@ def internal_filter(hits: list, debug: bool, internal_percent: float) -> list:
                                 hit_b.score,
                                 hit_b.qstart,
                                 hit_b.qend,
-                                "Kicked out by",
+                                "Internal kicked out by",
                                 hit_a.gene,
                                 hit_a.header,
                                 hit_a.reftaxon,
@@ -257,12 +257,12 @@ def internal_filter(hits: list, debug: bool, internal_percent: float) -> list:
     
     return [i for i in hits if not i.kick], log, kicks
 
-def filter_and_tag(gene, hits, debug, internal_percent):
-    # hits, this_log, this_kicks  = internal_filter(hits, debug, internal_percent)
-    
+def filter_and_tag(gene, hits, debug, internal_percent): 
+    hits, this_log, this_kicks  = internal_filter(hits, debug, internal_percent)
     for hit in hits:
         hit.tag_header()
-    return gene, 0, [], [i.to_json() for i in hits]
+
+    return gene, this_kicks, this_log, [i.to_json() for i in hits]
 
 
 def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
