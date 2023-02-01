@@ -284,7 +284,7 @@ def internal_filter(hits: list, debug: bool, internal_percent: float) -> list:
                                 hit_b.score,
                                 hit_b.qstart,
                                 hit_b.qend,
-                                "Kicked out by",
+                                "Internal kicked out by",
                                 hit_a.gene,
                                 hit_a.header,
                                 hit_a.reftaxon,
