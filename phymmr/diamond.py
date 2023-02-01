@@ -64,6 +64,7 @@ class Hit:
         self.length = self.qend - self.qstart + 1
 
     def tag_header(self):
+
         if int(self.frame) < 0:
             self.header = self.header + f"|[revcomp]:[translate({self.frame[1:]})]"
         else:
@@ -257,9 +258,10 @@ def internal_filter(hits: list, debug: bool, internal_percent: float) -> list:
     
     return [i for i in hits if not i.kick], log, kicks
 
-def filter_and_tag(gene, hits, debug, internal_percent): 
+def filter_and_tag(gene, hits, debug, internal_percent, head_to_seq):
     hits, this_log, this_kicks  = internal_filter(hits, debug, internal_percent)
     for hit in hits:
+        hit.seq = head_to_seq[hit.header]
         hit.tag_header()
 
     return gene, this_kicks, this_log, [i.to_json() for i in hits]
@@ -482,7 +484,7 @@ def run_process(args, input_path) -> None:
             args.verbose,
         )
         with Pool(args.processes) as pool:
-            to_output = pool.starmap(filter_and_tag, [(gene, hits, args.debug, args.internal_percent) for gene, hits in output.items()])
+            to_output = pool.starmap(filter_and_tag, [(gene, hits, args.debug, args.internal_percent, head_to_seq) for gene, hits in output.items()])
 
         printv(
             f"Prepped. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Writing to db",
