@@ -275,10 +275,10 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
     rextaxon_count = {}
     header_lines = {}
     for line in file_pointer:
-        header, ref_header_pair = line.split('\t')[:2]
+        header, ref_header_pair, frame = line.split('\t')[:3]
         ref_gene, ref_taxon = taxon_lookup[ref_header_pair]
         rextaxon_count[ref_taxon] = rextaxon_count.get(ref_taxon, 0) + 1
-        header_lines.setdefault(header, []).append(line.strip()+f'\t{ref_gene}\t{ref_taxon}')
+        header_lines.setdefault(header+frame, []).append(line.strip()+f'\t{ref_gene}\t{ref_taxon}')
     sorted_counts = [x for x in rextaxon_count.items()]
     top_names = []
     total_references = 0
