@@ -434,7 +434,7 @@ def run_process(args, input_path) -> None:
     output = {}
     multi_kicks = 0
 
-    levels = 5
+    chunks = args.chunks
     chunk_count= itertools.count(1)
 
     evalue_kicks = 0
@@ -446,12 +446,12 @@ def run_process(args, input_path) -> None:
     headers = list(lines.keys())
 
     printv(
-        f"Processing {levels} chunk(s). Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
+        f"Processing {chunks} chunk(s). Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
         args.verbose,
     )
 
     if lines:
-        per_level = ceil(len(lines) / levels)
+        per_level = ceil(len(lines) / chunks)
         for i in range(0, len(lines), per_level):
             printv(
                 f"Processing chunk {next(chunk_count)}. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
