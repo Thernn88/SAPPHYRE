@@ -350,7 +350,7 @@ def do_gene(
     aa_out = references.copy()
 
     for header, sequence in candidates:
-        sequence = ["-" if i*3 in column_cull else let for i, let in enumerate(sequence)]
+        sequence = list(sequence)
         
         gene = header.split("|")[0]
 
@@ -524,7 +524,7 @@ def do_gene(
 
                 non_trimmed_codons = [c for c in codons if c*3 not in positions_to_trim]
 
-            out_line = "".join(out_line)  
+            out_line = "".join([let if i*3 not in column_cull else "-" for i, let in enumerate(out_line)])  
             if kick:
                 follow_through[gene][header] = True, 0, 0, []
                 if debug:
