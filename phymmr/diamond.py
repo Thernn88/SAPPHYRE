@@ -1,7 +1,6 @@
 from collections import Counter
 import itertools
 from math import ceil
-import math
 import os
 from shutil import rmtree
 import sys
@@ -260,9 +259,7 @@ def internal_filter(hits: list, debug: bool, internal_percent: float) -> list:
     return [i for i in hits if i.kick], log, kicks
 
 def internal_filtering(gene, hits, debug, internal_percent):
-    print(f"Thread started. Target gene: {gene}. Thread has {len(hits)} hits to process with {math.comb(len(hits), 2)} combinations")
     kicked_hits, this_log, this_kicks  = internal_filter(hits, debug, internal_percent)
-    print(f"Thread finished. Target gene: {gene}")
 
     return {gene: (this_kicks, this_log, set([i.full_header for i in kicked_hits]))}
 
@@ -485,14 +482,19 @@ def run_process(args, input_path) -> None:
         )
 
         requires_internal = {}
+        internal_order = []
         for gene, hits in output.items():
             this_counter = Counter([i.header for i in hits]).most_common()
             if this_counter[0][1] > 1:
+                this_hits = sum([i[1] for i in this_counter if i[1] > 1])
                 this_common = {i[0] for i in this_counter if i[1] > 1}
                 requires_internal[gene] = {i.header for i in hits if i.header in this_common}
-                
+                internal_order.append((gene, this_hits))
+
+        internal_order.sort(key = lambda x: x[1])
+
         with Pool(args.processes) as pool:
-            internal_results = pool.starmap(internal_filtering, [(gene, [hit for hit in output[gene] if hit.header in targets], args.debug, args.internal_percent) for gene, targets in requires_internal.items()])
+            internal_results = pool.starmap(internal_filtering, [(gene, [hit for hit in output[gene] if hit.header in requires_internal[gene]], args.debug, args.internal_percent) for gene, _ in internal_order])
 
         internal_result = {}
         for result in internal_results:
