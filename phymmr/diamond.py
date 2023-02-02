@@ -491,7 +491,7 @@ def run_process(args, input_path) -> None:
                 requires_internal[gene] = {i.header for i in hits if i.header in this_common}
                 internal_order.append((gene, this_hits))
 
-        internal_order.sort(key = lambda x: x[1])
+        internal_order.sort(key = lambda x: x[1], reverse= True)
 
         with Pool(args.processes) as pool:
             internal_results = pool.starmap(internal_filtering, [(gene, [hit for hit in output[gene] if hit.header in requires_internal[gene]], args.debug, args.internal_percent) for gene, _ in internal_order])
