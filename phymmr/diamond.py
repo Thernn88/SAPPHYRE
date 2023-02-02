@@ -6,8 +6,8 @@ from shutil import rmtree
 import sys
 from tempfile import TemporaryDirectory, NamedTemporaryFile
 import json
-import wrap_rocks
 from multiprocessing.pool import Pool
+import wrap_rocks
 
 from .utils import printv, gettempdir
 from .timekeeper import TimeKeeper, KeeperMode
