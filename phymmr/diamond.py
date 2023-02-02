@@ -481,10 +481,14 @@ def run_process(args, input_path) -> None:
             args.verbose,
         )
 
-        requires_internal = [gene for gene, hits in output.items() if Counter([i.header for i in hits]).most_common()[0][1] > 1]
-
+        requires_internal = {}
+        for gene, hits in output.items():
+            this_counter = Counter([i.header for i in hits]).most_common()
+            if this_counter[0][1] > 1:
+                this_common = {i[0] for i in this_counter if i[1] > 1}
+                requires_internal[gene] = {i.header for i in hits if i.header in this_common}
         with Pool(args.processes) as pool:
-            internal_results = pool.starmap(internal_filtering, [(gene, output[gene], args.debug, args.internal_percent) for gene in requires_internal])
+            internal_results = pool.starmap(internal_filtering, [(gene, [hit for hit in output[gene] if hit.header in targets], args.debug, args.internal_percent) for gene, targets in requires_internal.items()])
 
         internal_result = {}
         for result in internal_results:
