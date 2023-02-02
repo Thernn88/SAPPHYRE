@@ -130,12 +130,12 @@ def print_unmerged_sequences(hits, orthoid, taxa_id):
 
         unique_hit = base_header + aa_seq
 
-        if aa_seq in seq_mapped_already:
-            mapped_to = seq_mapped_already[aa_seq]
+        if nt_seq in seq_mapped_already:
+            mapped_to = seq_mapped_already[nt_seq]
             dupes.setdefault(mapped_to, []).append(base_header)
             continue
         else:
-            seq_mapped_already[aa_seq] = base_header
+            seq_mapped_already[nt_seq] = base_header
 
         if unique_hit not in exact_hit_mapped_already:
 
