@@ -1,3 +1,4 @@
+from collections import Counter
 import itertools
 from math import ceil
 import os
@@ -46,6 +47,7 @@ class Hit:
         "length",
         "kick",
         "frame",
+        "full_header"
     )
     
     def __init__(self, header, ref_header, frame, evalue, score, qstart, qend, gene, reftaxon):
@@ -58,21 +60,19 @@ class Hit:
         self.qend = int(qend)
         self.evalue = float(evalue)
         self.kick = False
-        self.frame = frame
-        if int(self.frame) < 0:
+        self.frame = int(frame)
+        if self.frame < 0:
             self.qend, self.qstart = self.qstart, self.qend
         self.length = self.qend - self.qstart + 1
 
-    def tag_header(self):
-
-        if int(self.frame) < 0:
-            self.header = self.header + f"|[revcomp]:[translate({self.frame[1:]})]"
+        if self.frame < 0:
+            self.full_header = self.header + f"|[revcomp]:[translate({abs(self.frame)})]"
         else:
-            self.header = self.header + f"|[translate({self.frame})]"
+            self.full_header = self.header + f"|[translate({self.frame})]"
 
     def to_json(self):
         return {
-            "header": self.header,
+            "header": self.full_header,
             "seq": self.seq,
             "ref_taxon": self.reftaxon,
             "ali_start": self.qstart,
@@ -224,10 +224,10 @@ def internal_filter(hits: list, debug: bool, internal_percent: float) -> list:
     kicks = 0
 
     for hit_a, hit_b in itertools.combinations(hits, 2):
-        if hit_a.kick or hit_b.kick:
+        if hit_a.header != hit_b.header:
             continue
 
-        if hit_a.header != hit_b.header:
+        if hit_a.kick or hit_b.kick:
             continue
 
         overlap_amount = get_overlap(hit_a.qstart, hit_a.qend, hit_b.qstart, hit_b.qend)
@@ -256,14 +256,19 @@ def internal_filter(hits: list, debug: bool, internal_percent: float) -> list:
                             )
                         )
     
-    return [i for i in hits if not i.kick], log, kicks
+    return [i for i in hits if i.kick], log, kicks
 
 def filter_and_tag(gene, hits, debug, internal_percent):
-    hits, this_log, this_kicks  = internal_filter(hits, debug, internal_percent)
-    for hit in hits:
-        hit.tag_header()
+    bh_count = Counter([i.header for i in hits])
+    
+    if bh_count.most_common()[0][1] > 1:
+        kicked_hits, this_log, this_kicks  = internal_filter(hits, debug, internal_percent)
+    else:
+        this_log = []
+        this_kicks = 0
+        kicked_hits = []
 
-    return gene, this_kicks, this_log, hits
+    return gene, this_kicks, this_log, set([i.full_header for i in kicked_hits])
 
 
 def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
@@ -492,15 +497,26 @@ def run_process(args, input_path) -> None:
 
         passes = 0
         internal_kicks = 0
-        for gene, this_kicks, this_log, hits in to_output:
-            passes += len(hits)
+        for gene, this_kicks, this_log, kicks in to_output:
+            hits = output[gene]
+            dupe_divy_headers[gene] = {}
             internal_kicks += this_kicks
             if args.debug:
                 global_log.extend(this_log)
 
-            for hit in hits:
-                hit.seq = head_to_seq[hit.header.split("|")[0]]
-            db.put(f"gethits:{gene}", json.dumps([i.to_json() for i in hits]))
+            out = []
+            if kicks:
+                for hit in hits:
+                    if hit.full_header not in kicks:
+                        hit.seq = head_to_seq[hit.header.split("|")[0]]
+                        out.append(hit.to_json())
+            else:
+                for hit in hits:
+                    hit.seq = head_to_seq[hit.header.split("|")[0]]
+                    out.append(hit.to_json())
+                    dupe_divy_headers[gene][hit.header] = 1
+            passes += len(out)
+            db.put(f"gethits:{gene}", json.dumps(out))
 
         if global_log:
             with open(os.path.join(input_path, "multi.log"), "w") as fp:
