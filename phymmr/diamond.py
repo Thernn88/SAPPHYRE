@@ -219,49 +219,50 @@ def hits_are_bad(
     return return_type, evalue_log
 
 
-def internal_filter(hits: list, debug: bool, internal_percent: float) -> list:
+def internal_filter(header_based: dict, debug: bool, internal_percent: float) -> list:
     log = []
     kicks = 0
+    this_kicks = set()
 
-    for hit_a, hit_b in itertools.combinations(hits, 2):
-        if hit_a.header != hit_b.header:
-            continue
+    for hits in header_based.values():
+        for hit_a, hit_b in itertools.combinations(hits, 2):
+            if hit_a.kick or hit_b.kick:
+                continue
 
-        if hit_a.kick or hit_b.kick:
-            continue
+            overlap_amount = get_overlap(hit_a.qstart, hit_a.qend, hit_b.qstart, hit_b.qend)
+            percent = overlap_amount / hit_a.length if overlap_amount > 0 else 0
 
-        overlap_amount = get_overlap(hit_a.qstart, hit_a.qend, hit_b.qstart, hit_b.qend)
-        percent = overlap_amount / hit_a.length if overlap_amount > 0 else 0
+            if percent >= internal_percent:
+                kicks += 1
+                hit_b.kick = True
 
-        if percent >= internal_percent:
-            kicks += 1
-            hit_b.kick = True
+                this_kicks.add(hit_b.full_header)
 
-            if debug:
-                log.append(
-                            (
-                                hit_b.gene,
-                                hit_b.header,
-                                hit_b.reftaxon,
-                                hit_b.score,
-                                hit_b.qstart,
-                                hit_b.qend,
-                                "Internal kicked out by",
-                                hit_a.gene,
-                                hit_a.header,
-                                hit_a.reftaxon,
-                                hit_a.score,
-                                hit_a.qstart,
-                                hit_a.qend,
+                if debug:
+                    log.append(
+                                (
+                                    hit_b.gene,
+                                    hit_b.header,
+                                    hit_b.reftaxon,
+                                    hit_b.score,
+                                    hit_b.qstart,
+                                    hit_b.qend,
+                                    "Internal kicked out by",
+                                    hit_a.gene,
+                                    hit_a.header,
+                                    hit_a.reftaxon,
+                                    hit_a.score,
+                                    hit_a.qstart,
+                                    hit_a.qend,
+                                )
                             )
-                        )
-    
-    return [i for i in hits if i.kick], log, kicks
+        
+    return this_kicks, log, kicks
 
 def internal_filtering(gene, hits, debug, internal_percent):
     kicked_hits, this_log, this_kicks  = internal_filter(hits, debug, internal_percent)
 
-    return {gene: (this_kicks, this_log, set([i.full_header for i in kicked_hits]))}
+    return {gene: (this_kicks, this_log, kicked_hits)}
 
 
 def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
@@ -485,16 +486,19 @@ def run_process(args, input_path) -> None:
         internal_order = []
         for gene, hits in output.items():
             this_counter = Counter([i.header for i in hits]).most_common()
+            requires_internal[gene] = {}
             if this_counter[0][1] > 1:
                 this_hits = sum([i[1] for i in this_counter if i[1] > 1])
                 this_common = {i[0] for i in this_counter if i[1] > 1}
-                requires_internal[gene] = {i.header for i in hits if i.header in this_common}
+                for hit in [i for i in hits if i.header in this_common]:
+                    requires_internal[gene].setdefault(hit.header, []).append(hit)
+                    
                 internal_order.append((gene, this_hits))
 
         internal_order.sort(key = lambda x: x[1], reverse= True)
 
         with Pool(args.processes) as pool:
-            internal_results = pool.starmap(internal_filtering, [(gene, [hit for hit in output[gene] if hit.header in requires_internal[gene]], args.debug, args.internal_percent) for gene, _ in internal_order])
+            internal_results = pool.starmap(internal_filtering, [(gene, requires_internal[gene], args.debug, args.internal_percent) for gene, _ in internal_order])
 
         internal_result = {}
         for result in internal_results:
