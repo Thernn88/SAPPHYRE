@@ -258,17 +258,10 @@ def internal_filter(hits: list, debug: bool, internal_percent: float) -> list:
     
     return [i for i in hits if i.kick], log, kicks
 
-def filter_and_tag(gene, hits, debug, internal_percent):
-    bh_count = Counter([i.header for i in hits])
-    
-    if bh_count.most_common()[0][1] > 1:
-        kicked_hits, this_log, this_kicks  = internal_filter(hits, debug, internal_percent)
-    else:
-        this_log = []
-        this_kicks = 0
-        kicked_hits = []
+def internal_filtering(gene, hits, debug, internal_percent):
+    kicked_hits, this_log, this_kicks  = internal_filter(hits, debug, internal_percent)
 
-    return gene, this_kicks, this_log, set([i.full_header for i in kicked_hits])
+    return {gene: (this_kicks, this_log, set([i.full_header for i in kicked_hits]))}
 
 
 def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
@@ -484,33 +477,45 @@ def run_process(args, input_path) -> None:
         
 
         printv(
-            f"Processed. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Filtering and taggings hits for output",
+            f"Processed. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
             args.verbose,
         )
+
+        requires_internal = [gene for gene, hits in output.items() if Counter([i.header for i in hits]).most_common()[0][1] > 1]
+
         with Pool(args.processes) as pool:
-            to_output = pool.starmap(filter_and_tag, [(gene, hits, args.debug, args.internal_percent) for gene, hits in output.items()])
+            internal_results = pool.starmap(internal_filtering, [(gene, output[gene], args.debug, args.internal_percent) for gene in requires_internal])
+
+        internal_result = {}
+        for result in internal_results:
+            internal_result.update(result)
 
         printv(
-            f"Tagging done. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Writing to db",
+            f"Filtering done. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Writing to db",
             args.verbose,
         )
 
         passes = 0
         internal_kicks = 0
-        for gene, this_kicks, this_log, kicks in to_output:
-            hits = output[gene]
+        for gene, hits in output.items():
             dupe_divy_headers[gene] = {}
-            internal_kicks += this_kicks
-            if args.debug:
-                global_log.extend(this_log)
-
+            kicks = {}
             out = []
-            if kicks:
-                for hit in hits:
-                    if hit.full_header not in kicks:
-                        hit.seq = head_to_seq[hit.header.split("|")[0]]
-                        out.append(hit.to_json())
-            else:
+            if gene in internal_result:
+                this_kicks, this_log, kicks = internal_result[gene]
+            
+                internal_kicks += this_kicks
+                if args.debug:
+                    global_log.extend(this_log)
+
+                out = []
+                if kicks:
+                    for hit in hits:
+                        if hit.full_header not in kicks:
+                            hit.seq = head_to_seq[hit.header.split("|")[0]]
+                            out.append(hit.to_json())
+                            dupe_divy_headers[gene][hit.header] = 1
+            if not kicks:
                 for hit in hits:
                     hit.seq = head_to_seq[hit.header.split("|")[0]]
                     out.append(hit.to_json())
