@@ -105,16 +105,16 @@ def get_headers(lines: list) -> list:
     return result
 
 
-def split_sequences(path: str, excluded: set) -> tuple:
+def split_sequences_ex(path: str, excluded: set) -> tuple:
     """
     Reads over a fasta record in the given list and returns a tuple of two smaller lists.
     The first returned list is the reference sequences found, the second returned list
     is the candidate sequences found.
     """
-    bad_names = {"bombyx_mori", "danaus_plexippus"}
     references = []
     candidates = []
     end_of_references = False
+    ref_check = set()
     try:
         for header, sequence in parseFasta(path):
             header = ">" + header
@@ -122,8 +122,11 @@ def split_sequences(path: str, excluded: set) -> tuple:
             if end_of_references is False:
                 # The reference header identifier is present in the header
                 if header[-1] == ".":
+                    # fields = header.split('|')
+                    # if header.split("|")[1].lower() in excluded: continue
                     if header.split("|")[1].lower() in excluded: continue
-                    # ref variant header check
+                    if header[-9] == ':':
+                        ref_check.add(header[-9])
 
                     references.append(header)
                     references.append(sequence)
@@ -134,12 +137,49 @@ def split_sequences(path: str, excluded: set) -> tuple:
                 candidates.append(header)
                 candidates.append(sequence)
     except ValueError:
-        print(f"Error in file: {path}, Found sequences of different length")
+        print(f"Error in file: {path}, error reading {header}")
         sys.exit(1)
     except TypeError:
         print(f"Wrong IO type: {path}")
         sys.exit(1)
-    return references, candidates
+    return references, candidates, ref_check
+def split_sequences(path: str) -> tuple:
+    """
+    Reads over a fasta record in the given list and returns a tuple of two smaller lists.
+    The first returned list is the reference sequences found, the second returned list
+    is the candidate sequences found.
+    """
+    references = []
+    candidates = []
+    end_of_references = False
+    ref_check = set()
+    try:
+        for header, sequence in parseFasta(path):
+            header = ">" + header
+
+            if end_of_references is False:
+                # The reference header identifier is present in the header
+                if header[-1] == ".":
+                    # fields = header.split('|')
+                    # if header.split("|")[1].lower() in excluded: continue
+                    if header[-9] == ':':
+                        ref_check.add(header[-9])
+
+                    references.append(header)
+                    references.append(sequence)
+                else:
+                    end_of_references = True
+
+            if end_of_references is True:
+                candidates.append(header)
+                candidates.append(sequence)
+    except ValueError:
+        print(f"Error in file: {path}, Problem with {header}")
+        sys.exit(1)
+    except TypeError:
+        print(f"Wrong IO type: {path}")
+        sys.exit(1)
+    return references, candidates, ref_check
 
 
 def make_indices(sequence: str, gap_character="-") -> tuple:
@@ -339,11 +379,15 @@ def compare_means(
         ref_distances = []
 
         # find number of unique ref variants remaining after bp kick
-        found = set()
-        for ref in ref_records:
-            found.add(ref.id[:ref.id.index(':')])
+        if ref_records[0].id[-9] == ':':
+            found_set = set()
+            for ref in ref_records:
+                found_set.add(ref.id[:-9])
+            found = len(found_set)
+        else:
+            found = len(ref_records)
 
-        if len(found) / refs_in_file < ref_min_percent:
+        if found / refs_in_file < ref_min_percent:
             has_ref_distances = False
         else:
             for seq1, seq2 in combinations(ref_alignments, 2):
@@ -532,9 +576,14 @@ def main_process(
 
     to_be_excluded = make_exclusion_set(exclusion_file)
 
-    reference_sequences, candidate_sequences = split_sequences(
+    if to_be_excluded:
+        reference_sequences, candidate_sequences, ref_check = split_sequences_ex(
         file_input, to_be_excluded
-    )
+        )
+    else:
+        reference_sequences, candidate_sequences, ref_check = split_sequences(
+            file_input
+        )
     # refs_in_file = len(reference_sequences) / 2
 
     ref_dict, candidates_dict = find_index_groups(
@@ -550,14 +599,12 @@ def main_process(
         )
         if percent_of_non_dash <= col_cull_percent:
             rejected_indices.add(i)
-    ref_headers = reference_sequences[::2]
 
     # find number of unique reference variants in file, use for refs_in_file
-    found = set()
-    for ref in ref_headers:
-        found.add(ref[:ref.index(':')])
-    refs_in_file = len(found)
-
+    if ref_check:
+        refs_in_file = len(ref_check)
+    else:
+        refs_in_file = len(ref_seqs)
     candidate_headers = [header for header in candidate_sequences if header[0] == ">"]
 
     raw_regulars, to_add, outliers = compare_means(
