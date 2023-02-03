@@ -484,6 +484,7 @@ def do_gene(
                     break
 
         if not kick:  # If also passed Cull End Calc. Finish
+            data_before = len(sequence) - sequence.count("-")
             out_line = ["-"] * cull_start + sequence[cull_start:cull_end]
 
             characters_till_end = sequence_length - len(out_line)
@@ -491,10 +492,11 @@ def do_gene(
 
             positions_to_trim = set()
             codons = []
-            for i in range(cull_start, cull_end):
-                char = out_line[i]
-                if char == "*":
-                    codons.append(i)
+            if (len(out_line) - out_line.count("-")) != data_before:
+                for i in range(cull_start, cull_end):
+                    char = out_line[i]
+                    if char == "*":
+                        codons.append(i)
             
             non_trimmed_codons = [c for c in codons if c*3 not in positions_to_trim]
             while non_trimmed_codons:
