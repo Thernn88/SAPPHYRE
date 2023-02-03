@@ -106,7 +106,7 @@ def subcmd_diamond(subparsers):
         "-me",
         "--min-evalue",
         type=float,
-        default=float("1e-22"),
+        default=float("1e-30"),
         help="Filter evalue threshold.",
     )
     par.add_argument(
@@ -209,7 +209,7 @@ def subcmd_outliercheck(subparsers):
         "-t",
         "--threshold",
         type=int,
-        default=50,
+        default=100,
         help="Greater than reference mean to be counted as an outlier. Default is 2x.",
     )
     par.add_argument(
