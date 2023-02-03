@@ -308,8 +308,8 @@ def do_protein(
     protein: Literal["aa", "nt"],
     path,
     output_dir: Path,
-    initial_minimum_length,  # this one 2
-    dupe_counts,
+    prep_dupe_counts,
+    rep_dupe_counts,
     ref_stats,
     already_calculated_splits,
     gene,
@@ -322,7 +322,8 @@ def do_protein(
 
     gene_out = []
 
-    get_ref = lambda header: header.split("|")[1]
+    def get_ref(header: str) -> str:
+        return header.split("|")[1]
 
     # Grab all the reference sequences
     comparison_sequences = {}
@@ -334,7 +335,8 @@ def do_protein(
 
     # Grab all the candidate sequences and sort into taxa id based groups
     taxa_groups = {}
-    get_taxa = lambda header: header.split("|")[2]
+    def get_taxa(header: str) -> str:
+        return header.split("|")[2]
     for header, sequence in candidates:
         start, end = get_start_end(sequence)
         this_object = (start, end, header, sequence)
@@ -365,7 +367,7 @@ def do_protein(
 
             for sequence in this_sequences:
                 # if protein == "aa":
-                count = dupe_counts.get(sequence[4], 1)
+                count = prep_dupe_counts.get(sequence[4], 1) + sum([prep_dupe_counts.get(header, 1) for header in rep_dupe_counts.get(sequence[4], [])])
                 # else:
                 # count = dupe_counts.get(sequence[4], 0) + 1
                 consists_of.append((sequence[2], sequence[3], count))
@@ -531,9 +533,10 @@ def do_protein(
                         and mode / total_characters >= majority
                         and mode_char != char
                     ):
-                        new_merge[i] = mode_char
-                        if debug:
-                            majority_assignments[i] = mode_char
+                        if mode_char != "-":
+                            new_merge[i] = mode_char
+                            if debug:
+                                majority_assignments[i] = mode_char
 
             elif protein == "nt":
                 length = len(new_merge)
@@ -598,21 +601,14 @@ def do_protein(
                                 candidate_chars_mapping_to_same_dna
                             )
                             if mode_cand_raw_character != char:
-                                new_merge[raw_i] = mode_cand_raw_character
-                                if debug:
-                                    majority_assignments[
-                                        raw_i
-                                    ] = mode_cand_raw_character
+                                if mode_cand_raw_character != "---":
+                                    new_merge[raw_i] = mode_cand_raw_character
+                                    if debug:
+                                        majority_assignments[
+                                            raw_i
+                                        ] = mode_cand_raw_character
 
             new_merge = str(Seq("").join(new_merge))
-            # if protein == "nt":
-            #     minimum_length = initial_minimum_length*3
-            # else:
-            #     minimum_length = initial_minimum_length
-            #
-            # if len(new_merge) - new_merge.count("-") < minimum_length:
-            #     continue
-
             gene_out.append((final_header, new_merge))
             if debug:
                 # If debug enabled add each component under final merge
@@ -656,9 +652,9 @@ def do_gene(
     gene,
     output_dir: Path,
     aa_path,
-    nt_path,
-    minimum_length,  # this one
-    dupe_counts,
+    nt_path,  # this one
+    prep_dupe_counts,
+    rep_dupe_counts,
     ref_stats,
     debug,
     majority,
@@ -677,8 +673,8 @@ def do_gene(
         "aa",
         aa_path,
         output_dir,
-        minimum_length,
-        dupe_counts,
+        prep_dupe_counts,
+        rep_dupe_counts,
         ref_stats,
         already_calculated_splits,
         gene,
@@ -694,8 +690,8 @@ def do_gene(
         "nt",
         nt_path,
         output_dir,
-        minimum_length,
-        dupe_counts,
+        prep_dupe_counts,
+        rep_dupe_counts,
         ref_stats,
         already_calculated_splits,
         make_nt_name(gene),
@@ -734,10 +730,12 @@ def do_folder(folder: Path, args):
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
     if rocks_db_path.exists():
         rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
-        dupe_counts = json.loads(rocksdb_db.get("getall:gene_dupes"))
+        prepare_dupe_counts = json.loads(rocksdb_db.get("getall:gene_dupes"))
+        reporter_dupe_counts = json.loads(rocksdb_db.get("getall:reporter_dupes"))
         ref_stats = json.loads(rocksdb_db.get("getall:top_refs"))
     else:
-        dupe_counts = {}
+        prepare_dupe_counts = {}
+        reporter_dupe_counts = {}
         ref_stats = []
 
     target_genes = []
@@ -750,7 +748,8 @@ def do_folder(folder: Path, args):
     if args.processes > 1:
         arguments = []
         for target_gene in target_genes:
-            dupes_in_this_gene = dupe_counts.get(target_gene.split(".")[0], {})
+            prep_dupes_in_this_gene = prepare_dupe_counts.get(target_gene.split(".")[0], {})
+            rep_dupes_in_this_gene = reporter_dupe_counts.get(target_gene.split('.')[0], {})
             target_aa_path = Path(aa_input, target_gene)
             target_nt_path = Path(nt_input, make_nt_name(target_gene))
             arguments.append(
@@ -759,8 +758,8 @@ def do_folder(folder: Path, args):
                     folder,
                     target_aa_path,
                     target_nt_path,
-                    args.minimum_length,
-                    dupes_in_this_gene,
+                    prep_dupes_in_this_gene,
+                    rep_dupes_in_this_gene,
                     ref_stats,
                     args.debug,
                     args.majority,
@@ -774,7 +773,8 @@ def do_folder(folder: Path, args):
             pool.map(run_command, arguments, chunksize=1)
     else:
         for target_gene in target_genes:
-            dupes_in_this_gene = dupe_counts.get(target_gene.split(".")[0], {})
+            prep_dupes_in_this_gene = prepare_dupe_counts.get(target_gene.split(".")[0], {})
+            rep_dupes_in_this_gene = reporter_dupe_counts.get(target_gene.split('.')[0], {})
             target_aa_path = os.path.join(aa_input, target_gene)
             target_nt_path = os.path.join(nt_input, make_nt_name(target_gene))
             do_gene(
@@ -782,8 +782,8 @@ def do_folder(folder: Path, args):
                 folder,
                 target_aa_path,
                 target_nt_path,
-                args.minimum_length,
-                dupes_in_this_gene,
+                prep_dupes_in_this_gene,
+                rep_dupes_in_this_gene,
                 ref_stats,
                 args.debug,
                 args.majority,

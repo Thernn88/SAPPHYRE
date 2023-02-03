@@ -73,9 +73,8 @@ def subcmd_diamond(subparsers):
         "-ovw", "--overwrite", action="store_true", help="Overwrite existing files."
     )
     par.add_argument("-d", "--debug", action="store_true", help="Enable debug out.")
-    par.add_argument(
-        "-sm", "--skip-multi", action="store_true", help="Skip multi filter."
-    )
+    
+    #Should be based on Taxa name. Check TODO.
     par.add_argument(
         "-strict",
         "--strict-search-mode",
@@ -87,7 +86,7 @@ def subcmd_diamond(subparsers):
         "--sensitivity",
         choices=["very", "ultra"],
         default="very",
-        help="Diamond blast sensitivty.",
+        help="Diamond sensitivty.",
     )
     par.add_argument(
         "-e",
@@ -97,11 +96,46 @@ def subcmd_diamond(subparsers):
         help="Diamond blast evalue threshold.",
     )
     par.add_argument(
+        "-c",
+        "--chunks",
+        type=int,
+        default=5,
+        help="Amount of chunks to split TSV into for serial processing.",
+    )
+    par.add_argument(
         "-t",
         "--top",
         type=int,
         default=10,
-        help="Diamond blast top percentage cull.",
+        help="Diamond top percentage cull.",
+    )
+    par.add_argument(
+        "-me",
+        "--min-evalue",
+        type=float,
+        default=float("1e-30"),
+        help="Filter evalue threshold.",
+    )
+    par.add_argument(
+        "-mp",
+        "--min-percent",
+        type=float,
+        default=0.3,
+        help="Minimum percentage of reference hits required for a sequence if it fails min-evalue.",
+    )
+    par.add_argument(
+        "-tr",
+        "--top-ref",
+        type=float,
+        default=0.1,
+        help="Dynamically adjusts % of hits a reference is less than our top 5 and still a good ref.",
+    )
+    par.add_argument(
+        "-ip",
+        "--internal-percent",
+        type=float,
+        default=0.3,
+        help="Percentage of overlap required to constitute an internal overlap kick.",
     )
     par.add_argument(
         "-oi",
@@ -111,14 +145,13 @@ def subcmd_diamond(subparsers):
         help="Path to directory of Orthosets folder",
     )
     par.add_argument(
-        "-o",
+        "-os",
         "--orthoset",
         type=str,
         default="Ortholog_set_Mecopterida_v4",
         help="Orthoset",
     )
     par.set_defaults(func=diamond, formathelp=par.format_help)
-
 
 def diamond(args):
     from . import diamond
@@ -131,9 +164,8 @@ def diamond(args):
 def subcmd_reporter(subparsers):
     par = subparsers.add_parser(
         "Reporter",
-        help="Checks Blast results to ensure a hit is reciprocal. Queries a sequence "
-        "using exonerate to align it against a target reference and trim it to mapped "
-        "region. Produces aa and nt output.",
+        help="Trims mapped sequence to mapped region."
+        "Produces aa and nt output.",
     )
     par.add_argument(
         "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
@@ -146,17 +178,11 @@ def subcmd_reporter(subparsers):
         help="Path to directory of Orthosets folder",
     )
     par.add_argument(
-        "-o",
+        "-os",
         "--orthoset",
         type=str,
         default="Ortholog_set_Mecopterida_v4",
         help="Orthoset",
-    )
-    par.add_argument(
-        "-ml", "--min_length", type=int, default=25, help="Minimum Transcript Length"
-    )
-    par.add_argument(
-        "-ms", "--min_score", type=float, default=40, help="Minimum Hit Domain Score"
     )
     par.add_argument("-d", "--debug", type=int, default=0, help="Verbose debug.")
     par.set_defaults(func=reporter, formathelp=par.format_help)
@@ -172,8 +198,6 @@ def reporter(args):
         args.INPUT,
         args.orthoset_input,
         args.orthoset,
-        args.min_length,
-        args.min_score,
         args.compress,
     )
     if not reporter.main(mainargs):
@@ -192,7 +216,7 @@ def subcmd_outliercheck(subparsers):
         "-t",
         "--threshold",
         type=int,
-        default=50,
+        default=100,
         help="Greater than reference mean to be counted as an outlier. Default is 2x.",
     )
     par.add_argument(
@@ -258,6 +282,13 @@ def subcmd_outliercheck(subparsers):
         default=False,
         help="Log outliers to csv files",
     )
+
+    par.add_argument(
+        "-e",
+        "--exclude",
+        default=None,
+        help="Path to excluded taxa names. File should be line delimited."
+    )
     par.set_defaults(func=outliercheck, formathelp=par.format_help)
 
 
@@ -297,13 +328,6 @@ def subcmd_mergeoverlap(subparsers):
         "--debug",
         action="store_true",
         help="Enable debug. When enabled displays each component of merged headers.",
-    )
-    par.add_argument(
-        "-ml",
-        "--minimum_length",
-        type=int,
-        default=30,
-        help="Minimum after merge bp length.",
     )
     par.add_argument(
         "-io",
@@ -385,7 +409,7 @@ def subcmd_mafft(subparsers):
         help="Path to directory of Orthosets folder",
     )
     par.add_argument(
-        "-o",
+        "-os",
         "--orthoset",
         type=str,
         default="Ortholog_set_Mecopterida_v4",
@@ -449,18 +473,39 @@ def subcmd_flexcull(subparsers):
         "-nt", "--nucleotide", type=str, default="nt_aligned", help="NT Folder Name."
     )
     par.add_argument(
+        "-mm",
+        "--mismatches",
+        type=int,
+        default=1,
+        help="Amount mismatches allowed per trim.",
+    )
+    par.add_argument(
         "-m",
         "--matches",
         type=int,
-        default=3,
+        default=7,
         help="Amount of base pairs that have to match reference.",
-    )
+    )#
     par.add_argument(
         "-mp",
         "--match_percent",
         type=float,
         default=0.02,
         help="Percentage of references that must contain the base pair to match.",
+    )
+    par.add_argument(
+        "-cc",
+        "--column_cull",
+        type=float,
+        default=0.1,
+        help="Percentage of reference columns that must contain data.",
+    )
+    par.add_argument(
+        "-gt",
+        "--gap_threshold",
+        type=float,
+        default=0.50,
+        help="Percentage of references that must contain a gap to allow a match to continue.",
     )
     par.add_argument(
         "-bp", "--base-pair", type=int, default=20, help="Minimum bp after cull."
@@ -489,6 +534,9 @@ def flexcull(args):
         args.base_pair,
         args.match_percent,
         args.compress,
+        args.gap_threshold,
+        args.mismatches,
+        args.column_cull,
     )
     if not flexcull.main(flexargs):
         print()

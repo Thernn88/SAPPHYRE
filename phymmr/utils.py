@@ -2,11 +2,13 @@
 # © 2022 GPLv3+ PhyMMR Team
 import gzip
 import os
-from Bio.SeqIO.QualityIO import FastqGeneralIterator
+import sys
 from pathlib import Path
 from threading import Thread
 from queue import Queue
 from typing import Generator
+# from Bio.SeqIO.QualityIO import FastqGeneralIterator
+
 
 class ConcurrentLogger(Thread):
     def __init__(self, inq: Queue):
@@ -31,7 +33,7 @@ def printv(msg, verbosity, reqverb=1) -> None:
 def gettempdir():
     if os.path.exists("/run/shm"):
         return "/run/shm"
-    elif os.path.exists("/dev/shm"):
+    if os.path.exists("/dev/shm"):
         return "/dev/shm"
     return None
 
@@ -41,11 +43,11 @@ def get_records(fp, type: str) -> Generator[tuple[str, str], None, None]:
     Iterates over every line of a file and returns each sequence record.
     Forces sequences to be uppercase.
     """
-    current_header = None
+    current_header = ""
     if type == "fasta":
         for line in fp:
             if line.startswith(b">"):
-                if current_header:
+                if len(current_header) > 0:
                     yield (
                         current_header[1:].decode(),
                         b"".join(this_sequence)
@@ -68,19 +70,26 @@ def get_records(fp, type: str) -> Generator[tuple[str, str], None, None]:
             .upper()
             .decode(),
         )
-    ### FIXME: This breaks if the name lines don't include length
     ### currently replaced with FastqGeneralIterator call in parseFasta
+    ### FastqGeneralIterator breaks on bad descripton
     elif type == "fastq":
-        generator = FastqGeneralIterator(fp)
-        for header, seq, description in generator:
-            yield header, seq
-    #     for line in fp:
-    #         if line.startswith(b"@") and b"length=" in line:
-    #             sequence = next(fp).rstrip()
-    #             yield (
-    #                 line[1:].rstrip().decode(),
-    #                 sequence.replace(b" ", b"").replace(b"\r", b"").upper().decode(),
-    #             )
+        # generator = FastqGeneralIterator(fp)
+        # try:
+        #     for header, seq, description in generator:
+        #         yield header, seq
+        # except ValueError:
+        #     pass
+        for line in fp:
+            if line.startswith(b"@"):
+                sequence = next(fp).rstrip()
+                next(fp)
+                quality = next(fp).rstrip()
+                if len(quality) != len(sequence):
+                    sys.stderr.write(f"Malformed record in {fp.name}\n{line.decode()}sequence and quality lines differ in length\n")
+                yield (
+                    line[1:].rstrip().decode(),
+                    sequence.replace(b" ", b"").replace(b"\r", b"").upper().decode(),
+                )
 
 
 def parseFasta(path: str) -> Generator[tuple[str, str], None, None]:
@@ -94,8 +103,8 @@ def parseFasta(path: str) -> Generator[tuple[str, str], None, None]:
         func = gzip.open
     file_type = "fastq" if ".fastq" in suffixes or ".fq" in suffixes else "fasta"
     mode = 'rb'
-    if file_type == 'fastq':
-        mode = 'rt'
+    # if file_type == 'fastq':
+    #     mode = 'rt'
     return get_records(func(path, mode), file_type)
 
 

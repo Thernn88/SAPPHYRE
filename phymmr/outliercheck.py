@@ -2,18 +2,15 @@
 Outlier Check
 """
 from __future__ import annotations
-from collections import Counter
-import json
-
 import os
 from copy import deepcopy
 from itertools import combinations
 from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import rmtree
+import sys
 import numpy as np
 import phymmr_tools as bd
-import wrap_rocks
 
 from .utils import parseFasta, printv, write2Line2Fasta
 from .timekeeper import TimeKeeper, KeeperMode
@@ -108,17 +105,16 @@ def get_headers(lines: list) -> list:
     return result
 
 
-def split_sequences(path: str, excluded: set) -> tuple:
+def split_sequences_ex(path: str, excluded: set) -> tuple:
     """
     Reads over a fasta record in the given list and returns a tuple of two smaller lists.
     The first returned list is the reference sequences found, the second returned list
     is the candidate sequences found.
     """
-    bad_names = {"bombyx_mori", "danaus_plexippus"}
     references = []
     candidates = []
-
     end_of_references = False
+    ref_check = set()
     try:
         for header, sequence in parseFasta(path):
             header = ">" + header
@@ -126,8 +122,11 @@ def split_sequences(path: str, excluded: set) -> tuple:
             if end_of_references is False:
                 # The reference header identifier is present in the header
                 if header[-1] == ".":
-                    if header.split("|")[1].lower() in bad_names:
-                        excluded.add(header)
+                    # fields = header.split('|')
+                    # if header.split("|")[1].lower() in excluded: continue
+                    if header.split("|")[1].lower() in excluded: continue
+                    if header[-9] == ':':
+                        ref_check.add(header[-9])
 
                     references.append(header)
                     references.append(sequence)
@@ -138,12 +137,49 @@ def split_sequences(path: str, excluded: set) -> tuple:
                 candidates.append(header)
                 candidates.append(sequence)
     except ValueError:
-        print(f"Error in file: {path}")
-        raise ValueError("Found sequences of different length")
+        print(f"Error in file: {path}, error reading {header}")
+        sys.exit(1)
     except TypeError:
         print(f"Wrong IO type: {path}")
-        raise TypeError
-    return references, candidates
+        sys.exit(1)
+    return references, candidates, ref_check
+def split_sequences(path: str) -> tuple:
+    """
+    Reads over a fasta record in the given list and returns a tuple of two smaller lists.
+    The first returned list is the reference sequences found, the second returned list
+    is the candidate sequences found.
+    """
+    references = []
+    candidates = []
+    end_of_references = False
+    ref_check = set()
+    try:
+        for header, sequence in parseFasta(path):
+            header = ">" + header
+
+            if end_of_references is False:
+                # The reference header identifier is present in the header
+                if header[-1] == ".":
+                    # fields = header.split('|')
+                    # if header.split("|")[1].lower() in excluded: continue
+                    if header[-9] == ':':
+                        ref_check.add(header[-9])
+
+                    references.append(header)
+                    references.append(sequence)
+                else:
+                    end_of_references = True
+
+            if end_of_references is True:
+                candidates.append(header)
+                candidates.append(sequence)
+    except ValueError:
+        print(f"Error in file: {path}, Problem with {header}")
+        sys.exit(1)
+    except TypeError:
+        print(f"Wrong IO type: {path}")
+        sys.exit(1)
+    return references, candidates, ref_check
 
 
 def make_indices(sequence: str, gap_character="-") -> tuple:
@@ -312,7 +348,7 @@ def compare_means(
         # column cull
         first_candidate = str(candidates_at_index[0])
         bp_count = 0
-        for raw_i in range(len(first_candidate)):
+        for raw_i, _ in enumerate(first_candidate):
             i = raw_i + index_pair[0]
             if i in rejected_indices:
                 continue
@@ -341,7 +377,17 @@ def compare_means(
         ]
 
         ref_distances = []
-        if len(ref_alignments) / refs_in_file < ref_min_percent:
+
+        # find number of unique ref variants remaining after bp kick
+        if ref_records[0].id[-9] == ':':
+            found_set = set()
+            for ref in ref_records:
+                found_set.add(ref.id[:-9])
+            found = len(found_set)
+        else:
+            found = len(ref_records)
+
+        if found / refs_in_file < ref_min_percent:
             has_ref_distances = False
         else:
             for seq1, seq2 in combinations(ref_alignments, 2):
@@ -487,6 +533,19 @@ def remove_excluded_sequences(lines: list, excluded: set) -> list:
     return output
 
 
+def make_exclusion_set(path: str) -> set:
+    """
+    Reads a file at a given path and returns a set containing
+    each line. Used to make a taxa exclusion list.
+    """
+    excluded = set()
+    if not path: return excluded
+    with open(path) as f:
+        for line in f:
+            excluded.add(line.rstrip())
+    return excluded
+
+
 def main_process(
     args_input,
     nt_input,
@@ -502,6 +561,7 @@ def main_process(
     index_group_min_bp: int,
     ref_gap_percent: float,
     ref_min_percent: int,
+    exclusion_file
 ):
     keep_refs = not args_references
 
@@ -514,11 +574,17 @@ def main_process(
     aa_output = os.path.join(args_output, "aa")
     aa_output = os.path.join(aa_output, filename.rstrip(".gz"))
 
-    to_be_excluded = set()
-    reference_sequences, candidate_sequences = split_sequences(
+    to_be_excluded = make_exclusion_set(exclusion_file)
+
+    if to_be_excluded:
+        reference_sequences, candidate_sequences, ref_check = split_sequences_ex(
         file_input, to_be_excluded
-    )
-    refs_in_file = len(reference_sequences) / 2
+        )
+    else:
+        reference_sequences, candidate_sequences, ref_check = split_sequences(
+            file_input
+        )
+    # refs_in_file = len(reference_sequences) / 2
 
     ref_dict, candidates_dict = find_index_groups(
         reference_sequences, candidate_sequences
@@ -534,12 +600,12 @@ def main_process(
         if percent_of_non_dash <= col_cull_percent:
             rejected_indices.add(i)
 
+    # find number of unique reference variants in file, use for refs_in_file
+    if ref_check:
+        refs_in_file = len(ref_check)
+    else:
+        refs_in_file = len(ref_seqs)
     candidate_headers = [header for header in candidate_sequences if header[0] == ">"]
-
-    ref_count = Counter()
-    for header in candidate_headers:
-        ref = header.split("|")[1]
-        ref_count[ref] += 1
 
     raw_regulars, to_add, outliers = compare_means(
         reference_sequences,
@@ -597,7 +663,7 @@ def main_process(
         non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
 
         write2Line2Fasta(nt_output_path, non_empty_lines, compress)
-    return logs, ref_count
+    return logs
 
 
 def do_folder(folder, args):
@@ -649,6 +715,7 @@ def do_folder(folder, args):
                     args.index_group_min_bp,
                     args.ref_gap_percent,
                     args.ref_min_percent,
+                    args.exclude
                 )
             )
 
@@ -673,6 +740,7 @@ def do_folder(folder, args):
                     args.index_group_min_bp,
                     args.ref_gap_percent,
                     args.ref_min_percent,
+                    args.exclude
                 )
             )
     if args.debug:
@@ -681,24 +749,16 @@ def do_folder(folder, args):
         global_csv = open(global_csv_path, "w", encoding="UTF-8")
         global_csv.write("Gene,Header,Mean_Dist,Ref_Mean,IQR\n")
 
-    final_ref_count = Counter()
-    for log_data, gene_ref_count in process_data:
+    for log_data in process_data:
         if args.debug:
             for line in log_data:
                 if line.strip().split(",")[-1] == "Fail":
                     if line[-1] != "\n":
                         line = f"{line}\n"
                     global_csv.write(line)
-        for ref, count in gene_ref_count.items():
-            final_ref_count[ref] += count
-
     if args.debug:
         global_csv.close()
-
-    rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
-    rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
-    rocksdb_db.put("getall:top_refs", json.dumps(final_ref_count.most_common()))
-
+        
     printv(f"Done! Took {time_keeper.differential():.2f}s", args.verbose)
 
 
