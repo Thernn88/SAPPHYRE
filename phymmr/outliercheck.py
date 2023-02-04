@@ -657,10 +657,9 @@ def main_process(
     summary = SummaryInfo(msa)
     consensus = summary.dumb_consensus(threshold=internal_consensus_threshold)
     for seq in msa:
-        header = seq.id
         distance = constrained_distance(consensus._data, seq.seq._data)
         if distance >= internal_kick_threshold:
-            to_be_excluded.add(header)
+            to_be_excluded.add(f">{seq.id}")
             if debug:
                 logs.append(f"{header},{distance},,,Internal Fail")
         else:
