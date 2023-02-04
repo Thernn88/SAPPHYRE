@@ -661,7 +661,7 @@ def main_process(
         if distance >= internal_kick_threshold:
             to_be_excluded.add(f">{seq.id}")
             if debug:
-                logs.append(f"{header},{distance},,,Internal Fail")
+                logs.append(f"{seq.id},{distance},,,Internal Fail")
         else:
             internal_pass.append(f">{seq.id}\n")
             internal_pass.append(f"{seq.seq}\n")
