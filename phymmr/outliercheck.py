@@ -648,15 +648,11 @@ def main_process(
     )
     if sort == "original":
         to_add = original_sort(candidate_headers, to_add)
-
-    for line in to_add:
-        raw_regulars.append(line)
-
     to_be_excluded = set()
     logs = []
     internal_pass = []
 
-    msr = alignment_from_2line(raw_regulars)
+    msr = alignment_from_2line(to_add)
     msa = MultipleSeqAlignment(msr)
     summary = SummaryInfo(msa)
     consensus = summary.dumb_consensus(threshold=internal_consensus_threshold)
@@ -671,40 +667,44 @@ def main_process(
             internal_pass.append(f">{seq.id}\n")
             internal_pass.append(f"{seq.seq}\n")
 
-    regulars, allowed_columns = delete_empty_columns(internal_pass, verbose)
+    if internal_pass:
+        for line in internal_pass:
+            raw_regulars.append(line)
 
-    if to_add:  # If candidate added to fasta
-        write2Line2Fasta(aa_output, regulars, compress)
+        regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
 
-    if debug:
-        for outlier in outliers:
-            header, distance, ref_dist, grade, iqr = outlier
-            if grade == "Fail":
-                to_be_excluded.add(header)
-                header = header[1:]
-            result = [header, str(distance), str(ref_dist), str(iqr), grade]
-            logs.append(",".join(result) + "\n")
-    else:
-        for outlier in outliers:
-            header, distance, ref_dist, grade, iqr = outlier
-            if grade == "Fail":
-                to_be_excluded.add(header)
-    if to_add:
-        nt_file = filename.replace(".aa.", ".nt.")
-        nt_input_path = os.path.join(nt_input, nt_file)
-        if not os.path.exists(nt_output_path):
-            os.mkdir(nt_output_path)
-        nt_output_path = os.path.join(nt_output_path, nt_file.rstrip(".gz"))
+        if to_add:  # If candidate added to fasta
+            write2Line2Fasta(aa_output, regulars, compress)
 
-        lines = []
-        for header, sequence in parseFasta(nt_input_path):
-            lines.append(">" + header)
-            lines.append(sequence)
+        if debug:
+            for outlier in outliers:
+                header, distance, ref_dist, grade, iqr = outlier
+                if grade == "Fail":
+                    to_be_excluded.add(header)
+                    header = header[1:]
+                result = [header, str(distance), str(ref_dist), str(iqr), grade]
+                logs.append(",".join(result) + "\n")
+        else:
+            for outlier in outliers:
+                header, distance, ref_dist, grade, iqr = outlier
+                if grade == "Fail":
+                    to_be_excluded.add(header)
+        if to_add:
+            nt_file = filename.replace(".aa.", ".nt.")
+            nt_input_path = os.path.join(nt_input, nt_file)
+            if not os.path.exists(nt_output_path):
+                os.mkdir(nt_output_path)
+            nt_output_path = os.path.join(nt_output_path, nt_file.rstrip(".gz"))
 
-        non_empty_lines = remove_excluded_sequences(lines, to_be_excluded)
-        non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
+            lines = []
+            for header, sequence in parseFasta(nt_input_path):
+                lines.append(">" + header)
+                lines.append(sequence)
 
-        write2Line2Fasta(nt_output_path, non_empty_lines, compress)
+            non_empty_lines = remove_excluded_sequences(lines, to_be_excluded)
+            non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
+
+            write2Line2Fasta(nt_output_path, non_empty_lines, compress)
     return logs
 
 
