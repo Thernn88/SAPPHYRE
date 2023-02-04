@@ -12,6 +12,12 @@ import sys
 import numpy as np
 import phymmr_tools as bd
 
+from Bio.Align.AlignInfo import SummaryInfo
+from Bio.SeqRecord import SeqRecord
+from Bio.Seq import Seq
+from Bio.Align import MultipleSeqAlignment
+from phymmr_tools import constrained_distance
+
 from .utils import parseFasta, printv, write2Line2Fasta
 from .timekeeper import TimeKeeper, KeeperMode
 
@@ -546,6 +552,23 @@ def make_exclusion_set(path: str) -> set:
     return excluded
 
 
+def alignment_from_2line(lines: list) -> list:
+    """
+    Given a list of header and sequences in 2-line fasta format,
+    return list of BioPython SeqRecord objects.
+    """
+    result = []
+
+    for i in range(0, len(lines), 2):
+        header = lines[i]
+        sequence = lines[i+1]
+        result.append(
+            SeqRecord(Seq(sequence.strip()),
+                   id=header.strip()[1:])
+        )
+    
+    return result
+
 def main_process(
     args_input,
     nt_input,
@@ -627,13 +650,30 @@ def main_process(
     for line in to_add:
         raw_regulars.append(line)
 
-    regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
+    to_be_excluded = set()
+    logs = []
+    internal_pass = []
+
+    msr = alignment_from_2line(raw_regulars)
+    msa = MultipleSeqAlignment(msr)
+    summary = SummaryInfo(msa)
+    consensus = summary.dumb_consensus(threshold=0.85)
+    for seq in msa:
+        header = seq.id
+        distance = constrained_distance(consensus._data, seq.seq._data)
+        if distance >= 4:
+            to_be_excluded.add(header)
+            if debug:
+                logs.append(f"{header},{distance},,,Internal Fail")
+        else:
+            internal_pass.append(f">{seq.id}\n")
+            internal_pass.append(f"{seq.seq}\n")
+
+    regulars, allowed_columns = delete_empty_columns(internal_pass, verbose)
 
     if to_add:  # If candidate added to fasta
         write2Line2Fasta(aa_output, regulars, compress)
 
-    to_be_excluded = set()
-    logs = []
     if debug:
         for outlier in outliers:
             header, distance, ref_dist, grade, iqr = outlier
