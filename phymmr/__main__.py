@@ -274,6 +274,20 @@ def subcmd_outliercheck(subparsers):
         default=20,
         help="Minimum bp for index group after column cull.",
     )
+    par.add_argument(
+        "-ict",
+        "--internal_consensus_threshold",
+        type=float,
+        default=0.85,
+        help="Consensus threshold for internal summary.",
+    )
+    par.add_argument(
+        "-ikt",
+        "--internal_kick_threshold",
+        type=int,
+        default=4,
+        help="Amount of mismatches required to constitute an internal kick.",
+    )
 
     par.add_argument(
         "-d",

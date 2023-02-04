@@ -584,6 +584,8 @@ def main_process(
     index_group_min_bp: int,
     ref_gap_percent: float,
     ref_min_percent: int,
+    internal_consensus_threshold: float,
+    internal_kick_threshold: int,
     exclusion_file
 ):
     keep_refs = not args_references
@@ -657,11 +659,11 @@ def main_process(
     msr = alignment_from_2line(raw_regulars)
     msa = MultipleSeqAlignment(msr)
     summary = SummaryInfo(msa)
-    consensus = summary.dumb_consensus(threshold=0.85)
+    consensus = summary.dumb_consensus(threshold=internal_consensus_threshold)
     for seq in msa:
         header = seq.id
         distance = constrained_distance(consensus._data, seq.seq._data)
-        if distance >= 4:
+        if distance >= internal_kick_threshold:
             to_be_excluded.add(header)
             if debug:
                 logs.append(f"{header},{distance},,,Internal Fail")
@@ -755,6 +757,8 @@ def do_folder(folder, args):
                     args.index_group_min_bp,
                     args.ref_gap_percent,
                     args.ref_min_percent,
+                    args.internal_consensus_threshold,
+                    args.internal_kick_threshold,
                     args.exclude
                 )
             )
@@ -780,6 +784,8 @@ def do_folder(folder, args):
                     args.index_group_min_bp,
                     args.ref_gap_percent,
                     args.ref_min_percent,
+                    args.internal_consensus_threshold,
+                    args.internal_kick_threshold,
                     args.exclude
                 )
             )
@@ -792,7 +798,7 @@ def do_folder(folder, args):
     for log_data in process_data:
         if args.debug:
             for line in log_data:
-                if line.strip().split(",")[-1] == "Fail":
+                if line.strip().split(",")[-1] == "Fail" or line.strip().split(",")[-1] == "Internal Fail":
                     if line[-1] != "\n":
                         line = f"{line}\n"
                     global_csv.write(line)
