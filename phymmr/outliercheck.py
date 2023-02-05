@@ -664,13 +664,14 @@ def main_process(
     logs = []
 
     temp = [(header, seq) for header, seq, _, _, grade, _ in outliers if grade == "Pass"]
-    consensus = dumb_consensus(temp, internal_consensus_threshold)
-    for header, seq in temp:
-        distance = constrained_distance(consensus, seq)
-        if distance >= internal_kick_threshold:
-            to_be_excluded.add(f">{header}")
-            if debug:
-                logs.append(f"{header},{distance},,,Internal Fail")
+    if temp:
+        consensus = dumb_consensus([x[1] for x in temp], internal_consensus_threshold)
+        for header, seq in temp:
+            distance = constrained_distance(consensus, seq)
+            if distance >= internal_kick_threshold:
+                to_be_excluded.add(f">{header}")
+                if debug:
+                    logs.append(f"{header},{distance},,,Internal Fail")
 
     for line in to_add:
         raw_regulars.append(line)
@@ -683,7 +684,7 @@ def main_process(
 
     if debug:
         for outlier in outliers:
-            header, distance, ref_dist, grade, iqr = outlier
+            header, _, distance, ref_dist, grade, iqr = outlier
             if grade == "Fail":
                 to_be_excluded.add(header)
                 header = header[1:]
@@ -691,7 +692,7 @@ def main_process(
             logs.append(",".join(result) + "\n")
     else:
         for outlier in outliers:
-            header, distance, ref_dist, grade, iqr = outlier
+            header, _, distance, ref_dist, grade, iqr = outlier
             if grade == "Fail":
                 to_be_excluded.add(header)
     if to_add:
