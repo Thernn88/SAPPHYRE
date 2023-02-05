@@ -16,7 +16,7 @@ from Bio.Align.AlignInfo import SummaryInfo
 from Bio.SeqRecord import SeqRecord
 from Bio.Seq import Seq
 from Bio.Align import MultipleSeqAlignment
-from phymmr_tools import constrained_distance
+from phymmr_tools import constrained_distance, dumb_consensus
 
 from .utils import parseFasta, printv, write2Line2Fasta
 from .timekeeper import TimeKeeper, KeeperMode
@@ -454,7 +454,7 @@ def compare_means(
                         intermediate_list.append(header)
                         intermediate_list.append(raw_sequence)
                     grade = "Pass"
-            outliers.append((header, mean_distance, upper_bound, grade, IQR))
+            outliers.append((header, raw_sequence, mean_distance, upper_bound, grade, IQR))
         if sort == "cluster":
             intermediate_list = taxa_sort(intermediate_list)
             to_add_later.extend(intermediate_list)
@@ -552,22 +552,34 @@ def make_exclusion_set(path: str) -> set:
     return excluded
 
 
-def alignment_from_2line(lines: list) -> list:
+def alignment_from_list(seq_tuples: list) -> list:
     """
     Given a list of header and sequences in 2-line fasta format,
     return list of BioPython SeqRecord objects.
     """
     result = []
 
-    for i in range(0, len(lines), 2):
-        header = lines[i]
-        sequence = lines[i+1]
+    for header, sequence in seq_tuples:
         result.append(
             SeqRecord(Seq(sequence.strip()),
                    id=header.strip()[1:])
         )
     
     return result
+
+
+def delete_excluded(lines: list, excluded: set) -> list:
+    """
+    Given a list of fasta lines and a set of headers to be excluded from output,
+    returns a list of all valid headers and sequences.
+    """
+    output = []
+    for i in range(0, len(lines), 2):
+        if lines[i].strip() not in excluded:
+            output.append(lines[i])
+            output.append(lines[i + 1])
+    return output
+
 
 def main_process(
     args_input,
@@ -650,60 +662,54 @@ def main_process(
         to_add = original_sort(candidate_headers, to_add)
     to_be_excluded = set()
     logs = []
-    internal_pass = []
 
-    msr = alignment_from_2line(to_add)
-    msa = MultipleSeqAlignment(msr)
-    summary = SummaryInfo(msa)
-    consensus = summary.dumb_consensus(threshold=internal_consensus_threshold)
-    for seq in msa:
-        distance = constrained_distance(consensus._data, seq.seq._data)
+    temp = [(header, seq) for header, seq, _, _, grade, _ in outliers if grade == "Pass"]
+    consensus = dumb_consensus(temp, internal_consensus_threshold)
+    for header, seq in temp:
+        distance = constrained_distance(consensus, seq)
         if distance >= internal_kick_threshold:
-            to_be_excluded.add(f">{seq.id}")
+            to_be_excluded.add(f">{header}")
             if debug:
-                logs.append(f"{seq.id},{distance},,,Internal Fail")
-        else:
-            internal_pass.append(f">{seq.id}\n")
-            internal_pass.append(f"{seq.seq}\n")
+                logs.append(f"{header},{distance},,,Internal Fail")
 
-    if internal_pass:
-        for line in internal_pass:
-            raw_regulars.append(line)
+    for line in to_add:
+        raw_regulars.append(line)
 
-        regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
+    raw_regulars = delete_excluded(raw_regulars, to_be_excluded)
+    regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
 
-        if to_add:  # If candidate added to fasta
-            write2Line2Fasta(aa_output, regulars, compress)
+    if to_add:  # If candidate added to fasta
+        write2Line2Fasta(aa_output, regulars, compress)
 
-        if debug:
-            for outlier in outliers:
-                header, distance, ref_dist, grade, iqr = outlier
-                if grade == "Fail":
-                    to_be_excluded.add(header)
-                    header = header[1:]
-                result = [header, str(distance), str(ref_dist), str(iqr), grade]
-                logs.append(",".join(result) + "\n")
-        else:
-            for outlier in outliers:
-                header, distance, ref_dist, grade, iqr = outlier
-                if grade == "Fail":
-                    to_be_excluded.add(header)
-        if to_add:
-            nt_file = filename.replace(".aa.", ".nt.")
-            nt_input_path = os.path.join(nt_input, nt_file)
-            if not os.path.exists(nt_output_path):
-                os.mkdir(nt_output_path)
-            nt_output_path = os.path.join(nt_output_path, nt_file.rstrip(".gz"))
+    if debug:
+        for outlier in outliers:
+            header, distance, ref_dist, grade, iqr = outlier
+            if grade == "Fail":
+                to_be_excluded.add(header)
+                header = header[1:]
+            result = [header, str(distance), str(ref_dist), str(iqr), grade]
+            logs.append(",".join(result) + "\n")
+    else:
+        for outlier in outliers:
+            header, distance, ref_dist, grade, iqr = outlier
+            if grade == "Fail":
+                to_be_excluded.add(header)
+    if to_add:
+        nt_file = filename.replace(".aa.", ".nt.")
+        nt_input_path = os.path.join(nt_input, nt_file)
+        if not os.path.exists(nt_output_path):
+            os.mkdir(nt_output_path)
+        nt_output_path = os.path.join(nt_output_path, nt_file.rstrip(".gz"))
 
-            lines = []
-            for header, sequence in parseFasta(nt_input_path):
-                lines.append(">" + header)
-                lines.append(sequence)
+        lines = []
+        for header, sequence in parseFasta(nt_input_path):
+            lines.append(">" + header)
+            lines.append(sequence)
 
-            non_empty_lines = remove_excluded_sequences(lines, to_be_excluded)
-            non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
+        non_empty_lines = remove_excluded_sequences(lines, to_be_excluded)
+        non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
 
-            write2Line2Fasta(nt_output_path, non_empty_lines, compress)
+        write2Line2Fasta(nt_output_path, non_empty_lines, compress)
     return logs
 
 
