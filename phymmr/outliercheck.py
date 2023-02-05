@@ -367,7 +367,7 @@ def compare_means(
             for candidate in candidates_at_index:
                 mean_distance = "No refs"
                 outliers.append(
-                    (candidate.id, mean_distance, "N/A", "Fail", "min_cand_bp")
+                    (candidate.id, candidate.raw, mean_distance, "N/A", "Fail", "min_cand_bp")
                 )
             continue
 
