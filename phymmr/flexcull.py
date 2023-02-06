@@ -347,9 +347,9 @@ def get_cull_start_end(sequence, mismatches, sequence_length, match_percent, amt
             cull_start = i + skip_first
             break
 
+    cull_end = None
     if not kick:
         # If not kicked from Cull Start Calc. Continue
-        cull_end = None
         for i in range(len(sequence)-1, -1, -1):
             mismatch = mismatches
             skip_last = 0
@@ -528,7 +528,7 @@ def do_gene(
         else:
             internal_cull_bp = -1
 
-        # cull_start, cull_end, kick = get_cull_start_end(sequence, mismatches, sequence_length, match_percent, amt_matches, all_dashes_by_index, character_at_each_pos, gap_present_threshold)
+        cull_start, cull_end, kick = get_cull_start_end(sequence, mismatches, sequence_length, match_percent, amt_matches, all_dashes_by_index, character_at_each_pos, gap_present_threshold)
 
         if not kick:  # If also passed Cull End Calc. Finish
             candidate_trimmed_sequence = sequence[cull_start:cull_end]
