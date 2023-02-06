@@ -421,7 +421,10 @@ def cull_internal_gaps(org_sequence, gap_present_threshold, sequence_length):
     sequence = org_sequence.copy()
     for i, let in enumerate(sequence):
         if let != "-":
+            if not bp_encountered:
+                start = i
             bp_encountered = True
+            end = i
         
         if bp_encountered:
             if let == "-":
@@ -439,9 +442,18 @@ def cull_internal_gaps(org_sequence, gap_present_threshold, sequence_length):
                 gap_start = None
                 gap_end = None
                 cull_this_gap = False
-
+    
+    gaps_removed = [i for i in sequence if i is None]
     result = [i for i in sequence if i is not None]
+    internal_length = end-start + 1
+    if len(gaps_removed) == 0:
+        return False
+    if len(gaps_removed) / internal_length <= 0.7:
+        return org_sequence
+    
     return result + ["-"] * (sequence_length-len(result))
+    
+    
 
 def do_gene(
     aa_input: str,
@@ -521,12 +533,13 @@ def do_gene(
 
         #Internal Gap Cull
         internal_culled_sequence = cull_internal_gaps(sequence, gap_present_threshold, sequence_length)
-        cull_start, cull_end, kick = get_cull_start_end(internal_culled_sequence, mismatches, sequence_length, match_percent, amt_matches, all_dashes_by_index, character_at_each_pos, gap_present_threshold)
-        if not kick:
-            internal_culled = internal_culled_sequence[cull_start:cull_end]
-            internal_cull_bp = len(internal_culled) - internal_culled.count("-")
-        else:
-            internal_cull_bp = -1
+        internal_cull_bp = -1
+        if internal_culled_sequence:
+            cull_start, cull_end, kick = get_cull_start_end(internal_culled_sequence, mismatches, sequence_length, match_percent, amt_matches, all_dashes_by_index, character_at_each_pos, gap_present_threshold)
+            if not kick:
+                internal_culled = internal_culled_sequence[cull_start:cull_end]
+                internal_cull_bp = len(internal_culled) - internal_culled.count("-")
+        
 
         cull_start, cull_end, kick = get_cull_start_end(sequence, mismatches, sequence_length, match_percent, amt_matches, all_dashes_by_index, character_at_each_pos, gap_present_threshold)
 
