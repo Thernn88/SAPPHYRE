@@ -436,6 +436,15 @@ def subcmd_mafft(subparsers):
         default=False,
         help="Enable the use of mafft-linsi.",
     )
+    par.add_argument(
+        "--add",
+        dest="add",
+        action="store_const",
+        const="--add",
+        default="--addfragments",
+        help="Pass --add to mafft instead of --addfragments"
+    )
+
     par.set_defaults(func=mafft, formathelp=par.format_help)
 
 

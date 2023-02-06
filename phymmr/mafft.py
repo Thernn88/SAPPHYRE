@@ -95,8 +95,9 @@ def do_folder(folder, args):
     cmd = "mafft"
     if args.linsi:
         cmd = "mafft-linsi"
+
     command = (
-        f"{cmd} --anysymbol --quiet --addfragments {{tmpfile}} --thread -1 {aln_path}/{{gene}}.aln.fa > {{resultfile}}"
+        f"{cmd} --anysymbol --quiet {args.add} {{tmpfile}} --thread -1 {aln_path}/{{gene}}.aln.fa > {{resultfile}}"
     )
 
     if args.processes > 1:
