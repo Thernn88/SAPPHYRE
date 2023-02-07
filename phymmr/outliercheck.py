@@ -25,6 +25,16 @@ ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta", ".fa", ".gz", ".fq", ".fastq")
 
 
 class Record:
+    __slots__ = (
+        'id',
+        'sequence',
+        'raw',
+        'upper_bound',
+        'iqr',
+        'mean_distance',
+        'grade'
+    )
+
     def __init__(self, head, seq, raw_seq=None):
         self.id = head
         self.sequence = seq
@@ -32,6 +42,11 @@ class Record:
             self.raw = seq
         else:
             self.raw = raw_seq
+        self.upper_bound = None
+        self.iqr = None
+        self.mean_distance = None
+        self.grade = None
+    # outliers.append((header, raw_sequence, mean_distance, upper_bound, grade, IQR))
 
     def __hash__(self):
         return hash(self.id + self.sequence)
@@ -39,6 +54,8 @@ class Record:
     def __str__(self):
         return self.sequence
 
+    def get_result(self):
+        return f"{self.id}, {self.mean_distance}, {self.upper_bound}, {self.grade}, {self.iqr}\n"
 
 def nan_check(iterable) -> bool:
     """
@@ -68,19 +85,32 @@ def taxa_sort(lines: list) -> list:
     return output
 
 
-def original_sort(headers, lines) -> list:
+def fast_pop(array: list, i: int):
+    temp = array[i]
+    array[i] = array[-1]
+    array[-1] = temp
+    return array.pop()
+
+
+def original_sort(headers, passing) -> list:
     """
     Returns candidate sequences to their original order.
     """
     output = []
-    record_dict = {}
-    for i in range(0, len(lines), 2):
-        record_dict[lines[i]] = lines[i + 1]
+    record_dict = {cand.id: cand for cand in passing}
     for header in headers:
-        sequence = record_dict.get(header, False)
-        if sequence:
-            output.append(header)
-            output.append(sequence)
+        candidate = record_dict.get(header, False)
+        if candidate:
+            output.append(candidate)
+            # output.append(candidate.id)
+            # output.append(candidate.sequence)
+    # for i in range(0, len(lines), 2):
+    #     record_dict[lines[i]] = lines[i + 1]
+    # for header in headers:
+    #     sequence = record_dict.get(header, False)
+    #     if sequence:
+    #         output.append(header)
+    #         output.append(sequence)
     return output
 
 
@@ -341,7 +371,9 @@ def compare_means(
     data.
     """
     regulars = []
-    outliers = []
+    # outliers = []
+    passing = []
+    failing = []
     if keep_refs:
         for line in references:
             regulars.append(line)
@@ -366,9 +398,13 @@ def compare_means(
         if bp_count < index_group_min_bp:
             for candidate in candidates_at_index:
                 mean_distance = "No refs"
-                outliers.append(
-                    (candidate.id, candidate.raw, mean_distance, "N/A", "Fail", "min_cand_bp")
-                )
+                candidate.mean_distance = mean_distance
+                candidate.upper_bound = "N/A"
+                candidate.grade = "Fail"
+                candidate.iqr = "min_candidate_bp"
+                # outliers.append(
+                #     (candidate.id, candidate.raw, mean_distance, "N/A", "Fail", "min_cand_bp")
+                # )
             continue
 
         # first we have to calculate the reference distances to make the ref mean
@@ -437,29 +473,38 @@ def compare_means(
         intermediate_list = []
         for candidate in candidates_at_index:
             mean_distance = "No refs"
-            header = candidate.id
-            raw_sequence = candidate.raw
-            grade = "Fail"
+            # header = candidate.id
+            # raw_sequence = candidate.raw
+            candidate.grade = "Ref Fail"
             if has_ref_distances:
                 candidate_distances = candidate_pairwise_calls(
                     candidate, ref_alignments
                 )
-                mean_distance = np.nanmean(candidate_distances)
+                candidate.mean_distance = np.nanmean(candidate_distances)
+                candidate.iqr = IQR
+                candidate.upper_bound = upper_bound
+                if candidate.mean_distance <= upper_bound:
+                    # if sort == "original":
+                    #     to_add_later.append(header)
+                    #     to_add_later.append(raw_sequence)
+                    # elif sort == "cluster":
+                    #     intermediate_list.append(header)
+                    #     intermediate_list.append(raw_sequence)
+                    candidate.grade = "Pass"
+                    passing.append(candidate)
+                else:
+                    failing.append(candidate)
+            else:
+                candidate.mean_distance= mean_distance
+                candidate.iqr= IQR
+                candidate.upper_bound= upper_bound
+                failing.append(candidate)
+            # outliers.append((header, raw_sequence, mean_distance, upper_bound, grade, IQR))
+        # if sort == "cluster":
+        #     intermediate_list = taxa_sort(intermediate_list)
+        #     to_add_later.extend(intermediate_list)
 
-                if mean_distance <= upper_bound:
-                    if sort == "original":
-                        to_add_later.append(header)
-                        to_add_later.append(raw_sequence)
-                    elif sort == "cluster":
-                        intermediate_list.append(header)
-                        intermediate_list.append(raw_sequence)
-                    grade = "Pass"
-            outliers.append((header, raw_sequence, mean_distance, upper_bound, grade, IQR))
-        if sort == "cluster":
-            intermediate_list = taxa_sort(intermediate_list)
-            to_add_later.extend(intermediate_list)
-
-    return regulars, to_add_later, outliers
+    return regulars, passing, failing #, outliers
 
 
 def delete_empty_columns(raw_fed_sequences: list, verbose: bool) -> tuple[list, list]:
@@ -644,7 +689,8 @@ def main_process(
         refs_in_file = len(ref_seqs)
     candidate_headers = [header for header in candidate_sequences if header[0] == ">"]
 
-    raw_regulars, to_add, outliers = compare_means(
+    # raw_regulars, to_add, outliers = compare_means(
+    raw_regulars, passing, failing = compare_means(
         reference_sequences,
         ref_dict,
         candidates_dict,
@@ -658,44 +704,59 @@ def main_process(
         ref_gap_percent,
         ref_min_percent,
     )
-    if sort == "original":
-        to_add = original_sort(candidate_headers, to_add)
-    to_be_excluded = set()
     logs = []
-
-    temp = [(header, seq) for header, seq, _, _, grade, _ in outliers if grade == "Pass"]
-    if temp:
-        consensus = dumb_consensus([x[1] for x in temp], internal_consensus_threshold)
-        for header, seq in temp:
-            distance = constrained_distance(consensus, seq)
+    # temp = [(header, seq) for header, seq, _, _, grade, _ in outliers if grade == "Pass"]
+    if passing:
+        # consensus = dumb_consensus([x[1] for x in temp], internal_consensus_threshold)
+        consensus = dumb_consensus([cand.raw for cand in passing], internal_consensus_threshold)
+        # for header, seq in temp:
+        for i, candidate in enumerate(passing):
+            distance = constrained_distance(consensus, candidate.raw)
             if distance >= internal_kick_threshold:
-                to_be_excluded.add(f">{header}")
-                if debug:
-                    logs.append(f"{header},{distance},,,Internal Fail")
+                # print(candidate.id)
+                # to_be_excluded.add(f">{header}")
+                # to_be_excluded.add(f">{candidate.id}")
+                candidate.grade = "Internal Fail"
+                failing.append(candidate)
+                passing[i] = None
+                # if debug:
+                #     # logs.append(f"{candidate.id},{distance},,,Internal Fail")
+                #     logs.append(candidate.get_result())
+    passing = [x for x in passing if x is not None]
+    # for line in to_add:
+    if sort == "original":
+        passing = original_sort(candidate_headers, passing)
 
-    for line in to_add:
-        raw_regulars.append(line)
-
+    for candidate in passing:
+        # raw_regulars.append(line)
+        raw_regulars.extend([candidate.id, candidate.raw])
     raw_regulars = delete_excluded(raw_regulars, to_be_excluded)
     regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
 
-    if to_add:  # If candidate added to fasta
+    to_be_excluded = {candidate.id for candidate in failing}
+
+    if passing:  # If candidate added to fasta
         write2Line2Fasta(aa_output, regulars, compress)
 
     if debug:
-        for outlier in outliers:
-            header, _, distance, ref_dist, grade, iqr = outlier
-            if grade == "Fail":
-                to_be_excluded.add(header)
-                header = header[1:]
-            result = [header, str(distance), str(ref_dist), str(iqr), grade]
-            logs.append(",".join(result) + "\n")
+        # for outlier in outliers:
+        #     header, _, distance, ref_dist, grade, iqr = outlier
+        #     if grade == "Fail":
+        #         to_be_excluded.add(header)
+        #         header = header[1:]
+        #     result = [header, str(distance), str(ref_dist), str(iqr), grade]
+        #     logs.append(",".join(result) + "\n")
+        # for candidate in failing:
+        #     logs.append(candidate.get_result())
+        logs = [candidate.get_result() for candidate in failing]
     else:
-        for outlier in outliers:
-            header, _, distance, ref_dist, grade, iqr = outlier
-            if grade == "Fail":
-                to_be_excluded.add(header)
-    if to_add:
+        # for outlier in outliers:
+        #     header, _, distance, ref_dist, grade, iqr = outlier
+        #     if grade == "Fail":
+        #         to_be_excluded.add(header)
+        for candidate in failing:
+            to_be_excluded.add(candidate.id)
+    if passing:
         nt_file = filename.replace(".aa.", ".nt.")
         nt_input_path = os.path.join(nt_input, nt_file)
         if not os.path.exists(nt_output_path):
@@ -804,7 +865,8 @@ def do_folder(folder, args):
     for log_data in process_data:
         if args.debug:
             for line in log_data:
-                if line.strip().split(",")[-1] == "Fail" or line.strip().split(",")[-1] == "Internal Fail":
+                # if line.strip().split(",")[-1] == "Fail" or line.strip().split(",")[-1] == "Internal Fail":
+                if line.split(',')[-2] != "Pass":
                     if line[-1] != "\n":
                         line = f"{line}\n"
                     global_csv.write(line)
