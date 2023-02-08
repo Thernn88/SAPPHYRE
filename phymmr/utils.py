@@ -41,7 +41,7 @@ def parseFasta(path: str) -> Generator[tuple[str, str], None, None]:
     Iterate over a Fasta file returning sequence records as string tuples.
     Designed in order to handle .gz and .fasta files with potential interleave.
     """
-    fa = pyfastx.Fastx(path, uppercase=True)
+    fa = pyfastx.Fastx(str(path), uppercase=True)
     for header, seq in fa:
         yield header, seq
 
