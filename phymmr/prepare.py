@@ -8,6 +8,7 @@ from pathlib import Path
 from queue import Queue
 from shutil import rmtree
 from time import time
+import string
 from typing import Any, Callable, Dict, Generator, List, Tuple
 
 import phymmr_tools
@@ -146,17 +147,18 @@ class SeqDeduplicator:
 
             if not len(parent_seq) >= self.minimum_sequence_length:
                 continue
-            parent_seq = parent_seq.upper()
+            parent_seq = string.ascii_uppercase[:len(parent_seq)]
 
             for seq in N_trim(parent_seq, self.minimum_sequence_length, trim_times):
                 header = f"NODE_{this_index}"
-                seq_hash = xxhash.xxh64(seq).hexdigest()
+                seq_hash = xxhash.xxh64_hexdigest(seq)
 
                 # Check for dupe, if so save how many times that sequence occured
                 seq_start = time()
 
                 if seq_hash in transcript_mapped_to:
-                    duplicates.setdefault(transcript_mapped_to[seq_hash], 1)
+                    import collections
+                    duplicates = collections.defaultdict(int)
                     duplicates[transcript_mapped_to[seq_hash]] += 1
                     next(dupes)
                     continue
