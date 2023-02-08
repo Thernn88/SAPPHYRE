@@ -393,13 +393,16 @@ def do_protein(
                 else:
                     # No ref stats, grab first
                     this_taxa = most_occuring[0]
+                    
+            if ignore_overlap_chunks:
+                base_header = "|".join([this_gene, this_taxa, this_taxa_id, "contig_sequence"])
+            else:
+                base_header = "|".join([this_gene, this_taxa, this_taxa_id, node])
 
-            base_header = "|".join([this_gene, this_taxa, this_taxa_id, node])
-
-            if stitch != "":
-                final_header = f"{base_header}&&{stitch}"
-            else:  # If only single component aka no merge occurs don't change header
-                final_header = base_header
+                if stitch != "":
+                    final_header = f"{base_header}&&{stitch}"
+                else:  # If only single component aka no merge occurs don't change header
+                    final_header = base_header
 
             # The overlap region is the first and last index of data
             data_start, data_end = overlap_region
