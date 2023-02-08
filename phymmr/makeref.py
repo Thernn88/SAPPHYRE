@@ -8,6 +8,7 @@ import sqlite3
 import wrap_rocks
 from Bio import SeqIO
 
+
 class Sequence:
     __slots__ = ("header", "aa_sequence", "nt_sequence", "taxa", "gene", "id")
 
@@ -254,6 +255,7 @@ def make_diamonddb(set: Sequence_Set, overwrite, threads):
 
 
 SETS_DIR = None
+
 
 def main(args):
     global SETS_DIR

@@ -12,10 +12,6 @@ import sys
 import numpy as np
 import phymmr_tools as bd
 
-from Bio.Align.AlignInfo import SummaryInfo
-from Bio.SeqRecord import SeqRecord
-from Bio.Seq import Seq
-from Bio.Align import MultipleSeqAlignment
 from phymmr_tools import constrained_distance, dumb_consensus
 
 from .utils import parseFasta, printv, write2Line2Fasta
@@ -26,13 +22,13 @@ ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta", ".fa", ".gz", ".fq", ".fastq")
 
 class Record:
     __slots__ = (
-        'id',
-        'sequence',
-        'raw',
-        'upper_bound',
-        'iqr',
-        'mean_distance',
-        'grade'
+        "id",
+        "sequence",
+        "raw",
+        "upper_bound",
+        "iqr",
+        "mean_distance",
+        "grade",
     )
 
     def __init__(self, head, seq, raw_seq=None):
@@ -46,6 +42,7 @@ class Record:
         self.iqr = None
         self.mean_distance = None
         self.grade = None
+
     # outliers.append((header, raw_sequence, mean_distance, upper_bound, grade, IQR))
 
     def __hash__(self):
@@ -57,6 +54,7 @@ class Record:
     def get_result(self):
         return f"{self.id}, {self.mean_distance}, {self.upper_bound}, {self.grade}, {self.iqr}\n"
 
+
 def nan_check(iterable) -> bool:
     """
     Checks elements in iterable for numeric values.
@@ -67,52 +65,11 @@ def nan_check(iterable) -> bool:
             return True
     return False
 
-
-def taxa_sort(lines: list) -> list:
-    """
-    Iterates over a list of candidates and creates Records. Sorts by
-    taxa, then makes a fasta list. Returns the list.
-    """
-    records = []
-    for i in range(0, len(lines), 2):
-        specimen = Record(lines[i], lines[i + 1])
-        records.append(specimen)
-    records.sort(key=lambda x: (x.id.split("|")[2], x.id.split("|")[3]))
-    output = []
-    for record in records:
-        output.append(record.id)
-        output.append(record.sequence)
-    return output
-
-
 def fast_pop(array: list, i: int):
     temp = array[i]
     array[i] = array[-1]
     array[-1] = temp
     return array.pop()
-
-
-def original_sort(headers, passing) -> list:
-    """
-    Returns candidate sequences to their original order.
-    """
-    output = []
-    record_dict = {cand.id: cand for cand in passing}
-    for header in headers:
-        candidate = record_dict.get(header, False)
-        if candidate:
-            output.append(candidate)
-            # output.append(candidate.id)
-            # output.append(candidate.sequence)
-    # for i in range(0, len(lines), 2):
-    #     record_dict[lines[i]] = lines[i + 1]
-    # for header in headers:
-    #     sequence = record_dict.get(header, False)
-    #     if sequence:
-    #         output.append(header)
-    #         output.append(sequence)
-    return output
-
 
 def folder_check(path: Path, debug: bool) -> None:
     """Create subfolders 'aa' and 'nt' to given path."""
@@ -162,7 +119,7 @@ def split_sequences_ex(path: str, excluded: set) -> tuple:
                     # if header.split("|")[1].lower() in excluded: continue
                     if header.split("|")[1].lower() in excluded:
                         continue
-                    if header[-9] == ':':
+                    if header[-9] == ":":
                         ref_check.add(header[-9])
 
                     references.append(header)
@@ -180,6 +137,8 @@ def split_sequences_ex(path: str, excluded: set) -> tuple:
         print(f"Wrong IO type: {path}")
         sys.exit(1)
     return references, candidates, ref_check
+
+
 def split_sequences(path: str) -> tuple:
     """
     Reads over a fasta record in the given list and returns a tuple of two smaller lists.
@@ -199,7 +158,7 @@ def split_sequences(path: str) -> tuple:
                 if header[-1] == ".":
                     # fields = header.split('|')
                     # if header.split("|")[1].lower() in excluded: continue
-                    if header[-9] == ':':
+                    if header[-9] == ":":
                         ref_check.add(header[-9])
 
                     references.append(header)
@@ -353,10 +312,11 @@ def has_minimum_data(
 
 
 def is_same_variant(header1, header2) -> bool:
-    if header1[-9] == ':' and header2[-9] ==':':
+    if header1[-9] == ":" and header2[-9] == ":":
         if header1[:-9] == header2[:-9]:
             return True
     return False
+
 
 def compare_means(
     references: list,
@@ -365,7 +325,6 @@ def compare_means(
     threshold: float,
     excluded_headers: set,
     keep_refs: bool,
-    sort: str,
     refs_in_file: int,
     rejected_indices: set,
     index_group_min_bp: int,
@@ -384,7 +343,6 @@ def compare_means(
     if keep_refs:
         for line in references:
             regulars.append(line)
-    to_add_later = []
     for index_pair, current_refs in ref_dict.items():
         # get candidates in this index group
         candidates_at_index = candidates_dict[index_pair]
@@ -429,7 +387,7 @@ def compare_means(
         ref_distances = []
 
         # find number of unique ref variants remaining after bp kick
-        if ref_records[0].id[-9] == ':':
+        if ref_records[0].id[-9] == ":":
             found_set = set()
             for ref in ref_records:
                 found_set.add(ref.id[:-9])
@@ -480,7 +438,6 @@ def compare_means(
         else:  # if no ref_distances, this is an orthograph, so reject
             upper_bound = "N/A"
             IQR = "N/A"
-        intermediate_list = []
         for candidate in candidates_at_index:
             mean_distance = "No refs"
             # header = candidate.id
@@ -494,27 +451,17 @@ def compare_means(
                 candidate.iqr = IQR
                 candidate.upper_bound = upper_bound
                 if candidate.mean_distance <= upper_bound:
-                    # if sort == "original":
-                    #     to_add_later.append(header)
-                    #     to_add_later.append(raw_sequence)
-                    # elif sort == "cluster":
-                    #     intermediate_list.append(header)
-                    #     intermediate_list.append(raw_sequence)
                     candidate.grade = "Pass"
                     passing.append(candidate)
                 else:
                     failing.append(candidate)
             else:
-                candidate.mean_distance= mean_distance
-                candidate.iqr= IQR
-                candidate.upper_bound= upper_bound
+                candidate.mean_distance = mean_distance
+                candidate.iqr = IQR
+                candidate.upper_bound = upper_bound
                 failing.append(candidate)
-            # outliers.append((header, raw_sequence, mean_distance, upper_bound, grade, IQR))
-        # if sort == "cluster":
-        #     intermediate_list = taxa_sort(intermediate_list)
-        #     to_add_later.extend(intermediate_list)
 
-    return regulars, passing, failing #, outliers
+    return regulars, passing, failing  # , outliers
 
 
 def delete_empty_columns(raw_fed_sequences: list, verbose: bool) -> tuple[list, list]:
@@ -600,28 +547,12 @@ def make_exclusion_set(path: str) -> set:
     each line. Used to make a taxa exclusion list.
     """
     excluded = set()
-    if not path: return excluded
+    if not path:
+        return excluded
     with open(path) as f:
         for line in f:
             excluded.add(line.rstrip())
     return excluded
-
-
-def alignment_from_list(seq_tuples: list) -> list:
-    """
-    Given a list of header and sequences in 2-line fasta format,
-    return list of BioPython SeqRecord objects.
-    """
-    result = []
-
-    for header, sequence in seq_tuples:
-        result.append(
-            SeqRecord(Seq(sequence.strip()),
-                   id=header.strip()[1:])
-        )
-    
-    return result
-
 
 def delete_excluded(lines: list, excluded: set) -> list:
     """
@@ -642,7 +573,6 @@ def main_process(
     args_output,
     args_threshold,
     args_references,
-    sort: str,
     nt_output_path: str,
     debug: bool,
     verbose: int,
@@ -653,7 +583,7 @@ def main_process(
     ref_min_percent: int,
     internal_consensus_threshold: float,
     internal_kick_threshold: int,
-    exclusion_file
+    exclusion_file,
 ):
     keep_refs = not args_references
 
@@ -670,7 +600,7 @@ def main_process(
 
     if to_be_excluded:
         reference_sequences, candidate_sequences, ref_check = split_sequences_ex(
-        file_input, to_be_excluded
+            file_input, to_be_excluded
         )
     else:
         reference_sequences, candidate_sequences, ref_check = split_sequences(
@@ -697,8 +627,6 @@ def main_process(
         refs_in_file = len(ref_check)
     else:
         refs_in_file = len(ref_seqs)
-    candidate_headers = [header for header in candidate_sequences if header[0] == ">"]
-
     # raw_regulars, to_add, outliers = compare_means(
     raw_regulars, passing, failing = compare_means(
         reference_sequences,
@@ -707,7 +635,6 @@ def main_process(
         threshold,
         to_be_excluded,
         keep_refs,
-        sort,
         refs_in_file,
         rejected_indices,
         index_group_min_bp,
@@ -718,7 +645,9 @@ def main_process(
     # temp = [(header, seq) for header, seq, _, _, grade, _ in outliers if grade == "Pass"]
     if passing:
         # consensus = dumb_consensus([x[1] for x in temp], internal_consensus_threshold)
-        consensus = dumb_consensus([cand.raw for cand in passing], internal_consensus_threshold)
+        consensus = dumb_consensus(
+            [cand.raw for cand in passing], internal_consensus_threshold
+        )
         # for header, seq in temp:
         for i, candidate in enumerate(passing):
             distance = constrained_distance(consensus, candidate.raw)
@@ -734,8 +663,6 @@ def main_process(
                 #     logs.append(candidate.get_result())
     passing = [x for x in passing if x is not None]
     # for line in to_add:
-    if sort == "original":
-        passing = original_sort(candidate_headers, passing)
 
     for candidate in passing:
         # raw_regulars.append(line)
@@ -825,7 +752,6 @@ def do_folder(folder, args):
                     output_path,
                     args.threshold,
                     args.no_references,
-                    args.sort,
                     nt_output_path,
                     args.debug,
                     args.verbose,
@@ -836,7 +762,7 @@ def do_folder(folder, args):
                     args.ref_min_percent,
                     args.internal_consensus_threshold,
                     args.internal_kick_threshold,
-                    args.exclude
+                    args.exclude,
                 )
             )
 
@@ -852,7 +778,6 @@ def do_folder(folder, args):
                     output_path,
                     args.threshold,
                     args.no_references,
-                    args.sort,
                     nt_output_path,
                     args.debug,
                     args.verbose,
@@ -863,7 +788,7 @@ def do_folder(folder, args):
                     args.ref_min_percent,
                     args.internal_consensus_threshold,
                     args.internal_kick_threshold,
-                    args.exclude
+                    args.exclude,
                 )
             )
     if args.debug:
@@ -876,13 +801,13 @@ def do_folder(folder, args):
         if args.debug:
             for line in log_data:
                 # if line.strip().split(",")[-1] == "Fail" or line.strip().split(",")[-1] == "Internal Fail":
-                if line.split(',')[-2] != "Pass":
+                if line.split(",")[-2] != "Pass":
                     if line[-1] != "\n":
                         line = f"{line}\n"
                     global_csv.write(line)
     if args.debug:
         global_csv.close()
-        
+
     printv(f"Done! Took {time_keeper.differential():.2f}s", args.verbose)
 
 

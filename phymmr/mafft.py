@@ -25,7 +25,7 @@ def process_genefile(filewrite, fileread):
         else:
             cand_og_hashmap[header[:242]] = header
             filewrite.write(f">{header}\n")
-            filewrite.write(sequence+"\n")
+            filewrite.write(sequence + "\n")
     return ref_og_hashmap, cand_og_hashmap
 
 
@@ -57,7 +57,7 @@ def run_command(args: CmdArgs) -> None:
     out = []
     for header, sequence in parseFasta(args.result_file):
         if "|" in header:
-            out.append((cand_og_hashmap[header[:242]],sequence))
+            out.append((cand_og_hashmap[header[:242]], sequence))
 
         else:
             out.append((ref_og_hashmap[header.strip()], sequence))
@@ -96,9 +96,7 @@ def do_folder(folder, args):
     if args.linsi:
         cmd = "mafft-linsi"
 
-    command = (
-        f"{cmd} --anysymbol --quiet {args.add} {{tmpfile}} --thread -1 {aln_path}/{{gene}}.aln.fa > {{resultfile}}"
-    )
+    command = f"{cmd} --anysymbol --quiet {args.add} {{tmpfile}} --thread -1 {aln_path}/{{gene}}.aln.fa > {{resultfile}}"
 
     if args.processes > 1:
         arguments = []

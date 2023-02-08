@@ -335,8 +335,10 @@ def do_protein(
 
     # Grab all the candidate sequences and sort into taxa id based groups
     taxa_groups = {}
+
     def get_taxa(header: str) -> str:
         return header.split("|")[2]
+
     for header, sequence in candidates:
         start, end = get_start_end(sequence)
         this_object = (start, end, header, sequence)
@@ -367,7 +369,12 @@ def do_protein(
 
             for sequence in this_sequences:
                 # if protein == "aa":
-                count = prep_dupe_counts.get(sequence[4], 1) + sum([prep_dupe_counts.get(header, 1) for header in rep_dupe_counts.get(sequence[4], [])])
+                count = prep_dupe_counts.get(sequence[4], 1) + sum(
+                    [
+                        prep_dupe_counts.get(header, 1)
+                        for header in rep_dupe_counts.get(sequence[4], [])
+                    ]
+                )
                 # else:
                 # count = dupe_counts.get(sequence[4], 0) + 1
                 consists_of.append((sequence[2], sequence[3], count))
@@ -393,9 +400,11 @@ def do_protein(
                 else:
                     # No ref stats, grab first
                     this_taxa = most_occuring[0]
-                    
+
             if ignore_overlap_chunks:
-                base_header = "|".join([this_gene, this_taxa, this_taxa_id, "contig_sequence"])
+                base_header = "|".join(
+                    [this_gene, this_taxa, this_taxa_id, "contig_sequence"]
+                )
                 final_header = base_header
             else:
                 base_header = "|".join([this_gene, this_taxa, this_taxa_id, node])
@@ -752,8 +761,12 @@ def do_folder(folder: Path, args):
     if args.processes > 1:
         arguments = []
         for target_gene in target_genes:
-            prep_dupes_in_this_gene = prepare_dupe_counts.get(target_gene.split(".")[0], {})
-            rep_dupes_in_this_gene = reporter_dupe_counts.get(target_gene.split('.')[0], {})
+            prep_dupes_in_this_gene = prepare_dupe_counts.get(
+                target_gene.split(".")[0], {}
+            )
+            rep_dupes_in_this_gene = reporter_dupe_counts.get(
+                target_gene.split(".")[0], {}
+            )
             target_aa_path = Path(aa_input, target_gene)
             target_nt_path = Path(nt_input, make_nt_name(target_gene))
             arguments.append(
@@ -777,8 +790,12 @@ def do_folder(folder: Path, args):
             pool.map(run_command, arguments, chunksize=1)
     else:
         for target_gene in target_genes:
-            prep_dupes_in_this_gene = prepare_dupe_counts.get(target_gene.split(".")[0], {})
-            rep_dupes_in_this_gene = reporter_dupe_counts.get(target_gene.split('.')[0], {})
+            prep_dupes_in_this_gene = prepare_dupe_counts.get(
+                target_gene.split(".")[0], {}
+            )
+            rep_dupes_in_this_gene = reporter_dupe_counts.get(
+                target_gene.split(".")[0], {}
+            )
             target_aa_path = os.path.join(aa_input, target_gene)
             target_nt_path = os.path.join(nt_input, make_nt_name(target_gene))
             do_gene(

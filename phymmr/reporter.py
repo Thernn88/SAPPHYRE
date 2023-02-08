@@ -52,6 +52,7 @@ class Hit:
         if "revcomp" in self.header:
             self.est_sequence = phymmr_tools.bio_revcomp(self.est_sequence)
 
+
 def get_diamondhits(rocks_hits_db, list_of_wanted_orthoids):
     gene_based_results = {}
     for gene in rocks_hits_db.get("getall:presentgenes").split(","):
@@ -73,6 +74,7 @@ def get_reference_data(rocks_hits_db):
 
     return processed
 
+
 def translate_cdna(cdna_seq):
     if not cdna_seq:
         return None
@@ -81,6 +83,7 @@ def translate_cdna(cdna_seq):
         printv("WARNING: NT Sequence length is not divisable by 3", 0)
 
     return str(Seq(cdna_seq).translate())
+
 
 def get_ortholog_group(orthoid, orthoset_db):
     core_seqs = json.loads(orthoset_db.get(f"getcore:{orthoid}"))
@@ -134,8 +137,7 @@ def print_unmerged_sequences(hits, orthoid, taxa_id):
             mapped_to = seq_mapped_already[nt_seq]
             dupes.setdefault(mapped_to, []).append(base_header)
             continue
-        else:
-            seq_mapped_already[nt_seq] = base_header
+        seq_mapped_already[nt_seq] = base_header
 
         if unique_hit not in exact_hit_mapped_already:
 
@@ -187,7 +189,6 @@ def print_unmerged_sequences(hits, orthoid, taxa_id):
     return dupes, aa_result, nt_result
 
 
-
 OutputArgs = namedtuple(
     "OutputArgs",
     [
@@ -201,6 +202,7 @@ OutputArgs = namedtuple(
         "compress",
     ],
 )
+
 
 def trim_and_write(oargs: OutputArgs):
     t_gene_start = TimeKeeper(KeeperMode.DIRECT)

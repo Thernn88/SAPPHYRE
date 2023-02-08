@@ -73,8 +73,8 @@ def subcmd_diamond(subparsers):
         "-ovw", "--overwrite", action="store_true", help="Overwrite existing files."
     )
     par.add_argument("-d", "--debug", action="store_true", help="Enable debug out.")
-    
-    #Should be based on Taxa name. Check TODO.
+
+    # Should be based on Taxa name. Check TODO.
     par.add_argument(
         "-strict",
         "--strict-search-mode",
@@ -153,6 +153,7 @@ def subcmd_diamond(subparsers):
     )
     par.set_defaults(func=diamond, formathelp=par.format_help)
 
+
 def diamond(args):
     from . import diamond
 
@@ -164,8 +165,7 @@ def diamond(args):
 def subcmd_reporter(subparsers):
     par = subparsers.add_parser(
         "Reporter",
-        help="Trims mapped sequence to mapped region."
-        "Produces aa and nt output.",
+        help="Trims mapped sequence to mapped region." "Produces aa and nt output.",
     )
     par.add_argument(
         "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
@@ -223,13 +223,6 @@ def subcmd_outliercheck(subparsers):
         "--no-references",
         action="store_true",
         help="Disable output of reference sequences",
-    )
-    par.add_argument(
-        "-s",
-        "--sort",
-        choices=["cluster", "original"],
-        default="original",
-        help="Sort candidate output by cluster and taxa, or preserver original order.",
     )
     par.add_argument(
         "-cd",
@@ -301,7 +294,7 @@ def subcmd_outliercheck(subparsers):
         "-e",
         "--exclude",
         default=None,
-        help="Path to excluded taxa names. File should be line delimited."
+        help="Path to excluded taxa names. File should be line delimited.",
     )
     par.set_defaults(func=outliercheck, formathelp=par.format_help)
 
@@ -442,7 +435,7 @@ def subcmd_mafft(subparsers):
         action="store_const",
         const="--add",
         default="--addfragments",
-        help="Pass --add to mafft instead of --addfragments"
+        help="Pass --add to mafft instead of --addfragments",
     )
 
     par.set_defaults(func=mafft, formathelp=par.format_help)
@@ -508,7 +501,7 @@ def subcmd_flexcull(subparsers):
         type=int,
         default=7,
         help="Amount of base pairs that have to match reference.",
-    )#
+    )  #
     par.add_argument(
         "-mp",
         "--match_percent",

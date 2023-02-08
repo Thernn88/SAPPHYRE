@@ -2,10 +2,11 @@
 # © 2022 GPLv3+ PhyMMR Team
 import gzip
 import os
-import pyfastx
 from threading import Thread
 from queue import Queue
 from typing import Generator
+import pyfastx
+
 # from Bio.SeqIO.QualityIO import FastqGeneralIterator
 
 
@@ -36,13 +37,17 @@ def gettempdir():
         return "/dev/shm"
     return None
 
+
 def parseFasta(path: str) -> Generator[tuple[str, str], None, None]:
     """
     Iterate over a Fasta file returning sequence records as string tuples.
     Designed in order to handle .gz and .fasta files with potential interleave.
     """
-    fa = pyfastx.Fastx(str(path), uppercase=True, )
-    for entry in fa: # Deinterleave
+    fa = pyfastx.Fastx(
+        str(path),
+        uppercase=True,
+    )
+    for entry in fa:  # Deinterleave
         yield entry[0], entry[1]
 
 

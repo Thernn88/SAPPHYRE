@@ -21,8 +21,11 @@ def download_parallel(arguments):
         try:
             print(p.stdout.read().decode())
         except UnicodeDecodeError:
-            print("ErrUnicode decoding error, UTF-8 charset does not contain the bytecode for gotten character")
+            print(
+                "ErrUnicode decoding error, UTF-8 charset does not contain the bytecode for gotten character"
+            )
             sys.exit(1)
+
 
 def main(args):
     cmd = "fastq-dump --gzip"

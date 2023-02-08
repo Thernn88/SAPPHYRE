@@ -808,15 +808,15 @@ def prepare_taxa_and_genes(
     return out_generator, len(glob_aa)
 
 
-def find_start(sequence: str, gap_character='-') -> int:
+def find_start(sequence: str, gap_character="-") -> int:
     for i, bp in enumerate(sequence):
         if bp != gap_character:
             return i
     return -1
 
 
-def find_end(sequence: str, gap_character='-') -> int:
-    for i,bp in enumerate(sequence[::-1]):
+def find_end(sequence: str, gap_character="-") -> int:
+    for i, bp in enumerate(sequence[::-1]):
         if bp != gap_character:
             return i
     return -1
@@ -853,10 +853,10 @@ def read_and_convert_fasta_files(
     # add candidates to references
     aas.extend(aa_intermediate)
 
-    with open(aa_file,'w') as fa:
+    with open(aa_file, "w") as fa:
         for header, sequence in aas:
-            fa.write('>'+header+'\n')
-            fa.write(sequence+'\n')
+            fa.write(">" + header + "\n")
+            fa.write(sequence + "\n")
 
     # if no nt refs found, do not process aa refs
     aa_final = aas
@@ -914,7 +914,7 @@ def run_batch_threaded(
 ):
     with Pool(num_threads) as pool:
         result = pool.starmap(worker, ls, chunksize=100)
-    
+
     failed = False
     global_count = Counter()
     for success, ref_count in result:
@@ -922,7 +922,7 @@ def run_batch_threaded(
             failed = True
         for ref, count in ref_count.items():
             global_count[ref] += count
-    
+
     return not failed, global_count
 
 
@@ -935,13 +935,14 @@ def main(args):
             folder, specified_dna_table, args.verbose, args.compress
         )
 
-        success, global_count = run_batch_threaded(num_threads=args.processes, ls=this_taxa_jobs)
+        success, global_count = run_batch_threaded(
+            num_threads=args.processes, ls=this_taxa_jobs
+        )
 
         rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
         if rocks_db_path.exists():
             rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
             rocksdb_db.put("getall:top_refs", json.dumps(global_count.most_common()))
-
 
         if not success:
             printv("A fatal error has occured.", args.verbose, 0)

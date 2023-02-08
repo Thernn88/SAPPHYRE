@@ -47,10 +47,12 @@ class Hit:
         "length",
         "kick",
         "frame",
-        "full_header"
+        "full_header",
     )
-    
-    def __init__(self, header, ref_header, frame, evalue, score, qstart, qend, gene, reftaxon):
+
+    def __init__(
+        self, header, ref_header, frame, evalue, score, qstart, qend, gene, reftaxon
+    ):
         self.header = header
         self.gene = gene
         self.reftaxon = reftaxon
@@ -66,7 +68,9 @@ class Hit:
         self.length = self.qend - self.qstart + 1
 
         if self.frame < 0:
-            self.full_header = self.header + f"|[revcomp]:[translate({abs(self.frame)})]"
+            self.full_header = (
+                self.header + f"|[revcomp]:[translate({abs(self.frame)})]"
+            )
         else:
             self.full_header = self.header + f"|[translate({self.frame})]"
 
@@ -180,7 +184,12 @@ def multi_filter(hits, debug):
 
 
 def hits_are_bad(
-    hits: list, debug: bool, min_size: int, min_evalue: float, top_refs: list, total_references: int
+    hits: list,
+    debug: bool,
+    min_size: int,
+    min_evalue: float,
+    top_refs: list,
+    total_references: int,
 ) -> bool:
     """
     Checks a list of hits for minimum size and score. If below both, kick.
@@ -199,7 +208,7 @@ def hits_are_bad(
         for hit in hits:
             if hit.reftaxon in top_refs:
                 return_type = False
-    
+
     if debug and return_type:
         evalue_log = [
             (
@@ -229,7 +238,9 @@ def internal_filter(header_based: dict, debug: bool, internal_percent: float) ->
             if hit_a.kick or hit_b.kick:
                 continue
 
-            overlap_amount = get_overlap(hit_a.qstart, hit_a.qend, hit_b.qstart, hit_b.qend)
+            overlap_amount = get_overlap(
+                hit_a.qstart, hit_a.qend, hit_b.qstart, hit_b.qend
+            )
             percent = overlap_amount / hit_a.length if overlap_amount > 0 else 0
 
             if percent >= internal_percent:
@@ -240,27 +251,28 @@ def internal_filter(header_based: dict, debug: bool, internal_percent: float) ->
 
                 if debug:
                     log.append(
-                                (
-                                    hit_b.gene,
-                                    hit_b.header,
-                                    hit_b.reftaxon,
-                                    hit_b.score,
-                                    hit_b.qstart,
-                                    hit_b.qend,
-                                    "Internal kicked out by",
-                                    hit_a.gene,
-                                    hit_a.header,
-                                    hit_a.reftaxon,
-                                    hit_a.score,
-                                    hit_a.qstart,
-                                    hit_a.qend,
-                                )
-                            )
-        
+                        (
+                            hit_b.gene,
+                            hit_b.header,
+                            hit_b.reftaxon,
+                            hit_b.score,
+                            hit_b.qstart,
+                            hit_b.qend,
+                            "Internal kicked out by",
+                            hit_a.gene,
+                            hit_a.header,
+                            hit_a.reftaxon,
+                            hit_a.score,
+                            hit_a.qstart,
+                            hit_a.qend,
+                        )
+                    )
+
     return this_kicks, log, kicks
 
+
 def internal_filtering(gene, hits, debug, internal_percent):
-    kicked_hits, this_log, this_kicks  = internal_filter(hits, debug, internal_percent)
+    kicked_hits, this_log, this_kicks = internal_filter(hits, debug, internal_percent)
 
     return {gene: (this_kicks, this_log, kicked_hits)}
 
@@ -275,10 +287,12 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
     rextaxon_count = {}
     header_lines = {}
     for line in file_pointer:
-        header, ref_header_pair, frame = line.split('\t')[:3]
+        header, ref_header_pair, frame = line.split("\t")[:3]
         ref_gene, ref_taxon = taxon_lookup[ref_header_pair]
         rextaxon_count[ref_taxon] = rextaxon_count.get(ref_taxon, 0) + 1
-        header_lines.setdefault(header+frame, []).append(line.strip()+f'\t{ref_gene}\t{ref_taxon}')
+        header_lines.setdefault(header + frame, []).append(
+            line.strip() + f"\t{ref_gene}\t{ref_taxon}"
+        )
     sorted_counts = [x for x in rextaxon_count.items()]
     top_names = []
     total_references = 0
@@ -290,14 +304,24 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
         top_names = [x[0] for x in sorted_counts if x[1] >= target_score]
     return top_names, total_references, header_lines
 
-def process_lines(lines, debug, min_percent, min_evalue, reftaxon_counts, total_references, strict_search_mode, reference_taxa):
+
+def process_lines(
+    lines,
+    debug,
+    min_percent,
+    min_evalue,
+    reftaxon_counts,
+    total_references,
+    strict_search_mode,
+    reference_taxa,
+):
     output = {}
     evalue_kicks = 0
     multi_kicks = 0
     this_log = []
-    for this_lines in lines.values():      
-        hits = [Hit(*hit.split("\t")) for hit in this_lines] #convert to Hit object
-        hits.sort(key = lambda x: x.score, reverse=True)
+    for this_lines in lines.values():
+        hits = [Hit(*hit.split("\t")) for hit in this_lines]  # convert to Hit object
+        hits.sort(key=lambda x: x.score, reverse=True)
         genes_present = {hit.gene for hit in hits}
 
         if len(genes_present) > 1:
@@ -306,23 +330,22 @@ def process_lines(lines, debug, min_percent, min_evalue, reftaxon_counts, total_
             if debug:
                 this_log.extend(log)
         # filter hits by min length and evalue
-        hits_bad, evalue_Log = hits_are_bad(hits, debug, min_percent, min_evalue, reftaxon_counts, total_references)
+        hits_bad, evalue_Log = hits_are_bad(
+            hits, debug, min_percent, min_evalue, reftaxon_counts, total_references
+        )
         if hits_bad:
             evalue_kicks += len(hits)
             if debug:
                 this_log.extend(evalue_Log)
             continue
 
-        best_hit = reciprocal_check(
-            hits, strict_search_mode, reference_taxa
-        )
+        best_hit = reciprocal_check(hits, strict_search_mode, reference_taxa)
 
         if best_hit:
-            output.setdefault(best_hit.gene, []).append(
-                best_hit
-            )
+            output.setdefault(best_hit.gene, []).append(best_hit)
 
     return output, evalue_kicks, multi_kicks, this_log
+
 
 def run_process(args, input_path) -> None:
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
@@ -435,13 +458,15 @@ def run_process(args, input_path) -> None:
     multi_kicks = 0
 
     chunks = args.chunks
-    chunk_count= itertools.count(1)
+    chunk_count = itertools.count(1)
 
     evalue_kicks = 0
     global_log = []
     dupe_divy_headers = {}
     with open(out_path) as fp:
-        reftaxon_counts, total_references, lines = count_reftaxon(fp, target_to_taxon, args.top_ref)
+        reftaxon_counts, total_references, lines = count_reftaxon(
+            fp, target_to_taxon, args.top_ref
+        )
 
     headers = list(lines.keys())
 
@@ -459,7 +484,19 @@ def run_process(args, input_path) -> None:
             )
             this_level_headers = headers[i : i + per_level]
             per_thread = ceil(len(this_level_headers) / num_threads)
-            arguments = [({k: lines[k] for k in list(this_level_headers)[j : j + per_thread]}, args.debug, args.min_percent, args.min_evalue, reftaxon_counts, total_references, strict_search_mode, reference_taxa,) for j in range(0, len(this_level_headers), per_thread)]
+            arguments = [
+                (
+                    {k: lines[k] for k in list(this_level_headers)[j : j + per_thread]},
+                    args.debug,
+                    args.min_percent,
+                    args.min_evalue,
+                    reftaxon_counts,
+                    total_references,
+                    strict_search_mode,
+                    reference_taxa,
+                )
+                for j in range(0, len(this_level_headers), per_thread)
+            ]
             with Pool(num_threads) as p:
                 result = p.starmap(process_lines, arguments)
             del arguments
@@ -469,13 +506,12 @@ def run_process(args, input_path) -> None:
                         output[gene] = hits
                     else:
                         output[gene].extend(hits)
-                    
+
                 evalue_kicks += ekicks
                 multi_kicks += mkicks
 
                 if args.debug:
                     global_log.extend(this_log)
-        
 
         printv(
             f"Processed. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
@@ -492,13 +528,19 @@ def run_process(args, input_path) -> None:
                 this_common = {i[0] for i in this_counter if i[1] > 1}
                 for hit in [i for i in hits if i.header in this_common]:
                     requires_internal[gene].setdefault(hit.header, []).append(hit)
-                    
+
                 internal_order.append((gene, this_hits))
 
-        internal_order.sort(key = lambda x: x[1], reverse= True)
+        internal_order.sort(key=lambda x: x[1], reverse=True)
 
         with Pool(args.processes) as pool:
-            internal_results = pool.starmap(internal_filtering, [(gene, requires_internal[gene], args.debug, args.internal_percent) for gene, _ in internal_order])
+            internal_results = pool.starmap(
+                internal_filtering,
+                [
+                    (gene, requires_internal[gene], args.debug, args.internal_percent)
+                    for gene, _ in internal_order
+                ],
+            )
 
         internal_result = {}
         for result in internal_results:
@@ -517,7 +559,7 @@ def run_process(args, input_path) -> None:
             out = []
             if gene in internal_result:
                 this_kicks, this_log, kicks = internal_result[gene]
-            
+
                 internal_kicks += this_kicks
                 if args.debug:
                     global_log.extend(this_log)
@@ -558,7 +600,7 @@ def run_process(args, input_path) -> None:
         printv(
             f"Took {time_keeper.lap():.2f}s for {multi_kicks+evalue_kicks+internal_kicks} kicks leaving {passes} results. Writing dupes and present gene data",
             args.verbose,
-        ) 
+        )
 
         gene_dupe_count = {}
         for gene, headers in dupe_divy_headers.items():
