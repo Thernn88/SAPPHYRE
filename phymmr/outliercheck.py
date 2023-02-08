@@ -409,6 +409,7 @@ def compare_means(
                 candidate.upper_bound = "N/A"
                 candidate.grade = "Fail"
                 candidate.iqr = "min_candidate_bp"
+                failing.append(candidate)
                 # outliers.append(
                 #     (candidate.id, candidate.raw, mean_distance, "N/A", "Fail", "min_cand_bp")
                 # )
