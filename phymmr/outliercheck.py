@@ -160,7 +160,8 @@ def split_sequences_ex(path: str, excluded: set) -> tuple:
                 if header[-1] == ".":
                     # fields = header.split('|')
                     # if header.split("|")[1].lower() in excluded: continue
-                    if header.split("|")[1].lower() in excluded: continue
+                    if header.split("|")[1].lower() in excluded:
+                        continue
                     if header[-9] == ':':
                         ref_check.add(header[-9])
 
@@ -351,6 +352,12 @@ def has_minimum_data(
     return sum(data_chars) / len(data_chars) >= min_data
 
 
+def is_same_variant(header1, header2) -> bool:
+    if header1[-9] == ':' and header2[-9] ==':':
+        if header1[:-9] == header2[:-9]:
+            return True
+    return False
+
 def compare_means(
     references: list,
     ref_dict: dict,
@@ -433,6 +440,8 @@ def compare_means(
             has_ref_distances = False
         else:
             for seq1, seq2 in combinations(ref_alignments, 2):
+                if is_same_variant(seq1.id, seq2.id):
+                    continue
                 ref1 = str(seq1)
                 ref2 = str(seq2)
                 ref_distances.append(bd.blosum62_distance(ref1, ref2))
