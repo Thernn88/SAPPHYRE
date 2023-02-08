@@ -2,8 +2,7 @@
 # © 2022 GPLv3+ PhyMMR Team
 import gzip
 import os
-import sys
-from pathlib import Path
+import pyfastx
 from threading import Thread
 from queue import Queue
 from typing import Generator
@@ -37,75 +36,14 @@ def gettempdir():
         return "/dev/shm"
     return None
 
-
-def get_records(fp, type: str) -> Generator[tuple[str, str], None, None]:
-    """
-    Iterates over every line of a file and returns each sequence record.
-    Forces sequences to be uppercase.
-    """
-    current_header = ""
-    if type == "fasta":
-        for line in fp:
-            if line.startswith(b">"):
-                if len(current_header) > 0:
-                    yield (
-                        current_header[1:].decode(),
-                        b"".join(this_sequence)
-                        .replace(b" ", b"")
-                        .replace(b"\r", b"")
-                        .upper()
-                        .decode(),
-                    )
-                this_sequence = []
-                current_header = line.rstrip()
-                continue
-
-            this_sequence.append(line.rstrip())
-
-        yield (
-            current_header[1:].decode(),
-            b"".join(this_sequence)
-            .replace(b" ", b"")
-            .replace(b"\r", b"")
-            .upper()
-            .decode(),
-        )
-    ### currently replaced with FastqGeneralIterator call in parseFasta
-    ### FastqGeneralIterator breaks on bad descripton
-    elif type == "fastq":
-        # generator = FastqGeneralIterator(fp)
-        # try:
-        #     for header, seq, description in generator:
-        #         yield header, seq
-        # except ValueError:
-        #     pass
-        for line in fp:
-            if line.startswith(b"@"):
-                sequence = next(fp).rstrip()
-                next(fp)
-                quality = next(fp).rstrip()
-                if len(quality) != len(sequence):
-                    sys.stderr.write(f"Malformed record in {fp.name}\n{line.decode()}sequence and quality lines differ in length\n")
-                yield (
-                    line[1:].rstrip().decode(),
-                    sequence.replace(b" ", b"").replace(b"\r", b"").upper().decode(),
-                )
-
-
 def parseFasta(path: str) -> Generator[tuple[str, str], None, None]:
     """
     Iterate over a Fasta file returning sequence records as string tuples.
     Designed in order to handle .gz and .fasta files with potential interleave.
     """
-    func = open
-    suffixes = Path(path).suffixes
-    if ".gz" in suffixes:
-        func = gzip.open
-    file_type = "fastq" if ".fastq" in suffixes or ".fq" in suffixes else "fasta"
-    mode = 'rb'
-    # if file_type == 'fastq':
-    #     mode = 'rt'
-    return get_records(func(path, mode), file_type)
+    fa = pyfastx.Fastx(path, uppercase=True)
+    for header, seq in fa:
+        yield header, seq
 
 
 def writeFasta(path: str, records: tuple[str, str], compress=False):
