@@ -396,6 +396,7 @@ def do_protein(
                     
             if ignore_overlap_chunks:
                 base_header = "|".join([this_gene, this_taxa, this_taxa_id, "contig_sequence"])
+                final_header = base_header
             else:
                 base_header = "|".join([this_gene, this_taxa, this_taxa_id, node])
 
