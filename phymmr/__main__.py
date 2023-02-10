@@ -137,20 +137,6 @@ def subcmd_diamond(subparsers):
         default=0.3,
         help="Percentage of overlap required to constitute an internal overlap kick.",
     )
-    par.add_argument(
-        "-oi",
-        "--orthoset_input",
-        type=str,
-        default="orthosets",
-        help="Path to directory of Orthosets folder",
-    )
-    par.add_argument(
-        "-os",
-        "--orthoset",
-        type=str,
-        default="Ortholog_set_Mecopterida_v4",
-        help="Orthoset",
-    )
     par.set_defaults(func=diamond, formathelp=par.format_help)
 
 
@@ -169,20 +155,6 @@ def subcmd_reporter(subparsers):
     )
     par.add_argument(
         "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
-    )
-    par.add_argument(
-        "-oi",
-        "--orthoset_input",
-        type=str,
-        default="orthosets",
-        help="Path to directory of Orthosets folder",
-    )
-    par.add_argument(
-        "-os",
-        "--orthoset",
-        type=str,
-        default="Ortholog_set_Mecopterida_v4",
-        help="Orthoset",
     )
     par.add_argument("-d", "--debug", type=int, default=0, help="Verbose debug.")
     par.set_defaults(func=reporter, formathelp=par.format_help)
@@ -407,20 +379,6 @@ def subcmd_mafft(subparsers):
     )
     par.add_argument(
         "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
-    )
-    par.add_argument(
-        "-oi",
-        "--orthoset_input",
-        type=str,
-        default="orthosets",
-        help="Path to directory of Orthosets folder",
-    )
-    par.add_argument(
-        "-os",
-        "--orthoset",
-        type=str,
-        default="Ortholog_set_Mecopterida_v4",
-        help="Orthoset",
     )
     par.add_argument(
         "-l",
@@ -778,7 +736,20 @@ if __name__ == "__main__":
         default=1,
         help="Number of threads used to call processes.",
     )
-
+    parser.add_argument(
+        "-oi",
+        "--orthoset_input",
+        type=str,
+        default="orthosets",
+        help="Path to directory of Orthosets folder.",
+    )
+    parser.add_argument(
+        "-os",
+        "--orthoset",
+        type=str,
+        default="Ortholog_set_Mecopterida_v4",
+        help="Current Orthoset to be used.",
+    )
     subparsers = parser.add_subparsers()
     # The order in which those functions are called define the order in which
     # the subcommands will be displayed.
