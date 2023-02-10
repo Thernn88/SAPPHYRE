@@ -18,20 +18,24 @@ ALN_FOLDER = "aln"
 def process_genefile(filewrite, fileread):
     ref_og_hashmap = {}
     cand_og_hashmap = {}
+    targets_present = set()
     for header, sequence in parseFasta(fileread):
 
         if header.endswith("."):
-            ref_og_hashmap[header.split("|")[2]] = header
+            target = header.split("|")[2]
+            ref_og_hashmap[target] = header
+            targets_present.add(target)
         else:
             cand_og_hashmap[header[:242]] = header
             filewrite.write(f">{header}\n")
             filewrite.write(sequence + "\n")
-    return ref_og_hashmap, cand_og_hashmap
+            
+    return ref_og_hashmap, cand_og_hashmap, targets_present
 
 
 CmdArgs = namedtuple(
     "CmdArgs",
-    ["string", "gene_file", "result_file", "gene", "lock", "verbose", "compress"],
+    ["string", "gene_file", "result_file", "gene", "lock", "verbose", "compress", "aln_path"],
 )
 
 
@@ -41,17 +45,31 @@ def run_command(args: CmdArgs) -> None:
             printv(f"Doing: {args.gene}", args.verbose, 2)
     else:
         printv(f"Doing: {args.gene}", args.verbose, 2)
-
-    with TemporaryDirectory(dir=gettempdir()) as tmpdir, NamedTemporaryFile(
+    temp_dir = gettempdir()
+    with TemporaryDirectory(dir=temp_dir) as tmpdir, NamedTemporaryFile(
         mode="w+", dir=tmpdir
     ) as tmpfile:
-        ref_og_hashmap, cand_og_hashmap = process_genefile(tmpfile, args.gene_file)
-        tmpfile.file.flush()
-        command = args.string.format(
-            tmpfile=tmpfile.name, resultfile=args.result_file, gene=args.gene
-        )
-        printv(f"Executing command: {command}", args.verbose, 2)
-        os.system(command)
+        ref_og_hashmap, cand_og_hashmap, targets_present = process_genefile(tmpfile, args.gene_file)
+
+        with NamedTemporaryFile(
+                mode="w+", dir=tmpdir
+            ) as tmpaln:
+                new_aln = []
+                for header, seq in parseFasta(os.path.join(args.aln_path, args.gene + ".aln.fa")):
+                    if not header.strip() in targets_present:
+                        continue
+                    new_aln.append(f">{header}\n{seq}\n")
+
+                tmpaln.writelines(new_aln)
+
+                tmpfile.file.flush()
+                tmpaln.file.flush()
+                command = args.string.format(
+                    tmpfile=tmpfile.name, resultfile=args.result_file, tmpaln=tmpaln.name
+                )
+
+                printv(f"Executing command: {command}", args.verbose, 2)
+                os.system(command)
 
     # Overwrite reference headers with original headers
     out = []
@@ -96,7 +114,7 @@ def do_folder(folder, args):
     if args.linsi:
         cmd = "mafft-linsi"
 
-    command = f"{cmd} --anysymbol --quiet {args.add} {{tmpfile}} --thread -1 {aln_path}/{{gene}}.aln.fa > {{resultfile}}"
+    command = f"{cmd} --anysymbol --quiet {args.add} {{tmpfile}} --thread -1 {{tmpaln}} > {{resultfile}}"
 
     if args.processes > 1:
         arguments = []
@@ -112,7 +130,7 @@ def do_folder(folder, args):
         result_file = os.path.join(mafft_path, file.rstrip(".gz"))
         func(
             CmdArgs(
-                command, gene_file, result_file, gene, lock, args.verbose, args.compress
+                command, gene_file, result_file, gene, lock, args.verbose, args.compress, aln_path
             )
         )
 
