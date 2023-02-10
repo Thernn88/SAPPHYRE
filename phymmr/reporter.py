@@ -98,11 +98,12 @@ def format_reference_header(gene, taxa_name, taxa_id, identifier="."):
     return header_seperator.join([gene, taxa_name, taxa_id, identifier])
 
 
-def print_core_sequences(orthoid, core_sequences):
+def print_core_sequences(orthoid, core_sequences, present_taxon):
     result = []
     for core in sorted(core_sequences):
-        header = format_reference_header(orthoid, core[0], core[1])
-        result.append((header, core[2]))
+        if core[0] in present_taxon:
+            header = format_reference_header(orthoid, core[0], core[1])
+            result.append((header, core[2]))
 
     return result
 
@@ -115,6 +116,7 @@ def print_unmerged_sequences(hits, orthoid, taxa_id):
     base_header_mapped_already = {}
     seq_mapped_already = {}
     exact_hit_mapped_already = set()
+    present_taxon = set()
     dupes = {}
     for hit in hits:
 
@@ -127,6 +129,8 @@ def print_unmerged_sequences(hits, orthoid, taxa_id):
             base_header,
             reference_frame,
         )
+
+        present_taxon.add(hit.ref_taxon)
 
         nt_seq = hit.est_sequence
         aa_seq = translate_cdna(nt_seq)
@@ -186,7 +190,7 @@ def print_unmerged_sequences(hits, orthoid, taxa_id):
             header_mapped_x_times.setdefault(base_header, 1)
             exact_hit_mapped_already.add(unique_hit)
 
-    return dupes, aa_result, nt_result
+    return dupes, aa_result, nt_result, present_taxon
 
 
 OutputArgs = namedtuple(
@@ -216,19 +220,19 @@ def trim_and_write(oargs: OutputArgs):
     )
 
     this_aa_path = os.path.join(oargs.aa_out_path, oargs.gene + ".aa.fa")
-    this_gene_dupes, aa_output, nt_output = print_unmerged_sequences(
+    this_gene_dupes, aa_output, nt_output, present_taxon = print_unmerged_sequences(
         oargs.list_of_hits,
         oargs.gene,
         oargs.taxa_id,
     )
 
     if aa_output:
-        aa_core_sequences = print_core_sequences(oargs.gene, core_sequences)
+        aa_core_sequences = print_core_sequences(oargs.gene, core_sequences, present_taxon)
         writeFasta(this_aa_path, aa_core_sequences + aa_output, oargs.compress)
 
         this_nt_path = os.path.join(oargs.nt_out_path, oargs.gene + ".nt.fa")
 
-        nt_core_sequences = print_core_sequences(oargs.gene, core_sequences_nt)
+        nt_core_sequences = print_core_sequences(oargs.gene, core_sequences_nt, present_taxon)
         writeFasta(this_nt_path, nt_core_sequences + nt_output, oargs.compress)
 
     printv(
