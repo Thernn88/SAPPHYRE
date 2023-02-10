@@ -1,4 +1,6 @@
 from __future__ import annotations
+import json
+import wrap_rocks
 from pathlib import Path
 from multiprocessing.pool import Pool
 
@@ -10,16 +12,26 @@ def prepend(inputs, directory):
     return [Path(directory, i) for i in inputs]
 
 
-def parse_gene(path, grab_references=False):
+def parse_gene(path):
     this_out = []
     for header, sequence in parseFasta(str(path)):
-        if grab_references:
+        if header[-1] != ".":
             this_out.append((header, sequence))
-        else:
-            if header[-1] != ".":
-                this_out.append((header, sequence))
     return {path: this_out}
 
+
+def get_references(gene, orthoset_db):
+    core_seqs = json.loads(orthoset_db.get(f"getcore:{gene}"))
+
+    aa_refs = []
+    for taxon, target, seq in sorted(core_seqs["aa"]):
+        aa_refs.append(f">{gene}|{taxon}|{target}\n{seq}")
+
+    nt_refs = []
+    for taxon, target, seq in sorted(core_seqs["nt"]):
+        nt_refs.append(f">{gene}|{taxon}|{target}\n{seq}")
+
+    return aa_refs, nt_refs
 
 def main(args):
     main_keeper = TimeKeeper(KeeperMode.DIRECT)
@@ -27,6 +39,12 @@ def main(args):
         inputs = prepend(args.INPUT, args.DIRECTORY)
     else:
         inputs = [Path(i) for i in args.INPUT]
+
+    orthoset = args.orthoset
+    orthosets_dir = args.orthoset_input
+
+    orthoset_db_path = Path(orthosets_dir, orthoset, "rocksdb")
+    orthoset_db = wrap_rocks.RocksDB(orthoset_db_path)
 
     aa_out = {}
     nt_out = {}
@@ -46,7 +64,11 @@ def main(args):
 
             arguments = []
             for aa_gene in aa_path.iterdir():
-                add_references = aa_gene.name not in aa_out
+                if aa_gene.name not in aa_out:
+                    aa_refs, nt_refs = get_references(aa_gene.name, orthoset_db)
+                    aa_out[aa_gene.name] = aa_refs
+                    nt_out[aa_gene.name] = nt_refs
+                
                 arguments.append(
                     (
                         aa_gene,
@@ -64,6 +86,11 @@ def main(args):
 
             arguments = []
             for nt_gene in nt_path.iterdir():
+                if nt_gene.name not in nt_gene:
+                    aa_refs, nt_refs = get_references(nt_gene.name, orthoset_db)
+                    aa_out[nt_gene.name] = aa_refs
+                    nt_out[nt_gene.name] = nt_refs
+
                 add_references = nt_gene.name not in nt_out
                 arguments.append(
                     (
