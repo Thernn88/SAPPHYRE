@@ -19,8 +19,7 @@ def process_genefile(filewrite, fileread):
     ref_og_hashmap = {}
     cand_og_hashmap = {}
     targets_present = set()
-    taxa_ids_present = set()
-    second_run = False
+    taxa_ids_present = {}
     for header, sequence in parseFasta(fileread):
 
         if header.endswith("."):
@@ -28,17 +27,14 @@ def process_genefile(filewrite, fileread):
             ref_og_hashmap[target] = header
             targets_present.add(target)
         else:
-            if not second_run:
-                taxa_id = header.split("|")[1]
-                if taxa_id not in taxa_ids_present:
-                    taxa_ids_present.add(taxa_id)
-                else:
-                    second_run = True
+            taxa_id = header.split("|")[2]
+            if taxa_id not in taxa_ids_present:
+                taxa_ids_present[taxa_id] = 1
             cand_og_hashmap[header[:242]] = header
             filewrite.write(f">{header}\n")
             filewrite.write(sequence + "\n")
             
-    return ref_og_hashmap, cand_og_hashmap, targets_present, second_run
+    return ref_og_hashmap, cand_og_hashmap, targets_present, len(taxa_ids_present.values()) > 1
 
 
 CmdArgs = namedtuple(
