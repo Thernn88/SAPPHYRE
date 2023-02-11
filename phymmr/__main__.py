@@ -356,7 +356,7 @@ def subcmd_mergegenes(subparsers):
         help="Prepend DIRECTORY to the list of INPUT.",
     )
     par.add_argument(
-        "-o",
+        "-out",
         "--output-directory",
         type=str,
         required=True,
