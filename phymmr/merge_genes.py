@@ -26,11 +26,11 @@ def get_references(gene, orthoset_db):
 
     aa_refs = []
     for taxon, target, seq in sorted(core_seqs["aa"]):
-        aa_refs.append((f"{gene}|{taxon}|{target}",seq))
+        aa_refs.append((f"{gene}|{taxon}|{target}|.",seq))
 
     nt_refs = []
     for taxon, target, seq in sorted(core_seqs["nt"]):
-        nt_refs.append((f"{gene}|{taxon}|{target}",seq))
+        nt_refs.append((f"{gene}|{taxon}|{target}|.",seq))
 
     return aa_refs, nt_refs
 
