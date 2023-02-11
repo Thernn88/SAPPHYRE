@@ -115,12 +115,10 @@ def split_sequences_ex(path: str, excluded: set) -> tuple:
             if end_of_references is False:
                 # The reference header identifier is present in the header
                 if header[-1] == ".":
-                    # fields = header.split('|')
-                    # if header.split("|")[1].lower() in excluded: continue
                     if header.split("|")[1].lower() in excluded:
                         continue
                     if header[-9] == ":":
-                        ref_check.add(header[-9])
+                        ref_check.add(header[:-9])
 
                     references.append(header)
                     references.append(sequence)
@@ -156,10 +154,8 @@ def split_sequences(path: str) -> tuple:
             if end_of_references is False:
                 # The reference header identifier is present in the header
                 if header[-1] == ".":
-                    # fields = header.split('|')
-                    # if header.split("|")[1].lower() in excluded: continue
                     if header[-9] == ":":
-                        ref_check.add(header[-9])
+                        ref_check.add(header[:-9])
 
                     references.append(header)
                     references.append(sequence)
@@ -567,6 +563,14 @@ def delete_excluded(lines: list, excluded: set) -> list:
     return output
 
 
+def original_order_sort(original: list, candidate_records: list) -> list:
+    """
+    Accepts a list of headers and a list of Records. Returns a list of
+    Records in the order of the original list.
+    """
+    candidates = {cand.id: cand for cand in candidate_records}
+    output = [candidates.get(header, False) for header in original]
+    return [x for x in output if x]
 def main_process(
     args_input,
     nt_input,
@@ -607,7 +611,7 @@ def main_process(
             file_input
         )
     # refs_in_file = len(reference_sequences) / 2
-
+    original_order = [line for line in candidate_sequences[0::2]]
     ref_dict, candidates_dict = find_index_groups(
         reference_sequences, candidate_sequences
     )
@@ -663,7 +667,7 @@ def main_process(
                 #     logs.append(candidate.get_result())
     passing = [x for x in passing if x is not None]
     # for line in to_add:
-
+    passing = original_order_sort(original_order, passing)
     for candidate in passing:
         # raw_regulars.append(line)
         raw_regulars.extend([candidate.id, candidate.raw])
@@ -699,7 +703,6 @@ def main_process(
         if not os.path.exists(nt_output_path):
             os.mkdir(nt_output_path)
         nt_output_path = os.path.join(nt_output_path, nt_file.rstrip(".gz"))
-
         lines = []
         for header, sequence in parseFasta(nt_input_path):
             lines.append(">" + header)
