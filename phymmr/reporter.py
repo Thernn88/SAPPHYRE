@@ -74,6 +74,8 @@ def get_reference_data(rocks_hits_db):
 
     return processed
 
+def get_target_taxon(rocks_hits_db):
+    return rocks_hits_db.get("getall:valid_refs").split(',')
 
 def translate_cdna(cdna_seq):
     if not cdna_seq:
@@ -98,10 +100,10 @@ def format_reference_header(gene, taxa_name, taxa_id, identifier="."):
     return header_seperator.join([gene, taxa_name, taxa_id, identifier])
 
 
-def print_core_sequences(orthoid, core_sequences, present_taxon):
+def print_core_sequences(orthoid, core_sequences, target_taxon):
     result = []
     for core in sorted(core_sequences):
-        if core[0] in present_taxon:
+        if core[0] in target_taxon:
             header = format_reference_header(orthoid, core[0], core[1])
             result.append((header, core[2]))
 
@@ -116,7 +118,6 @@ def print_unmerged_sequences(hits, orthoid, taxa_id):
     base_header_mapped_already = {}
     seq_mapped_already = {}
     exact_hit_mapped_already = set()
-    present_taxon = set()
     dupes = {}
     for hit in hits:
 
@@ -129,9 +130,6 @@ def print_unmerged_sequences(hits, orthoid, taxa_id):
             base_header,
             reference_frame,
         )
-
-        present_taxon.add(hit.ref_taxon)
-
         nt_seq = hit.est_sequence
         aa_seq = translate_cdna(nt_seq)
 
@@ -190,7 +188,7 @@ def print_unmerged_sequences(hits, orthoid, taxa_id):
             header_mapped_x_times.setdefault(base_header, 1)
             exact_hit_mapped_already.add(unique_hit)
 
-    return dupes, aa_result, nt_result, present_taxon
+    return dupes, aa_result, nt_result
 
 
 OutputArgs = namedtuple(
@@ -204,6 +202,7 @@ OutputArgs = namedtuple(
         "verbose",
         "reference_sequences",
         "compress",
+        "target_taxon"
     ],
 )
 
@@ -220,19 +219,19 @@ def trim_and_write(oargs: OutputArgs):
     )
 
     this_aa_path = os.path.join(oargs.aa_out_path, oargs.gene + ".aa.fa")
-    this_gene_dupes, aa_output, nt_output, present_taxon = print_unmerged_sequences(
+    this_gene_dupes, aa_output, nt_output = print_unmerged_sequences(
         oargs.list_of_hits,
         oargs.gene,
         oargs.taxa_id,
     )
 
     if aa_output:
-        aa_core_sequences = print_core_sequences(oargs.gene, core_sequences, present_taxon)
+        aa_core_sequences = print_core_sequences(oargs.gene, core_sequences, oargs.target_taxon)
         writeFasta(this_aa_path, aa_core_sequences + aa_output, oargs.compress)
 
         this_nt_path = os.path.join(oargs.nt_out_path, oargs.gene + ".nt.fa")
 
-        nt_core_sequences = print_core_sequences(oargs.gene, core_sequences_nt, present_taxon)
+        nt_core_sequences = print_core_sequences(oargs.gene, core_sequences_nt, oargs.target_taxon)
         writeFasta(this_nt_path, nt_core_sequences + nt_output, oargs.compress)
 
     printv(
@@ -295,6 +294,7 @@ def do_taxa(path, taxa_id, args):
     )
 
     gene_reference_data = get_reference_data(rocky.get_rock("rocks_orthoset_db"))
+    target_taxon = get_target_taxon(rocky.get_rock("rocks_nt_db"))
 
     printv(
         f"Got reference data. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Exonerating genes.",
@@ -316,6 +316,7 @@ def do_taxa(path, taxa_id, args):
                     args.verbose,
                     gene_reference_data[orthoid],
                     args.compress,
+                    target_taxon
                 ),
             )
         )
