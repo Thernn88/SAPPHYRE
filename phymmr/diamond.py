@@ -310,7 +310,7 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
         target_count = min([i[1] for i in sorted_counts[0:5]])
         target_count = target_count - (target_count * percent)
         total_references = len(sorted_counts)
-        top_names = [(x[0]) for x in sorted_counts]
+        top_names = [x[0] for x in sorted_counts if x[1] >= target_count]
     return top_names, total_references, header_lines
 
 
