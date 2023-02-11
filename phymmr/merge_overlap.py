@@ -385,7 +385,7 @@ def do_protein(
             )
 
             taxons = [i[2].split("|")[1] for i in this_sequences]
-            taxons_filtered = [i for i in taxons if i in comparison_sequences]
+            taxons_filtered = [i for i in taxons if i in ref_stats]
             if not taxons_filtered:
                 this_taxa = taxons[0]
             else:
@@ -471,7 +471,7 @@ def do_protein(
                                         comparison_taxa = reference
                                         break
                             else:
-                                comparison_taxa = most_occuring[0]
+                                comparison_taxa = most_occuring[0] if most_occuring[1] != -1 else taxons_of_split[0]
                             
                         # Grab the reference sequence for the mode taxon
                         if comparison_taxa:
