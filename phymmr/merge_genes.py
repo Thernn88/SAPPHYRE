@@ -45,6 +45,13 @@ def main(args):
     orthosets_dir = args.orthoset_input
 
     orthoset_db_path = Path(orthosets_dir, orthoset, "rocksdb")
+    if not orthoset_db_path.exists():
+        printv(
+            f"WARNING: {orthoset_db_path} doesn't exists. Abort",
+            args.verbose,
+            0,
+        )
+        return False
     orthoset_db = wrap_rocks.RocksDB(str(orthoset_db_path))
 
     aa_out = {}
