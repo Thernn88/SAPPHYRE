@@ -21,7 +21,6 @@ def parse_gene(path):
 
 
 def get_references(gene, orthoset_db):
-    print(gene)
     core_seqs = json.loads(orthoset_db.get(f"getcore:{gene}"))
 
     aa_refs = []
