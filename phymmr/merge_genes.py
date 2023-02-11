@@ -65,7 +65,7 @@ def main(args):
             arguments = []
             for aa_gene in aa_path.iterdir():
                 if aa_gene.name not in aa_out:
-                    aa_refs, nt_refs = get_references(aa_gene.name, orthoset_db)
+                    aa_refs, nt_refs = get_references(aa_gene.name.split('.')[0], orthoset_db)
                     aa_out[aa_gene.name] = aa_refs
                     nt_out[aa_gene.name] = nt_refs
                 
@@ -87,7 +87,7 @@ def main(args):
             arguments = []
             for nt_gene in nt_path.iterdir():
                 if nt_gene.name not in nt_gene:
-                    aa_refs, nt_refs = get_references(nt_gene.name, orthoset_db)
+                    aa_refs, nt_refs = get_references(nt_gene.name.split('.')[0], orthoset_db)
                     aa_out[nt_gene.name] = aa_refs
                     nt_out[nt_gene.name] = nt_refs
 
