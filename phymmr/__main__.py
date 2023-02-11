@@ -197,21 +197,6 @@ def subcmd_outliercheck(subparsers):
         help="Disable output of reference sequences",
     )
     par.add_argument(
-        "-cd",
-        "--candidate-distance",
-        type=int,
-        default=40,
-        help="Cutoff for mean distance in candidate to candidate check.",
-    )
-    par.add_argument(
-        "-co",
-        "--candidate-overlap",
-        type=int,
-        default=30,
-        help="Minimum candidate overlap for candidate distance checks.",
-    )
-
-    par.add_argument(
         "-ccp",
         "--col-cull-percent",
         type=float,
@@ -253,20 +238,12 @@ def subcmd_outliercheck(subparsers):
         default=4,
         help="Amount of mismatches required to constitute an internal kick.",
     )
-
     par.add_argument(
         "-d",
         "--debug",
         action="store_true",
         default=False,
         help="Log outliers to csv files",
-    )
-
-    par.add_argument(
-        "-e",
-        "--exclude",
-        default=None,
-        help="Path to excluded taxa names. File should be line delimited.",
     )
     par.set_defaults(func=outliercheck, formathelp=par.format_help)
 

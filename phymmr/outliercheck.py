@@ -43,7 +43,6 @@ class Record:
         self.mean_distance = None
         self.grade = None
 
-    # outliers.append((header, raw_sequence, mean_distance, upper_bound, grade, IQR))
 
     def __hash__(self):
         return hash(self.id + self.sequence)
@@ -290,8 +289,6 @@ def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
     return result
 
 
-# function now skips any index which was previously rejected
-# do the rejected indices make it to the distance calc? do I have to care at all?
 def has_minimum_data(
     seq: str, cand_rejected_indices: set, min_data: float, start_offset: int, gap="-"
 ):
@@ -319,7 +316,6 @@ def compare_means(
     ref_dict: dict,
     candidates_dict: dict,
     threshold: float,
-    excluded_headers: set,
     keep_refs: bool,
     refs_in_file: int,
     rejected_indices: set,
@@ -333,7 +329,6 @@ def compare_means(
     data.
     """
     regulars = []
-    # outliers = []
     passing = []
     failing = []
     if keep_refs:
@@ -364,9 +359,6 @@ def compare_means(
                 candidate.grade = "Fail"
                 candidate.iqr = "min_candidate_bp"
                 failing.append(candidate)
-                # outliers.append(
-                #     (candidate.id, candidate.raw, mean_distance, "N/A", "Fail", "min_cand_bp")
-                # )
             continue
 
         # first we have to calculate the reference distances to make the ref mean
@@ -374,8 +366,7 @@ def compare_means(
         ref_alignments = [
             seq
             for seq in ref_records
-            if seq.id not in excluded_headers
-            and has_minimum_data(
+            if has_minimum_data(
                 seq.sequence, rejected_indices, ref_gap_percent, index_pair[0]
             )
         ]
@@ -436,8 +427,6 @@ def compare_means(
             IQR = "N/A"
         for candidate in candidates_at_index:
             mean_distance = "No refs"
-            # header = candidate.id
-            # raw_sequence = candidate.raw
             candidate.grade = "Ref Fail"
             if has_ref_distances:
                 candidate_distances = candidate_pairwise_calls(
@@ -457,8 +446,7 @@ def compare_means(
                 candidate.upper_bound = upper_bound
                 failing.append(candidate)
 
-    return regulars, passing, failing  # , outliers
-
+    return regulars, passing, failing
 
 def delete_empty_columns(raw_fed_sequences: list, verbose: bool) -> tuple[list, list]:
     """
@@ -587,7 +575,6 @@ def main_process(
     ref_min_percent: int,
     internal_consensus_threshold: float,
     internal_kick_threshold: int,
-    exclusion_file,
 ):
     keep_refs = not args_references
 
@@ -600,17 +587,9 @@ def main_process(
     aa_output = os.path.join(args_output, "aa")
     aa_output = os.path.join(aa_output, filename.rstrip(".gz"))
 
-    to_be_excluded = make_exclusion_set(exclusion_file)
-
-    if to_be_excluded:
-        reference_sequences, candidate_sequences, ref_check = split_sequences_ex(
-            file_input, to_be_excluded
-        )
-    else:
-        reference_sequences, candidate_sequences, ref_check = split_sequences(
-            file_input
-        )
-    # refs_in_file = len(reference_sequences) / 2
+    reference_sequences, candidate_sequences, ref_check = split_sequences(
+        file_input
+    )
     original_order = [line for line in candidate_sequences[0::2]]
     ref_dict, candidates_dict = find_index_groups(
         reference_sequences, candidate_sequences
@@ -631,13 +610,11 @@ def main_process(
         refs_in_file = len(ref_check)
     else:
         refs_in_file = len(ref_seqs)
-    # raw_regulars, to_add, outliers = compare_means(
     raw_regulars, passing, failing = compare_means(
         reference_sequences,
         ref_dict,
         candidates_dict,
         threshold,
-        to_be_excluded,
         keep_refs,
         refs_in_file,
         rejected_indices,
@@ -646,57 +623,31 @@ def main_process(
         ref_min_percent,
     )
     logs = []
-    # temp = [(header, seq) for header, seq, _, _, grade, _ in outliers if grade == "Pass"]
     if passing:
-        # consensus = dumb_consensus([x[1] for x in temp], internal_consensus_threshold)
         consensus = dumb_consensus(
             [cand.raw for cand in passing], internal_consensus_threshold
         )
-        # for header, seq in temp:
         for i, candidate in enumerate(passing):
             distance = constrained_distance(consensus, candidate.raw)
             if distance >= internal_kick_threshold:
-                # print(candidate.id)
-                # to_be_excluded.add(f">{header}")
-                # to_be_excluded.add(f">{candidate.id}")
                 candidate.grade = "Internal Fail"
                 failing.append(candidate)
                 passing[i] = None
-                # if debug:
-                #     # logs.append(f"{candidate.id},{distance},,,Internal Fail")
-                #     logs.append(candidate.get_result())
     passing = [x for x in passing if x is not None]
-    # for line in to_add:
     passing = original_order_sort(original_order, passing)
     for candidate in passing:
-        # raw_regulars.append(line)
         raw_regulars.extend([candidate.id, candidate.raw])
-    raw_regulars = delete_excluded(raw_regulars, to_be_excluded)
     regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
 
     to_be_excluded = {candidate.id for candidate in failing}
-
     if passing:  # If candidate added to fasta
         write2Line2Fasta(aa_output, regulars, compress)
 
+    # logging
     if debug:
-        # for outlier in outliers:
-        #     header, _, distance, ref_dist, grade, iqr = outlier
-        #     if grade == "Fail":
-        #         to_be_excluded.add(header)
-        #         header = header[1:]
-        #     result = [header, str(distance), str(ref_dist), str(iqr), grade]
-        #     logs.append(",".join(result) + "\n")
-        # for candidate in failing:
-        #     logs.append(candidate.get_result())
         logs = [candidate.get_result() for candidate in failing]
-    else:
-        # for outlier in outliers:
-        #     header, _, distance, ref_dist, grade, iqr = outlier
-        #     if grade == "Fail":
-        #         to_be_excluded.add(header)
-        for candidate in failing:
-            to_be_excluded.add(candidate.id)
+
+    # if valid candidates found, do nt output
     if passing:
         nt_file = filename.replace(".aa.", ".nt.")
         nt_input_path = os.path.join(nt_input, nt_file)
@@ -765,7 +716,6 @@ def do_folder(folder, args):
                     args.ref_min_percent,
                     args.internal_consensus_threshold,
                     args.internal_kick_threshold,
-                    args.exclude,
                 )
             )
 
@@ -791,7 +741,6 @@ def do_folder(folder, args):
                     args.ref_min_percent,
                     args.internal_consensus_threshold,
                     args.internal_kick_threshold,
-                    args.exclude,
                 )
             )
     if args.debug:
@@ -803,7 +752,6 @@ def do_folder(folder, args):
     for log_data in process_data:
         if args.debug:
             for line in log_data:
-                # if line.strip().split(",")[-1] == "Fail" or line.strip().split(",")[-1] == "Internal Fail":
                 if line.split(",")[-2] != "Pass":
                     if line[-1] != "\n":
                         line = f"{line}\n"
