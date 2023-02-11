@@ -57,6 +57,8 @@ def main(args):
     aa_out = {}
     nt_out = {}
 
+    nt_ref_pass_through = {}
+
     for item in inputs:
         printv(f"Merging directory: {item}", args.verbose, 0)
         for taxa in item.iterdir():
@@ -75,7 +77,7 @@ def main(args):
                 if aa_gene.name not in aa_out:
                     aa_refs, nt_refs = get_references(aa_gene.name.split('.')[0], orthoset_db)
                     aa_out[aa_gene.name] = aa_refs
-                    nt_out[aa_gene.name] = nt_refs
+                    nt_ref_pass_through[aa_gene.name.split('.')[0]] = nt_refs
                 
                 arguments.append(
                     (
@@ -94,8 +96,11 @@ def main(args):
             arguments = []
             for nt_gene in nt_path.iterdir():
                 if nt_gene.name not in nt_out:
-                    aa_refs, nt_refs = get_references(nt_gene.name.split('.')[0], orthoset_db)
-                    aa_out[nt_gene.name] = aa_refs
+                    this_gene = nt_gene.name.split('.')[0]
+                    if this_gene not in nt_ref_pass_through:
+                        _, nt_refs = get_references(this_gene, orthoset_db)
+                    else:
+                        nt_refs = nt_ref_pass_through[this_gene]
                     nt_out[nt_gene.name] = nt_refs
 
                 arguments.append(
