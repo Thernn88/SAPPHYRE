@@ -393,7 +393,7 @@ def do_protein(
             else:
                 if ref_stats:
                     # Grab most common
-                    for reference, _ in ref_stats:
+                    for reference in ref_stats:
                         if reference in taxons:
                             this_taxa = reference
                             break
@@ -444,6 +444,7 @@ def do_protein(
                         taxons_of_split = [
                             get_ref(header)
                             for (header, _) in sequences_at_current_point
+                            if get_ref(header) in comparison_sequences
                         ]
 
                         comparison_taxa = None
@@ -454,13 +455,19 @@ def do_protein(
                             comparison_taxa = taxons_of_split[0]
                         else:
                             if ref_stats:
-                                for reference, _ in ref_stats:
-                                    if reference in taxons_of_split:
+                                for reference in ref_stats:
+                                    if not reference in comparison_sequences:
+                                        continue
+                                    if taxons_of_split:
+                                        if reference in taxons_of_split:
+                                            comparison_taxa = reference
+                                            break
+                                    else:
                                         comparison_taxa = reference
                                         break
                             else:
                                 comparison_taxa = most_occuring[0]
-
+                            
                         # Grab the reference sequence for the mode taxon
                         if comparison_taxa:
                             comparison_sequence = comparison_sequences[comparison_taxa]
@@ -481,10 +488,6 @@ def do_protein(
                         split_key = header_a + header_b
 
                         if protein == "aa":
-                            if not comparison_taxa:
-                                comparison_sequence = comparison_sequences[
-                                    get_ref(header_b)
-                                ]
                             if split_key in already_calculated_splits:
                                 split_position = already_calculated_splits[split_key]
                             else:
@@ -745,7 +748,7 @@ def do_folder(folder: Path, args):
         rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
         prepare_dupe_counts = json.loads(rocksdb_db.get("getall:gene_dupes"))
         reporter_dupe_counts = json.loads(rocksdb_db.get("getall:reporter_dupes"))
-        ref_stats = json.loads(rocksdb_db.get("getall:top_refs"))
+        ref_stats = rocksdb_db.get("getall:valid_refs").split(',')
     else:
         prepare_dupe_counts = {}
         reporter_dupe_counts = {}
