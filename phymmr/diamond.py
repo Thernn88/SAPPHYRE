@@ -307,10 +307,10 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
     total_references = 0
     if sorted_counts:
         sorted_counts.sort(key=lambda x: x[1], reverse=True)
-        target_score = min([i[1] for i in sorted_counts[0:5]])
-        target_score = target_score - (target_score * percent)
+        target_count = min([i[1] for i in sorted_counts[0:5]])
+        target_count = target_count - (target_count * percent)
         total_references = len(sorted_counts)
-        top_names = [x[0] for x in sorted_counts if x[1] >= target_score]
+        top_names = [(x[0]) for x in sorted_counts]
     return top_names, total_references, header_lines
 
 
@@ -319,7 +319,7 @@ def process_lines(
     debug,
     min_percent,
     min_evalue,
-    reftaxon_counts,
+    top_refs,
     total_references,
     strict_search_mode,
     reference_taxa,
@@ -340,7 +340,7 @@ def process_lines(
                 this_log.extend(log)
         # filter hits by min length and evalue
         hits_bad, evalue_Log = hits_are_bad(
-            hits, debug, min_percent, min_evalue, reftaxon_counts, total_references
+            hits, debug, min_percent, min_evalue, top_refs, total_references
         )
         if hits_bad:
             evalue_kicks += len(hits)
@@ -473,7 +473,7 @@ def run_process(args, input_path) -> None:
     global_log = []
     dupe_divy_headers = {}
     with open(out_path) as fp:
-        reftaxon_counts, total_references, lines = count_reftaxon(
+        top_refs, total_references, lines = count_reftaxon(
             fp, target_to_taxon, args.top_ref
         )
 
@@ -499,7 +499,7 @@ def run_process(args, input_path) -> None:
                     args.debug,
                     args.min_percent,
                     args.min_evalue,
-                    reftaxon_counts,
+                    top_refs,
                     total_references,
                     strict_search_mode,
                     reference_taxa,
@@ -620,6 +620,7 @@ def run_process(args, input_path) -> None:
                     ]
 
         db.put("getall:presentgenes", ",".join(list(output.keys())))
+        nt_db.put("getall:valid_refs", ",".join(top_refs))
 
         key = "getall:gene_dupes"
         data = json.dumps(gene_dupe_count)
