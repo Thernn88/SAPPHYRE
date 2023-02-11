@@ -33,13 +33,6 @@ def get_references(gene, orthoset_db):
 
     return aa_refs, nt_refs
 
-
-def original_sort(original: list, nt_tuples: list) -> list:
-    nt_dict = {x[0]: x for x in nt_tuples}
-    output = [nt_dict.get(x, False) for x in original]
-    return [x for x in output if x]
-
-
 def main(args):
     main_keeper = TimeKeeper(KeeperMode.DIRECT)
     if args.DIRECTORY:
@@ -98,14 +91,6 @@ def main(args):
                 for path, out in result.items():
                     path = path.name
                     aa_out.setdefault(path, []).extend(out)
-            # record aa order
-            # list[dict[Path:list[(header, seq)]]]
-            og_headers = {}
-            for hashmap in aa_result:
-                for key, value in hashmap.items():
-                    nt_name = key.name.replace('aa.fa','nt.fa')
-                    headers = [x[0] for x in value]
-                    og_headers[nt_name] = headers
 
             arguments = []
             for nt_gene in nt_path.iterdir():
@@ -129,7 +114,6 @@ def main(args):
             for result in nt_result:
                 for path, out in result.items():
                     path = path.name
-                    out = original_sort(og_headers[path], out)
                     nt_out.setdefault(path, []).extend(out)
 
     aa_out_path = Path(args.output_directory, "aa")
