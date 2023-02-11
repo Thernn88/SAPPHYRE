@@ -21,15 +21,16 @@ def parse_gene(path):
 
 
 def get_references(gene, orthoset_db):
+    print(gene)
     core_seqs = json.loads(orthoset_db.get(f"getcore:{gene}"))
 
     aa_refs = []
     for taxon, target, seq in sorted(core_seqs["aa"]):
-        aa_refs.append(f">{gene}|{taxon}|{target}\n{seq}")
+        aa_refs.append((f"{gene}|{taxon}|{target}",seq))
 
     nt_refs = []
     for taxon, target, seq in sorted(core_seqs["nt"]):
-        nt_refs.append(f">{gene}|{taxon}|{target}\n{seq}")
+        nt_refs.append((f"{gene}|{taxon}|{target}",seq))
 
     return aa_refs, nt_refs
 
@@ -72,7 +73,6 @@ def main(args):
                 arguments.append(
                     (
                         aa_gene,
-                        add_references,
                     )
                 )
 
@@ -86,16 +86,14 @@ def main(args):
 
             arguments = []
             for nt_gene in nt_path.iterdir():
-                if nt_gene.name not in nt_gene:
+                if nt_gene.name not in nt_out:
                     aa_refs, nt_refs = get_references(nt_gene.name.split('.')[0], orthoset_db)
                     aa_out[nt_gene.name] = aa_refs
                     nt_out[nt_gene.name] = nt_refs
 
-                add_references = nt_gene.name not in nt_out
                 arguments.append(
                     (
                         nt_gene,
-                        add_references,
                     )
                 )
 
