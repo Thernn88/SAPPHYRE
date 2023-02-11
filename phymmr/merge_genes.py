@@ -44,7 +44,7 @@ def main(args):
     orthosets_dir = args.orthoset_input
 
     orthoset_db_path = Path(orthosets_dir, orthoset, "rocksdb")
-    orthoset_db = wrap_rocks.RocksDB(orthoset_db_path)
+    orthoset_db = wrap_rocks.RocksDB(str(orthoset_db_path))
 
     aa_out = {}
     nt_out = {}
