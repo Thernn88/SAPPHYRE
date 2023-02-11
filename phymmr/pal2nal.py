@@ -1,5 +1,4 @@
 from __future__ import annotations
-from collections import Counter
 import json
 from shutil import rmtree
 
@@ -7,7 +6,6 @@ from multiprocessing import Pool
 from pathlib import Path
 from typing import Any, Dict, Generator, List, Tuple
 from os import path as ospath
-import wrap_rocks
 
 from pro2codon import pn2codon
 
@@ -829,8 +827,6 @@ def read_and_convert_fasta_files(
     aas = []
     nts = {}
 
-    ref_count = Counter()
-
     nt_has_refs = False
     for i, nt in enumerate(parseFasta(nt_file)):
         nt_header = nt[0]
@@ -844,7 +840,6 @@ def read_and_convert_fasta_files(
 
     for aa_header, aa_seq in parseFasta(aa_file):
         if aa_header[-1] == ".":
-            ref_count[aa_header.split("|")[1]] += 1
             aas.append((aa_header.strip(), aa_seq.strip()))
         else:
             aa_intermediate.append((aa_header.strip(), aa_seq.strip()))
@@ -878,7 +873,7 @@ def read_and_convert_fasta_files(
             )
             printv(f"SEQUENCE MISSING: {e}", verbose, 0)
             return False
-    return result, ref_count
+    return result
 
 
 def worker(
@@ -891,10 +886,10 @@ def worker(
 ) -> bool:
     gene = ospath.basename(aa_file).split(".")[0]
     printv(f"Doing: {gene}", verbose, 2)
-    seqs, ref_count = read_and_convert_fasta_files(aa_file, nt_file, verbose)
+    seqs = read_and_convert_fasta_files(aa_file, nt_file, verbose)
 
     if seqs is False:
-        return False, ref_count
+        return False
 
     outfile_stem = out_file.stem
     aligned_result = pn2codon(outfile_stem, specified_dna_table, seqs)
@@ -906,7 +901,7 @@ def worker(
 
     writeFasta(str(out_file), records, compress)
 
-    return True, ref_count
+    return True
 
 
 def run_batch_threaded(
@@ -915,15 +910,7 @@ def run_batch_threaded(
     with Pool(num_threads) as pool:
         result = pool.starmap(worker, ls, chunksize=100)
 
-    failed = False
-    global_count = Counter()
-    for success, ref_count in result:
-        if not success:
-            failed = True
-        for ref, count in ref_count.items():
-            global_count[ref] += count
-
-    return not failed, global_count
+    return all(result)
 
 
 def main(args):
@@ -935,14 +922,9 @@ def main(args):
             folder, specified_dna_table, args.verbose, args.compress
         )
 
-        success, global_count = run_batch_threaded(
+        success = run_batch_threaded(
             num_threads=args.processes, ls=this_taxa_jobs
         )
-
-        rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
-        if rocks_db_path.exists():
-            rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
-            rocksdb_db.put("getall:top_refs", json.dumps(global_count.most_common()))
 
         if not success:
             printv("A fatal error has occured.", args.verbose, 0)
