@@ -385,21 +385,25 @@ def do_protein(
             )
 
             taxons = [i[2].split("|")[1] for i in this_sequences]
-            most_occuring = most_common_element_with_count(taxons)
-            if len(taxons) > 1 and most_occuring[1] > 1:
-                this_taxa = most_occuring[0]
-            elif len(taxons) == 1:
+            taxons_filtered = [i for i in taxons if i in comparison_sequences]
+            if not taxons_filtered:
                 this_taxa = taxons[0]
             else:
-                if ref_stats:
-                    # Grab most common
-                    for reference in ref_stats:
-                        if reference in taxons:
-                            this_taxa = reference
-                            break
-                else:
-                    # No ref stats, grab first
+                most_occuring = most_common_element_with_count(taxons_filtered)
+                if len(taxons_filtered) > 1 and most_occuring[1] > 1:
                     this_taxa = most_occuring[0]
+                elif len(taxons_filtered) == 1:
+                    this_taxa = taxons_filtered[0]
+                else:
+                    if ref_stats:
+                        # Grab most common
+                        for reference in ref_stats:
+                            if reference in taxons_filtered:
+                                this_taxa = reference
+                                break
+                    else:
+                        # No ref stats, grab first
+                        this_taxa = most_occuring[0]
 
             if ignore_overlap_chunks:
                 base_header = "|".join(
@@ -441,11 +445,12 @@ def do_protein(
 
                     if protein == "aa":
                         # Grab most occurring taxon
-                        taxons_of_split = [
-                            get_ref(header)
-                            for (header, _) in sequences_at_current_point
-                            if get_ref(header) in comparison_sequences
-                        ]
+                        if comparison_sequences:
+                            taxons_of_split = [
+                                get_ref(header)
+                                for (header, _) in sequences_at_current_point
+                                if get_ref(header) in comparison_sequences
+                            ]
 
                         comparison_taxa = None
                         most_occuring = most_common_element_with_count(taxons_of_split)
