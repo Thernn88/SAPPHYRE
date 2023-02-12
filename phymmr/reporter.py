@@ -74,7 +74,7 @@ def get_target_taxon(rocks_hits_db):
     return json.loads(rocks_hits_db.get("getall:target_taxons"))
 
 def get_top_references(rocks_hits_db):
-    return rocks_hits_db.get("getall:toprefs").split(',')
+    return rocks_hits_db.get("getall:valid_refs").split(',')
 
 def translate_cdna(cdna_seq):
     if not cdna_seq:
