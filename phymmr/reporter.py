@@ -73,9 +73,6 @@ def get_reference_data(rocks_hits_db):
 def get_target_taxon(rocks_hits_db):
     return json.loads(rocks_hits_db.get("getall:target_taxons"))
 
-def get_top_references(rocks_hits_db):
-    return rocks_hits_db.get("getall:valid_refs").split(',')
-
 def translate_cdna(cdna_seq):
     if not cdna_seq:
         return None
@@ -99,10 +96,10 @@ def format_reference_header(gene, taxa_name, taxa_id, identifier="."):
     return header_seperator.join([gene, taxa_name, taxa_id, identifier])
 
 
-def print_core_sequences(orthoid, core_sequences, target_taxon, top_references):
+def print_core_sequences(orthoid, core_sequences, target_taxon):
     result = []
     for core in sorted(core_sequences):
-        if core[1] in target_taxon or core[0] in top_references:
+        if core[1] in target_taxon:
             header = format_reference_header(orthoid, core[0], core[1])
             result.append((header, core[2]))
 
@@ -202,7 +199,7 @@ OutputArgs = namedtuple(
         "reference_sequences",
         "compress",
         "target_taxon",
-        "top_references",
+
     ],
 )
 
@@ -226,12 +223,12 @@ def trim_and_write(oargs: OutputArgs):
     )
 
     if aa_output:
-        aa_core_sequences = print_core_sequences(oargs.gene, core_sequences, oargs.target_taxon, oargs.top_references)
+        aa_core_sequences = print_core_sequences(oargs.gene, core_sequences, oargs.target_taxon)
         writeFasta(this_aa_path, aa_core_sequences + aa_output, oargs.compress)
 
         this_nt_path = os.path.join(oargs.nt_out_path, oargs.gene + ".nt.fa")
 
-        nt_core_sequences = print_core_sequences(oargs.gene, core_sequences_nt, oargs.target_taxon, oargs.top_references)
+        nt_core_sequences = print_core_sequences(oargs.gene, core_sequences_nt, oargs.target_taxon)
         writeFasta(this_nt_path, nt_core_sequences + nt_output, oargs.compress)
 
     printv(
@@ -295,7 +292,6 @@ def do_taxa(path, taxa_id, args):
 
     gene_reference_data = get_reference_data(rocky.get_rock("rocks_orthoset_db"))
     target_taxon = get_target_taxon(rocky.get_rock("rocks_hits_db"))
-    top_references = get_top_references(rocky.get_rock("rocks_nt_db"))
 
     printv(
         f"Got reference data. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Exonerating genes.",
@@ -318,7 +314,6 @@ def do_taxa(path, taxa_id, args):
                     gene_reference_data[orthoid],
                     args.compress,
                     target_taxon.get(orthoid, []),
-                    top_references
                 ),
             )
         )
