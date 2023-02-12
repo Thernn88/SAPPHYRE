@@ -485,7 +485,7 @@ def run_process(args, input_path) -> None:
         f"Processing {chunks} chunk(s). Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
         args.verbose,
     )
-
+    this_gene_references = {}
     if lines:
         per_level = ceil(len(lines) / chunks)
         for i in range(0, len(lines), per_level):
@@ -523,7 +523,11 @@ def run_process(args, input_path) -> None:
 
                 if args.debug:
                     global_log.extend(this_log)
-
+            for this_output, _,_,_ in result:
+                for gene, hits in this_output.items():
+                    for hit in hits:
+                        if hit.reftaxon in top_refs:
+                            this_gene_references.setdefault(gene, []).append(hit.target)
         printv(
             f"Processed. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
             args.verbose,
@@ -564,7 +568,7 @@ def run_process(args, input_path) -> None:
 
         passes = 0
         internal_kicks = 0
-        this_gene_references = {}
+        # this_gene_references = {}
         for gene, hits in output.items():
             dupe_divy_headers[gene] = {}
             kicks = {}
@@ -579,16 +583,16 @@ def run_process(args, input_path) -> None:
                 out = []
                 if kicks:
                     for hit in hits:
-                        if hit.reftaxon in top_refs:
-                            this_gene_references.setdefault(gene, []).append(hit.target)
+                        # if hit.reftaxon in top_refs:
+                        #     this_gene_references.setdefault(gene, []).append(hit.target)
                         if hit.full_header not in kicks:
                             hit.seq = head_to_seq[hit.header.split("|")[0]]
                             out.append(hit.to_json())
                             dupe_divy_headers[gene][hit.header] = 1
             if not kicks:
                 for hit in hits:
-                    if hit.reftaxon in top_refs:
-                        this_gene_references.setdefault(gene, []).append(hit.target)
+                    # if hit.reftaxon in top_refs:
+                    #     this_gene_references.setdefault(gene, []).append(hit.target)
                     hit.seq = head_to_seq[hit.header.split("|")[0]]
                     out.append(hit.to_json())
                     dupe_divy_headers[gene][hit.header] = 1
