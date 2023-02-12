@@ -68,14 +68,10 @@ def get_diamondhits(rocks_hits_db, list_of_wanted_orthoids):
 
 
 def get_reference_data(rocks_hits_db):
-    raw_data = rocks_hits_db.get("getall:refseqs")
-
-    processed = json.loads(raw_data)
-
-    return processed
+    return json.loads(rocks_hits_db.get("getall:refseqs"))
 
 def get_target_taxon(rocks_hits_db):
-    return rocks_hits_db.get("getall:valid_refs").split(',')
+    return json.loads(rocks_hits_db.get("getall:target_taxons"))
 
 def translate_cdna(cdna_seq):
     if not cdna_seq:
@@ -103,7 +99,7 @@ def format_reference_header(gene, taxa_name, taxa_id, identifier="."):
 def print_core_sequences(orthoid, core_sequences, target_taxon):
     result = []
     for core in sorted(core_sequences):
-        if core[0] in target_taxon:
+        if core[1] in target_taxon:
             header = format_reference_header(orthoid, core[0], core[1])
             result.append((header, core[2]))
 
@@ -294,7 +290,7 @@ def do_taxa(path, taxa_id, args):
     )
 
     gene_reference_data = get_reference_data(rocky.get_rock("rocks_orthoset_db"))
-    target_taxon = get_target_taxon(rocky.get_rock("rocks_nt_db"))
+    target_taxon = get_target_taxon(rocky.get_rock("rocks_hits_db"))
 
     printv(
         f"Got reference data. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Exonerating genes.",
@@ -316,7 +312,7 @@ def do_taxa(path, taxa_id, args):
                     args.verbose,
                     gene_reference_data[orthoid],
                     args.compress,
-                    target_taxon
+                    target_taxon[orthoid]
                 ),
             )
         )

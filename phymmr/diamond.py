@@ -48,12 +48,14 @@ class Hit:
         "kick",
         "frame",
         "full_header",
+        "target"
     )
 
     def __init__(
         self, header, ref_header, frame, evalue, score, qstart, qend, gene, reftaxon
     ):
         self.header = header
+        self.target = ref_header
         self.gene = gene
         self.reftaxon = reftaxon
         self.seq = None
@@ -562,6 +564,7 @@ def run_process(args, input_path) -> None:
 
         passes = 0
         internal_kicks = 0
+        this_gene_references = {}
         for gene, hits in output.items():
             dupe_divy_headers[gene] = {}
             kicks = {}
@@ -576,15 +579,20 @@ def run_process(args, input_path) -> None:
                 out = []
                 if kicks:
                     for hit in hits:
+                        this_gene_references.setdefault(gene, []).append(hit.target)
                         if hit.full_header not in kicks:
                             hit.seq = head_to_seq[hit.header.split("|")[0]]
                             out.append(hit.to_json())
                             dupe_divy_headers[gene][hit.header] = 1
             if not kicks:
                 for hit in hits:
+                    this_gene_references.setdefault(gene, []).append(hit.target)
                     hit.seq = head_to_seq[hit.header.split("|")[0]]
                     out.append(hit.to_json())
                     dupe_divy_headers[gene][hit.header] = 1
+            
+            db.put("refsfor:{gene}", ",".join(list(this_gene_references)))
+
             passes += len(out)
             db.put(f"gethits:{gene}", json.dumps(out))
 
@@ -620,6 +628,7 @@ def run_process(args, input_path) -> None:
                     ]
 
         db.put("getall:presentgenes", ",".join(list(output.keys())))
+        db.put("getall:target_taxons", json.dumps(this_gene_references))
         nt_db.put("getall:valid_refs", ",".join(top_refs))
 
         key = "getall:gene_dupes"
