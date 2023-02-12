@@ -317,7 +317,7 @@ def do_taxa(path, taxa_id, args):
                     args.verbose,
                     gene_reference_data[orthoid],
                     args.compress,
-                    target_taxon[orthoid],
+                    target_taxon.get(orthoid, []),
                     top_references
                 ),
             )
