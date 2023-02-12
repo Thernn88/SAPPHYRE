@@ -579,14 +579,16 @@ def run_process(args, input_path) -> None:
                 out = []
                 if kicks:
                     for hit in hits:
-                        this_gene_references.setdefault(gene, []).append(hit.target)
+                        if hit.reftaxon in top_refs:
+                            this_gene_references.setdefault(gene, []).append(hit.target)
                         if hit.full_header not in kicks:
                             hit.seq = head_to_seq[hit.header.split("|")[0]]
                             out.append(hit.to_json())
                             dupe_divy_headers[gene][hit.header] = 1
             if not kicks:
                 for hit in hits:
-                    this_gene_references.setdefault(gene, []).append(hit.target)
+                    if hit.reftaxon in top_refs:
+                        this_gene_references.setdefault(gene, []).append(hit.target)
                     hit.seq = head_to_seq[hit.header.split("|")[0]]
                     out.append(hit.to_json())
                     dupe_divy_headers[gene][hit.header] = 1
