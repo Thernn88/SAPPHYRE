@@ -70,8 +70,11 @@ def get_diamondhits(rocks_hits_db, list_of_wanted_orthoids):
 def get_reference_data(rocks_hits_db):
     return json.loads(rocks_hits_db.get("getall:refseqs"))
 
-def get_target_taxon(rocks_hits_db):
-    return json.loads(rocks_hits_db.get("getall:target_taxons"))
+def get_gene_variants(rocks_hits_db):
+    return json.loads(rocks_hits_db.get("getall:target_variants"))
+
+def get_toprefs(rocks_nt_db):
+    return rocks_nt_db.get("getall:valid_refs").split(",")
 
 def translate_cdna(cdna_seq):
     if not cdna_seq:
@@ -96,12 +99,18 @@ def format_reference_header(gene, taxa_name, taxa_id, identifier="."):
     return header_seperator.join([gene, taxa_name, taxa_id, identifier])
 
 
-def print_core_sequences(orthoid, core_sequences, target_taxon):
+def print_core_sequences(orthoid, core_sequences, target_taxon, top_refs):
     result = []
     for core in sorted(core_sequences):
-        if core[1] in target_taxon:
-            header = format_reference_header(orthoid, core[0], core[1])
-            result.append((header, core[2]))
+        if target_taxon:
+            if not core[1] in target_taxon:
+                continue
+        else:
+            if not core[0] in top_refs:
+                continue
+
+        header = format_reference_header(orthoid, core[0], core[1])
+        result.append((header, core[2]))
 
     return result
 
@@ -199,6 +208,7 @@ OutputArgs = namedtuple(
         "reference_sequences",
         "compress",
         "target_taxon",
+        "top_refs",
 
     ],
 )
@@ -223,12 +233,12 @@ def trim_and_write(oargs: OutputArgs):
     )
 
     if aa_output:
-        aa_core_sequences = print_core_sequences(oargs.gene, core_sequences, oargs.target_taxon)
+        aa_core_sequences = print_core_sequences(oargs.gene, core_sequences, oargs.target_taxon, oargs.top_refs)
         writeFasta(this_aa_path, aa_core_sequences + aa_output, oargs.compress)
 
         this_nt_path = os.path.join(oargs.nt_out_path, oargs.gene + ".nt.fa")
 
-        nt_core_sequences = print_core_sequences(oargs.gene, core_sequences_nt, oargs.target_taxon)
+        nt_core_sequences = print_core_sequences(oargs.gene, core_sequences_nt, oargs.target_taxon, oargs.top_refs)
         writeFasta(this_nt_path, nt_core_sequences + nt_output, oargs.compress)
 
     printv(
@@ -291,7 +301,8 @@ def do_taxa(path, taxa_id, args):
     )
 
     gene_reference_data = get_reference_data(rocky.get_rock("rocks_orthoset_db"))
-    target_taxon = get_target_taxon(rocky.get_rock("rocks_hits_db"))
+    target_taxon = get_gene_variants(rocky.get_rock("rocks_hits_db"))
+    top_refs = get_toprefs(rocky.get_rock("rocks_nt_db"))
 
     printv(
         f"Got reference data. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Exonerating genes.",
@@ -314,6 +325,7 @@ def do_taxa(path, taxa_id, args):
                     gene_reference_data[orthoid],
                     args.compress,
                     set(target_taxon.get(orthoid, [])),
+                    top_refs,
                 ),
             )
         )
