@@ -289,6 +289,7 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
     rextaxon_count = {}
     header_lines = {}
     current_header = None
+    this_gene_references = {}
 
     for line in file_pointer:
         header, ref_header_pair, frame = line.split("\t")[:3]
@@ -297,6 +298,7 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
             ref_variation_filter = set()
             
         ref_gene, ref_taxon = taxon_lookup[ref_header_pair]
+        this_gene_references.setdefault(ref_gene, []).append((ref_header_pair, ref_taxon))
         ref_variation_key = header+ref_taxon
         if not ref_variation_key in ref_variation_filter:
             ref_variation_filter.add(ref_variation_key)
@@ -313,7 +315,10 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
         target_count = target_count - (target_count * percent)
         total_references = len(sorted_counts)
         top_names = [x[0] for x in sorted_counts if x[1] >= target_count]
-    return top_names, total_references, header_lines
+
+    this_gene_references = {k: [i[0] for i in v if i[1] in top_names] for k, v in this_gene_references.items()}
+
+    return top_names, total_references, header_lines, this_gene_references
 
 
 def process_lines(
@@ -475,7 +480,7 @@ def run_process(args, input_path) -> None:
     global_log = []
     dupe_divy_headers = {}
     with open(out_path) as fp:
-        top_refs, total_references, lines = count_reftaxon(
+        top_refs, total_references, lines, this_gene_references = count_reftaxon(
             fp, target_to_taxon, args.top_ref
         )
 
@@ -485,7 +490,6 @@ def run_process(args, input_path) -> None:
         f"Processing {chunks} chunk(s). Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
         args.verbose,
     )
-    this_gene_references = {}
     if lines:
         per_level = ceil(len(lines) / chunks)
         for i in range(0, len(lines), per_level):
@@ -523,11 +527,7 @@ def run_process(args, input_path) -> None:
 
                 if args.debug:
                     global_log.extend(this_log)
-            for this_output, _,_,_ in result:
-                for gene, hits in this_output.items():
-                    for hit in hits:
-                        if hit.reftaxon in top_refs:
-                            this_gene_references.setdefault(gene, []).append(hit.target)
+          
         printv(
             f"Processed. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
             args.verbose,
@@ -568,7 +568,6 @@ def run_process(args, input_path) -> None:
 
         passes = 0
         internal_kicks = 0
-        # this_gene_references = {}
         for gene, hits in output.items():
             dupe_divy_headers[gene] = {}
             kicks = {}
@@ -583,21 +582,15 @@ def run_process(args, input_path) -> None:
                 out = []
                 if kicks:
                     for hit in hits:
-                        # if hit.reftaxon in top_refs:
-                        #     this_gene_references.setdefault(gene, []).append(hit.target)
                         if hit.full_header not in kicks:
                             hit.seq = head_to_seq[hit.header.split("|")[0]]
                             out.append(hit.to_json())
                             dupe_divy_headers[gene][hit.header] = 1
             if not kicks:
                 for hit in hits:
-                    # if hit.reftaxon in top_refs:
-                    #     this_gene_references.setdefault(gene, []).append(hit.target)
                     hit.seq = head_to_seq[hit.header.split("|")[0]]
                     out.append(hit.to_json())
                     dupe_divy_headers[gene][hit.header] = 1
-            
-            db.put("refsfor:{gene}", ",".join(list(this_gene_references)))
 
             passes += len(out)
             db.put(f"gethits:{gene}", json.dumps(out))
