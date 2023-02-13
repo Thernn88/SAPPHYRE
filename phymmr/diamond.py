@@ -290,6 +290,7 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
     header_lines = {}
     current_header = None
     genes_with_varients = set()
+    target_has_hit = set()
     taxon_to_target = {}
 
     for line in file_pointer:
@@ -303,9 +304,11 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
         key = ref_gene+ref_taxon
         
         if key not in taxon_to_target:
+            target_has_hit.add(ref_header_pair)
             taxon_to_target[key] = ref_header_pair
         else:
             genes_with_varients.add(ref_gene)
+            target_has_hit.add(ref_header_pair)
 
         ref_variation_key = header+ref_taxon
         if not ref_variation_key in ref_variation_filter:
@@ -324,7 +327,7 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
         total_references = len(sorted_counts)
         top_names = set([x[0] for x in sorted_counts if x[1] >= target_count])
 
-    return top_names, total_references, header_lines, genes_with_varients
+    return top_names, total_references, header_lines, target_has_hit
 
 
 def process_lines(
@@ -336,22 +339,15 @@ def process_lines(
     total_references,
     strict_search_mode,
     reference_taxa,
-    genes_with_varients
 ):
     output = {}
     evalue_kicks = 0
     multi_kicks = 0
     this_log = []
-    present_references = {}
     for this_lines in lines.values():
         hits = [Hit(*hit.split("\t")) for hit in this_lines]  # convert to Hit object
         hits.sort(key=lambda x: x.score, reverse=True)
         genes_present = {hit.gene for hit in hits}
-
-        for hit in hits:
-            if hit.gene in genes_with_varients:
-                if hit.reftaxon in top_refs:
-                    present_references.setdefault(hit.gene, []).append(hit.target)
 
         if len(genes_present) > 1:
             hits, this_kicks, log = multi_filter(hits, debug)
@@ -373,7 +369,7 @@ def process_lines(
         if best_hit:
             output.setdefault(best_hit.gene, []).append(best_hit)
 
-    return output, evalue_kicks, multi_kicks, this_log, present_references
+    return output, evalue_kicks, multi_kicks, this_log
 
 
 def run_process(args, input_path) -> None:
@@ -493,12 +489,26 @@ def run_process(args, input_path) -> None:
     global_log = []
     dupe_divy_headers = {}
     with open(out_path) as fp:
-        top_refs, total_references, lines, genes_with_varients = count_reftaxon(
+        top_refs, total_references, lines, target_has_hit = count_reftaxon(
             fp, target_to_taxon, args.top_ref
         )
 
     headers = list(lines.keys())
     variant_filter = {}
+
+    for target, ref_tuple in target_to_taxon.items():
+        gene, ref_taxon = ref_tuple
+        if ref_taxon in top_refs:
+            variant_filter.setdefault(gene, []).append((ref_taxon, target))
+
+    dict_items = list(variant_filter.items())
+    for gene, targets in dict_items:
+        target_taxons = [i[0] for i in targets]
+        if len(target_taxons) != len(list(set(target_taxons))):
+            targets = [i[1] for i in targets if i[1] in target_has_hit]
+            variant_filter[gene] = targets
+        else:
+            variant_filter.pop(gene, -1)
 
     printv(
         f"Processing {chunks} chunk(s). Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
@@ -523,16 +533,13 @@ def run_process(args, input_path) -> None:
                     total_references,
                     strict_search_mode,
                     reference_taxa,
-                    genes_with_varients
                 )
                 for j in range(0, len(this_level_headers), per_thread)
             ]
             with Pool(num_threads) as p:
                 result = p.starmap(process_lines, arguments)
             del arguments
-            for this_output, ekicks, mkicks, this_log, present_references in result:
-                for gene, references in present_references.items():
-                    variant_filter.setdefault(gene, set()).update(references)
+            for this_output, ekicks, mkicks, this_log in result:
                 for gene, hits in this_output.items():
                     if gene not in output:
                         output[gene] = hits
