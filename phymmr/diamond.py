@@ -510,6 +510,12 @@ def run_process(args, input_path) -> None:
         else:
             variant_filter.pop(gene, -1)
 
+    variant_filter = {k: list(v) for k, v in variant_filter.items()}
+    db.put("getall:target_variants", json.dumps(variant_filter))
+
+    del variant_filter
+
+
     printv(
         f"Processing {chunks} chunk(s). Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
         args.verbose,
@@ -556,6 +562,9 @@ def run_process(args, input_path) -> None:
             f"Processed. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
             args.verbose,
         )
+
+        nt_db.put("getall:valid_refs", ",".join(list(top_refs)))
+        del top_refs
 
         requires_internal = {}
         internal_order = []
@@ -650,10 +659,7 @@ def run_process(args, input_path) -> None:
                         base_header
                     ]
 
-        variant_filter = {k: list(v) for k, v in variant_filter.items()}
         db.put("getall:presentgenes", ",".join(list(output.keys())))
-        db.put("getall:target_variants", json.dumps(variant_filter))
-        nt_db.put("getall:valid_refs", ",".join(list(top_refs)))
 
         key = "getall:gene_dupes"
         data = json.dumps(gene_dupe_count)
