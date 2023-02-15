@@ -1,4 +1,4 @@
-from collections import Counter
+from collections import Counter, namedtuple
 import itertools
 from math import ceil
 import os
@@ -327,44 +327,51 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
         total_references = len(sorted_counts)
         top_names = set([x[0] for x in sorted_counts if x[1] >= target_count])
 
-    return top_names, total_references, header_lines, target_has_hit
+    return top_names, total_references, list(header_lines.values()), target_has_hit
 
+ProcessingArgs = namedtuple(
+    "ProcessingArgs",
+    [
+        "lines",
+        "debug",
+        "min_percent",
+        "min_evalue",
+        "top_refs",
+        "total_references",
+        "strict_search_mode",
+        "reference_taxa",
+
+    ],
+)
 
 def process_lines(
-    lines,
-    debug,
-    min_percent,
-    min_evalue,
-    top_refs,
-    total_references,
-    strict_search_mode,
-    reference_taxa,
+    pargs: ProcessingArgs
 ):
     output = {}
     evalue_kicks = 0
     multi_kicks = 0
     this_log = []
-    for this_lines in lines.values():
+    for this_lines in pargs.lines:
         hits = [Hit(*hit.split("\t")) for hit in this_lines]  # convert to Hit object
         hits.sort(key=lambda x: x.score, reverse=True)
         genes_present = {hit.gene for hit in hits}
 
         if len(genes_present) > 1:
-            hits, this_kicks, log = multi_filter(hits, debug)
+            hits, this_kicks, log = multi_filter(hits, pargs.debug)
             multi_kicks += this_kicks
-            if debug:
+            if pargs.debug:
                 this_log.extend(log)
         # filter hits by min length and evalue
         hits_bad, evalue_Log = hits_are_bad(
-            hits, debug, min_percent, min_evalue, top_refs, total_references
+            hits, pargs.debug, pargs.min_percent, pargs.min_evalue, pargs.top_refs, pargs.total_references
         )
         if hits_bad:
             evalue_kicks += len(hits)
-            if debug:
+            if pargs.debug:
                 this_log.extend(evalue_Log)
             continue
 
-        best_hit = reciprocal_check(hits, strict_search_mode, reference_taxa)
+        best_hit = reciprocal_check(hits, pargs.strict_search_mode, pargs.reference_taxa)
 
         if best_hit:
             output.setdefault(best_hit.gene, []).append(best_hit)
@@ -437,16 +444,6 @@ def run_process(args, input_path) -> None:
 
     dupe_counts = json.loads(nt_db.get("getall:dupes"))
 
-    head_to_seq = {}
-    for content in out:
-        lines = content.split("\n")
-        for i in range(0, len(lines), 2):
-            if lines[i] == "":
-                continue
-
-            header = lines[i][1:]
-            head_to_seq[header] = lines[i + 1]
-
     out_path = os.path.join(diamond_path, f"{sensitivity}.tsv")
     if not os.path.exists(out_path) or os.stat(out_path).st_size == 0:
         with TemporaryDirectory(dir=gettempdir()) as dir, NamedTemporaryFile(
@@ -476,7 +473,6 @@ def run_process(args, input_path) -> None:
             f"Found existing Diamond output. Elapsed time {time_keeper.differential():.2f}s. Reading file to memory",
             args.verbose,
         )
-    del out
 
     db = wrap_rocks.RocksDB(os.path.join(input_path, "rocksdb", "hits"))
     output = {}
@@ -492,8 +488,6 @@ def run_process(args, input_path) -> None:
         top_refs, total_references, lines, target_has_hit = count_reftaxon(
             fp, target_to_taxon, args.top_ref
         )
-
-    headers = list(lines.keys())
     variant_filter = {}
 
     for target, ref_tuple in target_to_taxon.items():
@@ -521,17 +515,16 @@ def run_process(args, input_path) -> None:
         args.verbose,
     )
     if lines:
-        per_level = ceil(len(lines) / chunks)
-        for i in range(0, len(lines), per_level):
+        per_thread = ceil(ceil(len(lines) / chunks) / num_threads)
+        for i in range(0, chunks*num_threads, num_threads):
             printv(
                 f"Processing chunk {next(chunk_count)}. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
                 args.verbose,
             )
-            this_level_headers = headers[i : i + per_level]
-            per_thread = ceil(len(this_level_headers) / num_threads)
+            
             arguments = [
-                (
-                    {k: lines[k] for k in list(this_level_headers)[j : j + per_thread]},
+                (ProcessingArgs(
+                    lines[(per_thread*j):(per_thread*(j+1))],
                     args.debug,
                     args.min_percent,
                     args.min_evalue,
@@ -539,9 +532,10 @@ def run_process(args, input_path) -> None:
                     total_references,
                     strict_search_mode,
                     reference_taxa,
-                )
-                for j in range(0, len(this_level_headers), per_thread)
+                ),)
+                for j in range(i, i+num_threads)
             ]
+
             with Pool(num_threads) as p:
                 result = p.starmap(process_lines, arguments)
             del arguments
@@ -557,7 +551,7 @@ def run_process(args, input_path) -> None:
 
                 if args.debug:
                     global_log.extend(this_log)
-          
+            del this_output, ekicks, mkicks, this_log, result
         printv(
             f"Processed. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
             args.verbose,
@@ -599,6 +593,17 @@ def run_process(args, input_path) -> None:
             args.verbose,
         )
 
+        head_to_seq = {}
+        for content in out:
+            lines = content.split("\n")
+            for i in range(0, len(lines), 2):
+                if lines[i] == "":
+                    continue
+
+                header = lines[i][1:]
+                head_to_seq[header] = lines[i + 1]
+        del out
+
         passes = 0
         internal_kicks = 0
         for gene, hits in output.items():
@@ -627,7 +632,7 @@ def run_process(args, input_path) -> None:
 
             passes += len(out)
             db.put(f"gethits:{gene}", json.dumps(out))
-
+        del head_to_seq
         if global_log:
             with open(os.path.join(input_path, "multi.log"), "w") as fp:
                 fp.write(
