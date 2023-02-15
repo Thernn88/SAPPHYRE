@@ -241,17 +241,24 @@ def trim_and_write(oargs: OutputArgs):
             
             os.system(f"minirmd/minirmd -i {temp_fasta.name} -o {this_aa_path} -l {dupe_file.name} -t 1 -d 1")
 
+            if not os.path.exists(this_aa_path):
+                print(dupe_file.name)
+                input(temp_fasta.name)
+
             dupe_file.flush()
             this_gene_hamm_dupes = {}
             to_exclude = set()
-            for header, sequence in parseFasta(dupe_file.name):
-                if header.endswith('.'):
-                    master = header[:-1]
-                else:
-                    this_gene_hamm_dupes.setdefault(master, []).append((header, sequence)) 
-                    to_exclude.add(header)
+            this_dupes = 0
+            if os.stat(dupe_file.name).st_size != 0:
+                for header, sequence in parseFasta(dupe_file.name):
+                    if header.endswith('.'):
+                        master = header[:-1]
+                    else:
+                        this_gene_hamm_dupes.setdefault(master, []).append((header, sequence)) 
+                        to_exclude.add(header)
+                        this_dupes += 1
 
-    if aa_output:
+    if os.stat(this_aa_path).st_size != 0:
         aa_core_sequences = print_core_sequences(oargs.gene, core_sequences, oargs.target_taxon, oargs.top_refs)
         aa_core_data = [f">{header}\n{sequence}\n" for header, sequence in aa_core_sequences]
 
@@ -270,7 +277,7 @@ def trim_and_write(oargs: OutputArgs):
         oargs.verbose,
         2,
     )
-    return oargs.gene, this_gene_dupes, this_gene_hamm_dupes, len(aa_output)
+    return oargs.gene, this_gene_dupes, this_gene_hamm_dupes, len(aa_output) - this_dupes
 
 
 def do_taxa(path, taxa_id, args):
@@ -366,10 +373,13 @@ def do_taxa(path, taxa_id, args):
     final_count = 0
     this_gene_based_dupes = {}
     hamm_dupe_table = {}
+    dupe_counts = 0
     for gene, dupes, hamm_dupes, amount in recovered:
         final_count += amount
         this_gene_based_dupes[gene] = dupes
         hamm_dupe_table[gene] = hamm_dupes
+
+        dupe_counts += len(hamm_dupe_table.values())
 
     key = "getall:reporter_dupes"
     data = json.dumps(this_gene_based_dupes)
@@ -379,7 +389,7 @@ def do_taxa(path, taxa_id, args):
     rocky.get_rock("rocks_nt_db").put(key, data)
 
     printv(
-        f"Done! Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s and found {final_count} sequences.",
+        f"Done! Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s and found {final_count} sequences with {dupe_counts} hamm dupes.",
         args.verbose,
     )
 
