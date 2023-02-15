@@ -192,7 +192,7 @@ class SeqDeduplicator:
                     fp.write(f">{header}\n{seq}\n")
 
 def return_clean_lines(clean_file_path, batch_size, nt_db, keep_prepared, path):
-    recipe_index = IndexIter()
+    recipe_index = 0
     current_count = IndexIter()
     recipe = []
     current_batch = []
@@ -210,19 +210,18 @@ def return_clean_lines(clean_file_path, batch_size, nt_db, keep_prepared, path):
         next(current_count)
         if current_count.x >= batch_size:
             current_count = IndexIter()
-            next(recipe_index)
-            recipe.append(str(recipe_index.x))
-
-            nt_db.put(f"ntbatch:{recipe_index.x}", "".join(current_batch))
+            recipe.append(str(recipe_index))
+            nt_db.put(f"ntbatch:{recipe_index}", "".join(current_batch))
+            recipe_index += 1
             current_batch = []
     
     if keep_prepared:
         fp.close()
 
     if current_batch:
-        next(recipe_index)
-        recipe.append(str(recipe_index.x))
-        nt_db.put(f"ntbatch:{recipe_index.x}", "".join(current_batch))
+        recipe.append(str(recipe_index))
+        nt_db.put(f"ntbatch:{recipe_index}", "".join(current_batch))
+        recipe_index += 1
 
     recipe_data = ",".join(recipe)
     nt_db.put("getall:batches", recipe_data)
@@ -240,9 +239,9 @@ def return_dupe_table(dupe_file_path, nt_db):
     nt_db.put("getall:hamm_dupes", json.dumps(dupe_table))
     return dupe_count.x
 
-def hamming_dedupe(fa_file_dest, batch_size, nt_db, keep_prepared, prepared_file_destination):
+def hamming_dedupe(fa_file_dest, batch_size, threads, nt_db, keep_prepared, prepared_file_destination):
     with NamedTemporaryFile(dir = gettempdir()) as clean_file, NamedTemporaryFile(dir = gettempdir()) as dupe_file:
-        os.system(f"minirmd/minirmd -i {fa_file_dest} -o {clean_file.name} -l {dupe_file.name} -d 1")
+        os.system(f"minirmd/minirmd -i {fa_file_dest} -o {clean_file.name} -l {dupe_file.name} -t {threads} -d 1")
 
         return_clean_lines(clean_file.name, batch_size, nt_db, keep_prepared, prepared_file_destination)
         return return_dupe_table(dupe_file.name, nt_db)
@@ -260,6 +259,7 @@ class DatabasePreparer:
         dedup_time: List[int],
         trim_times: TimeKeeper,
         chunk_size: int,
+        threads,
     ):
         self.fto = formatted_taxa_out
         self.comp = components
@@ -277,6 +277,7 @@ class DatabasePreparer:
         self.this_index = IndexIter()
         self.dedup_time = dedup_time
         self.chunk_size = chunk_size
+        self.threads = threads
 
     def init_db(
         self,
@@ -305,8 +306,6 @@ class DatabasePreparer:
         self.prepared_file_destination = taxa_destination_directory.joinpath(self.fto)
 
     def dedup(self):
-        recipe = []
-
         with NamedTemporaryFile(dir = gettempdir()) as temp:
             for fa_file_path in self.comp:
                 SeqDeduplicator(
@@ -323,13 +322,10 @@ class DatabasePreparer:
                 )
             temp.flush()
 
-            hamm_dupes = hamming_dedupe(temp.name, self.chunk_size, self.nt_db, self.keep_prepared, self.prepared_file_destination)
+            hamm_dupes = hamming_dedupe(temp.name, self.chunk_size, self.threads, self.nt_db, self.keep_prepared, self.prepared_file_destination)
 
         if self.keep_prepared:
             writeFasta(self.prepared_file_destination, self.fa_file_out)
-
-        recipe_data = ",".join(recipe)
-        self.nt_db.put("getall:batches", recipe_data)
 
         sequence_count = str(self.this_index)
 
@@ -365,6 +361,7 @@ def map_taxa_runs(
     dedup_time: List[int],
     trim_times: TimeKeeper,
     chunk_size,
+    threads,
 ):
     formatted_taxa_out, components = tuple_in
 
@@ -379,6 +376,7 @@ def map_taxa_runs(
         dedup_time,
         trim_times,
         chunk_size,
+        threads,
     )(
         secondary_directory,
     )
@@ -425,6 +423,7 @@ def main(args):
             dedup_time,
             trim_times,
             args.chunk_size,
+            args.processes
         )
         for tuple_in in taxa_runs.items()
     ]
