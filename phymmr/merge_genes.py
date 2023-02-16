@@ -10,15 +10,15 @@ def prepend(inputs, directory):
     return [Path(directory, i) for i in inputs]
 
 
-def parse_gene(path, grab_references=False):
+def parse_gene(path, already_grabbed_references):
     this_out = []
     for header, sequence in parseFasta(str(path)):
-        if grab_references:
-            this_out.append((header, sequence))
-        else:
-            if header[-1] != ".":
+        if header.endswith("."):
+            if header.split("|")[2] not in already_grabbed_references:
                 this_out.append((header, sequence))
-    return {path: this_out}
+        else:
+            this_out.append((header, sequence))
+    return {path: (this_out, already_grabbed_references)}
 
 
 def main(args):
@@ -30,6 +30,8 @@ def main(args):
 
     aa_out = {}
     nt_out = {}
+    grabbed_aa_references = {}
+    grabbed_nt_references = {}
 
     for item in inputs:
         printv(f"Merging directory: {item}", args.verbose, 0)
@@ -46,11 +48,13 @@ def main(args):
 
             arguments = []
             for aa_gene in aa_path.iterdir():
-                add_references = aa_gene.name not in aa_out
+                if aa_gene.name not in aa_out:
+                    grabbed_aa_references[aa_gene.name] = set()
+
                 arguments.append(
                     (
                         aa_gene,
-                        add_references,
+                        grabbed_aa_references[aa_gene.name],
                     )
                 )
 
@@ -59,16 +63,20 @@ def main(args):
 
             for result in aa_result:
                 for path, out in result.items():
+                    out, already_grabbed = out
                     path = path.name
                     aa_out.setdefault(path, []).extend(out)
+                    grabbed_aa_references[path] = already_grabbed
+
 
             arguments = []
             for nt_gene in nt_path.iterdir():
-                add_references = nt_gene.name not in nt_out
+                if nt_gene.name not in nt_out:
+                    grabbed_nt_references[nt_gene.name] = set()
                 arguments.append(
                     (
                         nt_gene,
-                        add_references,
+                        grabbed_nt_references[nt_gene.name],
                     )
                 )
 
@@ -77,8 +85,10 @@ def main(args):
 
             for result in nt_result:
                 for path, out in result.items():
+                    out, already_grabbed = out
                     path = path.name
                     nt_out.setdefault(path, []).extend(out)
+                    grabbed_nt_references[path] = already_grabbed
 
     aa_out_path = Path(args.output_directory, "aa")
     nt_out_path = Path(args.output_directory, "nt")
