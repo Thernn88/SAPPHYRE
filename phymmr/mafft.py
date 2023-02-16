@@ -114,8 +114,12 @@ def do_folder(folder, args):
     cmd = "mafft"
     if args.linsi:
         cmd = "mafft-linsi"
+    
+    combo = ""
+    if args.combo:
+        combo = "--jtt 1 --addtoroot"
 
-    command = f"{cmd} --anysymbol --quiet {args.add} {{tmpfile}} --thread -1 {{tmpaln}} > {{resultfile}}"
+    command = f"{cmd} --anysymbol --quiet {combo} {{tmpfile}} --thread -1 {{tmpaln}} > {{resultfile}}"
 
     if args.processes > 1:
         arguments = []
