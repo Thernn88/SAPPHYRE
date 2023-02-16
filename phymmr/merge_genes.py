@@ -11,13 +11,15 @@ def prepend(inputs, directory):
 
 
 def parse_gene(path, already_grabbed_references):
-    this_out = []
+    ref_out = {}
+    cand_out = []
     for header, sequence in parseFasta(str(path)):
         if header.endswith("."):
             if header.split("|")[2] not in already_grabbed_references:
-                this_out.append((header, sequence))
+                ref_out[header] = sequence
         else:
-            this_out.append((header, sequence))
+            cand_out.append((header, sequence))
+    this_out = [*ref_out.items()] + cand_out
     return {path: (this_out, already_grabbed_references)}
 
 
