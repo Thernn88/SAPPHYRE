@@ -572,10 +572,9 @@ def do_protein(
                         and mode / total_characters >= majority
                         and mode_char != char
                     ):
-                        if mode_char != "-":
-                            new_merge[i] = mode_char
-                            if debug:
-                                majority_assignments[i] = mode_char
+                        new_merge[i] = mode_char
+                        if debug:
+                            majority_assignments[i] = "X" if mode_char == "-" else mode_char
 
             elif protein == "nt":
                 length = len(new_merge)
@@ -640,12 +639,11 @@ def do_protein(
                                 candidate_chars_mapping_to_same_dna
                             )
                             if mode_cand_raw_character != char:
-                                if mode_cand_raw_character != "---":
-                                    new_merge[raw_i] = mode_cand_raw_character
-                                    if debug:
-                                        majority_assignments[
-                                            raw_i
-                                        ] = mode_cand_raw_character
+                                new_merge[raw_i] = mode_cand_raw_character
+                                if debug:
+                                    majority_assignments[
+                                        raw_i
+                                    ] = "XXX" if mode_cand_raw_character == "---" else mode_cand_raw_character
 
             new_merge = str(Seq("").join(new_merge))
             gene_out.append((final_header, new_merge))
