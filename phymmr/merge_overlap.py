@@ -431,6 +431,9 @@ def do_protein(
             # the overlap region
             current_point_seqs = make_seq_dict(this_sequences, overlap_region)
 
+            # Create a hashmap to store the split quality taxons
+            quality_taxons_here = {}
+
             for cursor in range(data_start, data_end + 1):
                 sequences_at_current_point = current_point_seqs[cursor]
                 amount_of_seqs_at_cursor = len(sequences_at_current_point)
@@ -471,7 +474,22 @@ def do_protein(
                                         comparison_taxa = reference
                                         break
                             else:
-                                comparison_taxa = most_occuring[0] if most_occuring[1] != -1 else taxons_of_split[0]
+                                if taxons_of_split:
+                                    comparison_taxa = most_occuring[0] if most_occuring[1] != -1 else taxons_of_split[0]
+                                else:
+                                    headers_here = "".join([header for (header, _) in sequences_at_current_point])
+                                    key = f"{data_start}{data_end}{headers_here}"
+                                    if key in quality_taxons_here:
+                                        comparison_taxa = quality_taxons_here[key]
+                                    else:
+                                        quality_taxons = []
+                                        for taxon, sequence in comparison_sequences.items():
+                                            data_region = sequence[data_start: data_end+1]
+                                            data = len(data_region) - data_region.count("-")
+                                            quality_taxons.append((data, taxon))
+                                    
+                                        comparison_taxa = max(quality_taxons, key = lambda x: x[0])[1]
+                                        quality_taxons_here[key] = comparison_taxa
                             
                         # Grab the reference sequence for the mode taxon
                         if comparison_taxa:
