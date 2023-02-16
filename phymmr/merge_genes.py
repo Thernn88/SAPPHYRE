@@ -20,7 +20,7 @@ def parse_gene(path):
     return {path: this_out}
 
 
-def get_references(gene, orthoset_db):
+def get_references(gene, orthoset_db, present_refs):
     core_seqs = json.loads(orthoset_db.get(f"getcore:{gene}"))
 
     aa_refs = []
@@ -56,8 +56,6 @@ def main(args):
     aa_out = {}
     nt_out = {}
 
-    nt_ref_pass_through = {}
-
     for item in inputs:
         printv(f"Merging directory: {item}", args.verbose, 0)
         for taxa in item.iterdir():
@@ -74,9 +72,7 @@ def main(args):
             arguments = []
             for aa_gene in aa_path.iterdir():
                 if aa_gene.name not in aa_out:
-                    aa_refs, nt_refs = get_references(aa_gene.name.split('.')[0], orthoset_db)
-                    aa_out[aa_gene.name] = aa_refs
-                    nt_ref_pass_through[aa_gene.name.split('.')[0]] = nt_refs
+                    aa_out[aa_gene.name] = []
                 
                 arguments.append(
                     (
@@ -95,12 +91,7 @@ def main(args):
             arguments = []
             for nt_gene in nt_path.iterdir():
                 if nt_gene.name not in nt_out:
-                    this_gene = nt_gene.name.split('.')[0]
-                    if this_gene not in nt_ref_pass_through:
-                        _, nt_refs = get_references(this_gene, orthoset_db)
-                    else:
-                        nt_refs = nt_ref_pass_through[this_gene]
-                    nt_out[nt_gene.name] = nt_refs
+                    nt_out[nt_gene.name] = []
 
                 arguments.append(
                     (
@@ -121,13 +112,19 @@ def main(args):
     aa_out_path.mkdir(parents=True, exist_ok=True)
     nt_out_path.mkdir(parents=True, exist_ok=True)
 
+    
+    nt_ref_pass_through = {}
     for gene in aa_out:
         gene_out = Path(aa_out_path, gene)
-        writeFasta(gene_out, aa_out[gene], args.compress)
+        this_out = aa_out[gene]
+        present_refs = {header.split("|")[2] for header, seq in this_out}
+        aa_refs, nt_refs = get_references(aa_gene.name.split('.')[0], orthoset_db, present_refs)
+        nt_ref_pass_through[gene.split('.')[0]] = nt_refs
+        writeFasta(gene_out, aa_refs + this_out, args.compress)
 
     for gene in nt_out:
         gene_out = Path(nt_out_path, gene)
-        writeFasta(gene_out, nt_out[gene], args.compress)
+        writeFasta(gene_out, nt_ref_pass_through[gene.split('.')[0]] + nt_out[gene], args.compress)
     printv(f"Finished took {main_keeper.differential():.2f}s overall.", args.verbose, 0)
     return True
 
