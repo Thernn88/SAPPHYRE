@@ -289,9 +289,7 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
     rextaxon_count = {}
     header_lines = {}
     current_header = None
-    genes_with_varients = set()
     target_has_hit = set()
-    taxon_to_target = {}
 
     for line in file_pointer:
         header, ref_header_pair, frame = line.split("\t")[:3]
@@ -301,14 +299,7 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
             
         ref_gene, ref_taxon = taxon_lookup[ref_header_pair]
 
-        key = ref_gene+ref_taxon
-        
-        if key not in taxon_to_target:
-            target_has_hit.add(ref_header_pair)
-            taxon_to_target[key] = ref_header_pair
-        else:
-            genes_with_varients.add(ref_gene)
-            target_has_hit.add(ref_header_pair)
+        target_has_hit.add(ref_header_pair)
 
         ref_variation_key = header+ref_taxon
         if not ref_variation_key in ref_variation_filter:
