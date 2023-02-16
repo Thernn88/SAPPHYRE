@@ -99,7 +99,7 @@ class Sequence_Set:
 
         for seq in self.sequences:
             diamond_data.append(f">{seq.header}\n{seq.aa_sequence}\n")
-            target_to_taxon[seq.header] = seq.gene, seq.taxa
+            target_to_taxon[seq.header] = seq.gene, seq.taxa, len(seq.aa_sequence)
 
             taxon_to_sequences.setdefault(seq.gene, {})[seq.taxa] = seq.aa_sequence
 

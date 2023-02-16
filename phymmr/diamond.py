@@ -289,9 +289,7 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
     rextaxon_count = {}
     header_lines = {}
     current_header = None
-    genes_with_varients = set()
     target_has_hit = set()
-    taxon_to_target = {}
 
     for line in file_pointer:
         header, ref_header_pair, frame = line.split("\t")[:3]
@@ -299,16 +297,9 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
             current_header = hash(header)
             ref_variation_filter = set()
             
-        ref_gene, ref_taxon = taxon_lookup[ref_header_pair]
+        ref_gene, ref_taxon, _ = taxon_lookup[ref_header_pair]
 
-        key = ref_gene+ref_taxon
-        
-        if key not in taxon_to_target:
-            target_has_hit.add(ref_header_pair)
-            taxon_to_target[key] = ref_header_pair
-        else:
-            genes_with_varients.add(ref_gene)
-            target_has_hit.add(ref_header_pair)
+        target_has_hit.add(ref_header_pair)
 
         ref_variation_key = header+ref_taxon
         if not ref_variation_key in ref_variation_filter:
@@ -491,16 +482,39 @@ def run_process(args, input_path) -> None:
     variant_filter = {}
 
     for target, ref_tuple in target_to_taxon.items():
-        gene, ref_taxon = ref_tuple
+        gene, ref_taxon, data_length = ref_tuple
         if ref_taxon in top_refs:
-            variant_filter.setdefault(gene, []).append((ref_taxon, target))
+            variant_filter.setdefault(gene, []).append((ref_taxon, target, data_length))
 
     dict_items = list(variant_filter.items())
     for gene, targets in dict_items:
         target_taxons = [i[0] for i in targets]
         if len(target_taxons) != len(list(set(target_taxons))):
-            targets = [i[1] for i in targets if i[1] in target_has_hit]
-            variant_filter[gene] = targets
+            this_counts = Counter(target_taxons)
+            out_targets = [i[1] for i in targets if this_counts[i[0]] == 1]
+            for target, count in this_counts.most_common():
+                if count == 1:
+                    continue
+
+                this_targets = [i for i in targets if i[0] == target]
+                if not this_targets:
+                    print(this_targets, target, target_taxons)
+
+                variants_with_hits = sum([i[1] in target_has_hit for i in this_targets])
+                all_variants_kept = variants_with_hits == len(this_targets)
+                all_variants_kicked = variants_with_hits == 0
+                if all_variants_kicked:
+                    reintroduce = max(this_targets, key = lambda x : x[2])
+                    out_targets.append(reintroduce[1])
+                    continue
+                if all_variants_kept:
+                    out_targets.extend([i[1] for i in this_targets])
+                    continue
+                
+                out_targets.extend([i[1] for i in this_targets if i[0] in target_has_hit])
+
+            
+            variant_filter[gene] = out_targets
         else:
             variant_filter.pop(gene, -1)
 
