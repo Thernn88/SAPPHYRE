@@ -14,8 +14,10 @@ def parse_gene(path, already_grabbed_references):
     this_out = []
     for header, sequence in parseFasta(str(path)):
         if header.endswith("."):
-            if header.split("|")[2] not in already_grabbed_references:
+            fields = header.split("|")
+            if fields[2] not in already_grabbed_references:
                 this_out.append((header, sequence))
+                already_grabbed_references.add(fields[2])
         else:
             this_out.append((header, sequence))
     return {path: (this_out, already_grabbed_references)}
