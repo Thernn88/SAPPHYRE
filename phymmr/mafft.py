@@ -19,7 +19,6 @@ def process_genefile(filewrite, fileread):
     ref_og_hashmap = {}
     cand_og_hashmap = {}
     targets_present = set()
-    taxa_ids_present = {}
     for header, sequence in parseFasta(fileread):
 
         if header.endswith("."):
@@ -28,13 +27,11 @@ def process_genefile(filewrite, fileread):
             targets_present.add(target)
         else:
             taxa_id = header.split("|")[2]
-            if taxa_id not in taxa_ids_present:
-                taxa_ids_present[taxa_id] = 1
             cand_og_hashmap[header[:242]] = header
             filewrite.write(f">{header}\n")
             filewrite.write(sequence + "\n")
             
-    return ref_og_hashmap, cand_og_hashmap, targets_present, len(taxa_ids_present.values()) > 1
+    return ref_og_hashmap, cand_og_hashmap, targets_present
 
 
 CmdArgs = namedtuple(
@@ -53,36 +50,27 @@ def run_command(args: CmdArgs) -> None:
     with TemporaryDirectory(dir=temp_dir) as tmpdir, NamedTemporaryFile(
         mode="w+", dir=tmpdir
     ) as tmpfile:
-        ref_og_hashmap, cand_og_hashmap, targets_present, second_run = process_genefile(tmpfile, args.gene_file)
+        ref_og_hashmap, cand_og_hashmap, targets_present = process_genefile(tmpfile, args.gene_file)
         aln_path = os.path.join(args.aln_path, args.gene + ".aln.fa")
-        if second_run: #Don't cull references
-            tmpfile.file.flush()
-            command = args.string.format(
-                tmpfile=tmpfile.name, resultfile=args.result_file, tmpaln=aln_path
-            )
+        with NamedTemporaryFile(
+                mode="w+", dir=tmpdir
+            ) as tmpaln:
+                new_aln = []
+                for header, seq in parseFasta(aln_path):
+                    if not header.strip() in targets_present:
+                        continue
+                    new_aln.append(f">{header}\n{seq}\n")
 
-            printv(f"Executing command: {command}", args.verbose, 2)
-            os.system(command)
-        else:
-            with NamedTemporaryFile(
-                    mode="w+", dir=tmpdir
-                ) as tmpaln:
-                    new_aln = []
-                    for header, seq in parseFasta(aln_path):
-                        if not header.strip() in targets_present:
-                            continue
-                        new_aln.append(f">{header}\n{seq}\n")
+                tmpaln.writelines(new_aln)
+                tmpaln.file.flush()
 
-                    tmpaln.writelines(new_aln)
-                    tmpaln.file.flush()
+                tmpfile.file.flush()
+                command = args.string.format(
+                    tmpfile=tmpfile.name, resultfile=args.result_file, tmpaln=tmpaln.name
+                )
 
-                    tmpfile.file.flush()
-                    command = args.string.format(
-                        tmpfile=tmpfile.name, resultfile=args.result_file, tmpaln=tmpaln.name
-                    )
-
-                    printv(f"Executing command: {command}", args.verbose, 2)
-                    os.system(command)
+                printv(f"Executing command: {command}", args.verbose, 2)
+                os.system(command)
 
     # Overwrite reference headers with original headers
     out = []
