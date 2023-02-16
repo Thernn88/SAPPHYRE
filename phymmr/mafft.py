@@ -115,7 +115,7 @@ def do_folder(folder, args):
     if args.linsi:
         cmd = "mafft-linsi"
     
-    combo = ""
+    combo = "--addfragments"
     if args.combo:
         combo = "--jtt 1 --addtoroot"
 
