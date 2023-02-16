@@ -1,6 +1,4 @@
 from __future__ import annotations
-import json
-import wrap_rocks
 from pathlib import Path
 from multiprocessing.pool import Pool
 
@@ -12,26 +10,16 @@ def prepend(inputs, directory):
     return [Path(directory, i) for i in inputs]
 
 
-def parse_gene(path):
+def parse_gene(path, grab_references=False):
     this_out = []
     for header, sequence in parseFasta(str(path)):
-        if header[-1] != ".":
+        if grab_references:
             this_out.append((header, sequence))
+        else:
+            if header[-1] != ".":
+                this_out.append((header, sequence))
     return {path: this_out}
 
-
-def get_references(gene, orthoset_db, present_refs):
-    core_seqs = json.loads(orthoset_db.get(f"getcore:{gene}"))
-
-    aa_refs = []
-    for taxon, target, seq in sorted(core_seqs["aa"]):
-        aa_refs.append((f"{gene}|{taxon}|{target}|.",seq))
-
-    nt_refs = []
-    for taxon, target, seq in sorted(core_seqs["nt"]):
-        nt_refs.append((f"{gene}|{taxon}|{target}|.",seq))
-
-    return aa_refs, nt_refs
 
 def main(args):
     main_keeper = TimeKeeper(KeeperMode.DIRECT)
@@ -39,19 +27,6 @@ def main(args):
         inputs = prepend(args.INPUT, args.DIRECTORY)
     else:
         inputs = [Path(i) for i in args.INPUT]
-
-    orthoset = args.orthoset
-    orthosets_dir = args.orthoset_input
-
-    orthoset_db_path = Path(orthosets_dir, orthoset, "rocksdb")
-    if not orthoset_db_path.exists():
-        printv(
-            f"WARNING: {orthoset_db_path} doesn't exists. Abort",
-            args.verbose,
-            0,
-        )
-        return False
-    orthoset_db = wrap_rocks.RocksDB(str(orthoset_db_path))
 
     aa_out = {}
     nt_out = {}
@@ -71,12 +46,11 @@ def main(args):
 
             arguments = []
             for aa_gene in aa_path.iterdir():
-                if aa_gene.name not in aa_out:
-                    aa_out[aa_gene.name] = []
-                
+                add_references = aa_gene.name not in aa_out
                 arguments.append(
                     (
                         aa_gene,
+                        add_references,
                     )
                 )
 
@@ -90,12 +64,11 @@ def main(args):
 
             arguments = []
             for nt_gene in nt_path.iterdir():
-                if nt_gene.name not in nt_out:
-                    nt_out[nt_gene.name] = []
-
+                add_references = nt_gene.name not in nt_out
                 arguments.append(
                     (
                         nt_gene,
+                        add_references,
                     )
                 )
 
@@ -112,19 +85,13 @@ def main(args):
     aa_out_path.mkdir(parents=True, exist_ok=True)
     nt_out_path.mkdir(parents=True, exist_ok=True)
 
-    
-    nt_ref_pass_through = {}
     for gene in aa_out:
         gene_out = Path(aa_out_path, gene)
-        this_out = aa_out[gene]
-        present_refs = {header.split("|")[2] for header, seq in this_out}
-        aa_refs, nt_refs = get_references(aa_gene.name.split('.')[0], orthoset_db, present_refs)
-        nt_ref_pass_through[gene.split('.')[0]] = nt_refs
-        writeFasta(gene_out, aa_refs + this_out, args.compress)
+        writeFasta(gene_out, aa_out[gene], args.compress)
 
     for gene in nt_out:
         gene_out = Path(nt_out_path, gene)
-        writeFasta(gene_out, nt_ref_pass_through[gene.split('.')[0]] + nt_out[gene], args.compress)
+        writeFasta(gene_out, nt_out[gene], args.compress)
     printv(f"Finished took {main_keeper.differential():.2f}s overall.", args.verbose, 0)
     return True
 
