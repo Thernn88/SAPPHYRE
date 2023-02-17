@@ -374,6 +374,7 @@ def do_gene(
         data_length = 0
 
         sequence_length = len(sequence)
+        window_start = -1
 
         for i, char in enumerate(sequence):
             mismatch = mismatches
@@ -386,6 +387,8 @@ def do_gene(
             # Don't allow cull to point of all dashes
             if char == "-":
                 continue
+            else:
+                window_start = i
 
             if all_dashes_by_index[i]:
                 continue
@@ -394,7 +397,10 @@ def do_gene(
                 >= match_percent
             ):
                 skip_first = 1
-                mismatch -= 1
+                if window_start == i:
+                    continue
+                else:
+                    mismatch -= 1
 
             if mismatch < 0:
                 continue
@@ -435,6 +441,7 @@ def do_gene(
         if not kick:
             # If not kicked from Cull Start Calc. Continue
             cull_end = None
+            window_end = -1
             for i in range(len(sequence) - 1, -1, -1):
                 mismatch = mismatches
                 skip_last = 0
@@ -445,6 +452,8 @@ def do_gene(
                     break
                 if char == "-":
                     continue
+                else:
+                    window_end = i
 
                 if all_dashes_by_index[i]:
                     # Don't allow cull to point of all dashes
@@ -455,7 +464,10 @@ def do_gene(
                     >= match_percent
                 ):
                     skip_last += 1
-                    mismatch -= 1
+                    if window_end == i:
+                        continue
+                    else:
+                        mismatch -= 1
 
                 if mismatch < 0:
                     continue
