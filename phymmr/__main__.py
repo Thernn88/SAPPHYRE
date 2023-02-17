@@ -296,7 +296,7 @@ def subcmd_mergeoverlap(subparsers):
         "-m",
         "--majority",
         type=float,
-        default=0.66,
+        default=0.55,
         help="Percentage for majority ruling.",
     )
     par.add_argument(
@@ -432,7 +432,7 @@ def subcmd_flexcull(subparsers):
         "-m",
         "--matches",
         type=int,
-        default=7,
+        default=6,
         help="Amount of base pairs that have to match reference.",
     )  #
     par.add_argument(
