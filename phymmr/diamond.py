@@ -497,22 +497,14 @@ def run_process(args, input_path) -> None:
                     continue
 
                 this_targets = [i for i in targets if i[0] == target]
-                if not this_targets:
-                    print(this_targets, target, target_taxons)
-
                 variants_with_hits = sum([i[1] in target_has_hit for i in this_targets])
-                all_variants_kept = variants_with_hits == len(this_targets)
                 all_variants_kicked = variants_with_hits == 0
                 if all_variants_kicked:
                     reintroduce = max(this_targets, key = lambda x : x[2])
                     out_targets.append(reintroduce[1])
                     continue
-                if all_variants_kept:
-                    out_targets.extend([i[1] for i in this_targets])
-                    continue
                 
-                out_targets.extend([i[1] for i in this_targets if i[0] in target_has_hit])
-
+                out_targets.extend([i[1] for i in this_targets if i[1] in target_has_hit])
             
             variant_filter[gene] = out_targets
         else:
