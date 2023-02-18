@@ -432,7 +432,7 @@ def do_gene(
                     >= match_percent
                 ):
                     mismatch -= 1
-                    if mismatch < 0  or sequence[i - match_i] == "*":
+                    if mismatch < 0 or sequence[i + match_i] == "*":
                         pass_all = False
                         break
                     match_i += 1
