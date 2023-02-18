@@ -310,6 +310,7 @@ def do_gene(
     gap_threshold: float,
     mismatches: int,
     column_cull_percent: float,
+    minimum_data: float,
 ) -> None:
     """
     FlexCull main function. Culls input aa and nt using specified amount of matches
@@ -362,6 +363,11 @@ def do_gene(
 
     for header, sequence in candidates:
         sequence = list(sequence)
+
+        for i in range(len(sequence) - 1, -1, -1):
+            if sequence[i] != "-":
+                seq_end = i
+                break
 
         gene = header.split("|")[0]
 
@@ -436,6 +442,11 @@ def do_gene(
 
             if pass_all:
                 cull_start = i + skip_first
+                
+                potential_trim = [True if let != "-" else not gap_present_threshold[i] for i, let in enumerate(sequence[cull_start:seq_end], cull_start)]
+                if sum(potential_trim) / len(potential_trim) < minimum_data:
+                    continue
+                
                 break
 
         if not kick:
@@ -504,6 +515,9 @@ def do_gene(
 
                 if pass_all:
                     cull_end = i - skip_last + 1  # Inclusive
+                    potential_trim = [True if let != "-" else not gap_present_threshold[i] for i, let in enumerate(sequence[cull_start:cull_end], cull_start)]
+                    if sum(potential_trim) / len(potential_trim) < minimum_data:
+                        continue
                     break
 
         if not kick:  # If also passed Cull End Calc. Finish
@@ -726,6 +740,7 @@ def do_folder(folder, args: MainArgs):
                     args.gap_threshold,
                     args.mismatches,
                     args.column_cull,
+                    args.minimum_data,
                 )
             )
 
@@ -747,6 +762,7 @@ def do_folder(folder, args: MainArgs):
                 args.gap_threshold,
                 args.mismatches,
                 args.column_cull,
+                args.minimum_data,
             )
             for input_gene in file_inputs
         ]
