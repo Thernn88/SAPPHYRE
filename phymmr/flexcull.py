@@ -226,7 +226,7 @@ def trim_around(
             cull_end = i + skip_first
             break
 
-    cull_start = starting_index
+    cull_start = starting_index -1
     for i in range(starting_index - 1, -1, -1):
         mismatch = mismatches
         skip_last = 0
