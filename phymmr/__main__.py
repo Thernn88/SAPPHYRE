@@ -460,7 +460,7 @@ def subcmd_flexcull(subparsers):
         "-md",
         "--minimum_data",
         type=float,
-        default=0.25,
+        default=0.60,
         help="Minimum percentage of data required in a cull to pass.",
     )
     par.add_argument(

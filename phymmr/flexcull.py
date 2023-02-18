@@ -297,6 +297,141 @@ def get_data_difference(trim, ref):
     return trim / ref
 
 
+def do_cull(sequence, sequence_length, offset, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold, kick):
+    cull_start = None
+    cull_end = None
+    for i, char in enumerate(sequence):
+        mismatch = mismatches
+        skip_first = 0
+
+        if i == sequence_length - offset:
+            kick = True
+            break
+
+        # Don't allow cull to point of all dashes
+        if char == "-":
+            continue
+        else:
+            window_start = i
+
+        if all_dashes_by_index[i]:
+            continue
+        if (
+            not character_at_each_pos[i].count(char) / len(character_at_each_pos[i])
+            >= match_percent
+        ):
+            skip_first = 1
+            if window_start == i:
+                continue
+            else:
+                mismatch -= 1
+
+        if mismatch < 0:
+            continue
+
+        pass_all = True
+        checks = amt_matches - 1
+        match_i = 1
+
+        while checks > 0:
+            if i + match_i >= len(sequence):
+                pass_all = False
+                break
+
+            if sequence[i + match_i] == "-":
+                if gap_present_threshold[i + match_i]:
+                    pass_all = False
+                    break
+                match_i += 1
+            elif (
+                not character_at_each_pos[i + match_i].count(sequence[i + match_i])
+                / len(character_at_each_pos[i + match_i])
+                >= match_percent
+            ):
+                mismatch -= 1
+                if mismatch < 0 or sequence[i + match_i] == "*":
+                    pass_all = False
+                    break
+                match_i += 1
+                checks -= 1
+            else:
+                match_i += 1
+                checks -= 1
+
+        if pass_all:
+            cull_start = i + skip_first
+            
+            break
+
+    if not kick:
+        # If not kicked from Cull Start Calc. Continue
+        window_end = -1
+        for i in range(len(sequence) - 1, -1, -1):
+            mismatch = mismatches
+            skip_last = 0
+
+            char = sequence[i]
+            if i < cull_start + offset:
+                kick = True
+                break
+            if char == "-":
+                continue
+            else:
+                window_end = i
+
+            if all_dashes_by_index[i]:
+                # Don't allow cull to point of all dashes
+                continue
+            if (
+                not character_at_each_pos[i].count(char)
+                / len(character_at_each_pos[i])
+                >= match_percent
+            ):
+                skip_last += 1
+                if window_end == i:
+                    continue
+                else:
+                    mismatch -= 1
+
+            if mismatch < 0:
+                continue
+
+            pass_all = True
+            checks = amt_matches - 1
+            match_i = 1
+            while checks > 0:
+                if i - match_i < 0:
+                    pass_all = False
+                    break
+
+                if sequence[i - match_i] == "-":
+                    if gap_present_threshold[i - match_i]:
+                        pass_all = False
+                        break
+                    match_i += 1
+                elif (
+                    not character_at_each_pos[i - match_i].count(
+                        sequence[i - match_i]
+                    )
+                    / len(character_at_each_pos[i - match_i])
+                    >= match_percent
+                ):
+                    mismatch -= 1
+                    if mismatch < 0 or sequence[i - match_i] == "*":
+                        pass_all = False
+                        break
+                    match_i += 1
+                    checks -= 1
+                else:
+                    match_i += 1
+                    checks -= 1
+
+            if pass_all:
+                cull_end = i - skip_last + 1  # Inclusive
+                break
+
+    return cull_start, cull_end, kick
+
 def do_gene(
     aa_input: str,
     nt_input: str,
@@ -375,7 +510,6 @@ def do_gene(
         if gene not in follow_through:
             follow_through[gene] = {}
 
-        cull_start = None
         kick = False
         data_removed = 0
         data_length = 0
@@ -383,143 +517,7 @@ def do_gene(
         sequence_length = len(sequence)
         window_start = -1
 
-        for i, char in enumerate(sequence):
-            mismatch = mismatches
-            skip_first = 0
-
-            if i == sequence_length - offset:
-                kick = True
-                break
-
-            # Don't allow cull to point of all dashes
-            if char == "-":
-                continue
-            else:
-                window_start = i
-
-            if all_dashes_by_index[i]:
-                continue
-            if (
-                not character_at_each_pos[i].count(char) / len(character_at_each_pos[i])
-                >= match_percent
-            ):
-                skip_first = 1
-                if window_start == i:
-                    continue
-                else:
-                    mismatch -= 1
-
-            if mismatch < 0:
-                continue
-
-            pass_all = True
-            checks = amt_matches - 1
-            match_i = 1
-
-            while checks > 0:
-                if i + match_i >= len(sequence):
-                    pass_all = False
-                    break
-
-                if sequence[i + match_i] == "-":
-                    if gap_present_threshold[i + match_i]:
-                        pass_all = False
-                        break
-                    match_i += 1
-                elif (
-                    not character_at_each_pos[i + match_i].count(sequence[i + match_i])
-                    / len(character_at_each_pos[i + match_i])
-                    >= match_percent
-                ):
-                    mismatch -= 1
-                    if mismatch < 0 or sequence[i + match_i] == "*":
-                        pass_all = False
-                        break
-                    match_i += 1
-                    checks -= 1
-                else:
-                    match_i += 1
-                    checks -= 1
-
-            if pass_all:
-                cull_start = i + skip_first
-                
-                potential_trim = [True if let != "-" else not gap_present_threshold[i] for i, let in enumerate(sequence[cull_start:seq_end], cull_start)]
-                if sum(potential_trim) / len(potential_trim) < minimum_data:
-                    continue
-                
-                break
-
-        if not kick:
-            # If not kicked from Cull Start Calc. Continue
-            cull_end = None
-            window_end = -1
-            for i in range(len(sequence) - 1, -1, -1):
-                mismatch = mismatches
-                skip_last = 0
-
-                char = sequence[i]
-                if i < cull_start + offset:
-                    kick = True
-                    break
-                if char == "-":
-                    continue
-                else:
-                    window_end = i
-
-                if all_dashes_by_index[i]:
-                    # Don't allow cull to point of all dashes
-                    continue
-                if (
-                    not character_at_each_pos[i].count(char)
-                    / len(character_at_each_pos[i])
-                    >= match_percent
-                ):
-                    skip_last += 1
-                    if window_end == i:
-                        continue
-                    else:
-                        mismatch -= 1
-
-                if mismatch < 0:
-                    continue
-
-                pass_all = True
-                checks = amt_matches - 1
-                match_i = 1
-                while checks > 0:
-                    if i - match_i < 0:
-                        pass_all = False
-                        break
-
-                    if sequence[i - match_i] == "-":
-                        if gap_present_threshold[i - match_i]:
-                            pass_all = False
-                            break
-                        match_i += 1
-                    elif (
-                        not character_at_each_pos[i - match_i].count(
-                            sequence[i - match_i]
-                        )
-                        / len(character_at_each_pos[i - match_i])
-                        >= match_percent
-                    ):
-                        mismatch -= 1
-                        if mismatch < 0 or sequence[i - match_i] == "*":
-                            pass_all = False
-                            break
-                        match_i += 1
-                        checks -= 1
-                    else:
-                        match_i += 1
-                        checks -= 1
-
-                if pass_all:
-                    cull_end = i - skip_last + 1  # Inclusive
-                    potential_trim = [True if let != "-" else not gap_present_threshold[i] for i, let in enumerate(sequence[cull_start:cull_end], cull_start)]
-                    if sum(potential_trim) / len(potential_trim) < minimum_data:
-                        continue
-                    break
+        cull_start, cull_end, kick = do_cull(sequence, sequence_length, offset, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold, kick)
 
         if not kick:  # If also passed Cull End Calc. Finish
             out_line = ["-"] * cull_start + sequence[cull_start:cull_end]
@@ -589,12 +587,66 @@ def do_gene(
                     c for c in codons if c * 3 not in positions_to_trim
                 ]
 
-            out_line = "".join(
-                [
-                    let if i * 3 not in column_cull else "-"
-                    for i, let in enumerate(out_line)
-                ]
-            )
+            #Check from left internal gap
+            start,end = None,None
+            potential_internal = False
+            for i in range(cull_start, cull_end):
+                let = out_line[i]
+                if let != "-":
+                    if start is None:
+                        start = i
+                    elif potential_internal:
+                        end = i
+                else:
+                    if end is not None:
+                        break
+                    if start is not None:
+                        potential_internal = True
+            
+            if end is not None:
+                potential_trim = [True if let != "-" else not gap_present_threshold[i] for i, let in enumerate(sequence[start:end+1], start)]
+                if sum(potential_trim) / len(potential_trim) < minimum_data:
+                    for i in range(start, end+1):
+                        out_line[i] = "-"
+
+                left_cull_start, left_cull_end, kick = do_cull(out_line, len(out_line), offset, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold, kick)
+
+                if not kick:  # If also passed Cull End Calc. Finish
+                    out_line = ["-"] * left_cull_start + out_line[left_cull_start:left_cull_end]
+
+                    characters_till_end = sequence_length - len(out_line)
+                    out_line += ["-"] * characters_till_end
+
+            #Check from right internal gap
+            start,end = None,None
+            potential_internal = False
+            for i in range(cull_end+1, -1, -1):
+                let = out_line[i]
+                if let != "-":
+                    if start is None:
+                        start = i
+                    elif potential_internal:
+                        end = i
+                else:
+                    if end is not None:
+                        break
+                    if start is not None:
+                        potential_internal = True
+            
+            if end is not None:
+                potential_trim = [True if let != "-" else not gap_present_threshold[i] for i, let in enumerate(sequence[end:start+1], start)]
+                if sum(potential_trim) / len(potential_trim) < minimum_data:
+                    for i in range(end, start+1):
+                        out_line[i] = "-"
+
+                right_cull_start, right_cull_end, kick = do_cull(out_line, len(out_line), offset, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold, kick)
+
+                if not kick:  # If also passed Cull End Calc. Finish
+                    out_line = ["-"] * right_cull_start + out_line[right_cull_start:right_cull_end]
+
+                    characters_till_end = sequence_length - len(out_line)
+                    out_line += ["-"] * characters_till_end
+
             if kick:
                 follow_through[gene][header] = True, 0, 0, []
                 if debug:
@@ -602,6 +654,13 @@ def do_gene(
                         gene + "," + header + ",Kicked,Codon cull found no match,0,\n"
                     )
                 continue
+
+            out_line = "".join(
+                [
+                    let if i * 3 not in column_cull else "-"
+                    for i, let in enumerate(out_line)
+                ]
+            )
 
             # The cull replaces data positions with dashes to maintain the same alignment
             # while removing the bad data
