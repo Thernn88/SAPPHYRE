@@ -31,6 +31,7 @@ MainArgs = namedtuple(
         "gap_threshold",
         "mismatches",
         "column_cull",
+        "minimum_data",
     ],
 )
 
