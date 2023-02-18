@@ -620,7 +620,7 @@ def do_gene(
             #Check from right internal gap
             start,end = None,None
             potential_internal = False
-            for i in range(cull_end+1, -1, -1):
+            for i in range(cull_end-1, -1, -1):
                 let = out_line[i]
                 if let != "-":
                     if start is None:
@@ -634,7 +634,7 @@ def do_gene(
                         potential_internal = True
             
             if end is not None:
-                potential_trim = [True if let != "-" else not gap_present_threshold[i] for i, let in enumerate(sequence[end:start+1], start)]
+                potential_trim = [True if let != "-" else not gap_present_threshold[i] for i, let in enumerate(sequence[end:start+1], end)]
                 if sum(potential_trim) / len(potential_trim) < minimum_data:
                     for i in range(end, start+1):
                         out_line[i] = "-"
