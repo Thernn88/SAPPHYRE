@@ -227,7 +227,7 @@ def trim_around(
             cull_end = i + skip_first
             break
 
-    cull_start = starting_index -1
+    cull_start = starting_index 
     for i in range(starting_index - 1, -1, -1):
         mismatch = mismatches
         skip_last = 0
@@ -522,7 +522,6 @@ def do_gene(
                     break
 
         if not kick:  # If also passed Cull End Calc. Finish
-            data_before = len(sequence) - sequence.count("-")
             out_line = ["-"] * cull_start + sequence[cull_start:cull_end]
 
             characters_till_end = sequence_length - len(out_line)
@@ -530,11 +529,10 @@ def do_gene(
 
             positions_to_trim = set()
             codons = []
-            if (len(out_line) - out_line.count("-")) != data_before:
-                for i in range(cull_start, cull_end):
-                    char = out_line[i]
-                    if char == "*":
-                        codons.append(i)
+            for i in range(cull_start, cull_end):
+                char = out_line[i]
+                if char == "*":
+                    codons.append(i)
 
             non_trimmed_codons = [c for c in codons if c * 3 not in positions_to_trim]
             while non_trimmed_codons:
