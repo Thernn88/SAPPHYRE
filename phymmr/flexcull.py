@@ -515,7 +515,6 @@ def do_gene(
         data_length = 0
 
         sequence_length = len(sequence)
-        window_start = -1
 
         cull_start, cull_end, kick = do_cull(sequence, sequence_length, offset, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold, kick)
 
@@ -587,65 +586,33 @@ def do_gene(
                     c for c in codons if c * 3 not in positions_to_trim
                 ]
 
-            #Check from left internal gap
-            start,end = None,None
-            potential_internal = False
-            for i in range(cull_start, cull_end):
-                let = out_line[i]
-                if let != "-":
-                    if start is None:
-                        start = i
-                    elif potential_internal:
-                        end = i
-                else:
-                    if end is not None:
-                        break
-                    if start is not None:
-                        potential_internal = True
-            
-            if end is not None:
-                potential_trim = [True if let != "-" else not gap_present_threshold[i] for i, let in enumerate(sequence[start:end+1], start)]
-                if sum(potential_trim) / len(potential_trim) < minimum_data:
-                    for i in range(start, end+1):
-                        out_line[i] = "-"
-
-                left_cull_start, left_cull_end, kick = do_cull(out_line, len(out_line), offset, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold, kick)
-
-                if not kick:  # If also passed Cull End Calc. Finish
-                    out_line = ["-"] * left_cull_start + out_line[left_cull_start:left_cull_end]
-
-                    characters_till_end = sequence_length - len(out_line)
-                    out_line += ["-"] * characters_till_end
-
-            #Check from right internal gap
-            start,end = None,None
-            potential_internal = False
-            for i in range(cull_end-1, -1, -1):
-                let = out_line[i]
-                if let != "-":
-                    if start is None:
-                        start = i
-                    elif potential_internal:
-                        end = i
-                else:
-                    if end is not None:
-                        break
-                    if start is not None:
-                        potential_internal = True
-            
-            if end is not None:
-                potential_trim = [True if let != "-" else not gap_present_threshold[i] for i, let in enumerate(sequence[end:start+1], end)]
-                if sum(potential_trim) / len(potential_trim) < minimum_data:
-                    for i in range(end, start+1):
-                        out_line[i] = "-"
-
-                right_cull_start, right_cull_end, kick = do_cull(out_line, len(out_line), offset, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold, kick)
-
-                if not kick:  # If also passed Cull End Calc. Finish
-                    out_line = ["-"] * right_cull_start + out_line[right_cull_start:right_cull_end]
-
-                    characters_till_end = sequence_length - len(out_line)
-                    out_line += ["-"] * characters_till_end
+            dash_count = 0
+            trim_happened = True
+            while trim_happened:
+                trim_happened = False
+                for i, let in enumerate(out_line[cull_start:], cull_start):
+                    if let == "-":
+                        dash_count += 1
+                        if dash_count >= 3:
+                            positions = trim_around(
+                                i-1,
+                                cull_start,
+                                cull_end,
+                                out_line,
+                                amt_matches,
+                                mismatches,
+                                match_percent,
+                                all_dashes_by_index,
+                                character_at_each_pos,
+                                gap_present_threshold,
+                            )
+                            for x in positions:
+                                if x * 3 not in positions_to_trim:
+                                    trim_happened = True
+                                    positions_to_trim.add(x * 3)
+                                    out_line[x] = "-"
+                    else:
+                        dash_count = 0
 
             if kick:
                 follow_through[gene][header] = True, 0, 0, []
