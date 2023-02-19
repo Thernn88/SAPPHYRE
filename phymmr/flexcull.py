@@ -166,7 +166,7 @@ def trim_around(
     all_dashes_by_index,
     character_at_each_pos,
     gap_present_threshold,
-) -> None:
+) -> tuple:
     """
     Trim around a given position in a sequence
     """
@@ -611,6 +611,7 @@ def do_gene(
                                     trim_happened = True
                                     positions_to_trim.add(x * 3)
                                     out_line[x] = "-"
+                            break
                     else:
                         dash_count = 0
 
