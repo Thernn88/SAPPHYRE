@@ -586,6 +586,51 @@ def do_gene(
                     c for c in codons if c * 3 not in positions_to_trim
                 ]
 
+            # dash_count = 0
+            # trim_happened = True
+            # while trim_happened:
+            #     trim_happened = False
+            #     for i, let in enumerate(out_line[cull_start:], cull_start):
+            #         if let == "-":
+            #             dash_count += 1
+            #             if dash_count >= 3:
+            #                 positions = trim_around(
+            #                     i-1,
+            #                     cull_start,
+            #                     cull_end,
+            #                     out_line,
+            #                     amt_matches,
+            #                     mismatches,
+            #                     match_percent,
+            #                     all_dashes_by_index,
+            #                     character_at_each_pos,
+            #                     gap_present_threshold,
+            #                 )
+            #                 for x in positions:
+            #                     if x * 3 not in positions_to_trim:
+            #                         trim_happened = True
+            #                         positions_to_trim.add(x * 3)
+            #                         out_line[x] = "-"
+            #                 break
+            #         else:
+            #             dash_count = 0
+
+            if kick:
+                follow_through[gene][header] = True, 0, 0, []
+                if debug:
+                    log.append(
+                        gene + "," + header + ",Kicked,Codon cull found no match,0,\n"
+                    )
+                continue
+
+            out_line =[
+                    let if i * 3 not in column_cull else "-"
+                    for i, let in enumerate(out_line)
+                ]
+            
+            # The cull replaces data positions with dashes to maintain the same alignment
+            # while removing the bad data
+
             dash_count = 0
             trim_happened = True
             while trim_happened:
@@ -614,25 +659,8 @@ def do_gene(
                             break
                     else:
                         dash_count = 0
-
-            if kick:
-                follow_through[gene][header] = True, 0, 0, []
-                if debug:
-                    log.append(
-                        gene + "," + header + ",Kicked,Codon cull found no match,0,\n"
-                    )
-                continue
-
-            out_line = "".join(
-                [
-                    let if i * 3 not in column_cull else "-"
-                    for i, let in enumerate(out_line)
-                ]
-            )
-
-            # The cull replaces data positions with dashes to maintain the same alignment
-            # while removing the bad data
-
+            out_line = "".join(out_line)
+            
             data_length = cull_end - cull_start
             bp_after_cull = len(out_line) - out_line.count("-")
 
