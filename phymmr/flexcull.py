@@ -721,6 +721,8 @@ def do_gene(
                         right_of_trim_data_columns = len(right_after) - right_after.count("-")
 
                         #If both sides kicked and sequence ends up being empty keep the side with the most bp.
+                        keep_left = True
+                        keep_right = True
                         if get_data_difference(
                                 left_of_trim_data_columns, left_side_ref_data_columns
                             ) < 0.55 and get_data_difference(
