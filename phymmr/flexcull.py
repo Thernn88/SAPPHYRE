@@ -720,11 +720,20 @@ def do_gene(
                         )
                         right_of_trim_data_columns = len(right_after) - right_after.count("-")
 
+                        #If both sides kicked and sequence ends up being empty keep the side with the most bp.
+                        if get_data_difference(
+                                left_of_trim_data_columns, left_side_ref_data_columns
+                            ) < 0.55 and get_data_difference(
+                                right_of_trim_data_columns, right_side_ref_data_columns
+                            ) < 0.55:
+                            keep_left = True if len(left_after) - left_after.count("-") >= len(right_after) - right_after.count("-") else False
+                            keep_right = not keep_left
+
                         if (
                             get_data_difference(
                                 left_of_trim_data_columns, left_side_ref_data_columns
                             )
-                            < 0.55
+                            < 0.55 and not keep_left
                         ):  # candidate has less than % of data columns compared to reference
                             for x in range(seq_start, i):
                                 positions_to_trim.add(x * 3)
@@ -732,7 +741,7 @@ def do_gene(
                         if (
                             get_data_difference(
                                 right_of_trim_data_columns, right_side_ref_data_columns
-                            )
+                            ) and not keep_right
                             < 0.55
                         ):
                             for x in range(i, seq_end):
