@@ -166,6 +166,7 @@ def trim_around(
     all_dashes_by_index,
     character_at_each_pos,
     gap_present_threshold,
+    debug = False
 ) -> tuple:
     """
     Trim around a given position in a sequence
@@ -681,9 +682,21 @@ def do_gene(
         else:
             break
             
+    post_gap_present_threshold = {}
+    post_all_dashes_by_index = {}
+    post_character_at_each_pos = {}
     for col, letters in reference_cols.items():
-        if letters.count("-") / len(letters) >= gap_threshold:
+        gaps_present = letters.count("-") / len(letters)
+        data_present = 1 - gaps_present
+        post_gap_present_threshold[col] = data_present >= gap_threshold
+        if gaps_present >= gap_threshold:
             reference_gap_col.add(col)
+        if gaps_present == 1:
+            post_all_dashes_by_index[col] = True
+        else:
+            post_all_dashes_by_index[col] = False
+        post_character_at_each_pos[col] = letters
+        
 
     if debug:
         aa_out = [("Reference Gap Columns DEBUG.", "".join(["#" if i in reference_gap_col else "-" for i in reference_cols.keys()]))] + aa_out
@@ -713,9 +726,10 @@ def do_gene(
                             amt_matches,
                             mismatches,
                             match_percent,
-                            all_dashes_by_index,
-                            character_at_each_pos,
-                            gap_present_threshold,
+                            post_all_dashes_by_index,
+                            post_character_at_each_pos,
+                            post_gap_present_threshold,
+                            header == "EOG091G038X|Drosophila_melanogaster|SRR13162768|NODE_293311|[revcomp]:[translate(2)]"
                         )
                         for x in positions:
                             gap_cull.add(x * 3)
