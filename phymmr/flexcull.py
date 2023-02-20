@@ -6,7 +6,7 @@ PyLint 9.81/10
 from __future__ import annotations
 
 import os
-from collections import namedtuple
+from collections import Counter, namedtuple
 from itertools import chain
 from multiprocessing.pool import Pool
 from shutil import rmtree
@@ -675,6 +675,16 @@ def do_gene(
         return log  # Only refs
     
     #Internal gap cull
+    reference_gap_col_counter = Counter()
+    reference_gap_col = set()
+    reference_count = len(references)
+    for header, sequence in references:
+        for i, let in enumerate(sequence):
+            if let == "-":
+                reference_gap_col_counter[i] += 1
+    for count, col in reference_gap_col_counter.most_common():
+        if count / reference_count >= (1 - column_cull_percent):
+            reference_gap_col.add(col)
     for record_index, record in enumerate(aa_out):
         header, sequence = record
         if not header.endswith("."):
@@ -685,7 +695,8 @@ def do_gene(
             out_line = list(sequence)
             for j, let in enumerate(out_line[seq_start:seq_end+1], seq_start):
                 if let == "-":
-                    dash_count += 1
+                    if not j in reference_gap_col:
+                        dash_count += 1
                 else:
                     if dash_count >= 3:
                         i = j-(dash_count//2)
