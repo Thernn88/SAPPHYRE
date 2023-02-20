@@ -432,6 +432,24 @@ def do_cull(sequence, sequence_length, offset, amt_matches, mismatches, match_pe
 
     return cull_start, cull_end, kick
 
+
+def get_start_end(sequence: str) -> tuple:
+    """
+    Returns the start and end of the sequence
+    """
+    start = 0
+    end = len(sequence)
+    for i, char in enumerate(sequence):
+        if char != "-":
+            start = i
+            break
+    for i, char in enumerate(sequence[::-1]):
+        if char != "-":
+            end = len(sequence) - i
+            break
+    return start, end
+
+
 def do_gene(
     aa_input: str,
     nt_input: str,
@@ -660,11 +678,12 @@ def do_gene(
     for record_index, record in enumerate(aa_out):
         header, sequence = record
         if not header.endswith("."):
-            kick, cull_start, cull_end, positions_to_trim = follow_through[gene][header]
+            kick, cull_start, seq_end, positions_to_trim = follow_through[gene][header]
+            seq_start, seq_end = get_start_end(sequence)
             change_made = False
             dash_count = 0
             out_line = list(sequence)
-            for j, let in enumerate(out_line[cull_start:cull_end+1], cull_start):
+            for j, let in enumerate(out_line[seq_start:seq_end+1], seq_start):
                 if let == "-":
                     dash_count += 1
                 else:
@@ -672,8 +691,8 @@ def do_gene(
                         i = j-(dash_count//2)
                         positions = trim_around(
                             i,
-                            cull_start,
-                            cull_end,
+                            seq_start,
+                            seq_end,
                             out_line,
                             amt_matches,
                             mismatches,
@@ -688,16 +707,16 @@ def do_gene(
                                 positions_to_trim.add(x * 3)
                                 out_line[x] = "-"
 
-                        left_after = out_line[cull_start:i]
-                        right_after = out_line[i:cull_end]
+                        left_after = out_line[seq_start:i]
+                        right_after = out_line[i:seq_end]
 
                         left_side_ref_data_columns = sum(
-                            [gap_present_threshold[x] for x in range(cull_start, i)]
+                            [gap_present_threshold[x] for x in range(seq_start, i)]
                         )
                         left_of_trim_data_columns = len(left_after) - left_after.count("-")
 
                         right_side_ref_data_columns = sum(
-                            [gap_present_threshold[x] for x in range(i, cull_end)]
+                            [gap_present_threshold[x] for x in range(i, seq_end)]
                         )
                         right_of_trim_data_columns = len(right_after) - right_after.count("-")
 
@@ -707,7 +726,7 @@ def do_gene(
                             )
                             < 0.55
                         ):  # candidate has less than % of data columns compared to reference
-                            for x in range(cull_start, i):
+                            for x in range(seq_start, i):
                                 positions_to_trim.add(x * 3)
                                 out_line[x] = "-"
                         if (
@@ -716,52 +735,77 @@ def do_gene(
                             )
                             < 0.55
                         ):
-                            for x in range(i, cull_end):
+                            for x in range(i, seq_end):
                                 positions_to_trim.add(x * 3)
                                 out_line[x] = "-"
                     
                     dash_count = 0
             if change_made:
-                aa_out[record_index] = (header, "".join(out_line))
-                follow_through[gene][header] = kick, cull_start, cull_end, positions_to_trim
+                data_length = seq_end - seq_start
+                bp_after_cull = len(out_line) - out_line.count("-")
+                if bp_after_cull < bp:
+                    if debug:
+                        removed_section = sequence[:seq_start] + sequence[seq_end:]
+                        data_removed = len(removed_section) - removed_section.count("-")
+                        log.append(
+                            gene
+                            + ","
+                            + header
+                            + ","
+                            + str(cull_start)
+                            + ","
+                            + str(cull_end)
+                            + ","
+                            + str(data_length)
+                            + ","
+                            + str(data_removed)
+                            + "\n"
+                        )
+                    follow_through[gene][header] = True, None, None, None
+                    aa_out[record_index] = None
+                else:
+                    aa_out[record_index] = (header, "".join(out_line))
+                    follow_through[gene][header] = kick, seq_start, seq_end, positions_to_trim
 
-    writeFasta(aa_out_path, aa_out, compress)
+    aa_out = [i for i in aa_out if i is not None]
+    if len(aa_out) != len(references):
+        writeFasta(aa_out_path, aa_out, compress)
 
-    nt_file_name = make_nt(aa_file)
-    gene_path = os.path.join(nt_input, nt_file_name)
+        nt_file_name = make_nt(aa_file)
+        gene_path = os.path.join(nt_input, nt_file_name)
 
-    references, candidates = parse_fasta(gene_path)
+        references, candidates = parse_fasta(gene_path)
 
-    nt_out_path = os.path.join(output, "nt", nt_file_name.rstrip(".gz"))
-    nt_out = references.copy()
-    for header, sequence in candidates:
-        gene = header.split("|")[0]
-        kick, cull_start, cull_end, positions_to_trim = follow_through[gene][header]
+        nt_out_path = os.path.join(output, "nt", nt_file_name.rstrip(".gz"))
+        nt_out = references.copy()
+        for header, sequence in candidates:
+            gene = header.split("|")[0]
+            kick, cull_start, cull_end, positions_to_trim = follow_through[gene][header]
 
-        if not kick:
-            cull_start_adjusted = cull_start * 3
-            cull_end_adjusted = cull_end * 3
+            if not kick:
+                cull_start_adjusted = cull_start * 3
+                cull_end_adjusted = cull_end * 3
 
-            out_line = ("-" * cull_start_adjusted) + sequence[
-                cull_start_adjusted:cull_end_adjusted
-            ]
+                out_line = ("-" * cull_start_adjusted) + sequence[
+                    cull_start_adjusted:cull_end_adjusted
+                ]
 
-            characters_till_end = len(sequence) - len(out_line)
-            out_line += (
-                "-" * characters_till_end
-            )  # Add dashes till reached input distance
+                characters_till_end = len(sequence) - len(out_line)
+                out_line += (
+                    "-" * characters_till_end
+                )  # Add dashes till reached input distance
 
-            out_line = [
-                out_line[i : i + 3]
-                if i not in positions_to_trim and i not in column_cull
-                else "---"
-                for i in range(0, len(out_line), 3)
-            ]
-            out_line = "".join(out_line)
+                out_line = [
+                    out_line[i : i + 3]
+                    if i not in positions_to_trim and i not in column_cull
+                    else "---"
+                    for i in range(0, len(out_line), 3)
+                ]
+                out_line = "".join(out_line)
 
-            nt_out.append((header, out_line))
-    nt_out = align_col_removal(nt_out, aa_positions_to_keep)
-    writeFasta(nt_out_path, nt_out, compress)
+                nt_out.append((header, out_line))
+        nt_out = align_col_removal(nt_out, aa_positions_to_keep)
+        writeFasta(nt_out_path, nt_out, compress)
 
     return log
 
