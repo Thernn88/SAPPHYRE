@@ -755,8 +755,7 @@ def do_gene(
                         if (
                             get_data_difference(
                                 right_of_trim_data_columns, right_side_ref_data_columns
-                            ) and not keep_right
-                            < 0.55
+                            ) < 0.55 and not keep_right
                         ):
                             for x in range(i, seq_end):
                                 positions_to_trim.add(x * 3)
