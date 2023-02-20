@@ -715,7 +715,6 @@ def do_gene(
                         )
                         for x in positions:
                             if x * 3 not in positions_to_trim:
-                                change_made = True
                                 positions_to_trim.add(x * 3)
                                 out_line[x] = "-"
 
@@ -733,8 +732,8 @@ def do_gene(
                         right_of_trim_data_columns = len(right_after) - right_after.count("-")
 
                         #If both sides kicked and sequence ends up being empty keep the side with the most bp.
-                        keep_left = True
-                        keep_right = True
+                        keep_left = False
+                        keep_right = False
                         if get_data_difference(
                                 left_of_trim_data_columns, left_side_ref_data_columns
                             ) < 0.55 and get_data_difference(
@@ -760,6 +759,7 @@ def do_gene(
                             for x in range(i, seq_end):
                                 positions_to_trim.add(x * 3)
                                 out_line[x] = "-"
+                        change_made = True
                     
                     dash_count = 0
             if change_made:
