@@ -586,35 +586,6 @@ def do_gene(
                     c for c in codons if c * 3 not in positions_to_trim
                 ]
 
-            # dash_count = 0
-            # trim_happened = True
-            # while trim_happened:
-            #     trim_happened = False
-            #     for i, let in enumerate(out_line[cull_start:], cull_start):
-            #         if let == "-":
-            #             dash_count += 1
-            #             if dash_count >= 3:
-            #                 positions = trim_around(
-            #                     i-1,
-            #                     cull_start,
-            #                     cull_end,
-            #                     out_line,
-            #                     amt_matches,
-            #                     mismatches,
-            #                     match_percent,
-            #                     all_dashes_by_index,
-            #                     character_at_each_pos,
-            #                     gap_present_threshold,
-            #                 )
-            #                 for x in positions:
-            #                     if x * 3 not in positions_to_trim:
-            #                         trim_happened = True
-            #                         positions_to_trim.add(x * 3)
-            #                         out_line[x] = "-"
-            #                 break
-            #         else:
-            #             dash_count = 0
-
             if kick:
                 follow_through[gene][header] = True, 0, 0, []
                 if debug:
@@ -631,34 +602,6 @@ def do_gene(
             # The cull replaces data positions with dashes to maintain the same alignment
             # while removing the bad data
 
-            dash_count = 0
-            trim_happened = True
-            while trim_happened:
-                trim_happened = False
-                for i, let in enumerate(out_line[cull_start:], cull_start):
-                    if let == "-":
-                        dash_count += 1
-                        if dash_count >= 3:
-                            positions = trim_around(
-                                i-1,
-                                cull_start,
-                                cull_end,
-                                out_line,
-                                amt_matches,
-                                mismatches,
-                                match_percent,
-                                all_dashes_by_index,
-                                character_at_each_pos,
-                                gap_present_threshold,
-                            )
-                            for x in positions:
-                                if x * 3 not in positions_to_trim:
-                                    trim_happened = True
-                                    positions_to_trim.add(x * 3)
-                                    out_line[x] = "-"
-                            break
-                    else:
-                        dash_count = 0
             out_line = "".join(out_line)
             
             data_length = cull_end - cull_start
@@ -712,6 +655,42 @@ def do_gene(
     aa_out, aa_positions_to_keep = delete_empty_columns(aa_out, False)
     if len(aa_out) == len(references):
         return log  # Only refs
+    
+    #Internal gap cull
+    for record_index, record in enumerate(aa_out):
+        header, sequence = record
+        if not header.endswith("."):
+            kick, cull_start, cull_end, positions_to_trim = follow_through[gene][header]
+            change_made = False
+            dash_count = 0
+            out_line = list(sequence)
+            for i, let in enumerate(out_line[cull_start:cull_end+1], cull_start):
+                if let == "-":
+                    dash_count += 1
+                else:
+                    if dash_count >= 3:
+                        positions = trim_around(
+                            i-(dash_count//2),
+                            cull_start,
+                            cull_end,
+                            out_line,
+                            amt_matches,
+                            mismatches,
+                            match_percent,
+                            all_dashes_by_index,
+                            character_at_each_pos,
+                            gap_present_threshold,
+                        )
+                        for x in positions:
+                            if x * 3 not in positions_to_trim:
+                                change_made = True
+                                positions_to_trim.add(x * 3)
+                                out_line[x] = "-"
+                    
+                    dash_count = 0
+            if change_made:
+                aa_out[record_index] = (header, "".join(out_line))
+                follow_through[gene][header] = kick, cull_start, cull_end, positions_to_trim
 
     writeFasta(aa_out_path, aa_out, compress)
 
