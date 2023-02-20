@@ -799,11 +799,9 @@ def do_gene(
                             + str(data_removed)
                             + "\n"
                         )
-                    follow_through[header] = True, None, None, None
                     aa_out[record_index] = None
                 else:
                     aa_out[record_index] = (header, "".join(out_line))
-                    follow_through[header] = kick, seq_start, seq_end, positions_to_trim
                 
                 gap_pass_through[header] = gap_cull
 
