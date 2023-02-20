@@ -799,6 +799,7 @@ def do_gene(
                             + str(data_removed)
                             + "\n"
                         )
+                    follow_through[header] = True, None, None, None
                     aa_out[record_index] = None
                 else:
                     aa_out[record_index] = (header, "".join(out_line))
