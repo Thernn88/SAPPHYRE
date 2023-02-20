@@ -672,16 +672,21 @@ def do_gene(
         return log  # Only refs
     
     #Internal gap cull
-    reference_gap_col_counter = Counter()
+    reference_cols = {}
     reference_gap_col = set()
-    reference_count = len(references)
-    for header, sequence in references:
-        for i, let in enumerate(sequence):
-            if let == "-":
-                reference_gap_col_counter[i] += 1
-    for col, count in reference_gap_col_counter.most_common():
-        if count / reference_count >= gap_threshold:
+    for header, sequence in aa_out:
+        if header.endswith("."):
+            for i, let in enumerate(sequence):
+                reference_cols.setdefault(i, []).append(let)
+        else:
+            break
+            
+    for col, letters in reference_cols.items():
+        if letters.count("-") / len(letters) >= gap_threshold:
             reference_gap_col.add(col)
+
+    if debug:
+        aa_out = [("Reference Gap Columns DEBUG.", "".join(["#" if i in reference_gap_col else "-" for i in reference_cols.keys()]))] + aa_out
 
     gap_pass_through = {}
     for record_index, record in enumerate(aa_out):
@@ -718,7 +723,6 @@ def do_gene(
 
                         left_after = out_line[seq_start:i]
                         right_after = out_line[i:seq_end]
-
                         left_side_ref_data_columns = sum(
                             [gap_present_threshold[x] for x in range(seq_start, i)]
                         )
