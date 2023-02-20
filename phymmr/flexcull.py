@@ -664,13 +664,14 @@ def do_gene(
             change_made = False
             dash_count = 0
             out_line = list(sequence)
-            for i, let in enumerate(out_line[cull_start:cull_end+1], cull_start):
+            for j, let in enumerate(out_line[cull_start:cull_end+1], cull_start):
                 if let == "-":
                     dash_count += 1
                 else:
                     if dash_count >= 3:
+                        i = j-(dash_count//2)
                         positions = trim_around(
-                            i-(dash_count//2),
+                            i,
                             cull_start,
                             cull_end,
                             out_line,
@@ -684,6 +685,38 @@ def do_gene(
                         for x in positions:
                             if x * 3 not in positions_to_trim:
                                 change_made = True
+                                positions_to_trim.add(x * 3)
+                                out_line[x] = "-"
+
+                        left_after = out_line[cull_start:i]
+                        right_after = out_line[i:cull_end]
+
+                        left_side_ref_data_columns = sum(
+                            [gap_present_threshold[x] for x in range(cull_start, i)]
+                        )
+                        left_of_trim_data_columns = len(left_after) - left_after.count("-")
+
+                        right_side_ref_data_columns = sum(
+                            [gap_present_threshold[x] for x in range(i, cull_end)]
+                        )
+                        right_of_trim_data_columns = len(right_after) - right_after.count("-")
+
+                        if (
+                            get_data_difference(
+                                left_of_trim_data_columns, left_side_ref_data_columns
+                            )
+                            < 0.55
+                        ):  # candidate has less than % of data columns compared to reference
+                            for x in range(cull_start, i):
+                                positions_to_trim.add(x * 3)
+                                out_line[x] = "-"
+                        if (
+                            get_data_difference(
+                                right_of_trim_data_columns, right_side_ref_data_columns
+                            )
+                            < 0.55
+                        ):
+                            for x in range(i, cull_end):
                                 positions_to_trim.add(x * 3)
                                 out_line[x] = "-"
                     
