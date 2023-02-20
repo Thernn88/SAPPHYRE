@@ -682,9 +682,10 @@ def do_gene(
         for i, let in enumerate(sequence):
             if let == "-":
                 reference_gap_col_counter[i] += 1
-    for count, col in reference_gap_col_counter.most_common():
-        if count / reference_count >= (1 - column_cull_percent):
+    for col, count in reference_gap_col_counter.most_common():
+        if count / reference_count >= gap_threshold:
             reference_gap_col.add(col)
+
     for record_index, record in enumerate(aa_out):
         header, sequence = record
         if not header.endswith("."):
