@@ -716,7 +716,7 @@ def do_gene(
                     if not j in reference_gap_col:
                         dash_count += 1
                 else:
-                    if dash_count >= 3:
+                    if dash_count >= 5:
                         i = j-(dash_count//2)
                         positions = trim_around(
                             i,
@@ -729,7 +729,6 @@ def do_gene(
                             post_all_dashes_by_index,
                             post_character_at_each_pos,
                             post_gap_present_threshold,
-                            header == "EOG091G038X|Drosophila_melanogaster|SRR13162768|NODE_293311|[revcomp]:[translate(2)]"
                         )
                         for x in positions:
                             gap_cull.add(x * 3)
