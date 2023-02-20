@@ -525,9 +525,6 @@ def do_gene(
 
         gene = header.split("|")[0]
 
-        if gene not in follow_through:
-            follow_through[gene] = {}
-
         kick = False
         data_removed = 0
         data_length = 0
@@ -605,7 +602,7 @@ def do_gene(
                 ]
 
             if kick:
-                follow_through[gene][header] = True, 0, 0, []
+                follow_through[header] = True, 0, 0, []
                 if debug:
                     log.append(
                         gene + "," + header + ",Kicked,Codon cull found no match,0,\n"
@@ -626,7 +623,7 @@ def do_gene(
             bp_after_cull = len(out_line) - out_line.count("-")
 
             if bp_after_cull >= bp:
-                follow_through[gene][header] = (
+                follow_through[header] = (
                     False,
                     cull_start,
                     cull_end,
@@ -653,7 +650,7 @@ def do_gene(
                         + "\n"
                     )
             else:
-                follow_through[gene][header] = True, 0, 0, []
+                follow_through[header] = True, 0, 0, []
                 if debug:
                     log.append(
                         gene
@@ -664,7 +661,7 @@ def do_gene(
                         + ",\n"
                     )
         if kick:
-            follow_through[gene][header] = True, 0, 0, []
+            follow_through[header] = True, 0, 0, []
 
             if debug:
                 log.append(gene + "," + header + ",Kicked,Zero Data After Cull,0,\n")
@@ -686,10 +683,12 @@ def do_gene(
         if count / reference_count >= gap_threshold:
             reference_gap_col.add(col)
 
+    gap_pass_through = {}
     for record_index, record in enumerate(aa_out):
         header, sequence = record
         if not header.endswith("."):
-            kick, cull_start, seq_end, positions_to_trim = follow_through[gene][header]
+            gap_cull = set()
+            kick, cull_start, seq_end, positions_to_trim = follow_through[header]
             seq_start, seq_end = get_start_end(sequence)
             change_made = False
             dash_count = 0
@@ -714,9 +713,8 @@ def do_gene(
                             gap_present_threshold,
                         )
                         for x in positions:
-                            if x * 3 not in positions_to_trim:
-                                positions_to_trim.add(x * 3)
-                                out_line[x] = "-"
+                            gap_cull.add(x * 3)
+                            out_line[x] = "-"
 
                         left_after = out_line[seq_start:i]
                         right_after = out_line[i:seq_end]
@@ -749,7 +747,7 @@ def do_gene(
                             < 0.55 and not keep_left
                         ):  # candidate has less than % of data columns compared to reference
                             for x in range(seq_start, i):
-                                positions_to_trim.add(x * 3)
+                                gap_cull.add(x * 3)
                                 out_line[x] = "-"
                         if (
                             get_data_difference(
@@ -757,7 +755,7 @@ def do_gene(
                             ) < 0.55 and not keep_right
                         ):
                             for x in range(i, seq_end):
-                                positions_to_trim.add(x * 3)
+                                gap_cull.add(x * 3)
                                 out_line[x] = "-"
                         change_made = True
                     
@@ -783,11 +781,13 @@ def do_gene(
                             + str(data_removed)
                             + "\n"
                         )
-                    follow_through[gene][header] = True, None, None, None
+                    follow_through[header] = True, None, None, None
                     aa_out[record_index] = None
                 else:
                     aa_out[record_index] = (header, "".join(out_line))
-                    follow_through[gene][header] = kick, seq_start, seq_end, positions_to_trim
+                    follow_through[header] = kick, seq_start, seq_end, positions_to_trim
+                
+                gap_pass_through[header] = gap_cull
 
     aa_out = [i for i in aa_out if i is not None]
     if len(aa_out) != len(references):
@@ -802,7 +802,7 @@ def do_gene(
         nt_out = references.copy()
         for header, sequence in candidates:
             gene = header.split("|")[0]
-            kick, cull_start, cull_end, positions_to_trim = follow_through[gene][header]
+            kick, cull_start, cull_end, positions_to_trim = follow_through[header]
 
             if not kick:
                 cull_start_adjusted = cull_start * 3
@@ -827,7 +827,15 @@ def do_gene(
 
                 nt_out.append((header, out_line))
         nt_out = align_col_removal(nt_out, aa_positions_to_keep)
-        writeFasta(nt_out_path, nt_out, compress)
+        out_nt = []
+        for header,sequence in nt_out:
+            gap_cull = gap_pass_through.get(header, None)
+            if gap_cull:
+                out_nt.append((header,"".join([sequence[i:i+3] if i not in gap_cull else "---" for i in range(0, len(sequence), 3)])))
+            else:
+                out_nt.append((header,sequence))
+
+        writeFasta(nt_out_path, out_nt, compress)
 
     return log
 
