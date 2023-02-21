@@ -717,7 +717,7 @@ def do_gene(
                         non_ref_gap_dash_count += 1
                     raw_dash_count += 1
                 else:
-                    if non_ref_gap_dash_count >= 5:
+                    if non_ref_gap_dash_count >= 11:
                         i = j-(raw_dash_count//2)
                         positions = trim_around(
                             i,
