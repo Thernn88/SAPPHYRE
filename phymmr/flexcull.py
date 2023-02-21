@@ -166,7 +166,6 @@ def trim_around(
     all_dashes_by_index,
     character_at_each_pos,
     gap_present_threshold,
-    debug = False
 ) -> tuple:
     """
     Trim around a given position in a sequence
@@ -709,15 +708,17 @@ def do_gene(
             kick, cull_start, seq_end, positions_to_trim = follow_through[header]
             seq_start, seq_end = get_start_end(sequence)
             change_made = False
-            dash_count = 0
+            non_ref_gap_dash_count = 0
+            raw_dash_count = 0
             out_line = list(sequence)
             for j, let in enumerate(out_line[seq_start:seq_end+1], seq_start):
                 if let == "-":
                     if not j in reference_gap_col:
-                        dash_count += 1
+                        non_ref_gap_dash_count += 1
+                    raw_dash_count += 1
                 else:
-                    if dash_count >= 5:
-                        i = j-(dash_count//2)
+                    if non_ref_gap_dash_count >= 5:
+                        i = j-(raw_dash_count//2)
                         positions = trim_around(
                             i,
                             seq_start,
@@ -749,6 +750,7 @@ def do_gene(
                         #If both sides kicked and sequence ends up being empty keep the side with the most bp.
                         keep_left = False
                         keep_right = False
+                        
                         if get_data_difference(
                                 left_of_trim_data_columns, left_side_ref_data_columns
                             ) < 0.55 and get_data_difference(
@@ -776,7 +778,8 @@ def do_gene(
                                 out_line[x] = "-"
                         change_made = True
                     
-                    dash_count = 0
+                    non_ref_gap_dash_count = 0
+                    raw_dash_count = 0
             if change_made:
                 data_length = seq_end - seq_start
                 bp_after_cull = len(out_line) - out_line.count("-")
@@ -788,12 +791,8 @@ def do_gene(
                             gene
                             + ","
                             + header
-                            + ","
-                            + str(cull_start)
-                            + ","
-                            + str(cull_end)
-                            + ","
-                            + str(data_length)
+                            + ",Not enough BP after gap cull,,"
+                            + str(bp_after_cull)
                             + ","
                             + str(data_removed)
                             + "\n"
