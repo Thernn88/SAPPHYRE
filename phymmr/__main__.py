@@ -128,7 +128,7 @@ def subcmd_diamond(subparsers):
         "--top-ref",
         type=float,
         default=0.1,
-        help="Dynamically adjusts % of hits a reference is less than our top 5 and still a good ref.",
+        help="Dynamically adjusts %% of hits a reference is less than our top 5 and still a good ref.",
     )
     par.add_argument(
         "-ip",
