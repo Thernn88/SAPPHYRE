@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 
 from itertools import count
 from pathlib import Path
 from queue import Queue
 from shutil import rmtree
+import subprocess
+from tempfile import NamedTemporaryFile
 from time import time
 from typing import Any, Callable, Dict, Generator, List, Tuple
 
@@ -16,7 +19,7 @@ import xxhash
 from tqdm import tqdm
 
 from .timekeeper import TimeKeeper, KeeperMode
-from .utils import ConcurrentLogger, parseFasta, writeFasta
+from .utils import ConcurrentLogger, gettempdir, parseFasta, writeFasta
 
 ROCKSDB_FOLDER_NAME = "rocksdb"
 SEQUENCES_FOLDER_NAME = "sequences"
@@ -114,13 +117,14 @@ def glob_for_fasta_and_save_for_runs(
 
 class SeqDeduplicator:
     def __init__(
-        self, fa_file_path: Path, db: Any, minimum_sequence_length: int, verbose: int
+        self, fa_file_path: Path, temp_path: str, db: Any, minimum_sequence_length: int, verbose: int
     ):
         self.fa_file_path = fa_file_path
         self.minimum_sequence_length = minimum_sequence_length
         self.verbose = verbose
         self.nt_db = db
         self.recipe = []
+        self.temp_path = temp_path
 
     def __call__(
         self,
@@ -132,83 +136,115 @@ class SeqDeduplicator:
         this_index: IndexIter,
         fa_file_out: List[str],
         dedup_time: List[int],
-        chuksize: int,
-        recipe_index: List[int],
     ):
         fasta_file = parseFasta(self.fa_file_path)
 
         for_loop = tqdm(fasta_file) if self.verbose else fasta_file
-        current_batch = []
-        current_count = IndexIter()
 
-        for row in for_loop:
-            header, parent_seq = row[:2]
+        with open(self.temp_path, "w") as fp:
+            for row in for_loop:
+                header, parent_seq = row[:2]
 
-            if not len(parent_seq) >= self.minimum_sequence_length:
-                continue
-            parent_seq = parent_seq.upper()
-
-            for seq in N_trim(parent_seq, self.minimum_sequence_length, trim_times):
-                header = f"NODE_{this_index}"
-                seq_hash = xxhash.xxh64(seq).hexdigest()
-
-                # Check for dupe, if so save how many times that sequence occured
-                seq_start = time()
-
-                if seq_hash in transcript_mapped_to:
-                    duplicates.setdefault(transcript_mapped_to[seq_hash], 1)
-                    duplicates[transcript_mapped_to[seq_hash]] += 1
-                    next(dupes)
+                if not len(parent_seq) >= self.minimum_sequence_length:
                     continue
-                transcript_mapped_to[seq_hash] = header
+                parent_seq = parent_seq.upper()
 
-                # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
-                # sequence so we don't have to rev-comp this unique sequence again
-                if seq_hash in rev_comp_save:
-                    rev_seq_hash = rev_comp_save[seq_hash]
-                else:
-                    rev_seq_hash = xxhash.xxh64(
-                        phymmr_tools.bio_revcomp(seq)
-                    ).hexdigest()
-                    rev_comp_save[seq_hash] = rev_seq_hash
+                for seq in N_trim(parent_seq, self.minimum_sequence_length, trim_times):
+                    header = f"NODE_{this_index}"
+                    seq_hash = xxhash.xxh64(seq).hexdigest()
 
-                # Check for revcomp dupe, if so save how many times that sequence occured
-                if rev_seq_hash in transcript_mapped_to:
-                    duplicates.setdefault(transcript_mapped_to[rev_seq_hash], 1)
-                    duplicates[transcript_mapped_to[rev_seq_hash]] += 1
-                    next(dupes)
-                    continue
-                transcript_mapped_to[rev_seq_hash] = header
+                    # Check for dupe, if so save how many times that sequence occured
+                    seq_start = time()
 
-                seq_end = time()
-                dedup_time[0] += seq_end - seq_start
+                    if seq_hash in transcript_mapped_to:
+                        duplicates.setdefault(transcript_mapped_to[seq_hash], 1)
+                        duplicates[transcript_mapped_to[seq_hash]] += 1
+                        next(dupes)
+                        continue
+                    transcript_mapped_to[seq_hash] = header
 
-                # If no dupe, write to prepared file and db
-                next(this_index)
+                    # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
+                    # sequence so we don't have to rev-comp this unique sequence again
+                    if seq_hash in rev_comp_save:
+                        rev_seq_hash = rev_comp_save[seq_hash]
+                    else:
+                        rev_seq_hash = xxhash.xxh64(
+                            phymmr_tools.bio_revcomp(seq)
+                        ).hexdigest()
+                        rev_comp_save[seq_hash] = rev_seq_hash
 
-                fa_file_out.append((header, seq))
+                    # Check for revcomp dupe, if so save how many times that sequence occured
+                    if rev_seq_hash in transcript_mapped_to:
+                        duplicates.setdefault(transcript_mapped_to[rev_seq_hash], 1)
+                        duplicates[transcript_mapped_to[rev_seq_hash]] += 1
+                        next(dupes)
+                        continue
+                    transcript_mapped_to[rev_seq_hash] = header
 
-                current_batch.append(f">{header}\n{seq}\n")
+                    seq_end = time()
+                    dedup_time[0] += seq_end - seq_start
 
-                if current_count.x > chuksize:
-                    current_count = IndexIter()
-                    recipe_index[0] += 1
-                    self.recipe.append(str(recipe_index[0]))
+                    # If no dupe, write to prepared file and db
+                    next(this_index)
 
-                    self.nt_db.put(f"ntbatch:{recipe_index[0]}", "".join(current_batch))
-                    current_batch = []
+                    fa_file_out.append((header, seq))
 
-                next(current_count)
+                    fp.write(f">{header}\n{seq}\n")
 
-        if current_batch:
+def return_clean_lines(clean_file_path, batch_size, nt_db, keep_prepared, path):
+    recipe_index = 0
+    current_count = IndexIter()
+    recipe = []
+    current_batch = []
+
+    if keep_prepared:
+        fp = open(path, "w")
+
+    for header, sequence in parseFasta(clean_file_path):
+        line = f">{header}\n{sequence}\n"
+
+        if keep_prepared:
+            fp.write(line)
+
+        current_batch.append(line)
+        next(current_count)
+        if current_count.x >= batch_size:
             current_count = IndexIter()
-            recipe_index[0] += 1
-            self.recipe.append(str(recipe_index[0]))
+            recipe.append(str(recipe_index))
+            nt_db.put(f"ntbatch:{recipe_index}", "".join(current_batch))
+            recipe_index += 1
+            current_batch = []
+    
+    if keep_prepared:
+        fp.close()
 
-            self.nt_db.put(f"ntbatch:{recipe_index[0]}", "".join(current_batch))
+    if current_batch:
+        recipe.append(str(recipe_index))
+        nt_db.put(f"ntbatch:{recipe_index}", "".join(current_batch))
+        recipe_index += 1
 
-        return self.recipe
+    recipe_data = ",".join(recipe)
+    nt_db.put("getall:batches", recipe_data)
 
+def return_dupe_table(dupe_file_path, nt_db):
+    dupe_table = {}
+    dupe_count = IndexIter()
+    for header, sequence in parseFasta(dupe_file_path):
+        if header.endswith('.'):
+            master = header[:-1]
+        else:
+            next(dupe_count)
+            dupe_table.setdefault(master, []).append((header, sequence)) 
+
+    nt_db.put("getall:hamm_dupes", json.dumps(dupe_table))
+    return dupe_count.x
+
+def hamming_dedupe(fa_file_dest, batch_size, threads, nt_db, keep_prepared, prepared_file_destination):
+    with NamedTemporaryFile(dir = gettempdir()) as clean_file, NamedTemporaryFile(dir = gettempdir()) as dupe_file:
+        os.system(f"minirmd/minirmd -i {fa_file_dest} -o {clean_file.name} -l {dupe_file.name} -t {threads} -d 1")
+
+        return_clean_lines(clean_file.name, batch_size, nt_db, keep_prepared, prepared_file_destination)
+        return return_dupe_table(dupe_file.name, nt_db)
 
 class DatabasePreparer:
     def __init__(
@@ -223,6 +259,7 @@ class DatabasePreparer:
         dedup_time: List[int],
         trim_times: TimeKeeper,
         chunk_size: int,
+        threads,
     ):
         self.fto = formatted_taxa_out
         self.comp = components
@@ -240,6 +277,7 @@ class DatabasePreparer:
         self.this_index = IndexIter()
         self.dedup_time = dedup_time
         self.chunk_size = chunk_size
+        self.threads = threads
 
     def init_db(
         self,
@@ -268,12 +306,10 @@ class DatabasePreparer:
         self.prepared_file_destination = taxa_destination_directory.joinpath(self.fto)
 
     def dedup(self):
-        recipe = []
-        index = [0]
-        for fa_file_path in self.comp:
-            recipe.extend(
+        with NamedTemporaryFile(dir = gettempdir()) as temp:
+            for fa_file_path in self.comp:
                 SeqDeduplicator(
-                    fa_file_path, self.nt_db, self.minimum_sequence_length, self.verbose
+                    fa_file_path, temp.name, self.nt_db, self.minimum_sequence_length, self.verbose
                 )(
                     self.trim_times,
                     self.duplicates,
@@ -283,21 +319,18 @@ class DatabasePreparer:
                     self.this_index,
                     self.fa_file_out,
                     self.dedup_time,
-                    self.chunk_size,
-                    index,
                 )
-            )
+            temp.flush()
+
+            hamm_dupes = hamming_dedupe(temp.name, self.chunk_size, self.threads, self.nt_db, self.keep_prepared, self.prepared_file_destination)
 
         if self.keep_prepared:
             writeFasta(self.prepared_file_destination, self.fa_file_out)
 
-        recipe_data = ",".join(recipe)
-        self.nt_db.put("getall:batches", recipe_data)
-
         sequence_count = str(self.this_index)
 
         self.printv(
-            f"Inserted {sequence_count} sequences. Found {next(self.dupes)} duplicates.",
+            f"Inserted {sequence_count} sequences. Found {next(self.dupes)} exact duplicates. Found {hamm_dupes} hamm duplicates.",
             self.verbose,
         )
 
@@ -328,6 +361,7 @@ def map_taxa_runs(
     dedup_time: List[int],
     trim_times: TimeKeeper,
     chunk_size,
+    threads,
 ):
     formatted_taxa_out, components = tuple_in
 
@@ -342,6 +376,7 @@ def map_taxa_runs(
         dedup_time,
         trim_times,
         chunk_size,
+        threads,
     )(
         secondary_directory,
     )
@@ -388,6 +423,7 @@ def main(args):
             dedup_time,
             trim_times,
             args.chunk_size,
+            args.processes
         )
         for tuple_in in taxa_runs.items()
     ]
