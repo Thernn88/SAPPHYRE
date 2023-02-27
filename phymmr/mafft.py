@@ -142,8 +142,6 @@ def run_command(args: CmdArgs) -> None:
 
     if debug:
         intermediates = "intermediates"
-        if not os.path.exists(intermediates):
-            os.mkdir(intermediates)
         this_intermediates = os.path.join(intermediates, args.gene)
         if not os.path.exists(this_intermediates):
             os.mkdir(this_intermediates)
@@ -158,8 +156,12 @@ def run_command(args: CmdArgs) -> None:
         seq_count, data = process_genefile(nt_file)
         targets = get_targets(args.gene_file)
 
+        cluster_time = 0
+        align_time = 0
+        merge_time = 0
+
         if seq_count == 1:
-            printv(f"Outputting singleton alignment. Elapsed time: {keeper.differential():.2f}, args.verbose, 3") # Debug
+            printv(f"Outputting singleton alignment. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
             aligned_file = os.path.join(aligned_files_tmp,f"{args.gene}_cluster0")
             data = [(header, str(Seq(sequence).translate())) for header, sequence in data]
             writeFasta(aligned_file, data)
@@ -326,7 +328,7 @@ def run_command(args: CmdArgs) -> None:
                     out_file = args.result_file
                     os.system(f"mafft --anysymbol --quiet --jtt 1 --addfragments {merged_singleton_final} --thread 1 {tmp.name} > {out_file}")
                     if debug:
-                        print(f"mafft --anysymbol --quiet --jtt 1 --addfragments {merged_singleton_final} --thread 1 {tmp.name} > {out_file}")
+                        printv(f"mafft --anysymbol --quiet --jtt 1 --addfragments {merged_singleton_final} --thread 1 {tmp.name} > {out_file}", args.verbose, 3)
                     empty_columns = None
                     for header, sequence in parseFasta(out_file):
                         if not empty_columns:
@@ -375,6 +377,10 @@ def do_folder(folder, args):
         return False
 
     command = f"clustalo -i {{in_file}} -o {{out_file}} --threads=1 --iter=2 --full --full-iter --force"
+
+    intermediates = "intermediates"
+    if not os.path.exists(intermediates):
+        os.mkdir(intermediates)
 
     if args.processes > 1:
         arguments = []
