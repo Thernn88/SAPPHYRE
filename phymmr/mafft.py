@@ -12,6 +12,7 @@ from .utils import printv, gettempdir, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
 from Bio.Seq import Seq
 KMER_LEN = 45   
+CLUSTER_PERCENT = 0.1
 
 ### Retrofitted from suchapalaver/fastas2kmers
 
@@ -168,6 +169,7 @@ def run_command(args: CmdArgs) -> None:
             clusters = []
             cluster_children = {header: [] for header, _ in data}
             kmers = {}
+            too_big = set()
             with NamedTemporaryFile(mode="w+", dir=parent_tmpdir) as tmpfile:
                 writeFasta(tmpfile.name, data)
                 tmpfile.flush()
@@ -184,20 +186,19 @@ def run_command(args: CmdArgs) -> None:
                     master_header = master_headers[i]
                     master = kmers[master_header]
                     if master:
-                        # for key in list(kmers.keys())[:i]:
                         for key in master_headers[:i]:
-                            candidate = kmers[key]
-                            if candidate:
-                                # intersecting_kmers = len(master.intersection(candidate))
-
-                                # if intersecting_kmers > 0:
-                                if not master.isdisjoint(candidate):
-                                    candidate.update(master)
-                                    children = [master_header.strip(">")] + cluster_children[master_header.strip(">")]
-                                    cluster_children[key.strip(">")].extend(children)
-                                    cluster_children[master_header.strip(">")] = None
-                                    kmers[master_header] = None
-                                    break
+                            if key not in too_big:
+                                candidate = kmers[key]
+                                if candidate:
+                                    if not master.isdisjoint(candidate):
+                                        candidate.update(master)
+                                        children = [master_header.strip(">")] + cluster_children[master_header.strip(">")]
+                                        cluster_children[key.strip(">")].extend(children)
+                                        if len(cluster_children[key.strip(">")]) > (seq_count * CLUSTER_PERCENT):
+                                            too_big.add(key)
+                                        cluster_children[master_header.strip(">")] = None
+                                        kmers[master_header] = None
+                                        break
                             
 
             for master, children in cluster_children.items():
@@ -205,6 +206,7 @@ def run_command(args: CmdArgs) -> None:
                     clusters.append([master, *children])
 
             data = [(header, str(Seq(sequence).translate())) for header, sequence in data]
+            cluster_time = keeper.differential()
             printv(f"Found {seq_count} sequences over {len(clusters)} clusters. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
             printv(f"Aligning Clusters. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
             
@@ -233,14 +235,14 @@ def run_command(args: CmdArgs) -> None:
                     if debug:
                         printv(command, args.verbose, 3)
                         writeFasta(os.path.join(this_intermediates, f"{args.gene}_cluster{len(aligned_ingredients)}_aligned"), parseFasta(aligned_cluster))
-
+        align_time = keeper.differential() - cluster_time
         if to_merge:
             merged_singleton_final = os.path.join(aligned_files_tmp, f"{args.gene}_cluster{len(aligned_ingredients)}")
             writeFasta(merged_singleton_final, to_merge)
         if aligned_ingredients:
             aligned_ingredients.sort(key = lambda x: int(x.split("_cluster")[-1]))
             printv(f"Merging Alignments. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
-            printv("Merging 1 of", len(aligned_ingredients),f"Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
+            printv(f"Merging 1 of {len(aligned_ingredients)}. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
             with NamedTemporaryFile(dir = parent_tmpdir, mode="w+") as tmp:
                 sequences = []
                 for header, sequence in parseFasta(aln_file):
@@ -275,7 +277,7 @@ def run_command(args: CmdArgs) -> None:
                     writeFasta(os.path.join(this_intermediates, os.path.basename(out_file)), parseFasta(out_file))
 
             for i, file in enumerate(aligned_ingredients[1:]):
-                printv("Merging", i+2, "of", len(aligned_ingredients),f"Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
+                printv(f"Merging {i+2} of {len(aligned_ingredients)}. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
                 out_file = os.path.join(parent_tmpdir,f"part_{i+1}.fa")
                 in_file = os.path.join(parent_tmpdir,f"part_{i}.fa")
                 if not to_merge and i == len(aligned_ingredients) - 2:
@@ -342,9 +344,10 @@ def run_command(args: CmdArgs) -> None:
 
                     if debug:
                         writeFasta(os.path.join(this_intermediates, os.path.basename(out_file)), to_write)
+        merge_time = keeper.differential() - cluster_time - align_time
+        printv(f"Done. {args.gene} took {keeper.differential():.2f}s", args.verbose, 2) # Debug
 
-        printv(f"Done. {args.gene} took {keeper.differential():.2f}", args.verbose, 2) # Debug
-            
+    return args.gene, cluster_time, align_time, merge_time, keeper.differential()
 
 def do_folder(folder, args):
     printv(f"Processing: {os.path.basename(folder)}", args.verbose)
@@ -381,19 +384,33 @@ def do_folder(folder, args):
         func = run_command
         lock = None
 
+    times = []
     for file in genes:
         gene = file.split(".")[0]
         gene_file = os.path.join(aa_path, file)
         result_file = os.path.join(mafft_path, file.rstrip(".gz"))
-        func(
-            CmdArgs(
-                command, gene_file, result_file, gene, lock, args.verbose, args.compress, aln_path, args.debug
+        if func == run_command:
+            times.append(
+                run_command(
+                        (CmdArgs(
+                        command, gene_file, result_file, gene, lock, args.verbose, args.compress, aln_path, args.debug
+                    ),)
+                )
             )
-        )
+        else:
+            func(
+                (CmdArgs(
+                    command, gene_file, result_file, gene, lock, args.verbose, args.compress, aln_path, args.debug
+                ),)
+            )
 
     if args.processes > 1:
         with ThreadPool(args.processes) as pool:
-            pool.map(run_command, arguments, chunksize=1)
+            times = pool.starmap(run_command, arguments, chunksize=1)
+
+    if args.debug:
+        with open("mafft_times.csv", "w") as fp:
+            fp.write("\n".join(["Gene,Clustering,Aligning,Merging,Total"]+[",".join(map(str, i)) for i in times]))
 
     printv(f"Done! Took {time_keeper.differential():.2f}s", args.verbose)
     return True
