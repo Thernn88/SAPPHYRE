@@ -358,19 +358,12 @@ def subcmd_mafft(subparsers):
         "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
     )
     par.add_argument(
-        "-l",
-        "--linsi",
+        "-d",
+        "--debug",
         action="store_true",
         default=False,
-        help="Enable the use of mafft-linsi.",
+        help="Output intermediate files for debug",
     )
-    par.add_argument(
-        "--combo",
-        action="store_true",
-        default=False,
-        help="Enable the use of mafft-linsi.",
-    )
-
     par.set_defaults(func=mafft, formathelp=par.format_help)
 
 
