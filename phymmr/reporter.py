@@ -5,6 +5,7 @@ import os
 import shutil
 from collections import namedtuple
 from multiprocessing.pool import Pool
+from tempfile import NamedTemporaryFile
 from typing import Optional
 
 import phymmr_tools
@@ -12,7 +13,7 @@ from Bio.Seq import Seq
 
 from . import rocky
 from .timekeeper import TimeKeeper, KeeperMode
-from .utils import printv, writeFasta
+from .utils import gettempdir, parseFasta, printv, writeFasta
 
 MainArgs = namedtuple(
     "MainArgs",
@@ -233,20 +234,50 @@ def trim_and_write(oargs: OutputArgs):
     )
 
     if aa_output:
+        with NamedTemporaryFile(mode="w", dir = gettempdir()) as temp_fasta, NamedTemporaryFile(dir = gettempdir()) as dupe_file:
+            writeFasta(temp_fasta.name, aa_output)
+            temp_fasta.flush()
+            temp_fasta.seek(0)
+            
+            os.system(f"minirmd/minirmd -i {temp_fasta.name} -o {this_aa_path} -l {dupe_file.name} -t 1 -d 1")
+
+            if not os.path.exists(this_aa_path):
+                print(dupe_file.name)
+                input(temp_fasta.name)
+
+            dupe_file.flush()
+            this_gene_hamm_dupes = {}
+            to_exclude = set()
+            this_dupes = 0
+            if os.stat(dupe_file.name).st_size != 0:
+                for header, sequence in parseFasta(dupe_file.name):
+                    if header.endswith('.'):
+                        master = header[:-1]
+                    else:
+                        this_gene_hamm_dupes.setdefault(master, []).append((header, sequence)) 
+                        to_exclude.add(header)
+                        this_dupes += 1
+
+    if os.stat(this_aa_path).st_size != 0:
         aa_core_sequences = print_core_sequences(oargs.gene, core_sequences, oargs.target_taxon, oargs.top_refs)
-        writeFasta(this_aa_path, aa_core_sequences + aa_output, oargs.compress)
+        aa_core_data = [f">{header}\n{sequence}\n" for header, sequence in aa_core_sequences]
+
+        with open(this_aa_path, "r+") as fp: #Add refs
+            data = fp.read()
+            fp.seek(0, 0)
+            fp.write("".join(aa_core_data) + data)
 
         this_nt_path = os.path.join(oargs.nt_out_path, oargs.gene + ".nt.fa")
 
         nt_core_sequences = print_core_sequences(oargs.gene, core_sequences_nt, oargs.target_taxon, oargs.top_refs)
-        writeFasta(this_nt_path, nt_core_sequences + nt_output, oargs.compress)
+        writeFasta(this_nt_path, nt_core_sequences + [i for i in nt_output if i[0] not in to_exclude], oargs.compress)
 
     printv(
         f"{oargs.gene} took {t_gene_start.differential():.2f}s. Had {len(aa_output)} sequences",
         oargs.verbose,
         2,
     )
-    return oargs.gene, this_gene_dupes, len(aa_output)
+    return oargs.gene, this_gene_dupes, this_gene_hamm_dupes, len(aa_output) - this_dupes
 
 
 def do_taxa(path, taxa_id, args):
@@ -341,16 +372,24 @@ def do_taxa(path, taxa_id, args):
 
     final_count = 0
     this_gene_based_dupes = {}
-    for gene, dupes, amount in recovered:
+    hamm_dupe_table = {}
+    dupe_counts = 0
+    for gene, dupes, hamm_dupes, amount in recovered:
         final_count += amount
         this_gene_based_dupes[gene] = dupes
+        hamm_dupe_table[gene] = hamm_dupes
+
+        dupe_counts += len(hamm_dupe_table.values())
 
     key = "getall:reporter_dupes"
     data = json.dumps(this_gene_based_dupes)
     rocky.get_rock("rocks_nt_db").put(key, data)
+    key = "getall:hamm_dupes"
+    data = json.dumps(hamm_dupe_table)
+    rocky.get_rock("rocks_nt_db").put(key, data)
 
     printv(
-        f"Done! Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s and found {final_count} sequences.",
+        f"Done! Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s and found {final_count} sequences with {dupe_counts} hamm dupes.",
         args.verbose,
     )
 
