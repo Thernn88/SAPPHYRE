@@ -331,6 +331,7 @@ ProcessingArgs = namedtuple(
         "total_references",
         "strict_search_mode",
         "reference_taxa",
+        "evalue",
 
     ],
 )
@@ -344,6 +345,7 @@ def process_lines(
     this_log = []
     for this_lines in pargs.lines:
         hits = [Hit(*hit.split("\t")) for hit in this_lines]  # convert to Hit object
+        hits = list(filter(lambda x: x.evalue >= pargs.evalue, hits))
         hits.sort(key=lambda x: x.score, reverse=True)
         genes_present = {hit.gene for hit in hits}
 
@@ -538,6 +540,7 @@ def run_process(args, input_path) -> None:
                     total_references,
                     strict_search_mode,
                     reference_taxa,
+                    args.evalue,
                 ),)
                 for j in range(i, i+num_threads)
             ]
