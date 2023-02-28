@@ -366,7 +366,7 @@ def process_lines(
         best_hit = reciprocal_check(hits, pargs.strict_search_mode, pargs.reference_taxa)
 
         if best_hit:
-            if best_hit.evalue >= pargs.evalue:
+            if best_hit.evalue <= pargs.evalue:
                 output.setdefault(best_hit.gene, []).append(best_hit)
 
     return output, evalue_kicks, multi_kicks, this_log
