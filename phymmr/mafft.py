@@ -207,9 +207,9 @@ def run_command(args: CmdArgs) -> None:
                 writeFasta(tmp_merged.name, aligned_to_write)
                 tmp_merged.flush()
 
-                os.system(f"mafft --quiet --merge {tmp_special.name} {tmp_merged.name} > {out_file}")
+                os.system(f"mafft --maxiterate 2 --quiet --merge {tmp_special.name} {tmp_merged.name} > {out_file}")
                 if args.debug:
-                    print(f"mafft --quiet --merge {tmp_special.name} {tmp_merged.name} > {out_file}")
+                    print(f"mafft --maxiterate 2 --quiet --merge {tmp_special.name} {tmp_merged.name} > {out_file}")
 
         if to_merge:
             if aligned_ingredients:
@@ -298,7 +298,7 @@ def do_folder(folder, args):
         printv("ERROR: Aln folder not found.", args.verbose, 0)
         return False
 
-    command = f"clustalo -i {{in_file}} -o {{out_file}} --threads=1 --iter=2 --full --full-iter --force"
+    command = f"clustalo -i {{in_file}} -o {{out_file}} --threads=1 --iter=3 --full --full-iter --force"
 
     intermediates = "intermediates"
     if not os.path.exists(intermediates):
