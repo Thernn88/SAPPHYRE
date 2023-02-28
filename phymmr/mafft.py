@@ -186,7 +186,7 @@ def run_command(args: CmdArgs) -> None:
                 lines = []
                 total = 0 
                 aligned_to_write = []
-                for item in aligned_ingredients:
+                for item in [tmp.name]+aligned_ingredients:
                     file = os.path.basename(item)
                     lines.append(file)
                     to_write = []
