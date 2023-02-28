@@ -345,6 +345,7 @@ def process_lines(
     this_log = []
     for this_lines in pargs.lines:
         hits = [Hit(*hit.split("\t")) for hit in this_lines]  # convert to Hit object
+        hits = list(filter(lambda x: x.evalue <= pargs.evalue, hits))
         hits.sort(key=lambda x: x.score, reverse=True)
         genes_present = {hit.gene for hit in hits}
 
@@ -366,8 +367,7 @@ def process_lines(
         best_hit = reciprocal_check(hits, pargs.strict_search_mode, pargs.reference_taxa)
 
         if best_hit:
-            if best_hit.evalue <= pargs.evalue:
-                output.setdefault(best_hit.gene, []).append(best_hit)
+            output.setdefault(best_hit.gene, []).append(best_hit)
 
     return output, evalue_kicks, multi_kicks, this_log
 
