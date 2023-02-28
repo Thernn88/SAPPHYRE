@@ -1,6 +1,7 @@
 from __future__ import annotations
 import argparse
 import gzip
+from itertools import combinations
 
 import os
 from collections import namedtuple
@@ -144,10 +145,19 @@ def run_command(args: CmdArgs) -> None:
             merged_singleton_final = os.path.join(aligned_files_tmp, f"{args.gene}_cluster{len(aligned_ingredients)}")
             writeFasta(merged_singleton_final, to_merge)
         if aligned_ingredients:
+            if not to_merge:
+                out_file = args.result_file
+            else:
+                out_file = os.path.join(parent_tmpdir, f"{args.gene}_mafft_merged")
             aligned_ingredients.sort(key = lambda x: int(x.split("_cluster")[-1]))
             printv(f"Merging Alignments. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
-            printv(f"Merging 1 of {len(aligned_ingredients)}. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
-            with NamedTemporaryFile(dir = parent_tmpdir, mode="w+") as tmp:
+            with NamedTemporaryFile(
+                    dir = parent_tmpdir, mode="w+"
+                ) as tmp, NamedTemporaryFile(
+                    dir = parent_tmpdir, mode="w+"
+                ) as tmp_special, NamedTemporaryFile(
+                    dir = parent_tmpdir, mode="w+"
+                ) as tmp_merged:
                 sequences = []
                 for header, sequence in parseFasta(aln_file):
                     if header in targets:
@@ -170,37 +180,47 @@ def run_command(args: CmdArgs) -> None:
                 if debug:
                     writeFasta(os.path.join(this_intermediates, "references.fa"), to_write)
                 tmp.flush()
-                
-                out_file = os.path.join(parent_tmpdir,"part_0.fa")
-                if not to_merge and len(aligned_ingredients) == 1:
-                    out_file = args.result_file
-                
-                os.system(f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1 --is-profile --force")
-                if debug:
-                    printv(f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1 --is-profile --force", args.verbose, 3)
-                    writeFasta(os.path.join(this_intermediates, os.path.basename(out_file)), parseFasta(out_file))
 
-            for i, file in enumerate(aligned_ingredients[1:]):
-                printv(f"Merging {i+2} of {len(aligned_ingredients)}. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
-                out_file = os.path.join(parent_tmpdir,f"part_{i+1}.fa")
-                in_file = os.path.join(parent_tmpdir,f"part_{i}.fa")
-                if not to_merge and i == len(aligned_ingredients) - 2:
-                    out_file = args.result_file
+                sequence_done = set()
 
-               
-                os.system(f"clustalo --p1 {in_file} --p2 {file} -o {out_file} --threads=1 --is-profile --force")
-                if debug:
-                    printv(f"clustalo --p1 {in_file} --p2 {file} -o {out_file} --threads=1 --is-profile --force", args.verbose, 3)
-                    writeFasta(os.path.join(this_intermediates, os.path.basename(out_file)), parseFasta(out_file))
+                lines = []
+                total = 0 
+                aligned_to_write = []
+                for item in aligned_ingredients:
+                    file = os.path.basename(item)
+                    lines.append(file)
+                    to_write = []
+                    for header, sequence in parseFasta(item):
+                        if sequence not in sequence_done:
+                            to_write.append((header, sequence))
+                            sequence_done.add(sequence)
+                            
+                    seq_count = len(to_write)
+                    aligned_to_write.extend(to_write)
+                    line = " " + " ".join(map(str, range(1+total, seq_count+1+total))) + f" # {file}"
+                    total += seq_count
+                    lines.append(line)
+                
+                tmp_special.write("\n".join(lines))
+                tmp_special.flush()
+
+                writeFasta(tmp_merged.name, aligned_to_write)
+                tmp_merged.flush()
+
+                os.system(f"mafft --quiet --merge {tmp_special.name} {tmp_merged.name} > {out_file}")
+                if args.debug:
+                    print(f"mafft --quiet --merge {tmp_special.name} {tmp_merged.name} > {out_file}")
 
         if to_merge:
             if aligned_ingredients:
                 os.system(f"mafft --anysymbol --quiet --jtt 1 --addfragments {merged_singleton_final} --thread 1 {out_file} > {args.result_file}")
                 if debug:
                     printv(f"mafft --anysymbol --quiet --jtt 1 --addfragments {merged_singleton_final} --thread 1 {out_file} > {args.result_file}", args.verbose, 3)
-
                 #Deinterleave
-                to_write = [(header, sequence) for header, sequence in parseFasta(args.result_file)]
+                try:
+                    to_write = [(header, sequence) for header, sequence in parseFasta(args.result_file)]
+                except:
+                    print("SINGLETON MERGE FAILED:",args.gene,merged_singleton_final, out_file, args.result_file)
                 writeFasta(args.result_file, to_write)
                 if debug:
                     writeFasta(os.path.join(this_intermediates, os.path.basename(args.result_file)), to_write)
