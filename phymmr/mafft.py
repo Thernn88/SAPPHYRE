@@ -11,93 +11,17 @@ from threading import Lock
 from .utils import printv, gettempdir, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
 from Bio.Seq import Seq
-KMER_LEN = 45   
-CLUSTER_PERCENT = 0.1
+KMER_LEN = 21   
 
-### Retrofitted from suchapalaver/fastas2kmers
-
-def indexfasta(filename):
-    infile = open(filename, 'rb') # opens and reads the fasta file in binary
-    chunksize = 1024*1024 # it reads in these chunks
-    filepos = 0
-    headstart = list()
-    headend = list()
-    while True: # Exit loop when, chunk by chunk, we've gone through the whole file
-        content = infile.read(chunksize)
-        if len(content) == 0:
-            break
-        chunkpos = 0 # chunks away!
-        while chunkpos != -1: # exit this loop when we're at the file's end
-            chunkpos = content.find(b'>', chunkpos) # chunk from 1st identifier after current chunkpos
-            if chunkpos != -1: # i.e. when there are no more left, find will return -1
-                headstart.append(chunkpos + filepos) # headstart from '>' in record
-                chunkpos += 1 # chunking beyond previous '>' to get to next record
-        for i in range(len(headend), len(headstart)): # how many records we're looking for
-            chunkpos = max(0, headstart[i] - filepos)
-            chunkpos = content.find(b'\n', chunkpos)
-            if chunkpos != -1:
-                headend.append(chunkpos + filepos)
-        filepos += len(content)
-    infile.close()
-    # Eliminating wrong headers due to extra > in header line
-    for i in range(len(headstart)-1, 0, -1):
-        if headend[i] == headend[i-1]:
-            del headstart[i]
-            del headend[i]            
-    headstart.append(filepos)
-    fastaindex = list()
-    with open(filename, 'rb') as fh:
-        for i in range(len(headend)):
-            seq_start = headend[i]+1
-            seq_end = headstart[i+1] - 1
-            fh.seek(headstart[i])
-            identifier = str(fh.read((headend[i]) - headstart[i])).strip("b'\n ")
-            fastaindex.append((identifier, (seq_start, seq_end, seq_end-seq_start)))
-    return fastaindex
-
-def indexsequence(seq: str) -> int:
-    """
-    Given a sequence, find the first and last characters, then
-    return the values as a tuple in a list
-    """
-    pointer = 0
-    seqindex = list()
-    while len(seq) > pointer:
-        potenstart = [seq.find(b'a', pointer), seq.find(b't', pointer), seq.find(b'c', pointer), seq.find(b'g', pointer)]
-        realstart = min(potenstart)
-        if realstart == -1:
-            # happens rarely, so slow code is ok, apparently
-            potenstart = [i for i in potenstart if i > -1]
-            if len(potenstart) == 0:
-                break
-            realstart = min(potenstart)
-        realend = seq.find(b'N', realstart)
-        if realend == -1:
-            realend = len(seq)
-        seqindex.append((realstart, realend))
-        pointer = realend
-    return seqindex
-
-def find_kmers(fasta, i):
-    transtable = bytes.maketrans(b'ATCGMRYKVHDBWmrykvhdbxnsw', b'atcgNNNNNNNNNNNNNNNNNNNNN')
-    kmer_len = KMER_LEN
-    infile = open(fasta, 'rb')
-    infile.seek(i[1][0])     
-    identifier = i[0]
-    seq = infile.read(i[1][1] - i[1][0]+1).translate(transtable, b'\r\n\t ')
-    infile.close()
-    # Index sequence
-    seqindex = indexsequence(seq)
-    subset = set()
-    seqdict = dict()
-    for start, stop in seqindex:
-        for i in range(start, stop-kmer_len+1):
-            kmer = str(seq[i:i+kmer_len]).strip("b'").upper()
-            subset.add(kmer)
-        seqdict[identifier] = subset
-        yield seqdict
-
-###
+def find_kmers(fasta):
+    kmers = {}
+    for header, sequence in parseFasta(fasta):
+        kmers[header] = set()
+        for i in range(0, len(sequence)-KMER_LEN):
+            kmer = sequence[i:i+KMER_LEN]
+            if "*" not in kmer:
+                kmers[header].add(kmer)
+    return kmers
 
 MAFFT_FOLDER = "mafft"
 AA_FOLDER = "aa"
@@ -106,11 +30,14 @@ ALN_FOLDER = "aln"
 
 def process_genefile(fileread):
     data = []
+    targets = {}
     for header, sequence in parseFasta(fileread):
         if not header.endswith("."):
             data.append((header, sequence))
+        else:
+            targets[header.split("|")[2]] = header
             
-    return len(data), data
+    return len(data), data, targets
 
 
 CmdArgs = namedtuple(
@@ -118,15 +45,6 @@ CmdArgs = namedtuple(
     ["string", "gene_file", "result_file", "gene", "lock", "verbose", "compress", "aln_path", "debug"],
 )
 
-
-def get_targets(gene_file: str) -> list[str]:
-    targets = {}
-    with open(gene_file, "r") as fp:
-        for line in fp:
-            if line.startswith(">"):
-                if line.strip().endswith("."):
-                    targets[line.split("|")[2]] = line.strip()[1:]
-    return targets
 
 def run_command(args: CmdArgs) -> None:
     keeper = TimeKeeper(KeeperMode.DIRECT)
@@ -149,12 +67,9 @@ def run_command(args: CmdArgs) -> None:
     aln_file = os.path.join(args.aln_path, args.gene + ".aln.fa")
     to_merge = []
 
-    nt_file = args.gene_file.replace("/aa/", "/nt/").replace(".aa.", ".nt.")
-
     with TemporaryDirectory(dir=temp_dir) as parent_tmpdir, TemporaryDirectory(dir=parent_tmpdir) as raw_files_tmp, TemporaryDirectory(dir=parent_tmpdir) as aligned_files_tmp:
         printv(f"Cleaning NT file. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
-        seq_count, data = process_genefile(nt_file)
-        targets = get_targets(args.gene_file)
+        seq_count, data, targets = process_genefile(args.gene_file)
 
         cluster_time = 0
         align_time = 0
@@ -170,44 +85,31 @@ def run_command(args: CmdArgs) -> None:
             printv(f"Generating Cluster. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
             clusters = []
             cluster_children = {header: [] for header, _ in data}
-            kmers = {}
-            too_big = set()
             with NamedTemporaryFile(mode="w+", dir=parent_tmpdir) as tmpfile:
                 writeFasta(tmpfile.name, data)
                 tmpfile.flush()
 
-                my_indexes = indexfasta(tmpfile.name)
-
-                
-                for i in my_indexes:
-                    for seq_dict in find_kmers(tmpfile.name, i):
-                        for key, this_kmers in seq_dict.items():  # for header in seq_dicts
-                            kmers[key] = this_kmers
+                kmers = find_kmers(tmpfile.name)
                 master_headers = list(kmers.keys())
                 for i in range(len(master_headers) -1, -1, -1):  # reverse iteration
                     master_header = master_headers[i]
                     master = kmers[master_header]
                     if master:
                         for key in master_headers[:i]:
-                            if key not in too_big:
-                                candidate = kmers[key]
-                                if candidate:
-                                    if not master.isdisjoint(candidate):
-                                        candidate.update(master)
-                                        children = [master_header.strip(">")] + cluster_children[master_header.strip(">")]
-                                        cluster_children[key.strip(">")].extend(children)
-                                        if len(cluster_children[key.strip(">")]) > (seq_count * CLUSTER_PERCENT):
-                                            too_big.add(key)
-                                        cluster_children[master_header.strip(">")] = None
-                                        kmers[master_header] = None
-                                        break
+                            candidate = kmers[key]
+                            if candidate:
+                                if not master.isdisjoint(candidate):
+                                    candidate.update(master)
+                                    children = [master_header.strip(">")] + cluster_children[master_header.strip(">")]
+                                    cluster_children[key.strip(">")].extend(children)
+                                    cluster_children[master_header.strip(">")] = None
+                                    kmers[master_header] = None
+                                    break
                             
 
             for master, children in cluster_children.items():
                 if children is not None:
                     clusters.append([master, *children])
-
-            data = [(header, str(Seq(sequence).translate())) for header, sequence in data]
             cluster_time = keeper.differential()
             printv(f"Found {seq_count} sequences over {len(clusters)} clusters. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
             printv(f"Aligning Clusters. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
@@ -398,9 +300,9 @@ def do_folder(folder, args):
         if func == run_command:
             times.append(
                 run_command(
-                        (CmdArgs(
+                        CmdArgs(
                         command, gene_file, result_file, gene, lock, args.verbose, args.compress, aln_path, args.debug
-                    ),)
+                    )
                 )
             )
         else:
