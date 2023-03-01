@@ -1,5 +1,6 @@
 from __future__ import annotations
-
+import json
+import wrap_rocks
 import os
 from collections import namedtuple
 from multiprocessing.pool import ThreadPool
@@ -39,7 +40,7 @@ def process_genefile(fileread):
 
 CmdArgs = namedtuple(
     "CmdArgs",
-    ["string", "gene_file", "result_file", "gene", "lock", "verbose", "compress", "aln_path", "debug"],
+    ["string", "gene_file", "result_file", "gene", "lock", "verbose", "compress", "aln_path", "debug", "reinsertions"],
 )
 
 
@@ -201,9 +202,9 @@ def run_command(args: CmdArgs) -> None:
                 writeFasta(tmp_merged.name, aligned_to_write)
                 tmp_merged.flush()
 
-                os.system(f"mafft --anysymbol --maxiterate 2 --quiet --merge {tmp_special.name} {tmp_merged.name} > {out_file}")
+                os.system(f"mafft --maxiterate 2 --quiet --merge {tmp_special.name} {tmp_merged.name} > {out_file}")
                 if args.debug:
-                    printv(f"mafft --anysymbol --maxiterate 2 --quiet --merge {tmp_special.name} {tmp_merged.name} > {out_file}", args.debug, 3)
+                    printv(f"mafft --maxiterate 2 --quiet --merge {tmp_special.name} {tmp_merged.name} > {out_file}", args.debug, 3)
                     with open(os.path.join(this_intermediates, "merge_table.txt"), "w") as fp:
                         fp.write("\n".join(lines))
                     writeFasta(os.path.join(this_intermediates, "merged_msa_file.fa"), aligned_to_write)
@@ -213,12 +214,6 @@ def run_command(args: CmdArgs) -> None:
                 os.system(f"mafft --anysymbol --quiet --jtt 1 --addfragments {merged_singleton_final} --thread 1 {out_file} > {args.result_file}")
                 if debug:
                     printv(f"mafft --anysymbol --quiet --jtt 1 --addfragments {merged_singleton_final} --thread 1 {out_file} > {args.result_file}", args.verbose, 3)
-                #Deinterleave
-                try:
-                    to_write = [(header, sequence) for header, sequence in parseFasta(args.result_file)]
-                except:
-                    print("SINGLETON MERGE FAILED:",args.gene,merged_singleton_final, out_file, args.result_file)
-                writeFasta(args.result_file, to_write)
                 if debug:
                     writeFasta(os.path.join(this_intermediates, os.path.basename(args.result_file)), to_write)
             else:
@@ -268,6 +263,15 @@ def run_command(args: CmdArgs) -> None:
         merge_time = keeper.differential() - cluster_time - align_time
         printv(f"Done. {args.gene} took {keeper.differential():.2f}s", args.verbose, 2) # Debug
 
+    to_write = []
+    for header, sequence in parseFasta(args.result_file):
+        if header in args.reinsertions:
+            for insertion_header in args.reinsertions[header]:
+                to_write.append((insertion_header, sequence))
+        to_write.append((header, sequence))
+    
+    writeFasta(args.result_file, to_write)
+
     return args.gene, cluster_time, align_time, merge_time, keeper.differential()
 
 def do_folder(folder, args):
@@ -280,6 +284,14 @@ def do_folder(folder, args):
         return False
     rmtree(mafft_path, ignore_errors=True)
     os.mkdir(mafft_path)
+
+    nt_db_path = os.path.join(folder, "rocksdb", "sequences", "nt")
+    reinsertions = {}
+    if os.path.exists(nt_db_path):
+        nt_db = wrap_rocks.RocksDB(nt_db_path)
+        data = nt_db.get("getall:insert_dupes")
+        if data is not None:
+            reinsertions = json.loads(data)
 
     genes = [
         gene
@@ -318,14 +330,14 @@ def do_folder(folder, args):
             times.append(
                 run_command(
                         CmdArgs(
-                        command, gene_file, result_file, gene, lock, args.verbose, args.compress, aln_path, args.debug
+                        command, gene_file, result_file, gene, lock, args.verbose, args.compress, aln_path, args.debug, reinsertions.get(gene, {})
                     )
                 )
             )
         else:
             func(
                 (CmdArgs(
-                    command, gene_file, result_file, gene, lock, args.verbose, args.compress, aln_path, args.debug
+                    command, gene_file, result_file, gene, lock, args.verbose, args.compress, aln_path, args.debug, reinsertions.get(gene, {})
                 ),)
             )
 
