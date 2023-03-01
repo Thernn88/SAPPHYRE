@@ -202,9 +202,9 @@ def run_command(args: CmdArgs) -> None:
                 writeFasta(tmp_merged.name, aligned_to_write)
                 tmp_merged.flush()
 
-                os.system(f"mafft --maxiterate 2 --quiet --merge {tmp_special.name} {tmp_merged.name} > {out_file}")
+                os.system(f"mafft --anysymbol --maxiterate 2 --quiet --merge {tmp_special.name} {tmp_merged.name} > {out_file}")
                 if args.debug:
-                    printv(f"mafft --maxiterate 2 --quiet --merge {tmp_special.name} {tmp_merged.name} > {out_file}", args.debug, 3)
+                    printv(f"mafft --anysymbol --maxiterate 2 --quiet --merge {tmp_special.name} {tmp_merged.name} > {out_file}", args.debug, 3)
                     with open(os.path.join(this_intermediates, "merge_table.txt"), "w") as fp:
                         fp.write("\n".join(lines))
                     writeFasta(os.path.join(this_intermediates, "merged_msa_file.fa"), aligned_to_write)
