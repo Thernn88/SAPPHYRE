@@ -56,8 +56,7 @@ def run_command(args: CmdArgs) -> None:
     aligned_ingredients = []
 
     if debug:
-        intermediates = "intermediates"
-        this_intermediates = os.path.join(intermediates, args.gene)
+        this_intermediates = os.path.join("intermediates", args.gene)
         if not os.path.exists(this_intermediates):
             os.mkdir(this_intermediates)
 
@@ -76,6 +75,8 @@ def run_command(args: CmdArgs) -> None:
             printv(f"Outputting singleton alignment. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
             aligned_file = os.path.join(aligned_files_tmp,f"{args.gene}_cluster0")
             writeFasta(aligned_file, data)
+            if args.debug:
+                writeFasta(os.path.join(this_intermediates, aligned_file), data)
             aligned_ingredients.append(aligned_file)
         else:
             printv(f"Generating Cluster. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
@@ -139,6 +140,8 @@ def run_command(args: CmdArgs) -> None:
         if to_merge:
             merged_singleton_final = os.path.join(aligned_files_tmp, f"{args.gene}_cluster{len(aligned_ingredients)}")
             writeFasta(merged_singleton_final, to_merge)
+            if args.debug:
+                writeFasta(os.path.join(this_intermediates, f"MergedSingletonFinal.fa"), to_merge)
         if aligned_ingredients:
             if not to_merge:
                 out_file = args.result_file
@@ -176,8 +179,6 @@ def run_command(args: CmdArgs) -> None:
                     writeFasta(os.path.join(this_intermediates, "references.fa"), to_write)
                 tmp.flush()
 
-                sequence_done = set()
-
                 lines = []
                 total = 0 
                 aligned_to_write = []
@@ -186,9 +187,7 @@ def run_command(args: CmdArgs) -> None:
                     lines.append(file)
                     to_write = []
                     for header, sequence in parseFasta(item):
-                        if sequence not in sequence_done:
-                            to_write.append((header, sequence))
-                            sequence_done.add(sequence)
+                        to_write.append((header, sequence))
                             
                     seq_count = len(to_write)
                     aligned_to_write.extend(to_write)
@@ -205,6 +204,9 @@ def run_command(args: CmdArgs) -> None:
                 os.system(f"mafft --maxiterate 2 --quiet --merge {tmp_special.name} {tmp_merged.name} > {out_file}")
                 if args.debug:
                     printv(f"mafft --maxiterate 2 --quiet --merge {tmp_special.name} {tmp_merged.name} > {out_file}", args.debug, 3)
+                    with open(os.path.join(this_intermediates, "merge_table.txt"), "w") as fp:
+                        fp.write("\n".join(lines))
+                    writeFasta(os.path.join(this_intermediates, "merged_msa_file.fa"), aligned_to_write)
 
         if to_merge:
             if aligned_ingredients:
