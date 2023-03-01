@@ -149,13 +149,6 @@ def print_unmerged_sequences(hits, orthoid, taxa_id):
             continue
         seq_mapped_already[nt_seq] = base_header
 
-        if aa_seq in aa_rd_set:
-            aa_dupe_count += 1
-            aa_reinsert_dupes.setdefault(aa_rd_set[aa_seq], []).append(header)
-            continue
-        else:
-            aa_rd_set[aa_seq] = header
-
         if unique_hit not in exact_hit_mapped_already:
 
             if base_header in base_header_mapped_already:
@@ -202,6 +195,14 @@ def print_unmerged_sequences(hits, orthoid, taxa_id):
 
             header_mapped_x_times.setdefault(base_header, 1)
             exact_hit_mapped_already.add(unique_hit)
+
+    #dedupe
+    for header, seq in aa_result:
+        if seq in aa_rd_set:
+            aa_dupe_count += 1
+            aa_reinsert_dupes.setdefault(aa_rd_set[seq], []).append(header)
+        else:
+            aa_rd_set[seq] = header
 
     return dupes, aa_result, nt_result, aa_reinsert_dupes, aa_dupe_count
 

@@ -128,6 +128,8 @@ def run_command(args: CmdArgs) -> None:
                     aligned_ingredients.append(aligned_cluster)
                     raw_cluster = os.path.join(raw_files_tmp, f"{args.gene}_cluster{len(aligned_ingredients)}")
                     writeFasta(raw_cluster, cluster_seqs)
+                    if debug:
+                        writeFasta(os.path.join(this_intermediates, f"{args.gene}_cluster{len(aligned_ingredients)}"), cluster_seqs)
 
                     command = args.string.format(
                             in_file=raw_cluster, out_file=aligned_cluster
