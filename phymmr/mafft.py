@@ -1,5 +1,6 @@
 from __future__ import annotations
-
+import json
+import wrap_rocks
 import os
 from collections import namedtuple
 from multiprocessing.pool import ThreadPool
@@ -36,7 +37,7 @@ def process_genefile(filewrite, fileread):
 
 CmdArgs = namedtuple(
     "CmdArgs",
-    ["string", "gene_file", "result_file", "gene", "lock", "verbose", "compress", "aln_path"],
+    ["string", "gene_file", "result_file", "gene", "lock", "verbose", "compress", "aln_path", "reinsertions"],
 )
 
 
@@ -76,7 +77,11 @@ def run_command(args: CmdArgs) -> None:
     out = []
     for header, sequence in parseFasta(args.result_file):
         if "|" in header:
-            out.append((cand_og_hashmap[header[:242]], sequence))
+            header = cand_og_hashmap[header[:242]]
+            out.append((header, sequence))
+            if header in args.reinsertions:
+                for reinsertion in args.reinsertions[header]:
+                    out.append((reinsertion, sequence))
 
         else:
             out.append((ref_og_hashmap[header.strip()], sequence))
@@ -84,6 +89,8 @@ def run_command(args: CmdArgs) -> None:
     if args.compress:
         os.unlink(args.result_file)
     writeFasta(args.result_file, out, args.compress)
+
+    
 
 
 def do_folder(folder, args):
@@ -96,6 +103,14 @@ def do_folder(folder, args):
         return False
     rmtree(mafft_path, ignore_errors=True)
     os.mkdir(mafft_path)
+
+    nt_db_path = os.path.join(folder, "rocksdb", "sequences", "nt")
+    reinsertions = {}
+    if os.path.exists(nt_db_path):
+        nt_db = wrap_rocks.RocksDB(nt_db_path)
+        data = nt_db.get("getall:insert_dupes")
+        if data is not None:
+            reinsertions = json.loads(data)
 
     genes = [
         gene
@@ -135,7 +150,7 @@ def do_folder(folder, args):
         result_file = os.path.join(mafft_path, file.rstrip(".gz"))
         func(
             CmdArgs(
-                command, gene_file, result_file, gene, lock, args.verbose, args.compress, aln_path
+                command, gene_file, result_file, gene, lock, args.verbose, args.compress, aln_path, reinsertions.get(gene, {})
             )
         )
 
