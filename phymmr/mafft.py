@@ -1,7 +1,4 @@
 from __future__ import annotations
-import argparse
-import gzip
-from itertools import combinations
 
 import os
 from collections import namedtuple
@@ -11,7 +8,6 @@ from tempfile import TemporaryDirectory, NamedTemporaryFile
 from threading import Lock
 from .utils import printv, gettempdir, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
-from Bio.Seq import Seq
 KMER_LEN = 21   
 
 def find_kmers(fasta):
@@ -79,7 +75,6 @@ def run_command(args: CmdArgs) -> None:
         if seq_count == 1:
             printv(f"Outputting singleton alignment. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
             aligned_file = os.path.join(aligned_files_tmp,f"{args.gene}_cluster0")
-            data = [(header, str(Seq(sequence).translate())) for header, sequence in data]
             writeFasta(aligned_file, data)
             aligned_ingredients.append(aligned_file)
         else:
@@ -209,7 +204,7 @@ def run_command(args: CmdArgs) -> None:
 
                 os.system(f"mafft --maxiterate 2 --quiet --merge {tmp_special.name} {tmp_merged.name} > {out_file}")
                 if args.debug:
-                    print(f"mafft --maxiterate 2 --quiet --merge {tmp_special.name} {tmp_merged.name} > {out_file}")
+                    printv(f"mafft --maxiterate 2 --quiet --merge {tmp_special.name} {tmp_merged.name} > {out_file}", args.debug, 3)
 
         if to_merge:
             if aligned_ingredients:
