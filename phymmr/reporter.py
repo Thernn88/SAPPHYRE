@@ -122,8 +122,11 @@ def print_unmerged_sequences(hits, orthoid, taxa_id):
     header_mapped_x_times = {}
     base_header_mapped_already = {}
     seq_mapped_already = {}
+    aa_reinsert_dupes = {}
+    aa_rd_set = {}
     exact_hit_mapped_already = set()
     dupes = {}
+    aa_dupe_count = 0
     for hit in hits:
 
         base_header, reference_frame = hit.header.split("|")
@@ -145,6 +148,13 @@ def print_unmerged_sequences(hits, orthoid, taxa_id):
             dupes.setdefault(mapped_to, []).append(base_header)
             continue
         seq_mapped_already[nt_seq] = base_header
+
+        if aa_seq in aa_rd_set:
+            aa_dupe_count += 1
+            aa_reinsert_dupes.setdefault(aa_rd_set[aa_seq], []).append(header)
+            continue
+        else:
+            aa_rd_set[aa_seq] = header
 
         if unique_hit not in exact_hit_mapped_already:
 
@@ -193,7 +203,7 @@ def print_unmerged_sequences(hits, orthoid, taxa_id):
             header_mapped_x_times.setdefault(base_header, 1)
             exact_hit_mapped_already.add(unique_hit)
 
-    return dupes, aa_result, nt_result
+    return dupes, aa_result, nt_result, aa_reinsert_dupes, aa_dupe_count
 
 
 OutputArgs = namedtuple(
@@ -226,7 +236,7 @@ def trim_and_write(oargs: OutputArgs):
     )
 
     this_aa_path = os.path.join(oargs.aa_out_path, oargs.gene + ".aa.fa")
-    this_gene_dupes, aa_output, nt_output = print_unmerged_sequences(
+    this_gene_dupes, aa_output, nt_output, aa_reinsert_dupes, aa_dupe_count = print_unmerged_sequences(
         oargs.list_of_hits,
         oargs.gene,
         oargs.taxa_id,
@@ -246,7 +256,7 @@ def trim_and_write(oargs: OutputArgs):
         oargs.verbose,
         2,
     )
-    return oargs.gene, this_gene_dupes, len(aa_output)
+    return oargs.gene, this_gene_dupes, len(aa_output), aa_reinsert_dupes, aa_dupe_count
 
 
 def do_taxa(path, taxa_id, args):
@@ -340,17 +350,25 @@ def do_taxa(path, taxa_id, args):
         recovered = [trim_and_write(i[0]) for i in arguments]
 
     final_count = 0
+    final_aa_dupes_count = 0
     this_gene_based_dupes = {}
-    for gene, dupes, amount in recovered:
+    this_gene_inserts = {}
+    for gene, nt_dupes, amount, aa_dupes, aa_dupes_amount in recovered:
         final_count += amount
-        this_gene_based_dupes[gene] = dupes
+        final_aa_dupes_count += aa_dupes_amount
+        this_gene_based_dupes[gene] = nt_dupes
+        this_gene_inserts[gene] = aa_dupes
 
     key = "getall:reporter_dupes"
     data = json.dumps(this_gene_based_dupes)
     rocky.get_rock("rocks_nt_db").put(key, data)
 
+    key = "getall:insert_dupes"
+    data = json.dumps(this_gene_inserts)
+    rocky.get_rock("rocks_nt_db").put(key, data)
+
     printv(
-        f"Done! Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s and found {final_count} sequences.",
+        f"Done! Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s and found {final_count} sequences but kicked {final_aa_dupes_count} aa dupes.",
         args.verbose,
     )
 
