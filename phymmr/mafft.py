@@ -154,7 +154,9 @@ def run_command(args: CmdArgs) -> None:
             printv(f"Merging Alignments. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
             with NamedTemporaryFile(
                     dir = parent_tmpdir, mode="w+"
-                ) as tmp, NamedTemporaryFile(
+                ) as pre_reftmp, NamedTemporaryFile(
+                    dir = parent_tmpdir, mode="w+"
+                ) as aligned_reftmp, NamedTemporaryFile(
                     dir = parent_tmpdir, mode="w+"
                 ) as tmp_special, NamedTemporaryFile(
                     dir = parent_tmpdir, mode="w+"
@@ -177,15 +179,18 @@ def run_command(args: CmdArgs) -> None:
                 for header, sequence in sequences:
                     to_write.append((header, "".join([let for col, let in enumerate(sequence) if not empty_columns[col]])))
 
-                writeFasta(tmp.name, to_write)
+                writeFasta(pre_reftmp.name, to_write)
+                pre_reftmp.flush()
+
+                os.system(f"mafft-linsi --quiet --anysymbol {pre_reftmp.name} > {aligned_reftmp.name}")
+
                 if debug:
-                    writeFasta(os.path.join(this_intermediates, "references.fa"), to_write)
-                tmp.flush()
+                    writeFasta(os.path.join(this_intermediates, "references.fa"), parseFasta(aligned_reftmp.name))
 
                 lines = []
                 total = 0 
                 aligned_to_write = []
-                for item in [tmp.name]+aligned_ingredients:
+                for item in [aligned_reftmp.name]+aligned_ingredients:
                     file = os.path.basename(item)
                     lines.append(file)
                     to_write = []
