@@ -769,6 +769,33 @@ def return_aligned_paths(
             compress,
         )
 
+def print_str_list(ls: list[str]):
+    for i, s in enumerate(ls):
+        print(f"\t{i + 1}. {s}")
+
+    print("\n")
+
+
+def ensure_intersection(nt_files: list[Path], aa_files: list[Path]):
+    nt_set = set([p.name.replace(".nt", "") for p in nt_files])
+    aa_set = set([p.name.replace(".aa", "") for p in aa_files])
+
+    in_nt_not_aa = list(nt_set.difference(aa_set))
+    in_aa_not_nt = list(aa_set.difference(nt_set))
+
+    if len(in_nt_not_aa) != 0 or len(in_aa_not_nt) != 0:
+        print("\033[1;31mUncommon NT and AA files detected\033[0m")
+
+        if len(in_nt_not_aa) != 0:
+            print("The following files exist in NT folder, but not AA folder:")
+            print_str_list(in_nt_not_aa)
+
+        if len(in_aa_not_nt) != 0:
+            print("The following files exist in AA folder, but not NT folder:")
+            print_str_list(in_aa_not_nt)
+
+        exit(1)
+
 
 def prepare_taxa_and_genes(
     input: str, specified_dna_table, verbose, compress
@@ -798,7 +825,8 @@ def prepare_taxa_and_genes(
         ],
         key=lambda x: x.name.split(".")[0],
     )
-
+    
+    ensure_intersection(glob_nt, glob_aa)
     out_generator = return_aligned_paths(
         glob_nt, glob_aa, joined_nt_aligned, specified_dna_table, verbose, compress
     )
