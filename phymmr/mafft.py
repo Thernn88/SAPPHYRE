@@ -55,7 +55,9 @@ def run_command(args: CmdArgs) -> None:
         aln_path = os.path.join(args.aln_path, args.gene + ".aln.fa")
         with NamedTemporaryFile(
                 mode="w+", dir=tmpdir
-            ) as tmpaln:
+            ) as tmpaln, NamedTemporaryFile(
+                mode="w+", dir=tmpdir
+            ) as tmpaln_realign:
                 new_aln = []
                 for header, seq in parseFasta(aln_path):
                     if not header.strip() in targets_present:
@@ -65,9 +67,11 @@ def run_command(args: CmdArgs) -> None:
                 tmpaln.writelines(new_aln)
                 tmpaln.file.flush()
 
+                os.system(f"mafft-linsi --quiet --anysymbol {tmpaln.name} > {tmpaln_realign.name}")
+
                 tmpfile.file.flush()
                 command = args.string.format(
-                    tmpfile=tmpfile.name, resultfile=args.result_file, tmpaln=tmpaln.name
+                    tmpfile=tmpfile.name, resultfile=args.result_file, tmpaln=tmpaln_realign.name
                 )
 
                 printv(f"Executing command: {command}", args.verbose, 2)
