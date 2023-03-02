@@ -20,6 +20,8 @@ def process_genefile(filewrite, fileread):
     ref_og_hashmap = {}
     cand_og_hashmap = {}
     targets_present = set()
+    reinsertions = {}
+    ref_back = {}
     for header, sequence in parseFasta(fileread):
 
         if header.endswith("."):
@@ -27,17 +29,20 @@ def process_genefile(filewrite, fileread):
             ref_og_hashmap[target] = header
             targets_present.add(target)
         else:
-            taxa_id = header.split("|")[2]
-            cand_og_hashmap[header[:242]] = header
-            filewrite.write(f">{header}\n")
-            filewrite.write(sequence + "\n")
+            if sequence in ref_back:
+                reinsertions.setdefault(ref_back[sequence], []).append(header)
+            else:
+                ref_back[sequence] = header
+                cand_og_hashmap[header[:242]] = header
+                filewrite.write(f">{header}\n")
+                filewrite.write(sequence + "\n")
             
-    return ref_og_hashmap, cand_og_hashmap, targets_present
+    return ref_og_hashmap, cand_og_hashmap, targets_present, reinsertions
 
 
 CmdArgs = namedtuple(
     "CmdArgs",
-    ["string", "gene_file", "result_file", "gene", "lock", "verbose", "compress", "aln_path", "reinsertions"],
+    ["string", "gene_file", "result_file", "gene", "lock", "verbose", "compress", "aln_path"],
 )
 
 
@@ -51,7 +56,7 @@ def run_command(args: CmdArgs) -> None:
     with TemporaryDirectory(dir=temp_dir) as tmpdir, NamedTemporaryFile(
         mode="w+", dir=tmpdir
     ) as tmpfile:
-        ref_og_hashmap, cand_og_hashmap, targets_present = process_genefile(tmpfile, args.gene_file)
+        ref_og_hashmap, cand_og_hashmap, targets_present, reinsertions = process_genefile(tmpfile, args.gene_file)
         aln_path = os.path.join(args.aln_path, args.gene + ".aln.fa")
         with NamedTemporaryFile(
                 mode="w+", dir=tmpdir
@@ -83,8 +88,8 @@ def run_command(args: CmdArgs) -> None:
         if "|" in header:
             header = cand_og_hashmap[header[:242]]
             out.append((header, sequence))
-            if header in args.reinsertions:
-                for reinsertion in args.reinsertions[header]:
+            if header in reinsertions:
+                for reinsertion in reinsertions[header]:
                     out.append((reinsertion, sequence))
 
         else:
@@ -107,14 +112,6 @@ def do_folder(folder, args):
         return False
     rmtree(mafft_path, ignore_errors=True)
     os.mkdir(mafft_path)
-
-    nt_db_path = os.path.join(folder, "rocksdb", "sequences", "nt")
-    reinsertions = {}
-    if os.path.exists(nt_db_path):
-        nt_db = wrap_rocks.RocksDB(nt_db_path)
-        data = nt_db.get("getall:insert_dupes")
-        if data is not None:
-            reinsertions = json.loads(data)
 
     genes = [
         gene
@@ -154,7 +151,7 @@ def do_folder(folder, args):
         result_file = os.path.join(mafft_path, file.rstrip(".gz"))
         func(
             CmdArgs(
-                command, gene_file, result_file, gene, lock, args.verbose, args.compress, aln_path, reinsertions.get(gene, {})
+                command, gene_file, result_file, gene, lock, args.verbose, args.compress, aln_path
             )
         )
 
