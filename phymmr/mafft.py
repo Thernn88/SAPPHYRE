@@ -1,6 +1,4 @@
 from __future__ import annotations
-import json
-import wrap_rocks
 import os
 from collections import namedtuple
 from multiprocessing.pool import ThreadPool
@@ -23,7 +21,6 @@ def process_genefile(filewrite, fileread):
     reinsertions = {}
     ref_back = {}
     for header, sequence in parseFasta(fileread):
-
         if header.endswith("."):
             target = header.split("|")[2]
             ref_og_hashmap[target] = header
@@ -36,13 +33,22 @@ def process_genefile(filewrite, fileread):
                 cand_og_hashmap[header[:242]] = header
                 filewrite.write(f">{header}\n")
                 filewrite.write(sequence + "\n")
-            
+
     return ref_og_hashmap, cand_og_hashmap, targets_present, reinsertions
 
 
 CmdArgs = namedtuple(
     "CmdArgs",
-    ["string", "gene_file", "result_file", "gene", "lock", "verbose", "compress", "aln_path"],
+    [
+        "string",
+        "gene_file",
+        "result_file",
+        "gene",
+        "lock",
+        "verbose",
+        "compress",
+        "aln_path",
+    ],
 )
 
 
@@ -56,27 +62,30 @@ def run_command(args: CmdArgs) -> None:
     with TemporaryDirectory(dir=temp_dir) as tmpdir, NamedTemporaryFile(
         mode="w+", dir=tmpdir
     ) as tmpfile:
-        ref_og_hashmap, cand_og_hashmap, targets_present, reinsertions = process_genefile(tmpfile, args.gene_file)
+        (
+            ref_og_hashmap,
+            cand_og_hashmap,
+            targets_present,
+            reinsertions,
+        ) = process_genefile(tmpfile, args.gene_file)
         tmpfile.file.flush()
         aln_path = os.path.join(args.aln_path, args.gene + ".aln.fa")
-        with NamedTemporaryFile(
-                mode="w+", dir=tmpdir
-            ) as tmpaln:
-                new_aln = []
-                for header, seq in parseFasta(aln_path):
-                    if not header.strip() in targets_present:
-                        continue
-                    new_aln.append(f">{header}\n{seq}\n")
+        with NamedTemporaryFile(mode="w+", dir=tmpdir) as tmpaln:
+            new_aln = []
+            for header, seq in parseFasta(aln_path):
+                if not header.strip() in targets_present:
+                    continue
+                new_aln.append(f">{header}\n{seq}\n")
 
-                tmpaln.writelines(new_aln)
-                tmpaln.file.flush()
+            tmpaln.writelines(new_aln)
+            tmpaln.file.flush()
 
-                command = args.string.format(
-                    tmpfile=tmpfile.name, resultfile=args.result_file, tmpaln=tmpaln.name
-                )
+            command = args.string.format(
+                tmpfile=tmpfile.name, resultfile=args.result_file, tmpaln=tmpaln.name
+            )
 
-                printv(f"Executing command: {command}", args.verbose, 2)
-                os.system(command)
+            printv(f"Executing command: {command}", args.verbose, 2)
+            os.system(command)
 
     # Overwrite reference headers with original headers
     out = []
@@ -94,8 +103,6 @@ def run_command(args: CmdArgs) -> None:
     if args.compress:
         os.unlink(args.result_file)
     writeFasta(args.result_file, out, args.compress)
-
-    
 
 
 def do_folder(folder, args):
@@ -126,7 +133,7 @@ def do_folder(folder, args):
     cmd = "mafft"
     if args.linsi:
         cmd = "mafft-linsi"
-    
+
     combo = "--addfragments"
     if args.combo:
         combo = "--jtt 1 --addtoroot"
@@ -147,7 +154,14 @@ def do_folder(folder, args):
         result_file = os.path.join(mafft_path, file.rstrip(".gz"))
         func(
             CmdArgs(
-                command, gene_file, result_file, gene, lock, args.verbose, args.compress, aln_path
+                command,
+                gene_file,
+                result_file,
+                gene,
+                lock,
+                args.verbose,
+                args.compress,
+                aln_path,
             )
         )
 

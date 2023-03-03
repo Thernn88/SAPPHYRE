@@ -43,7 +43,6 @@ class Record:
         self.mean_distance = None
         self.grade = None
 
-
     def __hash__(self):
         return hash(self.id + self.sequence)
 
@@ -64,11 +63,13 @@ def nan_check(iterable) -> bool:
             return True
     return False
 
+
 def fast_pop(array: list, i: int):
     temp = array[i]
     array[i] = array[-1]
     array[-1] = temp
     return array.pop()
+
 
 def folder_check(path: Path, debug: bool) -> None:
     """Create subfolders 'aa' and 'nt' to given path."""
@@ -448,6 +449,7 @@ def compare_means(
 
     return regulars, passing, failing
 
+
 def delete_empty_columns(raw_fed_sequences: list, verbose: bool) -> tuple[list, list]:
     """
     Iterates over each sequence and deletes columns
@@ -538,6 +540,7 @@ def make_exclusion_set(path: str) -> set:
             excluded.add(line.rstrip())
     return excluded
 
+
 def delete_excluded(lines: list, excluded: set) -> list:
     """
     Given a list of fasta lines and a set of headers to be excluded from output,
@@ -559,6 +562,8 @@ def original_order_sort(original: list, candidate_records: list) -> list:
     candidates = {cand.id: cand for cand in candidate_records}
     output = [candidates.get(header, False) for header in original]
     return [x for x in output if x]
+
+
 def main_process(
     args_input,
     nt_input,
@@ -587,9 +592,7 @@ def main_process(
     aa_output = os.path.join(args_output, "aa")
     aa_output = os.path.join(aa_output, filename.rstrip(".gz"))
 
-    reference_sequences, candidate_sequences, ref_check = split_sequences(
-        file_input
-    )
+    reference_sequences, candidate_sequences, ref_check = split_sequences(file_input)
     original_order = [line for line in candidate_sequences[0::2]]
     ref_dict, candidates_dict = find_index_groups(
         reference_sequences, candidate_sequences

@@ -48,7 +48,7 @@ class Hit:
         "kick",
         "frame",
         "full_header",
-        "target"
+        "target",
     )
 
     def __init__(
@@ -296,12 +296,12 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
         if hash(header) != current_header:
             current_header = hash(header)
             ref_variation_filter = set()
-            
+
         ref_gene, ref_taxon, _ = taxon_lookup[ref_header_pair]
 
         target_has_hit.add(ref_header_pair)
 
-        ref_variation_key = header+ref_taxon
+        ref_variation_key = header + ref_taxon
         if not ref_variation_key in ref_variation_filter:
             ref_variation_filter.add(ref_variation_key)
             rextaxon_count[ref_taxon] = rextaxon_count.get(ref_taxon, 0) + 1
@@ -320,6 +320,7 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
 
     return top_names, total_references, list(header_lines.values()), target_has_hit
 
+
 ProcessingArgs = namedtuple(
     "ProcessingArgs",
     [
@@ -331,13 +332,11 @@ ProcessingArgs = namedtuple(
         "total_references",
         "strict_search_mode",
         "reference_taxa",
-
     ],
 )
 
-def process_lines(
-    pargs: ProcessingArgs
-):
+
+def process_lines(pargs: ProcessingArgs):
     output = {}
     evalue_kicks = 0
     multi_kicks = 0
@@ -354,7 +353,12 @@ def process_lines(
                 this_log.extend(log)
         # filter hits by min length and evalue
         hits_bad, evalue_Log = hits_are_bad(
-            hits, pargs.debug, pargs.min_percent, pargs.min_evalue, pargs.top_refs, pargs.total_references
+            hits,
+            pargs.debug,
+            pargs.min_percent,
+            pargs.min_evalue,
+            pargs.top_refs,
+            pargs.total_references,
         )
         if hits_bad:
             evalue_kicks += len(hits)
@@ -362,7 +366,9 @@ def process_lines(
                 this_log.extend(evalue_Log)
             continue
 
-        best_hit = reciprocal_check(hits, pargs.strict_search_mode, pargs.reference_taxa)
+        best_hit = reciprocal_check(
+            hits, pargs.strict_search_mode, pargs.reference_taxa
+        )
 
         if best_hit:
             output.setdefault(best_hit.gene, []).append(best_hit)
@@ -500,12 +506,14 @@ def run_process(args, input_path) -> None:
                 variants_with_hits = sum([i[1] in target_has_hit for i in this_targets])
                 all_variants_kicked = variants_with_hits == 0
                 if all_variants_kicked:
-                    reintroduce = max(this_targets, key = lambda x : x[2])
+                    reintroduce = max(this_targets, key=lambda x: x[2])
                     out_targets.append(reintroduce[1])
                     continue
-                
-                out_targets.extend([i[1] for i in this_targets if i[1] in target_has_hit])
-            
+
+                out_targets.extend(
+                    [i[1] for i in this_targets if i[1] in target_has_hit]
+                )
+
             variant_filter[gene] = out_targets
         else:
             variant_filter.pop(gene, -1)
@@ -515,31 +523,32 @@ def run_process(args, input_path) -> None:
 
     del variant_filter
 
-
     printv(
         f"Processing {chunks} chunk(s). Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
         args.verbose,
     )
     if lines:
         per_thread = ceil(ceil(len(lines) / chunks) / num_threads)
-        for i in range(0, chunks*num_threads, num_threads):
+        for i in range(0, chunks * num_threads, num_threads):
             printv(
                 f"Processing chunk {next(chunk_count)}. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
                 args.verbose,
             )
-            
+
             arguments = [
-                (ProcessingArgs(
-                    lines[(per_thread*j):(per_thread*(j+1))],
-                    args.debug,
-                    args.min_percent,
-                    args.min_evalue,
-                    top_refs,
-                    total_references,
-                    strict_search_mode,
-                    reference_taxa,
-                ),)
-                for j in range(i, i+num_threads)
+                (
+                    ProcessingArgs(
+                        lines[(per_thread * j) : (per_thread * (j + 1))],
+                        args.debug,
+                        args.min_percent,
+                        args.min_evalue,
+                        top_refs,
+                        total_references,
+                        strict_search_mode,
+                        reference_taxa,
+                    ),
+                )
+                for j in range(i, i + num_threads)
             ]
 
             with Pool(num_threads) as p:
@@ -688,7 +697,6 @@ def main(args):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
     for input_path in args.INPUT:
-
         run_process(args, input_path)
     if len(args.INPUT) > 1 or not args.verbose:
         printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)

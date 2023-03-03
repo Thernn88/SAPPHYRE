@@ -227,7 +227,7 @@ def trim_around(
             cull_end = i + skip_first
             break
 
-    cull_start = starting_index 
+    cull_start = starting_index
     for i in range(starting_index - 1, -1, -1):
         mismatch = mismatches
         skip_last = 0
@@ -297,7 +297,18 @@ def get_data_difference(trim, ref):
     return trim / ref
 
 
-def do_cull(sequence, sequence_length, offset, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold, kick):
+def do_cull(
+    sequence,
+    sequence_length,
+    offset,
+    amt_matches,
+    mismatches,
+    match_percent,
+    all_dashes_by_index,
+    character_at_each_pos,
+    gap_present_threshold,
+    kick,
+):
     cull_start = None
     cull_end = None
     for i, char in enumerate(sequence):
@@ -311,8 +322,6 @@ def do_cull(sequence, sequence_length, offset, amt_matches, mismatches, match_pe
         # Don't allow cull to point of all dashes
         if char == "-":
             continue
-        else:
-            window_start = i
 
         if all_dashes_by_index[i]:
             continue
@@ -360,7 +369,7 @@ def do_cull(sequence, sequence_length, offset, amt_matches, mismatches, match_pe
 
         if pass_all:
             cull_start = i + skip_first
-            
+
             break
 
     if not kick:
@@ -376,23 +385,17 @@ def do_cull(sequence, sequence_length, offset, amt_matches, mismatches, match_pe
                 break
             if char == "-":
                 continue
-            else:
-                window_end = i
 
             if all_dashes_by_index[i]:
                 # Don't allow cull to point of all dashes
                 continue
             if (
-                not character_at_each_pos[i].count(char)
-                / len(character_at_each_pos[i])
+                not character_at_each_pos[i].count(char) / len(character_at_each_pos[i])
                 >= match_percent
             ):
                 skip_last += 1
                 if window_end == i:
                     continue
-                else:
-                    mismatch -= 1
-
             if mismatch < 0:
                 continue
 
@@ -410,9 +413,7 @@ def do_cull(sequence, sequence_length, offset, amt_matches, mismatches, match_pe
                         break
                     match_i += 1
                 elif (
-                    not character_at_each_pos[i - match_i].count(
-                        sequence[i - match_i]
-                    )
+                    not character_at_each_pos[i - match_i].count(sequence[i - match_i])
                     / len(character_at_each_pos[i - match_i])
                     >= match_percent
                 ):
@@ -531,7 +532,18 @@ def do_gene(
 
         sequence_length = len(sequence)
 
-        cull_start, cull_end, kick = do_cull(sequence, sequence_length, offset, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold, kick)
+        cull_start, cull_end, kick = do_cull(
+            sequence,
+            sequence_length,
+            offset,
+            amt_matches,
+            mismatches,
+            match_percent,
+            all_dashes_by_index,
+            character_at_each_pos,
+            gap_present_threshold,
+            kick,
+        )
 
         if not kick:  # If also passed Cull End Calc. Finish
             out_line = ["-"] * cull_start + sequence[cull_start:cull_end]
@@ -609,16 +621,16 @@ def do_gene(
                     )
                 continue
 
-            out_line =[
-                    let if i * 3 not in column_cull else "-"
-                    for i, let in enumerate(out_line)
-                ]
-            
+            out_line = [
+                let if i * 3 not in column_cull else "-"
+                for i, let in enumerate(out_line)
+            ]
+
             # The cull replaces data positions with dashes to maintain the same alignment
             # while removing the bad data
 
             out_line = "".join(out_line)
-            
+
             data_length = cull_end - cull_start
             bp_after_cull = len(out_line) - out_line.count("-")
 
@@ -670,8 +682,8 @@ def do_gene(
     aa_out, aa_positions_to_keep = delete_empty_columns(aa_out, False)
     if len(aa_out) == len(references):
         return log  # Only refs
-    
-    #Internal gap cull
+
+    # Internal gap cull
     reference_cols = {}
     reference_gap_col = set()
     for header, sequence in aa_out:
@@ -680,7 +692,7 @@ def do_gene(
                 reference_cols.setdefault(i, []).append(let)
         else:
             break
-            
+
     post_gap_present_threshold = {}
     post_all_dashes_by_index = {}
     post_character_at_each_pos = {}
@@ -695,10 +707,19 @@ def do_gene(
         else:
             post_all_dashes_by_index[col] = False
         post_character_at_each_pos[col] = letters
-        
 
     if debug:
-        aa_out = [("Reference Gap Columns DEBUG.", "".join(["#" if i in reference_gap_col else "-" for i in reference_cols.keys()]))] + aa_out
+        aa_out = [
+            (
+                "Reference Gap Columns DEBUG.",
+                "".join(
+                    [
+                        "#" if i in reference_gap_col else "-"
+                        for i in reference_cols.keys()
+                    ]
+                ),
+            )
+        ] + aa_out
 
     gap_pass_through = {}
     for record_index, record in enumerate(aa_out):
@@ -711,14 +732,14 @@ def do_gene(
             non_ref_gap_dash_count = 0
             raw_dash_count = 0
             out_line = list(sequence)
-            for j, let in enumerate(out_line[seq_start:seq_end+1], seq_start):
+            for j, let in enumerate(out_line[seq_start : seq_end + 1], seq_start):
                 if let == "-":
                     if not j in reference_gap_col:
                         non_ref_gap_dash_count += 1
                     raw_dash_count += 1
                 else:
                     if non_ref_gap_dash_count >= 11:
-                        i = j-(raw_dash_count//2)
+                        i = j - (raw_dash_count // 2)
                         positions = trim_around(
                             i,
                             seq_start,
@@ -740,30 +761,45 @@ def do_gene(
                         left_side_ref_data_columns = sum(
                             [gap_present_threshold[x] for x in range(seq_start, i)]
                         )
-                        left_of_trim_data_columns = len(left_after) - left_after.count("-")
+                        left_of_trim_data_columns = len(left_after) - left_after.count(
+                            "-"
+                        )
 
                         right_side_ref_data_columns = sum(
                             [gap_present_threshold[x] for x in range(i, seq_end)]
                         )
-                        right_of_trim_data_columns = len(right_after) - right_after.count("-")
+                        right_of_trim_data_columns = len(
+                            right_after
+                        ) - right_after.count("-")
 
-                        #If both sides kicked and sequence ends up being empty keep the side with the most bp.
+                        # If both sides kicked and sequence ends up being empty keep the side with the most bp.
                         keep_left = False
                         keep_right = False
-                        
-                        if get_data_difference(
+
+                        if (
+                            get_data_difference(
                                 left_of_trim_data_columns, left_side_ref_data_columns
-                            ) < 0.55 and get_data_difference(
+                            )
+                            < 0.55
+                            and get_data_difference(
                                 right_of_trim_data_columns, right_side_ref_data_columns
-                            ) < 0.55:
-                            keep_left = True if len(left_after) - left_after.count("-") >= len(right_after) - right_after.count("-") else False
+                            )
+                            < 0.55
+                        ):
+                            keep_left = (
+                                True
+                                if len(left_after) - left_after.count("-")
+                                >= len(right_after) - right_after.count("-")
+                                else False
+                            )
                             keep_right = not keep_left
 
                         if (
                             get_data_difference(
                                 left_of_trim_data_columns, left_side_ref_data_columns
                             )
-                            < 0.55 and not keep_left
+                            < 0.55
+                            and not keep_left
                         ):  # candidate has less than % of data columns compared to reference
                             for x in range(seq_start, i):
                                 gap_cull.add(x * 3)
@@ -771,13 +807,15 @@ def do_gene(
                         if (
                             get_data_difference(
                                 right_of_trim_data_columns, right_side_ref_data_columns
-                            ) < 0.55 and not keep_right
+                            )
+                            < 0.55
+                            and not keep_right
                         ):
                             for x in range(i, seq_end):
                                 gap_cull.add(x * 3)
                                 out_line[x] = "-"
                         change_made = True
-                    
+
                     non_ref_gap_dash_count = 0
                     raw_dash_count = 0
             if change_made:
@@ -801,7 +839,7 @@ def do_gene(
                     aa_out[record_index] = None
                 else:
                     aa_out[record_index] = (header, "".join(out_line))
-                
+
                 gap_pass_through[header] = gap_cull
 
     aa_out = [i for i in aa_out if i is not None]
@@ -843,12 +881,22 @@ def do_gene(
                 nt_out.append((header, out_line))
         nt_out = align_col_removal(nt_out, aa_positions_to_keep)
         out_nt = []
-        for header,sequence in nt_out:
+        for header, sequence in nt_out:
             gap_cull = gap_pass_through.get(header, None)
             if gap_cull:
-                out_nt.append((header,"".join([sequence[i:i+3] if i not in gap_cull else "---" for i in range(0, len(sequence), 3)])))
+                out_nt.append(
+                    (
+                        header,
+                        "".join(
+                            [
+                                sequence[i : i + 3] if i not in gap_cull else "---"
+                                for i in range(0, len(sequence), 3)
+                            ]
+                        ),
+                    )
+                )
             else:
-                out_nt.append((header,sequence))
+                out_nt.append((header, sequence))
 
         writeFasta(nt_out_path, out_nt, compress)
 

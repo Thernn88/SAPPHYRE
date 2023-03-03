@@ -475,22 +475,43 @@ def do_protein(
                                         break
                             else:
                                 if taxons_of_split:
-                                    comparison_taxa = most_occuring[0] if most_occuring[1] != -1 else taxons_of_split[0]
+                                    comparison_taxa = (
+                                        most_occuring[0]
+                                        if most_occuring[1] != -1
+                                        else taxons_of_split[0]
+                                    )
                                 else:
-                                    headers_here = "".join([header for (header, _) in sequences_at_current_point])
+                                    headers_here = "".join(
+                                        [
+                                            header
+                                            for (
+                                                header,
+                                                _,
+                                            ) in sequences_at_current_point
+                                        ]
+                                    )
                                     key = f"{data_start}{data_end}{headers_here}"
                                     if key in quality_taxons_here:
                                         comparison_taxa = quality_taxons_here[key]
                                     else:
                                         quality_taxons = []
-                                        for taxon, sequence in comparison_sequences.items():
-                                            data_region = sequence[data_start: data_end+1]
-                                            data = len(data_region) - data_region.count("-")
+                                        for (
+                                            taxon,
+                                            sequence,
+                                        ) in comparison_sequences.items():
+                                            data_region = sequence[
+                                                data_start : data_end + 1
+                                            ]
+                                            data = len(data_region) - data_region.count(
+                                                "-"
+                                            )
                                             quality_taxons.append((data, taxon))
-                                    
-                                        comparison_taxa = max(quality_taxons, key = lambda x: x[0])[1]
+
+                                        comparison_taxa = max(
+                                            quality_taxons, key=lambda x: x[0]
+                                        )[1]
                                         quality_taxons_here[key] = comparison_taxa
-                            
+
                         # Grab the reference sequence for the mode taxon
                         if comparison_taxa:
                             comparison_sequence = comparison_sequences[comparison_taxa]
@@ -520,7 +541,6 @@ def do_protein(
                                 already_calculated_splits[split_key] = split_position
 
                         elif protein == "nt":
-
                             split_position = already_calculated_splits[split_key] * 3
 
                         if cursor >= split_position:
@@ -574,7 +594,9 @@ def do_protein(
                     ):
                         new_merge[i] = mode_char
                         if debug:
-                            majority_assignments[i] = "X" if mode_char == "-" else mode_char
+                            majority_assignments[i] = (
+                                "X" if mode_char == "-" else mode_char
+                            )
 
             elif protein == "nt":
                 length = len(new_merge)
@@ -641,9 +663,11 @@ def do_protein(
                             if mode_cand_raw_character != char:
                                 new_merge[raw_i] = mode_cand_raw_character
                                 if debug:
-                                    majority_assignments[
-                                        raw_i
-                                    ] = "XXX" if mode_cand_raw_character == "---" else mode_cand_raw_character
+                                    majority_assignments[raw_i] = (
+                                        "XXX"
+                                        if mode_cand_raw_character == "---"
+                                        else mode_cand_raw_character
+                                    )
 
             new_merge = str(Seq("").join(new_merge))
             gene_out.append((final_header, new_merge))
@@ -769,7 +793,7 @@ def do_folder(folder: Path, args):
         rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
         prepare_dupe_counts = json.loads(rocksdb_db.get("getall:gene_dupes"))
         reporter_dupe_counts = json.loads(rocksdb_db.get("getall:reporter_dupes"))
-        ref_stats = rocksdb_db.get("getall:valid_refs").split(',')
+        ref_stats = rocksdb_db.get("getall:valid_refs").split(",")
     else:
         prepare_dupe_counts = {}
         reporter_dupe_counts = {}

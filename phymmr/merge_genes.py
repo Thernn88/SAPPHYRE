@@ -70,7 +70,6 @@ def main(args):
                     aa_out.setdefault(path, []).extend(out)
                     grabbed_aa_references[path] = already_grabbed
 
-
             arguments = []
             for nt_gene in nt_path.iterdir():
                 if nt_gene.name not in nt_out:

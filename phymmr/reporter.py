@@ -70,11 +70,14 @@ def get_diamondhits(rocks_hits_db, list_of_wanted_orthoids):
 def get_reference_data(rocks_hits_db):
     return json.loads(rocks_hits_db.get("getall:refseqs"))
 
+
 def get_gene_variants(rocks_hits_db):
     return json.loads(rocks_hits_db.get("getall:target_variants"))
 
+
 def get_toprefs(rocks_nt_db):
     return rocks_nt_db.get("getall:valid_refs").split(",")
+
 
 def translate_cdna(cdna_seq):
     if not cdna_seq:
@@ -125,7 +128,6 @@ def print_unmerged_sequences(hits, orthoid, taxa_id):
     exact_hit_mapped_already = set()
     dupes = {}
     for hit in hits:
-
         base_header, reference_frame = hit.header.split("|")
 
         header = format_candidate_header(
@@ -147,7 +149,6 @@ def print_unmerged_sequences(hits, orthoid, taxa_id):
         seq_mapped_already[nt_seq] = base_header
 
         if unique_hit not in exact_hit_mapped_already:
-
             if base_header in base_header_mapped_already:
                 (
                     already_mapped_header,
@@ -209,7 +210,6 @@ OutputArgs = namedtuple(
         "compress",
         "target_taxon",
         "top_refs",
-
     ],
 )
 
@@ -233,12 +233,16 @@ def trim_and_write(oargs: OutputArgs):
     )
 
     if aa_output:
-        aa_core_sequences = print_core_sequences(oargs.gene, core_sequences, oargs.target_taxon, oargs.top_refs)
+        aa_core_sequences = print_core_sequences(
+            oargs.gene, core_sequences, oargs.target_taxon, oargs.top_refs
+        )
         writeFasta(this_aa_path, aa_core_sequences + aa_output, oargs.compress)
 
         this_nt_path = os.path.join(oargs.nt_out_path, oargs.gene + ".nt.fa")
 
-        nt_core_sequences = print_core_sequences(oargs.gene, core_sequences_nt, oargs.target_taxon, oargs.top_refs)
+        nt_core_sequences = print_core_sequences(
+            oargs.gene, core_sequences_nt, oargs.target_taxon, oargs.top_refs
+        )
         writeFasta(this_nt_path, nt_core_sequences + nt_output, oargs.compress)
 
     printv(
