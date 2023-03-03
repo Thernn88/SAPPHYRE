@@ -343,6 +343,7 @@ def process_lines(pargs: ProcessingArgs):
     this_log = []
     for this_lines in pargs.lines:
         hits = [Hit(*hit.split("\t")) for hit in this_lines]  # convert to Hit object
+        hits = list(filter(lambda x: x.reftaxon in pargs.top_refs, hits))
         hits.sort(key=lambda x: x.score, reverse=True)
         genes_present = {hit.gene for hit in hits}
 
