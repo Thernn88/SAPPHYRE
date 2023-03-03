@@ -322,6 +322,7 @@ def do_cull(
         # Don't allow cull to point of all dashes
         if char == "-":
             continue
+        window_start = i
 
         if all_dashes_by_index[i]:
             continue
@@ -385,6 +386,7 @@ def do_cull(
                 break
             if char == "-":
                 continue
+            window_end = i
 
             if all_dashes_by_index[i]:
                 # Don't allow cull to point of all dashes
@@ -396,6 +398,7 @@ def do_cull(
                 skip_last += 1
                 if window_end == i:
                     continue
+                mismatch -= 1
             if mismatch < 0:
                 continue
 
