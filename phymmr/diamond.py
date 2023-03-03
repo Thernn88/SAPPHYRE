@@ -50,11 +50,11 @@ class Hit:
         "full_header",
         "target",
         "sstart",
-        "ssend"
+        "send"
     )
 
     def __init__(
-        self, header, ref_header, frame, evalue, score, qstart, qend, gene, reftaxon, sstart, ssend
+        self, header, ref_header, frame, evalue, score, qstart, qend, gene, reftaxon, sstart, send
     ):
         self.header = header
         self.target = ref_header
@@ -68,7 +68,7 @@ class Hit:
         self.kick = False
         self.frame = int(frame)
         self.sstart = int(sstart)
-        self.ssend = int(ssend)
+        self.send = int(send)
         if self.frame < 0:
             self.qend, self.qstart = self.qstart, self.qend
         self.length = self.qend - self.qstart + 1
@@ -462,7 +462,7 @@ def run_process(args, input_path) -> None:
             )
             time_keeper.lap()  # Reset timer
             os.system(
-                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {args.evalue} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart ssend {quiet} --top {top_amount} --max-hsps 0 -p {num_threads}"
+                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {args.evalue} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --max-hsps 0 -p {num_threads}"
             )
             input_file.seek(0)
 
