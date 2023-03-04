@@ -110,20 +110,6 @@ def subcmd_diamond(subparsers):
         help="Diamond top percentage cull.",
     )
     par.add_argument(
-        "-me",
-        "--min-evalue",
-        type=float,
-        default=float("1e-30"),
-        help="Filter evalue threshold.",
-    )
-    par.add_argument(
-        "-mp",
-        "--min-percent",
-        type=float,
-        default=0.3,
-        help="Minimum percentage of reference hits required for a sequence if it fails min-evalue.",
-    )
-    par.add_argument(
         "-tr",
         "--top-ref",
         type=float,

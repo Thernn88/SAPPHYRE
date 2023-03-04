@@ -31,7 +31,7 @@ def reciprocal_check(hits, strict, taxa_present):
     if any(hit_on_taxas.values()):
         return first
 
-    return None, None
+    return None
 
 
 class Hit:
@@ -191,52 +191,6 @@ def multi_filter(hits, debug):
     passes = [i for i in hits if i]
     return passes, len(hits) - len(passes), log
 
-
-def hits_are_bad(
-    hits: list,
-    debug: bool,
-    min_size: int,
-    min_evalue: float,
-    top_refs: set,
-    total_references: int,
-) -> bool:
-    """
-    Checks a list of hits for minimum size and score. If below both, kick.
-    Returns True is checks fail, otherwise returns False.
-    """
-    evalue_log = []
-    reference_hits = list({i.reftaxon for i in hits})
-    return_type = True
-    if len(reference_hits) / total_references >= min_size:
-        return_type = False
-    if return_type:
-        for hit in hits:
-            if hit.evalue < min_evalue:
-                return_type = False
-    if return_type:
-        for hit in hits:
-            if hit.reftaxon in top_refs:
-                return_type = False
-
-    if debug and return_type:
-        evalue_log = [
-            (
-                candidate.gene,
-                candidate.header,
-                candidate.reftaxon,
-                candidate.score,
-                candidate.qstart,
-                candidate.qend,
-                str(candidate.evalue),
-                str(len(hits)),
-                "Group kicked due to length and evalue",
-            )
-            for candidate in hits
-        ]
-
-    return return_type, evalue_log
-
-
 def internal_filter(header_based: dict, debug: bool, internal_percent: float) -> list:
     log = []
     kicks = 0
@@ -333,8 +287,6 @@ ProcessingArgs = namedtuple(
     [
         "lines",
         "debug",
-        "min_percent",
-        "min_evalue",
         "top_refs",
         "total_references",
         "strict_search_mode",
@@ -345,7 +297,6 @@ ProcessingArgs = namedtuple(
 
 def process_lines(pargs: ProcessingArgs):
     output = {}
-    evalue_kicks = 0
     multi_kicks = 0
     this_log = []
     for this_lines in pargs.lines:
@@ -359,20 +310,6 @@ def process_lines(pargs: ProcessingArgs):
             multi_kicks += this_kicks
             if pargs.debug:
                 this_log.extend(log)
-        # filter hits by min length and evalue
-        hits_bad, evalue_Log = hits_are_bad(
-            hits,
-            pargs.debug,
-            pargs.min_percent,
-            pargs.min_evalue,
-            pargs.top_refs,
-            pargs.total_references,
-        )
-        if hits_bad:
-            evalue_kicks += len(hits)
-            if pargs.debug:
-                this_log.extend(evalue_Log)
-            continue
 
         best_hit = reciprocal_check(
             hits, pargs.strict_search_mode, pargs.reference_taxa
@@ -381,7 +318,7 @@ def process_lines(pargs: ProcessingArgs):
         if best_hit:
             output.setdefault(best_hit.gene, []).append(best_hit)
 
-    return output, evalue_kicks, multi_kicks, this_log
+    return output, multi_kicks, this_log
 
 
 def run_process(args, input_path) -> None:
@@ -486,7 +423,6 @@ def run_process(args, input_path) -> None:
     chunks = args.chunks
     chunk_count = itertools.count(1)
 
-    evalue_kicks = 0
     global_log = []
     dupe_divy_headers = {}
     with open(out_path) as fp:
@@ -548,8 +484,6 @@ def run_process(args, input_path) -> None:
                     ProcessingArgs(
                         lines[(per_thread * j) : (per_thread * (j + 1))],
                         args.debug,
-                        args.min_percent,
-                        args.min_evalue,
                         top_refs,
                         total_references,
                         strict_search_mode,
@@ -562,19 +496,18 @@ def run_process(args, input_path) -> None:
             with Pool(num_threads) as p:
                 result = p.starmap(process_lines, arguments)
             del arguments
-            for this_output, ekicks, mkicks, this_log in result:
+            for this_output, mkicks, this_log in result:
                 for gene, hits in this_output.items():
                     if gene not in output:
                         output[gene] = hits
                     else:
                         output[gene].extend(hits)
 
-                evalue_kicks += ekicks
                 multi_kicks += mkicks
 
                 if args.debug:
                     global_log.extend(this_log)
-            del this_output, ekicks, mkicks, this_log, result
+            del this_output, mkicks, this_log, result
         printv(
             f"Processed. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
             args.verbose,
@@ -663,10 +596,6 @@ def run_process(args, input_path) -> None:
                 )
 
         printv(
-            f"{evalue_kicks} evalue kicks",
-            args.verbose,
-        )
-        printv(
             f"{multi_kicks} multi kicks",
             args.verbose,
         )
@@ -675,7 +604,7 @@ def run_process(args, input_path) -> None:
             args.verbose,
         )
         printv(
-            f"Took {time_keeper.lap():.2f}s for {multi_kicks+evalue_kicks+internal_kicks} kicks leaving {passes} results. Writing dupes and present gene data",
+            f"Took {time_keeper.lap():.2f}s for {multi_kicks+internal_kicks} kicks leaving {passes} results. Writing dupes and present gene data",
             args.verbose,
         )
 
