@@ -50,7 +50,7 @@ class Hit:
         "full_header",
         "target",
         "sstart",
-        "send"
+        "send",
     )
 
     def __init__(
@@ -85,8 +85,11 @@ class Hit:
             "header": self.full_header,
             "seq": self.seq,
             "ref_taxon": self.reftaxon,
+            "target": self.target,
             "ali_start": self.qstart,
             "ali_end": self.qend,
+            "sub_start": self.sstart,
+            "sub_end": self.send,
         }
 
 

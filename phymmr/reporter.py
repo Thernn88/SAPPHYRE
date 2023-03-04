@@ -9,7 +9,8 @@ from typing import Optional
 
 import phymmr_tools
 from Bio.Seq import Seq
-
+from Bio.Align import PairwiseAligner
+ 
 from . import rocky
 from .timekeeper import TimeKeeper, KeeperMode
 from .utils import printv, writeFasta
@@ -36,22 +37,72 @@ class Hit:
         "ali_end",
         "est_sequence",
         "ref_taxon",
+        "sub_start",
+        "sub_end",
+        "target",
     )
 
-    def __init__(self, first_hit, gene):
-        self.header = first_hit["header"]
+    def __init__(self, hit, gene):
+        self.header = hit["header"]
         self.gene = gene
-        self.ali_start = int(first_hit["ali_start"])
-        self.ali_end = int(first_hit["ali_end"])
-        self.ref_taxon = first_hit["ref_taxon"]
+        self.ali_start = int(hit["ali_start"])
+        self.ali_end = int(hit["ali_end"])
+        self.ref_taxon = hit["ref_taxon"]
 
-        self.est_sequence = first_hit["seq"]
+        self.est_sequence = hit["seq"]
 
-    def trim_to_coords(self):
-        self.est_sequence = self.est_sequence[self.ali_start - 1 : self.ali_end]
+        self.sub_start = int(hit["sub_start"])-1
+        self.sub_end = int(hit["sub_end"])
+
+        self.target = hit["target"]
+
+    def get_bp_trim(self, this_aa, ref):
+        reg_start = None
+        reg_end = None
+        ref = ref[self.sub_start: self.sub_end]
+        
+        if len(this_aa) != len(ref):
+            # If not the same length pairwise align them
+            aligner = PairwiseAligner()
+            aligner.match_score = 1.0 
+            aligner.mismatch_score = -2.0
+            aligner.gap_score = -2.5
+            try:
+                alignments = aligner.align(ref, this_aa)
+            except:
+                alignments = []
+            if len(alignments) == 0:
+                # No alignments found
+                return None, None
+            
+            best_alignment = alignments[0]
+            
+            this_aa = str(best_alignment[1])
+            ref = str(best_alignment[0])
+
+        for i in range(0, len(this_aa)):
+            if ref[i] == this_aa[i]:
+                reg_start = i
+                break
+        
+        for i in range(len(this_aa)-1, -1, -1):
+            if ref[i] == this_aa[i]:
+                reg_end = i
+                break
+
+        if reg_start is None or reg_end is None:
+            return None, None
+        
+        return reg_start, len(this_aa) - reg_end
+
+    def trim_to_coords(self, start=None, end=None):
+        if start is None:
+            start = self.ali_start
+            end = self.ali_end
+        self.est_sequence = self.est_sequence[start - 1 : end]
         if "revcomp" in self.header:
             self.est_sequence = phymmr_tools.bio_revcomp(self.est_sequence)
-
+        
 
 def get_diamondhits(rocks_hits_db, list_of_wanted_orthoids):
     gene_based_results = {}
@@ -118,7 +169,7 @@ def print_core_sequences(orthoid, core_sequences, target_taxon, top_refs):
     return result
 
 
-def print_unmerged_sequences(hits, orthoid, taxa_id):
+def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs):
     aa_result = []
     nt_result = []
     header_maps_to_where = {}
@@ -137,8 +188,17 @@ def print_unmerged_sequences(hits, orthoid, taxa_id):
             base_header,
             reference_frame,
         )
-        nt_seq = hit.est_sequence
-        aa_seq = translate_cdna(nt_seq)
+
+        hit.trim_to_coords()
+        aa_seq = translate_cdna(hit.est_sequence)
+
+        r_start, r_end = hit.get_bp_trim(aa_seq, core_aa_seqs[hit.target])
+        if r_start is None or r_end is None:
+            print("WARNING: Could not trim sequence")
+            continue
+
+        nt_seq = hit.est_sequence[(r_start*3):-(r_end*3)]
+        aa_seq = aa_seq[r_start:-r_end]
 
         unique_hit = base_header + aa_seq
 
@@ -218,18 +278,18 @@ def trim_and_write(oargs: OutputArgs):
     t_gene_start = TimeKeeper(KeeperMode.DIRECT)
     printv(f"Doing output for: {oargs.gene}", oargs.verbose, 2)
 
-    for sequence in oargs.list_of_hits:
-        sequence.trim_to_coords()
-
+    
     core_sequences, core_sequences_nt = get_ortholog_group(
         oargs.gene, rocky.get_rock("rocks_orthoset_db")
     )
 
+    core_seq_aa_dict = {target: seq for _, target, seq in core_sequences}
     this_aa_path = os.path.join(oargs.aa_out_path, oargs.gene + ".aa.fa")
     this_gene_dupes, aa_output, nt_output = print_unmerged_sequences(
         oargs.list_of_hits,
         oargs.gene,
         oargs.taxa_id,
+        core_seq_aa_dict
     )
 
     if aa_output:
