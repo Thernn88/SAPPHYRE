@@ -83,6 +83,9 @@ class Hit:
 
         l_matches = matches
         for i in range(0, len(this_aa)):
+            if ref[i] == "-" or this_aa[i] == "-" or ref[i] != this_aa[i]:
+                continue
+
             if ref[i] == this_aa[i]:
                 l_matches -= 1
 
@@ -91,8 +94,12 @@ class Hit:
                 break
         r_matches = matches
         for i in range(len(this_aa)-1, -1, -1):
+            if ref[i] == "-" or this_aa[i] == "-" or ref[i] != this_aa[i]:
+                continue
+
             if ref[i] == this_aa[i]:
                 r_matches -= 1
+                
             if r_matches <= 0:
                 reg_end = i
                 break
