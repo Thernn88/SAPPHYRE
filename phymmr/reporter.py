@@ -81,29 +81,33 @@ class Hit:
             this_aa = str(best_alignment[1])
             ref = str(best_alignment[0])
 
-        l_matches = matches
         for i in range(0, len(this_aa)):
+            this_pass = True
             if ref[i] == "-" or this_aa[i] == "-" or ref[i] != this_aa[i]:
                 continue
 
             if ref[i] == this_aa[i]:
-                l_matches -= 1
-
-            if l_matches <= 0:
+                for j in range(matches):
+                    if i+j > len(this_aa)-1 or ref[i+j] != this_aa[i+j]:
+                        this_pass = False
+                        break
+            if this_pass:
                 reg_start = i
                 break
-        r_matches = matches
+
         for i in range(len(this_aa)-1, -1, -1):
+            this_pass = True
             if ref[i] == "-" or this_aa[i] == "-" or ref[i] != this_aa[i]:
                 continue
 
             if ref[i] == this_aa[i]:
-                r_matches -= 1
-                
-            if r_matches <= 0:
+                for j in range(matches):
+                    if i-j < 0 or ref[i-j] != this_aa[i-j]:
+                        this_pass = False
+                        break
+            if this_pass:
                 reg_end = i
                 break
-
         if reg_start is None or reg_end is None:
             return None, None
         
