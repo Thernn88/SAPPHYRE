@@ -81,9 +81,11 @@ class Hit:
             this_aa = str(best_alignment[1])
             ref = str(best_alignment[0])
 
+        skip_l = 0
         for i in range(0, len(this_aa)):
             this_pass = True
-            if ref[i] == "-" or this_aa[i] == "-" or ref[i] != this_aa[i]:
+            if this_aa[i] == "-":
+                skip_l += 1
                 continue
 
             if ref[i] == this_aa[i]:
@@ -91,13 +93,15 @@ class Hit:
                     if i+j > len(this_aa)-1 or ref[i+j] != this_aa[i+j]:
                         this_pass = False
                         break
-            if this_pass:
-                reg_start = i
-                break
+                if this_pass:
+                    reg_start = i
+                    break
 
+        skip_r = 0
         for i in range(len(this_aa)-1, -1, -1):
             this_pass = True
-            if ref[i] == "-" or this_aa[i] == "-" or ref[i] != this_aa[i]:
+            if this_aa[i] == "-":
+                skip_r += 1
                 continue
 
             if ref[i] == this_aa[i]:
@@ -105,13 +109,13 @@ class Hit:
                     if i-j < 0 or ref[i-j] != this_aa[i-j]:
                         this_pass = False
                         break
-            if this_pass:
-                reg_end = i
-                break
+                if this_pass:
+                    reg_end = i
+                    break
         if reg_start is None or reg_end is None:
             return None, None
         
-        return reg_start, len(this_aa) - reg_end
+        return reg_start-skip_l, len(this_aa)+skip_r - reg_end
 
     def trim_to_coords(self, start=None, end=None):
         if start is None:
