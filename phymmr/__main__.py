@@ -142,6 +142,14 @@ def subcmd_reporter(subparsers):
     par.add_argument(
         "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
     )
+    par.add_argument(
+        "-m",
+        "--matches",
+        type=int,
+        default=2,
+        help="Amount of matches for dynamic pairwise aligned edge trim.",
+    )
+    
     par.add_argument("-d", "--debug", type=int, default=0, help="Verbose debug.")
     par.set_defaults(func=reporter, formathelp=par.format_help)
 
@@ -157,6 +165,7 @@ def reporter(args):
         args.orthoset_input,
         args.orthoset,
         args.compress,
+        args.matches
     )
     if not reporter.main(mainargs):
         print(args.formathelp())

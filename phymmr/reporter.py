@@ -25,6 +25,7 @@ MainArgs = namedtuple(
         "orthoset_input",
         "orthoset",
         "compress",
+        "matches",
     ],
 )
 
@@ -56,7 +57,7 @@ class Hit:
 
         self.target = hit["target"]
 
-    def get_bp_trim(self, this_aa, ref):
+    def get_bp_trim(self, this_aa, ref, matches):
         reg_start = None
         reg_end = None
         ref = ref[self.sub_start: self.sub_end]
@@ -80,13 +81,19 @@ class Hit:
             this_aa = str(best_alignment[1])
             ref = str(best_alignment[0])
 
+        l_matches = matches
         for i in range(0, len(this_aa)):
             if ref[i] == this_aa[i]:
+                l_matches -= 1
+
+            if l_matches <= 0:
                 reg_start = i
                 break
-        
+        r_matches = matches
         for i in range(len(this_aa)-1, -1, -1):
             if ref[i] == this_aa[i]:
+                r_matches -= 1
+            if r_matches <= 0:
                 reg_end = i
                 break
 
@@ -169,7 +176,7 @@ def print_core_sequences(orthoid, core_sequences, target_taxon, top_refs):
     return result
 
 
-def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs):
+def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches):
     aa_result = []
     nt_result = []
     header_maps_to_where = {}
@@ -192,7 +199,7 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs):
         hit.trim_to_coords()
         aa_seq = translate_cdna(hit.est_sequence)
 
-        r_start, r_end = hit.get_bp_trim(aa_seq, core_aa_seqs[hit.target])
+        r_start, r_end = hit.get_bp_trim(aa_seq, core_aa_seqs[hit.target], trim_matches)
         if r_start is None or r_end is None:
             print("WARNING: Could not trim sequence")
             continue
@@ -270,6 +277,7 @@ OutputArgs = namedtuple(
         "compress",
         "target_taxon",
         "top_refs",
+        "matches"
     ],
 )
 
@@ -289,7 +297,8 @@ def trim_and_write(oargs: OutputArgs):
         oargs.list_of_hits,
         oargs.gene,
         oargs.taxa_id,
-        core_seq_aa_dict
+        core_seq_aa_dict,
+        oargs.matches,
     )
 
     if aa_output:
@@ -390,6 +399,7 @@ def do_taxa(path, taxa_id, args):
                     args.compress,
                     set(target_taxon.get(orthoid, [])),
                     top_refs,
+                    args.matches,
                 ),
             )
         )
