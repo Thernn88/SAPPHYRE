@@ -54,7 +54,7 @@ class Hit:
     )
 
     def __init__(
-        self, header, ref_header, frame, evalue, score, qstart, qend, gene, reftaxon, sstart, send
+        self, header, ref_header, frame, evalue, score, qstart, qend, sstart, send, gene, reftaxon
     ):
         self.header = header
         self.target = ref_header
