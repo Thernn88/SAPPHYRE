@@ -115,7 +115,7 @@ class Hit:
         if reg_start is None or reg_end is None:
             return None, None
         
-        return reg_start-skip_l, len(this_aa)+skip_r - reg_end
+        return reg_start-skip_l, len(this_aa)+skip_r - reg_end - 1
 
     def trim_to_coords(self, start=None, end=None):
         if start is None:
@@ -218,9 +218,13 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches)
         if r_start is None or r_end is None:
             print("WARNING: Could not trim sequence")
             continue
-
-        nt_seq = hit.est_sequence[(r_start*3):-(r_end*3)]
-        aa_seq = aa_seq[r_start:-r_end]
+        
+        if r_end == 0:
+            nt_seq = hit.est_sequence[(r_start*3):]
+            aa_seq = aa_seq[r_start:]
+        elif r_start != 0:
+            nt_seq = hit.est_sequence[(r_start*3):-(r_end*3)]
+            aa_seq = aa_seq[r_start:-r_end]
 
         unique_hit = base_header + aa_seq
 
