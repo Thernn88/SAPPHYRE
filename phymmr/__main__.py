@@ -149,7 +149,13 @@ def subcmd_reporter(subparsers):
         default=2,
         help="Amount of matches for dynamic pairwise aligned edge trim.",
     )
-    
+    par.add_argument(
+        "-tm",
+        "--trim_mode",
+        choices=["exact", "strict", "lax"],
+        default="exact",
+        help="Trim distance mode.",
+    )
     par.add_argument("-d", "--debug", type=int, default=0, help="Verbose debug.")
     par.set_defaults(func=reporter, formathelp=par.format_help)
 
@@ -165,7 +171,8 @@ def reporter(args):
         args.orthoset_input,
         args.orthoset,
         args.compress,
-        args.matches
+        args.matches,
+        args.trim_mode
     )
     if not reporter.main(mainargs):
         print(args.formathelp())

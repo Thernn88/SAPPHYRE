@@ -6,7 +6,7 @@ import shutil
 from collections import namedtuple
 from multiprocessing.pool import Pool
 from typing import Optional
-
+import blosum as bl
 import phymmr_tools
 from Bio.Seq import Seq
 from Bio.Align import PairwiseAligner
@@ -26,6 +26,7 @@ MainArgs = namedtuple(
         "orthoset",
         "compress",
         "matches",
+        "trim_mode",
     ],
 )
 
@@ -57,11 +58,19 @@ class Hit:
 
         self.target = hit["target"]
 
-    def get_bp_trim(self, this_aa, ref, matches):
+    def get_bp_trim(self, this_aa, ref, matches, mode):
+        if mode == "exact":
+            dist = lambda a, b, _: a == b
+        elif mode == "strict":
+            dist = lambda a, b, mat: mat[a.upper()+b.upper()] > 0
+        else: #lax
+            dist = lambda a, b, mat: mat[a.upper()+b.upper()] >= 0.0
         reg_start = None
         reg_end = None
         ref = ref[self.sub_start: self.sub_end]
         
+        mat = bl.BLOSUM(62)
+
         aligner = PairwiseAligner()
         aligner.match_score = 1.0 
         aligner.mismatch_score = -2.0
@@ -86,9 +95,9 @@ class Hit:
                 skip_l += 1
                 continue
 
-            if ref[i] == this_aa[i]:
+            if dist(ref[i], this_aa[i], mat):
                 for j in range(matches):
-                    if i+j > len(this_aa)-1 or ref[i+j] != this_aa[i+j]:
+                    if i+j > len(this_aa)-1 or not dist(ref[i+j], this_aa[i+j], mat):
                         this_pass = False
                         break
                 if this_pass:
@@ -102,9 +111,9 @@ class Hit:
                 skip_r += 1
                 continue
 
-            if ref[i] == this_aa[i]:
+            if dist(ref[i], this_aa[i], mat):
                 for j in range(matches):
-                    if i-j < 0 or ref[i-j] != this_aa[i-j]:
+                    if i-j < 0 or not dist(ref[i-j], this_aa[i-j], mat):
                         this_pass = False
                         break
                 if this_pass:
@@ -189,7 +198,7 @@ def print_core_sequences(orthoid, core_sequences, target_taxon, top_refs):
     return result
 
 
-def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches):
+def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches, trim_mode):
     aa_result = []
     nt_result = []
     header_maps_to_where = {}
@@ -213,7 +222,7 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches)
         nt_seq = hit.est_sequence
         aa_seq = translate_cdna(nt_seq)
 
-        r_start, r_end = hit.get_bp_trim(aa_seq, core_aa_seqs[hit.target], trim_matches)
+        r_start, r_end = hit.get_bp_trim(aa_seq, core_aa_seqs[hit.target], trim_matches, trim_mode)
         if r_start is None or r_end is None:
             print(f"WARNING: Trim kicked: {hit.header}")
             continue
@@ -295,7 +304,8 @@ OutputArgs = namedtuple(
         "compress",
         "target_taxon",
         "top_refs",
-        "matches"
+        "matches",
+        "trim_mode",
     ],
 )
 
@@ -317,6 +327,7 @@ def trim_and_write(oargs: OutputArgs):
         oargs.taxa_id,
         core_seq_aa_dict,
         oargs.matches,
+        oargs.trim_mode,
     )
 
     if aa_output:
@@ -418,6 +429,7 @@ def do_taxa(path, taxa_id, args):
                     set(target_taxon.get(orthoid, [])),
                     top_refs,
                     args.matches,
+                    args.trim_mode,
                 ),
             )
         )
