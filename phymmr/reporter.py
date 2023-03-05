@@ -212,7 +212,8 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches)
         )
 
         hit.trim_to_coords()
-        aa_seq = translate_cdna(hit.est_sequence)
+        nt_seq = hit.est_sequence
+        aa_seq = translate_cdna(nt_seq)
 
         r_start, r_end = hit.get_bp_trim(aa_seq, core_aa_seqs[hit.target], trim_matches)
         if r_start is None or r_end is None:
@@ -220,10 +221,10 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches)
             continue
         
         if r_end == 0:
-            nt_seq = hit.est_sequence[(r_start*3):]
+            nt_seq = nt_seq[(r_start*3):]
             aa_seq = aa_seq[r_start:]
         elif r_start != 0:
-            nt_seq = hit.est_sequence[(r_start*3):-(r_end*3)]
+            nt_seq = nt_seq[(r_start*3):-(r_end*3)]
             aa_seq = aa_seq[r_start:-r_end]
 
         unique_hit = base_header + aa_seq
