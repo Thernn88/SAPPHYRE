@@ -62,24 +62,22 @@ class Hit:
         reg_end = None
         ref = ref[self.sub_start: self.sub_end]
         
-        if len(this_aa) != len(ref):
-            # If not the same length pairwise align them
-            aligner = PairwiseAligner()
-            aligner.match_score = 1.0 
-            aligner.mismatch_score = -2.0
-            aligner.gap_score = -2.5
-            try:
-                alignments = aligner.align(ref, this_aa)
-            except:
-                alignments = []
-            if len(alignments) == 0:
-                # No alignments found
-                return None, None
-            
-            best_alignment = alignments[0]
-            
-            this_aa = str(best_alignment[1])
-            ref = str(best_alignment[0])
+        aligner = PairwiseAligner()
+        aligner.match_score = 1.0 
+        aligner.mismatch_score = -2.0
+        aligner.gap_score = -2.5
+        try:
+            alignments = aligner.align(ref, this_aa)
+        except:
+            alignments = []
+        if len(alignments) == 0:
+            # No alignments found
+            return None, None
+        
+        best_alignment = alignments[0]
+        
+        this_aa = str(best_alignment[1])
+        ref = str(best_alignment[0])
 
         skip_l = 0
         for i in range(0, len(this_aa)):
@@ -115,7 +113,7 @@ class Hit:
         if reg_start is None or reg_end is None:
             return None, None
         
-        return reg_start-skip_l, len(this_aa)+skip_r - reg_end - 1
+        return reg_start-skip_l, len(this_aa) - reg_end - (1 +skip_r)
 
     def trim_to_coords(self, start=None, end=None):
         if start is None:
@@ -217,7 +215,7 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches)
 
         r_start, r_end = hit.get_bp_trim(aa_seq, core_aa_seqs[hit.target], trim_matches)
         if r_start is None or r_end is None:
-            print("WARNING: Could not trim sequence")
+            print(f"WARNING: Trim kicked: {hit.header}")
             continue
         
         if r_end == 0:
