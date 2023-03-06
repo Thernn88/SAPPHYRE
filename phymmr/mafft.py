@@ -26,21 +26,35 @@ AA_FOLDER = "aa"
 ALN_FOLDER = "aln"
 
 
+def get_start(sequence):
+    for i, char in enumerate(sequence):
+        if char != "-":
+            return i
+    return -1
+
+
 def process_genefile(fileread):
     data = []
     targets = {}
+    reinsertions = {}
+    seq_to_first_header = {}
     for header, sequence in parseFasta(fileread):
         if not header.endswith("."):
             data.append((header, sequence))
         else:
+            seq_hash = hash(sequence)
+            if seq_hash not in seq_to_first_header:
+                seq_to_first_header[seq_hash] = header
+            else:
+                reinsertions.setdefault(seq_to_first_header[seq_hash], []).append(header)
             targets[header.split("|")[2]] = header
             
-    return len(data), data, targets
+    return len(data), data, targets, reinsertions
 
 
 CmdArgs = namedtuple(
     "CmdArgs",
-    ["string", "gene_file", "result_file", "gene", "lock", "verbose", "compress", "aln_path", "debug", "reinsertions"],
+    ["string", "gene_file", "result_file", "gene", "lock", "verbose", "compress", "aln_path", "debug"],
 )
 
 
@@ -66,7 +80,7 @@ def run_command(args: CmdArgs) -> None:
 
     with TemporaryDirectory(dir=temp_dir) as parent_tmpdir, TemporaryDirectory(dir=parent_tmpdir) as raw_files_tmp, TemporaryDirectory(dir=parent_tmpdir) as aligned_files_tmp:
         printv(f"Cleaning NT file. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
-        seq_count, data, targets = process_genefile(args.gene_file)
+        seq_count, data, targets, reinsertions = process_genefile(args.gene_file)
 
         cluster_time = 0
         align_time = 0
@@ -117,19 +131,21 @@ def run_command(args: CmdArgs) -> None:
 
             for i, cluster in enumerate(clusters):
                 printv(f"Aligning cluster {i}. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
-                aligned_cluster = os.path.join(aligned_files_tmp, f"{args.gene}_cluster{len(aligned_ingredients)}")
+                aligned_cluster = os.path.join(aligned_files_tmp, f"{args.gene}_cluster{i}")
                 
                 cluster_seqs =  [(header, sequence) for header, sequence in data if header in cluster]
 
                 if len(cluster_seqs) == 1:
-                    to_merge.extend(cluster_seqs)
-                    
+                    writeFasta(aligned_cluster, cluster_seqs)
+                    to_merge.append(aligned_cluster)
+                    if debug:
+                        writeFasta(os.path.join(this_intermediates, f"{args.gene}_cluster{i}_singleton"), cluster_seqs)
                 else:
                     aligned_ingredients.append(aligned_cluster)
-                    raw_cluster = os.path.join(raw_files_tmp, f"{args.gene}_cluster{len(aligned_ingredients)}")
+                    raw_cluster = os.path.join(raw_files_tmp, f"{args.gene}_cluster{i}")
                     writeFasta(raw_cluster, cluster_seqs)
                     if debug:
-                        writeFasta(os.path.join(this_intermediates, f"{args.gene}_cluster{len(aligned_ingredients)}"), cluster_seqs)
+                        writeFasta(os.path.join(this_intermediates, f"{args.gene}_cluster{i}"), cluster_seqs)
 
                     command = args.string.format(
                             in_file=raw_cluster, out_file=aligned_cluster
@@ -138,27 +154,15 @@ def run_command(args: CmdArgs) -> None:
                     os.system(command)
                     if debug:
                         printv(command, args.verbose, 3)
-                        writeFasta(os.path.join(this_intermediates, f"{args.gene}_cluster{len(aligned_ingredients)}_aligned"), parseFasta(aligned_cluster))
+                        writeFasta(os.path.join(this_intermediates, f"{args.gene}_cluster{i}_aligned"), parseFasta(aligned_cluster))
         align_time = keeper.differential() - cluster_time
         if to_merge:
-            merged_singleton_final = os.path.join(aligned_files_tmp, f"{args.gene}_cluster{len(aligned_ingredients)}")
-            writeFasta(merged_singleton_final, to_merge)
-            if args.debug:
-                writeFasta(os.path.join(this_intermediates, f"MergedSingletonFinal.fa"), to_merge)
+            aligned_ingredients.extend(to_merge)
         if aligned_ingredients:
-            if not to_merge:
-                out_file = args.result_file
-            else:
-                out_file = os.path.join(parent_tmpdir, f"{args.gene}_mafft_merged")
             aligned_ingredients.sort(key = lambda x: int(x.split("_cluster")[-1]))
-            printv(f"Merging Alignments. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
-            with NamedTemporaryFile(
-                    dir = parent_tmpdir, mode="w+"
-                ) as tmp, NamedTemporaryFile(
-                    dir = parent_tmpdir, mode="w+"
-                ) as tmp_special, NamedTemporaryFile(
-                    dir = parent_tmpdir, mode="w+"
-                ) as tmp_merged:
+            printv(f"Merging Alignments. Elapsed time: {keeper.differential():.2f}", args.verbose,3 ) # Debug
+            printv(f"Merging 1 of {len(aligned_ingredients)}. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
+            with NamedTemporaryFile(dir = parent_tmpdir, mode="w+") as tmp:
                 sequences = []
                 for header, sequence in parseFasta(aln_file):
                     if header in targets:
@@ -181,98 +185,43 @@ def run_command(args: CmdArgs) -> None:
                 if debug:
                     writeFasta(os.path.join(this_intermediates, "references.fa"), to_write)
                 tmp.flush()
-
-                lines = []
-                total = 0 
-                aligned_to_write = []
-                for item in [tmp.name]+aligned_ingredients:
-                    file = os.path.basename(item)
-                    lines.append(file)
-                    to_write = []
-                    for header, sequence in parseFasta(item):
-                        to_write.append((header, sequence))
-                            
-                    seq_count = len(to_write)
-                    aligned_to_write.extend(to_write)
-                    line = " " + " ".join(map(str, range(1+total, seq_count+1+total))) + f" # {file}"
-                    total += seq_count
-                    lines.append(line)
                 
-                tmp_special.write("\n".join(lines))
-                tmp_special.flush()
-
-                writeFasta(tmp_merged.name, aligned_to_write)
-                tmp_merged.flush()
-
-                os.system(f"mafft --anysymbol --maxiterate 2 --quiet --merge {tmp_special.name} {tmp_merged.name} > {out_file}")
-                if args.debug:
-                    printv(f"mafft --anysymbol --maxiterate 2 --quiet --merge {tmp_special.name} {tmp_merged.name} > {out_file}", args.debug, 3)
-                    with open(os.path.join(this_intermediates, "merge_table.txt"), "w") as fp:
-                        fp.write("\n".join(lines))
-                    writeFasta(os.path.join(this_intermediates, "merged_msa_file.fa"), aligned_to_write)
-
-        if to_merge:
-            if aligned_ingredients:
-                os.system(f"mafft --anysymbol --quiet --jtt 1 --addfragments {merged_singleton_final} --thread 1 {out_file} > {args.result_file}")
-                if debug:
-                    printv(f"mafft --anysymbol --quiet --jtt 1 --addfragments {merged_singleton_final} --thread 1 {out_file} > {args.result_file}", args.verbose, 3)
-                if debug:
-                    writeFasta(os.path.join(this_intermediates, os.path.basename(args.result_file)), to_write)
-            else:
-                with NamedTemporaryFile(dir = parent_tmpdir, mode="w+") as tmp:
-                    sequences = []
-                    for header, sequence in parseFasta(aln_file):
-                        if header in targets:
-                            sequences.append((targets[header], sequence))
-
-                    empty_columns = None
-                    for header, sequence in sequences:
-                        if empty_columns is None:
-                            empty_columns = [True] * len(sequence)
-
-                        for col, let in enumerate(sequence):
-                            if let != "-":
-                                empty_columns[col] = False
-                    
-                    to_write=  []
-                    for header, sequence in sequences:
-                        to_write.append((header, "".join([let for col, let in enumerate(sequence) if not empty_columns[col]])))
-
-                    writeFasta(tmp.name, to_write)
-                    tmp.flush()
-                
+                out_file = os.path.join(parent_tmpdir,"part_0.fa")
+                if len(aligned_ingredients) == 1:
                     out_file = args.result_file
-                    os.system(f"mafft --anysymbol --quiet --jtt 1 --addfragments {merged_singleton_final} --thread 1 {tmp.name} > {out_file}")
-                    if debug:
-                        printv(f"mafft --anysymbol --quiet --jtt 1 --addfragments {merged_singleton_final} --thread 1 {tmp.name} > {out_file}", args.verbose, 3)
-                    empty_columns = None
-                    for header, sequence in parseFasta(out_file):
-                        if not empty_columns:
-                            empty_columns = [True] * len(sequence)
+                
+                os.system(f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1 --iter=3 --full --full-iter --is-profile --force")
+                if debug:
+                    printv(f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1 --iter=3 --full --full-iter --is-profile --force", args.verbose, 3)
+                    writeFasta(os.path.join(this_intermediates, os.path.basename(out_file)), parseFasta(out_file))
 
-                        for col, let in enumerate(sequence):
-                            if let != "-":
-                                empty_columns[col] = False
-                    
-                    to_write=  []
-                    for header, sequence in parseFasta(out_file):
-                        to_write.append((header, "".join([let for col, let in enumerate(sequence) if not empty_columns[col]])))
+            for i, file in enumerate(aligned_ingredients[1:]):
+                printv(f"Merging {i+2} of {len(aligned_ingredients)}. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
+                out_file = os.path.join(parent_tmpdir,f"part_{i+1}.fa")
+                in_file = os.path.join(parent_tmpdir,f"part_{i}.fa")
+                if file == aligned_ingredients[-1]:
+                    out_file = args.result_file
+               
+                os.system(f"clustalo --p1 {in_file} --p2 {file} -o {out_file} --threads=1 --iter=3 --full --full-iter --is-profile --force")
+                if debug:
+                    printv(f"clustalo --p1 {in_file} --p2 {file} -o {out_file} --threads=1 --iter=3 --full --full-iter --is-profile --force", args.verbose, 3)
+                    writeFasta(os.path.join(this_intermediates, os.path.basename(out_file)), parseFasta(out_file))
+    merge_time = keeper.differential() - align_time - cluster_time
+    
 
-                    writeFasta(out_file, to_write)
-
-                    if debug:
-                        writeFasta(os.path.join(this_intermediates, os.path.basename(out_file)), to_write)
-        merge_time = keeper.differential() - cluster_time - align_time
-        printv(f"Done. {args.gene} took {keeper.differential():.2f}s", args.verbose, 2) # Debug
-
+    #Reinsert and sort
     to_write = []
     for header, sequence in parseFasta(args.result_file):
-        if header in args.reinsertions:
-            for insertion_header in args.reinsertions[header]:
+        if header in reinsertions:
+            for insertion_header in reinsertions[header]:
                 to_write.append((insertion_header, sequence))
         to_write.append((header, sequence))
+
+    to_write.sort(key = lambda x: get_start(x[1]))
     
     writeFasta(args.result_file, to_write)
+
+    printv(f"Done. Took {keeper.differential():.2f}", args.verbose, 3) # Debug
 
     return args.gene, cluster_time, align_time, merge_time, keeper.differential()
 
@@ -286,14 +235,6 @@ def do_folder(folder, args):
         return False
     rmtree(mafft_path, ignore_errors=True)
     os.mkdir(mafft_path)
-
-    nt_db_path = os.path.join(folder, "rocksdb", "sequences", "nt")
-    reinsertions = {}
-    if os.path.exists(nt_db_path):
-        nt_db = wrap_rocks.RocksDB(nt_db_path)
-        data = nt_db.get("getall:insert_dupes")
-        if data is not None:
-            reinsertions = json.loads(data)
 
     genes = [
         gene
@@ -332,14 +273,14 @@ def do_folder(folder, args):
             times.append(
                 run_command(
                         CmdArgs(
-                        command, gene_file, result_file, gene, lock, args.verbose, args.compress, aln_path, args.debug, reinsertions.get(gene, {})
+                        command, gene_file, result_file, gene, lock, args.verbose, args.compress, aln_path, args.debug
                     )
                 )
             )
         else:
             func(
                 (CmdArgs(
-                    command, gene_file, result_file, gene, lock, args.verbose, args.compress, aln_path, args.debug, reinsertions.get(gene, {})
+                    command, gene_file, result_file, gene, lock, args.verbose, args.compress, aln_path, args.debug
                 ),)
             )
 
@@ -351,7 +292,7 @@ def do_folder(folder, args):
         with open("mafft_times.csv", "w") as fp:
             fp.write("\n".join(["Gene,Clustering,Aligning,Merging,Total"]+[",".join(map(str, i)) for i in times]))
 
-    printv(f"Done! Took {time_keeper.differential():.2f}s", args.verbose)
+    printv(f"Done! Took {time_keeper.differential():.2f}s overall", args.verbose)
     return True
 
 
