@@ -6,10 +6,11 @@ import shutil
 from collections import namedtuple
 from multiprocessing.pool import Pool
 from typing import Optional
-
+import blosum as bl
 import phymmr_tools
 from Bio.Seq import Seq
-
+from Bio.Align import PairwiseAligner
+ 
 from . import rocky
 from .timekeeper import TimeKeeper, KeeperMode
 from .utils import printv, writeFasta
@@ -24,6 +25,8 @@ MainArgs = namedtuple(
         "orthoset_input",
         "orthoset",
         "compress",
+        "matches",
+        "trim_mode",
     ],
 )
 
@@ -36,22 +39,99 @@ class Hit:
         "ali_end",
         "est_sequence",
         "ref_taxon",
+        "sub_start",
+        "sub_end",
+        "target",
     )
 
-    def __init__(self, first_hit, gene):
-        self.header = first_hit["header"]
+    def __init__(self, hit, gene):
+        self.header = hit["header"]
         self.gene = gene
-        self.ali_start = int(first_hit["ali_start"])
-        self.ali_end = int(first_hit["ali_end"])
-        self.ref_taxon = first_hit["ref_taxon"]
+        self.ali_start = int(hit["ali_start"])
+        self.ali_end = int(hit["ali_end"])
+        self.ref_taxon = hit["ref_taxon"]
 
-        self.est_sequence = first_hit["seq"]
+        self.est_sequence = hit["seq"]
 
-    def trim_to_coords(self):
-        self.est_sequence = self.est_sequence[self.ali_start - 1 : self.ali_end]
+        self.sub_start = int(hit["sub_start"])-1
+        self.sub_end = int(hit["sub_end"])
+
+        self.target = hit["target"]
+
+    def get_bp_trim(self, this_aa, ref, matches, mode):
+        if mode == "exact":
+            dist = lambda a, b, _: a == b
+        elif mode == "strict":
+            dist = lambda a, b, mat: mat[a.upper()+b.upper()] > 0
+        else: #lax
+            dist = lambda a, b, mat: mat[a.upper()+b.upper()] >= 0.0
+        reg_start = None
+        reg_end = None
+        ref = ref[self.sub_start: self.sub_end]
+        
+        mat = bl.BLOSUM(62)
+
+        aligner = PairwiseAligner()
+        aligner.match_score = 1.0 
+        aligner.mismatch_score = -2.0
+        aligner.gap_score = -2.5
+        try:
+            alignments = aligner.align(ref, this_aa)
+        except:
+            alignments = []
+        if len(alignments) == 0:
+            # No alignments found
+            return None, None
+        
+        best_alignment = alignments[0]
+        
+        this_aa = str(best_alignment[1])
+        ref = str(best_alignment[0])
+
+        skip_l = 0
+        for i in range(0, len(this_aa)):
+            this_pass = True
+            if this_aa[i] == "-":
+                skip_l += 1
+                continue
+
+            if dist(ref[i], this_aa[i], mat):
+                for j in range(matches):
+                    if i+j > len(this_aa)-1 or not dist(ref[i+j], this_aa[i+j], mat):
+                        this_pass = False
+                        break
+                if this_pass:
+                    reg_start = i
+                    break
+
+        skip_r = 0
+        for i in range(len(this_aa)-1, -1, -1):
+            this_pass = True
+            if this_aa[i] == "-":
+                skip_r += 1
+                continue
+
+            if dist(ref[i], this_aa[i], mat):
+                for j in range(matches):
+                    if i-j < 0 or not dist(ref[i-j], this_aa[i-j], mat):
+                        this_pass = False
+                        break
+                if this_pass:
+                    reg_end = i
+                    break
+        if reg_start is None or reg_end is None:
+            return None, None
+        
+        return reg_start-skip_l, len(this_aa) - reg_end - (1 +skip_r)
+
+    def trim_to_coords(self, start=None, end=None):
+        if start is None:
+            start = self.ali_start
+            end = self.ali_end
+        self.est_sequence = self.est_sequence[start - 1 : end]
         if "revcomp" in self.header:
             self.est_sequence = phymmr_tools.bio_revcomp(self.est_sequence)
-
+        
 
 def get_diamondhits(rocks_hits_db, list_of_wanted_orthoids):
     gene_based_results = {}
@@ -70,11 +150,14 @@ def get_diamondhits(rocks_hits_db, list_of_wanted_orthoids):
 def get_reference_data(rocks_hits_db):
     return json.loads(rocks_hits_db.get("getall:refseqs"))
 
+
 def get_gene_variants(rocks_hits_db):
     return json.loads(rocks_hits_db.get("getall:target_variants"))
 
+
 def get_toprefs(rocks_nt_db):
     return rocks_nt_db.get("getall:valid_refs").split(",")
+
 
 def translate_cdna(cdna_seq):
     if not cdna_seq:
@@ -115,20 +198,16 @@ def print_core_sequences(orthoid, core_sequences, target_taxon, top_refs):
     return result
 
 
-def print_unmerged_sequences(hits, orthoid, taxa_id):
+def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches, trim_mode):
     aa_result = []
     nt_result = []
     header_maps_to_where = {}
     header_mapped_x_times = {}
     base_header_mapped_already = {}
     seq_mapped_already = {}
-    aa_reinsert_dupes = {}
-    aa_rd_set = {}
     exact_hit_mapped_already = set()
     dupes = {}
-    aa_dupe_count = 0
     for hit in hits:
-
         base_header, reference_frame = hit.header.split("|")
 
         header = format_candidate_header(
@@ -138,8 +217,22 @@ def print_unmerged_sequences(hits, orthoid, taxa_id):
             base_header,
             reference_frame,
         )
+
+        hit.trim_to_coords()
         nt_seq = hit.est_sequence
         aa_seq = translate_cdna(nt_seq)
+
+        r_start, r_end = hit.get_bp_trim(aa_seq, core_aa_seqs[hit.target], trim_matches, trim_mode)
+        if r_start is None or r_end is None:
+            print(f"WARNING: Trim kicked: {hit.header}")
+            continue
+        
+        if r_end == 0:
+            nt_seq = nt_seq[(r_start*3):]
+            aa_seq = aa_seq[r_start:]
+        elif r_start != 0:
+            nt_seq = nt_seq[(r_start*3):-(r_end*3)]
+            aa_seq = aa_seq[r_start:-r_end]
 
         unique_hit = base_header + aa_seq
 
@@ -150,7 +243,6 @@ def print_unmerged_sequences(hits, orthoid, taxa_id):
         seq_mapped_already[nt_seq] = base_header
 
         if unique_hit not in exact_hit_mapped_already:
-
             if base_header in base_header_mapped_already:
                 (
                     already_mapped_header,
@@ -196,15 +288,7 @@ def print_unmerged_sequences(hits, orthoid, taxa_id):
             header_mapped_x_times.setdefault(base_header, 1)
             exact_hit_mapped_already.add(unique_hit)
 
-    #dedupe
-    for header, seq in aa_result:
-        if seq in aa_rd_set:
-            aa_dupe_count += 1
-            aa_reinsert_dupes.setdefault(aa_rd_set[seq], []).append(header)
-        else:
-            aa_rd_set[seq] = header
-
-    return dupes, aa_result, nt_result, aa_reinsert_dupes, aa_dupe_count
+    return dupes, aa_result, nt_result
 
 
 OutputArgs = namedtuple(
@@ -220,7 +304,8 @@ OutputArgs = namedtuple(
         "compress",
         "target_taxon",
         "top_refs",
-
+        "matches",
+        "trim_mode",
     ],
 )
 
@@ -229,27 +314,33 @@ def trim_and_write(oargs: OutputArgs):
     t_gene_start = TimeKeeper(KeeperMode.DIRECT)
     printv(f"Doing output for: {oargs.gene}", oargs.verbose, 2)
 
-    for sequence in oargs.list_of_hits:
-        sequence.trim_to_coords()
-
+    
     core_sequences, core_sequences_nt = get_ortholog_group(
         oargs.gene, rocky.get_rock("rocks_orthoset_db")
     )
 
+    core_seq_aa_dict = {target: seq for _, target, seq in core_sequences}
     this_aa_path = os.path.join(oargs.aa_out_path, oargs.gene + ".aa.fa")
-    this_gene_dupes, aa_output, nt_output, aa_reinsert_dupes, aa_dupe_count = print_unmerged_sequences(
+    this_gene_dupes, aa_output, nt_output = print_unmerged_sequences(
         oargs.list_of_hits,
         oargs.gene,
         oargs.taxa_id,
+        core_seq_aa_dict,
+        oargs.matches,
+        oargs.trim_mode,
     )
 
     if aa_output:
-        aa_core_sequences = print_core_sequences(oargs.gene, core_sequences, oargs.target_taxon, oargs.top_refs)
+        aa_core_sequences = print_core_sequences(
+            oargs.gene, core_sequences, oargs.target_taxon, oargs.top_refs
+        )
         writeFasta(this_aa_path, aa_core_sequences + aa_output, oargs.compress)
 
         this_nt_path = os.path.join(oargs.nt_out_path, oargs.gene + ".nt.fa")
 
-        nt_core_sequences = print_core_sequences(oargs.gene, core_sequences_nt, oargs.target_taxon, oargs.top_refs)
+        nt_core_sequences = print_core_sequences(
+            oargs.gene, core_sequences_nt, oargs.target_taxon, oargs.top_refs
+        )
         writeFasta(this_nt_path, nt_core_sequences + nt_output, oargs.compress)
 
     printv(
@@ -257,7 +348,7 @@ def trim_and_write(oargs: OutputArgs):
         oargs.verbose,
         2,
     )
-    return oargs.gene, this_gene_dupes, len(aa_output), aa_reinsert_dupes, aa_dupe_count
+    return oargs.gene, this_gene_dupes, len(aa_output)
 
 
 def do_taxa(path, taxa_id, args):
@@ -337,6 +428,8 @@ def do_taxa(path, taxa_id, args):
                     args.compress,
                     set(target_taxon.get(orthoid, [])),
                     top_refs,
+                    args.matches,
+                    args.trim_mode,
                 ),
             )
         )
@@ -351,25 +444,17 @@ def do_taxa(path, taxa_id, args):
         recovered = [trim_and_write(i[0]) for i in arguments]
 
     final_count = 0
-    final_aa_dupes_count = 0
     this_gene_based_dupes = {}
-    this_gene_inserts = {}
-    for gene, nt_dupes, amount, aa_dupes, aa_dupes_amount in recovered:
+    for gene, dupes, amount in recovered:
         final_count += amount
-        final_aa_dupes_count += aa_dupes_amount
-        this_gene_based_dupes[gene] = nt_dupes
-        this_gene_inserts[gene] = aa_dupes
+        this_gene_based_dupes[gene] = dupes
 
     key = "getall:reporter_dupes"
     data = json.dumps(this_gene_based_dupes)
     rocky.get_rock("rocks_nt_db").put(key, data)
 
-    key = "getall:insert_dupes"
-    data = json.dumps(this_gene_inserts)
-    rocky.get_rock("rocks_nt_db").put(key, data)
-
     printv(
-        f"Done! Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s and found {final_count} sequences but kicked {final_aa_dupes_count} aa dupes.",
+        f"Done! Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s and found {final_count} sequences.",
         args.verbose,
     )
 
