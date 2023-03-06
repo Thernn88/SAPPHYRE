@@ -41,12 +41,12 @@ def process_genefile(fileread):
     for header, sequence in parseFasta(fileread):
         if not header.endswith("."):
             data.append((header, sequence))
-        else:
             seq_hash = hash(sequence)
             if seq_hash not in seq_to_first_header:
                 seq_to_first_header[seq_hash] = header
             else:
                 reinsertions.setdefault(seq_to_first_header[seq_hash], []).append(header)
+        else:
             targets[header.split("|")[2]] = header
             
     return len(data), data, targets, reinsertions
@@ -208,7 +208,6 @@ def run_command(args: CmdArgs) -> None:
                     writeFasta(os.path.join(this_intermediates, os.path.basename(out_file)), parseFasta(out_file))
     merge_time = keeper.differential() - align_time - cluster_time
     
-
     #Reinsert and sort
     to_write = []
     for header, sequence in parseFasta(args.result_file):
