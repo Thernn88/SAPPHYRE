@@ -40,12 +40,13 @@ def process_genefile(fileread):
     seq_to_first_header = {}
     for header, sequence in parseFasta(fileread):
         if not header.endswith("."):
-            data.append((header, sequence))
             seq_hash = hash(sequence)
             if seq_hash not in seq_to_first_header:
                 seq_to_first_header[seq_hash] = header
             else:
                 reinsertions.setdefault(seq_to_first_header[seq_hash], []).append(header)
+                continue
+            data.append((header, sequence))
         else:
             targets[header.split("|")[2]] = header
             
@@ -238,7 +239,7 @@ def do_folder(folder, args):
     genes = [
         gene
         for gene in os.listdir(aa_path)
-        if gene.split(".")[-1] in ["fa", "gz", "fq", "fastq", "fasta"]
+        if gene.split(".")[-1] in ["fa", "gz", "fq", "fastq", "fasta"] and "EOG091G0803" in gene
     ]
     orthoset_path = os.path.join(args.orthoset_input, args.orthoset)
     aln_path = os.path.join(orthoset_path, ALN_FOLDER)
