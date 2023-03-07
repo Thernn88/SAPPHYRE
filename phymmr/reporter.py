@@ -230,7 +230,7 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches,
         if r_end == 0:
             nt_seq = nt_seq[(r_start*3):]
             aa_seq = aa_seq[r_start:]
-        elif r_start != 0:
+        else:
             nt_seq = nt_seq[(r_start*3):-(r_end*3)]
             aa_seq = aa_seq[r_start:-r_end]
 
