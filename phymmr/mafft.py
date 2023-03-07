@@ -10,6 +10,7 @@ from threading import Lock
 from .utils import printv, gettempdir, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
 KMER_LEN = 21   
+KMER_PERCENT = 0.1
 
 def find_kmers(fasta):
     kmers = {}
@@ -111,13 +112,15 @@ def run_command(args: CmdArgs) -> None:
                         for key in master_headers[:i]:
                             candidate = kmers[key]
                             if candidate:
-                                if not master.isdisjoint(candidate):
-                                    candidate.update(master)
-                                    children = [master_header.strip(">")] + cluster_children[master_header.strip(">")]
-                                    cluster_children[key.strip(">")].extend(children)
-                                    cluster_children[master_header.strip(">")] = None
-                                    kmers[master_header] = None
-                                    break
+                                similar = master.intersection(candidate)
+                                if len(similar) != 0:
+                                    if len(similar) / min(len(master), len(candidate)) >= KMER_PERCENT:
+                                        candidate.update(master)
+                                        children = [master_header.strip(">")] + cluster_children[master_header.strip(">")]
+                                        cluster_children[key.strip(">")].extend(children)
+                                        cluster_children[master_header.strip(">")] = None
+                                        kmers[master_header] = None
+                                        break
                             
 
             for master, children in cluster_children.items():
