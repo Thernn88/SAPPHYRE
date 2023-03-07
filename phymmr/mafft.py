@@ -239,7 +239,7 @@ def do_folder(folder, args):
     genes = [
         gene
         for gene in os.listdir(aa_path)
-        if gene.split(".")[-1] in ["fa", "gz", "fq", "fastq", "fasta"] and "EOG091G0803" in gene
+        if gene.split(".")[-1] in ["fa", "gz", "fq", "fastq", "fasta"]
     ]
     orthoset_path = os.path.join(args.orthoset_input, args.orthoset)
     aln_path = os.path.join(orthoset_path, ALN_FOLDER)
