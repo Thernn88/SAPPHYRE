@@ -211,15 +211,19 @@ def run_command(args: CmdArgs) -> None:
     
     #Reinsert and sort
     to_write = []
+    references = []
     for header, sequence in parseFasta(args.result_file):
-        if header in reinsertions:
-            for insertion_header in reinsertions[header]:
-                to_write.append((insertion_header, sequence))
-        to_write.append((header, sequence))
+        if header.endswith("."):
+            references.append((header, sequence))
+        else:
+            if header in reinsertions:
+                for insertion_header in reinsertions[header]:
+                    to_write.append((insertion_header, sequence))
+            to_write.append((header, sequence))
 
     to_write.sort(key = lambda x: get_start(x[1]))
     
-    writeFasta(args.result_file, to_write)
+    writeFasta(args.result_file, references+to_write)
 
     printv(f"Done. Took {keeper.differential():.2f}", args.verbose, 3) # Debug
 
