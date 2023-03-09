@@ -9,8 +9,8 @@ from tempfile import TemporaryDirectory, NamedTemporaryFile
 from threading import Lock
 from .utils import printv, gettempdir, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
-KMER_LEN = 21   
-KMER_PERCENT = 0.1
+KMER_LEN = 10   
+KMER_PERCENT = 0.3
 
 def find_kmers(fasta):
     kmers = {}
