@@ -157,6 +157,13 @@ def subcmd_reporter(subparsers):
         "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
     )
     par.add_argument(
+        "-bp",
+        "--minimum_bp",
+        type=int,
+        default=20,
+        help="Amount of bp required after trim.",
+    )
+    par.add_argument(
         "-m",
         "--matches",
         type=int,
@@ -187,6 +194,7 @@ def reporter(args):
         args.compress,
         args.matches,
         args.trim_mode,
+        args.minimum_bp,
     )
     if not reporter.main(mainargs):
         print(args.formathelp())
