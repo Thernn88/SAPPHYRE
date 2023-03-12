@@ -2,10 +2,10 @@
 # © 2022 GPLv3+ PhyMMR Team
 import gzip
 import os
+from needletail import parse_fastx_file
 from threading import Thread
 from queue import Queue
 from typing import Generator
-import pyfastx
 
 # from Bio.SeqIO.QualityIO import FastqGeneralIterator
 
@@ -43,13 +43,9 @@ def parseFasta(path: str) -> Generator[tuple[str, str], None, None]:
     Iterate over a Fasta file returning sequence records as string tuples.
     Designed in order to handle .gz and .fasta files with potential interleave.
     """
-    fa = pyfastx.Fastx(
-        str(path),
-        uppercase=True,
-    )
-    for entry in fa:  # Deinterleave
-        yield entry[0], entry[1]
-
+    reader = parse_fastx_file(path)
+    for record in reader:
+        yield record.id, record.seq
 
 def writeFasta(path: str, records: tuple[str, str], compress=False):
     """
