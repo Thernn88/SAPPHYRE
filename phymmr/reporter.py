@@ -94,7 +94,7 @@ class Hit:
             best_alignment = alignments[0]
             
             this_aa = str(best_alignment[1])
-            ref = str(best_alignment[0])
+            ref_seq = str(best_alignment[0])
 
             skip_l = 0
             for i in range(0, len(this_aa)):
@@ -103,9 +103,9 @@ class Hit:
                     skip_l += 1
                     continue
 
-                if dist(ref[i], this_aa[i], mat):
+                if dist(ref_seq[i], this_aa[i], mat):
                     for j in range(matches):
-                        if i+j > len(this_aa)-1 or not dist(ref[i+j], this_aa[i+j], mat):
+                        if i+j > len(this_aa)-1 or not dist(ref_seq[i+j], this_aa[i+j], mat):
                             this_pass = False
                             break
                     if this_pass:
@@ -119,9 +119,9 @@ class Hit:
                     skip_r += 1
                     continue
 
-                if dist(ref[i], this_aa[i], mat):
+                if dist(ref_seq[i], this_aa[i], mat):
                     for j in range(matches):
-                        if i-j < 0 or not dist(ref[i-j], this_aa[i-j], mat):
+                        if i-j < 0 or not dist(ref_seq[i-j], this_aa[i-j], mat):
                             this_pass = False
                             break
                     if this_pass:
@@ -129,6 +129,7 @@ class Hit:
                         break
         
         if reg_starts and reg_ends:
+            print(reg_starts, reg_ends)
             return min(reg_starts), min(reg_ends)
         return None, None
 
