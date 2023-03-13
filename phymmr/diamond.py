@@ -13,25 +13,33 @@ from .utils import printv, gettempdir
 from .timekeeper import TimeKeeper, KeeperMode
 
 
-def reciprocal_check(hits, strict, taxa_present):
-    first = None
-    hit_on_taxas = {i: 0 for i in taxa_present}
+class BestHit:
+    __slots__ = (
+        "header",
+        "full_header",
+        "gene",
+        "core_seq",
+        "ref_seqs",
+        "kick"
+    )
 
-    for hit in hits:
-        if not strict:
-            return hit
-        first = hit
+    def __init__(self, header, full_header, gene, ref_seqs):
+        self.header = header
+        self.full_header = full_header
+        self.gene = gene
+        self.core_seq = None
+        self.ref_seqs = ref_seqs
+        self.kick = False
 
-        hit_on_taxas[hit.reftaxon] = 1  # Just need 1 hit
+    def to_json(self):
+        self.ref_seqs = [i.to_json() for i in self.ref_seqs]
+        return {
+            "header": self.full_header,
+            "gene": self.gene,
+            "seq": self.core_seq,
+            "ref_seqs": self.ref_seqs
+        }
 
-        if strict:
-            if all(hit_on_taxas.values()):
-                return first
-
-    if any(hit_on_taxas.values()):
-        return first
-
-    return None, None
 
 
 class Hit:
@@ -42,29 +50,31 @@ class Hit:
         "gene",
         "score",
         "reftaxon",
-        "seq",
         "evalue",
         "length",
         "kick",
         "frame",
         "full_header",
-        "target"
+        "target",
+        "sstart",
+        "send",
     )
 
     def __init__(
-        self, header, ref_header, frame, evalue, score, qstart, qend, gene, reftaxon
+        self, header, ref_header, frame, evalue, score, qstart, qend, sstart, send, gene, reftaxon
     ):
         self.header = header
         self.target = ref_header
         self.gene = gene
         self.reftaxon = reftaxon
-        self.seq = None
         self.score = float(score)
         self.qstart = int(qstart)
         self.qend = int(qend)
         self.evalue = float(evalue)
         self.kick = False
         self.frame = int(frame)
+        self.sstart = int(sstart)
+        self.send = int(send)
         if self.frame < 0:
             self.qend, self.qstart = self.qstart, self.qend
         self.length = self.qend - self.qstart + 1
@@ -78,11 +88,13 @@ class Hit:
 
     def to_json(self):
         return {
-            "header": self.full_header,
-            "seq": self.seq,
             "ref_taxon": self.reftaxon,
+            "target": self.target,
             "ali_start": self.qstart,
             "ali_end": self.qend,
+            "sub_start": self.sstart,
+            "sub_end": self.send,
+            "length": self.length,
         }
 
 
@@ -184,52 +196,6 @@ def multi_filter(hits, debug):
     passes = [i for i in hits if i]
     return passes, len(hits) - len(passes), log
 
-
-def hits_are_bad(
-    hits: list,
-    debug: bool,
-    min_size: int,
-    min_evalue: float,
-    top_refs: set,
-    total_references: int,
-) -> bool:
-    """
-    Checks a list of hits for minimum size and score. If below both, kick.
-    Returns True is checks fail, otherwise returns False.
-    """
-    evalue_log = []
-    reference_hits = list({i.reftaxon for i in hits})
-    return_type = True
-    if len(reference_hits) / total_references >= min_size:
-        return_type = False
-    if return_type:
-        for hit in hits:
-            if hit.evalue < min_evalue:
-                return_type = False
-    if return_type:
-        for hit in hits:
-            if hit.reftaxon in top_refs:
-                return_type = False
-
-    if debug and return_type:
-        evalue_log = [
-            (
-                candidate.gene,
-                candidate.header,
-                candidate.reftaxon,
-                candidate.score,
-                candidate.qstart,
-                candidate.qend,
-                str(candidate.evalue),
-                str(len(hits)),
-                "Group kicked due to length and evalue",
-            )
-            for candidate in hits
-        ]
-
-    return return_type, evalue_log
-
-
 def internal_filter(header_based: dict, debug: bool, internal_percent: float) -> list:
     log = []
     kicks = 0
@@ -241,9 +207,9 @@ def internal_filter(header_based: dict, debug: bool, internal_percent: float) ->
                 continue
 
             overlap_amount = get_overlap(
-                hit_a.qstart, hit_a.qend, hit_b.qstart, hit_b.qend
+                hit_a.ref_seqs[0].qstart, hit_a.ref_seqs[0].qend, hit_b.ref_seqs[0].qstart, hit_b.ref_seqs[0].qend
             )
-            percent = overlap_amount / hit_a.length if overlap_amount > 0 else 0
+            percent = overlap_amount / hit_a.ref_seqs[0].length if overlap_amount > 0 else 0
 
             if percent >= internal_percent:
                 kicks += 1
@@ -254,19 +220,19 @@ def internal_filter(header_based: dict, debug: bool, internal_percent: float) ->
                 if debug:
                     log.append(
                         (
-                            hit_b.gene,
-                            hit_b.header,
-                            hit_b.reftaxon,
-                            hit_b.score,
-                            hit_b.qstart,
-                            hit_b.qend,
+                            hit_b.ref_seqs[0].gene,
+                            hit_b.ref_seqs[0].header,
+                            hit_b.ref_seqs[0].reftaxon,
+                            hit_b.ref_seqs[0].score,
+                            hit_b.ref_seqs[0].qstart,
+                            hit_b.ref_seqs[0].qend,
                             "Internal kicked out by",
-                            hit_a.gene,
-                            hit_a.header,
-                            hit_a.reftaxon,
-                            hit_a.score,
-                            hit_a.qstart,
-                            hit_a.qend,
+                            hit_a.ref_seqs[0].gene,
+                            hit_a.ref_seqs[0].header,
+                            hit_a.ref_seqs[0].reftaxon,
+                            hit_a.ref_seqs[0].score,
+                            hit_a.ref_seqs[0].qstart,
+                            hit_a.ref_seqs[0].qend,
                         )
                     )
 
@@ -296,12 +262,12 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
         if hash(header) != current_header:
             current_header = hash(header)
             ref_variation_filter = set()
-            
+
         ref_gene, ref_taxon, _ = taxon_lookup[ref_header_pair]
 
         target_has_hit.add(ref_header_pair)
 
-        ref_variation_key = header+ref_taxon
+        ref_variation_key = header + ref_taxon
         if not ref_variation_key in ref_variation_filter:
             ref_variation_filter.add(ref_variation_key)
             rextaxon_count[ref_taxon] = rextaxon_count.get(ref_taxon, 0) + 1
@@ -320,32 +286,27 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
 
     return top_names, total_references, list(header_lines.values()), target_has_hit
 
+
 ProcessingArgs = namedtuple(
     "ProcessingArgs",
     [
         "lines",
         "debug",
-        "min_percent",
-        "min_evalue",
         "top_refs",
         "total_references",
         "strict_search_mode",
         "reference_taxa",
-        "evalue",
-
     ],
 )
 
-def process_lines(
-    pargs: ProcessingArgs
-):
+
+def process_lines(pargs: ProcessingArgs):
     output = {}
-    evalue_kicks = 0
     multi_kicks = 0
     this_log = []
     for this_lines in pargs.lines:
         hits = [Hit(*hit.split("\t")) for hit in this_lines]  # convert to Hit object
-        hits = list(filter(lambda x: x.evalue <= pargs.evalue, hits))
+        hits = list(filter(lambda x: x.reftaxon in pargs.top_refs, hits))
         hits.sort(key=lambda x: x.score, reverse=True)
         genes_present = {hit.gene for hit in hits}
 
@@ -354,22 +315,21 @@ def process_lines(
             multi_kicks += this_kicks
             if pargs.debug:
                 this_log.extend(log)
-        # filter hits by min length and evalue
-        hits_bad, evalue_Log = hits_are_bad(
-            hits, pargs.debug, pargs.min_percent, pargs.min_evalue, pargs.top_refs, pargs.total_references
-        )
-        if hits_bad:
-            evalue_kicks += len(hits)
-            if pargs.debug:
-                this_log.extend(evalue_Log)
-            continue
 
-        best_hit = reciprocal_check(hits, pargs.strict_search_mode, pargs.reference_taxa)
 
-        if best_hit:
-            output.setdefault(best_hit.gene, []).append(best_hit)
+        hits = list(filter(lambda x: x.gene == hits[0].gene, hits))
+        if hits:
+            top_hit = hits[0]
+            ref_seqs = []
+            for hit in hits:
+                ref_seqs.append(hit)
+                
+            best_hit = BestHit(top_hit.header, top_hit.full_header, top_hit.gene, ref_seqs)
 
-    return output, evalue_kicks, multi_kicks, this_log
+            if best_hit:
+                output.setdefault(best_hit.gene, []).append(best_hit)
+
+    return output, multi_kicks, this_log
 
 
 def run_process(args, input_path) -> None:
@@ -453,7 +413,7 @@ def run_process(args, input_path) -> None:
             )
             time_keeper.lap()  # Reset timer
             os.system(
-                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {args.evalue} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend {quiet} --top {top_amount} --max-hsps 0 -p {num_threads}"
+                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {args.evalue} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --max-hsps 0 -p {num_threads}"
             )
             input_file.seek(0)
 
@@ -474,7 +434,6 @@ def run_process(args, input_path) -> None:
     chunks = args.chunks
     chunk_count = itertools.count(1)
 
-    evalue_kicks = 0
     global_log = []
     dupe_divy_headers = {}
     with open(out_path) as fp:
@@ -502,12 +461,14 @@ def run_process(args, input_path) -> None:
                 variants_with_hits = sum([i[1] in target_has_hit for i in this_targets])
                 all_variants_kicked = variants_with_hits == 0
                 if all_variants_kicked:
-                    reintroduce = max(this_targets, key = lambda x : x[2])
+                    reintroduce = max(this_targets, key=lambda x: x[2])
                     out_targets.append(reintroduce[1])
                     continue
-                
-                out_targets.extend([i[1] for i in this_targets if i[1] in target_has_hit])
-            
+
+                out_targets.extend(
+                    [i[1] for i in this_targets if i[1] in target_has_hit]
+                )
+
             variant_filter[gene] = out_targets
         else:
             variant_filter.pop(gene, -1)
@@ -517,50 +478,47 @@ def run_process(args, input_path) -> None:
 
     del variant_filter
 
-
     printv(
         f"Processing {chunks} chunk(s). Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
         args.verbose,
     )
     if lines:
         per_thread = ceil(ceil(len(lines) / chunks) / num_threads)
-        for i in range(0, chunks*num_threads, num_threads):
+        for i in range(0, chunks * num_threads, num_threads):
             printv(
                 f"Processing chunk {next(chunk_count)}. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
                 args.verbose,
             )
-            
+
             arguments = [
-                (ProcessingArgs(
-                    lines[(per_thread*j):(per_thread*(j+1))],
-                    args.debug,
-                    args.min_percent,
-                    args.min_evalue,
-                    top_refs,
-                    total_references,
-                    strict_search_mode,
-                    reference_taxa,
-                    args.evalue,
-                ),)
-                for j in range(i, i+num_threads)
+                (
+                    ProcessingArgs(
+                        lines[(per_thread * j) : (per_thread * (j + 1))],
+                        args.debug,
+                        top_refs,
+                        total_references,
+                        strict_search_mode,
+                        reference_taxa,
+                    ),
+                )
+                for j in range(i, i + num_threads)
             ]
 
             with Pool(num_threads) as p:
                 result = p.starmap(process_lines, arguments)
             del arguments
-            for this_output, ekicks, mkicks, this_log in result:
+            for this_output, mkicks, this_log in result:
                 for gene, hits in this_output.items():
                     if gene not in output:
                         output[gene] = hits
                     else:
                         output[gene].extend(hits)
 
-                evalue_kicks += ekicks
                 multi_kicks += mkicks
 
                 if args.debug:
                     global_log.extend(this_log)
-            del this_output, ekicks, mkicks, this_log, result
+            del this_output, mkicks, this_log, result
         printv(
             f"Processed. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
             args.verbose,
@@ -630,12 +588,12 @@ def run_process(args, input_path) -> None:
                 if kicks:
                     for hit in hits:
                         if hit.full_header not in kicks:
-                            hit.seq = head_to_seq[hit.header.split("|")[0]]
+                            hit.core_seq = head_to_seq[hit.header.split("|")[0]]
                             out.append(hit.to_json())
                             dupe_divy_headers[gene][hit.header] = 1
             if not kicks:
                 for hit in hits:
-                    hit.seq = head_to_seq[hit.header.split("|")[0]]
+                    hit.core_seq = head_to_seq[hit.header.split("|")[0]]
                     out.append(hit.to_json())
                     dupe_divy_headers[gene][hit.header] = 1
 
@@ -649,10 +607,6 @@ def run_process(args, input_path) -> None:
                 )
 
         printv(
-            f"{evalue_kicks} evalue kicks",
-            args.verbose,
-        )
-        printv(
             f"{multi_kicks} multi kicks",
             args.verbose,
         )
@@ -661,7 +615,7 @@ def run_process(args, input_path) -> None:
             args.verbose,
         )
         printv(
-            f"Took {time_keeper.lap():.2f}s for {multi_kicks+evalue_kicks+internal_kicks} kicks leaving {passes} results. Writing dupes and present gene data",
+            f"Took {time_keeper.lap():.2f}s for {multi_kicks+internal_kicks} kicks leaving {passes} results. Writing dupes and present gene data",
             args.verbose,
         )
 
@@ -691,7 +645,6 @@ def main(args):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
     for input_path in args.INPUT:
-
         run_process(args, input_path)
     if len(args.INPUT) > 1 or not args.verbose:
         printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)

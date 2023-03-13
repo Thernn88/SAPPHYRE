@@ -30,44 +30,49 @@ MainArgs = namedtuple(
     ],
 )
 
+class RefHit:
+    __slots__ = (
+        "ali_start",
+        "ali_end",
+        "sub_start",
+        "sub_end",
+        "ref_taxon",
+        "target"
+    )
+
+    def __init__(self, hit):
+        self.ali_start = hit["ali_start"]
+        self.ali_end = hit["ali_end"]
+        self.sub_start = hit["sub_start"]
+        self.sub_end = hit["sub_end"]
+        self.ref_taxon = hit["ref_taxon"]
+        self.target = hit["target"]
+
 
 class Hit:
     __slots__ = (
         "header",
         "gene",
-        "ali_start",
-        "ali_end",
+        "ref_seqs",
         "est_sequence",
-        "ref_taxon",
-        "sub_start",
-        "sub_end",
-        "target",
     )
 
     def __init__(self, hit, gene):
         self.header = hit["header"]
         self.gene = gene
-        self.ali_start = int(hit["ali_start"])
-        self.ali_end = int(hit["ali_end"])
-        self.ref_taxon = hit["ref_taxon"]
 
         self.est_sequence = hit["seq"]
 
-        self.sub_start = int(hit["sub_start"])-1
-        self.sub_end = int(hit["sub_end"])
+        self.ref_seqs = [RefHit(i) for i in hit["ref_seqs"]]
 
-        self.target = hit["target"]
-
-    def get_bp_trim(self, this_aa, ref, matches, mode):
+    def get_bp_trim(self, this_aa, references, matches, mode):
         if mode == "exact":
             dist = lambda a, b, _: a == b
         elif mode == "strict":
             dist = lambda a, b, mat: mat[a.upper()+b.upper()] > 0
         else: #lax
             dist = lambda a, b, mat: mat[a.upper()+b.upper()] >= 0.0
-        reg_start = None
-        reg_end = None
-        ref = ref[self.sub_start: self.sub_end]
+
         
         mat = bl.BLOSUM(62)
 
@@ -75,59 +80,63 @@ class Hit:
         aligner.match_score = 1.0 
         aligner.mismatch_score = -2.0
         aligner.gap_score = -2.5
-        try:
-            alignments = aligner.align(ref, this_aa)
-        except:
-            alignments = []
-        if len(alignments) == 0:
-            # No alignments found
-            return None, None
-        
-        best_alignment = alignments[0]
-        
-        this_aa = str(best_alignment[1])
-        ref = str(best_alignment[0])
-
-        skip_l = 0
-        for i in range(0, len(this_aa)):
-            this_pass = True
-            if this_aa[i] == "-":
-                skip_l += 1
+        reg_starts = []
+        reg_ends = []
+        for ref in self.ref_seqs:
+            ref_seq = references[ref.target]
+            ref_seq = ref_seq[ref.sub_start: ref.sub_end]
+            try:
+                alignments = aligner.align(ref_seq, this_aa)
+                best_alignment = alignments[0]
+            except:
                 continue
+            
+            best_alignment = alignments[0]
+            
+            this_aa = str(best_alignment[1])
+            ref = str(best_alignment[0])
 
-            if dist(ref[i], this_aa[i], mat):
-                for j in range(matches):
-                    if i+j > len(this_aa)-1 or not dist(ref[i+j], this_aa[i+j], mat):
-                        this_pass = False
+            skip_l = 0
+            for i in range(0, len(this_aa)):
+                this_pass = True
+                if this_aa[i] == "-":
+                    skip_l += 1
+                    continue
+
+                if dist(ref[i], this_aa[i], mat):
+                    for j in range(matches):
+                        if i+j > len(this_aa)-1 or not dist(ref[i+j], this_aa[i+j], mat):
+                            this_pass = False
+                            break
+                    if this_pass:
+                        reg_starts.append((i-skip_l))
                         break
-                if this_pass:
-                    reg_start = i
-                    break
 
-        skip_r = 0
-        for i in range(len(this_aa)-1, -1, -1):
-            this_pass = True
-            if this_aa[i] == "-":
-                skip_r += 1
-                continue
+            skip_r = 0
+            for i in range(len(this_aa)-1, -1, -1):
+                this_pass = True
+                if this_aa[i] == "-":
+                    skip_r += 1
+                    continue
 
-            if dist(ref[i], this_aa[i], mat):
-                for j in range(matches):
-                    if i-j < 0 or not dist(ref[i-j], this_aa[i-j], mat):
-                        this_pass = False
+                if dist(ref[i], this_aa[i], mat):
+                    for j in range(matches):
+                        if i-j < 0 or not dist(ref[i-j], this_aa[i-j], mat):
+                            this_pass = False
+                            break
+                    if this_pass:
+                        reg_ends.append(len(this_aa) - i - (1 +skip_r))
                         break
-                if this_pass:
-                    reg_end = i
-                    break
-        if reg_start is None or reg_end is None:
-            return None, None
         
-        return reg_start-skip_l, len(this_aa) - reg_end - (1 +skip_r)
+        if reg_starts and reg_ends:
+            return min(reg_starts), min(reg_ends)
+        return None, None
 
     def trim_to_coords(self, start=None, end=None):
+        best_hit = self.ref_seqs[0]
         if start is None:
-            start = self.ali_start
-            end = self.ali_end
+            start = best_hit.ali_start
+            end = best_hit.ali_end
         self.est_sequence = self.est_sequence[start - 1 : end]
         if "revcomp" in self.header:
             self.est_sequence = phymmr_tools.bio_revcomp(self.est_sequence)
@@ -212,7 +221,7 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches,
 
         header = format_candidate_header(
             orthoid,
-            hit.ref_taxon,
+            hit.ref_seqs[0].ref_taxon,
             taxa_id,
             base_header,
             reference_frame,
@@ -222,7 +231,7 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches,
         nt_seq = hit.est_sequence
         aa_seq = translate_cdna(nt_seq)
 
-        r_start, r_end = hit.get_bp_trim(aa_seq, core_aa_seqs[hit.target], trim_matches, trim_mode)
+        r_start, r_end = hit.get_bp_trim(aa_seq, core_aa_seqs, trim_matches, trim_mode)
         if r_start is None or r_end is None:
             print(f"WARNING: Trim kicked: {hit.header}")
             continue
@@ -269,7 +278,7 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches,
                     old_header = base_header
                     header = format_candidate_header(
                         orthoid,
-                        hit.ref_taxon,
+                        hit.ref_seqs[0].ref_taxon,
                         taxa_id,
                         base_header + f"_{header_mapped_x_times[old_header]}",
                         reference_frame,
