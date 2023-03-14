@@ -10,7 +10,7 @@ from collections import Counter, namedtuple
 from itertools import chain
 from multiprocessing.pool import Pool
 from shutil import rmtree
-
+import blosum as bl
 from .utils import printv, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
 
@@ -26,12 +26,12 @@ MainArgs = namedtuple(
         "nucleotide",
         "matches",
         "base_pair",
-        "match_percent",
         "compress",
         "gap_threshold",
         "mismatches",
         "column_cull",
         "minimum_data",
+        "blosum_strictness",
     ],
 )
 
@@ -162,7 +162,6 @@ def trim_around(
     sequence,
     amt_matches,
     mismatches,
-    match_percent,
     all_dashes_by_index,
     character_at_each_pos,
     gap_present_threshold,
@@ -185,8 +184,7 @@ def trim_around(
         if all_dashes_by_index[i]:
             continue
         if (
-            not character_at_each_pos[i].count(char) / len(character_at_each_pos[i])
-            >= match_percent
+            not char in character_at_each_pos[i]
         ):
             skip_first = 1
             mismatch -= 1
@@ -209,9 +207,7 @@ def trim_around(
                     break
                 match_i += 1
             elif (
-                not character_at_each_pos[i + match_i].count(sequence[i + match_i])
-                / len(character_at_each_pos[i + match_i])
-                >= match_percent
+                not sequence[i + match_i] in character_at_each_pos[i + match_i]
             ):
                 mismatch -= 1
                 if mismatch < 0:
@@ -243,8 +239,7 @@ def trim_around(
             # Don't allow cull to point of all dashes
             continue
         if (
-            not character_at_each_pos[i].count(char) / len(character_at_each_pos[i])
-            >= match_percent
+            not char in character_at_each_pos[i]
         ):
             skip_last += 1
             mismatch -= 1
@@ -267,9 +262,7 @@ def trim_around(
                     break
                 match_i += 1
             elif (
-                not character_at_each_pos[i - match_i].count(sequence[i - match_i])
-                / len(character_at_each_pos[i - match_i])
-                >= match_percent
+                not sequence[i - match_i] in character_at_each_pos[i - match_i]
             ):
                 mismatch -= 1
                 if mismatch < 0:
@@ -297,7 +290,7 @@ def get_data_difference(trim, ref):
     return trim / ref
 
 
-def do_cull(sequence, sequence_length, offset, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold, kick):
+def do_cull(sequence, sequence_length, offset, amt_matches, mismatches, all_dashes_by_index, character_at_each_pos, gap_present_threshold, kick):
     cull_start = None
     cull_end = None
     for i, char in enumerate(sequence):
@@ -317,8 +310,7 @@ def do_cull(sequence, sequence_length, offset, amt_matches, mismatches, match_pe
         if all_dashes_by_index[i]:
             continue
         if (
-            not character_at_each_pos[i].count(char) / len(character_at_each_pos[i])
-            >= match_percent
+            not char in character_at_each_pos[i]
         ):
             skip_first = 1
             if window_start == i:
@@ -344,9 +336,7 @@ def do_cull(sequence, sequence_length, offset, amt_matches, mismatches, match_pe
                     break
                 match_i += 1
             elif (
-                not character_at_each_pos[i + match_i].count(sequence[i + match_i])
-                / len(character_at_each_pos[i + match_i])
-                >= match_percent
+                not sequence[i + match_i] in character_at_each_pos[i + match_i]
             ):
                 mismatch -= 1
                 if mismatch < 0 or sequence[i + match_i] == "*":
@@ -383,9 +373,7 @@ def do_cull(sequence, sequence_length, offset, amt_matches, mismatches, match_pe
                 # Don't allow cull to point of all dashes
                 continue
             if (
-                not character_at_each_pos[i].count(char)
-                / len(character_at_each_pos[i])
-                >= match_percent
+                not char in character_at_each_pos[i]
             ):
                 skip_last += 1
                 if window_end == i:
@@ -410,11 +398,7 @@ def do_cull(sequence, sequence_length, offset, amt_matches, mismatches, match_pe
                         break
                     match_i += 1
                 elif (
-                    not character_at_each_pos[i - match_i].count(
-                        sequence[i - match_i]
-                    )
-                    / len(character_at_each_pos[i - match_i])
-                    >= match_percent
+                    not sequence[i - match_i] in character_at_each_pos[i - match_i]
                 ):
                     mismatch -= 1
                     if mismatch < 0 or sequence[i - match_i] == "*":
@@ -456,7 +440,6 @@ def do_gene(
     output: str,
     amt_matches: int,
     aa_file: str,
-    match_percent: bool,
     debug: bool,
     bp: int,
     verbosity: int,
@@ -465,6 +448,7 @@ def do_gene(
     mismatches: int,
     column_cull_percent: float,
     minimum_data: float,
+    blosum_mode_lower_threshold: float,
 ) -> None:
     """
     FlexCull main function. Culls input aa and nt using specified amount of matches
@@ -478,6 +462,8 @@ def do_gene(
 
     character_at_each_pos = {}
     gap_present_threshold = {}
+
+    mat = bl.BLOSUM(62)
 
     #  make a list, each index will match an index in the reference strings
     #  check this later instead of counting hyphens
@@ -501,11 +487,16 @@ def do_gene(
             if char != "-":
                 all_dashes_by_index[i] = False
 
-    for i, chars in character_at_each_pos.items():
+    for i, chars in list(character_at_each_pos.items()):
         data_present = 1 - (chars.count("-") / len(chars))
         gap_present_threshold[i] = data_present >= gap_threshold
         if data_present < column_cull_percent:
             column_cull.add(i * 3)
+
+        for blosum_sub, val in mat.items():
+            if blosum_sub[0] in chars and val > blosum_mode_lower_threshold:
+                chars.append(blosum_sub[1])
+        character_at_each_pos[i] = set(chars)
 
     log = []
 
@@ -531,7 +522,7 @@ def do_gene(
 
         sequence_length = len(sequence)
 
-        cull_start, cull_end, kick = do_cull(sequence, sequence_length, offset, amt_matches, mismatches, match_percent, all_dashes_by_index, character_at_each_pos, gap_present_threshold, kick)
+        cull_start, cull_end, kick = do_cull(sequence, sequence_length, offset, amt_matches, mismatches, all_dashes_by_index, character_at_each_pos, gap_present_threshold, kick)
 
         if not kick:  # If also passed Cull End Calc. Finish
             out_line = ["-"] * cull_start + sequence[cull_start:cull_end]
@@ -556,7 +547,6 @@ def do_gene(
                     out_line,
                     amt_matches,
                     mismatches,
-                    match_percent,
                     all_dashes_by_index,
                     character_at_each_pos,
                     gap_present_threshold,
@@ -694,7 +684,12 @@ def do_gene(
             post_all_dashes_by_index[col] = True
         else:
             post_all_dashes_by_index[col] = False
-        post_character_at_each_pos[col] = letters
+
+        for blosum_sub, val in mat.items():
+            if blosum_sub[0] in letters and val > blosum_mode_lower_threshold:
+                letters.append(blosum_sub[1])
+
+        post_character_at_each_pos[col] = set(letters)
         
 
     if debug:
@@ -726,7 +721,6 @@ def do_gene(
                             out_line,
                             amt_matches,
                             mismatches,
-                            match_percent,
                             post_all_dashes_by_index,
                             post_character_at_each_pos,
                             post_gap_present_threshold,
@@ -877,6 +871,8 @@ def do_folder(folder, args: MainArgs):
         key=lambda x: os.path.getsize(os.path.join(aa_path, x)), reverse=True
     )
 
+    blosum_mode_lower_threshold = -1 if args.blosum_strictness == "lax" else 0 if args.blosum_strictness == "strict" else 999999
+
     if args.processes > 1:
         arguments = []
         for input_gene in file_inputs:
@@ -887,7 +883,6 @@ def do_folder(folder, args: MainArgs):
                     output_path,
                     args.matches,
                     input_gene,
-                    args.match_percent,
                     args.debug,
                     args.base_pair,
                     args.verbose,
@@ -896,6 +891,7 @@ def do_folder(folder, args: MainArgs):
                     args.mismatches,
                     args.column_cull,
                     args.minimum_data,
+                    blosum_mode_lower_threshold,
                 )
             )
 
@@ -909,7 +905,6 @@ def do_folder(folder, args: MainArgs):
                 output_path,
                 args.matches,
                 input_gene,
-                args.match_percent,
                 args.debug,
                 args.base_pair,
                 args.verbose,
@@ -918,6 +913,7 @@ def do_folder(folder, args: MainArgs):
                 args.mismatches,
                 args.column_cull,
                 args.minimum_data,
+                blosum_mode_lower_threshold,
             )
             for input_gene in file_inputs
         ]

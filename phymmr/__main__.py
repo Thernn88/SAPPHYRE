@@ -429,6 +429,13 @@ def subcmd_flexcull(subparsers):
     )
     par.add_argument(
         "-nt", "--nucleotide", type=str, default="nt_aligned", help="NT Folder Name."
+    )#
+    par.add_argument(
+        "-bs",
+        "--blosum_strictness",
+        choices=["exact", "strict", "lax"],
+        default="exact",
+        help="Blosum strictness setting.",
     )
     par.add_argument(
         "-mm",
@@ -444,13 +451,6 @@ def subcmd_flexcull(subparsers):
         default=6,
         help="Amount of base pairs that have to match reference.",
     )  #
-    par.add_argument(
-        "-mp",
-        "--match_percent",
-        type=float,
-        default=0.02,
-        help="Percentage of references that must contain the base pair to match.",
-    )
     par.add_argument(
         "-cc",
         "--column_cull",
@@ -497,12 +497,12 @@ def flexcull(args):
         args.nucleotide,
         args.matches,
         args.base_pair,
-        args.match_percent,
         args.compress,
         args.gap_threshold,
         args.mismatches,
         args.column_cull,
         args.minimum_data,
+        args.blosum_strictness,
     )
     if not flexcull.main(flexargs):
         print()
