@@ -84,7 +84,7 @@ class Hit:
         reg_ends = []
         for ref in self.ref_seqs:
             ref_seq = references[ref.target]
-            ref_seq = ref_seq[ref.sub_start: ref.sub_end]
+            ref_seq = ref_seq[ref.sub_start-1: ref.sub_end]
             try:
                 alignments = aligner.align(ref_seq, this_aa)
                 best_alignment = alignments[0]
@@ -104,7 +104,7 @@ class Hit:
                     continue
 
                 if dist(ref_seq[i], this_aa[i], mat):
-                    for j in range(matches):
+                    for j in range(1, matches):
                         if i+j > len(this_aa)-1 or not dist(ref_seq[i+j], this_aa[i+j], mat):
                             this_pass = False
                             break
@@ -120,7 +120,7 @@ class Hit:
                     continue
 
                 if dist(ref_seq[i], this_aa[i], mat):
-                    for j in range(matches):
+                    for j in range(1, matches):
                         if i-j < 0 or not dist(ref_seq[i-j], this_aa[i-j], mat):
                             this_pass = False
                             break
@@ -129,7 +129,6 @@ class Hit:
                         break
         
         if reg_starts and reg_ends:
-            print(reg_starts, reg_ends)
             return min(reg_starts), min(reg_ends)
         return None, None
 
