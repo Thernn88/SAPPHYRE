@@ -493,10 +493,11 @@ def do_gene(
         if data_present < column_cull_percent:
             column_cull.add(i * 3)
 
+        blosum_add = []
         for blosum_sub, val in mat.items():
             if blosum_sub[0] in chars and val > blosum_mode_lower_threshold:
-                chars.append(blosum_sub[1])
-        character_at_each_pos[i] = set(chars)
+                blosum_add.append(blosum_sub[1])
+        character_at_each_pos[i] = set(chars+blosum_add)
 
     log = []
 
@@ -685,11 +686,12 @@ def do_gene(
         else:
             post_all_dashes_by_index[col] = False
 
+        blosum_add = []
         for blosum_sub, val in mat.items():
             if blosum_sub[0] in letters and val > blosum_mode_lower_threshold:
-                letters.append(blosum_sub[1])
+                blosum_add.append(blosum_sub[1])
 
-        post_character_at_each_pos[col] = set(letters)
+        post_character_at_each_pos[col] = set(letters+blosum_add)
         
 
     if debug:
