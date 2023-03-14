@@ -10,7 +10,7 @@ from threading import Lock
 from .utils import printv, gettempdir, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
 KMER_LEN = 8   
-KMER_PERCENT = 0.5
+KMER_PERCENT = 0.7
 
 def find_kmers(fasta):
     kmers = {}
@@ -265,7 +265,7 @@ def do_folder(folder, args):
         printv("ERROR: Aln folder not found.", args.verbose, 0)
         return False
 
-    command = f"clustalo -i {{in_file}} -o {{out_file}} --threads=1 --full"
+    command = f"clustalo -i {{in_file}} -o {{out_file}} --threads=1"
 
     intermediates = "intermediates"
     if not os.path.exists(intermediates):
