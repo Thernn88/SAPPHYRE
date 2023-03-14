@@ -140,10 +140,8 @@ def run_command(args: CmdArgs) -> None:
                 cluster_seqs =  [(header, sequence) for header, sequence in data if header in cluster]
 
                 if len(cluster_seqs) == 1:
-                    writeFasta(aligned_cluster, cluster_seqs)
-                    to_merge.append(aligned_cluster)
-                    if debug:
-                        writeFasta(os.path.join(this_intermediates, f"{args.gene}_cluster{i}_singleton"), cluster_seqs)
+                    to_merge.extend(cluster_seqs)
+                    
                 else:
                     aligned_ingredients.append(aligned_cluster)
                     raw_cluster = os.path.join(raw_files_tmp, f"{args.gene}_cluster{i}")
@@ -161,9 +159,14 @@ def run_command(args: CmdArgs) -> None:
                         writeFasta(os.path.join(this_intermediates, f"{args.gene}_cluster{i}_aligned"), parseFasta(aligned_cluster))
         align_time = keeper.differential() - cluster_time
         if to_merge:
-            aligned_ingredients.extend(to_merge)
-        if aligned_ingredients:
+            merged_singleton_final = os.path.join(aligned_files_tmp, f"{args.gene}_cluster_merged_singletons")
+            writeFasta(merged_singleton_final, to_merge)
+            if args.debug:
+                writeFasta(os.path.join(this_intermediates, f"{args.gene}_cluster_merged_singletons"), to_merge)
+        if aligned_ingredients or to_merge:
             aligned_ingredients.sort(key = lambda x: int(x.split("_cluster")[-1]))
+            if to_merge:
+                aligned_ingredients.insert(0, merged_singleton_final)
             printv(f"Merging Alignments. Elapsed time: {keeper.differential():.2f}", args.verbose,3 ) # Debug
             printv(f"Merging 1 of {len(aligned_ingredients)}. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
             with NamedTemporaryFile(dir = parent_tmpdir, mode="w+") as tmp:
@@ -193,11 +196,16 @@ def run_command(args: CmdArgs) -> None:
                 out_file = os.path.join(parent_tmpdir,"part_0.fa")
                 if len(aligned_ingredients) == 1:
                     out_file = args.result_file
-                
-                os.system(f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1 --iter=3 --full --full-iter --is-profile --force")
-                if debug:
-                    printv(f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1 --iter=3 --full --full-iter --is-profile --force", args.verbose, 3)
-                    writeFasta(os.path.join(this_intermediates, os.path.basename(out_file)), parseFasta(out_file))
+
+                if to_merge:
+                    os.system(f"mafft --anysymbol --jtt 1 --quiet --addfragments {aligned_ingredients[0]} --thread 1 {tmp.name} > {out_file}")
+                    if args.debug:
+                        print(f"mafft --anysymbol --jtt 1 --quiet --addfragments {aligned_ingredients[0]} --thread 1 {tmp.name} > {out_file}")
+                else:
+                    os.system(f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1 --iter=3 --full --full-iter --is-profile --force")
+                    if debug:
+                        printv(f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1 --iter=3 --full --full-iter --is-profile --force", args.verbose, 3)
+                        writeFasta(os.path.join(this_intermediates, os.path.basename(out_file)), parseFasta(out_file))
 
             for i, file in enumerate(aligned_ingredients[1:]):
                 printv(f"Merging {i+2} of {len(aligned_ingredients)}. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
