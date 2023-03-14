@@ -441,14 +441,14 @@ def subcmd_flexcull(subparsers):
         "-mm",
         "--mismatches",
         type=int,
-        default=1,
+        default=0,
         help="Amount mismatches allowed per trim.",
     )
     par.add_argument(
         "-m",
         "--matches",
         type=int,
-        default=6,
+        default=3,
         help="Amount of base pairs that have to match reference.",
     )  #
     par.add_argument(

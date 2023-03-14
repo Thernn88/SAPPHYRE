@@ -10,7 +10,7 @@ from threading import Lock
 from .utils import printv, gettempdir, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
 KMER_LEN = 8   
-KMER_PERCENT = 0.7
+KMER_PERCENT = 0.5
 
 def find_kmers(fasta):
     kmers = {}
