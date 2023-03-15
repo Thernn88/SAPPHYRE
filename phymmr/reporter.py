@@ -32,20 +32,14 @@ MainArgs = namedtuple(
 
 class RefHit:
     __slots__ = (
-        "ali_start",
-        "ali_end",
         "sub_start",
         "sub_end",
-        "ref_taxon",
         "target"
     )
 
     def __init__(self, hit):
-        self.ali_start = hit["ali_start"]
-        self.ali_end = hit["ali_end"]
-        self.sub_start = hit["sub_start"]
-        self.sub_end = hit["sub_end"]
-        self.ref_taxon = hit["ref_taxon"]
+        self.sub_start = hit["sstart"]
+        self.sub_end = hit["send"]
         self.target = hit["target"]
 
 
@@ -53,17 +47,23 @@ class Hit:
     __slots__ = (
         "header",
         "gene",
+        "ref_taxon",
+        "ali_start",
+        "ali_end",
         "ref_seqs",
         "est_sequence",
     )
 
     def __init__(self, hit, gene):
         self.header = hit["header"]
+        self.ali_start = hit["ali_start"]
+        self.ali_end = hit["ali_end"]
+        self.ref_taxon = hit["ref_taxon"]
         self.gene = gene
 
         self.est_sequence = hit["seq"]
 
-        self.ref_seqs = [RefHit(i) for i in hit["ref_seqs"]]
+        self.ref_seqs = [RefHit(i) for i in hit["reference_hits"]]
 
     def get_bp_trim(self, this_aa, references, matches, mode):
         if mode == "exact":
@@ -96,6 +96,9 @@ class Hit:
             this_aa = str(best_alignment[1])
             ref_seq = str(best_alignment[0])
 
+            print(this_aa)
+            print(ref_seq,"\n")
+
             skip_l = 0
             for i in range(0, len(this_aa)):
                 this_pass = True
@@ -127,16 +130,14 @@ class Hit:
                     if this_pass:
                         reg_ends.append(len(this_aa) - i - (1 +skip_r))
                         break
-        
         if reg_starts and reg_ends:
             return min(reg_starts), min(reg_ends)
         return None, None
 
     def trim_to_coords(self, start=None, end=None):
-        best_hit = self.ref_seqs[0]
         if start is None:
-            start = best_hit.ali_start
-            end = best_hit.ali_end
+            start = self.ali_start
+            end = self.ali_end
         self.est_sequence = self.est_sequence[start - 1 : end]
         if "revcomp" in self.header:
             self.est_sequence = phymmr_tools.bio_revcomp(self.est_sequence)
@@ -221,7 +222,7 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches,
 
         header = format_candidate_header(
             orthoid,
-            hit.ref_seqs[0].ref_taxon,
+            hit.ref_taxon,
             taxa_id,
             base_header,
             reference_frame,
@@ -278,7 +279,7 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches,
                     old_header = base_header
                     header = format_candidate_header(
                         orthoid,
-                        hit.ref_seqs[0].ref_taxon,
+                        hit.ref_taxon,
                         taxa_id,
                         base_header + f"_{header_mapped_x_times[old_header]}",
                         reference_frame,

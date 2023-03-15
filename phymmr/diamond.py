@@ -13,7 +13,24 @@ from .utils import printv, gettempdir
 from .timekeeper import TimeKeeper, KeeperMode
 
 
-reference_hit = namedtuple("reference_hit", ["target", "sstart", "send"])
+class reference_hit:
+    __slots__ = (
+        "target",
+        "sstart",
+        "send",
+    )
+
+    def __init__(self, target, sstart, send):
+        self.target = target
+        self.sstart = sstart
+        self.send = send
+    
+    def to_json(self):
+        return {
+            "target": self.target,
+            "sstart": self.sstart,
+            "send": self.send,
+        }
 
 class Hit:
     __slots__ = (
@@ -62,6 +79,9 @@ class Hit:
             )
         else:
             self.full_header = self.header + f"|[translate({self.frame})]"
+
+    def convert_reference_hits(self):
+        self.reference_hits = [i.to_json() for i in self.reference_hits]
 
     def to_json(self):
         return {
@@ -293,6 +313,8 @@ def process_lines(pargs: ProcessingArgs):
                     ref_seqs.append(reference_hit(hit.target, hit.sstart, hit.send))
                 
             top_hit.reference_hits = ref_seqs
+
+            top_hit.convert_reference_hits()
 
             output.setdefault(top_hit.gene, []).append(top_hit)
 
