@@ -13,60 +13,7 @@ from .utils import printv, gettempdir
 from .timekeeper import TimeKeeper, KeeperMode
 
 
-class LightHit:
-    __slots__ = (
-        "qstart",
-        "qend",
-        "length",
-        "gene",
-        "header",
-        "reftaxon",
-        "score",
-        "kick",
-        "full_header",
-    )
-
-    def __init__(self, qstart, qend, length, gene, header, reftaxon, score, kick, full_header) -> None:
-        self.qstart = qstart
-        self.qend = qend
-        self.length = length
-        self.gene = gene
-        self.header = header
-        self.reftaxon = reftaxon
-        self.score = score
-        self.kick = kick
-        self.full_header = full_header
-
-class BestHit:
-    __slots__ = (
-        "header",
-        "full_header",
-        "gene",
-        "core_seq",
-        "ref_seqs",
-        "kick",
-        "no_children"
-    )
-
-    def __init__(self, header, full_header, gene, ref_seqs):
-        self.header = header
-        self.full_header = full_header
-        self.gene = gene
-        self.core_seq = None
-        self.ref_seqs = ref_seqs
-        self.kick = False
-
-        self.no_children = LightHit(self.ref_seqs[0].qstart, self.ref_seqs[0].qend, self.ref_seqs[0].length, self.gene, self.header, self.ref_seqs[0].reftaxon, self.ref_seqs[0].score, self.kick, self.full_header)
-
-    def to_json(self):
-        self.ref_seqs = [i.to_json() for i in self.ref_seqs]
-        return {
-            "header": self.full_header,
-            "gene": self.gene,
-            "seq": self.core_seq,
-            "ref_seqs": self.ref_seqs
-        }
-
+reference_hit = namedtuple("reference_hit", ["target", "sstart", "send"])
 
 class Hit:
     __slots__ = (
@@ -75,15 +22,17 @@ class Hit:
         "qend",
         "gene",
         "score",
-        "reftaxon",
         "evalue",
         "length",
         "kick",
+        "seq",
         "frame",
         "full_header",
+        "reftaxon",
         "target",
         "sstart",
         "send",
+        "reference_hits",
     )
 
     def __init__(
@@ -101,6 +50,8 @@ class Hit:
         self.frame = int(frame)
         self.sstart = int(sstart)
         self.send = int(send)
+        self.seq = None
+        self.reference_hits = [reference_hit(ref_header, sstart, send)]
         if self.frame < 0:
             self.qend, self.qstart = self.qstart, self.qend
         self.length = self.qend - self.qstart + 1
@@ -114,13 +65,12 @@ class Hit:
 
     def to_json(self):
         return {
+            "header": self.full_header,
+            "seq": self.seq,
             "ref_taxon": self.reftaxon,
-            "target": self.target,
             "ali_start": self.qstart,
             "ali_end": self.qend,
-            "sub_start": self.sstart,
-            "sub_end": self.send,
-            "length": self.length,
+            "reference_hits": self.reference_hits,
         }
 
 
@@ -334,25 +284,17 @@ def process_lines(pargs: ProcessingArgs):
         hits = [Hit(*hit.split("\t")) for hit in this_lines]  # convert to Hit object
         hits = list(filter(lambda x: x.reftaxon in pargs.top_refs, hits))
         hits.sort(key=lambda x: x.score, reverse=True)
-        genes_present = {hit.gene for hit in hits}
-
-        if len(genes_present) > 1:
-            hits, this_kicks, log = multi_filter(hits, pargs.debug)
-            multi_kicks += this_kicks
-            if pargs.debug:
-                this_log.extend(log)
 
         if hits:
             top_hit = hits[0]
             ref_seqs = []
-            for hit in hits:
+            for hit in hits[1:]:
                 if hit.gene == top_hit.gene:
-                    ref_seqs.append(hit)
+                    ref_seqs.append(reference_hit(hit.target, hit.sstart, hit.send))
                 
-            best_hit = BestHit(top_hit.header, top_hit.full_header, top_hit.gene, ref_seqs)
+            top_hit.reference_hits = ref_seqs
 
-            if best_hit:
-                output.setdefault(best_hit.gene, []).append(best_hit)
+            output.setdefault(top_hit.gene, []).append(top_hit)
 
     return output, multi_kicks, this_log
 
@@ -561,7 +503,7 @@ def run_process(args, input_path) -> None:
                 this_hits = sum([i[1] for i in this_counter if i[1] > 1])
                 this_common = {i[0] for i in this_counter if i[1] > 1}
                 for hit in [i for i in hits if i.header in this_common]:
-                    requires_internal[gene].setdefault(hit.header, []).append(hit.no_children)
+                    requires_internal[gene].setdefault(hit.header, []).append(hit)
 
                 internal_order.append((gene, this_hits))
 
@@ -613,12 +555,12 @@ def run_process(args, input_path) -> None:
                 if kicks:
                     for hit in hits:
                         if hit.full_header not in kicks:
-                            hit.core_seq = head_to_seq[hit.header.split("|")[0]]
+                            hit.seq = head_to_seq[hit.header.split("|")[0]]
                             out.append(hit.to_json())
                             dupe_divy_headers[gene][hit.header] = 1
             if not kicks:
                 for hit in hits:
-                    hit.core_seq = head_to_seq[hit.header.split("|")[0]]
+                    hit.seq = head_to_seq[hit.header.split("|")[0]]
                     out.append(hit.to_json())
                     dupe_divy_headers[gene][hit.header] = 1
 
