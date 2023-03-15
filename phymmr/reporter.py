@@ -27,7 +27,6 @@ MainArgs = namedtuple(
         "compress",
         "matches",
         "trim_mode",
-        "minimum_bp"
     ],
 )
 
@@ -96,14 +95,14 @@ class Hit:
                 skip_l += 1
                 continue
 
-            for j in range(matches):
-                if i+j > len(this_aa)-1 or not dist(ref[i+j], this_aa[i+j], mat):
-                    this_pass = False
+            if dist(ref[i], this_aa[i], mat):
+                for j in range(matches):
+                    if i+j > len(this_aa)-1 or not dist(ref[i+j], this_aa[i+j], mat):
+                        this_pass = False
+                        break
+                if this_pass:
+                    reg_start = i
                     break
-
-            if this_pass:
-                reg_start = i
-                break
 
         skip_r = 0
         for i in range(len(this_aa)-1, -1, -1):
@@ -112,13 +111,14 @@ class Hit:
                 skip_r += 1
                 continue
 
-            for j in range(matches):
-                if i-j < 0 or not dist(ref[i-j], this_aa[i-j], mat):
-                    this_pass = False
+            if dist(ref[i], this_aa[i], mat):
+                for j in range(matches):
+                    if i-j < 0 or not dist(ref[i-j], this_aa[i-j], mat):
+                        this_pass = False
+                        break
+                if this_pass:
+                    reg_end = i
                     break
-            if this_pass:
-                reg_end = i
-                break
         if reg_start is None or reg_end is None:
             return None, None
         
@@ -198,7 +198,7 @@ def print_core_sequences(orthoid, core_sequences, target_taxon, top_refs):
     return result
 
 
-def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches, trim_mode, minimum_bp):
+def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches, trim_mode):
     aa_result = []
     nt_result = []
     header_maps_to_where = {}
@@ -234,62 +234,59 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches,
             nt_seq = nt_seq[(r_start*3):-(r_end*3)]
             aa_seq = aa_seq[r_start:-r_end]
 
-        data_after = len(aa_seq)
+        unique_hit = base_header + aa_seq
 
-        if data_after >= minimum_bp:
-            unique_hit = base_header + aa_seq
+        if nt_seq in seq_mapped_already:
+            mapped_to = seq_mapped_already[nt_seq]
+            dupes.setdefault(mapped_to, []).append(base_header)
+            continue
+        seq_mapped_already[nt_seq] = base_header
 
-            if nt_seq in seq_mapped_already:
-                mapped_to = seq_mapped_already[nt_seq]
-                dupes.setdefault(mapped_to, []).append(base_header)
-                continue
-            seq_mapped_already[nt_seq] = base_header
+        if unique_hit not in exact_hit_mapped_already:
+            if base_header in base_header_mapped_already:
+                (
+                    already_mapped_header,
+                    already_mapped_sequence,
+                ) = base_header_mapped_already[base_header]
 
-            if unique_hit not in exact_hit_mapped_already:
-                if base_header in base_header_mapped_already:
-                    (
-                        already_mapped_header,
-                        already_mapped_sequence,
-                    ) = base_header_mapped_already[base_header]
-
-                    if len(aa_seq) > len(already_mapped_sequence):
-                        if already_mapped_sequence in aa_seq:
-                            aa_result[header_maps_to_where[already_mapped_header]] = (
-                                header,
-                                aa_seq,
-                            )
-                            nt_result[header_maps_to_where[already_mapped_header]] = (
-                                header,
-                                nt_seq,
-                            )
-                            continue
-                    else:
-                        if aa_seq in already_mapped_sequence:
-                            continue
-
-                    if base_header in header_mapped_x_times:
-                        # Make header unique
-                        old_header = base_header
-                        header = format_candidate_header(
-                            orthoid,
-                            hit.ref_taxon,
-                            taxa_id,
-                            base_header + f"_{header_mapped_x_times[old_header]}",
-                            reference_frame,
+                if len(aa_seq) > len(already_mapped_sequence):
+                    if already_mapped_sequence in aa_seq:
+                        aa_result[header_maps_to_where[already_mapped_header]] = (
+                            header,
+                            aa_seq,
                         )
-
-                        header_mapped_x_times[base_header] += 1
+                        nt_result[header_maps_to_where[already_mapped_header]] = (
+                            header,
+                            nt_seq,
+                        )
+                        continue
                 else:
-                    base_header_mapped_already[base_header] = header, aa_seq
+                    if aa_seq in already_mapped_sequence:
+                        continue
 
-                header_maps_to_where[header] = len(
-                    aa_result
-                )  # Save the index of the sequence output
-                aa_result.append((header, aa_seq))
-                nt_result.append((header, nt_seq))
+                if base_header in header_mapped_x_times:
+                    # Make header unique
+                    old_header = base_header
+                    header = format_candidate_header(
+                        orthoid,
+                        hit.ref_taxon,
+                        taxa_id,
+                        base_header + f"_{header_mapped_x_times[old_header]}",
+                        reference_frame,
+                    )
 
-                header_mapped_x_times.setdefault(base_header, 1)
-                exact_hit_mapped_already.add(unique_hit)
+                    header_mapped_x_times[base_header] += 1
+            else:
+                base_header_mapped_already[base_header] = header, aa_seq
+
+            header_maps_to_where[header] = len(
+                aa_result
+            )  # Save the index of the sequence output
+            aa_result.append((header, aa_seq))
+            nt_result.append((header, nt_seq))
+
+            header_mapped_x_times.setdefault(base_header, 1)
+            exact_hit_mapped_already.add(unique_hit)
 
     return dupes, aa_result, nt_result
 
@@ -309,7 +306,6 @@ OutputArgs = namedtuple(
         "top_refs",
         "matches",
         "trim_mode",
-        "minimum_bp"
     ],
 )
 
@@ -332,7 +328,6 @@ def trim_and_write(oargs: OutputArgs):
         core_seq_aa_dict,
         oargs.matches,
         oargs.trim_mode,
-        oargs.minimum_bp,
     )
 
     if aa_output:
@@ -435,7 +430,6 @@ def do_taxa(path, taxa_id, args):
                     top_refs,
                     args.matches,
                     args.trim_mode,
-                    args.minimum_bp,
                 ),
             )
         )
