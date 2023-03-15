@@ -96,9 +96,6 @@ class Hit:
             this_aa = str(best_alignment[1])
             ref_seq = str(best_alignment[0])
 
-            print(this_aa)
-            print(ref_seq,"\n")
-
             skip_l = 0
             for i in range(0, len(this_aa)):
                 this_pass = True
