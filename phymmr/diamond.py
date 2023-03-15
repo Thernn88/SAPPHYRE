@@ -13,6 +13,30 @@ from .utils import printv, gettempdir
 from .timekeeper import TimeKeeper, KeeperMode
 
 
+class LightHit:
+    __slots__ = (
+        "qstart",
+        "qend",
+        "length",
+        "gene",
+        "header",
+        "reftaxon",
+        "score",
+        "kick",
+        "full_header",
+    )
+
+    def __init__(self, qstart, qend, length, gene, header, reftaxon, score, kick, full_header) -> None:
+        self.qstart = qstart
+        self.qend = qend
+        self.length = length
+        self.gene = gene
+        self.header = header
+        self.reftaxon = reftaxon
+        self.score = score
+        self.kick = kick
+        self.full_header = full_header
+
 class BestHit:
     __slots__ = (
         "header",
@@ -20,7 +44,8 @@ class BestHit:
         "gene",
         "core_seq",
         "ref_seqs",
-        "kick"
+        "kick",
+        "no_children"
     )
 
     def __init__(self, header, full_header, gene, ref_seqs):
@@ -31,6 +56,8 @@ class BestHit:
         self.ref_seqs = ref_seqs
         self.kick = False
 
+        self.no_children = LightHit(self.ref_seqs[0].qstart, self.ref_seqs[0].qend, self.ref_seqs[0].length, self.gene, self.header, self.ref_seqs[0].reftaxon, self.ref_seqs[0].score, self.kick, self.full_header)
+
     def to_json(self):
         self.ref_seqs = [i.to_json() for i in self.ref_seqs]
         return {
@@ -39,7 +66,6 @@ class BestHit:
             "seq": self.core_seq,
             "ref_seqs": self.ref_seqs
         }
-
 
 
 class Hit:
@@ -207,9 +233,9 @@ def internal_filter(header_based: dict, debug: bool, internal_percent: float) ->
                 continue
 
             overlap_amount = get_overlap(
-                hit_a.ref_seqs[0].qstart, hit_a.ref_seqs[0].qend, hit_b.ref_seqs[0].qstart, hit_b.ref_seqs[0].qend
+                hit_a.qstart, hit_a.qend, hit_b.qstart, hit_b.qend
             )
-            percent = overlap_amount / hit_a.ref_seqs[0].length if overlap_amount > 0 else 0
+            percent = overlap_amount / hit_a.length if overlap_amount > 0 else 0
 
             if percent >= internal_percent:
                 kicks += 1
@@ -220,19 +246,19 @@ def internal_filter(header_based: dict, debug: bool, internal_percent: float) ->
                 if debug:
                     log.append(
                         (
-                            hit_b.ref_seqs[0].gene,
-                            hit_b.ref_seqs[0].header,
-                            hit_b.ref_seqs[0].reftaxon,
-                            hit_b.ref_seqs[0].score,
-                            hit_b.ref_seqs[0].qstart,
-                            hit_b.ref_seqs[0].qend,
+                            hit_b.gene,
+                            hit_b.header,
+                            hit_b.reftaxon,
+                            hit_b.score,
+                            hit_b.qstart,
+                            hit_b.qend,
                             "Internal kicked out by",
-                            hit_a.ref_seqs[0].gene,
-                            hit_a.ref_seqs[0].header,
-                            hit_a.ref_seqs[0].reftaxon,
-                            hit_a.ref_seqs[0].score,
-                            hit_a.ref_seqs[0].qstart,
-                            hit_a.ref_seqs[0].qend,
+                            hit_a.gene,
+                            hit_a.header,
+                            hit_a.reftaxon,
+                            hit_a.score,
+                            hit_a.qstart,
+                            hit_a.qend,
                         )
                     )
 
@@ -316,13 +342,12 @@ def process_lines(pargs: ProcessingArgs):
             if pargs.debug:
                 this_log.extend(log)
 
-
-        hits = list(filter(lambda x: x.gene == hits[0].gene, hits))
         if hits:
             top_hit = hits[0]
             ref_seqs = []
             for hit in hits:
-                ref_seqs.append(hit)
+                if hit.gene == top_hit.gene:
+                    ref_seqs.append(hit)
                 
             best_hit = BestHit(top_hit.header, top_hit.full_header, top_hit.gene, ref_seqs)
 
@@ -536,7 +561,7 @@ def run_process(args, input_path) -> None:
                 this_hits = sum([i[1] for i in this_counter if i[1] > 1])
                 this_common = {i[0] for i in this_counter if i[1] > 1}
                 for hit in [i for i in hits if i.header in this_common]:
-                    requires_internal[gene].setdefault(hit.header, []).append(hit)
+                    requires_internal[gene].setdefault(hit.header, []).append(hit.no_children)
 
                 internal_order.append((gene, this_hits))
 
