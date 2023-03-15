@@ -480,6 +480,7 @@ def run_process(args, input_path) -> None:
                         total_references,
                         strict_search_mode,
                         reference_taxa,
+                        args.evalue,
                     ),
                 )
                 for j in range(i, i + num_threads)
