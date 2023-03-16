@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import parasail as ps
 import shutil
 from collections import namedtuple
 from multiprocessing.pool import Pool
@@ -79,27 +80,36 @@ class Hit:
 
         mat = bl.BLOSUM(62)
         debug_lines = []
-        aligner = PairwiseAligner()
-        aligner.match_score = 1.0 
-        aligner.mismatch_score = -2.0
-        aligner.gap_score = -2.5
+        # aligner = PairwiseAligner()
+        # aligner.match_score = 1.0
+        # aligner.mismatch_score = -2.0
+        # aligner.gap_score = -2.5
         reg_starts = []
         reg_ends = []
         debug_lines.append("\nStarting BP trim for " + self.header)
         debug_lines.append(f"Alignment for {len(self.ref_seqs)} reference hits:")
+        # for ref in self.ref_seqs:
+        #     ref_seq = references[ref.target]
+        #     ref_seq = ref_seq[ref.sub_start-1: ref.sub_end]
+        #     try:
+        #         alignments = aligner.align(ref_seq, this_aa)
+        #         best_alignment = alignments[0]
+        #     except:
+        #         continue
+        # parasail alignment stuff
+        profile = ps.profile_create_16(this_aa, ps.blosum62)
+        GAP_PENALTY = 2  # score penalty for gaps inside seq
+        EXTEND_PENALTY = 1  # score penalty for extending a sequence
         for ref in self.ref_seqs:
             ref_seq = references[ref.target]
-            ref_seq = ref_seq[ref.sub_start-1: ref.sub_end]
-            try:
-                alignments = aligner.align(ref_seq, this_aa)
-                best_alignment = alignments[0]
-            except:
-                continue
+            ref_seq = ref_seq[ref.sub_start - 1: ref.sub_end]
+            result = ps.nw_trace_scan_profile_16(profile, ref_seq, GAP_PENALTY, EXTEND_PENALTY)
+            this_aa, ref_seq = result.traceback.query, result.traceback.ref
 
-            best_alignment = alignments[0]
-
-            this_aa = str(best_alignment[1])
-            ref_seq = str(best_alignment[0])
+            # best_alignment = alignments[0]
+            #
+            # this_aa = str(best_alignment[1])
+            # ref_seq = str(best_alignment[0])
 
             # DEBUG # lines.append(f"Pairwise Alignment: {self.header} to {ref.target}:")
             # DEBUG # lines.append(this_aa)
