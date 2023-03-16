@@ -15,6 +15,9 @@ from . import rocky
 from .timekeeper import TimeKeeper, KeeperMode
 from .utils import printv, writeFasta
 
+MISMATCH_AMOUNT = 1
+EXACT_MATCH_AMOUNT = 1
+
 MainArgs = namedtuple(
     "MainArgs",
     [
@@ -68,22 +71,22 @@ class Hit:
 
     def get_bp_trim(self, this_aa, references, matches, mode):
         if mode == "exact":
-            dist = lambda a, b, _: a == b
+            dist = lambda a, b, _: a == b and a != "-" and b != "-"
         elif mode == "strict":
-            dist = lambda a, b, mat: mat[a.upper()+b.upper()] > 0
+            dist = lambda a, b, mat: mat[a.upper()+b.upper()] > 0 and a != "-" and b != "-"
         else: #lax
-            dist = lambda a, b, mat: mat[a.upper()+b.upper()] >= 0.0
+            dist = lambda a, b, mat: mat[a.upper()+b.upper()] >= 0.0 and a != "-" and b != "-"
 
         mat = bl.BLOSUM(62)
-        # DEBUG # lines = []
+        debug_lines = []
         aligner = PairwiseAligner()
         aligner.match_score = 1.0 
         aligner.mismatch_score = -2.0
         aligner.gap_score = -2.5
         reg_starts = []
         reg_ends = []
-        # DEBUG # lines.append("\nStarting BP trim for " + self.header)
-        # DEBUG # lines.append(f"Alignment for {len(self.ref_seqs)} reference hits:")
+        debug_lines.append("\nStarting BP trim for " + self.header)
+        debug_lines.append(f"Alignment for {len(self.ref_seqs)} reference hits:")
         for ref in self.ref_seqs:
             ref_seq = references[ref.target]
             ref_seq = ref_seq[ref.sub_start-1: ref.sub_end]
@@ -110,22 +113,25 @@ class Hit:
                     skip_l += 1
                     continue
 
-                l_mismatch = 1
+                l_mismatch = MISMATCH_AMOUNT
+                l_exact_matches = 0
                 for j in range(0, matches):
                     if i+j > len(this_aa)-1:
                         this_pass = False
                         break
+                    if this_aa[i+j] == ref_seq[i+j]:
+                        l_exact_matches += 1
+       
                     if not dist(ref_seq[i+j], this_aa[i+j], mat):
-                        if j != 0:
-                            l_mismatch -= 1
-                            if l_mismatch < 0:
-                                this_pass = False
-                                break
-                        else:
+                        if j == 0:
+                            this_pass = False
+                            break
+                        l_mismatch -= 1
+                        if l_mismatch < 0:
                             this_pass = False
                             break
 
-                if this_pass:
+                if this_pass and l_exact_matches >= EXACT_MATCH_AMOUNT:
                     reg_starts.append((i-skip_l))
                     break
 
@@ -136,23 +142,27 @@ class Hit:
                     skip_r += 1
                     continue
 
-                r_mismatch = 1
+                r_mismatch = MISMATCH_AMOUNT
+                r_exact_matches = 0
                 for j in range(0, matches):
                     if i-j < 0:
                         this_pass = False
                         break
 
+                    if this_aa[i-j] == ref_seq[i-j]:
+                        r_exact_matches += 1
+                            
                     if not dist(ref_seq[i-j], this_aa[i-j], mat):
-                        if j != 0:
-                            r_mismatch -= 1
-                            if r_mismatch < 0:
-                                this_pass = False
-                                break
-                        else:
+                        if j == 0:
                             this_pass = False
                             break
 
-                if this_pass:
+                        r_mismatch -= 1
+                        if r_mismatch < 0:
+                            this_pass = False
+                            break
+                            
+                if this_pass and r_exact_matches >= EXACT_MATCH_AMOUNT:
                     reg_ends.append(len(this_aa) - i - (1 +skip_r))
                     break
 
