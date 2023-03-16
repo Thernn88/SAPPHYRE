@@ -22,8 +22,8 @@ class reference_hit:
 
     def __init__(self, target, sstart, send):
         self.target = target
-        self.sstart = sstart
-        self.send = send
+        self.sstart = int(sstart)
+        self.send = int(send)
     
     def to_json(self):
         return {
@@ -320,7 +320,7 @@ def process_lines(pargs: ProcessingArgs):
                 if hit.gene == top_hit.gene:
                     ref_seqs.append(reference_hit(hit.target, hit.sstart, hit.send))
                 
-            top_hit.reference_hits = ref_seqs
+            top_hit.reference_hits.extend(ref_seqs)
 
             top_hit.convert_reference_hits()
 

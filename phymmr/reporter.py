@@ -74,15 +74,16 @@ class Hit:
         else: #lax
             dist = lambda a, b, mat: mat[a.upper()+b.upper()] >= 0.0
 
-        
         mat = bl.BLOSUM(62)
-
+        # DEBUG # lines = []
         aligner = PairwiseAligner()
         aligner.match_score = 1.0 
         aligner.mismatch_score = -2.0
         aligner.gap_score = -2.5
         reg_starts = []
         reg_ends = []
+        # DEBUG # lines.append("\nStarting BP trim for " + self.header)
+        # DEBUG # lines.append(f"Alignment for {len(self.ref_seqs)} reference hits:")
         for ref in self.ref_seqs:
             ref_seq = references[ref.target]
             ref_seq = ref_seq[ref.sub_start-1: ref.sub_end]
@@ -96,6 +97,11 @@ class Hit:
 
             this_aa = str(best_alignment[1])
             ref_seq = str(best_alignment[0])
+
+            # DEBUG # lines.append(f"Pairwise Alignment: {self.header} to {ref.target}:")
+            # DEBUG # lines.append(this_aa)
+            # DEBUG # lines.append(ref_seq)
+            # DEBUG # lines.append("")
 
             skip_l = 0
             for i in range(0, len(this_aa)):
@@ -128,8 +134,12 @@ class Hit:
                     if this_pass:
                         reg_ends.append(len(this_aa) - i - (1 +skip_r))
                         break
+
         if reg_starts and reg_ends:
+            # DEBUG # lines.append(f"Final trim: -{min(reg_starts)} left -{min(reg_ends)} right")
+            # DEBUG # return min(reg_starts), min(reg_ends), lines
             return min(reg_starts), min(reg_ends)
+        # DEBUG # return None, None, lines
         return None, None
 
     def trim_to_coords(self, start=None, end=None):
@@ -215,6 +225,7 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches,
     seq_mapped_already = {}
     exact_hit_mapped_already = set()
     dupes = {}
+    # Debug # this_debug_lines = []
     for hit in hits:
         base_header, reference_frame = hit.header.split("|")
 
@@ -230,8 +241,11 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches,
         nt_seq = hit.est_sequence
         aa_seq = translate_cdna(nt_seq)
 
+        # Debug # r_start, r_end, lines = hit.get_bp_trim(aa_seq, core_aa_seqs, trim_matches, trim_mode)
         r_start, r_end = hit.get_bp_trim(aa_seq, core_aa_seqs, trim_matches, trim_mode)
         if r_start is None or r_end is None:
+            # Debug # lines.append("SEQUENCE KICKED\n")
+            # Debug # this_debug_lines.extend(lines)
             print(f"WARNING: Trim kicked: {hit.header}")
             continue
         
@@ -241,6 +255,10 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches,
         else:
             nt_seq = nt_seq[(r_start*3):-(r_end*3)]
             aa_seq = aa_seq[r_start:-r_end]
+
+        # Debug # lines.append(aa_seq+"\n")
+
+        # Debug # this_debug_lines.extend(lines)
 
         data_after = len(aa_seq)
 
@@ -299,6 +317,7 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches,
                 header_mapped_x_times.setdefault(base_header, 1)
                 exact_hit_mapped_already.add(unique_hit)
 
+    # Debug # return dupes, aa_result, nt_result, this_debug_lines
     return dupes, aa_result, nt_result
 
 
@@ -333,6 +352,7 @@ def trim_and_write(oargs: OutputArgs):
 
     core_seq_aa_dict = {target: seq for _, target, seq in core_sequences}
     this_aa_path = os.path.join(oargs.aa_out_path, oargs.gene + ".aa.fa")
+    # DEBUG # this_gene_dupes, aa_output, nt_output, debug_lines = print_unmerged_sequences(
     this_gene_dupes, aa_output, nt_output = print_unmerged_sequences(
         oargs.list_of_hits,
         oargs.gene,
@@ -361,7 +381,7 @@ def trim_and_write(oargs: OutputArgs):
         oargs.verbose,
         2,
     )
-    return oargs.gene, this_gene_dupes, len(aa_output)
+    return oargs.gene, this_gene_dupes, len(aa_output) # DEBUG # , [oargs.gene] + debug_lines
 
 
 def do_taxa(path, taxa_id, args):
@@ -459,9 +479,15 @@ def do_taxa(path, taxa_id, args):
 
     final_count = 0
     this_gene_based_dupes = {}
+    # DEBUG # final_lines = []
+    # DEBUG # for gene, dupes, amount, lines in recovered:
     for gene, dupes, amount in recovered:
         final_count += amount
         this_gene_based_dupes[gene] = dupes
+        # DEBUG # final_lines.extend(lines)
+    
+    # DEBUG # with open("TrimDebug.txt", "w") as fp:
+    # DEBUG #     fp.write("\n".join(final_lines))
 
     key = "getall:reporter_dupes"
     data = json.dumps(this_gene_based_dupes)
