@@ -118,7 +118,7 @@ class Hit:
                     if not dist(ref_seq[i+j], this_aa[i+j], mat):
                         if j != 0:
                             l_mismatch -= 1
-                            if l_mismatch <= 0:
+                            if l_mismatch < 0:
                                 this_pass = False
                                 break
                         else:
@@ -145,7 +145,7 @@ class Hit:
                     if not dist(ref_seq[i-j], this_aa[i-j], mat):
                         if j != 0:
                             r_mismatch -= 1
-                            if r_mismatch <= 0:
+                            if r_mismatch < 0:
                                 this_pass = False
                                 break
                         else:
