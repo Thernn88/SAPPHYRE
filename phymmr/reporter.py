@@ -110,14 +110,24 @@ class Hit:
                     skip_l += 1
                     continue
 
-                if dist(ref_seq[i], this_aa[i], mat):
-                    for j in range(1, matches):
-                        if i+j > len(this_aa)-1 or not dist(ref_seq[i+j], this_aa[i+j], mat):
+                l_mismatch = 1
+                for j in range(0, matches):
+                    if i+j > len(this_aa)-1:
+                        this_pass = False
+                        break
+                    if not dist(ref_seq[i+j], this_aa[i+j], mat):
+                        if j != 0:
+                            l_mismatch -= 1
+                            if l_mismatch <= 0:
+                                this_pass = False
+                                break
+                        else:
                             this_pass = False
                             break
-                    if this_pass:
-                        reg_starts.append((i-skip_l))
-                        break
+
+                if this_pass:
+                    reg_starts.append((i-skip_l))
+                    break
 
             skip_r = 0
             for i in range(len(this_aa)-1, -1, -1):
@@ -126,14 +136,25 @@ class Hit:
                     skip_r += 1
                     continue
 
-                if dist(ref_seq[i], this_aa[i], mat):
-                    for j in range(1, matches):
-                        if i-j < 0 or not dist(ref_seq[i-j], this_aa[i-j], mat):
+                r_mismatch = 1
+                for j in range(0, matches):
+                    if i-j < 0:
+                        this_pass = False
+                        break
+
+                    if not dist(ref_seq[i-j], this_aa[i-j], mat):
+                        if j != 0:
+                            r_mismatch -= 1
+                            if r_mismatch <= 0:
+                                this_pass = False
+                                break
+                        else:
                             this_pass = False
                             break
-                    if this_pass:
-                        reg_ends.append(len(this_aa) - i - (1 +skip_r))
-                        break
+
+                if this_pass:
+                    reg_ends.append(len(this_aa) - i - (1 +skip_r))
+                    break
 
         if reg_starts and reg_ends:
             # DEBUG # lines.append(f"Final trim: -{min(reg_starts)} left -{min(reg_ends)} right")
