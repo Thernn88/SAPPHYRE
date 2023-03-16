@@ -15,8 +15,8 @@ from . import rocky
 from .timekeeper import TimeKeeper, KeeperMode
 from .utils import printv, writeFasta
 
-MISMATCH_AMOUNT = 1
-EXACT_MATCH_AMOUNT = 1
+MISMATCH_AMOUNT = 0
+EXACT_MATCH_AMOUNT = 0
 
 MainArgs = namedtuple(
     "MainArgs",
