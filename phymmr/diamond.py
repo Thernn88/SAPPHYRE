@@ -305,6 +305,14 @@ def process_lines(pargs: ProcessingArgs):
         hits = list(filter(lambda x: x.reftaxon in pargs.top_refs, hits))
         hits.sort(key=lambda x: x.score, reverse=True)
 
+        genes_present = {hit.gene for hit in hits}
+
+        if len(genes_present) > 1:
+            hits, this_kicks, log = multi_filter(hits, pargs.debug)
+            multi_kicks += this_kicks
+            if pargs.debug:
+                this_log.extend(log)
+
         if hits:
             top_hit = hits[0]
             ref_seqs = []
