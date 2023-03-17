@@ -39,9 +39,11 @@ def process_genefile(fileread):
     targets = {}
     reinsertions = {}
     seq_to_first_header = {}
+    trimmed_header_to_full = {}
     for header, sequence in parseFasta(fileread):
         if not header.endswith("."):
             seq_hash = hash(sequence)
+            trimmed_header_to_full[header[:127]] = header
             if seq_hash not in seq_to_first_header:
                 seq_to_first_header[seq_hash] = header
             else:
@@ -51,7 +53,7 @@ def process_genefile(fileread):
         else:
             targets[header.split("|")[2]] = header
             
-    return len(data), data, targets, reinsertions
+    return len(data), data, targets, reinsertions, trimmed_header_to_full
 
 
 CmdArgs = namedtuple(
@@ -82,7 +84,7 @@ def run_command(args: CmdArgs) -> None:
 
     with TemporaryDirectory(dir=temp_dir) as parent_tmpdir, TemporaryDirectory(dir=parent_tmpdir) as raw_files_tmp, TemporaryDirectory(dir=parent_tmpdir) as aligned_files_tmp:
         printv(f"Cleaning NT file. Elapsed time: {keeper.differential():.2f}", args.verbose, 3) # Debug
-        seq_count, data, targets, reinsertions = process_genefile(args.gene_file)
+        seq_count, data, targets, reinsertions, trimmed_header_to_full = process_genefile(args.gene_file)
 
         cluster_time = 0
         align_time = 0
@@ -227,6 +229,7 @@ def run_command(args: CmdArgs) -> None:
         if header.endswith("."):
             references.append((header, sequence))
         else:
+            header = trimmed_header_to_full[header]
             if header in reinsertions:
                 for insertion_header in reinsertions[header]:
                     to_write.append((insertion_header, sequence))
