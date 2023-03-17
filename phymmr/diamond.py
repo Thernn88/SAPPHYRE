@@ -319,7 +319,10 @@ def process_lines(pargs: ProcessingArgs):
                 this_log.extend(log)
 
         if hits:
-            top_hit = min(hits[:SEARCH_DEPTH], key = lambda x: x.length)
+            top_hit = hits[0]
+            close_hit = min(hits[:SEARCH_DEPTH], key=lambda x: x.length)
+            if close_hit.pident >= top_hit.pident + 20.0:
+                top_hit = close_hit
             ref_seqs = []
             for hit in hits[SEARCH_DEPTH:]:
                 if hit.gene == top_hit.gene:
