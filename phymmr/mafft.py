@@ -49,7 +49,7 @@ def process_genefile(fileread):
             else:
                 reinsertions.setdefault(seq_to_first_header[seq_hash], []).append(header)
                 continue
-            data.append((header, sequence))
+            data.append((header, sequence.strip("-")))
         else:
             targets[header.split("|")[2]] = header
             
