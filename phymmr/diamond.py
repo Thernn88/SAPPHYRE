@@ -52,11 +52,12 @@ class Hit:
         "target",
         "sstart",
         "send",
+        "pident",
         "reference_hits",
     )
 
     def __init__(
-        self, header, ref_header, frame, evalue, score, qstart, qend, sstart, send, gene, reftaxon
+        self, header, ref_header, frame, evalue, score, qstart, qend, sstart, send, pident, gene, reftaxon
     ):
         self.header = header
         self.target = ref_header
@@ -71,6 +72,7 @@ class Hit:
         self.sstart = int(sstart)
         self.send = int(send)
         self.seq = None
+        self.pident= float(pident)
         self.reference_hits = [reference_hit(ref_header, sstart, send)]
         if self.frame < 0:
             self.qend, self.qstart = self.qstart, self.qend
@@ -413,7 +415,7 @@ def run_process(args, input_path) -> None:
             )
             time_keeper.lap()  # Reset timer
             os.system(
-                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {args.evalue} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --min-orf 15 --max-hsps 0 -p {num_threads}"
+                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {args.evalue} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send pident {quiet} --top {top_amount} --min-orf 15 --max-hsps 0 -p {num_threads}"
             )
             input_file.seek(0)
 
