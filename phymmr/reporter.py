@@ -17,7 +17,7 @@ from .timekeeper import TimeKeeper, KeeperMode
 from .utils import printv, writeFasta
 
 MISMATCH_AMOUNT = 0
-EXACT_MATCH_AMOUNT = 0
+EXACT_MATCH_AMOUNT = 2
 
 MainArgs = namedtuple(
     "MainArgs",
