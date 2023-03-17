@@ -268,7 +268,7 @@ def do_folder(folder, args):
         printv("ERROR: Aln folder not found.", args.verbose, 0)
         return False
 
-    command = f"clustalo -i {{in_file}} -o {{out_file}} --threads=1"
+    command = f"clustalo -i {{in_file}} -o {{out_file}} --threads=1 --full"
 
     intermediates = "intermediates"
     if not os.path.exists(intermediates):
