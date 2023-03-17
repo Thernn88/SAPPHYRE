@@ -321,7 +321,7 @@ def process_lines(pargs: ProcessingArgs):
         if hits:
             top_hit = hits[0]
             close_hit = min(hits[:SEARCH_DEPTH], key=lambda x: x.length)
-            if close_hit.pident >= top_hit.pident + 20.0:
+            if close_hit.pident >= top_hit.pident + 15.0:
                 top_hit = close_hit
             ref_seqs = []
             for hit in hits[SEARCH_DEPTH:]:
