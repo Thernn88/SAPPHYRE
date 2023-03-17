@@ -12,6 +12,9 @@ import wrap_rocks
 from .utils import printv, gettempdir
 from .timekeeper import TimeKeeper, KeeperMode
 
+# This logic is used to combat false extensions.
+# How many extra hits to scan looking for a shortest match.
+SEARCH_DEPTH = 2
 
 class reference_hit:
     __slots__ = (
@@ -314,9 +317,9 @@ def process_lines(pargs: ProcessingArgs):
                 this_log.extend(log)
 
         if hits:
-            top_hit = hits[0]
+            top_hit = min(hits[:SEARCH_DEPTH], key = lambda x: x.length)
             ref_seqs = []
-            for hit in hits[1:]:
+            for hit in hits[SEARCH_DEPTH:]:
                 if hit.gene == top_hit.gene:
                     ref_seqs.append(reference_hit(hit.target, hit.sstart, hit.send))
                 
