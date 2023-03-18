@@ -16,6 +16,8 @@ from .utils import printv, writeFasta
 
 MISMATCH_AMOUNT = 0
 EXACT_MATCH_AMOUNT = 2
+GAP_PENALTY = 10
+EXTEND_PENALTY = 5
 
 MainArgs = namedtuple(
     "MainArgs",
@@ -28,7 +30,7 @@ MainArgs = namedtuple(
         "orthoset",
         "compress",
         "matches",
-        "trim_mode",
+        "blosum_mode",
         "minimum_bp",
     ],
 )
@@ -65,53 +67,30 @@ class Hit:
 
         self.ref_seqs = [RefHit(i) for i in hit["reference_hits"]]
 
-    def get_bp_trim(self, this_aa, references, matches, mode):
+    def get_bp_trim(self, this_aa, references, matches, mode, debug_fp, header):
         if mode == "exact":
             dist = lambda a, b, _: a == b and a != "-" and b != "-"
         elif mode == "strict":
             dist = lambda a, b, mat: mat[a][b] > 0.0 and a != "-" and b != "-"
-        else:  # lax
+        else: # lax
             dist = lambda a, b, mat: mat[a][b] >= 0.0 and a != "-" and b != "-"
 
         mat = bl.BLOSUM(62)
-        debug_lines = []
-        # aligner = PairwiseAligner()
-        # aligner.match_score = 1.0
-        # aligner.mismatch_score = -2.0
-        # aligner.gap_score = -2.5
         reg_starts = []
         reg_ends = []
-        debug_lines.append("\nStarting BP trim for " + self.header)
-        debug_lines.append(f"Alignment for {len(self.ref_seqs)} reference hits:")
-        # for ref in self.ref_seqs:
-        #     ref_seq = references[ref.target]
-        #     ref_seq = ref_seq[ref.sub_start-1: ref.sub_end]
-        #     try:
-        #         alignments = aligner.align(ref_seq, this_aa)
-        #         best_alignment = alignments[0]
-        #     except:
-        #         continue
-        # parasail alignment stuff
+
         profile = ps.profile_create_16(this_aa, ps.blosum62)
-        GAP_PENALTY = 2  # score penalty for gaps inside seq
-        EXTEND_PENALTY = 1  # score penalty for extending a sequence
-        for ref in self.ref_seqs:
+
+        number = 0  # DEBUG
+        if debug_fp:
+            debug_fp.write(f'>{header}\n{this_aa}\n')
+        for number, ref in enumerate(self.ref_seqs):
             ref_seq = references[ref.target]
-            ref_seq = ref_seq[ref.sub_start - 1 : ref.sub_end]
-            result = ps.nw_trace_scan_profile_16(
-                profile, ref_seq, GAP_PENALTY, EXTEND_PENALTY
-            )
+            ref_seq = ref_seq[ref.sub_start - 1: ref.sub_end]
+            result = ps.nw_trace_scan_profile_16(profile, ref_seq, GAP_PENALTY, EXTEND_PENALTY)
             this_aa, ref_seq = result.traceback.query, result.traceback.ref
-
-            # best_alignment = alignments[0]
-            #
-            # this_aa = str(best_alignment[1])
-            # ref_seq = str(best_alignment[0])
-
-            # DEBUG # lines.append(f"Pairwise Alignment: {self.header} to {ref.target}:")
-            # DEBUG # lines.append(this_aa)
-            # DEBUG # lines.append(ref_seq)
-            # DEBUG # lines.append("")
+            if debug_fp:
+                debug_fp.write(f'>ref_{number}\n{ref_seq}\n')  # DEBUG
 
             skip_l = 0
             for i in range(0, len(this_aa)):
@@ -172,12 +151,11 @@ class Hit:
                 if this_pass and r_exact_matches >= EXACT_MATCH_AMOUNT:
                     reg_ends.append(len(this_aa) - i - (1 + skip_r))
                     break
-
+        if debug_fp:
+            debug_fp.write('\n')
         if reg_starts and reg_ends:
-            # DEBUG # lines.append(f"Final trim: -{min(reg_starts)} left -{min(reg_ends)} right")
-            # DEBUG # return min(reg_starts), min(reg_ends), lines
             return min(reg_starts), min(reg_ends)
-        # DEBUG # return None, None, lines
+
         return None, None
 
     def trim_to_coords(self, start=None, end=None):
@@ -187,7 +165,7 @@ class Hit:
         self.est_sequence = self.est_sequence[start - 1 : end]
         if "revcomp" in self.header:
             self.est_sequence = phymmr_tools.bio_revcomp(self.est_sequence)
-
+        
 
 def get_diamondhits(rocks_hits_db, list_of_wanted_orthoids):
     gene_based_results = {}
@@ -254,9 +232,7 @@ def print_core_sequences(orthoid, core_sequences, target_taxon, top_refs):
     return result
 
 
-def print_unmerged_sequences(
-    hits, orthoid, taxa_id, core_aa_seqs, trim_matches, trim_mode, minimum_bp
-):
+def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches, blosum_mode, minimum_bp, debug_fp):
     aa_result = []
     nt_result = []
     header_maps_to_where = {}
@@ -265,7 +241,7 @@ def print_unmerged_sequences(
     seq_mapped_already = {}
     exact_hit_mapped_already = set()
     dupes = {}
-    # Debug # this_debug_lines = []
+
     for hit in hits:
         base_header, reference_frame = hit.header.split("|")
 
@@ -281,14 +257,11 @@ def print_unmerged_sequences(
         nt_seq = hit.est_sequence
         aa_seq = translate_cdna(nt_seq)
 
-        # Debug # r_start, r_end, lines = hit.get_bp_trim(aa_seq, core_aa_seqs, trim_matches, trim_mode)
-        r_start, r_end = hit.get_bp_trim(aa_seq, core_aa_seqs, trim_matches, trim_mode)
+        r_start, r_end = hit.get_bp_trim(aa_seq, core_aa_seqs, trim_matches, blosum_mode, debug_fp, header)
         if r_start is None or r_end is None:
-            # Debug # lines.append("SEQUENCE KICKED\n")
-            # Debug # this_debug_lines.extend(lines)
             print(f"WARNING: Trim kicked: {hit.header}")
             continue
-
+        
         if r_end == 0:
             nt_seq = nt_seq[(r_start * 3) :]
             aa_seq = aa_seq[r_start:]
@@ -296,9 +269,8 @@ def print_unmerged_sequences(
             nt_seq = nt_seq[(r_start * 3) : -(r_end * 3)]
             aa_seq = aa_seq[r_start:-r_end]
 
-        # Debug # lines.append(aa_seq+"\n")
-
-        # Debug # this_debug_lines.extend(lines)
+        if debug_fp:
+            debug_fp.write(f'>{header}\n{aa_seq}\n')
 
         data_after = len(aa_seq)
 
@@ -357,7 +329,6 @@ def print_unmerged_sequences(
                 header_mapped_x_times.setdefault(base_header, 1)
                 exact_hit_mapped_already.add(unique_hit)
 
-    # Debug # return dupes, aa_result, nt_result, this_debug_lines
     return dupes, aa_result, nt_result
 
 
@@ -375,8 +346,9 @@ OutputArgs = namedtuple(
         "target_taxon",
         "top_refs",
         "matches",
-        "trim_mode",
+        "blosum_mode",
         "minimum_bp",
+        "debug",
     ],
 )
 
@@ -385,23 +357,29 @@ def trim_and_write(oargs: OutputArgs):
     t_gene_start = TimeKeeper(KeeperMode.DIRECT)
     printv(f"Doing output for: {oargs.gene}", oargs.verbose, 2)
 
+    
     core_sequences, core_sequences_nt = get_ortholog_group(
         oargs.gene, rocky.get_rock("rocks_orthoset_db")
     )
 
     core_seq_aa_dict = {target: seq for _, target, seq in core_sequences}
     this_aa_path = os.path.join(oargs.aa_out_path, oargs.gene + ".aa.fa")
-    # DEBUG # this_gene_dupes, aa_output, nt_output, debug_lines = print_unmerged_sequences(
+    debug_alignments = None
+    if oargs.debug:
+        os.makedirs(f'align_debug/{oargs.gene}', exist_ok=True)  # DEBUG
+        debug_alignments = open(f'align_debug/{oargs.gene}/{oargs.taxa_id}.fa','w')  # DEBUG
+        debug_alignments.write(f'GAP_PENALTY: {GAP_PENALTY}\nEXTEND_PENALTY: {EXTEND_PENALTY}\n')  # DEBUG
+
     this_gene_dupes, aa_output, nt_output = print_unmerged_sequences(
         oargs.list_of_hits,
         oargs.gene,
         oargs.taxa_id,
         core_seq_aa_dict,
         oargs.matches,
-        oargs.trim_mode,
+        oargs.blosum_mode,
         oargs.minimum_bp,
+        debug_alignments
     )
-
     if aa_output:
         aa_core_sequences = print_core_sequences(
             oargs.gene, core_sequences, oargs.target_taxon, oargs.top_refs
@@ -420,11 +398,7 @@ def trim_and_write(oargs: OutputArgs):
         oargs.verbose,
         2,
     )
-    return (
-        oargs.gene,
-        this_gene_dupes,
-        len(aa_output),
-    )  # DEBUG # , [oargs.gene] + debug_lines
+    return oargs.gene, this_gene_dupes, len(aa_output)
 
 
 def do_taxa(path, taxa_id, args):
@@ -505,12 +479,13 @@ def do_taxa(path, taxa_id, args):
                     set(target_taxon.get(orthoid, [])),
                     top_refs,
                     args.matches,
-                    args.trim_mode,
+                    args.blosum_mode,
                     args.minimum_bp,
+                    args.debug,
                 ),
             )
         )
-
+    os.makedirs('align_debug', exist_ok=True)  # DEBUG
     # this sorting the list so that the ones with the most hits are first
     if num_threads > 1:
         if num_threads > 1:
@@ -522,15 +497,10 @@ def do_taxa(path, taxa_id, args):
 
     final_count = 0
     this_gene_based_dupes = {}
-    # DEBUG # final_lines = []
-    # DEBUG # for gene, dupes, amount, lines in recovered:
+
     for gene, dupes, amount in recovered:
         final_count += amount
         this_gene_based_dupes[gene] = dupes
-        # DEBUG # final_lines.extend(lines)
-
-    # DEBUG # with open("TrimDebug.txt", "w") as fp:
-    # DEBUG #     fp.write("\n".join(final_lines))
 
     key = "getall:reporter_dupes"
     data = json.dumps(this_gene_based_dupes)

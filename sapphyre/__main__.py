@@ -163,7 +163,13 @@ def subcmd_reporter(subparsers):
         default="exact",
         help="Trim distance mode.",
     )
-    par.add_argument("-d", "--debug", type=int, default=0, help="Verbose debug.")
+    par.add_argument(
+        "-d",
+        "--debug",
+        action="store_true",
+        default=False,
+        help="Enable debug",
+    )
     par.set_defaults(func=reporter, formathelp=par.format_help)
 
 
