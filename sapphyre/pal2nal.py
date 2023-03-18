@@ -1,5 +1,4 @@
 from __future__ import annotations
-import json
 from shutil import rmtree
 
 from multiprocessing import Pool

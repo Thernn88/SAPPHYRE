@@ -6,7 +6,7 @@ PyLint 9.81/10
 from __future__ import annotations
 
 import os
-from collections import Counter, namedtuple
+from collections import namedtuple
 from itertools import chain
 from multiprocessing.pool import Pool
 from shutil import rmtree
