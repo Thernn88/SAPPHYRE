@@ -750,7 +750,6 @@ def return_aligned_paths(
 ) -> Generator[Path, Any, Any]:
     for path_nt, path_aa in zip(glob_paths_taxa, glob_paths_genes):
         if not path_nt.is_file() or not path_aa.is_file():
-
             continue
 
         nt_gene = str(path_nt.parts[-1]).split(".", maxsplit=1)[0]
@@ -822,7 +821,6 @@ def find_end(sequence: str, gap_character="-") -> int:
 def read_and_convert_fasta_files(
     aa_file: str, nt_file: str, verbose: bool
 ) -> Dict[str, Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]]:
-
     aas = []
     nts = {}
 
@@ -921,9 +919,7 @@ def main(args):
             folder, specified_dna_table, args.verbose, args.compress
         )
 
-        success = run_batch_threaded(
-            num_threads=args.processes, ls=this_taxa_jobs
-        )
+        success = run_batch_threaded(num_threads=args.processes, ls=this_taxa_jobs)
 
         if not success:
             printv("A fatal error has occured.", args.verbose, 0)
@@ -935,4 +931,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    raise Exception("Cannot be called directly, please use the module:\nsapphyre Pal2Nal")
+    raise Exception(
+        "Cannot be called directly, please use the module:\nsapphyre Pal2Nal"
+    )

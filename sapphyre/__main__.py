@@ -423,7 +423,7 @@ def subcmd_flexcull(subparsers):
     )
     par.add_argument(
         "-nt", "--nucleotide", type=str, default="nt_aligned", help="NT Folder Name."
-    )#
+    )  #
     par.add_argument(
         "-bm",
         "--blosum_mode",
@@ -687,6 +687,7 @@ def makeref(argsobj):
         print()
         print(argsobj.formathelp())
 
+
 def subcmd_wrap_final(sp):
     par = sp.add_parser("reconcile", help="Wrapper for Second Run")  # TODO add me
     par.add_argument(
@@ -736,8 +737,10 @@ def subcmd_wrap_final(sp):
     )
     par.set_defaults(func=wrap_final, formathelp=par.format_help)
 
+
 def wrap_final(argsobj):
     from . import merge_overlap, pal2nal, mafft
+
     print("Triggering Mafft")
     if not mafft.main(argsobj):
         print()

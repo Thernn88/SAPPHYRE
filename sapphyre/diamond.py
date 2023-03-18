@@ -16,6 +16,7 @@ from .timekeeper import TimeKeeper, KeeperMode
 # How many extra hits to scan looking for a shortest match.
 SEARCH_DEPTH = 2
 
+
 class reference_hit:
     __slots__ = (
         "target",
@@ -27,13 +28,14 @@ class reference_hit:
         self.target = target
         self.sstart = int(sstart)
         self.send = int(send)
-    
+
     def to_json(self):
         return {
             "target": self.target,
             "sstart": self.sstart,
             "send": self.send,
         }
+
 
 class Hit:
     __slots__ = (
@@ -57,7 +59,19 @@ class Hit:
     )
 
     def __init__(
-        self, header, ref_header, frame, evalue, score, qstart, qend, sstart, send, pident, gene, reftaxon
+        self,
+        header,
+        ref_header,
+        frame,
+        evalue,
+        score,
+        qstart,
+        qend,
+        sstart,
+        send,
+        pident,
+        gene,
+        reftaxon,
     ):
         self.header = header
         self.target = ref_header
@@ -72,7 +86,7 @@ class Hit:
         self.sstart = int(sstart)
         self.send = int(send)
         self.seq = None
-        self.pident= float(pident)
+        self.pident = float(pident)
         self.reference_hits = [reference_hit(ref_header, sstart, send)]
         if self.frame < 0:
             self.qend, self.qstart = self.qstart, self.qend
@@ -196,6 +210,7 @@ def multi_filter(hits, debug):
 
     passes = [i for i in hits if i]
     return passes, len(hits) - len(passes), log
+
 
 def internal_filter(header_based: dict, debug: bool, internal_percent: float) -> list:
     log = []
@@ -327,7 +342,7 @@ def process_lines(pargs: ProcessingArgs):
             for hit in hits:
                 if hit.gene == top_hit.gene and hit != top_hit:
                     ref_seqs.append(reference_hit(hit.target, hit.sstart, hit.send))
-                
+
             top_hit.reference_hits.extend(ref_seqs)
 
             top_hit.convert_reference_hits()

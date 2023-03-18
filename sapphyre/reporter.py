@@ -11,7 +11,7 @@ import blosum as bl
 import phymmr_tools
 from Bio.Seq import Seq
 from Bio.Align import PairwiseAligner
- 
+
 from . import rocky
 from .timekeeper import TimeKeeper, KeeperMode
 from .utils import printv, writeFasta
@@ -31,16 +31,13 @@ MainArgs = namedtuple(
         "compress",
         "matches",
         "trim_mode",
-        "minimum_bp"
+        "minimum_bp",
     ],
 )
 
+
 class RefHit:
-    __slots__ = (
-        "sub_start",
-        "sub_end",
-        "target"
-    )
+    __slots__ = ("sub_start", "sub_end", "target")
 
     def __init__(self, hit):
         self.sub_start = hit["sstart"]
@@ -75,7 +72,7 @@ class Hit:
             dist = lambda a, b, _: a == b and a != "-" and b != "-"
         elif mode == "strict":
             dist = lambda a, b, mat: mat[a][b] > 0.0 and a != "-" and b != "-"
-        else: #lax
+        else:  # lax
             dist = lambda a, b, mat: mat[a][b] >= 0.0 and a != "-" and b != "-"
 
         mat = bl.BLOSUM(62)
@@ -102,8 +99,10 @@ class Hit:
         EXTEND_PENALTY = 1  # score penalty for extending a sequence
         for ref in self.ref_seqs:
             ref_seq = references[ref.target]
-            ref_seq = ref_seq[ref.sub_start - 1: ref.sub_end]
-            result = ps.nw_trace_scan_profile_16(profile, ref_seq, GAP_PENALTY, EXTEND_PENALTY)
+            ref_seq = ref_seq[ref.sub_start - 1 : ref.sub_end]
+            result = ps.nw_trace_scan_profile_16(
+                profile, ref_seq, GAP_PENALTY, EXTEND_PENALTY
+            )
             this_aa, ref_seq = result.traceback.query, result.traceback.ref
 
             # best_alignment = alignments[0]
@@ -126,13 +125,13 @@ class Hit:
                 l_mismatch = MISMATCH_AMOUNT
                 l_exact_matches = 0
                 for j in range(0, matches):
-                    if i+j > len(this_aa)-1:
+                    if i + j > len(this_aa) - 1:
                         this_pass = False
                         break
-                    if this_aa[i+j] == ref_seq[i+j]:
+                    if this_aa[i + j] == ref_seq[i + j]:
                         l_exact_matches += 1
-       
-                    if not dist(ref_seq[i+j], this_aa[i+j], mat):
+
+                    if not dist(ref_seq[i + j], this_aa[i + j], mat):
                         if j == 0:
                             this_pass = False
                             break
@@ -142,11 +141,11 @@ class Hit:
                             break
 
                 if this_pass and l_exact_matches >= EXACT_MATCH_AMOUNT:
-                    reg_starts.append((i-skip_l))
+                    reg_starts.append((i - skip_l))
                     break
 
             skip_r = 0
-            for i in range(len(this_aa)-1, -1, -1):
+            for i in range(len(this_aa) - 1, -1, -1):
                 this_pass = True
                 if this_aa[i] == "-":
                     skip_r += 1
@@ -155,14 +154,14 @@ class Hit:
                 r_mismatch = MISMATCH_AMOUNT
                 r_exact_matches = 0
                 for j in range(0, matches):
-                    if i-j < 0:
+                    if i - j < 0:
                         this_pass = False
                         break
 
-                    if this_aa[i-j] == ref_seq[i-j]:
+                    if this_aa[i - j] == ref_seq[i - j]:
                         r_exact_matches += 1
-                            
-                    if not dist(ref_seq[i-j], this_aa[i-j], mat):
+
+                    if not dist(ref_seq[i - j], this_aa[i - j], mat):
                         if j == 0:
                             this_pass = False
                             break
@@ -171,9 +170,9 @@ class Hit:
                         if r_mismatch < 0:
                             this_pass = False
                             break
-                            
+
                 if this_pass and r_exact_matches >= EXACT_MATCH_AMOUNT:
-                    reg_ends.append(len(this_aa) - i - (1 +skip_r))
+                    reg_ends.append(len(this_aa) - i - (1 + skip_r))
                     break
 
         if reg_starts and reg_ends:
@@ -190,7 +189,7 @@ class Hit:
         self.est_sequence = self.est_sequence[start - 1 : end]
         if "revcomp" in self.header:
             self.est_sequence = phymmr_tools.bio_revcomp(self.est_sequence)
-        
+
 
 def get_diamondhits(rocks_hits_db, list_of_wanted_orthoids):
     gene_based_results = {}
@@ -257,7 +256,9 @@ def print_core_sequences(orthoid, core_sequences, target_taxon, top_refs):
     return result
 
 
-def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches, trim_mode, minimum_bp):
+def print_unmerged_sequences(
+    hits, orthoid, taxa_id, core_aa_seqs, trim_matches, trim_mode, minimum_bp
+):
     aa_result = []
     nt_result = []
     header_maps_to_where = {}
@@ -289,12 +290,12 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches,
             # Debug # this_debug_lines.extend(lines)
             print(f"WARNING: Trim kicked: {hit.header}")
             continue
-        
+
         if r_end == 0:
-            nt_seq = nt_seq[(r_start*3):]
+            nt_seq = nt_seq[(r_start * 3) :]
             aa_seq = aa_seq[r_start:]
         else:
-            nt_seq = nt_seq[(r_start*3):-(r_end*3)]
+            nt_seq = nt_seq[(r_start * 3) : -(r_end * 3)]
             aa_seq = aa_seq[r_start:-r_end]
 
         # Debug # lines.append(aa_seq+"\n")
@@ -377,7 +378,7 @@ OutputArgs = namedtuple(
         "top_refs",
         "matches",
         "trim_mode",
-        "minimum_bp"
+        "minimum_bp",
     ],
 )
 
@@ -386,7 +387,6 @@ def trim_and_write(oargs: OutputArgs):
     t_gene_start = TimeKeeper(KeeperMode.DIRECT)
     printv(f"Doing output for: {oargs.gene}", oargs.verbose, 2)
 
-    
     core_sequences, core_sequences_nt = get_ortholog_group(
         oargs.gene, rocky.get_rock("rocks_orthoset_db")
     )
@@ -422,7 +422,11 @@ def trim_and_write(oargs: OutputArgs):
         oargs.verbose,
         2,
     )
-    return oargs.gene, this_gene_dupes, len(aa_output) # DEBUG # , [oargs.gene] + debug_lines
+    return (
+        oargs.gene,
+        this_gene_dupes,
+        len(aa_output),
+    )  # DEBUG # , [oargs.gene] + debug_lines
 
 
 def do_taxa(path, taxa_id, args):
@@ -526,7 +530,7 @@ def do_taxa(path, taxa_id, args):
         final_count += amount
         this_gene_based_dupes[gene] = dupes
         # DEBUG # final_lines.extend(lines)
-    
+
     # DEBUG # with open("TrimDebug.txt", "w") as fp:
     # DEBUG #     fp.write("\n".join(final_lines))
 

@@ -365,4 +365,6 @@ def main(args):
 
 
 if __name__ == "__main__":
-    raise Exception("Cannot be called directly, please use the module:\nsapphyre finalize")
+    raise Exception(
+        "Cannot be called directly, please use the module:\nsapphyre finalize"
+    )
