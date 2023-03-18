@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import parasail as ps
 import shutil
 from collections import namedtuple
 from multiprocessing.pool import Pool
@@ -14,6 +15,9 @@ from Bio.Align import PairwiseAligner
 from . import rocky
 from .timekeeper import TimeKeeper, KeeperMode
 from .utils import printv, writeFasta
+
+MISMATCH_AMOUNT = 0
+EXACT_MATCH_AMOUNT = 2
 
 MainArgs = namedtuple(
     "MainArgs",
@@ -58,7 +62,7 @@ class Hit:
 
         self.target = hit["target"]
 
-    def get_bp_trim(self, this_aa, ref, matches, mode):
+    def get_bp_trim(self, this_aa, references, matches, mode):
         if mode == "exact":
             dist = lambda a, b, _: a == b
         elif mode == "strict":
@@ -70,59 +74,102 @@ class Hit:
         ref = ref[self.sub_start: self.sub_end]
         
         mat = bl.BLOSUM(62)
+        debug_lines = []
+        # aligner = PairwiseAligner()
+        # aligner.match_score = 1.0
+        # aligner.mismatch_score = -2.0
+        # aligner.gap_score = -2.5
+        reg_starts = []
+        reg_ends = []
+        #debug_lines.append("\nStarting BP trim for " + self.header)
+        #debug_lines.append(f"Alignment for {len(self.ref_seqs)} reference hits:")
+        # for ref in self.ref_seqs:
+        #     ref_seq = references[ref.target]
+        #     ref_seq = ref_seq[ref.sub_start-1: ref.sub_end]
+        #     try:
+        #         alignments = aligner.align(ref_seq, this_aa)
+        #         best_alignment = alignments[0]
+        #     except:
+        #         continue
+        # parasail alignment stuff
+        profile = ps.profile_create_16(this_aa, ps.blosum62)
+        GAP_PENALTY = 2  # score penalty for gaps inside seq
+        EXTEND_PENALTY = 1  # score penalty for extending a sequence
+        for ref in self.ref_seqs:
+            ref_seq = references[ref.target]
+            ref_seq = ref_seq[ref.sub_start - 1: ref.sub_end]
+            result = ps.nw_trace_scan_profile_16(profile, ref_seq, GAP_PENALTY, EXTEND_PENALTY)
+            this_aa, ref_seq = result.traceback.query, result.traceback.ref
 
-        aligner = PairwiseAligner()
-        aligner.match_score = 1.0 
-        aligner.mismatch_score = -2.0
-        aligner.gap_score = -2.5
-        try:
-            alignments = aligner.align(ref, this_aa)
-        except:
-            alignments = []
-        if len(alignments) == 0:
-            # No alignments found
-            return None, None
-        
-        best_alignment = alignments[0]
-        
-        this_aa = str(best_alignment[1])
-        ref = str(best_alignment[0])
+            # best_alignment = alignments[0]
+            #
+            # this_aa = str(best_alignment[1])
+            # ref_seq = str(best_alignment[0])
 
-        skip_l = 0
-        for i in range(0, len(this_aa)):
-            this_pass = True
-            if this_aa[i] == "-":
-                skip_l += 1
-                continue
+            # DEBUG # lines.append(f"Pairwise Alignment: {self.header} to {ref.target}:")
+            # DEBUG # lines.append(this_aa)
+            # DEBUG # lines.append(ref_seq)
+            # DEBUG # lines.append("")
 
-            if dist(ref[i], this_aa[i], mat):
-                for j in range(matches):
-                    if i+j > len(this_aa)-1 or not dist(ref[i+j], this_aa[i+j], mat):
+            skip_l = 0
+            for i in range(0, len(this_aa)):
+                this_pass = True
+                if this_aa[i] == "-":
+                    skip_l += 1
+                    continue
+
+                l_mismatch = MISMATCH_AMOUNT
+                l_exact_matches = 0
+                for j in range(0, matches):
+                    if i+j > len(this_aa)-1:
                         this_pass = False
                         break
-                if this_pass:
-                    reg_start = i
+                    if this_aa[i+j] == ref_seq[i+j]:
+                        l_exact_matches += 1
+       
+                    if not dist(ref_seq[i+j], this_aa[i+j], mat):
+                        if j == 0:
+                            this_pass = False
+                            break
+                        l_mismatch -= 1
+                        if l_mismatch < 0:
+                            this_pass = False
+                            break
+
+                if this_pass and l_exact_matches >= EXACT_MATCH_AMOUNT:
+                    reg_starts.append((i-skip_l))
                     break
 
-        skip_r = 0
-        for i in range(len(this_aa)-1, -1, -1):
-            this_pass = True
-            if this_aa[i] == "-":
-                skip_r += 1
-                continue
+            skip_r = 0
+            for i in range(len(this_aa)-1, -1, -1):
+                this_pass = True
+                if this_aa[i] == "-":
+                    skip_r += 1
+                    continue
 
-            if dist(ref[i], this_aa[i], mat):
-                for j in range(matches):
-                    if i-j < 0 or not dist(ref[i-j], this_aa[i-j], mat):
+                r_mismatch = MISMATCH_AMOUNT
+                r_exact_matches = 0
+                for j in range(0, matches):
+                    if i-j < 0:
                         this_pass = False
                         break
-                if this_pass:
-                    reg_end = i
+
+                    if this_aa[i-j] == ref_seq[i-j]:
+                        r_exact_matches += 1
+                            
+                    if not dist(ref_seq[i-j], this_aa[i-j], mat):
+                        if j == 0:
+                            this_pass = False
+                            break
+
+                        r_mismatch -= 1
+                        if r_mismatch < 0:
+                            this_pass = False
+                            break
+                            
+                if this_pass and r_exact_matches >= EXACT_MATCH_AMOUNT:
+                    reg_ends.append(len(this_aa) - i - (1 +skip_r))
                     break
-        if reg_start is None or reg_end is None:
-            return None, None
-        
-        return reg_start-skip_l, len(this_aa) - reg_end - (1 +skip_r)
 
     def trim_to_coords(self, start=None, end=None):
         if start is None:
@@ -222,7 +269,7 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches,
         nt_seq = hit.est_sequence
         aa_seq = translate_cdna(nt_seq)
 
-        r_start, r_end = hit.get_bp_trim(aa_seq, core_aa_seqs[hit.target], trim_matches, trim_mode)
+        r_start, r_end = hit.get_bp_trim(aa_seq, core_aa_seqs, trim_matches, trim_mode)
         if r_start is None or r_end is None:
             print(f"WARNING: Trim kicked: {hit.header}")
             continue

@@ -13,25 +13,29 @@ from .utils import printv, gettempdir
 from .timekeeper import TimeKeeper, KeeperMode
 
 
-def reciprocal_check(hits, strict, taxa_present):
-    first = None
-    hit_on_taxas = {i: 0 for i in taxa_present}
+# This logic is used to combat false extensions.
+# How many extra hits to scan looking for a shortest match.
+SEARCH_DEPTH = 2
 
-    for hit in hits:
-        if not strict:
-            return hit
-        first = hit
 
-        hit_on_taxas[hit.reftaxon] = 1  # Just need 1 hit
+class reference_hit:
+    __slots__ = (
+        "target",
+        "sstart",
+        "send",
+    )
 
-        if strict:
-            if all(hit_on_taxas.values()):
-                return first
-
-    if any(hit_on_taxas.values()):
-        return first
-
-    return None
+    def __init__(self, target, sstart, send):
+        self.target = target
+        self.sstart = int(sstart)
+        self.send = int(send)
+    
+    def to_json(self):
+        return {
+            "target": self.target,
+            "sstart": self.sstart,
+            "send": self.send,
+        }
 
 
 class Hit:
@@ -48,11 +52,16 @@ class Hit:
         "kick",
         "frame",
         "full_header",
-        "target"
+        "reftaxon",
+        "target",
+        "sstart",
+        "send",
+        "pident",
+        "reference_hits",
     )
 
     def __init__(
-        self, header, ref_header, frame, evalue, score, qstart, qend, gene, reftaxon
+        self, header, ref_header, frame, evalue, score, qstart, qend, sstart, send, pident, gene, reftaxon
     ):
         self.header = header
         self.target = ref_header
@@ -65,6 +74,11 @@ class Hit:
         self.evalue = float(evalue)
         self.kick = False
         self.frame = int(frame)
+        self.sstart = int(sstart)
+        self.send = int(send)
+        self.seq = None
+        self.pident= float(pident)
+        self.reference_hits = [reference_hit(ref_header, sstart, send)]
         if self.frame < 0:
             self.qend, self.qstart = self.qstart, self.qend
         self.length = self.qend - self.qstart + 1
@@ -306,10 +320,21 @@ def process_lines(
             if pargs.debug:
                 this_log.extend(log)
 
-        best_hit = reciprocal_check(hits, pargs.strict_search_mode, pargs.reference_taxa)
+        if hits:
+            top_hit = hits[0]
+            close_hit = min(hits[:SEARCH_DEPTH], key=lambda x: x.length)
+            if close_hit.pident >= top_hit.pident + 15.0:
+                top_hit = close_hit
+            ref_seqs = []
+            for hit in hits[SEARCH_DEPTH:]:
+                if hit.gene == top_hit.gene:
+                    ref_seqs.append(reference_hit(hit.target, hit.sstart, hit.send))
+                
+            top_hit.reference_hits.extend(ref_seqs)
 
-        if best_hit:
-            output.setdefault(best_hit.gene, []).append(best_hit)
+            top_hit.convert_reference_hits()
+
+            output.setdefault(top_hit.gene, []).append(top_hit)
 
     return output, multi_kicks, this_log
 
@@ -395,7 +420,7 @@ def run_process(args, input_path) -> None:
             )
             time_keeper.lap()  # Reset timer
             os.system(
-                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {args.evalue} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend {quiet} --top {top_amount} --max-hsps 0 -p {num_threads}"
+                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {args.evalue} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send pident {quiet} --top {top_amount} --min-orf 15 --max-hsps 0 -p {num_threads}"
             )
             input_file.seek(0)
 
