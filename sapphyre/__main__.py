@@ -717,8 +717,8 @@ def subcmd_wrap_final(sp):
     par.add_argument(
         "-io",
         "--ignore_overlap_chunks",
-        action="store_true",
-        default=False,
+        action="store_false",
+        default=True,
         help="Ignore overlapping chunks and merge all candidates for a reference taxon.",
     )
     par.add_argument(
