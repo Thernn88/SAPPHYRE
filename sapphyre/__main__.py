@@ -157,8 +157,8 @@ def subcmd_reporter(subparsers):
         help="Amount of matches for dynamic pairwise aligned edge trim.",
     )
     par.add_argument(
-        "-tm",
-        "--trim_mode",
+        "-bm",
+        "--blosum_mode",
         choices=["exact", "strict", "lax"],
         default="exact",
         help="Trim distance mode.",
