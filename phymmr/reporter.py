@@ -74,9 +74,9 @@ class Hit:
         if mode == "exact":
             dist = lambda a, b, _: a == b and a != "-" and b != "-"
         elif mode == "strict":
-            dist = lambda a, b, mat: mat[a.upper()+b.upper()] > 0 and a != "-" and b != "-"
+            dist = lambda a, b, mat: mat[a][b] > 0.0 and a != "-" and b != "-"
         else: #lax
-            dist = lambda a, b, mat: mat[a.upper()+b.upper()] >= 0.0 and a != "-" and b != "-"
+            dist = lambda a, b, mat: mat[a][b] >= 0.0 and a != "-" and b != "-"
 
         mat = bl.BLOSUM(62)
         debug_lines = []
