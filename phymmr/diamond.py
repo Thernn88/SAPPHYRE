@@ -90,6 +90,9 @@ class Hit:
         else:
             self.full_header = self.header + f"|[translate({self.frame})]"
 
+    def convert_reference_hits(self):
+        self.reference_hits = [i.to_json() for i in self.reference_hits]
+
     def to_json(self):
         return {
             "header": self.full_header,
@@ -97,6 +100,7 @@ class Hit:
             "ref_taxon": self.reftaxon,
             "ali_start": self.qstart,
             "ali_end": self.qend,
+            "reference_hits": self.reference_hits,
         }
 
 
@@ -326,8 +330,8 @@ def process_lines(
             if close_hit.pident >= top_hit.pident + 15.0:
                 top_hit = close_hit
             ref_seqs = []
-            for hit in hits[SEARCH_DEPTH:]:
-                if hit.gene == top_hit.gene:
+            for hit in hits:
+                if hit.gene == top_hit.gene and hit != top_hit:
                     ref_seqs.append(reference_hit(hit.target, hit.sstart, hit.send))
                 
             top_hit.reference_hits.extend(ref_seqs)

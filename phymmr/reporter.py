@@ -35,32 +35,40 @@ MainArgs = namedtuple(
 )
 
 
+class RefHit:
+    __slots__ = (
+        "sub_start",
+        "sub_end",
+        "target"
+    )
+
+    def __init__(self, hit):
+        self.sub_start = hit["sstart"]
+        self.sub_end = hit["send"]
+        self.target = hit["target"]
+
+
 class Hit:
     __slots__ = (
         "header",
         "gene",
+        "ref_taxon",
         "ali_start",
         "ali_end",
+        "ref_seqs",
         "est_sequence",
-        "ref_taxon",
-        "sub_start",
-        "sub_end",
-        "target",
     )
 
     def __init__(self, hit, gene):
         self.header = hit["header"]
-        self.gene = gene
-        self.ali_start = int(hit["ali_start"])
-        self.ali_end = int(hit["ali_end"])
+        self.ali_start = hit["ali_start"]
+        self.ali_end = hit["ali_end"]
         self.ref_taxon = hit["ref_taxon"]
+        self.gene = gene
 
         self.est_sequence = hit["seq"]
 
-        self.sub_start = int(hit["sub_start"])-1
-        self.sub_end = int(hit["sub_end"])
-
-        self.target = hit["target"]
+        self.ref_seqs = [RefHit(i) for i in hit["reference_hits"]]
 
     def get_bp_trim(self, this_aa, references, matches, mode):
         if mode == "exact":
@@ -69,12 +77,9 @@ class Hit:
             dist = lambda a, b, mat: mat[a.upper()+b.upper()] > 0
         else: #lax
             dist = lambda a, b, mat: mat[a.upper()+b.upper()] >= 0.0
-        reg_start = None
-        reg_end = None
-        ref = ref[self.sub_start: self.sub_end]
-        
+
         mat = bl.BLOSUM(62)
-        debug_lines = []
+        # debug_lines = []
         # aligner = PairwiseAligner()
         # aligner.match_score = 1.0
         # aligner.mismatch_score = -2.0
@@ -170,6 +175,13 @@ class Hit:
                 if this_pass and r_exact_matches >= EXACT_MATCH_AMOUNT:
                     reg_ends.append(len(this_aa) - i - (1 +skip_r))
                     break
+
+        if reg_starts and reg_ends:
+            # DEBUG # lines.append(f"Final trim: -{min(reg_starts)} left -{min(reg_ends)} right")
+            # DEBUG # return min(reg_starts), min(reg_ends), lines
+            return min(reg_starts), min(reg_ends)
+        # DEBUG # return None, None, lines
+        return None, None
 
     def trim_to_coords(self, start=None, end=None):
         if start is None:
