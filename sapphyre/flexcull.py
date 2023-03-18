@@ -489,9 +489,9 @@ def do_gene(
 
         blosum_add = set()
         for char in chars:
-                for blosum_sub, val in mat[char].items():
-                    if val > blosum_mode_lower_threshold:
-                        blosum_add.add(blosum_sub)
+            for blosum_sub, val in mat[char].items():
+                if val > blosum_mode_lower_threshold:
+                    blosum_add.add(blosum_sub)
         character_at_each_pos[i] = set(chars).union(blosum_add)
 
     log = []

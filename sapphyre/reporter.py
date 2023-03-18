@@ -72,7 +72,7 @@ class Hit:
             dist = lambda a, b, _: a == b and a != "-" and b != "-"
         elif mode == "strict":
             dist = lambda a, b, mat: mat[a][b] > 0.0 and a != "-" and b != "-"
-        else: # lax
+        else:  # lax
             dist = lambda a, b, mat: mat[a][b] >= 0.0 and a != "-" and b != "-"
 
         mat = bl.BLOSUM(62)
@@ -83,14 +83,16 @@ class Hit:
 
         number = 0  # DEBUG
         if debug_fp:
-            debug_fp.write(f'>{header}\n{this_aa}\n')
+            debug_fp.write(f">{header}\n{this_aa}\n")
         for number, ref in enumerate(self.ref_seqs):
             ref_seq = references[ref.target]
-            ref_seq = ref_seq[ref.sub_start - 1: ref.sub_end]
-            result = ps.nw_trace_scan_profile_16(profile, ref_seq, GAP_PENALTY, EXTEND_PENALTY)
+            ref_seq = ref_seq[ref.sub_start - 1 : ref.sub_end]
+            result = ps.nw_trace_scan_profile_16(
+                profile, ref_seq, GAP_PENALTY, EXTEND_PENALTY
+            )
             this_aa, ref_seq = result.traceback.query, result.traceback.ref
             if debug_fp:
-                debug_fp.write(f'>ref_{number}\n{ref_seq}\n')  # DEBUG
+                debug_fp.write(f">ref_{number}\n{ref_seq}\n")  # DEBUG
 
             skip_l = 0
             for i in range(0, len(this_aa)):
@@ -152,7 +154,7 @@ class Hit:
                     reg_ends.append(len(this_aa) - i - (1 + skip_r))
                     break
         if debug_fp:
-            debug_fp.write('\n')
+            debug_fp.write("\n")
         if reg_starts and reg_ends:
             return min(reg_starts), min(reg_ends)
 
@@ -165,7 +167,7 @@ class Hit:
         self.est_sequence = self.est_sequence[start - 1 : end]
         if "revcomp" in self.header:
             self.est_sequence = phymmr_tools.bio_revcomp(self.est_sequence)
-        
+
 
 def get_diamondhits(rocks_hits_db, list_of_wanted_orthoids):
     gene_based_results = {}
@@ -232,7 +234,16 @@ def print_core_sequences(orthoid, core_sequences, target_taxon, top_refs):
     return result
 
 
-def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches, blosum_mode, minimum_bp, debug_fp):
+def print_unmerged_sequences(
+    hits,
+    orthoid,
+    taxa_id,
+    core_aa_seqs,
+    trim_matches,
+    blosum_mode,
+    minimum_bp,
+    debug_fp,
+):
     aa_result = []
     nt_result = []
     header_maps_to_where = {}
@@ -257,11 +268,13 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches,
         nt_seq = hit.est_sequence
         aa_seq = translate_cdna(nt_seq)
 
-        r_start, r_end = hit.get_bp_trim(aa_seq, core_aa_seqs, trim_matches, blosum_mode, debug_fp, header)
+        r_start, r_end = hit.get_bp_trim(
+            aa_seq, core_aa_seqs, trim_matches, blosum_mode, debug_fp, header
+        )
         if r_start is None or r_end is None:
             print(f"WARNING: Trim kicked: {hit.header}")
             continue
-        
+
         if r_end == 0:
             nt_seq = nt_seq[(r_start * 3) :]
             aa_seq = aa_seq[r_start:]
@@ -270,7 +283,7 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches,
             aa_seq = aa_seq[r_start:-r_end]
 
         if debug_fp:
-            debug_fp.write(f'>{header}\n{aa_seq}\n')
+            debug_fp.write(f">{header}\n{aa_seq}\n")
 
         data_after = len(aa_seq)
 
@@ -357,7 +370,6 @@ def trim_and_write(oargs: OutputArgs):
     t_gene_start = TimeKeeper(KeeperMode.DIRECT)
     printv(f"Doing output for: {oargs.gene}", oargs.verbose, 2)
 
-    
     core_sequences, core_sequences_nt = get_ortholog_group(
         oargs.gene, rocky.get_rock("rocks_orthoset_db")
     )
@@ -366,9 +378,13 @@ def trim_and_write(oargs: OutputArgs):
     this_aa_path = os.path.join(oargs.aa_out_path, oargs.gene + ".aa.fa")
     debug_alignments = None
     if oargs.debug:
-        os.makedirs(f'align_debug/{oargs.gene}', exist_ok=True)  # DEBUG
-        debug_alignments = open(f'align_debug/{oargs.gene}/{oargs.taxa_id}.fa','w')  # DEBUG
-        debug_alignments.write(f'GAP_PENALTY: {GAP_PENALTY}\nEXTEND_PENALTY: {EXTEND_PENALTY}\n')  # DEBUG
+        os.makedirs(f"align_debug/{oargs.gene}", exist_ok=True)  # DEBUG
+        debug_alignments = open(
+            f"align_debug/{oargs.gene}/{oargs.taxa_id}.fa", "w"
+        )  # DEBUG
+        debug_alignments.write(
+            f"GAP_PENALTY: {GAP_PENALTY}\nEXTEND_PENALTY: {EXTEND_PENALTY}\n"
+        )  # DEBUG
 
     this_gene_dupes, aa_output, nt_output = print_unmerged_sequences(
         oargs.list_of_hits,
@@ -378,7 +394,7 @@ def trim_and_write(oargs: OutputArgs):
         oargs.matches,
         oargs.blosum_mode,
         oargs.minimum_bp,
-        debug_alignments
+        debug_alignments,
     )
     if aa_output:
         aa_core_sequences = print_core_sequences(
@@ -485,7 +501,7 @@ def do_taxa(path, taxa_id, args):
                 ),
             )
         )
-    os.makedirs('align_debug', exist_ok=True)  # DEBUG
+    os.makedirs("align_debug", exist_ok=True)  # DEBUG
     # this sorting the list so that the ones with the most hits are first
     if num_threads > 1:
         if num_threads > 1:
