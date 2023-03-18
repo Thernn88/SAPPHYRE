@@ -14,7 +14,7 @@ from .timekeeper import TimeKeeper, KeeperMode
 
 # This logic is used to combat false extensions.
 # How many extra hits to scan looking for a shortest match.
-SEARCH_DEPTH = 2
+SEARCH_DEPTH = 5
 
 
 class reference_hit:
