@@ -12,27 +12,28 @@ import wrap_rocks
 from .utils import printv, gettempdir
 from .timekeeper import TimeKeeper, KeeperMode
 
+# This logic is used to combat false extensions.
+# How many extra hits to scan looking for a shortest match.
+SEARCH_DEPTH = 2
 
-def reciprocal_check(hits, strict, taxa_present):
-    first = None
-    hit_on_taxas = {i: 0 for i in taxa_present}
+class reference_hit:
+    __slots__ = (
+        "target",
+        "sstart",
+        "send",
+    )
 
-    for hit in hits:
-        if not strict:
-            return hit
-        first = hit
-
-        hit_on_taxas[hit.reftaxon] = 1  # Just need 1 hit
-
-        if strict:
-            if all(hit_on_taxas.values()):
-                return first
-
-    if any(hit_on_taxas.values()):
-        return first
-
-    return None
-
+    def __init__(self, target, sstart, send):
+        self.target = target
+        self.sstart = int(sstart)
+        self.send = int(send)
+    
+    def to_json(self):
+        return {
+            "target": self.target,
+            "sstart": self.sstart,
+            "send": self.send,
+        }
 
 class Hit:
     __slots__ = (
@@ -41,30 +42,36 @@ class Hit:
         "qend",
         "gene",
         "score",
-        "reftaxon",
-        "seq",
         "evalue",
         "length",
         "kick",
+        "seq",
         "frame",
         "full_header",
-        "target"
+        "reftaxon",
+        "target",
+        "sstart",
+        "send",
+        "reference_hits",
     )
 
     def __init__(
-        self, header, ref_header, frame, evalue, score, qstart, qend, gene, reftaxon
+        self, header, ref_header, frame, evalue, score, qstart, qend, sstart, send, gene, reftaxon
     ):
         self.header = header
         self.target = ref_header
         self.gene = gene
         self.reftaxon = reftaxon
-        self.seq = None
         self.score = float(score)
         self.qstart = int(qstart)
         self.qend = int(qend)
         self.evalue = float(evalue)
         self.kick = False
         self.frame = int(frame)
+        self.sstart = int(sstart)
+        self.send = int(send)
+        self.seq = None
+        self.reference_hits = [reference_hit(ref_header, sstart, send)]
         if self.frame < 0:
             self.qend, self.qstart = self.qstart, self.qend
         self.length = self.qend - self.qstart + 1
@@ -76,6 +83,9 @@ class Hit:
         else:
             self.full_header = self.header + f"|[translate({self.frame})]"
 
+    def convert_reference_hits(self):
+        self.reference_hits = [i.to_json() for i in self.reference_hits]
+
     def to_json(self):
         return {
             "header": self.full_header,
@@ -83,6 +93,7 @@ class Hit:
             "ref_taxon": self.reftaxon,
             "ali_start": self.qstart,
             "ali_end": self.qend,
+            "reference_hits": self.reference_hits,
         }
 
 
@@ -250,12 +261,12 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
         if hash(header) != current_header:
             current_header = hash(header)
             ref_variation_filter = set()
-            
+
         ref_gene, ref_taxon, _ = taxon_lookup[ref_header_pair]
 
         target_has_hit.add(ref_header_pair)
 
-        ref_variation_key = header+ref_taxon
+        ref_variation_key = header + ref_taxon
         if not ref_variation_key in ref_variation_filter:
             ref_variation_filter.add(ref_variation_key)
             rextaxon_count[ref_taxon] = rextaxon_count.get(ref_taxon, 0) + 1
@@ -274,6 +285,7 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
 
     return top_names, total_references, list(header_lines.values()), target_has_hit
 
+
 ProcessingArgs = namedtuple(
     "ProcessingArgs",
     [
@@ -283,21 +295,19 @@ ProcessingArgs = namedtuple(
         "total_references",
         "strict_search_mode",
         "reference_taxa",
-        "evalue",
-
     ],
 )
 
-def process_lines(
-    pargs: ProcessingArgs
-):
+
+def process_lines(pargs: ProcessingArgs):
     output = {}
     multi_kicks = 0
     this_log = []
     for this_lines in pargs.lines:
         hits = [Hit(*hit.split("\t")) for hit in this_lines]  # convert to Hit object
-        hits = list(filter(lambda x: x.evalue <= pargs.evalue, hits))
+        hits = list(filter(lambda x: x.reftaxon in pargs.top_refs, hits))
         hits.sort(key=lambda x: x.score, reverse=True)
+
         genes_present = {hit.gene for hit in hits}
 
         if len(genes_present) > 1:
@@ -306,10 +316,18 @@ def process_lines(
             if pargs.debug:
                 this_log.extend(log)
 
-        best_hit = reciprocal_check(hits, pargs.strict_search_mode, pargs.reference_taxa)
+        if hits:
+            top_hit = min(hits[:SEARCH_DEPTH], key = lambda x: x.length)
+            ref_seqs = []
+            for hit in hits[SEARCH_DEPTH:]:
+                if hit.gene == top_hit.gene:
+                    ref_seqs.append(reference_hit(hit.target, hit.sstart, hit.send))
+                
+            top_hit.reference_hits.extend(ref_seqs)
 
-        if best_hit:
-            output.setdefault(best_hit.gene, []).append(best_hit)
+            top_hit.convert_reference_hits()
+
+            output.setdefault(top_hit.gene, []).append(top_hit)
 
     return output, multi_kicks, this_log
 
@@ -395,7 +413,7 @@ def run_process(args, input_path) -> None:
             )
             time_keeper.lap()  # Reset timer
             os.system(
-                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {args.evalue} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend {quiet} --top {top_amount} --max-hsps 0 -p {num_threads}"
+                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {args.evalue} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --min-orf 15 --max-hsps 0 -p {num_threads}"
             )
             input_file.seek(0)
 
@@ -443,12 +461,14 @@ def run_process(args, input_path) -> None:
                 variants_with_hits = sum([i[1] in target_has_hit for i in this_targets])
                 all_variants_kicked = variants_with_hits == 0
                 if all_variants_kicked:
-                    reintroduce = max(this_targets, key = lambda x : x[2])
+                    reintroduce = max(this_targets, key=lambda x: x[2])
                     out_targets.append(reintroduce[1])
                     continue
-                
-                out_targets.extend([i[1] for i in this_targets if i[1] in target_has_hit])
-            
+
+                out_targets.extend(
+                    [i[1] for i in this_targets if i[1] in target_has_hit]
+                )
+
             variant_filter[gene] = out_targets
         else:
             variant_filter.pop(gene, -1)
@@ -458,19 +478,18 @@ def run_process(args, input_path) -> None:
 
     del variant_filter
 
-
     printv(
         f"Processing {chunks} chunk(s). Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
         args.verbose,
     )
     if lines:
         per_thread = ceil(ceil(len(lines) / chunks) / num_threads)
-        for i in range(0, chunks*num_threads, num_threads):
+        for i in range(0, chunks * num_threads, num_threads):
             printv(
                 f"Processing chunk {next(chunk_count)}. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
                 args.verbose,
             )
-            
+
             arguments = [
                 (
                     ProcessingArgs(
@@ -480,7 +499,6 @@ def run_process(args, input_path) -> None:
                         total_references,
                         strict_search_mode,
                         reference_taxa,
-                        args.evalue,
                     ),
                 )
                 for j in range(i, i + num_threads)
@@ -627,7 +645,6 @@ def main(args):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
     for input_path in args.INPUT:
-
         run_process(args, input_path)
     if len(args.INPUT) > 1 or not args.verbose:
         printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
