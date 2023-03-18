@@ -687,6 +687,70 @@ def makeref(argsobj):
         print()
         print(argsobj.formathelp())
 
+def subcmd_wrap_final(sp):
+    par = sp.add_parser("SecondWrap", help="Wrapper for Second Run")  # TODO add me
+    par.add_argument(
+        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
+    )
+    par.add_argument("-t", "--table", type=int, default=1, help="Table ID.")
+    par.add_argument(
+        "-aa",
+        "--aa_input",
+        type=str,
+        default="mafft",
+        help="Path to directory of AA folder",
+    )
+    par.add_argument(
+        "-nt",
+        "--nt_input",
+        type=str,
+        default="nt_aligned",
+        help="Path to directory of NT folder",
+    )
+    par.add_argument(
+        "-d",
+        "--debug",
+        action="store_true",
+        help="Enable debug. When enabled displays each component of merged headers.",
+    )
+    par.add_argument(
+        "-io",
+        "--ignore_overlap_chunks",
+        action="store_true",
+        default=False,
+        help="Ignore overlapping chunks and merge all candidates for a reference taxon.",
+    )
+    par.add_argument(
+        "-m",
+        "--majority",
+        type=float,
+        default=0.55,
+        help="Percentage for majority ruling.",
+    )
+    par.add_argument(
+        "-mc",
+        "--majority_count",
+        type=int,
+        default=4,
+        help="Percentage for majority ruling.",
+    )
+    par.set_defaults(func=wrap_final, formathelp=par.format_help)
+
+def wrap_final(argsobj):
+    from . import merge_overlap, pal2nal, mafft
+    print("Triggering Mafft")
+    if not mafft.main(argsobj):
+        print()
+        print(argsobj.formathelp())
+    print("Triggering Pal2Nal")
+    if not pal2nal.main(argsobj):
+        print()
+        print(argsobj.formathelp())
+    print("Triggering MergeOverlap")
+    if not merge_overlap.main(argsobj):
+        print()
+        print(argsobj.formathelp())
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -758,6 +822,9 @@ if __name__ == "__main__":
 
     # Makeref
     subcmd_makeref(subparsers)
+
+    # Final wrapper
+    subcmd_wrap_final(subparsers)
 
     args = parser.parse_args()
     if not hasattr(args, "func"):
