@@ -2,16 +2,14 @@ from __future__ import annotations
 
 import json
 import os
-import parasail as ps
 import shutil
 from collections import namedtuple
 from multiprocessing.pool import Pool
 from typing import Optional
+import parasail as ps
 import blosum as bl
 import phymmr_tools
 from Bio.Seq import Seq
-from Bio.Align import PairwiseAligner
-
 from . import rocky
 from .timekeeper import TimeKeeper, KeeperMode
 from .utils import printv, writeFasta
