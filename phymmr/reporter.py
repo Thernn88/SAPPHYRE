@@ -31,9 +31,9 @@ MainArgs = namedtuple(
         "compress",
         "matches",
         "trim_mode",
+        "minimum_bp"
     ],
 )
-
 
 class RefHit:
     __slots__ = (
@@ -72,22 +72,22 @@ class Hit:
 
     def get_bp_trim(self, this_aa, references, matches, mode):
         if mode == "exact":
-            dist = lambda a, b, _: a == b
+            dist = lambda a, b, _: a == b and a != "-" and b != "-"
         elif mode == "strict":
-            dist = lambda a, b, mat: mat[a.upper()+b.upper()] > 0
+            dist = lambda a, b, mat: mat[a.upper()+b.upper()] > 0 and a != "-" and b != "-"
         else: #lax
-            dist = lambda a, b, mat: mat[a.upper()+b.upper()] >= 0.0
+            dist = lambda a, b, mat: mat[a.upper()+b.upper()] >= 0.0 and a != "-" and b != "-"
 
         mat = bl.BLOSUM(62)
-        # debug_lines = []
+        debug_lines = []
         # aligner = PairwiseAligner()
         # aligner.match_score = 1.0
         # aligner.mismatch_score = -2.0
         # aligner.gap_score = -2.5
         reg_starts = []
         reg_ends = []
-        #debug_lines.append("\nStarting BP trim for " + self.header)
-        #debug_lines.append(f"Alignment for {len(self.ref_seqs)} reference hits:")
+        debug_lines.append("\nStarting BP trim for " + self.header)
+        debug_lines.append(f"Alignment for {len(self.ref_seqs)} reference hits:")
         # for ref in self.ref_seqs:
         #     ref_seq = references[ref.target]
         #     ref_seq = ref_seq[ref.sub_start-1: ref.sub_end]
@@ -257,7 +257,7 @@ def print_core_sequences(orthoid, core_sequences, target_taxon, top_refs):
     return result
 
 
-def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches, trim_mode):
+def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches, trim_mode, minimum_bp):
     aa_result = []
     nt_result = []
     header_maps_to_where = {}
@@ -266,6 +266,7 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches,
     seq_mapped_already = {}
     exact_hit_mapped_already = set()
     dupes = {}
+    # Debug # this_debug_lines = []
     for hit in hits:
         base_header, reference_frame = hit.header.split("|")
 
@@ -281,8 +282,11 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches,
         nt_seq = hit.est_sequence
         aa_seq = translate_cdna(nt_seq)
 
+        # Debug # r_start, r_end, lines = hit.get_bp_trim(aa_seq, core_aa_seqs, trim_matches, trim_mode)
         r_start, r_end = hit.get_bp_trim(aa_seq, core_aa_seqs, trim_matches, trim_mode)
         if r_start is None or r_end is None:
+            # Debug # lines.append("SEQUENCE KICKED\n")
+            # Debug # this_debug_lines.extend(lines)
             print(f"WARNING: Trim kicked: {hit.header}")
             continue
         
@@ -293,60 +297,68 @@ def print_unmerged_sequences(hits, orthoid, taxa_id, core_aa_seqs, trim_matches,
             nt_seq = nt_seq[(r_start*3):-(r_end*3)]
             aa_seq = aa_seq[r_start:-r_end]
 
-        unique_hit = base_header + aa_seq
+        # Debug # lines.append(aa_seq+"\n")
 
-        if nt_seq in seq_mapped_already:
-            mapped_to = seq_mapped_already[nt_seq]
-            dupes.setdefault(mapped_to, []).append(base_header)
-            continue
-        seq_mapped_already[nt_seq] = base_header
+        # Debug # this_debug_lines.extend(lines)
 
-        if unique_hit not in exact_hit_mapped_already:
-            if base_header in base_header_mapped_already:
-                (
-                    already_mapped_header,
-                    already_mapped_sequence,
-                ) = base_header_mapped_already[base_header]
+        data_after = len(aa_seq)
 
-                if len(aa_seq) > len(already_mapped_sequence):
-                    if already_mapped_sequence in aa_seq:
-                        aa_result[header_maps_to_where[already_mapped_header]] = (
-                            header,
-                            aa_seq,
+        if data_after >= minimum_bp:
+            unique_hit = base_header + aa_seq
+
+            if nt_seq in seq_mapped_already:
+                mapped_to = seq_mapped_already[nt_seq]
+                dupes.setdefault(mapped_to, []).append(base_header)
+                continue
+            seq_mapped_already[nt_seq] = base_header
+
+            if unique_hit not in exact_hit_mapped_already:
+                if base_header in base_header_mapped_already:
+                    (
+                        already_mapped_header,
+                        already_mapped_sequence,
+                    ) = base_header_mapped_already[base_header]
+
+                    if len(aa_seq) > len(already_mapped_sequence):
+                        if already_mapped_sequence in aa_seq:
+                            aa_result[header_maps_to_where[already_mapped_header]] = (
+                                header,
+                                aa_seq,
+                            )
+                            nt_result[header_maps_to_where[already_mapped_header]] = (
+                                header,
+                                nt_seq,
+                            )
+                            continue
+                    else:
+                        if aa_seq in already_mapped_sequence:
+                            continue
+
+                    if base_header in header_mapped_x_times:
+                        # Make header unique
+                        old_header = base_header
+                        header = format_candidate_header(
+                            orthoid,
+                            hit.ref_taxon,
+                            taxa_id,
+                            base_header + f"_{header_mapped_x_times[old_header]}",
+                            reference_frame,
                         )
-                        nt_result[header_maps_to_where[already_mapped_header]] = (
-                            header,
-                            nt_seq,
-                        )
-                        continue
+
+                        header_mapped_x_times[base_header] += 1
                 else:
-                    if aa_seq in already_mapped_sequence:
-                        continue
+                    base_header_mapped_already[base_header] = header, aa_seq
 
-                if base_header in header_mapped_x_times:
-                    # Make header unique
-                    old_header = base_header
-                    header = format_candidate_header(
-                        orthoid,
-                        hit.ref_taxon,
-                        taxa_id,
-                        base_header + f"_{header_mapped_x_times[old_header]}",
-                        reference_frame,
-                    )
+                header_maps_to_where[header] = len(
+                    aa_result
+                )  # Save the index of the sequence output
+                aa_result.append((header, aa_seq))
+                nt_result.append((header, nt_seq))
 
-                    header_mapped_x_times[base_header] += 1
-            else:
-                base_header_mapped_already[base_header] = header, aa_seq
+                header_mapped_x_times.setdefault(base_header, 1)
+                exact_hit_mapped_already.add(unique_hit)
 
-            header_maps_to_where[header] = len(
-                aa_result
-            )  # Save the index of the sequence output
-            aa_result.append((header, aa_seq))
-            nt_result.append((header, nt_seq))
-
-            header_mapped_x_times.setdefault(base_header, 1)
-            exact_hit_mapped_already.add(unique_hit)
-
+    # Debug # return dupes, aa_result, nt_result, this_debug_lines
     return dupes, aa_result, nt_result
 
 
@@ -365,6 +377,7 @@ OutputArgs = namedtuple(
         "top_refs",
         "matches",
         "trim_mode",
+        "minimum_bp"
     ],
 )
 
@@ -380,6 +393,7 @@ def trim_and_write(oargs: OutputArgs):
 
     core_seq_aa_dict = {target: seq for _, target, seq in core_sequences}
     this_aa_path = os.path.join(oargs.aa_out_path, oargs.gene + ".aa.fa")
+    # DEBUG # this_gene_dupes, aa_output, nt_output, debug_lines = print_unmerged_sequences(
     this_gene_dupes, aa_output, nt_output = print_unmerged_sequences(
         oargs.list_of_hits,
         oargs.gene,
@@ -387,6 +401,7 @@ def trim_and_write(oargs: OutputArgs):
         core_seq_aa_dict,
         oargs.matches,
         oargs.trim_mode,
+        oargs.minimum_bp,
     )
 
     if aa_output:
@@ -407,7 +422,7 @@ def trim_and_write(oargs: OutputArgs):
         oargs.verbose,
         2,
     )
-    return oargs.gene, this_gene_dupes, len(aa_output)
+    return oargs.gene, this_gene_dupes, len(aa_output) # DEBUG # , [oargs.gene] + debug_lines
 
 
 def do_taxa(path, taxa_id, args):
@@ -489,6 +504,7 @@ def do_taxa(path, taxa_id, args):
                     top_refs,
                     args.matches,
                     args.trim_mode,
+                    args.minimum_bp,
                 ),
             )
         )
@@ -504,9 +520,15 @@ def do_taxa(path, taxa_id, args):
 
     final_count = 0
     this_gene_based_dupes = {}
+    # DEBUG # final_lines = []
+    # DEBUG # for gene, dupes, amount, lines in recovered:
     for gene, dupes, amount in recovered:
         final_count += amount
         this_gene_based_dupes[gene] = dupes
+        # DEBUG # final_lines.extend(lines)
+    
+    # DEBUG # with open("TrimDebug.txt", "w") as fp:
+    # DEBUG #     fp.write("\n".join(final_lines))
 
     key = "getall:reporter_dupes"
     data = json.dumps(this_gene_based_dupes)

@@ -12,11 +12,9 @@ import wrap_rocks
 from .utils import printv, gettempdir
 from .timekeeper import TimeKeeper, KeeperMode
 
-
 # This logic is used to combat false extensions.
 # How many extra hits to scan looking for a shortest match.
 SEARCH_DEPTH = 2
-
 
 class reference_hit:
     __slots__ = (
@@ -37,7 +35,6 @@ class reference_hit:
             "send": self.send,
         }
 
-
 class Hit:
     __slots__ = (
         "header",
@@ -45,11 +42,10 @@ class Hit:
         "qend",
         "gene",
         "score",
-        "reftaxon",
-        "seq",
         "evalue",
         "length",
         "kick",
+        "seq",
         "frame",
         "full_header",
         "reftaxon",
@@ -67,7 +63,6 @@ class Hit:
         self.target = ref_header
         self.gene = gene
         self.reftaxon = reftaxon
-        self.seq = None
         self.score = float(score)
         self.qstart = int(qstart)
         self.qend = int(qend)
@@ -268,12 +263,12 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
         if hash(header) != current_header:
             current_header = hash(header)
             ref_variation_filter = set()
-            
+
         ref_gene, ref_taxon, _ = taxon_lookup[ref_header_pair]
 
         target_has_hit.add(ref_header_pair)
 
-        ref_variation_key = header+ref_taxon
+        ref_variation_key = header + ref_taxon
         if not ref_variation_key in ref_variation_filter:
             ref_variation_filter.add(ref_variation_key)
             rextaxon_count[ref_taxon] = rextaxon_count.get(ref_taxon, 0) + 1
@@ -292,6 +287,7 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
 
     return top_names, total_references, list(header_lines.values()), target_has_hit
 
+
 ProcessingArgs = namedtuple(
     "ProcessingArgs",
     [
@@ -301,21 +297,19 @@ ProcessingArgs = namedtuple(
         "total_references",
         "strict_search_mode",
         "reference_taxa",
-        "evalue",
-
     ],
 )
 
-def process_lines(
-    pargs: ProcessingArgs
-):
+
+def process_lines(pargs: ProcessingArgs):
     output = {}
     multi_kicks = 0
     this_log = []
     for this_lines in pargs.lines:
         hits = [Hit(*hit.split("\t")) for hit in this_lines]  # convert to Hit object
-        hits = list(filter(lambda x: x.evalue <= pargs.evalue, hits))
+        hits = list(filter(lambda x: x.reftaxon in pargs.top_refs, hits))
         hits.sort(key=lambda x: x.score, reverse=True)
+
         genes_present = {hit.gene for hit in hits}
 
         if len(genes_present) > 1:
@@ -472,12 +466,14 @@ def run_process(args, input_path) -> None:
                 variants_with_hits = sum([i[1] in target_has_hit for i in this_targets])
                 all_variants_kicked = variants_with_hits == 0
                 if all_variants_kicked:
-                    reintroduce = max(this_targets, key = lambda x : x[2])
+                    reintroduce = max(this_targets, key=lambda x: x[2])
                     out_targets.append(reintroduce[1])
                     continue
-                
-                out_targets.extend([i[1] for i in this_targets if i[1] in target_has_hit])
-            
+
+                out_targets.extend(
+                    [i[1] for i in this_targets if i[1] in target_has_hit]
+                )
+
             variant_filter[gene] = out_targets
         else:
             variant_filter.pop(gene, -1)
@@ -487,19 +483,18 @@ def run_process(args, input_path) -> None:
 
     del variant_filter
 
-
     printv(
         f"Processing {chunks} chunk(s). Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
         args.verbose,
     )
     if lines:
         per_thread = ceil(ceil(len(lines) / chunks) / num_threads)
-        for i in range(0, chunks*num_threads, num_threads):
+        for i in range(0, chunks * num_threads, num_threads):
             printv(
                 f"Processing chunk {next(chunk_count)}. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
                 args.verbose,
             )
-            
+
             arguments = [
                 (
                     ProcessingArgs(
@@ -509,7 +504,6 @@ def run_process(args, input_path) -> None:
                         total_references,
                         strict_search_mode,
                         reference_taxa,
-                        args.evalue,
                     ),
                 )
                 for j in range(i, i + num_threads)
@@ -656,7 +650,6 @@ def main(args):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
     for input_path in args.INPUT:
-
         run_process(args, input_path)
     if len(args.INPUT) > 1 or not args.verbose:
         printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
