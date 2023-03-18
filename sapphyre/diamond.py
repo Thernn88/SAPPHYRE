@@ -372,7 +372,7 @@ def run_process(args, input_path) -> None:
         ):
             print("Attempting to generate DB")
             os.system(
-                f"python3 -m phymmr -p {num_threads} Makeref {orthoset}.sqlite -s {orthoset}"
+                f"python3 -m sapphyre -p {num_threads} Makeref {orthoset}.sqlite -s {orthoset}"
             )
         else:
             print("Aborting")
@@ -658,5 +658,5 @@ def main(args):
 
 if __name__ == "__main__":
     raise Exception(
-        "Cannot be called directly, please use the module:\nphymmr diamondPal"
+        "Cannot be called directly, please use the module:\nsapphyre Diamond"
     )

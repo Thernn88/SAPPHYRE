@@ -688,7 +688,7 @@ def makeref(argsobj):
         print(argsobj.formathelp())
 
 def subcmd_wrap_final(sp):
-    par = sp.add_parser("SecondWrap", help="Wrapper for Second Run")  # TODO add me
+    par = sp.add_parser("reconcile", help="Wrapper for Second Run")  # TODO add me
     par.add_argument(
         "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
     )
@@ -732,7 +732,7 @@ def subcmd_wrap_final(sp):
         "--majority_count",
         type=int,
         default=4,
-        help="Percentage for majority ruling.",
+        help="Sites required for majority ruling.",
     )
     par.set_defaults(func=wrap_final, formathelp=par.format_help)
 
@@ -754,11 +754,11 @@ def wrap_final(argsobj):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        prog="phymmr",
+        prog="sapphyre",
         # TODO write me
         description="Order: Prepare, Hmmsearch, BlastPal, Reporter, "
         "mafft, pal2nal, FlexCull (optional), OutlierCheck, MergeOverlap, MergeGenes",
-        epilog="phymmr  Copyright (C) 2022  PhyMMR Team\n"
+        epilog="sapphyre  Copyright (C) 2022  Sapphyre Team\n"
         "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n"
         "This program comes with ABSOLUTELY NO WARRANTY.\n"
         "This is free software, and you are welcome to redistribute it "

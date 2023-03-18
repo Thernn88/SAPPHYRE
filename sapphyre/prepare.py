@@ -21,7 +21,7 @@ from .utils import ConcurrentLogger, parseFasta, writeFasta
 ROCKSDB_FOLDER_NAME = "rocksdb"
 SEQUENCES_FOLDER_NAME = "sequences"
 NT_DB_NAME = "nt"
-CORE_FOLDER = "PhyMMR"
+CORE_FOLDER = "datasets"
 ALLOWED_FILETYPES_NORMAL = [
     ".fa",
     ".fas",
@@ -407,4 +407,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    raise Exception("Cannot be called directly, please use the module:\nphymmr Prepare")
+    raise Exception("Cannot be called directly, please use the module:\nsapphyre Prepare")

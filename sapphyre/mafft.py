@@ -306,9 +306,9 @@ def do_folder(folder, args):
         with ThreadPool(args.processes) as pool:
             times = pool.starmap(run_command, arguments, chunksize=1)
 
-    if args.debug:
-        with open("mafft_times.csv", "w") as fp:
-            fp.write("\n".join(["Gene,Clustering,Aligning,Merging,Total"]+[",".join(map(str, i)) for i in times]))
+    #if args.debug:
+       # with open("mafft_times.csv", "w") as fp:
+            #fp.write("\n".join(["Gene,Clustering,Aligning,Merging,Total"]+[",".join(map(str, i)) for i in times]))
 
     printv(f"Done! Took {time_keeper.differential():.2f}s overall", args.verbose)
     return True
@@ -330,4 +330,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    raise Exception("Cannot be called directly, please use the module:\nphymmr mafft")
+    raise Exception("Cannot be called directly, please use the module:\nsapphyre mafft")

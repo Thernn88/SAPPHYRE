@@ -951,5 +951,5 @@ def main(args):
 
 if __name__ == "__main__":
     raise Exception(
-        "Cannot be called directly, please use the module:\nphymmr FlexCull"
+        "Cannot be called directly, please use the module:\nsapphyre FlexCull"
     )

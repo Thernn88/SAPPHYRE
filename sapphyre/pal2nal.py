@@ -936,4 +936,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    raise Exception("Cannot be called directly, please use the module:\nphymmr Pal2Nal")
+    raise Exception("Cannot be called directly, please use the module:\nsapphyre Pal2Nal")

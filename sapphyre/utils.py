@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-# © 2022 GPLv3+ PhyMMR Team
+# © 2022 GPLv3+ Sapphyre Team
 import gzip
 import os
 from threading import Thread

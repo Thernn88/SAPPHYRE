@@ -97,4 +97,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    raise Exception("Cannot be called directly, please use the module:\nphymmr toolbox")
+    raise Exception("Cannot be called directly, please use the module:\nsapphyre archiver")
