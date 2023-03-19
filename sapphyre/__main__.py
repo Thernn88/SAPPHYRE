@@ -466,13 +466,6 @@ def subcmd_flexcull(subparsers):
         help="Percentage of references that must contain a gap to allow a match to continue.",
     )
     par.add_argument(
-        "-md",
-        "--minimum_data",
-        type=float,
-        default=0.60,
-        help="Minimum percentage of data required in a cull to pass.",
-    )
-    par.add_argument(
         "-bp", "--base-pair", type=int, default=20, help="Minimum bp after cull."
     )
     par.add_argument(
@@ -501,7 +494,6 @@ def flexcull(args):
         args.gap_threshold,
         args.mismatches,
         args.column_cull,
-        args.minimum_data,
         args.blosum_mode,
     )
     if not flexcull.main(flexargs):

@@ -941,7 +941,6 @@ def do_folder(folder, args: MainArgs):
                     args.gap_threshold,
                     args.mismatches,
                     args.column_cull,
-                    args.minimum_data,
                     blosum_mode_lower_threshold,
                 )
             ),)
@@ -963,7 +962,6 @@ def do_folder(folder, args: MainArgs):
                 args.gap_threshold,
                 args.mismatches,
                 args.column_cull,
-                args.minimum_data,
                 blosum_mode_lower_threshold,
             ))
             for input_gene in file_inputs
