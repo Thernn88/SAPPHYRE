@@ -290,15 +290,15 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
         header_lines.setdefault(header + frame, []).append(
             line.strip() + f"\t{ref_gene}\t{ref_taxon}"
         )
-    sorted_counts = [x for x in rextaxon_count.items()]
+    sorted_counts = list(rextaxon_count.items())
     top_names = []
     total_references = 0
     if sorted_counts:
         sorted_counts.sort(key=lambda x: x[1], reverse=True)
-        target_count = min([i[1] for i in sorted_counts[0:5]])
+        target_count = min(i[1] for i in sorted_counts[0:5])
         target_count = target_count - (target_count * percent)
         total_references = len(sorted_counts)
-        top_names = set([x[0] for x in sorted_counts if x[1] >= target_count])
+        top_names = {x[0] for x in sorted_counts if x[1] >= target_count}
 
     return top_names, total_references, list(header_lines.values()), target_has_hit
 
@@ -478,7 +478,7 @@ def run_process(args, input_path) -> None:
                     continue
 
                 this_targets = [i for i in targets if i[0] == target]
-                variants_with_hits = sum([i[1] in target_has_hit for i in this_targets])
+                variants_with_hits = sum(i[1] in target_has_hit for i in this_targets)
                 all_variants_kicked = variants_with_hits == 0
                 if all_variants_kicked:
                     reintroduce = max(this_targets, key=lambda x: x[2])

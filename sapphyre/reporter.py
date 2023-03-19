@@ -69,11 +69,11 @@ class Hit:
 
     def get_bp_trim(self, this_aa, references, matches, mode, debug_fp, header):
         if mode == "exact":
-            dist = lambda a, b, _: a == b and a != "-" and b != "-"
+            def dist(a, b, _): return a == b and a != "-" and b != "-"
         elif mode == "strict":
-            dist = lambda a, b, mat: mat[a][b] > 0.0 and a != "-" and b != "-"
+            def dist(a, b, mat): return mat[a][b] > 0.0 and a != "-" and b != "-"
         else:  # lax
-            dist = lambda a, b, mat: mat[a][b] >= 0.0 and a != "-" and b != "-"
+            def dist(a, b, mat): return mat[a][b] >= 0.0 and a != "-" and b != "-"
 
         mat = bl.BLOSUM(62)
         reg_starts = []
@@ -95,9 +95,9 @@ class Hit:
                 debug_fp.write(f">ref_{number}\n{ref_seq}\n")  # DEBUG
 
             skip_l = 0
-            for i in range(0, len(this_aa)):
+            for i, let in enumerate(this_aa):
                 this_pass = True
-                if this_aa[i] == "-":
+                if let == "-":
                     skip_l += 1
                     continue
 
@@ -396,6 +396,8 @@ def trim_and_write(oargs: OutputArgs):
         oargs.minimum_bp,
         debug_alignments,
     )
+    if debug_alignments:
+        debug_alignments.close()
     if aa_output:
         aa_core_sequences = print_core_sequences(
             oargs.gene, core_sequences, oargs.target_taxon, oargs.top_refs

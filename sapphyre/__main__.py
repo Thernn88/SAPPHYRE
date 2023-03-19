@@ -185,7 +185,7 @@ def reporter(args):
         args.orthoset,
         args.compress,
         args.matches,
-        args.trim_mode,
+        args.blosum_mode,
         args.minimum_bp,
     )
     if not reporter.main(mainargs):

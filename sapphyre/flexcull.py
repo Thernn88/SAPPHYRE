@@ -35,6 +35,25 @@ MainArgs = namedtuple(
     ],
 )
 
+FlexcullArgs = namedtuple(
+    "FlexcullArgs",
+    [
+        "aa_input",
+        "nt_input",
+        "output",
+        "amt_matches",
+        "aa_file",
+        "debug",
+        "bp",
+        "verbosity",
+        "compress",
+        "gap_threshold",
+        "mismatches",
+        "column_cull_percent",
+        "blosum_mode_lower_threshold",
+    ]
+)
+
 
 def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
     """
@@ -306,8 +325,8 @@ def do_cull(
         # Don't allow cull to point of all dashes
         if char == "-":
             continue
-        else:
-            window_start = i
+        
+        window_start = i
 
         if all_dashes_by_index[i]:
             continue
@@ -315,8 +334,7 @@ def do_cull(
             skip_first = 1
             if window_start == i:
                 continue
-            else:
-                mismatch -= 1
+            mismatch -= 1
 
         if mismatch < 0:
             continue
@@ -364,8 +382,7 @@ def do_cull(
                 break
             if char == "-":
                 continue
-            else:
-                window_end = i
+            window_end = i
 
             if all_dashes_by_index[i]:
                 # Don't allow cull to point of all dashes
@@ -374,8 +391,7 @@ def do_cull(
                 skip_last += 1
                 if window_end == i:
                     continue
-                else:
-                    mismatch -= 1
+                mismatch -= 1
 
             if mismatch < 0:
                 continue
@@ -429,28 +445,15 @@ def get_start_end(sequence: str) -> tuple:
 
 
 def do_gene(
-    aa_input: str,
-    nt_input: str,
-    output: str,
-    amt_matches: int,
-    aa_file: str,
-    debug: bool,
-    bp: int,
-    verbosity: int,
-    compress: bool,
-    gap_threshold: float,
-    mismatches: int,
-    column_cull_percent: float,
-    minimum_data: float,
-    blosum_mode_lower_threshold: float,
+    fargs: FlexcullArgs
 ) -> None:
     """
     FlexCull main function. Culls input aa and nt using specified amount of matches
     """
-    gene_path = os.path.join(aa_input, aa_file)
-    this_gene = aa_file.split(".")[0]
+    gene_path = os.path.join(fargs.aa_input, fargs.aa_file)
+    this_gene = fargs.aa_file.split(".")[0]
 
-    printv(f"Doing: {this_gene}", verbosity, 2)
+    printv(f"Doing: {this_gene}", fargs.verbosity, 2)
 
     references, candidates = parse_fasta(gene_path)
 
@@ -483,23 +486,23 @@ def do_gene(
 
     for i, chars in list(character_at_each_pos.items()):
         data_present = 1 - (chars.count("-") / len(chars))
-        gap_present_threshold[i] = data_present >= gap_threshold
-        if data_present < column_cull_percent:
+        gap_present_threshold[i] = data_present >= fargs.gap_threshold
+        if data_present < fargs.column_cull_percent:
             column_cull.add(i * 3)
 
         blosum_add = set()
         for char in chars:
             for blosum_sub, val in mat[char].items():
-                if val > blosum_mode_lower_threshold:
+                if val > fargs.blosum_mode_lower_threshold:
                     blosum_add.add(blosum_sub)
         character_at_each_pos[i] = set(chars).union(blosum_add)
 
     log = []
 
     follow_through = {}
-    offset = amt_matches - 1
+    offset = fargs.amt_matches - 1
 
-    aa_out_path = os.path.join(output, "aa", aa_file.rstrip(".gz"))
+    aa_out_path = os.path.join(fargs.output, "aa", fargs.aa_file.rstrip(".gz"))
     aa_out = references.copy()
 
     for header, sequence in candidates:
@@ -522,8 +525,8 @@ def do_gene(
             sequence,
             sequence_length,
             offset,
-            amt_matches,
-            mismatches,
+            fargs.amt_matches,
+            fargs.mismatches,
             all_dashes_by_index,
             character_at_each_pos,
             gap_present_threshold,
@@ -551,8 +554,8 @@ def do_gene(
                     cull_start,
                     cull_end,
                     out_line,
-                    amt_matches,
-                    mismatches,
+                    fargs.amt_matches,
+                    fargs.mismatches,
                     all_dashes_by_index,
                     character_at_each_pos,
                     gap_present_threshold,
@@ -599,7 +602,7 @@ def do_gene(
 
             if kick:
                 follow_through[header] = True, 0, 0, []
-                if debug:
+                if fargs.debug:
                     log.append(
                         gene + "," + header + ",Kicked,Codon cull found no match,0,\n"
                     )
@@ -618,7 +621,7 @@ def do_gene(
             data_length = cull_end - cull_start
             bp_after_cull = len(out_line) - out_line.count("-")
 
-            if bp_after_cull >= bp:
+            if bp_after_cull >= fargs.bp:
                 follow_through[header] = (
                     False,
                     cull_start,
@@ -628,7 +631,7 @@ def do_gene(
 
                 aa_out.append((header, out_line))
 
-                if debug:
+                if fargs.debug:
                     removed_section = sequence[:cull_start] + sequence[cull_end:]
                     data_removed = len(removed_section) - removed_section.count("-")
                     log.append(
@@ -647,7 +650,7 @@ def do_gene(
                     )
             else:
                 follow_through[header] = True, 0, 0, []
-                if debug:
+                if fargs.debug:
                     log.append(
                         gene
                         + ","
@@ -659,7 +662,7 @@ def do_gene(
         if kick:
             follow_through[header] = True, 0, 0, []
 
-            if debug:
+            if fargs.debug:
                 log.append(gene + "," + header + ",Kicked,Zero Data After Cull,0,\n")
 
     # remove empty columns from refs and
@@ -683,8 +686,8 @@ def do_gene(
     for col, letters in reference_cols.items():
         gaps_present = letters.count("-") / len(letters)
         data_present = 1 - gaps_present
-        post_gap_present_threshold[col] = data_present >= gap_threshold
-        if gaps_present >= gap_threshold:
+        post_gap_present_threshold[col] = data_present >= fargs.gap_threshold
+        if gaps_present >= fargs.gap_threshold:
             reference_gap_col.add(col)
         if gaps_present == 1:
             post_all_dashes_by_index[col] = True
@@ -694,19 +697,19 @@ def do_gene(
         blosum_add = set()
         for letter in letters:
             for blosum_sub, val in mat[letter].items():
-                if val > blosum_mode_lower_threshold:
+                if val > fargs.blosum_mode_lower_threshold:
                     blosum_add.add(blosum_sub)
 
         post_character_at_each_pos[col] = set(letters).union(blosum_add)
 
-    if debug:
+    if fargs.debug:
         aa_out = [
             (
                 "Reference Gap Columns DEBUG.",
                 "".join(
                     [
                         "#" if i in reference_gap_col else "-"
-                        for i in reference_cols.keys()
+                        for i in reference_cols
                     ]
                 ),
             )
@@ -736,8 +739,8 @@ def do_gene(
                             seq_start,
                             seq_end,
                             out_line,
-                            amt_matches,
-                            mismatches,
+                            fargs.amt_matches,
+                            fargs.mismatches,
                             post_all_dashes_by_index,
                             post_character_at_each_pos,
                             post_gap_present_threshold,
@@ -777,10 +780,8 @@ def do_gene(
                             < 0.55
                         ):
                             keep_left = (
-                                True
-                                if len(left_after) - left_after.count("-")
+                                len(left_after) - left_after.count("-")
                                 >= len(right_after) - right_after.count("-")
-                                else False
                             )
                             keep_right = not keep_left
 
@@ -811,8 +812,8 @@ def do_gene(
             if change_made:
                 data_length = seq_end - seq_start
                 bp_after_cull = len(out_line) - out_line.count("-")
-                if bp_after_cull < bp:
-                    if debug:
+                if bp_after_cull < fargs.bp:
+                    if fargs.debug:
                         removed_section = sequence[:seq_start] + sequence[seq_end:]
                         data_removed = len(removed_section) - removed_section.count("-")
                         log.append(
@@ -834,14 +835,14 @@ def do_gene(
 
     aa_out = [i for i in aa_out if i is not None]
     if len(aa_out) != len(references):
-        writeFasta(aa_out_path, aa_out, compress)
+        writeFasta(aa_out_path, aa_out, fargs.compress)
 
-        nt_file_name = make_nt(aa_file)
-        gene_path = os.path.join(nt_input, nt_file_name)
+        nt_file_name = make_nt(fargs.aa_file)
+        gene_path = os.path.join(fargs.nt_input, nt_file_name)
 
         references, candidates = parse_fasta(gene_path)
 
-        nt_out_path = os.path.join(output, "nt", nt_file_name.rstrip(".gz"))
+        nt_out_path = os.path.join(fargs.output, "nt", nt_file_name.rstrip(".gz"))
         nt_out = references.copy()
         for header, sequence in candidates:
             gene = header.split("|")[0]
@@ -888,7 +889,7 @@ def do_gene(
             else:
                 out_nt.append((header, sequence))
 
-        writeFasta(nt_out_path, out_nt, compress)
+        writeFasta(nt_out_path, out_nt, fargs.compress)
 
     return log
 
@@ -927,7 +928,7 @@ def do_folder(folder, args: MainArgs):
         arguments = []
         for input_gene in file_inputs:
             arguments.append(
-                (
+                (FlexcullArgs(
                     aa_path,
                     nt_path,
                     output_path,
@@ -943,13 +944,13 @@ def do_folder(folder, args: MainArgs):
                     args.minimum_data,
                     blosum_mode_lower_threshold,
                 )
-            )
+            ),)
 
         with Pool(args.processes) as pool:
             log_components = pool.starmap(do_gene, arguments, chunksize=1)
     else:
         log_components = [
-            do_gene(
+            do_gene(FlexcullArgs(
                 aa_path,
                 nt_path,
                 output_path,
@@ -964,7 +965,7 @@ def do_folder(folder, args: MainArgs):
                 args.column_cull,
                 args.minimum_data,
                 blosum_mode_lower_threshold,
-            )
+            ))
             for input_gene in file_inputs
         ]
 
