@@ -30,7 +30,6 @@ MainArgs = namedtuple(
         "gap_threshold",
         "mismatches",
         "column_cull",
-        "minimum_data",
         "blosum_strictness",
     ],
 )
@@ -942,8 +941,8 @@ def do_folder(folder, args: MainArgs):
                     args.mismatches,
                     args.column_cull,
                     blosum_mode_lower_threshold,
-                )
-            ),)
+                ),
+            ))
 
         with Pool(args.processes) as pool:
             log_components = pool.starmap(do_gene, arguments, chunksize=1)
