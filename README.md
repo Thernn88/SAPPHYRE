@@ -1,56 +1,62 @@
-# PhyMMR
+# sapphyre
 
 ## Requirements
 	
 	Externals
 	Mafft 7.489+ https://mafft.cbrc.jp/alignment/software/ sudo apt install mafft
 	Exonerate 2.4.0+ sudo apt install Exonerate
-	Diamond - sudo apt install diamond-aligner
+	Diamond 2.1.6+ - https://github.com/bbuchfink/diamond 
 	SQLite3 - sudo apt install sqlite3 (Will be removed later.)
 	sra-toolkit - sudo apt install sra-toolkit
+	clustalo - sudo apt install clustalo
 	
 	Python - 3.8+ (Recommended 3.11)
 		Python Modules
-			wrap-rocks
-			tqdm
-			numpy - 1.22+ Required
-			blosum_distance
-			itertools
-			bio
-			xxhash
+			biopython>=1.79
+            numpy>=1.23.3
+            tqdm>=4.64.1
+            wrap_rocks>=0.3.3
+            xxhash>=3.0.0
+            phymmr_tools>=0.4.0
+            pro2codon>=1.2.4
+            requests>=2.28
+            beautifulsoup4
+            blosum==2.0.0
+            parasail>= 1.3.4
+            orjson
 			
 ## Usage
 
-All scripts are located in the phymmr directory. You can call them using
+All scripts are located in the sapphyre directory. You can call them using
 
 Example commands workflow using Mayer et al. (2021) reference set. Verbose enabled using -v. Multithreading enabled w/ -p <X> threads passed.  
 
-	python3 -m phymmr -p 6 Prepare input/lepidoptera
-	python3 -m phymmr -p 16 -v Diamond -o Lepidoptera_orthoDB9_extended PhyMMR/lepidoptera/*.fa
-	python3 -m phymmr -p 16 -v Reporter -o Lepidoptera_orthoDB9_extended PhyMMR/lepidoptera/*.fa
-	python3 -m phymmr -p 8 -v mafft -o Lepidoptera_orthoDB9_extended PhyMMR/lepidoptera/*.fa
-	python3 -m phymmr -p 16 -v Pal2Nal PhyMMR/lepidoptera/*.fa
-	python3 -m phymmr -p 16 -v FlexCull PhyMMR/lepidoptera/*.fa
-	python3 -m phymmr -p 16 -v OutlierCheck PhyMMR/lepidoptera/*.fa
-	python3 -m phymmr -p 16 -v MergeOverlap PhyMMR/lepidoptera/*.fa
+	python3 -m sapphyre -p 6 Prepare input/lepidoptera
+	python3 -m sapphyre -p 16 -v Diamond -o Lepidoptera_orthoDB9_extended sapphyre/lepidoptera/*.fa
+	python3 -m sapphyre -p 16 -v Reporter -o Lepidoptera_orthoDB9_extended sapphyre/lepidoptera/*.fa
+	python3 -m sapphyre -p 8 -v mafft -o Lepidoptera_orthoDB9_extended sapphyre/lepidoptera/*.fa
+	python3 -m sapphyre -p 16 -v Pal2Nal sapphyre/lepidoptera/*.fa
+	python3 -m sapphyre -p 16 -v FlexCull sapphyre/lepidoptera/*.fa
+	python3 -m sapphyre -p 16 -v OutlierCheck sapphyre/lepidoptera/*.fa
+	python3 -m sapphyre -p 16 -v MergeOverlap sapphyre/lepidoptera/*.fa
 
 Generic Commands
 	
-	python3 -m phymmr <args> Prepare <args> input/<DIR>/
-	python3 -m phymmr <args> Diamond <args> PhyMMR/<DIR>/*.fa
-	python3 -m phymmr <args> Reporter <args> PhyMMR/<DIR>/*.fa
-	python3 -m phymmr <args> mafft <args> PhyMMR/<DIR>/*.fa
-	python3 -m phymmr <args> Pal2Nal <args> PhyMMR/<DIR>/*.fa
-	python3 -m phymmr <args> FlexCull <args> PhyMMR/<DIR>/*.fa
-	python3 -m phymmr <args> OutlierCheck <args> PhyMMR/<DIR>/*.fa
-	python3 -m phymmr <args> MergeOverlap <args> PhyMMR/<DIR>/*.fa
+	python3 -m sapphyre <args> Prepare <args> input/<DIR>/
+	python3 -m sapphyre <args> Diamond <args> sapphyre/<DIR>/*.fa
+	python3 -m sapphyre <args> Reporter <args> sapphyre/<DIR>/*.fa
+	python3 -m sapphyre <args> mafft <args> sapphyre/<DIR>/*.fa
+	python3 -m sapphyre <args> Pal2Nal <args> sapphyre/<DIR>/*.fa
+	python3 -m sapphyre <args> FlexCull <args> sapphyre/<DIR>/*.fa
+	python3 -m sapphyre <args> OutlierCheck <args> sapphyre/<DIR>/*.fa
+	python3 -m sapphyre <args> MergeOverlap <args> sapphyre/<DIR>/*.fa
 
 ## Help
 
    **Main**
 		
-	python3 -m phymmr -h
-	usage: phymmr [-h] [-v] [-p PROCESSES]
+	python3 -m sapphyre -h
+	usage: sapphyre [-h] [-v] [-p PROCESSES]
 	
 	Order: Prepare, Diamond, Reporter, mafft, pal2nal, FlexCull (optional), OutlierCheck, MergeOverlap, MergeGenes
 
@@ -92,8 +98,8 @@ Generic Commands
 
 **Prepare**
 	
-	python3 -m phymmr Prepare -h
-	usage: phymmr Prepare [-h] [-c] [-ml MINIMUM_SEQUENCE_LENGTH] [-sl SEQUENCES_PER_LEVEL] [-k] INPUT
+	python3 -m sapphyre Prepare -h
+	usage: sapphyre Prepare [-h] [-c] [-ml MINIMUM_SEQUENCE_LENGTH] [-sl SEQUENCES_PER_LEVEL] [-k] INPUT
 
 	positional arguments:
 	  INPUT                 Path to directory of Input folder
@@ -109,8 +115,8 @@ Generic Commands
 
 **Hmmsearch**
 	
-	python3 -m phymmr Hmmsearch -h
-	usage: phymmr Hmmsearch [-h] [-oi ORTHOSET_INPUT] [-o ORTHOSET] [-ovw] [-s SCORE] [-e EVALUE]
+	python3 -m sapphyre Hmmsearch -h
+	usage: sapphyre Hmmsearch [-h] [-oi ORTHOSET_INPUT] [-o ORTHOSET] [-ovw] [-s SCORE] [-e EVALUE]
                         [--excluded-list EXCLUDED_LIST] [--wanted-list WANTED_LIST] [--remake-protfile]
                         [-sdm SCORE_DIFF_MULTI] [-mom MIN_OVERLAP_MULTI] [-momi MINIMUM_OVERLAP_INTERNAL_MULTI]
                         [-sdi SCORE_DIFF_INTERNAL] [-moi MIN_OVERLAP_INTERNAL] [-m MAX_HMM_BATCH_SIZE] [-d DEBUG]
@@ -155,8 +161,8 @@ Generic Commands
 							
 **Reporter**
 
-	python3 -m phymmr Reporter -h
-	usage: phymmr Reporter [-h] [-oi ORTHOSET_INPUT] [-o ORTHOSET] [-ml MIN_LENGTH] [-ms MIN_SCORE] [-d DEBUG]
+	python3 -m sapphyre Reporter -h
+	usage: sapphyre Reporter [-h] [-oi ORTHOSET_INPUT] [-o ORTHOSET] [-ml MIN_LENGTH] [-ms MIN_SCORE] [-d DEBUG]
 							INPUT [INPUT ...]
 
 	positional arguments:
@@ -177,8 +183,8 @@ Generic Commands
 							
 **mafft**
 	
-	python3 -m phymmr mafft -h
-	usage: phymmr mafft [-h] [-oi ORTHOSET_INPUT] [-o ORTHOSET] [-l] INPUT [INPUT ...]
+	python3 -m sapphyre mafft -h
+	usage: sapphyre mafft [-h] [-oi ORTHOSET_INPUT] [-o ORTHOSET] [-l] INPUT [INPUT ...]
 
 	positional arguments:
 	INPUT                 Path to directory of Input folder
@@ -193,8 +199,8 @@ Generic Commands
 	
 **Pal2Nal**
 	
-	python3 -m phymmr Pal2Nal -h
-	usage: phymmr Pal2Nal [-h] [-t TABLE] INPUT [INPUT ...]
+	python3 -m sapphyre Pal2Nal -h
+	usage: sapphyre Pal2Nal [-h] [-t TABLE] INPUT [INPUT ...]
 
 	positional arguments:
 	INPUT                 Path to directory of Input folder
@@ -206,8 +212,8 @@ Generic Commands
 							
 **FlexCull**
 	
-	python3 -m phymmr FlexCull -h
-		usage: phymmr FlexCull [-h] [-o OUTPUT] [-aa AMINO_ACID] [-nt NUCLEOTIDE] [-m MATCHES] [-bp BASE_PAIR] [-d]
+	python3 -m sapphyre FlexCull -h
+		usage: sapphyre FlexCull [-h] [-o OUTPUT] [-aa AMINO_ACID] [-nt NUCLEOTIDE] [-m MATCHES] [-bp BASE_PAIR] [-d]
 						INPUT [INPUT ...]
 	
 	positional arguments:
@@ -229,8 +235,8 @@ Generic Commands
 
 **OutlierCheck**
 		
-	python3 -m phymmr OutlierCheck -h
-	usage: phymmr OutlierCheck [-h] [-o OUTPUT] [-t THRESHOLD] [--no-references] [-s {cluster,original}] [-d]
+	python3 -m sapphyre OutlierCheck -h
+	usage: sapphyre OutlierCheck [-h] [-o OUTPUT] [-t THRESHOLD] [--no-references] [-s {cluster,original}] [-d]
                            INPUT [INPUT ...]
 
 	positional arguments:
@@ -249,8 +255,8 @@ Generic Commands
 	
 **MergeOverlap**
 	
-	python3 -m phymmr MergeOverlap -h
-	usage: phymmr MergeOverlap [-h] [-aa AA_INPUT] [-nt NT_INPUT] [-d] [-c COMPARISON] [-io] [-m MAJORITY]
+	python3 -m sapphyre MergeOverlap -h
+	usage: sapphyre MergeOverlap [-h] [-aa AA_INPUT] [-nt NT_INPUT] [-d] [-c COMPARISON] [-io] [-m MAJORITY]
 							[-mc MAJORITY_COUNT]
 							INPUT [INPUT ...]
 
