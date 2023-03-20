@@ -111,7 +111,7 @@ class Hit:
                         l_exact_matches += 1
 
                     if not dist(ref_seq[i + j], this_aa[i + j], mat):
-                        if j == 0:
+                        if j == 0 or this_aa[i+j] == "*":
                             this_pass = False
                             break
                         l_mismatch -= 1
@@ -141,7 +141,7 @@ class Hit:
                         r_exact_matches += 1
 
                     if not dist(ref_seq[i - j], this_aa[i - j], mat):
-                        if j == 0:
+                        if j == 0 or this_aa[i-j] == "*":
                             this_pass = False
                             break
 
