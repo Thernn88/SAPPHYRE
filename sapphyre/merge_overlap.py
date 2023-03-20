@@ -5,7 +5,7 @@ PyLint 9.61/10
 """
 from __future__ import annotations
 
-import json
+import orjson
 import os
 from multiprocessing.pool import Pool
 from pathlib import Path
@@ -795,8 +795,8 @@ def do_folder(folder: Path, args):
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
     if rocks_db_path.exists():
         rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
-        prepare_dupe_counts = json.loads(rocksdb_db.get("getall:gene_dupes"))
-        reporter_dupe_counts = json.loads(rocksdb_db.get("getall:reporter_dupes"))
+        prepare_dupe_counts = orjson.loads(rocksdb_db.get("getall:gene_dupes"))
+        reporter_dupe_counts = orjson.loads(rocksdb_db.get("getall:reporter_dupes"))
         ref_stats = rocksdb_db.get("getall:valid_refs").split(",")
     else:
         prepare_dupe_counts = {}

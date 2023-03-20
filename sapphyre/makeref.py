@@ -1,5 +1,5 @@
 from itertools import count
-import json
+import orjson
 from pathlib import Path
 import os
 from tempfile import NamedTemporaryFile
@@ -278,7 +278,7 @@ def main(args):
     if input_file.split(".")[-1] == "fa":
         for seq_record in SeqIO.parse(input_file, "fasta"):
             header, data = seq_record.description.split(" ", 1)
-            data = json.loads(data)
+            data = orjson.loads(data)
             seq = str(seq_record.seq)
             taxa = data["organism_name"].replace(" ", "_")
             gene = data["pub_og_id"]
@@ -337,13 +337,13 @@ def main(args):
     rocks_db_path = get_set_path(set_name).joinpath("rocksdb")
     rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
 
-    rocksdb_db.put("getall:taxainset", json.dumps(this_set.get_taxa_in_set()))
+    rocksdb_db.put_bytes("getall:taxainset", orjson.dumps(this_set.get_taxa_in_set()))
 
-    rocksdb_db.put("getall:refseqs", json.dumps(taxon_to_sequences))
-    rocksdb_db.put("getall:targetreference", json.dumps(target_to_taxon))
+    rocksdb_db.put_bytes("getall:refseqs", orjson.dumps(taxon_to_sequences))
+    rocksdb_db.put_bytes("getall:targetreference", orjson.dumps(target_to_taxon))
 
     for gene, data in this_set.get_core_sequences().items():
-        rocksdb_db.put(f"getcore:{gene}", json.dumps(data))
+        rocksdb_db.put_bytes(f"getcore:{gene}", orjson.dumps(data))
 
     print("Done!")
     return True

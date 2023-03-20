@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import json
+import orjson
 import os
 import shutil
 from collections import namedtuple
@@ -177,18 +177,18 @@ def get_diamondhits(rocks_hits_db, list_of_wanted_orthoids):
 
         gene_based_results[gene] = [
             Hit(this_data, gene)
-            for this_data in json.loads(rocks_hits_db.get(f"gethits:{gene}"))
+            for this_data in orjson.loads(rocks_hits_db.get(f"gethits:{gene}"))
         ]
 
     return gene_based_results
 
 
 def get_reference_data(rocks_hits_db):
-    return json.loads(rocks_hits_db.get("getall:refseqs"))
+    return orjson.loads(rocks_hits_db.get("getall:refseqs"))
 
 
 def get_gene_variants(rocks_hits_db):
-    return json.loads(rocks_hits_db.get("getall:target_variants"))
+    return orjson.loads(rocks_hits_db.get("getall:target_variants"))
 
 
 def get_toprefs(rocks_nt_db):
@@ -206,7 +206,7 @@ def translate_cdna(cdna_seq):
 
 
 def get_ortholog_group(orthoid, orthoset_db):
-    core_seqs = json.loads(orthoset_db.get(f"getcore:{orthoid}"))
+    core_seqs = orjson.loads(orthoset_db.get(f"getcore:{orthoid}"))
     return core_seqs["aa"], core_seqs["nt"]
 
 
@@ -521,8 +521,8 @@ def do_taxa(path, taxa_id, args):
         this_gene_based_dupes[gene] = dupes
 
     key = "getall:reporter_dupes"
-    data = json.dumps(this_gene_based_dupes)
-    rocky.get_rock("rocks_nt_db").put(key, data)
+    data = orjson.dumps(this_gene_based_dupes)
+    rocky.get_rock("rocks_nt_db").put_bytes(key, data)
 
     printv(
         f"Done! Took {time_keeper.differential():.2f}s overall. Exonerate took {time_keeper.lap():.2f}s and found {final_count} sequences.",

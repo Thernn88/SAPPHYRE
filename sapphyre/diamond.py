@@ -5,7 +5,7 @@ import os
 from shutil import rmtree
 import sys
 from tempfile import TemporaryDirectory, NamedTemporaryFile
-import json
+import orjson
 from multiprocessing.pool import Pool
 import wrap_rocks
 
@@ -394,8 +394,8 @@ def run_process(args, input_path) -> None:
             sys.exit(1)
     orthoset_db = wrap_rocks.RocksDB(orthoset_db_path)
 
-    reference_taxa = json.loads(orthoset_db.get("getall:taxainset"))
-    target_to_taxon = json.loads(orthoset_db.get("getall:targetreference"))
+    reference_taxa = orjson.loads(orthoset_db.get("getall:taxainset"))
+    target_to_taxon = orjson.loads(orthoset_db.get("getall:targetreference"))
 
     del orthoset_db
     time_keeper.lap()  # Reset timer
@@ -415,7 +415,7 @@ def run_process(args, input_path) -> None:
         )
     out = [nt_db.get(f"ntbatch:{i}") for i in recipe]
 
-    dupe_counts = json.loads(nt_db.get("getall:dupes"))
+    dupe_counts = orjson.loads(nt_db.get("getall:dupes"))
 
     out_path = os.path.join(diamond_path, f"{sensitivity}.tsv")
     if not os.path.exists(out_path) or os.stat(out_path).st_size == 0:
@@ -494,7 +494,7 @@ def run_process(args, input_path) -> None:
             variant_filter.pop(gene, -1)
 
     variant_filter = {k: list(v) for k, v in variant_filter.items()}
-    db.put("getall:target_variants", json.dumps(variant_filter))
+    db.put_bytes("getall:target_variants", orjson.dumps(variant_filter))
 
     del variant_filter
 
@@ -544,7 +544,7 @@ def run_process(args, input_path) -> None:
             args.verbose,
         )
 
-        nt_db.put("getall:valid_refs", ",".join(list(top_refs)))
+        nt_db.put_bytes("getall:valid_refs", ",".join(list(top_refs)))
         del top_refs
 
         requires_internal = {}
@@ -618,7 +618,7 @@ def run_process(args, input_path) -> None:
                     dupe_divy_headers[gene][hit.header] = 1
 
             passes += len(out)
-            db.put(f"gethits:{gene}", json.dumps(out))
+            db.put_bytes(f"gethits:{gene}", orjson.dumps(out))
         del head_to_seq
         if global_log:
             with open(os.path.join(input_path, "multi.log"), "w") as fp:
@@ -647,11 +647,11 @@ def run_process(args, input_path) -> None:
                         base_header
                     ]
 
-        db.put("getall:presentgenes", ",".join(list(output.keys())))
+        db.put_bytes("getall:presentgenes", ",".join(list(output.keys())))
 
         key = "getall:gene_dupes"
-        data = json.dumps(gene_dupe_count)
-        nt_db.put(key, data)
+        data = orjson.dumps(gene_dupe_count)
+        nt_db.put_bytes(key, data)
 
         del db
         del nt_db
