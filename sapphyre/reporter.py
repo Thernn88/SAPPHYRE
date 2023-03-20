@@ -14,10 +14,10 @@ from . import rocky
 from .timekeeper import TimeKeeper, KeeperMode
 from .utils import printv, writeFasta
 
-MISMATCH_AMOUNT = 0
-EXACT_MATCH_AMOUNT = 2
-GAP_PENALTY = 10
-EXTEND_PENALTY = 5
+MISMATCH_AMOUNT = 1
+EXACT_MATCH_AMOUNT = 4
+GAP_PENALTY = 2
+EXTEND_PENALTY = 1
 
 MainArgs = namedtuple(
     "MainArgs",
