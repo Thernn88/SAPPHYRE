@@ -14,6 +14,22 @@ Post-processing:
 """
 import argparse
 
+class CaseInsensitiveArgumentParser(argparse.ArgumentParser):
+    def _parse_known_args(self, arg_strings, *args, **kwargs):
+        # Iterate through the subparsers to find the command
+        lower_arg_string = list(map(str.lower, arg_strings))
+        for action in self._actions:
+            if isinstance(action, argparse._SubParsersAction):
+                subparsers = action.choices
+                for subparser in subparsers:
+                    # Check if the command matches the argument string (case-insensitive)
+                    if subparser.lower() in lower_arg_string:
+                        # Replace the argument string with the command (case-sensitive)
+                        arg_strings[lower_arg_string.index(subparser.lower())] = subparser
+                        break
+                break
+        return super()._parse_known_args(arg_strings, *args, **kwargs)
+
 
 def subcmd_prepare(subparsers):
     par = subparsers.add_parser(
@@ -136,8 +152,9 @@ def diamond(args):
 
 def subcmd_reporter(subparsers):
     par = subparsers.add_parser(
-        "Reporter",
+        "reporter",
         help="Trims mapped sequence to mapped region." "Produces aa and nt output.",
+        
     )
     par.add_argument(
         "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
@@ -170,7 +187,7 @@ def subcmd_reporter(subparsers):
         default=False,
         help="Enable debug",
     )
-    par.set_defaults(func=reporter, formathelp=par.format_help)
+    par.set_defaults(func=reporter, formathelp=par.format_help )
 
 
 def reporter(args):
@@ -754,7 +771,7 @@ def wrap_final(argsobj):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
+    parser = CaseInsensitiveArgumentParser(
         prog="sapphyre",
         # TODO write me
         description="Order: Prepare, Hmmsearch, BlastPal, Reporter, "
