@@ -251,7 +251,7 @@ def run_command(args: CmdArgs) -> None:
                 args.verbose,
                 3,
             )  # Debug
-            with NamedTemporaryFile(dir=parent_tmpdir, mode="w+") as pre_tmp, NamedTemporaryFile(dir=parent_tmpdir, mode="w+") as aln_tmp:
+            with NamedTemporaryFile(dir=parent_tmpdir, mode="w+") as tmp:
                 sequences = []
                 for header, sequence in parseFasta(aln_file):
                     if header in targets:
@@ -281,15 +281,12 @@ def run_command(args: CmdArgs) -> None:
                         )
                     )
 
-                writeFasta(pre_tmp.name, to_write)
-                pre_tmp.flush()
-
-                os.system(f"mafft-linsi --quiet --thread 1 --anysymbol {pre_tmp.name} > {aln_tmp.name}")
-
+                writeFasta(tmp.name, to_write)
                 if debug:
                     writeFasta(
-                        os.path.join(this_intermediates, "references.fa"), parseFasta(aln_tmp.name)
+                        os.path.join(this_intermediates, "references.fa"), to_write
                     )
+                tmp.flush()
 
                 out_file = os.path.join(parent_tmpdir, "part_0.fa")
                 if len(aligned_ingredients) == 1:
@@ -297,19 +294,19 @@ def run_command(args: CmdArgs) -> None:
 
                 if to_merge:
                     os.system(
-                        f"mafft --anysymbol --jtt 1 --quiet --addfragments {aligned_ingredients[0]} --thread 1 {aln_tmp.name} > {out_file}"
+                        f"mafft --anysymbol --jtt 1 --quiet --addfragments {aligned_ingredients[0]} --thread 1 {tmp.name} > {out_file}"
                     )
                     if args.debug:
                         print(
-                            f"mafft --anysymbol --jtt 1 --quiet --addfragments {aligned_ingredients[0]} --thread 1 {aln_tmp.name} > {out_file}"
+                            f"mafft --anysymbol --jtt 1 --quiet --addfragments {aligned_ingredients[0]} --thread 1 {tmp.name} > {out_file}"
                         )
                 else:
                     os.system(
-                        f"clustalo --p1 {aln_tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1 --iter=3 --full --full-iter --is-profile --force"
+                        f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1 --iter=3 --full --full-iter --is-profile --force"
                     )
                     if debug:
                         printv(
-                            f"clustalo --p1 {aln_tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1 --iter=3 --full --full-iter --is-profile --force",
+                            f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1 --iter=3 --full --full-iter --is-profile --force",
                             args.verbose,
                             3,
                         )
@@ -393,7 +390,7 @@ def do_folder(folder, args):
         printv("ERROR: Aln folder not found.", args.verbose, 0)
         return False
 
-    command = f"clustalo -i {{in_file}} -o {{out_file}} --threads=1 --full"
+    command = f"clustalo -i {{in_file}} -o {{out_file}} --threads=1 --full --iter=1 --full-iter"
 
     intermediates = "intermediates"
     if not os.path.exists(intermediates):
