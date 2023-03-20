@@ -195,7 +195,7 @@ class SeqDeduplicator:
                     recipe_index[0] += 1
                     self.recipe.append(str(recipe_index[0]))
 
-                    self.nt_db.put_bytes(f"ntbatch:{recipe_index[0]}", "".join(current_batch))
+                    self.nt_db.put(f"ntbatch:{recipe_index[0]}", "".join(current_batch))
                     current_batch = []
 
                 next(current_count)
@@ -205,7 +205,7 @@ class SeqDeduplicator:
             recipe_index[0] += 1
             self.recipe.append(str(recipe_index[0]))
 
-            self.nt_db.put_bytes(f"ntbatch:{recipe_index[0]}", "".join(current_batch))
+            self.nt_db.put(f"ntbatch:{recipe_index[0]}", "".join(current_batch))
 
         return self.recipe
 
@@ -292,7 +292,7 @@ class DatabasePreparer:
             writeFasta(self.prepared_file_destination, self.fa_file_out)
 
         recipe_data = ",".join(recipe)
-        self.nt_db.put_bytes("getall:batches", recipe_data)
+        self.nt_db.put("getall:batches", recipe_data)
 
         sequence_count = str(self.this_index)
 

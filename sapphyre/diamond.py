@@ -544,7 +544,7 @@ def run_process(args, input_path) -> None:
             args.verbose,
         )
 
-        nt_db.put_bytes("getall:valid_refs", ",".join(list(top_refs)))
+        nt_db.put("getall:valid_refs", ",".join(list(top_refs)))
         del top_refs
 
         requires_internal = {}
@@ -647,7 +647,7 @@ def run_process(args, input_path) -> None:
                         base_header
                     ]
 
-        db.put_bytes("getall:presentgenes", ",".join(list(output.keys())))
+        db.put("getall:presentgenes", ",".join(list(output.keys())))
 
         key = "getall:gene_dupes"
         data = orjson.dumps(gene_dupe_count)
