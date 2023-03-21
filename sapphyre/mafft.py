@@ -121,7 +121,7 @@ def run_command(args: CmdArgs) -> None:
                 args.verbose,
                 3,
             )  # Debug
-            aligned_file = os.path.join(aligned_files_tmp, f"{args.gene}_cluster0")
+            aligned_file = os.path.join(aligned_files_tmp, f"{args.gene}_cluster_1_0")
             writeFasta(aligned_file, data)
             if args.debug:
                 writeFasta(os.path.join(this_intermediates, aligned_file), data)
@@ -191,7 +191,7 @@ def run_command(args: CmdArgs) -> None:
                     3,
                 )  # Debug
                 aligned_cluster = os.path.join(
-                    aligned_files_tmp, f"{args.gene}_cluster{i}"
+                    aligned_files_tmp, f"{args.gene}_cluster_{len(cluster)}_{i}"
                 )
 
                 cluster_seqs = [
@@ -238,7 +238,7 @@ def run_command(args: CmdArgs) -> None:
                     to_merge,
                 )
         if aligned_ingredients or to_merge:
-            aligned_ingredients.sort(key=lambda x: int(x.split("_cluster")[-1]))
+            aligned_ingredients.sort(key=lambda x: int(x.split("_")[-2]), reverse=True)
             if to_merge:
                 aligned_ingredients.insert(0, merged_singleton_final)
             printv(
