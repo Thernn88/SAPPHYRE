@@ -8,8 +8,8 @@ from threading import Lock
 from .utils import printv, gettempdir, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
 
-KMER_LEN = 8
-KMER_PERCENT = 0.5
+KMER_LEN = 7
+KMER_PERCENT = 0.55
 
 
 def find_kmers(fasta):
@@ -391,6 +391,7 @@ def do_folder(folder, args):
         return False
 
     command = f"clustalo -i {{in_file}} -o {{out_file}} --threads=1 --full --iter=1 --full-iter"
+    #command = f"mafft --maxiterate 2 --anysymbol --quiet --thread 1 {{in_file}} > {{out_file}}"
 
     intermediates = "intermediates"
     if not os.path.exists(intermediates):
