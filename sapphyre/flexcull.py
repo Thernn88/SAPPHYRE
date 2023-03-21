@@ -6,7 +6,7 @@ PyLint 9.81/10
 from __future__ import annotations
 
 import os
-from collections import namedtuple
+from collections import Counter, namedtuple
 from itertools import chain
 from multiprocessing.pool import Pool
 from shutil import rmtree
@@ -621,7 +621,7 @@ def do_gene(
                     positions_to_trim,
                 )
 
-                this_seqs.append((header, out_line))
+                this_seqs.append((header, out_line, *get_start_end(out_line)))
 
                 if fargs.debug:
                     removed_section = sequence[:cull_start] + sequence[cull_end:]
@@ -660,16 +660,24 @@ def do_gene(
         this_column_cull = set()
         for nt_i in column_cull:
             i = nt_i // 3 
-            this_sequence = []
-            for _, seq in this_seqs:
-                if seq[i] != "-":
-                    this_sequence.append(seq[i])
+            this_sequence = Counter()
+            internal_count = 0
+            for _, seq, start, end in this_seqs:
+                if start <= i <= end:
+                    internal_count += 1
+                    if seq[i] != "-":
+                        this_sequence[seq[i]] += 1
             # Get the count of the most occuring bp at this position
-            if not this_sequence or not this_sequence.count(max(set(this_sequence), key=len)) > len(this_seqs)/2:
-                this_column_cull.add(i*3)
-        for header, seq in this_seqs:
-            aa_out.append((header, "".join([let if i*3 not in this_column_cull else "-" for i, let in enumerate(seq)])))
+            if sum(this_sequence.values()) >= 10:
+                if this_sequence.most_common()[0][1] > internal_count/2:
+                    continue   
+            this_column_cull.add(i*3)
 
+        if this_column_cull:
+            for header, seq, _, _ in this_seqs:
+                aa_out.append((header, "".join([let if i*3 not in this_column_cull else "-" for i, let in enumerate(seq)])))
+        else:
+            aa_out.extend([(header, sequence) for header, sequence, _, _ in this_seqs])
         # remove empty columns from refs and
         aa_out, aa_positions_to_keep = delete_empty_columns(aa_out, False)
         if len(aa_out) == len(references):
