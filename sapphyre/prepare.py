@@ -150,7 +150,7 @@ class SeqDeduplicator:
 
             for seq in N_trim(parent_seq, self.minimum_sequence_length, trim_times):
                 header = f"NODE_{this_index}"
-                seq_hash = xxhash.xxh64(seq).hexdigest()
+                seq_hash = xxhash.xxh3_64(seq).hexdigest()
 
                 # Check for dupe, if so save how many times that sequence occured
                 seq_start = time()
@@ -167,7 +167,7 @@ class SeqDeduplicator:
                 if seq_hash in rev_comp_save:
                     rev_seq_hash = rev_comp_save[seq_hash]
                 else:
-                    rev_seq_hash = xxhash.xxh64(
+                    rev_seq_hash = xxhash.xxh3_64(
                         phymmr_tools.bio_revcomp(seq)
                     ).hexdigest()
                     rev_comp_save[seq_hash] = rev_seq_hash
