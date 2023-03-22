@@ -13,6 +13,7 @@ from Bio.Seq import Seq
 from . import rocky
 from .timekeeper import TimeKeeper, KeeperMode
 from .utils import printv, writeFasta
+import xxhash
 
 MISMATCH_AMOUNT = 1
 EXACT_MATCH_AMOUNT = 4
@@ -288,13 +289,13 @@ def print_unmerged_sequences(
         data_after = len(aa_seq)
 
         if data_after >= minimum_bp:
-            unique_hit = base_header + aa_seq
-
-            if nt_seq in seq_mapped_already:
-                mapped_to = seq_mapped_already[nt_seq]
+            unique_hit = xxhash.xxh3_64(base_header + aa_seq).hexdigest()
+            nt_seq_hash = xxhash.xxh3_64(nt_seq).hexdigest()
+            if nt_seq_hash in seq_mapped_already:
+                mapped_to = seq_mapped_already[nt_seq_hash]
                 dupes.setdefault(mapped_to, []).append(base_header)
                 continue
-            seq_mapped_already[nt_seq] = base_header
+            seq_mapped_already[nt_seq_hash] = base_header
 
             if unique_hit not in exact_hit_mapped_already:
                 if base_header in base_header_mapped_already:
