@@ -5,11 +5,10 @@ import os
 from shutil import rmtree
 import sys
 from tempfile import TemporaryDirectory, NamedTemporaryFile
-from time import time
 import orjson
 from multiprocessing.pool import Pool
 import wrap_rocks
-import msgspec
+
 from .utils import printv, gettempdir
 from .timekeeper import TimeKeeper, KeeperMode
 
@@ -38,15 +37,7 @@ class reference_hit:
         }
 
 
-class JsonHit(msgspec.Struct):
-    header: str
-    seq: str
-    ref_taxon: str
-    ali_start: int
-    ali_end: int
-    reference_hits: list
-
-class Hit:    
+class Hit:
     __slots__ = (
         "header",
         "qstart",
@@ -112,15 +103,14 @@ class Hit:
         self.reference_hits = [i.to_json() for i in self.reference_hits]
 
     def to_json(self):
-        return JsonHit(self.full_header, self.seq, self.reftaxon, self.qstart, self.qend, self.reference_hits)
-        # return {
-        #     "header": self.full_header,
-        #     "seq": self.seq,
-        #     "ref_taxon": self.reftaxon,
-        #     "ali_start": self.qstart,
-        #     "ali_end": self.qend,
-        #     "reference_hits": self.reference_hits,
-        # }
+        return {
+            "header": self.full_header,
+            "seq": self.seq,
+            "ref_taxon": self.reftaxon,
+            "ali_start": self.qstart,
+            "ali_end": self.qend,
+            "reference_hits": self.reference_hits,
+        }
 
 
 def get_overlap(a_start, a_end, b_start, b_end):
@@ -282,7 +272,6 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
     header_lines = {}
     current_header = None
     target_has_hit = set()
-    
 
     for line in file_pointer:
         header, ref_header_pair, frame = line.split("\t")[:3]
@@ -310,9 +299,8 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
         target_count = target_count - (target_count * percent)
         total_references = len(sorted_counts)
         top_names = {x[0] for x in sorted_counts if x[1] >= target_count}
-        encoded_top_refs = [x[0].encode() for x in top_names]
 
-    return top_names, encoded_top_refs, total_references, list(header_lines.values()), target_has_hit
+    return top_names, total_references, list(header_lines.values()), target_has_hit
 
 
 ProcessingArgs = namedtuple(
@@ -406,8 +394,9 @@ def run_process(args, input_path) -> None:
             sys.exit(1)
     orthoset_db = wrap_rocks.RocksDB(orthoset_db_path)
 
-    reference_taxa = msgspec.json.decode(orthoset_db.get("getall:taxainset"), type=list[str])
-    target_to_taxon = msgspec.json.decode(orthoset_db.get("getall:targetreference"), type=dict[str, tuple[str, str, int]])
+    reference_taxa = orjson.loads(orthoset_db.get("getall:taxainset"))
+    target_to_taxon = orjson.loads(orthoset_db.get("getall:targetreference"))
+
     del orthoset_db
     time_keeper.lap()  # Reset timer
 
@@ -426,7 +415,7 @@ def run_process(args, input_path) -> None:
         )
     out = [nt_db.get(f"ntbatch:{i}") for i in recipe]
 
-    dupe_counts = msgspec.json.decode(nt_db.get("getall:dupes"), type=dict[str, int])
+    dupe_counts = orjson.loads(nt_db.get("getall:dupes"))
 
     out_path = os.path.join(diamond_path, f"{sensitivity}.tsv")
     if not os.path.exists(out_path) or os.stat(out_path).st_size == 0:
@@ -468,7 +457,7 @@ def run_process(args, input_path) -> None:
     global_log = []
     dupe_divy_headers = {}
     with open(out_path) as fp:
-        top_refs, encoded_top_refs, total_references, lines, target_has_hit = count_reftaxon(
+        top_refs, total_references, lines, target_has_hit = count_reftaxon(
             fp, target_to_taxon, args.top_ref
         )
     variant_filter = {}
@@ -505,8 +494,7 @@ def run_process(args, input_path) -> None:
             variant_filter.pop(gene, -1)
 
     variant_filter = {k: list(v) for k, v in variant_filter.items()}
-    data = msgspec.json.encode(variant_filter)
-    db.put_bytes("getall:target_variants", data)
+    db.put_bytes("getall:target_variants", orjson.dumps(variant_filter))
 
     del variant_filter
 
@@ -556,9 +544,8 @@ def run_process(args, input_path) -> None:
             args.verbose,
         )
 
-        nt_db.put_bytes("getall:valid_refs", b",".join(encoded_top_refs))
+        nt_db.put("getall:valid_refs", ",".join(list(top_refs)))
         del top_refs
-        del encoded_top_refs
 
         requires_internal = {}
         internal_order = []
@@ -631,8 +618,7 @@ def run_process(args, input_path) -> None:
                     dupe_divy_headers[gene][hit.header] = 1
 
             passes += len(out)
-            data = msgspec.json.encode(out)
-            db.put_bytes(f"gethits:{gene}", data)
+            db.put_bytes(f"gethits:{gene}", orjson.dumps(out))
         del head_to_seq
         if global_log:
             with open(os.path.join(input_path, "multi.log"), "w") as fp:
@@ -661,11 +647,10 @@ def run_process(args, input_path) -> None:
                         base_header
                     ]
 
-        db.put_bytes("getall:presentgenes", b",".join([i.encode() for i in output.keys()]))
+        db.put("getall:presentgenes", ",".join(list(output.keys())))
 
         key = "getall:gene_dupes"
-        data = msgspec.json.encode(gene_dupe_count)
-        
+        data = orjson.dumps(gene_dupe_count)
         nt_db.put_bytes(key, data)
 
         del db
