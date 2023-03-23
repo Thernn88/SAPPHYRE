@@ -170,14 +170,14 @@ def subcmd_reporter(subparsers):
         "-m",
         "--matches",
         type=int,
-        default=2,
+        default=7,
         help="Amount of matches for dynamic pairwise aligned edge trim.",
     )
     par.add_argument(
         "-bm",
         "--blosum_mode",
         choices=["exact", "strict", "lax"],
-        default="exact",
+        default="strict",
         help="Trim distance mode.",
     )
     par.add_argument(
