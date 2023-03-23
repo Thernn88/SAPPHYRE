@@ -23,7 +23,7 @@ def find_kmers(fasta):
     return kmers
 
 
-MAFFT_FOLDER = "mafft"
+ALIGN_FOLDER = "align"
 AA_FOLDER = "aa"
 ALN_FOLDER = "aln"
 
@@ -368,13 +368,13 @@ def run_command(args: CmdArgs) -> None:
 def do_folder(folder, args):
     printv(f"Processing: {os.path.basename(folder)}", args.verbose)
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
-    mafft_path = os.path.join(folder, MAFFT_FOLDER)
+    align_path = os.path.join(folder, ALIGN_FOLDER)
     aa_path = os.path.join(folder, AA_FOLDER)
     if not os.path.exists(aa_path):
         printv(f"ERROR: Can't find aa ({aa_path}) folder. Abort", args.verbose, 0)
         return False
-    rmtree(mafft_path, ignore_errors=True)
-    os.mkdir(mafft_path)
+    rmtree(align_path, ignore_errors=True)
+    os.mkdir(align_path)
 
     genes = [
         gene
@@ -409,7 +409,7 @@ def do_folder(folder, args):
     for file in genes:
         gene = file.split(".")[0]
         gene_file = os.path.join(aa_path, file)
-        result_file = os.path.join(mafft_path, file.rstrip(".gz"))
+        result_file = os.path.join(align_path, file.rstrip(".gz"))
         if func == run_command:
             times.append(
                 run_command(
@@ -471,4 +471,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    raise Exception("Cannot be called directly, please use the module:\nsapphyre mafft")
+    raise Exception("Cannot be called directly, please use the module:\nsapphyre align")

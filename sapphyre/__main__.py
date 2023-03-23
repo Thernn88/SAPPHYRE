@@ -5,7 +5,7 @@ Order:
     2. Diamond
     3. Reporter
 Post-processing:
-    5. mafft
+    5. align
     6. pal2nal
     7. FlexCull (optional)
     8. OutlierCheck
@@ -383,9 +383,9 @@ def mergegenes(args):
         print(args.formathelp())
 
 
-def subcmd_mafft(subparsers):
+def subcmd_align(subparsers):
     par = subparsers.add_parser(
-        "mafft", help="Aligns AA sequences against existing reference alignment."
+        "align", help="Aligns AA sequences against existing reference alignment."
     )
     par.add_argument(
         "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
@@ -397,13 +397,13 @@ def subcmd_mafft(subparsers):
         default=False,
         help="Output intermediate files for debug",
     )
-    par.set_defaults(func=mafft, formathelp=par.format_help)
+    par.set_defaults(func=align, formathelp=par.format_help)
 
 
-def mafft(args):
-    from . import mafft
+def align(args):
+    from . import align
 
-    if not mafft.main(args):
+    if not align.main(args):
         print()
         print(args.formathelp())
 
@@ -442,7 +442,7 @@ def subcmd_flexcull(subparsers):
         "-o", "--output", type=str, default="trimmed", help="Output Directory."
     )
     par.add_argument(
-        "-aa", "--amino-acid", type=str, default="mafft", help="AA Folder Name."
+        "-aa", "--amino-acid", type=str, default="align", help="AA Folder Name."
     )
     par.add_argument(
         "-nt", "--nucleotide", type=str, default="nt_aligned", help="NT Folder Name."
@@ -713,7 +713,7 @@ def subcmd_wrap_final(sp):
         "-aa",
         "--aa_input",
         type=str,
-        default="mafft",
+        default="align",
         help="Path to directory of AA folder",
     )
     par.add_argument(
@@ -754,10 +754,10 @@ def subcmd_wrap_final(sp):
 
 
 def wrap_final(argsobj):
-    from . import merge_overlap, pal2nal, mafft
+    from . import merge_overlap, pal2nal, align
 
-    print("Triggering Mafft")
-    if not mafft.main(argsobj):
+    print("Triggering Align")
+    if not align.main(argsobj):
         print()
         print(argsobj.formathelp())
     print("Triggering Pal2Nal")
@@ -775,7 +775,7 @@ if __name__ == "__main__":
         prog="sapphyre",
         # TODO write me
         description="Order: Prepare, Hmmsearch, BlastPal, Reporter, "
-        "mafft, pal2nal, FlexCull (optional), OutlierCheck, MergeOverlap, MergeGenes",
+        "align, pal2nal, FlexCull (optional), OutlierCheck, MergeOverlap, MergeGenes",
         epilog="sapphyre  Copyright (C) 2022  Sapphyre Team\n"
         "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n"
         "This program comes with ABSOLUTELY NO WARRANTY.\n"
@@ -825,8 +825,8 @@ if __name__ == "__main__":
     subcmd_diamond(subparsers)
     subcmd_reporter(subparsers)
 
-    # mafft > pal2nal > FlexCull (optional) > OutlierCheck > MergeOverlap
-    subcmd_mafft(subparsers)
+    # align > pal2nal > FlexCull (optional) > OutlierCheck > MergeOverlap
+    subcmd_align(subparsers)
     subcmd_pal2nal(subparsers)
     subcmd_flexcull(subparsers)
     subcmd_outliercheck(subparsers)
