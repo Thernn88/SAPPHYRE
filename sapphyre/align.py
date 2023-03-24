@@ -1,8 +1,10 @@
 from __future__ import annotations
+from math import ceil
 import os
 from collections import namedtuple
 from multiprocessing.pool import ThreadPool
 from shutil import rmtree
+import subprocess
 from tempfile import TemporaryDirectory, NamedTemporaryFile
 from threading import Lock
 from .utils import printv, gettempdir, parseFasta, writeFasta
@@ -11,14 +13,16 @@ from .timekeeper import TimeKeeper, KeeperMode
 KMER_LEN = 7
 KMER_PERCENT = 0.55
 
+SUBCLUSTER_AT = 500
+CLUSTER_EVERY = 250 # Aim for x seqs per cluster
 
 def find_kmers(fasta):
     kmers = {}
-    for header, sequence in parseFasta(fasta):
+    for header, sequence in fasta.items():
         kmers[header] = set()
         for i in range(0, len(sequence) - KMER_LEN):
             kmer = sequence[i : i + KMER_LEN]
-            if "*" not in kmer:
+            if "*" not in kmer and "-" not in kmer:
                 kmers[header].add(kmer)
     return kmers
 
@@ -36,7 +40,7 @@ def get_start(sequence):
 
 
 def process_genefile(fileread):
-    data = []
+    data = {}
     targets = {}
     reinsertions = {}
     seq_to_first_header = {}
@@ -52,7 +56,7 @@ def process_genefile(fileread):
                     header
                 )
                 continue
-            data.append((header, sequence.replace("-", "")))
+            data[header] = sequence.replace("-", "")
         else:
             targets[header.split("|")[2]] = header
 
@@ -122,9 +126,9 @@ def run_command(args: CmdArgs) -> None:
                 3,
             )  # Debug
             aligned_file = os.path.join(aligned_files_tmp, f"{args.gene}_cluster_1_0")
-            writeFasta(aligned_file, data)
+            writeFasta(aligned_file, data.items())
             if args.debug:
-                writeFasta(os.path.join(this_intermediates, aligned_file), data)
+                writeFasta(os.path.join(this_intermediates, aligned_file), data.items())
             aligned_ingredients.append(aligned_file)
         else:
             printv(
@@ -133,42 +137,54 @@ def run_command(args: CmdArgs) -> None:
                 3,
             )  # Debug
             clusters = []
-            cluster_children = {header: [] for header, _ in data}
-            with NamedTemporaryFile(mode="w+", dir=parent_tmpdir) as tmpfile:
-                writeFasta(tmpfile.name, data)
-                tmpfile.flush()
-
-                kmers = find_kmers(tmpfile.name)
-                master_headers = list(kmers.keys())
-                for i in range(len(master_headers) - 1, -1, -1):  # reverse iteration
-                    master_header = master_headers[i]
-                    master = kmers[master_header]
-                    if master:
-                        for key in master_headers[:i]:
-                            candidate = kmers[key]
-                            if candidate:
-                                similar = master.intersection(candidate)
-                                if len(similar) != 0:
-                                    if (
-                                        len(similar) / min(len(master), len(candidate))
-                                        >= KMER_PERCENT
-                                    ):
-                                        candidate.update(master)
-                                        children = [
-                                            master_header.strip(">")
-                                        ] + cluster_children[master_header.strip(">")]
-                                        cluster_children[key.strip(">")].extend(
-                                            children
-                                        )
-                                        cluster_children[
-                                            master_header.strip(">")
-                                        ] = None
-                                        kmers[master_header] = None
-                                        break
+            cluster_children = {header: [] for header in data}
+            kmers = find_kmers(data)
+            master_headers = list(kmers.keys())
+            for i in range(len(master_headers) - 1, -1, -1):  # reverse iteration
+                master_header = master_headers[i]
+                master = kmers[master_header]
+                if master:
+                    for key in master_headers[:i]:
+                        candidate = kmers[key]
+                        if candidate:
+                            similar = master.intersection(candidate)
+                            if len(similar) != 0:
+                                if (
+                                    len(similar) / min(len(master), len(candidate))
+                                    >= KMER_PERCENT
+                                ):
+                                    candidate.update(master)
+                                    children = [
+                                        master_header.strip(">")
+                                    ] + cluster_children[master_header.strip(">")]
+                                    cluster_children[key.strip(">")].extend(
+                                        children
+                                    )
+                                    cluster_children[
+                                        master_header.strip(">")
+                                    ] = None
+                                    kmers[master_header] = None
+                                    break
 
             for master, children in cluster_children.items():
                 if children is not None:
-                    clusters.append([master, *children])
+                    this_cluster = [master] + children
+                    if len(this_cluster) > SUBCLUSTER_AT:
+                        clusters_to_create = ceil(len(this_cluster) / CLUSTER_EVERY)
+                        with NamedTemporaryFile(mode="w+", dir=parent_tmpdir, suffix=".fa") as this_tmp:
+                            writeFasta(this_tmp.name, [(header, data[header]) for header in this_cluster])  
+                            sig_out = subprocess.run(f"sigclust/sigclust -c {clusters_to_create} {this_tmp.name}", shell=True, stdout=subprocess.PIPE)
+                            sig_out = sig_out.stdout.decode("utf-8")
+                            sub_clusters = {}
+                            for line in sig_out.split("\n"):
+                                line = line.strip()
+                                if line:
+                                    seq_index, clust_index = line.strip().split(',')
+                                    sub_clusters.setdefault(clust_index, []).append(this_cluster[int(seq_index)])
+                            for sub_cluster in sub_clusters.values():
+                                clusters.append(sub_cluster)
+                            continue
+                    clusters.append(this_cluster)
             cluster_time = keeper.differential()
             printv(
                 f"Found {seq_count} sequences over {len(clusters)} clusters. Elapsed time: {keeper.differential():.2f}",
@@ -195,7 +211,7 @@ def run_command(args: CmdArgs) -> None:
                 )
 
                 cluster_seqs = [
-                    (header, sequence) for header, sequence in data if header in cluster
+                    (header, data[header]) for header in cluster
                 ]
 
                 if len(cluster_seqs) == 1:
