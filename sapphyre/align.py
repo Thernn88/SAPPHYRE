@@ -173,7 +173,7 @@ def run_command(args: CmdArgs) -> None:
                         clusters_to_create = ceil(len(this_cluster) / CLUSTER_EVERY)
                         with NamedTemporaryFile(mode="w+", dir=parent_tmpdir, suffix=".fa") as this_tmp:
                             writeFasta(this_tmp.name, [(header, data[header]) for header in this_cluster])  
-                            sig_out = subprocess.run(f"sigclust/sigclust -c {clusters_to_create} {this_tmp.name}", shell=True, stdout=subprocess.PIPE)
+                            sig_out = subprocess.run(f"SigClust/SigClust -c {clusters_to_create} {this_tmp.name}", shell=True, stdout=subprocess.PIPE)
                             sig_out = sig_out.stdout.decode("utf-8")
                             sub_clusters = {}
                             for line in sig_out.split("\n"):
