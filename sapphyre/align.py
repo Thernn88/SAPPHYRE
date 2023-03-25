@@ -12,9 +12,9 @@ from .timekeeper import TimeKeeper, KeeperMode
 
 KMER_LEN = 7
 KMER_PERCENT = 0.55
-
 SUBCLUSTER_AT = 500
 CLUSTER_EVERY = 250 # Aim for x seqs per cluster
+SAFEGUARD_BP  = 15000
 
 def find_kmers(fasta):
     kmers = {}
@@ -75,6 +75,7 @@ CmdArgs = namedtuple(
         "compress",
         "aln_path",
         "debug",
+        "no_singletons",
     ],
 )
 
@@ -215,7 +216,8 @@ def run_command(args: CmdArgs) -> None:
                 ]
 
                 if len(cluster_seqs) == 1:
-                    to_merge.extend(cluster_seqs)
+                    if not args.no_singletons:
+                        to_merge.extend(cluster_seqs)
 
                 else:
                     aligned_ingredients.append(aligned_cluster)
@@ -393,12 +395,24 @@ def do_folder(folder, args):
     os.mkdir(align_path)
 
     genes = [
-        gene
+        (gene, os.stat(os.path.join(aa_path, gene)).st_size)
         for gene in os.listdir(aa_path)
         if gene.split(".")[-1] in ["fa", "gz", "fq", "fastq", "fasta"]
     ]
+    genes.sort(key=lambda x: x[1], reverse=True)
     orthoset_path = os.path.join(args.orthoset_input, args.orthoset)
     aln_path = os.path.join(orthoset_path, ALN_FOLDER)
+    no_singletons = set()
+    for gene in genes:
+        under_safeguard = False
+        for _, seq in parseFasta(os.path.join(args.aln_path, args.gene + ".aln.fa")):
+            if len(seq) >= SAFEGUARD_BP:
+                no_singletons.add(gene)
+                break
+            else:
+                under_safeguard = True
+        if under_safeguard:
+            break
     if not os.path.exists(orthoset_path):
         printv("ERROR: Orthoset path not found.", args.verbose, 0)
         return False
@@ -422,7 +436,7 @@ def do_folder(folder, args):
         lock = None
 
     times = []
-    for file in genes:
+    for file, _ in genes:
         gene = file.split(".")[0]
         gene_file = os.path.join(aa_path, file)
         result_file = os.path.join(align_path, file.rstrip(".gz"))
@@ -439,6 +453,7 @@ def do_folder(folder, args):
                         args.compress,
                         aln_path,
                         args.debug,
+                        gene in no_singletons,
                     )
                 )
             )
@@ -455,6 +470,7 @@ def do_folder(folder, args):
                         args.compress,
                         aln_path,
                         args.debug,
+                        gene in no_singletons,
                     ),
                 )
             )
