@@ -405,7 +405,7 @@ def do_folder(folder, args):
     only_singletons = set()
     for gene in genes:
         under_safeguard = False
-        for _, seq in parseFasta(os.path.join(aln_path, args.gene + ".aln.fa")):
+        for _, seq in parseFasta(os.path.join(aln_path, gene + ".aln.fa")):
             if len(seq) >= SAFEGUARD_BP:
                 only_singletons.add(gene)
                 break
