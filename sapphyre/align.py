@@ -75,7 +75,7 @@ CmdArgs = namedtuple(
         "compress",
         "aln_path",
         "debug",
-        "no_singletons",
+        "only_singletons",
     ],
 )
 
@@ -216,7 +216,7 @@ def run_command(args: CmdArgs) -> None:
                 ]
 
                 if len(cluster_seqs) == 1:
-                    if not args.no_singletons:
+                    if args.only_singletons or len(cluster_seqs) <= SINGLETON_THRESHOLD:
                         to_merge.extend(cluster_seqs)
 
                 else:
@@ -402,12 +402,12 @@ def do_folder(folder, args):
     genes.sort(key=lambda x: x[1], reverse=True)
     orthoset_path = os.path.join(args.orthoset_input, args.orthoset)
     aln_path = os.path.join(orthoset_path, ALN_FOLDER)
-    no_singletons = set()
+    only_singletons = set()
     for gene in genes:
         under_safeguard = False
         for _, seq in parseFasta(os.path.join(args.aln_path, args.gene + ".aln.fa")):
             if len(seq) >= SAFEGUARD_BP:
-                no_singletons.add(gene)
+                only_singletons.add(gene)
                 break
             else:
                 under_safeguard = True
@@ -453,7 +453,7 @@ def do_folder(folder, args):
                         args.compress,
                         aln_path,
                         args.debug,
-                        gene in no_singletons,
+                        gene in only_singletons,
                     )
                 )
             )
@@ -470,7 +470,7 @@ def do_folder(folder, args):
                         args.compress,
                         aln_path,
                         args.debug,
-                        gene in no_singletons,
+                        gene in only_singletons,
                     ),
                 )
             )
