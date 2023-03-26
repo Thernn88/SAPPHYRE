@@ -15,7 +15,6 @@ KMER_PERCENT = 0.55
 SUBCLUSTER_AT = 500
 CLUSTER_EVERY = 250 # Aim for x seqs per cluster
 SAFEGUARD_BP  = 15000
-
 def find_kmers(fasta):
     kmers = {}
     for header, sequence in fasta.items():
@@ -87,7 +86,8 @@ def run_command(args: CmdArgs) -> None:
         with args.lock:
             printv(f"Doing: {args.gene}", args.verbose, 2)
     else:
-        printv(f"Doing: {args.gene}", args.verbose, 2)
+        printv(f"Doing: {args.gene} ", args.verbose, 2)
+    print(args.only_singletons)
     temp_dir = gettempdir()
 
     aligned_ingredients = []
@@ -202,11 +202,7 @@ def run_command(args: CmdArgs) -> None:
             items.sort(key=lambda x: int(x.split("_cluster")[-1]))
 
             for i, cluster in enumerate(clusters):
-                printv(
-                    f"Aligning cluster {i}. Elapsed time: {keeper.differential():.2f}",
-                    args.verbose,
-                    3,
-                )  # Debug
+                
                 aligned_cluster = os.path.join(
                     aligned_files_tmp, f"{args.gene}_cluster_{len(cluster)}_{i}"
                 )
@@ -215,33 +211,43 @@ def run_command(args: CmdArgs) -> None:
                     (header, data[header]) for header in cluster
                 ]
 
-                if len(cluster_seqs) == 1:
-                    if args.only_singletons or len(cluster_seqs) <= SINGLETON_THRESHOLD:
-                        to_merge.extend(cluster_seqs)
+                if args.only_singletons or len(cluster_seqs) == 1:
+                    printv(
+                        f"Storing singleton cluster {i}. Elapsed time: {keeper.differential():.2f}",
+                        args.verbose,
+                        3,
+                    )  # Debug
+                    to_merge.extend(cluster_seqs)
+                    continue
+            
+                printv(
+                    f"Aligning cluster {i}. Elapsed time: {keeper.differential():.2f}",
+                    args.verbose,
+                    3,
+                )  # Debug
 
-                else:
-                    aligned_ingredients.append(aligned_cluster)
-                    raw_cluster = os.path.join(raw_files_tmp, f"{args.gene}_cluster{i}")
-                    writeFasta(raw_cluster, cluster_seqs)
-                    if debug:
-                        writeFasta(
-                            os.path.join(this_intermediates, f"{args.gene}_cluster{i}"),
-                            cluster_seqs,
-                        )
-
-                    command = args.string.format(
-                        in_file=raw_cluster, out_file=aligned_cluster
+                aligned_ingredients.append(aligned_cluster)
+                raw_cluster = os.path.join(raw_files_tmp, f"{args.gene}_cluster{i}")
+                writeFasta(raw_cluster, cluster_seqs)
+                if debug:
+                    writeFasta(
+                        os.path.join(this_intermediates, f"{args.gene}_cluster{i}"),
+                        cluster_seqs,
                     )
 
-                    os.system(command)
-                    if debug:
-                        printv(command, args.verbose, 3)
-                        writeFasta(
-                            os.path.join(
-                                this_intermediates, f"{args.gene}_cluster{i}_aligned"
-                            ),
-                            parseFasta(aligned_cluster),
-                        )
+                command = args.string.format(
+                    in_file=raw_cluster, out_file=aligned_cluster
+                )
+
+                os.system(command)
+                if debug:
+                    printv(command, args.verbose, 3)
+                    writeFasta(
+                        os.path.join(
+                            this_intermediates, f"{args.gene}_cluster{i}_aligned"
+                        ),
+                        parseFasta(aligned_cluster),
+                    )
         align_time = keeper.differential() - cluster_time
         if to_merge:
             merged_singleton_final = os.path.join(
@@ -407,6 +413,7 @@ def do_folder(folder, args):
         under_safeguard = False
         for _, seq in parseFasta(os.path.join(aln_path, gene.split('.')[0] + ".aln.fa")):
             if len(seq) >= SAFEGUARD_BP:
+                printv(f"{gene} will be using Singletons only", args.verbose, 3)
                 only_singletons.add(gene)
                 break
             else:
@@ -453,7 +460,7 @@ def do_folder(folder, args):
                         args.compress,
                         aln_path,
                         args.debug,
-                        gene in only_singletons,
+                        file in only_singletons,
                     )
                 )
             )
@@ -470,7 +477,7 @@ def do_folder(folder, args):
                         args.compress,
                         aln_path,
                         args.debug,
-                        gene in only_singletons,
+                        file in only_singletons,
                     ),
                 )
             )
