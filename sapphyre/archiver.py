@@ -25,7 +25,7 @@ def unarchive_worker(file_to_unarchive, verbosity) -> None:
 def process_folder(args, superfolder_path):
     if not args.specific_directories:
         directories_to_archive = [
-            "mafft",
+            "align",
             "nt_aligned",
             "outlier",
             "trimmed",

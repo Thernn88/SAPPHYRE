@@ -773,7 +773,7 @@ def prepare_taxa_and_genes(
 ) -> Tuple[Generator[Tuple[Path, Path, Path], Any, Any], int]:
     input_path = Path(input)
 
-    joined_mafft = input_path.joinpath(Path("mafft"))
+    joined_align = input_path.joinpath(Path("align"))
     joined_nt = input_path.joinpath(Path("nt"))
     joined_nt_aligned = input_path.joinpath(Path("nt_aligned"))
 
@@ -783,7 +783,7 @@ def prepare_taxa_and_genes(
     glob_aa = sorted(
         [
             i
-            for i in joined_mafft.iterdir()
+            for i in joined_align.iterdir()
             if i.suffix in [".fa", ".gz", ".fq", ".fastq", ".fasta"]
         ],
         key=lambda x: x.name.split(".")[0],

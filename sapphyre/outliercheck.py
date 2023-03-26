@@ -676,7 +676,7 @@ def do_folder(folder, args):
         aa_input = wanted_aa_path
         nt_input = Path(folder, "trimmed", "nt")
     else:
-        aa_input = Path(folder, "mafft")
+        aa_input = Path(folder, "align")
         nt_input = Path(folder, "nt_aligned")
 
     printv(f"Processing: {os.path.basename(folder)}", args.verbose, 0)
