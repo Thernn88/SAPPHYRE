@@ -403,7 +403,7 @@ def do_folder(folder, args):
     orthoset_path = os.path.join(args.orthoset_input, args.orthoset)
     aln_path = os.path.join(orthoset_path, ALN_FOLDER)
     only_singletons = set()
-    for gene in genes:
+    for gene, _ in genes:
         under_safeguard = False
         for _, seq in parseFasta(os.path.join(aln_path, gene + ".aln.fa")):
             if len(seq) >= SAFEGUARD_BP:
