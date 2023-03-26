@@ -87,7 +87,7 @@ def run_command(args: CmdArgs) -> None:
             printv(f"Doing: {args.gene}", args.verbose, 2)
     else:
         printv(f"Doing: {args.gene} ", args.verbose, 2)
-    print(args.only_singletons)
+    #print(args.only_singletons)
     temp_dir = gettempdir()
 
     aligned_ingredients = []
