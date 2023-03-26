@@ -12,8 +12,8 @@ from .timekeeper import TimeKeeper, KeeperMode
 
 KMER_LEN = 7
 KMER_PERCENT = 0.55
-SUBCLUSTER_AT = 500
-CLUSTER_EVERY = 250 # Aim for x seqs per cluster
+SUBCLUSTER_AT = 1000
+CLUSTER_EVERY = 500 # Aim for x seqs per cluster
 SAFEGUARD_BP  = 15000
 def find_kmers(fasta):
     kmers = {}
@@ -415,11 +415,7 @@ def do_folder(folder, args):
             if len(seq) >= SAFEGUARD_BP:
                 printv(f"{gene} will be using Singletons only", args.verbose, 3)
                 only_singletons.add(gene)
-                break
-            else:
-                under_safeguard = True
-        if under_safeguard:
-            break
+                #break
     if not os.path.exists(orthoset_path):
         printv("ERROR: Orthoset path not found.", args.verbose, 0)
         return False
