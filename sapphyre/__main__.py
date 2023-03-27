@@ -86,6 +86,9 @@ def subcmd_diamond(subparsers):
         "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
     )
     par.add_argument(
+        "--exclude", help="Exclude taxa from top 5 filter", action="extend", nargs="+"
+    )
+    par.add_argument(
         "-ovw", "--overwrite", action="store_true", help="Overwrite existing files."
     )
     par.add_argument("-d", "--debug", action="store_true", help="Enable debug out.")

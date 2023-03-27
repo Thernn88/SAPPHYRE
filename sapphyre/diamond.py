@@ -261,7 +261,7 @@ def internal_filtering(gene, hits, debug, internal_percent):
     return {gene: (this_kicks, this_log, kicked_hits)}
 
 
-def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
+def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float, excluded_refs: list) -> list:
     """
     Counts reference taxon in very.tsv file. Returns a list
     containg the 5 most popular names.
@@ -298,7 +298,7 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
         target_count = min(i[1] for i in sorted_counts[0:5])
         target_count = target_count - (target_count * percent)
         total_references = len(sorted_counts)
-        top_names = {x[0] for x in sorted_counts if x[1] >= target_count}
+        top_names = {x[0] for x in sorted_counts if x[1] >= target_count and x[0] not in excluded_refs}
 
     return top_names, total_references, list(header_lines.values()), target_has_hit
 
@@ -453,12 +453,11 @@ def run_process(args, input_path) -> None:
 
     chunks = args.chunks
     chunk_count = itertools.count(1)
-
     global_log = []
     dupe_divy_headers = {}
     with open(out_path) as fp:
         top_refs, total_references, lines, target_has_hit = count_reftaxon(
-            fp, target_to_taxon, args.top_ref
+            fp, target_to_taxon, args.top_ref, args.exclude
         )
     variant_filter = {}
 
