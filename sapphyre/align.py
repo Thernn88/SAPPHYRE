@@ -15,6 +15,8 @@ KMER_PERCENT = 0.55
 SUBCLUSTER_AT = 1000
 CLUSTER_EVERY = 500 # Aim for x seqs per cluster
 SAFEGUARD_BP  = 15000
+SINGLETON_THRESHOLD = 3
+
 def find_kmers(fasta):
     kmers = {}
     for header, sequence in fasta.items():
@@ -211,7 +213,7 @@ def run_command(args: CmdArgs) -> None:
                     (header, data[header]) for header in cluster
                 ]
 
-                if args.only_singletons or len(cluster_seqs) == 1:
+                if args.only_singletons or len(cluster_seqs) < SINGLETON_THRESHOLD:
                     printv(
                         f"Storing singleton cluster {i}. Elapsed time: {keeper.differential():.2f}",
                         args.verbose,
