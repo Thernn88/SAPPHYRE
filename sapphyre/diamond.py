@@ -443,7 +443,7 @@ def run_process(args, input_path) -> None:
                      delimiter="\t", 
                      header=None, 
                      names = ["header", "target", "frame", "evalue", "score", "qstart", "qend", "sstart", "send", "pident"],
-                     dtype = {'header': str, 'target': str, 'frame': int, 'evalue': np.float64, 'score': np.float64, 'qstart': int, 'qend': int, 'sstart': int, 'send': int, 'pident': np.float64})
+                                          dtype = {'header': str, 'target': str, 'frame': "int8", 'evalue': np.float64, 'score': np.float32, 'qstart': "int16", 'qend': "int16", 'sstart': "int32", 'send': "int32", 'pident': np.float16})
     target_counts = df['target'].value_counts()
     combined_count = Counter()
     taxon_to_targets = {}
