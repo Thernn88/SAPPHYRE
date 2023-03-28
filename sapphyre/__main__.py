@@ -112,13 +112,6 @@ def subcmd_diamond(subparsers):
         help="Diamond blast evalue threshold.",
     )
     par.add_argument(
-        "-c",
-        "--chunks",
-        type=int,
-        default=5,
-        help="Amount of chunks to split TSV into for serial processing.",
-    )
-    par.add_argument(
         "-t",
         "--top",
         type=int,

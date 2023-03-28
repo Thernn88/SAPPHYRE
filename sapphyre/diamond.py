@@ -5,6 +5,8 @@ import os
 from shutil import rmtree
 import sys
 from tempfile import TemporaryDirectory, NamedTemporaryFile
+import numpy as np
+import pandas as pd
 import orjson
 from multiprocessing.pool import Pool
 import wrap_rocks
@@ -58,36 +60,22 @@ class Hit:
         "reference_hits",
     )
 
-    def __init__(
-        self,
-        header,
-        ref_header,
-        frame,
-        evalue,
-        score,
-        qstart,
-        qend,
-        sstart,
-        send,
-        pident,
-        gene,
-        reftaxon,
-    ):
-        self.header = header
-        self.target = ref_header
-        self.gene = gene
-        self.reftaxon = reftaxon
-        self.score = float(score)
-        self.qstart = int(qstart)
-        self.qend = int(qend)
-        self.evalue = float(evalue)
+    def __init__(self, df, ref_taxon, ref_gene):
+        self.header = df.header
+        self.target = df.target
+        self.gene = ref_gene
+        self.reftaxon = ref_taxon
+        self.score = float(df.score)
+        self.qstart = int(df.qstart)
+        self.qend = int(df.qend)
+        self.evalue = float(df.evalue)
         self.kick = False
-        self.frame = int(frame)
-        self.sstart = int(sstart)
-        self.send = int(send)
+        self.frame = int(df.frame)
+        self.sstart = int(df.sstart)
+        self.send = int(df.send)
         self.seq = None
-        self.pident = float(pident)
-        self.reference_hits = [reference_hit(ref_header, sstart, send)]
+        self.pident = float(df.pident)
+        self.reference_hits = [reference_hit(self.target, self.sstart, self.send)]
         if self.frame < 0:
             self.qend, self.qstart = self.qstart, self.qend
         self.length = self.qend - self.qstart + 1
@@ -305,24 +293,22 @@ def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
 
 ProcessingArgs = namedtuple(
     "ProcessingArgs",
-    [
-        "lines",
-        "debug",
-        "top_refs",
-        "total_references",
-        "strict_search_mode",
-        "reference_taxa",
-    ],
+    ["headers_to_grab",
+     "grouped_data",
+     "target_to_taxon",
+     "debug",]
 )
-
 
 def process_lines(pargs: ProcessingArgs):
     output = {}
     multi_kicks = 0
     this_log = []
-    for this_lines in pargs.lines:
-        hits = [Hit(*hit.split("\t")) for hit in this_lines]  # convert to Hit object
-        hits = list(filter(lambda x: x.reftaxon in pargs.top_refs, hits))
+    for header in pargs.headers_to_grab:
+        hits = []
+        for _, hit in pargs.grouped_data.get_group(header).iterrows():
+            ref_gene, ref_taxa, _ = pargs.target_to_taxon[hit.target]
+            hits.append(Hit(hit, ref_taxa, ref_gene))
+
         hits.sort(key=lambda x: x.score, reverse=True)
 
         genes_present = {hit.gene for hit in hits}
@@ -350,7 +336,6 @@ def process_lines(pargs: ProcessingArgs):
             output.setdefault(top_hit.gene, []).append(top_hit)
 
     return output, multi_kicks, this_log
-
 
 def run_process(args, input_path) -> None:
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
@@ -451,101 +436,80 @@ def run_process(args, input_path) -> None:
     output = {}
     multi_kicks = 0
 
-    chunks = args.chunks
-    chunk_count = itertools.count(1)
-
     global_log = []
     dupe_divy_headers = {}
-    with open(out_path) as fp:
-        top_refs, total_references, lines, target_has_hit = count_reftaxon(
-            fp, target_to_taxon, args.top_ref
-        )
-    variant_filter = {}
+    df = pd.read_csv(out_path, 
+                     engine="pyarrow", 
+                     delimiter="\t", 
+                     header=None, 
+                     names = ["header", "target", "frame", "evalue", "score", "qstart", "qend", "sstart", "send", "pident"],
+                     dtype = {'header': str, 'target': str, 'frame': int, 'evalue': np.float64, 'score': np.float64, 'qstart': int, 'qend': int, 'sstart': int, 'send': int, 'pident': np.float64})
+    target_counts = df['target'].value_counts()
+    combined_count = Counter()
+    taxon_to_targets = {}
+    for target, count in target_counts.to_dict().items():
+        _, ref_taxa, _ = target_to_taxon[target]
+        taxon_to_targets.setdefault(ref_taxa, []).append(target)
+        combined_count[ref_taxa] += count
 
-    for target, ref_tuple in target_to_taxon.items():
-        gene, ref_taxon, data_length = ref_tuple
-        if ref_taxon in top_refs:
-            variant_filter.setdefault(gene, []).append((ref_taxon, target, data_length))
+    top_refs = set()
+    top_targets = set()
+    for i, common_tuple in enumerate(combined_count.most_common()):
+        ref_taxa, count = common_tuple
+        if i <= 5:
+            this_limit = count - (count * args.top_ref)
+            top_refs.add(ref_taxa)
+            top_targets.update(taxon_to_targets[ref_taxa])
+            continue
 
-    dict_items = list(variant_filter.items())
-    for gene, targets in dict_items:
-        target_taxons = [i[0] for i in targets]
-        if len(target_taxons) != len(list(set(target_taxons))):
-            this_counts = Counter(target_taxons)
-            out_targets = [i[1] for i in targets if this_counts[i[0]] == 1]
-            for target, count in this_counts.most_common():
-                if count == 1:
-                    continue
+        if count >= this_limit:
+            top_refs.add(ref_taxa)
+            top_targets.update(taxon_to_targets[ref_taxa])
+        
+    filtered_df = df[(df['target'].isin(top_targets))]
+    target_has_hit = set(df["target"].unique())
+    headers = filtered_df['header'].unique()
+    if len(headers) > 0:
+        filtered_df = filtered_df.groupby('header')
 
-                this_targets = [i for i in targets if i[0] == target]
-                variants_with_hits = sum(i[1] in target_has_hit for i in this_targets)
-                all_variants_kicked = variants_with_hits == 0
-                if all_variants_kicked:
-                    reintroduce = max(this_targets, key=lambda x: x[2])
-                    out_targets.append(reintroduce[1])
-                    continue
-
-                out_targets.extend(
-                    [i[1] for i in this_targets if i[1] in target_has_hit]
-                )
-
-            variant_filter[gene] = out_targets
-        else:
-            variant_filter.pop(gene, -1)
-
-    variant_filter = {k: list(v) for k, v in variant_filter.items()}
-    db.put_bytes("getall:target_variants", orjson.dumps(variant_filter))
-
-    del variant_filter
-
-    printv(
-        f"Processing {chunks} chunk(s). Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
-        args.verbose,
-    )
-    if lines:
-        per_thread = ceil(ceil(len(lines) / chunks) / num_threads)
-        for i in range(0, chunks * num_threads, num_threads):
-            printv(
-                f"Processing chunk {next(chunk_count)}. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
-                args.verbose,
+        per_thread = ceil(len(headers) / args.processes)
+        arguments = [
+            (
+                ProcessingArgs(
+                    headers[i:i+per_thread],
+                    filtered_df,
+                    target_to_taxon,
+                    args.debug,
+                ),
             )
+            for i in range(0, len(headers), per_thread)
+        ]
 
-            arguments = [
-                (
-                    ProcessingArgs(
-                        lines[(per_thread * j) : (per_thread * (j + 1))],
-                        args.debug,
-                        top_refs,
-                        total_references,
-                        strict_search_mode,
-                        reference_taxa,
-                    ),
-                )
-                for j in range(i, i + num_threads)
-            ]
+        printv(
+            f"Processing data. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
+            args.verbose,
+        )
 
-            with Pool(num_threads) as p:
-                result = p.starmap(process_lines, arguments)
-            del arguments
-            for this_output, mkicks, this_log in result:
-                for gene, hits in this_output.items():
-                    if gene not in output:
-                        output[gene] = hits
-                    else:
-                        output[gene].extend(hits)
+        with Pool(num_threads) as p:
+            result = p.starmap(process_lines, arguments)
 
-                multi_kicks += mkicks
+        del arguments
+        for this_output, mkicks, this_log in result:
+            for gene, hits in this_output.items():
+                if gene not in output:
+                    output[gene] = hits
+                else:
+                    output[gene].extend(hits)
 
-                if args.debug:
-                    global_log.extend(this_log)
-            del this_output, mkicks, this_log, result
+            multi_kicks += mkicks
+
+            if args.debug:
+                global_log.extend(this_log)
+        del this_output, mkicks, this_log, result
         printv(
             f"Processed. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
             args.verbose,
         )
-
-        nt_db.put("getall:valid_refs", ",".join(list(top_refs)))
-        del top_refs
 
         requires_internal = {}
         internal_order = []
@@ -653,10 +617,50 @@ def run_process(args, input_path) -> None:
         data = orjson.dumps(gene_dupe_count)
         nt_db.put_bytes(key, data)
 
-        del db
-        del nt_db
+    # DOING VARIANT FILTER
+    variant_filter = {}
 
-        printv(f"Took {time_keeper.differential():.2f}s overall.", args.verbose)
+    for target, ref_tuple in target_to_taxon.items():
+        gene, ref_taxon, data_length = ref_tuple
+        if ref_taxon in top_refs:
+            variant_filter.setdefault(gene, []).append((ref_taxon, target, data_length))
+
+    dict_items = list(variant_filter.items())
+    for gene, targets in dict_items:
+        target_taxons = [i[0] for i in targets]
+        if len(target_taxons) != len(list(set(target_taxons))):
+            this_counts = Counter(target_taxons)
+            out_targets = [i[1] for i in targets if this_counts[i[0]] == 1]
+            for target, count in this_counts.most_common():
+                if count == 1:
+                    continue
+
+                this_targets = [i for i in targets if i[0] == target]
+                variants_with_hits = sum(i[1] in target_has_hit for i in this_targets)
+                all_variants_kicked = variants_with_hits == 0
+                if all_variants_kicked:
+                    reintroduce = max(this_targets, key=lambda x: x[2])
+                    out_targets.append(reintroduce[1])
+                    continue
+
+                out_targets.extend(
+                    [i[1] for i in this_targets if i[1] in target_has_hit]
+                )
+
+            variant_filter[gene] = out_targets
+        else:
+            variant_filter.pop(gene, -1)
+
+    variant_filter = {k: list(v) for k, v in variant_filter.items()}
+    db.put_bytes("getall:target_variants", orjson.dumps(variant_filter))
+
+    del variant_filter
+    nt_db.put("getall:valid_refs", ",".join(list(top_refs)))
+    del top_refs
+    del db
+    del nt_db
+
+    printv(f"Took {time_keeper.differential():.2f}s overall.", args.verbose)
 
 
 def main(args):
