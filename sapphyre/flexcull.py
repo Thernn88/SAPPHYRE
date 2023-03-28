@@ -848,6 +848,11 @@ def do_gene(
 
         aa_out = [i for i in aa_out if i is not None]
         if len(aa_out) != len(references):
+            this_empties = set() # To refactor, bandaid
+            for header, sequence in aa_out:
+                if len(sequence) - sequence.count("-") <= fargs.bp:
+                    this_empties.add(header)
+
             writeFasta(aa_out_path, aa_out, fargs.compress)
 
             nt_file_name = make_nt(fargs.aa_file)
@@ -858,31 +863,32 @@ def do_gene(
             nt_out_path = os.path.join(fargs.output, "nt", nt_file_name.rstrip(".gz"))
             nt_out = references.copy()
             for header, sequence in candidates:
-                gene = header.split("|")[0]
-                kick, cull_start, cull_end, positions_to_trim = follow_through[header]
+                if header not in this_empties:
+                    gene = header.split("|")[0]
+                    kick, cull_start, cull_end, positions_to_trim = follow_through[header]
 
-                if not kick:
-                    cull_start_adjusted = cull_start * 3
-                    cull_end_adjusted = cull_end * 3
+                    if not kick:
+                        cull_start_adjusted = cull_start * 3
+                        cull_end_adjusted = cull_end * 3
 
-                    out_line = ("-" * cull_start_adjusted) + sequence[
-                        cull_start_adjusted:cull_end_adjusted
-                    ]
+                        out_line = ("-" * cull_start_adjusted) + sequence[
+                            cull_start_adjusted:cull_end_adjusted
+                        ]
 
-                    characters_till_end = len(sequence) - len(out_line)
-                    out_line += (
-                        "-" * characters_till_end
-                    )  # Add dashes till reached input distance
+                        characters_till_end = len(sequence) - len(out_line)
+                        out_line += (
+                            "-" * characters_till_end
+                        )  # Add dashes till reached input distance
 
-                    out_line = [
-                        out_line[i : i + 3]
-                        if i not in positions_to_trim and i not in this_column_cull
-                        else "---"
-                        for i in range(0, len(out_line), 3)
-                    ]
-                    out_line = "".join(out_line)
+                        out_line = [
+                            out_line[i : i + 3]
+                            if i not in positions_to_trim and i not in this_column_cull
+                            else "---"
+                            for i in range(0, len(out_line), 3)
+                        ]
+                        out_line = "".join(out_line)
 
-                    nt_out.append((header, out_line))
+                        nt_out.append((header, out_line))
             nt_out = align_col_removal(nt_out, aa_positions_to_keep)
             out_nt = []
             for header, sequence in nt_out:
