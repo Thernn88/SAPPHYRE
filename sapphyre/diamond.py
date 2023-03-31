@@ -1,10 +1,11 @@
-from collections import Counter, namedtuple
+from collections import Counter, defaultdict, namedtuple
 import itertools
 from math import ceil
 import os
 from shutil import rmtree
 import sys
 from tempfile import TemporaryDirectory, NamedTemporaryFile
+from time import time
 import numpy as np
 import pandas as pd
 import orjson
@@ -60,21 +61,12 @@ class Hit:
         "reference_hits",
     )
 
-    def __init__(self, df, ref_taxon, ref_gene):
-        self.header = df.header
-        self.target = df.target
-        self.gene = ref_gene
-        self.reftaxon = ref_taxon
-        self.score = float(df.score)
-        self.qstart = int(df.qstart)
-        self.qend = int(df.qend)
-        self.evalue = float(df.evalue)
+    def __init__(self, df):
+        self.header, self.target, self.frame, self.evalue, self.score, self.qstart, self.qend, self.sstart, self.send, self.pident = df
+        self.gene = None
+        self.reftaxon = None
         self.kick = False
-        self.frame = int(df.frame)
-        self.sstart = int(df.sstart)
-        self.send = int(df.send)
         self.seq = None
-        self.pident = float(df.pident)
         self.reference_hits = [reference_hit(self.target, self.sstart, self.send)]
         if self.frame < 0:
             self.qend, self.qstart = self.qstart, self.qend
@@ -249,48 +241,6 @@ def internal_filtering(gene, hits, debug, internal_percent):
     return {gene: (this_kicks, this_log, kicked_hits)}
 
 
-def count_reftaxon(file_pointer, taxon_lookup: dict, percent: float) -> list:
-    """
-    Counts reference taxon in very.tsv file. Returns a list
-    containg the 5 most popular names.
-    Possible speed if we cut the string at the : and only
-    lookup names after we know the counts?
-    """
-    rextaxon_count = {}
-    header_lines = {}
-    current_header = None
-    target_has_hit = set()
-
-    for line in file_pointer:
-        header, ref_header_pair, frame = line.split("\t")[:3]
-        if hash(header) != current_header:
-            current_header = hash(header)
-            ref_variation_filter = set()
-
-        ref_gene, ref_taxon, _ = taxon_lookup[ref_header_pair]
-
-        target_has_hit.add(ref_header_pair)
-
-        ref_variation_key = header + ref_taxon
-        if not ref_variation_key in ref_variation_filter:
-            ref_variation_filter.add(ref_variation_key)
-            rextaxon_count[ref_taxon] = rextaxon_count.get(ref_taxon, 0) + 1
-        header_lines.setdefault(header + frame, []).append(
-            line.strip() + f"\t{ref_gene}\t{ref_taxon}"
-        )
-    sorted_counts = list(rextaxon_count.items())
-    top_names = []
-    total_references = 0
-    if sorted_counts:
-        sorted_counts.sort(key=lambda x: x[1], reverse=True)
-        target_count = min(i[1] for i in sorted_counts[0:5])
-        target_count = target_count - (target_count * percent)
-        total_references = len(sorted_counts)
-        top_names = {x[0] for x in sorted_counts if x[1] >= target_count}
-
-    return top_names, total_references, list(header_lines.values()), target_has_hit
-
-
 ProcessingArgs = namedtuple(
     "ProcessingArgs",
     ["headers_to_grab",
@@ -299,17 +249,23 @@ ProcessingArgs = namedtuple(
      "debug",]
 )
 
+def lst(): return []
+
 def process_lines(pargs: ProcessingArgs):
-    output = {}
+    output = defaultdict(lst)
     multi_kicks = 0
     this_log = []
-    for header in pargs.headers_to_grab:
-        hits = []
-        for _, hit in pargs.grouped_data.get_group(header).iterrows():
-            ref_gene, ref_taxa, _ = pargs.target_to_taxon[hit.target]
-            hits.append(Hit(hit, ref_taxa, ref_gene))
 
-        hits.sort(key=lambda x: x.score, reverse=True)
+    filtered_df = pargs.grouped_data.groupby('header')
+    for header in pargs.headers_to_grab:
+        # Convert each row in the dataframe to a Hit() object
+        hits = np.apply_along_axis(Hit, axis=1, arr=filtered_df.get_group(header).values)
+        # Add reference data to each
+        for hit in hits:
+            hit.gene, hit.reftaxon, _ = pargs.target_to_taxon[hit.target]
+            
+
+        hits = hits[np.argsort([hit.score for hit in hits])]
 
         genes_present = {hit.gene for hit in hits}
 
@@ -319,23 +275,25 @@ def process_lines(pargs: ProcessingArgs):
             if pargs.debug:
                 this_log.extend(log)
 
-        if hits:
+        if any(hits):
             top_hit = hits[0]
+            top_gene = top_hit.gene
             close_hit = min(hits[:SEARCH_DEPTH], key=lambda x: x.length)
             if close_hit.pident >= top_hit.pident + 15.0:
                 top_hit = close_hit
             ref_seqs = []
             for hit in hits:
-                if hit.gene == top_hit.gene and hit != top_hit:
+                if hit.gene == top_gene and hit != top_hit:
                     ref_seqs.append(reference_hit(hit.target, hit.sstart, hit.send))
 
             top_hit.reference_hits.extend(ref_seqs)
 
             top_hit.convert_reference_hits()
 
-            output.setdefault(top_hit.gene, []).append(top_hit)
+            output[top_gene].append(top_hit)
 
     return output, multi_kicks, this_log
+
 
 def run_process(args, input_path) -> None:
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
@@ -470,8 +428,6 @@ def run_process(args, input_path) -> None:
     target_has_hit = set(df["target"].unique())
     headers = filtered_df['header'].unique()
     if len(headers) > 0:
-        filtered_df = filtered_df.groupby('header')
-
         per_thread = ceil(len(headers) / args.processes)
         arguments = [
             (
