@@ -243,8 +243,7 @@ def internal_filtering(gene, hits, debug, internal_percent):
 
 ProcessingArgs = namedtuple(
     "ProcessingArgs",
-    ["headers_to_grab",
-     "grouped_data",
+    ["grouped_data",
      "target_to_taxon",
      "debug",]
 )
@@ -255,42 +254,43 @@ def process_lines(pargs: ProcessingArgs):
     output = defaultdict(lst)
     multi_kicks = 0
     this_log = []
+    
 
-    filtered_df = pargs.grouped_data.groupby('header')
-    for header in pargs.headers_to_grab:
+    for header, header_df in pargs.grouped_data.groupby("header"):
+        frame_to_hits = defaultdict(lst)
         # Convert each row in the dataframe to a Hit() object
-        hits = np.apply_along_axis(Hit, axis=1, arr=filtered_df.get_group(header).values)
+        hits = np.apply_along_axis(Hit, axis=1, arr=header_df.values)
         # Add reference data to each
         for hit in hits:
             hit.gene, hit.reftaxon, _ = pargs.target_to_taxon[hit.target]
-            
+            frame_to_hits[hit.frame].append(hit)
 
-        hits = hits[np.argsort([hit.score for hit in hits])]
+        for hits in frame_to_hits.values():
+            hits.sort(key = lambda x: x.score, reverse=True)
 
-        genes_present = {hit.gene for hit in hits}
+            genes_present = {hit.gene for hit in hits}
 
-        if len(genes_present) > 1:
-            hits, this_kicks, log = multi_filter(hits, pargs.debug)
-            multi_kicks += this_kicks
-            if pargs.debug:
-                this_log.extend(log)
+            if len(genes_present) > 1:
+                hits, this_kicks, log = multi_filter(hits, pargs.debug)
+                multi_kicks += this_kicks
+                if pargs.debug:
+                    this_log.extend(log)
 
-        if any(hits):
-            top_hit = hits[0]
-            top_gene = top_hit.gene
-            close_hit = min(hits[:SEARCH_DEPTH], key=lambda x: x.length)
-            if close_hit.pident >= top_hit.pident + 15.0:
-                top_hit = close_hit
-            ref_seqs = []
-            for hit in hits:
-                if hit.gene == top_gene and hit != top_hit:
-                    ref_seqs.append(reference_hit(hit.target, hit.sstart, hit.send))
+            if any(hits):
+                top_hit = hits[0]
+                top_gene = top_hit.gene
+                close_hit = min(hits[:SEARCH_DEPTH], key=lambda x: x.length)
+                if close_hit.pident >= top_hit.pident + 15.0:
+                    top_hit = close_hit
+                ref_seqs = []
+                for hit in hits:
+                    if hit.gene == top_gene and hit != top_hit:
+                        ref_seqs.append(reference_hit(hit.target, hit.sstart, hit.send))
 
-            top_hit.reference_hits.extend(ref_seqs)
+                top_hit.reference_hits.extend(ref_seqs)
+                top_hit.convert_reference_hits()
 
-            top_hit.convert_reference_hits()
-
-            output[top_gene].append(top_hit)
+                output[top_gene].append(top_hit)
 
     return output, multi_kicks, this_log
 
@@ -429,17 +429,18 @@ def run_process(args, input_path) -> None:
     headers = filtered_df['header'].unique()
     if len(headers) > 0:
         per_thread = ceil(len(headers) / args.processes)
-        arguments = [
-            (
-                ProcessingArgs(
-                    headers[i:i+per_thread],
-                    filtered_df,
-                    target_to_taxon,
-                    args.debug,
-                ),
+        arguments = []
+        for i in range(0, len(headers), per_thread):
+            set_headers = set(headers[i:i+per_thread])
+            arguments.append(
+                (
+                    ProcessingArgs(
+                        filtered_df[(filtered_df['header'].isin(set_headers))],
+                        target_to_taxon,
+                        args.debug,
+                    ),
+                )
             )
-            for i in range(0, len(headers), per_thread)
-        ]
 
         printv(
             f"Processing data. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
