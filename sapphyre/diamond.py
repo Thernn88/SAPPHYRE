@@ -19,6 +19,25 @@ from .timekeeper import TimeKeeper, KeeperMode
 # How many extra hits to scan looking for a shortest match.
 SEARCH_DEPTH = 5
 
+# Global variables for the multi_filter function.
+MULTI_PERCENTAGE_OF_OVERLAP = 0.3
+MULTI_SCORE_DIFFERENCE = 1.05
+
+# namedtuple for the processing arguments.
+ProcessingArgs = namedtuple(
+    "ProcessingArgs",
+    ["grouped_data",
+     "target_to_taxon",
+     "debug",]
+)
+
+# Define a function lst that returns an empty list when called.
+# This function will be used as the default_factory argument for a defaultdict object.
+def lst() -> list: return []
+
+# call the phymmr_tools.Hit class using an unpacked list of values found in the row input.
+# def create_hit(row) -> Hit:
+#     return Hit(*row)
 
 class ReferenceHit:
     __slots__ = (
@@ -93,103 +112,159 @@ class Hit:
         }
 
 
+def get_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
+    """
+    Get the overlap between two ranges.
 
+    Args:
+        a_start (int): The starting position of range A.
+        a_end (int): The ending position of range A.
+        b_start (int): The starting position of range B.
+        b_end (int): The ending position of range B.
 
-def get_overlap(a_start, a_end, b_start, b_end):
+    Returns:
+        int: The number of elements in the overlap between the two ranges.
+    """
+    # Calculate the left most position out of each range's end.
     overlap_end = min(a_end, b_end)
+    # Calculate the right most position out of each range's start.
     overlap_start = max(a_start, b_start)
-    amount = (overlap_end - overlap_start) + 1  # inclusive
 
-    return 0 if amount < 0 else amount
-
-
-def get_difference(scoreA, scoreB):
-    """
-    Returns decimal difference of two scores
-    """
-    if scoreA == 0 or scoreB == 0:
+    # If the ranges do not overlap, return 0.
+    if overlap_end < overlap_start:
         return 0
-    return max(scoreA, scoreB) / min(scoreA, scoreB)
 
+    # Calculate the number of elements in the overlap.
+    amount = (overlap_end - overlap_start) + 1
+    return amount
 
-def multi_filter(hits, debug):
-    kick_happend = True
+def get_score_difference(score_a: float, score_b: float) -> float:
+    """
+    Get the decimal difference between two scores.
 
+    Args:
+        score_a (float): The first score.
+        score_b (float): The second score.
+
+    Returns:
+        float: The decimal difference between the two scores.
+    """
+    # If either score is zero return zero.
+    if score_a == 0.0 or score_b == 0.0:
+        return 0.0
+    
+    # Return the decimal difference between the largest score and the smallest score.
+    return max(score_a, score_b) / min(score_a, score_b)
+
+def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
+    """
+    Filters a list of hits and returns a tuple with the passed hits, number of failed hits, and a log.
+
+    The filter will recursively check the highest scoring hit against all the lower scoring hits 
+    and remove any that are within 30% of the highest scoring hit and have a score difference of 
+    5% or more. If the difference is not greater than 5% the hit will be marked as a miniscule 
+    hit and all corresponding hits for that read will be removed. This is done to ensure that 
+    the read maps to a single gene rather than ambiguously between multiple genes
+
+    Args:
+        hits (list): list of hits sorted by score descending to filter.
+        debug (bool): Whether to log debug information or not.
+
+    Returns:
+        tuple[list, int, list]: 
+            A tuple containing the passed hits, the number of failed hits, and a log of debug
+            information (if debug is True otherwise the log will be empty).
+    """
+    kick_happened = True
     log = []
 
-    while kick_happend:
-        kick_happend = False
+    # Recur check while a kick has happened.
+    while kick_happened:
+        kick_happened = False
+        # Assign the highest scoring hit as the master
         master = hits[0]
+
+        # Assign all the lower scoring hits as candidates
         candidates = hits[1:]
 
+        # Get the start and end of the master hit
         master_env_start = master.qstart
         master_env_end = master.qend
 
         miniscule_score = False
         for i, candidate in enumerate(candidates, 1):
-            if candidate:
-                if master.gene != candidate.gene:
-                    distance = (master_env_end - master_env_start) + 1  # Inclusive
-                    amount_of_overlap = get_overlap(
-                        master_env_start,
-                        master_env_end,
-                        candidate.qstart,
-                        candidate.qend,
-                    )
-                    percentage_of_overlap = amount_of_overlap / distance
+            # Skip if the candidate has been kicked already:
+            if not candidate:
+                continue
+            # Ensure master and candidate aren't internal hits
+            if master.gene == candidate.gene:
+                continue
 
-                    if percentage_of_overlap >= 0.3:  # min_overlap_multi:
-                        score_difference = get_difference(master.score, candidate.score)
-                        if score_difference >= 1.05:
-                            kick_happend = True
-                            hits[i] = None
-                            candidates[i - 1] = None
-                            if debug:
-                                log.append(
-                                    (
-                                        candidate.gene,
-                                        candidate.header,
-                                        candidate.reftaxon,
-                                        candidate.score,
-                                        candidate.qstart,
-                                        candidate.qend,
-                                        "Kicked out by",
-                                        master.gene,
-                                        master.header,
-                                        master.reftaxon,
-                                        master.score,
-                                        master.qstart,
-                                        master.qend,
-                                    )
-                                )
-                        else:
-                            miniscule_score = True
-                            break
-        if miniscule_score:
-            if debug:
-                log.extend(
-                    [
-                        (
-                            hit.gene,
-                            hit.header,
-                            hit.reftaxon,
-                            hit.score,
-                            hit.qstart,
-                            hit.qend,
-                            "Kicked due to miniscule score",
+            # Get the distance between the master and candidate
+            distance = master_env_end - master_env_start
+
+            # Get the amount and percentage overlap between the master and candidate
+            amount_of_overlap = get_overlap(
+                master_env_start, 
+                master_env_end, 
+                candidate.qstart, 
+                candidate.qend
+            )
+            percentage_of_overlap = amount_of_overlap / distance
+
+            # If the overlap is greater than 30% and the score difference is greater than 5%
+            if percentage_of_overlap >= MULTI_PERCENTAGE_OF_OVERLAP:
+                score_difference = get_score_difference(master.score, candidate.score)
+                if score_difference >= MULTI_SCORE_DIFFERENCE:
+                    # Kick the candidate
+                    kick_happened = True
+                    hits[i] = None
+                    candidates[i - 1] = None
+                    if debug:
+                        log.append((
+                            candidate.gene,
+                            candidate.header,
+                            candidate.reftaxon,
+                            candidate.score,
+                            candidate.qstart,
+                            candidate.qend,
+                            "Kicked out by",
                             master.gene,
                             master.header,
                             master.reftaxon,
                             master.score,
                             master.qstart,
                             master.qend,
-                        )
-                        for hit in hits
-                        if hit
-                    ]
-                )
+                        ))
+                else:
+                    # If the score difference is not greater than 5% trigger miniscule score
+                    miniscule_score = True
+                    break
+
+        # If there is a miniscule score difference kick all hits for this read
+        if miniscule_score:
+            if debug:
+                log.extend([
+                    (
+                        hit.gene,
+                        hit.header,
+                        hit.reftaxon,
+                        hit.score,
+                        hit.qstart,
+                        hit.qend,
+                        "Kicked due to miniscule score",
+                        master.gene,
+                        master.header,
+                        master.reftaxon,
+                        master.score,
+                        master.qstart,
+                        master.qend,
+                    )
+                    for hit in hits if hit
+                ])
             return [], len(hits), log
 
+    # Return the passed hits, the number of failed hits, and a log of debug information
     passes = [i for i in hits if i]
     return passes, len(hits) - len(passes), log
 
@@ -237,23 +312,27 @@ def internal_filter(header_based: dict, debug: bool, internal_percent: float) ->
     return this_kicks, log, kicks
 
 
-def internal_filtering(gene, hits, debug, internal_percent):
+def internal_filtering(gene: str, hits: list, debug: bool, internal_percent: float) -> tuple[str, int, list, list]:
+    """
+    Performs the internal filter on a list of hits and returns a count of the number of hits
+    kicked, a log of the hits kicked, and the list of hits that passed the filter.
+
+    Args:
+        gene (str): The gene that the hits belong to.
+        hits (list): The list of hits to filter.
+        debug (bool): Whether to log debug information or not.
+
+    Returns:
+        tuple[str, int, list, list]:
+            A tuple containing the gene, the number of hits kicked, a log of the hits kicked,
+            and the list of hits that passed the filter.
+    """
+    # Perform the internal filter.
     kicked_hits, this_log, this_kicks = internal_filter(hits, debug, internal_percent)
 
-    return {gene: (this_kicks, this_log, kicked_hits)}
+    # Return the gene, the number of hits kicked, a log of the hits kicked, and the list of hits
+    return (gene, this_kicks, this_log, kicked_hits)
 
-
-ProcessingArgs = namedtuple(
-    "ProcessingArgs",
-    ["grouped_data",
-     "target_to_taxon",
-     "debug",]
-)
-
-def lst(): return []
-
-# def create_hit(row):
-#     return Hit(*row)
 
 def process_lines(pargs: ProcessingArgs):
     output = defaultdict(lst)
@@ -492,9 +571,9 @@ def run_process(args, input_path) -> None:
                 ],
             )
 
-        internal_result = {}
-        for result in internal_results:
-            internal_result.update(result)
+        internal_result = defaultdict(lst)
+        for gene, kick_count, this_log, kicked_hits in internal_results:
+            internal_result[gene] = (kick_count, this_log, kicked_hits)
 
         printv(
             f"Filtering done. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Writing to db",
