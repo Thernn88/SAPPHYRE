@@ -502,10 +502,9 @@ def run_process(args, input_path) -> None:
         if count >= target_count:
             top_refs.add(taxa)
             top_targets.update(taxon_to_targets[taxa])
-        
-    filtered_df = df[(df['target'].isin(top_targets))]
     target_has_hit = set(df["target"].unique())
-    headers = filtered_df['header'].unique()
+    df = df[(df['target'].isin(top_targets))]
+    headers = df['header'].unique()
     if len(headers) > 0:
         per_thread = ceil(len(headers) / args.processes)
         arguments = []
@@ -514,7 +513,7 @@ def run_process(args, input_path) -> None:
             arguments.append(
                 (
                     ProcessingArgs(
-                        filtered_df[(filtered_df['header'].isin(set_headers))],
+                        df[(df['header'].isin(set_headers))],
                         target_to_taxon,
                         args.debug,
                     ),
