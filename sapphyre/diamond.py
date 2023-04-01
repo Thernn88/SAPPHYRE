@@ -5,13 +5,13 @@ import os
 from shutil import rmtree
 import sys
 from tempfile import TemporaryDirectory, NamedTemporaryFile
-from time import time
 import numpy as np
 import pandas as pd
 import orjson
 from multiprocessing.pool import Pool
 import wrap_rocks
 
+# from phymmr_tools import Hit, ReferenceHit
 from .utils import printv, gettempdir
 from .timekeeper import TimeKeeper, KeeperMode
 
@@ -20,7 +20,7 @@ from .timekeeper import TimeKeeper, KeeperMode
 SEARCH_DEPTH = 5
 
 
-class reference_hit:
+class ReferenceHit:
     __slots__ = (
         "target",
         "sstart",
@@ -67,7 +67,7 @@ class Hit:
         self.reftaxon = None
         self.kick = False
         self.seq = None
-        self.reference_hits = [reference_hit(self.target, self.sstart, self.send)]
+        self.reference_hits = [ReferenceHit(self.target, self.sstart, self.send)]
         if self.frame < 0:
             self.qend, self.qstart = self.qstart, self.qend
         self.length = self.qend - self.qstart + 1
@@ -91,6 +91,8 @@ class Hit:
             "ali_end": self.qend,
             "reference_hits": self.reference_hits,
         }
+
+
 
 
 def get_overlap(a_start, a_end, b_start, b_end):
@@ -250,23 +252,26 @@ ProcessingArgs = namedtuple(
 
 def lst(): return []
 
+# def create_hit(row):
+#     return Hit(*row)
+
 def process_lines(pargs: ProcessingArgs):
     output = defaultdict(lst)
     multi_kicks = 0
     this_log = []
     
-
-    for header, header_df in pargs.grouped_data.groupby("header"):
+    for _, header_df in pargs.grouped_data.groupby("header"):
         frame_to_hits = defaultdict(lst)
         # Convert each row in the dataframe to a Hit() object
         hits = np.apply_along_axis(Hit, axis=1, arr=header_df.values)
+        hits = hits[np.argsort([hit.score for hit in hits])][::-1]
         # Add reference data to each
         for hit in hits:
             hit.gene, hit.reftaxon, _ = pargs.target_to_taxon[hit.target]
             frame_to_hits[hit.frame].append(hit)
 
         for hits in frame_to_hits.values():
-            hits.sort(key = lambda x: x.score, reverse=True)
+            
 
             genes_present = {hit.gene for hit in hits}
 
@@ -285,7 +290,7 @@ def process_lines(pargs: ProcessingArgs):
                 ref_seqs = []
                 for hit in hits:
                     if hit.gene == top_gene and hit != top_hit:
-                        ref_seqs.append(reference_hit(hit.target, hit.sstart, hit.send))
+                        ref_seqs.append(ReferenceHit(hit.target, hit.sstart, hit.send))
 
                 top_hit.reference_hits.extend(ref_seqs)
                 top_hit.convert_reference_hits()
@@ -337,7 +342,6 @@ def run_process(args, input_path) -> None:
             sys.exit(1)
     orthoset_db = wrap_rocks.RocksDB(orthoset_db_path)
 
-    reference_taxa = orjson.loads(orthoset_db.get("getall:taxainset"))
     target_to_taxon = orjson.loads(orthoset_db.get("getall:targetreference"))
 
     del orthoset_db
@@ -412,17 +416,13 @@ def run_process(args, input_path) -> None:
 
     top_refs = set()
     top_targets = set()
-    for i, common_tuple in enumerate(combined_count.most_common()):
-        ref_taxa, count = common_tuple
-        if i <= 5:
-            this_limit = count - (count * args.top_ref)
-            top_refs.add(ref_taxa)
-            top_targets.update(taxon_to_targets[ref_taxa])
-            continue
-
-        if count >= this_limit:
-            top_refs.add(ref_taxa)
-            top_targets.update(taxon_to_targets[ref_taxa])
+    most_common = combined_count.most_common()
+    min_count = min(most_common[0:5], key=lambda x: x[1])[1]
+    target_count = min_count - (min_count * args.top_ref)
+    for taxa, count in most_common:
+        if count >= target_count:
+            top_refs.add(taxa)
+            top_targets.update(taxon_to_targets[taxa])
         
     filtered_df = df[(df['target'].isin(top_targets))]
     target_has_hit = set(df["target"].unique())
