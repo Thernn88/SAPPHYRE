@@ -509,18 +509,21 @@ def run_process(args, input_path) -> None:
         per_thread = ceil(len(headers) / args.processes)
         arguments = []
         indices = []
-        for i in range(0, len(headers), per_thread):
-            first_header = headers[i]
-            last_header = headers[i+per_thread - 1]
-
-            if i == 0 :
-                start_index = np.where(df['header'].values == first_header)[0][0]
+        for x, i in enumerate(range(0, len(headers), per_thread)):
+            if x == 0 :
+                start_index = 0
             else:
                 start_index = end_index + 1
+
+            if x != num_threads:
+                last_header = headers[i+per_thread - 1]
            
-            end_index = np.where(df['header'].values == last_header)[0][-1] 
+                end_index = np.where(df['header'].values == last_header)[0][-1] 
+            else:
+                end_index = len(df) - 1
 
             indices.append((start_index, end_index))
+            
         arguments = [(
                     ProcessingArgs(
                         df.iloc[start_i:end_i+1],
