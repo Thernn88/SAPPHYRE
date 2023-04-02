@@ -379,6 +379,17 @@ def process_lines(pargs: ProcessingArgs):
     return output, multi_kicks, this_log
 
 
+def trim_to_indices(dataframe, start, end) -> pd.DataFrame:
+    """
+    Trims the dataframe to the indices provided.
+
+    Returns:
+        pd.DataFrame: The trimmed dataframe.
+    """
+
+    return dataframe.iloc[start:end]
+
+
 def run_process(args, input_path) -> None:
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     orthoset = args.orthoset
@@ -506,6 +517,7 @@ def run_process(args, input_path) -> None:
     df = df[(df['target'].isin(top_targets))]
     headers = df['header'].unique()
     if len(headers) > 0:
+
         per_thread = ceil(len(headers) / args.processes)
         arguments = []
         indices = []
@@ -522,15 +534,18 @@ def run_process(args, input_path) -> None:
             else:
                 end_index = len(df) - 1
 
-            indices.append((start_index, end_index))
+            indices.append((df, start_index, end_index,))
+
+        with Pool(num_threads) as pool:
+            threaded_trim = pool.starmap(trim_to_indices, indices)
 
         arguments = [(
                     ProcessingArgs(
-                        df.iloc[start_i:end_i+1],
+                        subframe,
                         target_to_taxon,
                         args.debug,
                     ),
-                ) for start_i, end_i in indices]
+                ) for subframe in threaded_trim]
 
         printv(
             f"Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Processing data.",
