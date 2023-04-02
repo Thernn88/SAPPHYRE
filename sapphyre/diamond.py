@@ -10,8 +10,6 @@ import pandas as pd
 import orjson
 from multiprocessing.pool import Pool
 import wrap_rocks
-from multiprocessing import Manager
-from concurrent.futures import ProcessPoolExecutor
 
 # from phymmr_tools import Hit, ReferenceHit
 from .utils import printv, gettempdir
@@ -381,21 +379,6 @@ def process_lines(pargs: ProcessingArgs):
     return output, multi_kicks, this_log
 
 
-def trim_to_indices(arg_tuple: tuple[Manager, int, int]) -> pd.DataFrame:
-    """
-    Trims the dataframe to the indices provided.
-
-    Args:
-        arg_tuple (tuple[Manager, int, int]): The manager, start index, and end index wrapped in a tuple.
-
-    Returns:
-        pd.DataFrame: The trimmed dataframe.
-    """
-    
-    manager, start, end = arg_tuple
-    return manager.dataframe.iloc[start:end]
-
-
 def run_process(args, input_path) -> None:
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     orthoset = args.orthoset
@@ -523,11 +506,6 @@ def run_process(args, input_path) -> None:
     df = df[(df['target'].isin(top_targets))]
     headers = df['header'].unique()
     if len(headers) > 0:
-        manager = Manager()
-        namespace = manager.Namespace()
-        namespace.dataframe = df
-
-
         per_thread = ceil(len(headers) / args.processes)
         arguments = []
         indices = []
@@ -544,18 +522,15 @@ def run_process(args, input_path) -> None:
             else:
                 end_index = len(df) - 1
 
-            indices.append((namespace, start_index, end_index,))
-
-        with ProcessPoolExecutor(num_threads) as pool:
-            threaded_trim = pool.map(trim_to_indices, indices)
+            indices.append((start_index, end_index))
 
         arguments = [(
                     ProcessingArgs(
-                        subframe,
+                        df.iloc[start_i:end_i+1],
                         target_to_taxon,
                         args.debug,
                     ),
-                ) for subframe in threaded_trim]
+                ) for start_i, end_i in indices]
 
         printv(
             f"Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Processing data.",
