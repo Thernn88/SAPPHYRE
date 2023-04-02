@@ -509,8 +509,8 @@ def run_process(args, input_path) -> None:
         per_thread = ceil(len(headers) / args.processes)
         arguments = []
         indices = []
-        for x, i in enumerate(range(0, len(headers), per_thread)):
-            if x == 0 :
+        for x, i in enumerate(range(0, len(headers), per_thread), 1):
+            if x == 1 :
                 start_index = 0
             else:
                 start_index = end_index + 1
@@ -523,7 +523,7 @@ def run_process(args, input_path) -> None:
                 end_index = len(df) - 1
 
             indices.append((start_index, end_index))
-            
+
         arguments = [(
                     ProcessingArgs(
                         df.iloc[start_i:end_i+1],
