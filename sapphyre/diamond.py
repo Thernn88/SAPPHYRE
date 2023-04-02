@@ -533,7 +533,7 @@ def run_process(args, input_path) -> None:
                 ) for start_i, end_i in indices]
 
         printv(
-            f"Processing data. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
+            f"Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Processing data.",
             args.verbose,
         )
 
