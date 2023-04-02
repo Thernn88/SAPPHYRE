@@ -10,6 +10,7 @@ import pandas as pd
 import orjson
 from multiprocessing.pool import Pool
 import wrap_rocks
+import cython
 
 # from phymmr_tools import Hit, ReferenceHit
 from .utils import printv, gettempdir
@@ -30,6 +31,28 @@ ProcessingArgs = namedtuple(
      "target_to_taxon",
      "debug",]
 )
+
+# This function is used to find the index of an item in a list. 
+# Used in place of numpy.where this functions extends numpy's functionality 
+# but includes the ability to set the start position
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def find_index_cython(arr, val, start = 0, find_last = False):
+    if find_last:
+        for i in range(start, len(arr)):
+            if arr[i] == val:
+                while arr[i] == val:
+                    i += 1
+                    if i == len(arr)-1:
+                        return i
+                    
+                return i-1
+    else:
+        for i in range(start, len(arr)):
+            if arr[i] == val:
+                return i
+    return -1
+
 
 # Define a function lst that returns an empty list when called.
 # This function will be used as the default_factory argument for a defaultdict object.
@@ -508,17 +531,26 @@ def run_process(args, input_path) -> None:
     if len(headers) > 0:
         per_thread = ceil(len(headers) / args.processes)
         arguments = []
+        indices = []
+        end_index = 0
         for i in range(0, len(headers), per_thread):
-            set_headers = set(headers[i:i+per_thread])
-            arguments.append(
-                (
+            first_header = headers[i]
+            last_header = headers[i+per_thread - 1]
+
+            #np.where(df['header'].values == first_header)[0][0]
+
+            start_index = find_index_cython(df['header'].values, first_header, end_index, False)
+            end_index = find_index_cython(df['header'].values, last_header, start_index, True)
+
+            indices.append((start_index, end_index))
+
+        arguments = [(
                     ProcessingArgs(
-                        df[(df['header'].isin(set_headers))],
+                        df.iloc[start_i:end_i+1],
                         target_to_taxon,
                         args.debug,
                     ),
-                )
-            )
+                ) for start_i, end_i in indices]
 
         printv(
             f"Processing data. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s",
