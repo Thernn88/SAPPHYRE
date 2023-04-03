@@ -282,7 +282,11 @@ def internal_filter(header_based: dict, debug: bool, internal_percent: float) ->
             overlap_amount = get_overlap(
                 hit_a.qstart, hit_a.qend, hit_b.qstart, hit_b.qend
             )
-            percent = overlap_amount / hit_a.length if overlap_amount > 0 else 0
+            internal_start = min(hit_a.qstart, hit_b.qstart)
+            internal_end = max(hit_a.qend, hit_b.qend)
+            internal_length = internal_end - internal_start
+
+            percent = overlap_amount / internal_length if overlap_amount > 0 else 0
 
             if percent >= internal_percent:
                 kicks += 1
@@ -294,18 +298,19 @@ def internal_filter(header_based: dict, debug: bool, internal_percent: float) ->
                     log.append(
                         (
                             hit_b.gene,
-                            hit_b.header,
+                            hit_b.full_header,
                             hit_b.reftaxon,
-                            hit_b.score,
+                            round(hit_b.score, 2),
                             hit_b.qstart,
                             hit_b.qend,
                             "Internal kicked out by",
                             hit_a.gene,
-                            hit_a.header,
+                            hit_a.full_header,
                             hit_a.reftaxon,
-                            hit_a.score,
+                            round(hit_a.score, 2),
                             hit_a.qstart,
                             hit_a.qend,
+                            round(percent,3),
                         )
                     )
 
