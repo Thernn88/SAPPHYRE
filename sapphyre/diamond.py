@@ -269,6 +269,71 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
     return passes, len(hits) - len(passes), log
 
 
+def internal_filter(header_based: dict, debug: bool, internal_percent: float) -> list:
+    log = []
+    kicks = 0
+    this_kicks = set()
+
+    for hits in header_based.values():
+        for hit_a, hit_b in itertools.combinations(hits, 2):
+            if hit_a.kick or hit_b.kick:
+                continue
+
+            overlap_amount = get_overlap(
+                hit_a.qstart, hit_a.qend, hit_b.qstart, hit_b.qend
+            )
+            percent = overlap_amount / hit_a.length if overlap_amount > 0 else 0
+
+            if percent >= internal_percent:
+                kicks += 1
+                hit_b.kick = True
+
+                this_kicks.add(hit_b.full_header)
+
+                if debug:
+                    log.append(
+                        (
+                            hit_b.gene,
+                            hit_b.header,
+                            hit_b.reftaxon,
+                            hit_b.score,
+                            hit_b.qstart,
+                            hit_b.qend,
+                            "Internal kicked out by",
+                            hit_a.gene,
+                            hit_a.header,
+                            hit_a.reftaxon,
+                            hit_a.score,
+                            hit_a.qstart,
+                            hit_a.qend,
+                        )
+                    )
+
+    return this_kicks, log, kicks
+
+
+def internal_filtering(gene: str, hits: list, debug: bool, internal_percent: float) -> tuple[str, int, list, list]:
+    """
+    Performs the internal filter on a list of hits and returns a count of the number of hits
+    kicked, a log of the hits kicked, and the list of hits that passed the filter.
+
+    Args:
+        gene (str): The gene that the hits belong to.
+        hits (list): The list of hits to filter.
+        debug (bool): Whether to log debug information or not.
+
+    Returns:
+        tuple[str, int, list, list]:
+            A tuple containing the gene, the number of hits kicked, a log of the hits kicked,
+            and the list of hits that passed the filter.
+    """
+    # Perform the internal filter.
+    kicked_hits, this_log, this_kicks = internal_filter(hits, debug, internal_percent)
+
+    # Return the gene, the number of hits kicked, a log of the hits kicked, and the list of hits
+    return (gene, this_kicks, this_log, kicked_hits)
+
+
 def process_lines(pargs: ProcessingArgs):
     output = defaultdict(lst)
     multi_kicks = 0
@@ -471,12 +536,11 @@ def run_process(args, input_path) -> None:
             f"Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Processing data.",
             args.verbose,
         )
-        # Map
+
         with Pool(num_threads) as p:
             result = p.starmap(process_lines, arguments)
 
         del arguments
-        # Reduce
         for this_output, mkicks, this_log in result:
             for gene, hits in this_output.items():
                 if gene not in output:
@@ -490,7 +554,40 @@ def run_process(args, input_path) -> None:
                 global_log.extend(this_log)
         del this_output, mkicks, this_log, result
         printv(
-            f"Processed. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Converting hits to json",
+            f"Processed. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
+            args.verbose,
+        )
+
+        requires_internal = {}
+        internal_order = []
+        for gene, hits in output.items():
+            this_counter = Counter([i.header for i in hits]).most_common()
+            requires_internal[gene] = {}
+            if this_counter[0][1] > 1:
+                this_hits = sum([i[1] for i in this_counter if i[1] > 1])
+                this_common = {i[0] for i in this_counter if i[1] > 1}
+                for hit in [i for i in hits if i.header in this_common]:
+                    requires_internal[gene].setdefault(hit.header, []).append(hit)
+
+                internal_order.append((gene, this_hits))
+
+        internal_order.sort(key=lambda x: x[1], reverse=True)
+
+        with Pool(args.processes) as pool:
+            internal_results = pool.starmap(
+                internal_filtering,
+                [
+                    (gene, requires_internal[gene], args.debug, args.internal_percent)
+                    for gene, _ in internal_order
+                ],
+            )
+
+        internal_result = defaultdict(lst)
+        for gene, kick_count, this_log, kicked_hits in internal_results:
+            internal_result[gene] = (kick_count, this_log, kicked_hits)
+
+        printv(
+            f"Filtering done. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Writing to db",
             args.verbose,
         )
 
@@ -506,13 +603,30 @@ def run_process(args, input_path) -> None:
         del out
 
         passes = 0
+        internal_kicks = 0
         for gene, hits in output.items():
             dupe_divy_headers[gene] = {}
+            kicks = {}
             out = []
-            for hit in hits:
-                hit.seq = head_to_seq[hit.header.split("|")[0]]
-                out.append(hit.to_json())
-                dupe_divy_headers[gene][hit.header] = 1
+            if gene in internal_result:
+                this_kicks, this_log, kicks = internal_result[gene]
+
+                internal_kicks += this_kicks
+                if args.debug:
+                    global_log.extend(this_log)
+
+                out = []
+                if kicks:
+                    for hit in hits:
+                        if hit.full_header not in kicks:
+                            hit.seq = head_to_seq[hit.header.split("|")[0]]
+                            out.append(hit.to_json())
+                            dupe_divy_headers[gene][hit.header] = 1
+            if not kicks:
+                for hit in hits:
+                    hit.seq = head_to_seq[hit.header.split("|")[0]]
+                    out.append(hit.to_json())
+                    dupe_divy_headers[gene][hit.header] = 1
 
             passes += len(out)
             db.put_bytes(f"gethits:{gene}", orjson.dumps(out))
@@ -528,7 +642,11 @@ def run_process(args, input_path) -> None:
             args.verbose,
         )
         printv(
-            f"Took {time_keeper.lap():.2f}s for {multi_kicks} kicks leaving {passes} results. Writing dupes and present gene data",
+            f"{internal_kicks} internal kicks",
+            args.verbose,
+        )
+        printv(
+            f"Took {time_keeper.lap():.2f}s for {multi_kicks+internal_kicks} kicks leaving {passes} results. Writing dupes and present gene data",
             args.verbose,
         )
 
