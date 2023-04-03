@@ -338,25 +338,22 @@ def internal_filtering(gene: str, hits: list, debug: bool, internal_percent: flo
     # Return the gene, the number of hits kicked, a log of the hits kicked, and the list of hits
     return (gene, this_kicks, this_log, kicked_hits)
 
-
 def process_lines(pargs: ProcessingArgs):
-    output = defaultdict(lst)
+    output = defaultdict(list)
     multi_kicks = 0
     this_log = []
-    
+
     for _, header_df in pargs.grouped_data.groupby("header"):
-        frame_to_hits = defaultdict(lst)
+        frame_to_hits = defaultdict(list)
         # Convert each row in the dataframe to a Hit() object
-        hits = np.apply_along_axis(Hit, axis=1, arr=header_df.values)
-        hits = hits[np.argsort([hit.score for hit in hits])][::-1]
+        hits = [Hit(row) for row in header_df.values]
+        hits.sort(key=lambda hit: hit.score, reverse=True)
         # Add reference data to each
         for hit in hits:
             hit.gene, hit.reftaxon, _ = pargs.target_to_taxon[hit.target]
             frame_to_hits[hit.frame].append(hit)
 
         for hits in frame_to_hits.values():
-            
-
             genes_present = {hit.gene for hit in hits}
 
             if len(genes_present) > 1:
@@ -371,11 +368,7 @@ def process_lines(pargs: ProcessingArgs):
                 close_hit = min(hits[:SEARCH_DEPTH], key=lambda x: x.length)
                 if close_hit.pident >= top_hit.pident + 15.0:
                     top_hit = close_hit
-                ref_seqs = []
-                for hit in hits:
-                    if hit.gene == top_gene and hit != top_hit:
-                        ref_seqs.append(ReferenceHit(hit.target, hit.sstart, hit.send))
-
+                ref_seqs = [ReferenceHit(hit.target, hit.sstart, hit.send) for hit in hits if hit.gene == top_gene and hit != top_hit]
                 top_hit.reference_hits.extend(ref_seqs)
                 top_hit.convert_reference_hits()
 
