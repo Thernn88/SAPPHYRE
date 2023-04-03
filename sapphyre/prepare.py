@@ -1,6 +1,4 @@
 from __future__ import annotations
-import os
-from tempfile import NamedTemporaryFile
 
 import orjson
 import re
@@ -18,7 +16,7 @@ import xxhash
 from tqdm import tqdm
 
 from .timekeeper import TimeKeeper, KeeperMode
-from .utils import ConcurrentLogger, parseFasta, writeFasta, gettempdir
+from .utils import ConcurrentLogger, parseFasta, writeFasta
 
 ROCKSDB_FOLDER_NAME = "rocksdb"
 SEQUENCES_FOLDER_NAME = "sequences"
@@ -116,13 +114,13 @@ def glob_for_fasta_and_save_for_runs(
 
 class SeqDeduplicator:
     def __init__(
-        self, db: Any, minimum_sequence_length: int, verbose: int
+        self, fa_file_path: Path, db: Any, minimum_sequence_length: int, verbose: int
     ):
+        self.fa_file_path = fa_file_path
         self.minimum_sequence_length = minimum_sequence_length
         self.verbose = verbose
         self.nt_db = db
-        self.fa_out = []
-        self.index = 0
+        self.recipe = []
 
     def __call__(
         self,
@@ -132,12 +130,16 @@ class SeqDeduplicator:
         transcript_mapped_to: Dict[str, str],
         dupes: count[int],
         this_index: IndexIter,
+        fa_file_out: List[str],
         dedup_time: List[int],
-        fa_file_path: Path,
+        chuksize: int,
+        recipe_index: List[int],
     ):
-        fasta_file = parseFasta(fa_file_path)
+        fasta_file = parseFasta(self.fa_file_path)
 
         for_loop = tqdm(fasta_file) if self.verbose else fasta_file
+        current_batch = []
+        current_count = IndexIter()
 
         for row in for_loop:
             header, parent_seq = row[:2]
@@ -184,10 +186,28 @@ class SeqDeduplicator:
                 # If no dupe, write to prepared file and db
                 next(this_index)
 
-                self.fa_out.append(f">{header}\n{seq}\n")
+                fa_file_out.append((header, seq))
 
-    def get_results(self):
-        return self.fa_out
+                current_batch.append(f">{header}\n{seq}\n")
+
+                if current_count.x > chuksize:
+                    current_count = IndexIter()
+                    recipe_index[0] += 1
+                    self.recipe.append(str(recipe_index[0]))
+
+                    self.nt_db.put(f"ntbatch:{recipe_index[0]}", "".join(current_batch))
+                    current_batch = []
+
+                next(current_count)
+
+        if current_batch:
+            current_count = IndexIter()
+            recipe_index[0] += 1
+            self.recipe.append(str(recipe_index[0]))
+
+            self.nt_db.put(f"ntbatch:{recipe_index[0]}", "".join(current_batch))
+
+        return self.recipe
 
 
 class DatabasePreparer:
@@ -207,6 +227,7 @@ class DatabasePreparer:
         self.fto = formatted_taxa_out
         self.comp = components
         self.trim_times = trim_times
+        self.fa_file_out = []
         self.verbose = verbose
         self.printv = printv
         self.clear_database = clear_database
@@ -247,59 +268,28 @@ class DatabasePreparer:
         self.prepared_file_destination = taxa_destination_directory.joinpath(self.fto)
 
     def dedup(self):
-        dedupe = SeqDeduplicator(
-                    self.nt_db, self.minimum_sequence_length, self.verbose
-                )
+        recipe = []
+        index = [0]
         for fa_file_path in self.comp:
-            dedupe(
+            recipe.extend(
+                SeqDeduplicator(
+                    fa_file_path, self.nt_db, self.minimum_sequence_length, self.verbose
+                )(
                     self.trim_times,
                     self.duplicates,
                     self.rev_comp_save,
                     self.transcript_mapped_to,
                     self.dupes,
                     self.this_index,
+                    self.fa_file_out,
                     self.dedup_time,
-                    fa_file_path,
+                    self.chunk_size,
+                    index,
                 )
-        
-        lines = dedupe.get_results()
-        del dedupe
+            )
 
-        with NamedTemporaryFile(mode="w", dir=gettempdir()) as temp_fa_file, NamedTemporaryFile(mode="w", dir=gettempdir()) as temp_out_dest:
-            temp_fa_file.writelines(lines)
-            temp_fa_file.flush()
-            del lines
-
-            os.system(f'bbduk.sh entropy=0.66 entropywindow=100 entropyk=5 in="{temp_fa_file.name}" out="{temp_out_dest.name}"')
-
-            current_count = IndexIter()
-            current_batch = []
-            recipe_index = IndexIter()
-            recipe = []
-
-            fa_fp = None
-            if not self.keep_prepared:
-                fa_fp = open(self.prepared_file_destination, "w")
-
-            for header, sequence in parseFasta(temp_out_dest.name):
-                current_batch.append(f">{header}\n{sequence}\n")
-                if fa_fp:
-                    fa_fp.write(f">{header}\n{sequence}\n")
-
-                if current_count.x >= self.chunk_size:
-                    current_count = IndexIter()
-                    next(recipe_index)
-                    recipe.append(str(recipe_index.x))
-
-                    self.nt_db.put(f"ntbatch:{recipe_index.x}", "".join(current_batch))
-                    current_batch = []
-
-                    next(current_count)
-            if current_batch:
-                recipe.append(str(recipe_index.x))
-                self.nt_db.put(f"ntbatch:{recipe_index.x}", "".join(current_batch))
-        if fa_fp:
-            fa_fp.close()
+        if self.keep_prepared:
+            writeFasta(self.prepared_file_destination, self.fa_file_out)
 
         recipe_data = ",".join(recipe)
         self.nt_db.put("getall:batches", recipe_data)
