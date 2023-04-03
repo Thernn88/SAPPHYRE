@@ -529,13 +529,13 @@ def run_process(args, input_path) -> None:
 
             indices.append((start_index, end_index))
 
-        arguments = [(
+        arguments = (
                     ProcessingArgs(
                         df.iloc[start_i:end_i+1],
                         target_to_taxon,
                         args.debug,
-                    ),
-                ) for start_i, end_i in indices]
+                        )
+                    for start_i, end_i in indices)
 
         printv(
             f"Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Processing data.",
@@ -543,7 +543,7 @@ def run_process(args, input_path) -> None:
         )
 
         with Pool(num_threads) as p:
-            result = p.starmap(process_lines, arguments)
+            result = p.map(process_lines, arguments)
 
         del arguments
         for this_output, mkicks, this_log in result:
