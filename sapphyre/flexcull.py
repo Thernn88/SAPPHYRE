@@ -50,7 +50,7 @@ FlexcullArgs = namedtuple(
         "mismatches",
         "column_cull_percent",
         "blosum_mode_lower_threshold",
-    ]
+    ],
 )
 
 
@@ -324,7 +324,7 @@ def do_cull(
         # Don't allow cull to point of all dashes
         if char == "-":
             continue
-        
+
         window_start = i
 
         if all_dashes_by_index[i]:
@@ -443,9 +443,7 @@ def get_start_end(sequence: str) -> tuple:
     return start, end
 
 
-def do_gene(
-    fargs: FlexcullArgs
-) -> None:
+def do_gene(fargs: FlexcullArgs) -> None:
     """
     FlexCull main function. Culls input aa and nt using specified amount of matches
     """
@@ -659,7 +657,7 @@ def do_gene(
     if this_seqs:
         this_column_cull = set()
         for nt_i in column_cull:
-            i = nt_i // 3 
+            i = nt_i // 3
             this_sequence = Counter()
             internal_count = 0
             for _, seq, start, end in this_seqs:
@@ -669,13 +667,18 @@ def do_gene(
                         this_sequence[seq[i]] += 1
             # Get the count of the most occuring bp at this position
             if sum(this_sequence.values()) >= 10:
-                if this_sequence.most_common()[0][1] > internal_count/2:
-                    continue   
-            this_column_cull.add(i*3)
+                if this_sequence.most_common()[0][1] > internal_count / 2:
+                    continue
+            this_column_cull.add(i * 3)
 
         if this_column_cull:
             for header, seq, _, _ in this_seqs:
-                new_seq = "".join([let if i*3 not in this_column_cull else "-" for i, let in enumerate(seq)])
+                new_seq = "".join(
+                    [
+                        let if i * 3 not in this_column_cull else "-"
+                        for i, let in enumerate(seq)
+                    ]
+                )
                 if len(new_seq) - new_seq.count("-") <= fargs.bp:
                     follow_through[header] = True, None, None, None
                     continue
@@ -724,10 +727,7 @@ def do_gene(
                 (
                     "Reference Gap Columns DEBUG.",
                     "".join(
-                        [
-                            "#" if i in reference_gap_col else "-"
-                            for i in reference_cols
-                        ]
+                        ["#" if i in reference_gap_col else "-" for i in reference_cols]
                     ),
                 )
             ] + aa_out
@@ -771,9 +771,9 @@ def do_gene(
                             left_side_ref_data_columns = sum(
                                 [gap_present_threshold[x] for x in range(seq_start, i)]
                             )
-                            left_of_trim_data_columns = len(left_after) - left_after.count(
-                                "-"
-                            )
+                            left_of_trim_data_columns = len(
+                                left_after
+                            ) - left_after.count("-")
 
                             right_side_ref_data_columns = sum(
                                 [gap_present_threshold[x] for x in range(i, seq_end)]
@@ -788,23 +788,25 @@ def do_gene(
 
                             if (
                                 get_data_difference(
-                                    left_of_trim_data_columns, left_side_ref_data_columns
+                                    left_of_trim_data_columns,
+                                    left_side_ref_data_columns,
                                 )
                                 < 0.55
                                 and get_data_difference(
-                                    right_of_trim_data_columns, right_side_ref_data_columns
+                                    right_of_trim_data_columns,
+                                    right_side_ref_data_columns,
                                 )
                                 < 0.55
                             ):
-                                keep_left = (
-                                    len(left_after) - left_after.count("-")
-                                    >= len(right_after) - right_after.count("-")
-                                )
+                                keep_left = len(left_after) - left_after.count(
+                                    "-"
+                                ) >= len(right_after) - right_after.count("-")
                                 keep_right = not keep_left
 
                             if (
                                 get_data_difference(
-                                    left_of_trim_data_columns, left_side_ref_data_columns
+                                    left_of_trim_data_columns,
+                                    left_side_ref_data_columns,
                                 )
                                 < 0.55
                                 and not keep_left
@@ -814,7 +816,8 @@ def do_gene(
                                     out_line[x] = "-"
                             if (
                                 get_data_difference(
-                                    right_of_trim_data_columns, right_side_ref_data_columns
+                                    right_of_trim_data_columns,
+                                    right_side_ref_data_columns,
                                 )
                                 < 0.55
                                 and not keep_right
@@ -832,7 +835,9 @@ def do_gene(
                     if bp_after_cull < fargs.bp:
                         if fargs.debug:
                             removed_section = sequence[:seq_start] + sequence[seq_end:]
-                            data_removed = len(removed_section) - removed_section.count("-")
+                            data_removed = len(removed_section) - removed_section.count(
+                                "-"
+                            )
                             log.append(
                                 gene
                                 + ","
@@ -945,7 +950,31 @@ def do_folder(folder, args: MainArgs):
         arguments = []
         for input_gene in file_inputs:
             arguments.append(
-                (FlexcullArgs(
+                (
+                    FlexcullArgs(
+                        aa_path,
+                        nt_path,
+                        output_path,
+                        args.matches,
+                        input_gene,
+                        args.debug,
+                        args.base_pair,
+                        args.verbose,
+                        args.compress,
+                        args.gap_threshold,
+                        args.mismatches,
+                        args.column_cull,
+                        blosum_mode_lower_threshold,
+                    ),
+                )
+            )
+
+        with Pool(args.processes) as pool:
+            log_components = pool.starmap(do_gene, arguments, chunksize=1)
+    else:
+        log_components = [
+            do_gene(
+                FlexcullArgs(
                     aa_path,
                     nt_path,
                     output_path,
@@ -959,28 +988,8 @@ def do_folder(folder, args: MainArgs):
                     args.mismatches,
                     args.column_cull,
                     blosum_mode_lower_threshold,
-                ),
-            ))
-
-        with Pool(args.processes) as pool:
-            log_components = pool.starmap(do_gene, arguments, chunksize=1)
-    else:
-        log_components = [
-            do_gene(FlexcullArgs(
-                aa_path,
-                nt_path,
-                output_path,
-                args.matches,
-                input_gene,
-                args.debug,
-                args.base_pair,
-                args.verbose,
-                args.compress,
-                args.gap_threshold,
-                args.mismatches,
-                args.column_cull,
-                blosum_mode_lower_threshold,
-            ))
+                )
+            )
             for input_gene in file_inputs
         ]
 

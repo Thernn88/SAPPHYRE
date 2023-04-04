@@ -70,11 +70,19 @@ class Hit:
 
     def get_bp_trim(self, this_aa, references, matches, mode, debug_fp, header):
         if mode == "exact":
-            def dist(a, b, _): return a == b and a != "-" and b != "-"
+
+            def dist(a, b, _):
+                return a == b and a != "-" and b != "-"
+
         elif mode == "strict":
-            def dist(a, b, mat): return mat[a][b] > 0.0 and a != "-" and b != "-"
+
+            def dist(a, b, mat):
+                return mat[a][b] > 0.0 and a != "-" and b != "-"
+
         else:  # lax
-            def dist(a, b, mat): return mat[a][b] >= 0.0 and a != "-" and b != "-"
+
+            def dist(a, b, mat):
+                return mat[a][b] >= 0.0 and a != "-" and b != "-"
 
         mat = bl.BLOSUM(62)
         reg_starts = []
@@ -112,7 +120,7 @@ class Hit:
                         l_exact_matches += 1
 
                     if not dist(ref_seq[i + j], this_aa[i + j], mat):
-                        if j == 0 or this_aa[i+j] == "*":
+                        if j == 0 or this_aa[i + j] == "*":
                             this_pass = False
                             break
                         l_mismatch -= 1
@@ -142,7 +150,7 @@ class Hit:
                         r_exact_matches += 1
 
                     if not dist(ref_seq[i - j], this_aa[i - j], mat):
-                        if j == 0 or this_aa[i-j] == "*":
+                        if j == 0 or this_aa[i - j] == "*":
                             this_pass = False
                             break
 

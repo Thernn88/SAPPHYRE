@@ -761,11 +761,11 @@ def do_gene(
         ignore_overlap_chunks,
         debug=debug,
     )
-    
+
     if nt_data:
         if ignore_overlap_chunks:
-            aa_data.sort(key = lambda x: x[0].split("|")[2])
-            nt_data.sort(key = lambda x: x[0].split("|")[2])
+            aa_data.sort(key=lambda x: x[0].split("|")[2])
+            nt_data.sort(key=lambda x: x[0].split("|")[2])
         writeFasta(aa_path, aa_data, compress)
         writeFasta(nt_path, nt_data, compress)
 

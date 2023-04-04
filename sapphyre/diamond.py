@@ -26,18 +26,24 @@ MULTI_SCORE_DIFFERENCE = 1.05
 # namedtuple for the processing arguments.
 ProcessingArgs = namedtuple(
     "ProcessingArgs",
-    ["grouped_data",
-     "target_to_taxon",
-     "debug",]
+    [
+        "grouped_data",
+        "target_to_taxon",
+        "debug",
+    ],
 )
+
 
 # Define a function lst that returns an empty list when called.
 # This function will be used as the default_factory argument for a defaultdict object.
-def lst() -> list: return []
+def lst() -> list:
+    return []
+
 
 # call the phymmr_tools.Hit class using an unpacked list of values found in the row input.
 # def create_hit(row) -> Hit:
 #     return Hit(*row)
+
 
 class ReferenceHit:
     __slots__ = (
@@ -81,7 +87,18 @@ class Hit:
     )
 
     def __init__(self, df):
-        self.header, self.target, self.frame, self.evalue, self.score, self.qstart, self.qend, self.sstart, self.send, self.pident = df
+        (
+            self.header,
+            self.target,
+            self.frame,
+            self.evalue,
+            self.score,
+            self.qstart,
+            self.qend,
+            self.sstart,
+            self.send,
+            self.pident,
+        ) = df
         self.gene = None
         self.reftaxon = None
         self.kick = False
@@ -138,6 +155,7 @@ def get_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
     amount = (overlap_end - overlap_start) + 1
     return amount
 
+
 def get_score_difference(score_a: float, score_b: float) -> float:
     """
     Get the decimal difference between two scores.
@@ -152,18 +170,19 @@ def get_score_difference(score_a: float, score_b: float) -> float:
     # If either score is zero return zero.
     if score_a == 0.0 or score_b == 0.0:
         return 0.0
-    
+
     # Return the decimal difference between the largest score and the smallest score.
     return max(score_a, score_b) / min(score_a, score_b)
+
 
 def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
     """
     Filters a list of hits and returns a tuple with the passed hits, number of failed hits, and a log.
 
-    The filter will recursively check the highest scoring hit against all the lower scoring hits 
-    and remove any that are within 30% of the highest scoring hit and have a score difference of 
-    5% or more. If the difference is not greater than 5% the hit will be marked as a miniscule 
-    hit and all corresponding hits for that read will be removed. This is done to ensure that 
+    The filter will recursively check the highest scoring hit against all the lower scoring hits
+    and remove any that are within 30% of the highest scoring hit and have a score difference of
+    5% or more. If the difference is not greater than 5% the hit will be marked as a miniscule
+    hit and all corresponding hits for that read will be removed. This is done to ensure that
     the read maps to a single gene rather than ambiguously between multiple genes
 
     Args:
@@ -171,7 +190,7 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
         debug (bool): Whether to log debug information or not.
 
     Returns:
-        tuple[list, int, list]: 
+        tuple[list, int, list]:
             A tuple containing the passed hits, the number of failed hits, and a log of debug
             information (if debug is True otherwise the log will be empty).
     """
@@ -205,10 +224,7 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
 
             # Get the amount and percentage overlap between the master and candidate
             amount_of_overlap = get_overlap(
-                master_env_start, 
-                master_env_end, 
-                candidate.qstart, 
-                candidate.qend
+                master_env_start, master_env_end, candidate.qstart, candidate.qend
             )
             percentage_of_overlap = amount_of_overlap / distance
 
@@ -221,21 +237,23 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
                     hits[i] = None
                     candidates[i - 1] = None
                     if debug:
-                        log.append((
-                            candidate.gene,
-                            candidate.header,
-                            candidate.reftaxon,
-                            candidate.score,
-                            candidate.qstart,
-                            candidate.qend,
-                            "Kicked out by",
-                            master.gene,
-                            master.header,
-                            master.reftaxon,
-                            master.score,
-                            master.qstart,
-                            master.qend,
-                        ))
+                        log.append(
+                            (
+                                candidate.gene,
+                                candidate.header,
+                                candidate.reftaxon,
+                                candidate.score,
+                                candidate.qstart,
+                                candidate.qend,
+                                "Kicked out by",
+                                master.gene,
+                                master.header,
+                                master.reftaxon,
+                                master.score,
+                                master.qstart,
+                                master.qend,
+                            )
+                        )
                 else:
                     # If the score difference is not greater than 5% trigger miniscule score
                     miniscule_score = True
@@ -244,24 +262,27 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
         # If there is a miniscule score difference kick all hits for this read
         if miniscule_score:
             if debug:
-                log.extend([
-                    (
-                        hit.gene,
-                        hit.header,
-                        hit.reftaxon,
-                        hit.score,
-                        hit.qstart,
-                        hit.qend,
-                        "Kicked due to miniscule score",
-                        master.gene,
-                        master.header,
-                        master.reftaxon,
-                        master.score,
-                        master.qstart,
-                        master.qend,
-                    )
-                    for hit in hits if hit
-                ])
+                log.extend(
+                    [
+                        (
+                            hit.gene,
+                            hit.header,
+                            hit.reftaxon,
+                            hit.score,
+                            hit.qstart,
+                            hit.qend,
+                            "Kicked due to miniscule score",
+                            master.gene,
+                            master.header,
+                            master.reftaxon,
+                            master.score,
+                            master.qstart,
+                            master.qend,
+                        )
+                        for hit in hits
+                        if hit
+                    ]
+                )
             return [], len(hits), log
 
     # Return the passed hits, the number of failed hits, and a log of debug information
@@ -310,14 +331,16 @@ def internal_filter(header_based: dict, debug: bool, internal_percent: float) ->
                             round(hit_a.score, 2),
                             hit_a.qstart,
                             hit_a.qend,
-                            round(percent,3),
+                            round(percent, 3),
                         )
                     )
 
     return this_kicks, log, kicks
 
 
-def internal_filtering(gene: str, hits: list, debug: bool, internal_percent: float) -> tuple[str, int, list, list]:
+def internal_filtering(
+    gene: str, hits: list, debug: bool, internal_percent: float
+) -> tuple[str, int, list, list]:
     """
     Performs the internal filter on a list of hits and returns a count of the number of hits
     kicked, a log of the hits kicked, and the list of hits that passed the filter.
@@ -337,6 +360,7 @@ def internal_filtering(gene: str, hits: list, debug: bool, internal_percent: flo
 
     # Return the gene, the number of hits kicked, a log of the hits kicked, and the list of hits
     return (gene, this_kicks, this_log, kicked_hits)
+
 
 def process_lines(pargs: ProcessingArgs):
     output = defaultdict(list)
@@ -368,7 +392,11 @@ def process_lines(pargs: ProcessingArgs):
                 close_hit = min(hits[:SEARCH_DEPTH], key=lambda x: x.length)
                 if close_hit.pident >= top_hit.pident + 15.0:
                     top_hit = close_hit
-                ref_seqs = [ReferenceHit(hit.target, hit.sstart, hit.send) for hit in hits if hit.gene == top_gene and hit != top_hit]
+                ref_seqs = [
+                    ReferenceHit(hit.target, hit.sstart, hit.send)
+                    for hit in hits
+                    if hit.gene == top_gene and hit != top_hit
+                ]
                 top_hit.reference_hits.extend(ref_seqs)
                 top_hit.convert_reference_hits()
 
@@ -477,13 +505,37 @@ def run_process(args, input_path) -> None:
 
     global_log = []
     dupe_divy_headers = {}
-    df = pd.read_csv(out_path, 
-                     engine="pyarrow", 
-                     delimiter="\t", 
-                     header=None, 
-                     names = ["header", "target", "frame", "evalue", "score", "qstart", "qend", "sstart", "send", "pident"],
-                                          dtype = {'header': str, 'target': str, 'frame': "int8", 'evalue': np.float64, 'score': np.float32, 'qstart': "int16", 'qend': "int16", 'sstart': "int32", 'send': "int32", 'pident': np.float32})
-    target_counts = df['target'].value_counts()
+    df = pd.read_csv(
+        out_path,
+        engine="pyarrow",
+        delimiter="\t",
+        header=None,
+        names=[
+            "header",
+            "target",
+            "frame",
+            "evalue",
+            "score",
+            "qstart",
+            "qend",
+            "sstart",
+            "send",
+            "pident",
+        ],
+        dtype={
+            "header": str,
+            "target": str,
+            "frame": "int8",
+            "evalue": np.float64,
+            "score": np.float32,
+            "qstart": "int16",
+            "qend": "int16",
+            "sstart": "int32",
+            "send": "int32",
+            "pident": np.float32,
+        },
+    )
+    target_counts = df["target"].value_counts()
     combined_count = Counter()
     taxon_to_targets = {}
     for target, count in target_counts.to_dict().items():
@@ -501,34 +553,35 @@ def run_process(args, input_path) -> None:
             top_refs.add(taxa)
             top_targets.update(taxon_to_targets[taxa])
     target_has_hit = set(df["target"].unique())
-    df = df[(df['target'].isin(top_targets))]
-    headers = df['header'].unique()
+    df = df[(df["target"].isin(top_targets))]
+    headers = df["header"].unique()
     if len(headers) > 0:
         per_thread = ceil(len(headers) / args.processes)
         arguments = []
         indices = []
         for x, i in enumerate(range(0, len(headers), per_thread), 1):
-            if x == 1 :
+            if x == 1:
                 start_index = 0
             else:
                 start_index = end_index + 1
 
             if x != num_threads:
-                last_header = headers[i+per_thread - 1]
-           
-                end_index = np.where(df['header'].values == last_header)[0][-1] 
+                last_header = headers[i + per_thread - 1]
+
+                end_index = np.where(df["header"].values == last_header)[0][-1]
             else:
                 end_index = len(df) - 1
 
             indices.append((start_index, end_index))
 
         arguments = (
-                    ProcessingArgs(
-                        df.iloc[start_i:end_i+1],
-                        target_to_taxon,
-                        args.debug,
-                        )
-                    for start_i, end_i in indices)
+            ProcessingArgs(
+                df.iloc[start_i : end_i + 1],
+                target_to_taxon,
+                args.debug,
+            )
+            for start_i, end_i in indices
+        )
 
         printv(
             f"Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Processing data.",

@@ -13,9 +13,10 @@ from .timekeeper import TimeKeeper, KeeperMode
 KMER_LEN = 7
 KMER_PERCENT = 0.65
 SUBCLUSTER_AT = 1000
-CLUSTER_EVERY = 500 # Aim for x seqs per cluster
-SAFEGUARD_BP  = 15000
+CLUSTER_EVERY = 500  # Aim for x seqs per cluster
+SAFEGUARD_BP = 15000
 SINGLETON_THRESHOLD = 3
+
 
 def find_kmers(fasta):
     kmers = {}
@@ -89,7 +90,7 @@ def run_command(args: CmdArgs) -> None:
             printv(f"Doing: {args.gene}", args.verbose, 2)
     else:
         printv(f"Doing: {args.gene} ", args.verbose, 2)
-    #print(args.only_singletons)
+    # print(args.only_singletons)
     temp_dir = gettempdir()
 
     aligned_ingredients = []
@@ -160,12 +161,8 @@ def run_command(args: CmdArgs) -> None:
                                     children = [
                                         master_header.strip(">")
                                     ] + cluster_children[master_header.strip(">")]
-                                    cluster_children[key.strip(">")].extend(
-                                        children
-                                    )
-                                    cluster_children[
-                                        master_header.strip(">")
-                                    ] = None
+                                    cluster_children[key.strip(">")].extend(children)
+                                    cluster_children[master_header.strip(">")] = None
                                     kmers[master_header] = None
                                     break
 
@@ -174,16 +171,27 @@ def run_command(args: CmdArgs) -> None:
                     this_cluster = [master] + children
                     if len(this_cluster) > SUBCLUSTER_AT:
                         clusters_to_create = ceil(len(this_cluster) / CLUSTER_EVERY)
-                        with NamedTemporaryFile(mode="w+", dir=parent_tmpdir, suffix=".fa") as this_tmp:
-                            writeFasta(this_tmp.name, [(header, data[header]) for header in this_cluster])  
-                            sig_out = subprocess.run(f"SigClust/SigClust -c {clusters_to_create} {this_tmp.name}", shell=True, stdout=subprocess.PIPE)
+                        with NamedTemporaryFile(
+                            mode="w+", dir=parent_tmpdir, suffix=".fa"
+                        ) as this_tmp:
+                            writeFasta(
+                                this_tmp.name,
+                                [(header, data[header]) for header in this_cluster],
+                            )
+                            sig_out = subprocess.run(
+                                f"SigClust/SigClust -c {clusters_to_create} {this_tmp.name}",
+                                shell=True,
+                                stdout=subprocess.PIPE,
+                            )
                             sig_out = sig_out.stdout.decode("utf-8")
                             sub_clusters = {}
                             for line in sig_out.split("\n"):
                                 line = line.strip()
                                 if line:
-                                    seq_index, clust_index = line.strip().split(',')
-                                    sub_clusters.setdefault(clust_index, []).append(this_cluster[int(seq_index)])
+                                    seq_index, clust_index = line.strip().split(",")
+                                    sub_clusters.setdefault(clust_index, []).append(
+                                        this_cluster[int(seq_index)]
+                                    )
                             for sub_cluster in sub_clusters.values():
                                 clusters.append(sub_cluster)
                             continue
@@ -204,14 +212,11 @@ def run_command(args: CmdArgs) -> None:
             items.sort(key=lambda x: int(x.split("_cluster")[-1]))
 
             for i, cluster in enumerate(clusters):
-                
                 aligned_cluster = os.path.join(
                     aligned_files_tmp, f"{args.gene}_cluster_{len(cluster)}_{i}"
                 )
 
-                cluster_seqs = [
-                    (header, data[header]) for header in cluster
-                ]
+                cluster_seqs = [(header, data[header]) for header in cluster]
 
                 if args.only_singletons or len(cluster_seqs) < SINGLETON_THRESHOLD:
                     printv(
@@ -221,7 +226,7 @@ def run_command(args: CmdArgs) -> None:
                     )  # Debug
                     to_merge.extend(cluster_seqs)
                     continue
-            
+
                 printv(
                     f"Aligning cluster {i}. Elapsed time: {keeper.differential():.2f}",
                     args.verbose,
@@ -413,11 +418,13 @@ def do_folder(folder, args):
     only_singletons = set()
     for gene, _ in genes:
         under_safeguard = False
-        for _, seq in parseFasta(os.path.join(aln_path, gene.split('.')[0] + ".aln.fa")):
+        for _, seq in parseFasta(
+            os.path.join(aln_path, gene.split(".")[0] + ".aln.fa")
+        ):
             if len(seq) >= SAFEGUARD_BP:
                 printv(f"{gene} will be using Singletons only", args.verbose, 3)
                 only_singletons.add(gene)
-                #break
+                # break
     if not os.path.exists(orthoset_path):
         printv("ERROR: Orthoset path not found.", args.verbose, 0)
         return False
@@ -426,7 +433,7 @@ def do_folder(folder, args):
         return False
 
     command = f"clustalo -i {{in_file}} -o {{out_file}} --threads=1 --full --iter=1 --full-iter"
-    #command = f"mafft --maxiterate 2 --anysymbol --quiet --thread 1 {{in_file}} > {{out_file}}"
+    # command = f"mafft --maxiterate 2 --anysymbol --quiet --thread 1 {{in_file}} > {{out_file}}"
 
     intermediates = "intermediates"
     if not os.path.exists(intermediates):
