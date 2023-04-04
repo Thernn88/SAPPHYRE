@@ -15,8 +15,6 @@ import wrap_rocks
 from .utils import printv, gettempdir
 from .timekeeper import TimeKeeper, KeeperMode
 
-import cython
-
 # This logic is used to combat false extensions.
 # How many extra hits to scan looking for a shortest match.
 SEARCH_DEPTH = 5
@@ -516,14 +514,9 @@ def run_process(args, input_path) -> None:
                 start_index = end_index + 1
 
             if x != num_threads:
-                # Grab the first header of the next chunk to get the end index
-                last_header = headers[i+per_thread]
-
-                side = "left"
-                if x >= num_threads / 2:
-                    side = "right"
+                last_header = headers[i+per_thread - 1]
            
-                end_index = np.searchsorted(df['header'], last_header, side) - 1
+                end_index = np.where(df['header'].values == last_header)[0][-1] 
             else:
                 end_index = len(df) - 1
 
