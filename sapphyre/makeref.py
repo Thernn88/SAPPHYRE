@@ -1,10 +1,10 @@
 from itertools import count
-import orjson
 from pathlib import Path
 import os
 from tempfile import NamedTemporaryFile
 from multiprocessing.pool import Pool
 import sqlite3
+import orjson
 import wrap_rocks
 from Bio import SeqIO
 

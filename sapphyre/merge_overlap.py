@@ -5,12 +5,12 @@ PyLint 9.61/10
 """
 from __future__ import annotations
 
-import orjson
 import os
 from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import rmtree
 from typing import Union, Literal
+import orjson
 
 import wrap_rocks
 from Bio.Seq import Seq

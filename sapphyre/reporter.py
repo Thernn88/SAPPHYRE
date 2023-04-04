@@ -1,19 +1,20 @@
 from __future__ import annotations
 
-import orjson
 import os
 import shutil
 from collections import namedtuple
 from multiprocessing.pool import Pool
 from typing import Optional
+import orjson
 import parasail as ps
 import blosum as bl
 import phymmr_tools
 from Bio.Seq import Seq
+import xxhash
 from . import rocky
 from .timekeeper import TimeKeeper, KeeperMode
 from .utils import printv, writeFasta
-import xxhash
+
 
 MISMATCH_AMOUNT = 1
 EXACT_MATCH_AMOUNT = 4

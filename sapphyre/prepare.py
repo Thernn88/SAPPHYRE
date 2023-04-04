@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import orjson
+
 import re
 
 from itertools import count
@@ -9,6 +9,7 @@ from queue import Queue
 from shutil import rmtree
 from time import time
 from typing import Any, Callable, Dict, Generator, List, Tuple
+import orjson
 
 import phymmr_tools
 import wrap_rocks

@@ -5,10 +5,10 @@ import os
 from shutil import rmtree
 import sys
 from tempfile import TemporaryDirectory, NamedTemporaryFile
+from multiprocessing.pool import Pool
 import numpy as np
 import pandas as pd
 import orjson
-from multiprocessing.pool import Pool
 import wrap_rocks
 
 # from phymmr_tools import Hit, ReferenceHit
