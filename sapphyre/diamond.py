@@ -568,7 +568,7 @@ def run_process(args, input_path) -> None:
             if x != num_threads:
                 last_header = headers[i + per_thread - 1]
 
-                end_index = np.where(df["header"].values == last_header)[0][-1]
+                end_index = np.where(df[start_index:]["header"].values == last_header)[0][-1] + start_index
             else:
                 end_index = len(df) - 1
 
