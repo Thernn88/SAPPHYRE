@@ -121,10 +121,14 @@ class Hit:
         self.reference_hits = [i.to_json() for i in self.reference_hits]
 
     def to_json(self):
-        if self.json is None:
-            self.json = "{"+f'"header": {self.full_header}, "seq": {self.seq}, "ref_taxon": {self.reftaxon}, "ali_start": {self.qstart}, "ali_end": {self.qend}, "reference_hits": {self.reference_hits}'+"}"
-        
-        return self.json
+        return {
+            "header": self.full_header,
+            "seq": self.seq,
+            "ref_taxon": self.reftaxon,
+            "ali_start": self.qstart,
+            "ali_end": self.qend,
+            "reference_hits": self.reference_hits,
+        }
 
 
 def get_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
@@ -397,8 +401,6 @@ def process_lines(pargs: ProcessingArgs):
                 ]
                 top_hit.reference_hits.extend(ref_seqs)
                 top_hit.convert_reference_hits()
-
-                top_hit.to_json()
 
                 output[top_gene].append(top_hit)
 
