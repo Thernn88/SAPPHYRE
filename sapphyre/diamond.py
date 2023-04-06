@@ -530,7 +530,7 @@ def run_process(args, input_path) -> None:
         per_thread = ceil(len(headers) / args.processes)
         arguments = []
         indices = []
-        for x, i in enumerate(range(0, len(headers), per_thread), 1):
+        for x, i in enumerate(np.arange(0, len(headers), per_thread), 1):
             if x == 1:
                 start_index = 0
             else:
@@ -589,7 +589,7 @@ def run_process(args, input_path) -> None:
             this_counter = Counter([i.header for i in hits]).most_common()
             requires_internal[gene] = {}
             if this_counter[0][1] > 1:
-                this_hits = sum(i[1] for i in this_counter if i[1] > 1)
+                this_hits = np.sum(i[1] for i in this_counter if i[1] > 1)
                 this_common = {i[0] for i in this_counter if i[1] > 1}
                 for hit in [i for i in hits if i.header in this_common]:
                     requires_internal[gene].setdefault(hit.header, []).append(hit)
@@ -622,7 +622,7 @@ def run_process(args, input_path) -> None:
             head_to_seq.update(
                 {
                     lines[i][1:]: lines[i + 1]
-                    for i in range(0, len(lines), 2)
+                    for i in np.arange(0, len(lines), 2)
                     if lines[i] != ""
                 }
             )
@@ -703,7 +703,7 @@ def run_process(args, input_path) -> None:
                     continue
 
                 this_targets = [i for i in targets if i[0] == target]
-                variants_with_hits = sum(i[1] in target_has_hit for i in this_targets)
+                variants_with_hits = np.sum(i[1] in target_has_hit for i in this_targets)
                 all_variants_kicked = variants_with_hits == 0
                 if all_variants_kicked:
                     reintroduce = max(this_targets, key=lambda x: x[2])
