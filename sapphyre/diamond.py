@@ -1,5 +1,4 @@
 from collections import Counter, defaultdict, namedtuple
-from functools import cached_property
 import itertools
 from math import ceil
 import os
@@ -85,7 +84,7 @@ class Hit:
         "send",
         "pident",
         "reference_hits",
-        "__dict__",
+        "json",
     )
 
     def __init__(self, df):
@@ -105,6 +104,7 @@ class Hit:
         self.reftaxon = None
         self.kick = False
         self.seq = None
+        self.json = None
         self.reference_hits = [ReferenceHit(self.target, self.sstart, self.send)]
         if self.frame < 0:
             self.qend, self.qstart = self.qstart, self.qend
@@ -120,16 +120,11 @@ class Hit:
     def convert_reference_hits(self):
         self.reference_hits = [i.to_json() for i in self.reference_hits]
 
-    @cached_property
     def to_json(self):
-        return {
-            "header": self.full_header,
-            "seq": self.seq,
-            "ref_taxon": self.reftaxon,
-            "ali_start": self.qstart,
-            "ali_end": self.qend,
-            "reference_hits": self.reference_hits,
-        }
+        if self.json is None:
+            self.json = "{"+f'"header": {self.full_header}, "seq": {self.seq}, "ref_taxon": {self.reftaxon}, "ali_start": {self.qstart}, "ali_end": {self.qend}, "reference_hits": {self.reference_hits}'+"}"
+        
+        return self.json
 
 
 def get_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
@@ -403,7 +398,7 @@ def process_lines(pargs: ProcessingArgs):
                 top_hit.reference_hits.extend(ref_seqs)
                 top_hit.convert_reference_hits()
 
-                top_hit.to_json
+                top_hit.to_json()
 
                 output[top_gene].append(top_hit)
 
@@ -670,7 +665,7 @@ def run_process(args, input_path) -> None:
                 if hit.full_header in kicks:
                     continue
                 hit.seq = head_to_seq[hit.header.split("|")[0]]
-                out.append(hit.to_json)
+                out.append(hit.to_json())
                 dupe_divy_headers[gene][hit.header] = 1
 
             passes += len(out)
