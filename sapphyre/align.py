@@ -2,11 +2,10 @@ from __future__ import annotations
 from math import ceil
 import os
 from collections import namedtuple
-from multiprocessing.pool import ThreadPool
+from multiprocessing.pool import Pool
 from shutil import rmtree
 import subprocess
 from tempfile import TemporaryDirectory, NamedTemporaryFile
-from threading import Lock
 from .utils import printv, gettempdir, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
 
@@ -72,7 +71,6 @@ CmdArgs = namedtuple(
         "gene_file",
         "result_file",
         "gene",
-        "lock",
         "verbose",
         "compress",
         "aln_path",
@@ -85,11 +83,7 @@ CmdArgs = namedtuple(
 def run_command(args: CmdArgs) -> None:
     keeper = TimeKeeper(KeeperMode.DIRECT)
     debug = args.debug
-    if args.lock is not None:
-        with args.lock:
-            printv(f"Doing: {args.gene}", args.verbose, 2)
-    else:
-        printv(f"Doing: {args.gene} ", args.verbose, 2)
+    printv(f"Doing: {args.gene} ", args.verbose, 2)
     # print(args.only_singletons)
     temp_dir = gettempdir()
 
@@ -182,6 +176,8 @@ def run_command(args: CmdArgs) -> None:
                                 f"SigClust/SigClust -c {clusters_to_create} {this_tmp.name}",
                                 shell=True,
                                 stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE,
+                                check=True
                             )
                             sig_out = sig_out.stdout.decode("utf-8")
                             sub_clusters = {}
@@ -417,7 +413,6 @@ def do_folder(folder, args):
     aln_path = os.path.join(orthoset_path, ALN_FOLDER)
     only_singletons = set()
     for gene, _ in genes:
-        under_safeguard = False
         for _, seq in parseFasta(
             os.path.join(aln_path, gene.split(".")[0] + ".aln.fa")
         ):
@@ -439,57 +434,30 @@ def do_folder(folder, args):
     if not os.path.exists(intermediates):
         os.mkdir(intermediates)
 
-    if args.processes > 1:
-        arguments = []
-        func = arguments.append
-        lock = Lock()
-    else:
-        func = run_command
-        lock = None
-
-    times = []
+    func_args = []
     for file, _ in genes:
         gene = file.split(".")[0]
         gene_file = os.path.join(aa_path, file)
         result_file = os.path.join(align_path, file.rstrip(".gz"))
-        if func == run_command:
-            times.append(
-                run_command(
-                    CmdArgs(
-                        command,
-                        gene_file,
-                        result_file,
-                        gene,
-                        lock,
-                        args.verbose,
-                        args.compress,
-                        aln_path,
-                        args.debug,
-                        file in only_singletons,
-                    )
-                )
+        func_args.append(
+            (CmdArgs(
+                    command,
+                    gene_file,
+                    result_file,
+                    gene,
+                    args.verbose,
+                    args.compress,
+                    aln_path,
+                    args.debug,
+                    file in only_singletons,
+                ),)
             )
-        else:
-            func(
-                (
-                    CmdArgs(
-                        command,
-                        gene_file,
-                        result_file,
-                        gene,
-                        lock,
-                        args.verbose,
-                        args.compress,
-                        aln_path,
-                        args.debug,
-                        file in only_singletons,
-                    ),
-                )
-            )
-
+        
     if args.processes > 1:
-        with ThreadPool(args.processes) as pool:
-            times = pool.starmap(run_command, arguments, chunksize=1)
+        with Pool(args.processes) as pool:
+            times = pool.starmap(run_command, func_args, chunksize=1)
+    else:
+        times = [run_command(arg[0]) for arg in func_args]
 
     # if args.debug:
     # with open("mafft_times.csv", "w") as fp:

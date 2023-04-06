@@ -430,7 +430,7 @@ def run_process(args, input_path) -> None:
     os.makedirs(diamond_path, exist_ok=True)
 
     num_threads = args.processes
-    post_threads = args.processes if args.proccesses < THREAD_CAP else THREAD_CAP
+    post_threads = args.processes if args.processes < THREAD_CAP else THREAD_CAP
 
     orthoset_db_path = os.path.join(orthosets_dir, orthoset, "rocksdb")
     diamond_db_path = os.path.join(
