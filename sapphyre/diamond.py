@@ -276,7 +276,10 @@ def internal_filter(header_based: dict, debug: bool, internal_percent: float) ->
             internal_end = max(hit_a.qend, hit_b.qend)
             internal_length = internal_end - internal_start
 
-            if overlap_amount > 0 and overlap_amount / internal_length >= internal_percent:
+            if (
+                overlap_amount > 0
+                and overlap_amount / internal_length >= internal_percent
+            ):
                 kicks += 1
                 hit_b.kick = True
 
@@ -536,7 +539,10 @@ def run_process(args, input_path) -> None:
             if x != post_threads:
                 last_header = headers[i + per_thread - 1]
 
-                end_index = np.where(df[start_index:]["header"].values == last_header)[0][-1] + start_index
+                end_index = (
+                    np.where(df[start_index:]["header"].values == last_header)[0][-1]
+                    + start_index
+                )
             else:
                 end_index = len(df) - 1
 
@@ -613,7 +619,13 @@ def run_process(args, input_path) -> None:
         head_to_seq = {}
         for content in out:
             lines = content.split("\n")
-            head_to_seq.update({lines[i][1:]: lines[i+1] for i in range(0, len(lines), 2) if lines[i] != ""})
+            head_to_seq.update(
+                {
+                    lines[i][1:]: lines[i + 1]
+                    for i in range(0, len(lines), 2)
+                    if lines[i] != ""
+                }
+            )
         del out
 
         passes = 0
