@@ -1,4 +1,5 @@
 from collections import Counter, defaultdict, namedtuple
+from functools import cached_property
 import itertools
 from math import ceil
 import os
@@ -84,6 +85,7 @@ class Hit:
         "send",
         "pident",
         "reference_hits",
+        "__dict__",
     )
 
     def __init__(self, df):
@@ -118,6 +120,7 @@ class Hit:
     def convert_reference_hits(self):
         self.reference_hits = [i.to_json() for i in self.reference_hits]
 
+    @cached_property
     def to_json(self):
         return {
             "header": self.full_header,
@@ -400,6 +403,8 @@ def process_lines(pargs: ProcessingArgs):
                 top_hit.reference_hits.extend(ref_seqs)
                 top_hit.convert_reference_hits()
 
+                top_hit.to_json
+
                 output[top_gene].append(top_hit)
 
     return output, multi_kicks, this_log
@@ -657,7 +662,7 @@ def run_process(args, input_path) -> None:
         internal_kicks = 0
         for gene, hits in output.items():
             dupe_divy_headers[gene] = {}
-            kicks = {}
+            kicks = set()
             out = []
             if gene in internal_result:
                 this_kicks, this_log, kicks = internal_result[gene]
@@ -666,18 +671,12 @@ def run_process(args, input_path) -> None:
                 if args.debug:
                     global_log.extend(this_log)
 
-                out = []
-                if kicks:
-                    for hit in hits:
-                        if hit.full_header not in kicks:
-                            hit.seq = head_to_seq[hit.header.split("|")[0]]
-                            out.append(hit.to_json())
-                            dupe_divy_headers[gene][hit.header] = 1
-            if not kicks:
-                for hit in hits:
-                    hit.seq = head_to_seq[hit.header.split("|")[0]]
-                    out.append(hit.to_json())
-                    dupe_divy_headers[gene][hit.header] = 1
+            for hit in hits:
+                if hit.full_header in kicks:
+                    continue
+                hit.seq = head_to_seq[hit.header.split("|")[0]]
+                out.append(hit.to_json)
+                dupe_divy_headers[gene][hit.header] = 1
 
             passes += len(out)
             db.put_bytes(f"gethits:{gene}", orjson.dumps(out))
