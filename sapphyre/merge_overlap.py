@@ -370,10 +370,8 @@ def do_protein(
             for sequence in this_sequences:
                 # if protein == "aa":
                 count = prep_dupe_counts.get(sequence[4], 1) + sum(
-                    [
-                        prep_dupe_counts.get(header, 1)
-                        for header in rep_dupe_counts.get(sequence[4], [])
-                    ]
+                    prep_dupe_counts.get(header, 1)
+                    for header in rep_dupe_counts.get(sequence[4], [])
                 )
                 # else:
                 # count = dupe_counts.get(sequence[4], 0) + 1

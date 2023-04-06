@@ -71,7 +71,6 @@ def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
         sequence = raw_sequences[i + 1]
 
         sequence = [sequence[i * 3 : (i * 3) + 3] for i in positions_to_keep]
-        x = "".join(sequence)
         result.append((raw_sequences[i], "".join(sequence)))
 
     return result
@@ -566,12 +565,12 @@ def do_gene(fargs: FlexcullArgs) -> None:
                 right_after = out_line[i:cull_end]
 
                 left_side_ref_data_columns = sum(
-                    [gap_present_threshold[x] for x in range(cull_start, i)]
+                    gap_present_threshold[x] for x in range(cull_start, i)
                 )
                 left_of_trim_data_columns = len(left_after) - left_after.count("-")
 
                 right_side_ref_data_columns = sum(
-                    [gap_present_threshold[x] for x in range(i, cull_end)]
+                    gap_present_threshold[x] for x in range(i, cull_end)
                 )
                 right_of_trim_data_columns = len(right_after) - right_after.count("-")
 
@@ -769,14 +768,14 @@ def do_gene(fargs: FlexcullArgs) -> None:
                             left_after = out_line[seq_start:i]
                             right_after = out_line[i:seq_end]
                             left_side_ref_data_columns = sum(
-                                [gap_present_threshold[x] for x in range(seq_start, i)]
+                                gap_present_threshold[x] for x in range(seq_start, i)
                             )
                             left_of_trim_data_columns = len(
                                 left_after
                             ) - left_after.count("-")
 
                             right_side_ref_data_columns = sum(
-                                [gap_present_threshold[x] for x in range(i, seq_end)]
+                                gap_present_threshold[x] for x in range(i, seq_end)
                             )
                             right_of_trim_data_columns = len(
                                 right_after

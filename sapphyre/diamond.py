@@ -621,7 +621,7 @@ def run_process(args, input_path) -> None:
             this_counter = Counter([i.header for i in hits]).most_common()
             requires_internal[gene] = {}
             if this_counter[0][1] > 1:
-                this_hits = sum([i[1] for i in this_counter if i[1] > 1])
+                this_hits = sum(i[1] for i in this_counter if i[1] > 1)
                 this_common = {i[0] for i in this_counter if i[1] > 1}
                 for hit in [i for i in hits if i.header in this_common]:
                     requires_internal[gene].setdefault(hit.header, []).append(hit)
