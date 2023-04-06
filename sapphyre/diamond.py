@@ -650,12 +650,7 @@ def run_process(args, input_path) -> None:
         head_to_seq = {}
         for content in out:
             lines = content.split("\n")
-            for i in range(0, len(lines), 2):
-                if lines[i] == "":
-                    continue
-
-                header = lines[i][1:]
-                head_to_seq[header] = lines[i + 1]
+            head_to_seq.update({lines[i][1:]: lines[i+1] for i in range(0, len(lines), 2) if lines[i] != ""})
         del out
 
         passes = 0
