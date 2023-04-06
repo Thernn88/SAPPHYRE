@@ -23,6 +23,9 @@ SEARCH_DEPTH = 5
 MULTI_PERCENTAGE_OF_OVERLAP = 0.3
 MULTI_SCORE_DIFFERENCE = 1.05
 
+# Due to the thread bottleneck of chunking a ceiling is set on the threads post reporter
+THREAD_CAP = 32
+
 # namedtuple for the processing arguments.
 ProcessingArgs = namedtuple(
     "ProcessingArgs",
@@ -427,6 +430,7 @@ def run_process(args, input_path) -> None:
     os.makedirs(diamond_path, exist_ok=True)
 
     num_threads = args.processes
+    post_threads = args.processes if args.proccesses < THREAD_CAP else THREAD_CAP
 
     orthoset_db_path = os.path.join(orthosets_dir, orthoset, "rocksdb")
     diamond_db_path = os.path.join(
@@ -567,7 +571,7 @@ def run_process(args, input_path) -> None:
             else:
                 start_index = end_index + 1
 
-            if x != num_threads:
+            if x != post_threads:
                 last_header = headers[i + per_thread - 1]
 
                 end_index = np.where(df[start_index:]["header"].values == last_header)[0][-1] + start_index
@@ -590,7 +594,7 @@ def run_process(args, input_path) -> None:
             args.verbose,
         )
 
-        with Pool(num_threads) as p:
+        with Pool(post_threads) as p:
             result = p.map(process_lines, arguments)
 
         del arguments
@@ -626,7 +630,7 @@ def run_process(args, input_path) -> None:
 
         internal_order.sort(key=lambda x: x[1], reverse=True)
 
-        with Pool(args.processes) as pool:
+        with Pool(post_threads) as pool:
             internal_results = pool.starmap(
                 internal_filtering,
                 [
