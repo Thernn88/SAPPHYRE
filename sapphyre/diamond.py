@@ -181,102 +181,45 @@ def get_score_difference(score_a: float, score_b: float) -> float:
 
 
 def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
-    """
-    Filters a list of hits and returns a tuple with the passed hits, number of failed hits, and a log.
-
-    The filter will recursively check the highest scoring hit against all the lower scoring hits
-    and remove any that are within 30% of the highest scoring hit and have a score difference of
-    5% or more. If the difference is not greater than 5% the hit will be marked as a miniscule
-    hit and all corresponding hits for that read will be removed. This is done to ensure that
-    the read maps to a single gene rather than ambiguously between multiple genes
-
-    Args:
-        hits (list): list of hits sorted by score descending to filter.
-        debug (bool): Whether to log debug information or not.
-
-    Returns:
-        tuple[list, int, list]:
-            A tuple containing the passed hits, the number of failed hits, and a log of debug
-            information (if debug is True otherwise the log will be empty).
-    """
-    kick_happened = True
     log = []
 
-    # Recur check while a kick has happened.
-    while kick_happened:
-        kick_happened = False
-        # Assign the highest scoring hit as the master
-        master = hits[0]
+    # Assign the highest scoring hit as the master
+    master = hits[0]
 
-        # Assign all the lower scoring hits as candidates
-        candidates = hits[1:]
+    # Assign all the lower scoring hits as candidates
+    candidates = hits[1:]
 
-        # Get the start and end of the master hit
-        master_env_start = master.qstart
-        master_env_end = master.qend
+    for i, candidate in enumerate(candidates, 1):
+        # Skip if the candidate has been kicked already or if master and candidate are internal hits:
+        if not candidate or master.gene == candidate.gene:
+            continue
 
-        miniscule_score = False
-        for i, candidate in enumerate(candidates, 1):
-            # Skip if the candidate has been kicked already:
-            if not candidate:
-                continue
-            # Ensure master and candidate aren't internal hits
-            if master.gene == candidate.gene:
-                continue
+        # Get the distance between the master and candidate
+        distance = master.qend - master.qstart
 
-            # Get the distance between the master and candidate
-            distance = master_env_end - master_env_start
+        # Get the amount and percentage overlap between the master and candidate
+        amount_of_overlap = get_overlap(
+            master.qstart, master.qend, candidate.qstart, candidate.qend
+        )
+        percentage_of_overlap = amount_of_overlap / distance
 
-            # Get the amount and percentage overlap between the master and candidate
-            amount_of_overlap = get_overlap(
-                master_env_start, master_env_end, candidate.qstart, candidate.qend
-            )
-            percentage_of_overlap = amount_of_overlap / distance
-
-            # If the overlap is greater than 30% and the score difference is greater than 5%
-            if percentage_of_overlap >= MULTI_PERCENTAGE_OF_OVERLAP:
-                score_difference = get_score_difference(master.score, candidate.score)
-                if score_difference >= MULTI_SCORE_DIFFERENCE:
-                    # Kick the candidate
-                    kick_happened = True
-                    hits[i] = None
-                    candidates[i - 1] = None
-                    if debug:
-                        log.append(
-                            (
-                                candidate.gene,
-                                candidate.header,
-                                candidate.reftaxon,
-                                candidate.score,
-                                candidate.qstart,
-                                candidate.qend,
-                                "Kicked out by",
-                                master.gene,
-                                master.header,
-                                master.reftaxon,
-                                master.score,
-                                master.qstart,
-                                master.qend,
-                            )
-                        )
-                else:
-                    # If the score difference is not greater than 5% trigger miniscule score
-                    miniscule_score = True
-                    break
-
-        # If there is a miniscule score difference kick all hits for this read
-        if miniscule_score:
-            if debug:
-                log.extend(
-                    [
+        # If the overlap is greater than 30% and the score difference is greater than 5%
+        if percentage_of_overlap >= MULTI_PERCENTAGE_OF_OVERLAP:
+            score_difference = get_score_difference(master.score, candidate.score)
+            if score_difference >= MULTI_SCORE_DIFFERENCE:
+                # Kick the candidate
+                hits[i] = None
+                candidates[i - 1] = None
+                if debug:
+                    log.append(
                         (
-                            hit.gene,
-                            hit.header,
-                            hit.reftaxon,
-                            hit.score,
-                            hit.qstart,
-                            hit.qend,
-                            "Kicked due to miniscule score",
+                            candidate.gene,
+                            candidate.header,
+                            candidate.reftaxon,
+                            candidate.score,
+                            candidate.qstart,
+                            candidate.qend,
+                            "Kicked out by",
                             master.gene,
                             master.header,
                             master.reftaxon,
@@ -284,14 +227,35 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
                             master.qstart,
                             master.qend,
                         )
-                        for hit in hits
-                        if hit
-                    ]
-                )
-            return [], len(hits), log
+                    )
+            else:
+                # If the score difference is not greater than 5% trigger miniscule score
+                if debug:
+                    log.extend(
+                        [
+                            (
+                                hit.gene,
+                                hit.header,
+                                hit.reftaxon,
+                                hit.score,
+                                hit.qstart,
+                                hit.qend,
+                                "Kicked due to miniscule score",
+                                master.gene,
+                                master.header,
+                                master.reftaxon,
+                                master.score,
+                                master.qstart,
+                                master.qend,
+                            )
+                            for hit in hits
+                            if hit
+                        ]
+                    )
+                return [], len(hits), log
 
-    # Return the passed hits, the number of failed hits, and a log of debug information
-    passes = [i for i in hits if i]
+    # Filter out the None values
+    passes = [hit for hit in hits if hit is not None]
     return passes, len(hits) - len(passes), log
 
 
@@ -312,9 +276,7 @@ def internal_filter(header_based: dict, debug: bool, internal_percent: float) ->
             internal_end = max(hit_a.qend, hit_b.qend)
             internal_length = internal_end - internal_start
 
-            percent = overlap_amount / internal_length if overlap_amount > 0 else 0
-
-            if percent >= internal_percent:
+            if overlap_amount > 0 and overlap_amount / internal_length >= internal_percent:
                 kicks += 1
                 hit_b.kick = True
 
