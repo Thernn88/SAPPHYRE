@@ -275,10 +275,10 @@ def internal_filter(header_based: dict, debug: bool, internal_percent: float) ->
             internal_start = min(hit_a.qstart, hit_b.qstart)
             internal_end = max(hit_a.qend, hit_b.qend)
             internal_length = internal_end - internal_start
-
+            percent = overlap_amount / internal_length
             if (
                 overlap_amount > 0
-                and overlap_amount / internal_length >= internal_percent
+                and percent >= internal_percent
             ):
                 kicks += 1
                 hit_b.kick = True
@@ -301,7 +301,7 @@ def internal_filter(header_based: dict, debug: bool, internal_percent: float) ->
                             round(hit_a.score, 2),
                             hit_a.qstart,
                             hit_a.qend,
-                            round(percent, 3),
+                                round(percent, 3),
                         )
                     )
 
