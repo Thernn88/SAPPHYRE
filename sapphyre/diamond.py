@@ -356,21 +356,29 @@ def process_lines(pargs: ProcessingArgs):
                 if pargs.debug:
                     this_log.extend(log)
 
-            if any(hits):
-                top_hit = hits[0]
-                top_gene = top_hit.gene
-                close_hit = min(hits[:SEARCH_DEPTH], key=lambda x: x.length)
-                if close_hit.pident >= top_hit.pident + 15.0 and top_gene == close_hit.gene:
-                    top_hit = close_hit
-                ref_seqs = [
-                    ReferenceHit(hit.target, hit.sstart, hit.send)
-                    for hit in hits
-                    if hit.gene == top_gene and hit != top_hit
-                ]
-                top_hit.reference_hits.extend(ref_seqs)
-                top_hit.convert_reference_hits()
+            if any(hits):   
+                if len(genes_present) > 1:
+                    gene_hits = {gene: [] for gene in genes_present}
+                    for hit in hits:
+                        gene_hits[hit.gene].append(hit)
+                else:
+                    gene_hits = {hit.gene: hits}
 
-                output[top_gene].append(top_hit)
+                for gene, hits in gene_hits.items():
+                    top_hit = hits[0]
+                    close_hits = [hit for hit in hits[:SEARCH_DEPTH] if hit.pident >= top_hit.pident + 15.0]
+                    if close_hits:
+                        close_hit = min(close_hits, key=lambda x: x.length)
+                        top_hit = close_hit
+                    ref_seqs = [
+                        ReferenceHit(hit.target, hit.sstart, hit.send)
+                        for hit in hits
+                        if hit.gene == top_hit.gene and hit != top_hit
+                    ]
+                    top_hit.reference_hits.extend(ref_seqs)
+                    top_hit.convert_reference_hits()
+
+                    output[top_hit.gene].append(top_hit)
 
     return output, multi_kicks, this_log
 
