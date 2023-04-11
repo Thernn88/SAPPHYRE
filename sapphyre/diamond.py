@@ -364,12 +364,14 @@ def process_lines(pargs: ProcessingArgs):
                 else:
                     gene_hits = {hit.gene: hits}
 
-                for gene, hits in gene_hits.items():
+                pident_trigger = 0
+                for _, hits in gene_hits.items():
                     top_hit = hits[0]
                     close_hits = [hit for hit in hits[:SEARCH_DEPTH] if hit.pident >= top_hit.pident + 15.0]
                     if close_hits:
                         close_hit = min(close_hits, key=lambda x: x.length)
                         top_hit = close_hit
+                        pident_trigger += 1
                     ref_seqs = [
                         ReferenceHit(hit.target, hit.sstart, hit.send)
                         for hit in hits
@@ -380,7 +382,7 @@ def process_lines(pargs: ProcessingArgs):
 
                     output[top_hit.gene].append(top_hit)
 
-    return output, multi_kicks, this_log
+    return output, multi_kicks, this_log, pident_trigger
 
 
 def run_process(args, input_path) -> None:
@@ -564,6 +566,7 @@ def run_process(args, input_path) -> None:
             )
             for start_i, end_i in indices
         )
+        pid_trigger = 0
 
         printv(
             f"Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Processing data.",
@@ -574,7 +577,8 @@ def run_process(args, input_path) -> None:
             result = p.map(process_lines, arguments)
 
         del arguments
-        for this_output, mkicks, this_log in result:
+        for this_output, mkicks, this_log, pid in result:
+            pid_trigger += pid
             for gene, hits in this_output.items():
                 if gene not in output:
                     output[gene] = hits
@@ -590,6 +594,7 @@ def run_process(args, input_path) -> None:
             f"Processed. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
             args.verbose,
         )
+        print("Pident logic triggered", pid_trigger, "times")
 
         requires_internal = {}
         internal_order = []
