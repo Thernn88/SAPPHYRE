@@ -358,7 +358,7 @@ def process_lines(pargs: ProcessingArgs):
 
             if any(hits):   
                 if len(genes_present) > 1:
-                    gene_hits = {gene: [] for gene in genes_present}
+                    gene_hits = defaultdict(lst)
                     for hit in hits:
                         gene_hits[hit.gene].append(hit)
                 else:
