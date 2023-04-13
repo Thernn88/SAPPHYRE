@@ -1,3 +1,4 @@
+from argparse import Namespace
 from collections import Counter, defaultdict, namedtuple
 import itertools
 from math import ceil
@@ -259,9 +260,23 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
     return passes, len(hits) - len(passes), log
 
 
-def internal_filter(header_based: dict, debug: bool, internal_percent: float) -> list:
+def internal_filter(
+    header_based: dict, debug: bool, internal_percent: float
+) -> tuple[set, list, int]:
+    """
+    Filters out overlapping hits who map to the same gene.
+
+    Args:
+        header_based (dict): A dictionary of hits grouped by header.
+        debug (bool): Whether to print debug information.
+        internal_percent (float): The percentage of overlap required to constitute a kick.
+    Returns:
+        tuple[set, list, int]:
+            A tuple containing the set of kicked hit headers,
+            the log of kicked hits, and the number of hits kicked.
+    """
     log = []
-    kicks = 0
+    kicks = itertools.count()
     this_kicks = set()
 
     for hits in header_based.values():
@@ -269,6 +284,7 @@ def internal_filter(header_based: dict, debug: bool, internal_percent: float) ->
             if hit_a.kick or hit_b.kick:
                 continue
 
+            # Calculate overlap percent over the internal overlap's length
             overlap_amount = get_overlap(
                 hit_a.qstart, hit_a.qend, hit_b.qstart, hit_b.qend
             )
@@ -276,13 +292,14 @@ def internal_filter(header_based: dict, debug: bool, internal_percent: float) ->
             internal_end = max(hit_a.qend, hit_b.qend)
             internal_length = internal_end - internal_start
             percent = overlap_amount / internal_length
-            if (
-                overlap_amount > 0
-                and percent >= internal_percent
-            ):
-                kicks += 1
+
+            # If bp overlap and the percent of overlap is greater than or equal to the internal percent arg
+            if overlap_amount > 0 and percent >= internal_percent:
+                # Iterate the kicks counter and set the kick attribute to True
+                next(kicks)
                 hit_b.kick = True
 
+                # Add the hit to the kicked set
                 this_kicks.add(hit_b.full_header)
 
                 if debug:
@@ -301,11 +318,11 @@ def internal_filter(header_based: dict, debug: bool, internal_percent: float) ->
                             round(hit_a.score, 2),
                             hit_a.qstart,
                             hit_a.qend,
-                                round(percent, 3),
+                            round(percent, 3),
                         )
                     )
 
-    return this_kicks, log, kicks
+    return this_kicks, log, next(kicks)
 
 
 def internal_filtering(
@@ -332,7 +349,17 @@ def internal_filtering(
     return (gene, this_kicks, this_log, kicked_hits)
 
 
-def process_lines(pargs: ProcessingArgs):
+def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]]:
+    """
+    Process a subset of lines from the Diamond tsv result.
+
+    Args:
+        pargs (ProcessingArgs): The arguments for processing the lines.
+    Returns:
+        tuple[dict[str, Hit], int, list[str]]:
+            A tuple containing the dictionary of hits grouped by header,
+            the number of hits kicked, and the list of kicked hits.
+    """
     output = defaultdict(list)
     multi_kicks = 0
     this_log = []
@@ -356,7 +383,7 @@ def process_lines(pargs: ProcessingArgs):
                 if pargs.debug:
                     this_log.extend(log)
 
-            if any(hits):   
+            if any(hits):
                 if len(genes_present) > 1:
                     gene_hits = defaultdict(lst)
                     for hit in hits:
@@ -364,14 +391,9 @@ def process_lines(pargs: ProcessingArgs):
                 else:
                     gene_hits = {hit.gene: hits}
 
-                pident_trigger = 0
                 for _, hits in gene_hits.items():
                     top_hit = hits[0]
-                    close_hits = [hit for hit in hits[:SEARCH_DEPTH] if hit.pident >= top_hit.pident + 15.0]
-                    if close_hits:
-                        close_hit = min(close_hits, key=lambda x: x.length)
-                        top_hit = close_hit
-                        pident_trigger += 1
+
                     ref_seqs = [
                         ReferenceHit(hit.target, hit.sstart, hit.send)
                         for hit in hits
@@ -382,10 +404,20 @@ def process_lines(pargs: ProcessingArgs):
 
                     output[top_hit.gene].append(top_hit)
 
-    return output, multi_kicks, this_log, pident_trigger
+    return output, multi_kicks, this_log
 
 
-def run_process(args, input_path) -> None:
+def run_process(args: Namespace, input_path: str) -> bool:
+    """
+    Run the main process on the input path.
+
+    Args:
+        args (Namespace): The arguments for the program.
+        input_path (str): The path to the input directory.
+    Returns:
+        bool: Whether the process was successful or not.
+    """
+
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     orthoset = args.orthoset
     orthosets_dir = args.orthoset_input
@@ -566,7 +598,6 @@ def run_process(args, input_path) -> None:
             )
             for start_i, end_i in indices
         )
-        pid_trigger = 0
 
         printv(
             f"Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Processing data.",
@@ -577,8 +608,7 @@ def run_process(args, input_path) -> None:
             result = p.map(process_lines, arguments)
 
         del arguments
-        for this_output, mkicks, this_log, pid in result:
-            pid_trigger += pid
+        for this_output, mkicks, this_log in result:
             for gene, hits in this_output.items():
                 if gene not in output:
                     output[gene] = hits
@@ -594,7 +624,6 @@ def run_process(args, input_path) -> None:
             f"Processed. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
             args.verbose,
         )
-        print("Pident logic triggered", pid_trigger, "times")
 
         requires_internal = {}
         internal_order = []
@@ -716,7 +745,9 @@ def run_process(args, input_path) -> None:
                     continue
 
                 this_targets = [i for i in targets if i[0] == target]
-                variants_with_hits = np.sum(i[1] in target_has_hit for i in this_targets)
+                variants_with_hits = np.sum(
+                    i[1] in target_has_hit for i in this_targets
+                )
                 all_variants_kicked = variants_with_hits == 0
                 if all_variants_kicked:
                     reintroduce = max(this_targets, key=lambda x: x[2])
@@ -742,17 +773,20 @@ def run_process(args, input_path) -> None:
 
     printv(f"Took {time_keeper.differential():.2f}s overall.", args.verbose)
 
+    return True
+
 
 def main(args):
     global_time = TimeKeeper(KeeperMode.DIRECT)
     if not all(os.path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
+    results = []
     for input_path in args.INPUT:
-        run_process(args, input_path)
+        results.append(run_process(args, input_path))
     if len(args.INPUT) > 1 or not args.verbose:
         printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
-    return True
+    return all(results)
 
 
 if __name__ == "__main__":
