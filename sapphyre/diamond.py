@@ -86,7 +86,6 @@ class Hit:
         "target",
         "sstart",
         "send",
-        "pident",
         "reference_hits",
         "json",
     )
@@ -102,7 +101,6 @@ class Hit:
             self.qend,
             self.sstart,
             self.send,
-            self.pident,
         ) = df
         self.gene = None
         self.reftaxon = None
@@ -498,7 +496,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             )
             time_keeper.lap()  # Reset timer
             os.system(
-                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {args.evalue} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send pident {quiet} --top {top_amount} --min-orf 20 --max-hsps 0 -p {num_threads}"
+                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {args.evalue} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --min-orf 20 --max-hsps 0 -p {num_threads}"
             )
             input_file.seek(0)
 
@@ -533,7 +531,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
             "qend",
             "sstart",
             "send",
-            "pident",
         ],
         dtype={
             "header": str,
@@ -545,7 +542,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
             "qend": "int16",
             "sstart": "int32",
             "send": "int32",
-            "pident": np.float32,
         },
     )
     target_counts = df["target"].value_counts()
