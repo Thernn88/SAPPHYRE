@@ -169,6 +169,12 @@ def subcmd_reporter(subparsers):
         help="Amount of matches for dynamic pairwise aligned edge trim.",
     )
     par.add_argument(
+        "--gene_list_file",
+        type=str,
+        default=None,
+        help="Path to a txt file containing target genes for processing. Processes all genes in the input folder if not specified.",
+    )
+    par.add_argument(
         "-bm",
         "--blosum_mode",
         choices=["exact", "strict", "lax"],
@@ -181,6 +187,13 @@ def subcmd_reporter(subparsers):
         action="store_true",
         default=False,
         help="Enable debug",
+    )
+    par.add_argument(
+        "-clear",
+        "--clear_output",
+        action="store_false",
+        default=True,
+        help="Clear output folder before running.",
     )
     par.set_defaults(func=reporter, formathelp=par.format_help)
 
@@ -199,6 +212,8 @@ def reporter(args):
         args.matches,
         args.blosum_mode,
         args.minimum_bp,
+        args.gene_list_file,
+        args.clear_output,
     )
     if not reporter.main(mainargs):
         print(args.formathelp())
