@@ -7,6 +7,7 @@ from shutil import rmtree
 import sys
 from tempfile import TemporaryDirectory, NamedTemporaryFile
 from multiprocessing.pool import Pool
+from time import time
 import numpy as np
 import pandas as pd
 import orjson
@@ -81,7 +82,7 @@ class Hit:
         "kick",
         "seq",
         "frame",
-        "full_header",
+        "uid",
         "reftaxon",
         "target",
         "sstart",
@@ -91,6 +92,7 @@ class Hit:
     )
 
     def __init__(self, df):
+        self.uid = hash(time())
         (
             self.header,
             self.target,
@@ -112,24 +114,18 @@ class Hit:
             self.qend, self.qstart = self.qstart, self.qend
         self.length = self.qend - self.qstart + 1
 
-        if self.frame < 0:
-            self.full_header = (
-                self.header + f"|[revcomp]:[translate({abs(self.frame)})]"
-            )
-        else:
-            self.full_header = self.header + f"|[translate({self.frame})]"
-
     def convert_reference_hits(self):
         self.reference_hits = [i.to_json() for i in self.reference_hits]
 
     def to_json(self):
         return {
-            "header": self.full_header,
+            "header": self.header,
+            "frame": self.frame,
             "seq": self.seq,
-            "ref_taxon": self.reftaxon,
+            "taxon": self.reftaxon,
             "ali_start": self.qstart,
             "ali_end": self.qend,
-            "reference_hits": self.reference_hits,
+            "ref_hits": self.reference_hits,
         }
 
 
@@ -298,20 +294,20 @@ def internal_filter(
                 hit_b.kick = True
 
                 # Add the hit to the kicked set
-                this_kicks.add(hit_b.full_header)
+                this_kicks.add(hit_b.uid)
 
                 if debug:
                     log.append(
                         (
                             hit_b.gene,
-                            hit_b.full_header,
+                            hit_b.uid,
                             hit_b.reftaxon,
                             round(hit_b.score, 2),
                             hit_b.qstart,
                             hit_b.qend,
                             "Internal kicked out by",
                             hit_a.gene,
-                            hit_a.full_header,
+                            hit_a.uid,
                             hit_a.reftaxon,
                             round(hit_a.score, 2),
                             hit_a.qstart,
@@ -680,7 +676,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                     global_log.extend(this_log)
 
             for hit in hits:
-                if hit.full_header in kicks:
+                if hit.uid in kicks:
                     continue
                 hit.seq = head_to_seq[hit.header.split("|")[0]]
                 out.append(hit.to_json())

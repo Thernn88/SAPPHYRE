@@ -63,15 +63,20 @@ class Hit:
     )
 
     def __init__(self, hit, gene):
-        self.header = hit["header"]
+        if hit["frame"] < 0:
+            self.header = (
+                hit["header"] + "|[revcomp]:[translate("+str(abs(hit["frame"]))+")]"
+            )
+        else:
+            self.header = hit["header"] + "|[translate("+str(hit["frame"])+")]"
         self.ali_start = hit["ali_start"]
         self.ali_end = hit["ali_end"]
-        self.ref_taxon = hit["ref_taxon"]
+        self.ref_taxon = hit["taxon"]
         self.gene = gene
 
         self.est_sequence = hit["seq"]
 
-        self.ref_seqs = [RefHit(i) for i in hit["reference_hits"]]
+        self.ref_seqs = [RefHit(i) for i in hit["ref_hits"]]
 
     def get_bp_trim(
         self,
