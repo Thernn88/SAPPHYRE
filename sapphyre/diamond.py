@@ -1,6 +1,7 @@
 from argparse import Namespace
 from collections import Counter, defaultdict, namedtuple
 import itertools
+import json
 from math import ceil
 import os
 from shutil import rmtree
@@ -32,9 +33,11 @@ THREAD_CAP = 32
 ProcessingArgs = namedtuple(
     "ProcessingArgs",
     [
+        "i",
         "grouped_data",
         "target_to_taxon",
         "debug",
+        "result_fp"
     ],
 )
 
@@ -126,6 +129,9 @@ class Hit:
             "ali_start": self.qstart,
             "ali_end": self.qend,
             "ref_hits": self.reference_hits,
+            "kick": False,
+            "uid":self.uid,
+            "score":self.score,
         }
 
 
@@ -255,12 +261,13 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
 
 
 def internal_filter(
-    header_based: dict, debug: bool, internal_percent: float
+    gene: str, header_based: dict, debug: bool, internal_percent: float
 ) -> tuple[set, list, int]:
     """
     Filters out overlapping hits who map to the same gene.
 
     Args:
+        gene (str): The gene to filter.
         header_based (dict): A dictionary of hits grouped by header.
         debug (bool): Whether to print debug information.
         internal_percent (float): The percentage of overlap required to constitute a kick.
@@ -275,15 +282,15 @@ def internal_filter(
 
     for hits in header_based.values():
         for hit_a, hit_b in itertools.combinations(hits, 2):
-            if hit_a.kick or hit_b.kick:
+            if hit_a["kick"] or hit_b["kick"]:
                 continue
 
             # Calculate overlap percent over the internal overlap's length
             overlap_amount = get_overlap(
-                hit_a.qstart, hit_a.qend, hit_b.qstart, hit_b.qend
+                hit_a["ali_start"], hit_a["ali_end"], hit_b["ali_start"], hit_b["ali_end"]
             )
-            internal_start = min(hit_a.qstart, hit_b.qstart)
-            internal_end = max(hit_a.qend, hit_b.qend)
+            internal_start = min(hit_a["ali_start"], hit_b["ali_start"])
+            internal_end = max(hit_a["ali_end"], hit_b["ali_end"])
             internal_length = internal_end - internal_start
             percent = overlap_amount / internal_length
 
@@ -291,27 +298,27 @@ def internal_filter(
             if overlap_amount > 0 and percent >= internal_percent:
                 # Iterate the kicks counter and set the kick attribute to True
                 next(kicks)
-                hit_b.kick = True
+                hit_b["kick"] = True
 
                 # Add the hit to the kicked set
-                this_kicks.add(hit_b.uid)
+                this_kicks.add(hit_b["uid"])
 
                 if debug:
                     log.append(
                         (
-                            hit_b.gene,
-                            hit_b.uid,
-                            hit_b.reftaxon,
-                            round(hit_b.score, 2),
-                            hit_b.qstart,
-                            hit_b.qend,
+                            gene,
+                            hit_b["uid"],
+                            hit_b["taxon"],
+                            round(hit_b["score"], 2),
+                            hit_b["ali_start"],
+                            hit_b["ali_end"],
                             "Internal kicked out by",
-                            hit_a.gene,
-                            hit_a.uid,
-                            hit_a.reftaxon,
-                            round(hit_a.score, 2),
-                            hit_a.qstart,
-                            hit_a.qend,
+                            gene,
+                            hit_a["uid"],
+                            hit_a["taxon"],
+                            round(hit_a["score"], 2),
+                            hit_a["ali_start"],
+                            hit_a["ali_end"],
                             round(percent, 3),
                         )
                     )
@@ -337,7 +344,7 @@ def internal_filtering(
             and the list of hits that passed the filter.
     """
     # Perform the internal filter.
-    kicked_hits, this_log, this_kicks = internal_filter(hits, debug, internal_percent)
+    kicked_hits, this_log, this_kicks = internal_filter(gene, hits, debug, internal_percent)
 
     # Return the gene, the number of hits kicked, a log of the hits kicked, and the list of hits
     return (gene, this_kicks, this_log, kicked_hits)
@@ -396,9 +403,12 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                     top_hit.reference_hits.extend(ref_seqs)
                     top_hit.convert_reference_hits()
 
-                    output[top_hit.gene].append(top_hit)
+                    output[top_hit.gene].append(top_hit.to_json())
 
-    return output, multi_kicks, this_log
+    with open(pargs.result_fp, "w") as result_file:
+        result_file.write(json.dumps(output))
+
+    return pargs.i, multi_kicks, this_log
 
 
 def run_process(args: Namespace, input_path: str) -> bool:
@@ -582,13 +592,17 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
             indices.append((start_index, end_index))
 
+        temp_files = [NamedTemporaryFile(dir=gettempdir()) for _ in range(post_threads)]
+
         arguments = (
             ProcessingArgs(
-                df.iloc[start_i : end_i + 1],
+                i, 
+                df.iloc[index[0] : index[1] + 1],
                 target_to_taxon,
                 args.debug,
+                temp_files[i].name
             )
-            for start_i, end_i in indices
+            for i, index in enumerate(indices)
         )
 
         printv(
@@ -600,7 +614,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
             result = p.map(process_lines, arguments)
 
         del arguments
-        for this_output, mkicks, this_log in result:
+        for process_index, mkicks, this_log in result:
+            this_result = temp_files[process_index]
+            this_output = json.load(open(this_result.name, "r"))
+            this_result.close()
+            
             for gene, hits in this_output.items():
                 if gene not in output:
                     output[gene] = hits
@@ -620,13 +638,13 @@ def run_process(args: Namespace, input_path: str) -> bool:
         requires_internal = {}
         internal_order = []
         for gene, hits in output.items():
-            this_counter = Counter([i.header for i in hits]).most_common()
+            this_counter = Counter([i["header"] for i in hits]).most_common()
             requires_internal[gene] = {}
             if this_counter[0][1] > 1:
                 this_hits = np.sum(i[1] for i in this_counter if i[1] > 1)
                 this_common = {i[0] for i in this_counter if i[1] > 1}
-                for hit in [i for i in hits if i.header in this_common]:
-                    requires_internal[gene].setdefault(hit.header, []).append(hit)
+                for hit in [i for i in hits if i["header"] in this_common]:
+                    requires_internal[gene].setdefault(hit["header"], []).append(hit)
 
                 internal_order.append((gene, this_hits))
 
@@ -676,11 +694,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
                     global_log.extend(this_log)
 
             for hit in hits:
-                if hit.uid in kicks:
+                if hit["uid"] in kicks:
                     continue
-                hit.seq = head_to_seq[hit.header.split("|")[0]]
-                out.append(hit.to_json())
-                dupe_divy_headers[gene][hit.header] = 1
+                hit["seq"] = head_to_seq[hit["header"]]
+                out.append(hit)
+                dupe_divy_headers[gene][hit["header"]] = 1
 
             passes += len(out)
             db.put_bytes(f"gethits:{gene}", orjson.dumps(out))
