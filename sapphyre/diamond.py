@@ -18,17 +18,6 @@ import wrap_rocks
 from .utils import printv, gettempdir
 from .timekeeper import TimeKeeper, KeeperMode
 
-# This logic is used to combat false extensions.
-# How many extra hits to scan looking for a shortest match.
-SEARCH_DEPTH = 5
-
-# Global variables for the multi_filter function.
-MULTI_PERCENTAGE_OF_OVERLAP = 0.3
-MULTI_SCORE_DIFFERENCE = 1.05
-
-# Due to the thread bottleneck of chunking a ceiling is set on the threads post reporter
-THREAD_CAP = 32
-
 # namedtuple for the processing arguments.
 ProcessingArgs = namedtuple(
     "ProcessingArgs",
@@ -182,6 +171,19 @@ def get_score_difference(score_a: float, score_b: float) -> float:
 
 
 def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
+    """
+    Filter out hits that imprecisely map to multiple genes.
+
+    Args:
+        hits (list): A list of Hit objects.
+        debug (bool): A boolean indicating whether or not to print debug messages.
+    Returns:
+        tuple[list, int, list]: A tuple containing a list of filtered hits, the number of hits filtered, and a list of debug rows.
+    """
+    # Global variables for the multi_filter function.
+    MULTI_PERCENTAGE_OF_OVERLAP = 0.3
+    MULTI_SCORE_DIFFERENCE = 1.05
+
     log = []
 
     # Assign the highest scoring hit as the master
@@ -424,6 +426,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
     Returns:
         bool: Whether the process was successful or not.
     """
+    # Estimated size of header chunks in a sub-section of the dataframe.
+    CHUNK_ESTIMATED_SIZE = 6
+
+    # Due to the thread bottleneck of chunking a ceiling is set on the threads post reporter
+    THREAD_CAP = 32
 
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     orthoset = args.orthoset
@@ -575,6 +582,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     headers = df["header"].unique()
     if len(headers) > 0:
         per_thread = ceil(len(headers) / args.processes)
+        estimated_end = ceil(CHUNK_ESTIMATED_SIZE * per_thread)
         arguments = []
         indices = []
         for x, i in enumerate(np.arange(0, len(headers), per_thread), 1):
@@ -585,9 +593,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
             if x != post_threads:
                 last_header = headers[i + per_thread - 1]
-
                 end_index = (
-                    np.where(df[start_index:]["header"].values == last_header)[0][-1]
+                    np.where(df[start_index:(start_index+estimated_end)]["header"].values == last_header)[0][-1]
                     + start_index
                 )
             else:
