@@ -391,7 +391,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
 
             if any(hits):
                 if len(genes_present) > 1:
-                    gene_hits = defaultdict(lst)
+                    gene_hits = defaultdict(list)
                     for hit in hits:
                         if not hit.kick:
                             gene_hits[hit.gene].append(hit)
@@ -527,11 +527,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
         )
 
     db = wrap_rocks.RocksDB(os.path.join(input_path, "rocksdb", "hits"))
-    output = {}
+    output = defaultdict(list)
     multi_kicks = 0
 
     global_log = []
-    dupe_divy_headers = {}
+    dupe_divy_headers = defaultdict(dict)
     df = pd.read_csv(
         out_path,
         engine="pyarrow",
@@ -562,10 +562,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
     )
     target_counts = df["target"].value_counts()
     combined_count = Counter()
-    taxon_to_targets = {}
+    taxon_to_targets = defaultdict(list)
     for target, count in target_counts.to_dict().items():
         _, ref_taxa, _ = target_to_taxon[target]
-        taxon_to_targets.setdefault(ref_taxa, []).append(target)
+        taxon_to_targets[ref_taxa].append(target)
         combined_count[ref_taxa] += count
 
     top_refs = set()
@@ -635,10 +635,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             this_result.close()
             
             for gene, hits in this_output.items():
-                if gene not in output:
-                    output[gene] = hits
-                else:
-                    output[gene].extend(hits)
+                output[gene].extend(hits)
 
             multi_kicks += mkicks
 
@@ -650,11 +647,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
             args.verbose,
         )
 
-        requires_internal = {}
+        requires_internal = defaultdict(dict)
         internal_order = []
         for gene, hits in output.items():
             this_counter = Counter([i["header"] for i in hits]).most_common()
-            requires_internal[gene] = {}
             if this_counter[0][1] > 1:
                 this_hits = sum(i[1] for i in this_counter if i[1] > 1)
                 this_common = {i[0] for i in this_counter if i[1] > 1}
@@ -674,7 +670,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 ],
             )
 
-        internal_result = defaultdict(lst)
+        internal_result = defaultdict(list)
         for gene, kick_count, this_log, kicked_hits in internal_results:
             internal_result[gene] = (kick_count, this_log, kicked_hits)
 
@@ -698,7 +694,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
         passes = 0
         internal_kicks = 0
         for gene, hits in output.items():
-            dupe_divy_headers[gene] = {}
             kicks = set()
             out = []
             if gene in internal_result:
@@ -737,11 +732,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
             args.verbose,
         )
 
-        gene_dupe_count = {}
+        gene_dupe_count = defaultdict(dict)
         for gene, headers in dupe_divy_headers.items():
             for base_header in headers.keys():
                 if base_header in dupe_counts:
-                    gene_dupe_count.setdefault(gene, {})[base_header] = dupe_counts[
+                    gene_dupe_count[gene][base_header] = dupe_counts[
                         base_header
                     ]
 
@@ -752,12 +747,12 @@ def run_process(args: Namespace, input_path: str) -> bool:
         nt_db.put_bytes(key, data)
 
     # DOING VARIANT FILTER
-    variant_filter = {}
+    variant_filter = defaultdict(list)
 
     for target, ref_tuple in target_to_taxon.items():
         gene, ref_taxon, data_length = ref_tuple
         if ref_taxon in top_refs:
-            variant_filter.setdefault(gene, []).append((ref_taxon, target, data_length))
+            variant_filter[gene].append((ref_taxon, target, data_length))
 
     dict_items = list(variant_filter.items())
     for gene, targets in dict_items:
