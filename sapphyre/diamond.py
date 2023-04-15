@@ -209,8 +209,8 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
             score_difference = get_score_difference(master.score, candidate.score)
             if score_difference >= MULTI_SCORE_DIFFERENCE:
                 # Kick the candidate
-                hits[i] = None
-                candidates[i - 1] = None
+                hits[i].kick = True
+                candidates[i - 1].kick = True
                 if debug:
                     log.append(
                         (
@@ -253,11 +253,13 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
                             if hit
                         ]
                     )
-                return [], len(hits), log
+                for hit in hits:
+                    hit.kick = True
+                return len(hits), log
 
     # Filter out the None values
-    passes = [hit for hit in hits if hit is not None]
-    return passes, len(hits) - len(passes), log
+    passes = [hit for hit in hits if not hit.kick]
+    return len(hits) - len(passes), log
 
 
 def internal_filter(
@@ -379,7 +381,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             genes_present = {hit.gene for hit in hits}
 
             if len(genes_present) > 1:
-                hits, this_kicks, log = multi_filter(hits, pargs.debug)
+                this_kicks, log = multi_filter(hits, pargs.debug)
                 multi_kicks += this_kicks
                 if pargs.debug:
                     this_log.extend(log)
@@ -388,9 +390,10 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                 if len(genes_present) > 1:
                     gene_hits = defaultdict(lst)
                     for hit in hits:
-                        gene_hits[hit.gene].append(hit)
+                        if not hit.kick:
+                            gene_hits[hit.gene].append(hit)
                 else:
-                    gene_hits = {hit.gene: hits}
+                    gene_hits = {hit.gene: [hit for hit in hits if not hit.kick]}
 
                 for _, hits in gene_hits.items():
                     top_hit = hits[0]
