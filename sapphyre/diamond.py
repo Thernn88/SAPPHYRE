@@ -26,7 +26,8 @@ ProcessingArgs = namedtuple(
         "grouped_data",
         "target_to_taxon",
         "debug",
-        "result_fp"
+        "result_fp",
+        "pairwise_refs",
     ],
 )
 
@@ -403,7 +404,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                     ref_seqs = [
                         ReferenceHit(hit.target, hit.sstart, hit.send)
                         for hit in hits
-                        if hit.gene == top_hit.gene and hit != top_hit
+                        if hit.gene == top_hit.gene and hit != top_hit and hit.reftaxon in pargs.pairwise_refs
                     ]
                     top_hit.reference_hits.extend(ref_seqs)
                     top_hit.convert_reference_hits()
@@ -568,6 +569,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         combined_count[ref_taxa] += count
 
     top_refs = set()
+    pairwise_refs = set()
     top_targets = set()
     most_common = combined_count.most_common()
     min_count = min(most_common[0:5], key=lambda x: x[1])[1]
@@ -576,6 +578,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
         if count >= target_count:
             top_refs.add(taxa)
             top_targets.update(taxon_to_targets[taxa])
+        if count >= min_count:
+            pairwise_refs.add(taxa)
     target_has_hit = set(df["target"].unique())
     df = df[(df["target"].isin(top_targets))]
     headers = df["header"].unique()
@@ -610,7 +614,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 df.iloc[index[0] : index[1] + 1],
                 target_to_taxon,
                 args.debug,
-                temp_files[i].name
+                temp_files[i].name,
+                pairwise_refs,
             )
             for i, index in enumerate(indices)
         )
