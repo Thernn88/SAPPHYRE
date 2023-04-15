@@ -426,11 +426,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
     Returns:
         bool: Whether the process was successful or not.
     """
-    # Estimated size of header chunks in a sub-section of the dataframe.
-    CHUNK_ESTIMATED_SIZE = 6
-
     # Due to the thread bottleneck of chunking a ceiling is set on the threads post reporter
     THREAD_CAP = 32
+    # Amount of overshoot in estimating end
+    OVERSHOOT_AMOUNT = 1.02
 
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     orthoset = args.orthoset
@@ -581,8 +580,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
     df = df[(df["target"].isin(top_targets))]
     headers = df["header"].unique()
     if len(headers) > 0:
-        per_thread = ceil(len(headers) / args.processes)
-        estimated_end = ceil(CHUNK_ESTIMATED_SIZE * per_thread)
+        per_thread = ceil(len(headers) / post_threads)
+        estimated_end = ceil((len(df) / post_threads) * OVERSHOOT_AMOUNT)
         arguments = []
         indices = []
         for x, i in enumerate(np.arange(0, len(headers), per_thread), 1):
@@ -597,6 +596,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                     np.where(df[start_index:(start_index+estimated_end)]["header"].values == last_header)[0][-1]
                     + start_index
                 )
+
             else:
                 end_index = len(df) - 1
 
