@@ -748,7 +748,13 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 if hit["uid"] in kicks:
                     continue
                 hit["seq"] = head_to_seq[hit["header"]]
-                hit = {k: hit[k] for k in ["header","frame","seq","taxon","ali_start","ali_end","ref_hits"]}
+                hit = {"header": hit["header"],
+                       "frame": hit["frame"],
+                       "seq": hit["seq"],
+                       "taxon": hit["taxon"],
+                       "ali_start": hit["ali_start"],
+                       "ali_end": hit["ali_end"],
+                       "ref_hits": hit["ref_hits"]}
                 out.append(hit)
                 dupe_divy_headers[gene][hit["header"]] = 1
 
