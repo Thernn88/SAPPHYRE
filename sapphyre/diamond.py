@@ -403,8 +403,8 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
 
                     ref_seqs = [
                         ReferenceHit(hit.target, hit.sstart, hit.send)
-                        for hit in hits
-                        if hit.gene == top_hit.gene and hit != top_hit and hit.reftaxon in pargs.pairwise_refs
+                        for hit in hits[1:]
+                        if hit.reftaxon in pargs.pairwise_refs
                     ]
                     top_hit.reference_hits.extend(ref_seqs)
                     top_hit.convert_reference_hits()
@@ -678,6 +678,47 @@ def run_process(args: Namespace, input_path: str) -> bool:
             f"Filtering done. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Writing to db",
             args.verbose,
         )
+        # DOING VARIANT FILTER
+        variant_filter = defaultdict(list)
+
+        for target, ref_tuple in target_to_taxon.items():
+            gene, ref_taxon, data_length = ref_tuple
+            if ref_taxon in top_refs:
+                variant_filter[gene].append((ref_taxon, target, data_length))
+
+        dict_items = list(variant_filter.items())
+        for gene, targets in dict_items:
+            target_taxons = [i[0] for i in targets]
+            if len(target_taxons) != len(list(set(target_taxons))):
+                this_counts = Counter(target_taxons)
+                out_targets = [i[1] for i in targets if this_counts[i[0]] == 1]
+                for target, count in this_counts.most_common():
+                    if count == 1:
+                        continue
+
+                    this_targets = [i for i in targets if i[0] == target]
+                    variants_with_hits = sum(
+                        i[1] in target_has_hit for i in this_targets
+                    )
+                    all_variants_kicked = variants_with_hits == 0
+                    if all_variants_kicked:
+                        reintroduce = max(this_targets, key=lambda x: x[2])
+                        out_targets.append(reintroduce[1])
+                        continue
+
+                    out_targets.extend(
+                        [i[1] for i in this_targets if i[1] in target_has_hit]
+                    )
+
+                variant_filter[gene] = out_targets
+            else:
+                variant_filter.pop(gene, -1)
+
+        variant_filter = {k: list(v) for k, v in variant_filter.items()}
+        db.put_bytes("getall:target_variants", orjson.dumps(variant_filter))
+
+        del variant_filter
+        nt_db.put("getall:valid_refs", ",".join(list(top_refs)))
 
         head_to_seq = {}
         for content in out:
@@ -707,6 +748,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 if hit["uid"] in kicks:
                     continue
                 hit["seq"] = head_to_seq[hit["header"]]
+                hit = {k: hit[k] for k in ["header","frame","seq","taxon","ali_start","ali_end","ref_hits"]}
                 out.append(hit)
                 dupe_divy_headers[gene][hit["header"]] = 1
 
@@ -746,47 +788,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
         data = orjson.dumps(gene_dupe_count)
         nt_db.put_bytes(key, data)
 
-    # DOING VARIANT FILTER
-    variant_filter = defaultdict(list)
-
-    for target, ref_tuple in target_to_taxon.items():
-        gene, ref_taxon, data_length = ref_tuple
-        if ref_taxon in top_refs:
-            variant_filter[gene].append((ref_taxon, target, data_length))
-
-    dict_items = list(variant_filter.items())
-    for gene, targets in dict_items:
-        target_taxons = [i[0] for i in targets]
-        if len(target_taxons) != len(list(set(target_taxons))):
-            this_counts = Counter(target_taxons)
-            out_targets = [i[1] for i in targets if this_counts[i[0]] == 1]
-            for target, count in this_counts.most_common():
-                if count == 1:
-                    continue
-
-                this_targets = [i for i in targets if i[0] == target]
-                variants_with_hits = sum(
-                    i[1] in target_has_hit for i in this_targets
-                )
-                all_variants_kicked = variants_with_hits == 0
-                if all_variants_kicked:
-                    reintroduce = max(this_targets, key=lambda x: x[2])
-                    out_targets.append(reintroduce[1])
-                    continue
-
-                out_targets.extend(
-                    [i[1] for i in this_targets if i[1] in target_has_hit]
-                )
-
-            variant_filter[gene] = out_targets
-        else:
-            variant_filter.pop(gene, -1)
-
-    variant_filter = {k: list(v) for k, v in variant_filter.items()}
-    db.put_bytes("getall:target_variants", orjson.dumps(variant_filter))
-
-    del variant_filter
-    nt_db.put("getall:valid_refs", ",".join(list(top_refs)))
     del top_refs
     del db
     del nt_db
