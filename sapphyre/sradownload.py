@@ -8,7 +8,7 @@ from subprocess import PIPE, Popen
 import requests
 from bs4 import BeautifulSoup
 
-from phymmr.utils import printv
+from .utils import printv
 
 
 def download_parallel(arguments):
