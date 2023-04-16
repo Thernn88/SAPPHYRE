@@ -531,7 +531,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     multi_kicks = 0
 
     global_log = []
-    dupe_divy_headers = defaultdict(dict)
+    dupe_divy_headers = defaultdict(set)
     df = pd.read_csv(
         out_path,
         engine="pyarrow",
@@ -748,15 +748,15 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 if hit["uid"] in kicks:
                     continue
                 hit["seq"] = head_to_seq[hit["header"]]
-                hit = {"header": hit["header"],
-                       "frame": hit["frame"],
-                       "seq": hit["seq"],
-                       "taxon": hit["taxon"],
-                       "ali_start": hit["ali_start"],
-                       "ali_end": hit["ali_end"],
-                       "ref_hits": hit["ref_hits"]}
+                # hit = {"header": hit["header"],
+                #        "frame": hit["frame"],
+                #        "seq": hit["seq"],
+                #        "taxon": hit["taxon"],
+                #        "ali_start": hit["ali_start"],
+                #        "ali_end": hit["ali_end"],
+                #        "ref_hits": hit["ref_hits"]}
                 out.append(hit)
-                dupe_divy_headers[gene][hit["header"]] = 1
+                dupe_divy_headers[gene].add(hit["header"])
 
             passes += len(out)
             db.put_bytes(f"gethits:{gene}", orjson.dumps(out))
@@ -782,7 +782,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         gene_dupe_count = defaultdict(dict)
         for gene, headers in dupe_divy_headers.items():
-            for base_header in headers.keys():
+            for base_header in headers:
                 if base_header in dupe_counts:
                     gene_dupe_count[gene][base_header] = dupe_counts[
                         base_header
