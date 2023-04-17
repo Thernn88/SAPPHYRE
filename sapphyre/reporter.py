@@ -367,7 +367,7 @@ def print_unmerged_sequences(
     base_header_mapped_already = {}
     seq_mapped_already = {}
     exact_hit_mapped_already = set()
-    dupes = {}
+    dupes = defaultdict(list)
     header_seperator = "|"
 
     for hit in hits:
