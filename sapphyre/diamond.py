@@ -9,9 +9,10 @@ import sys
 from tempfile import TemporaryDirectory, NamedTemporaryFile
 from multiprocessing.pool import Pool
 from time import time
+from typing import Union
 import numpy as np
 import pandas as pd
-import orjson
+from msgspec import Struct, json
 import wrap_rocks
 
 # from phymmr_tools import Hit, ReferenceHit
@@ -43,17 +44,10 @@ def lst() -> list:
 #     return Hit(*row)
 
 
-class ReferenceHit:
-    __slots__ = (
-        "target",
-        "sstart",
-        "send",
-    )
-
-    def __init__(self, target, sstart, send):
-        self.target = target
-        self.sstart = int(sstart)
-        self.send = int(send)
+class ReferenceHit(Struct, frozen=True):
+    target: str
+    sstart: int
+    send: int
 
     def to_json(self):
         return {
@@ -63,49 +57,23 @@ class ReferenceHit:
         }
 
 
-class Hit:
-    __slots__ = (
-        "header",
-        "qstart",
-        "qend",
-        "gene",
-        "score",
-        "evalue",
-        "length",
-        "kick",
-        "seq",
-        "frame",
-        "uid",
-        "reftaxon",
-        "target",
-        "sstart",
-        "send",
-        "reference_hits",
-        "json",
-    )
-
-    def __init__(self, df):
-        self.uid = hash(time())
-        (
-            self.header,
-            self.target,
-            self.frame,
-            self.evalue,
-            self.score,
-            self.qstart,
-            self.qend,
-            self.sstart,
-            self.send,
-        ) = df
-        self.gene = None
-        self.reftaxon = None
-        self.kick = False
-        self.seq = None
-        self.json = None
-        self.reference_hits = [ReferenceHit(self.target, self.sstart, self.send)]
-        if self.frame < 0:
-            self.qend, self.qstart = self.qstart, self.qend
-        self.length = self.qend - self.qstart + 1
+class Hit(Struct):
+    header: str
+    target: str
+    frame: int
+    evalue: float
+    score: float
+    qstart: int
+    qend: int
+    sstart: int
+    send: int
+    gene: str = None
+    length: int = None
+    kick: bool = False
+    seq: str = None
+    uid: int = None
+    reftaxon: str = None
+    reference_hits: list[ReferenceHit] = []
 
     def convert_reference_hits(self):
         self.reference_hits = [i.to_json() for i in self.reference_hits]
@@ -372,13 +340,16 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
 
     for _, header_df in pargs.grouped_data.groupby("header"):
         frame_to_hits = defaultdict(list)
-        # Convert each row in the dataframe to a Hit() object
-        hits = [Hit(row) for row in header_df.values]
-        hits.sort(key=lambda hit: hit.score, reverse=True)
-        # Add reference data to each
-        for hit in hits:
-            hit.gene, hit.reftaxon, _ = pargs.target_to_taxon[hit.target]
-            frame_to_hits[hit.frame].append(hit)
+        hits = []
+        for row in sorted(header_df.values, key=lambda row: row[4], reverse=True):
+            this_hit = Hit(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8])
+            if this_hit.frame < 0:
+                this_hit.qend, this_hit.qstart = this_hit.qstart, this_hit.qend
+            this_hit.length = this_hit.qend - this_hit.qstart + 1
+            this_hit.gene, this_hit.reftaxon, _ = pargs.target_to_taxon[this_hit.target]
+            this_hit.uid = hash(time())
+            this_hit.reference_hits.append(ReferenceHit(this_hit.target, this_hit.sstart, this_hit.send))
+            frame_to_hits[this_hit.frame].append(this_hit)
 
         for hits in frame_to_hits.values():
             genes_present = {hit.gene for hit in hits}
@@ -396,7 +367,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                         if not hit.kick:
                             gene_hits[hit.gene].append(hit)
                 else:
-                    gene_hits = {hit.gene: [hit for hit in hits if not hit.kick]}
+                    gene_hits = {hits[0].gene: [hit for hit in hits if not hit.kick]}
 
                 for _, hits in gene_hits.items():
                     top_hit = hits[0]
@@ -411,8 +382,8 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
 
                     output[top_hit.gene].append(top_hit.to_json())
 
-    with open(pargs.result_fp, "w") as result_file:
-        result_file.write(json.dumps(output))
+    with open(pargs.result_fp, "wb") as result_file:
+        result_file.write(json.encode(output))#type=dict[str, list[dict[str, Union[str, bool, float, int, list[ReferenceHit]]]]]
 
     return pargs.i, multi_kicks, this_log
 
@@ -474,7 +445,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             sys.exit(1)
     orthoset_db = wrap_rocks.RocksDB(orthoset_db_path)
 
-    target_to_taxon = orjson.loads(orthoset_db.get("getall:targetreference"))
+    target_to_taxon = json.decode(orthoset_db.get("getall:targetreference"), type=dict[str, list[Union[str, int]]])
 
     del orthoset_db
     time_keeper.lap()  # Reset timer
@@ -494,7 +465,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         )
     out = [nt_db.get(f"ntbatch:{i}") for i in recipe]
 
-    dupe_counts = orjson.loads(nt_db.get("getall:dupes"))
+    dupe_counts = json.decode(nt_db.get("getall:dupes"), type=dict[str, int])
 
     out_path = os.path.join(diamond_path, f"{sensitivity}.tsv")
     if not os.path.exists(out_path) or os.stat(out_path).st_size == 0:
@@ -631,7 +602,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
         del arguments
         for process_index, mkicks, this_log in result:
             this_result = temp_files[process_index]
-            this_output = json.load(open(this_result.name, "r"))
+            with open(this_result.name, "rb") as fp:
+                this_output = json.decode(fp.read(), type = dict[str, list[dict[str, Union[str, bool, float, int, None, list[ReferenceHit]]]]])
             this_result.close()
             
             for gene, hits in this_output.items():
@@ -715,7 +687,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 variant_filter.pop(gene, -1)
 
         variant_filter = {k: list(v) for k, v in variant_filter.items()}
-        db.put_bytes("getall:target_variants", orjson.dumps(variant_filter))
+
+        db.put_bytes("getall:target_variants", json.encode(variant_filter)) #type=dict[str, list[str]]
 
         del variant_filter
         nt_db.put("getall:valid_refs", ",".join(list(top_refs)))
@@ -748,18 +721,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 if hit["uid"] in kicks:
                     continue
                 hit["seq"] = head_to_seq[hit["header"]]
-                # hit = {"header": hit["header"],
-                #        "frame": hit["frame"],
-                #        "seq": hit["seq"],
-                #        "taxon": hit["taxon"],
-                #        "ali_start": hit["ali_start"],
-                #        "ali_end": hit["ali_end"],
-                #        "ref_hits": hit["ref_hits"]}
                 out.append(hit)
                 dupe_divy_headers[gene].add(hit["header"])
 
             passes += len(out)
-            db.put_bytes(f"gethits:{gene}", orjson.dumps(out))
+            db.put_bytes(f"gethits:{gene}", json.encode(out))#type=list[dict[str, Union[str, int, float, bool, list[ReferenceHit]]]]
         del head_to_seq
         if global_log:
             with open(os.path.join(input_path, "multi.log"), "w") as fp:
@@ -791,7 +757,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         db.put("getall:presentgenes", ",".join(list(output.keys())))
 
         key = "getall:gene_dupes"
-        data = orjson.dumps(gene_dupe_count)
+        data = json.encode(gene_dupe_count) #type=dict[str, dict[str, int]]
         nt_db.put_bytes(key, data)
 
     del top_refs

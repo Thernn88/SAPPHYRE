@@ -3,10 +3,10 @@ from argparse import Namespace
 
 import os
 import shutil
-from collections import Counter, namedtuple
+from collections import Counter, defaultdict, namedtuple
 from multiprocessing.pool import Pool
-from typing import Optional, TextIO
-import orjson
+from typing import Optional, TextIO, Union
+from msgspec import json, Struct
 import parasail as ps
 import blosum as bl
 import phymmr_tools
@@ -42,41 +42,20 @@ MainArgs = namedtuple(
 )
 
 
-class RefHit:
-    __slots__ = ("sub_start", "sub_end", "target")
+class RefHit(Struct, frozen=True):
+    sub_start: int
+    sub_end: int
+    target: str
 
-    def __init__(self, hit):
-        self.sub_start = hit["sstart"]
-        self.sub_end = hit["send"]
-        self.target = hit["target"]
+class Hit(Struct, gc=False):
+    header: str
+    gene: str
+    ref_taxon: str
+    ali_start: int
+    ali_end: int
+    est_sequence: str
+    ref_seqs: list[RefHit] = []
 
-
-class Hit:
-    __slots__ = (
-        "header",
-        "gene",
-        "ref_taxon",
-        "ali_start",
-        "ali_end",
-        "ref_seqs",
-        "est_sequence",
-    )
-
-    def __init__(self, hit, gene):
-        if hit["frame"] < 0:
-            self.header = (
-                hit["header"] + "|[revcomp]:[translate("+str(abs(hit["frame"]))+")]"
-            )
-        else:
-            self.header = hit["header"] + "|[translate("+str(hit["frame"])+")]"
-        self.ali_start = hit["ali_start"]
-        self.ali_end = hit["ali_end"]
-        self.ref_taxon = hit["taxon"]
-        self.gene = gene
-
-        self.est_sequence = hit["seq"]
-
-        self.ref_seqs = [RefHit(i) for i in hit["ref_hits"]]
 
     def get_bp_trim(
         self,
@@ -244,13 +223,18 @@ def get_diamondhits(
     present_genes = rocks_hits_db.get("getall:presentgenes").split(",")
     genes_to_process = list_of_wanted_genes or present_genes
 
-    gene_based_results = {
-        gene: [
-            Hit(this_data, gene)
-            for this_data in orjson.loads(rocks_hits_db.get(f"gethits:{gene}"))
-        ]
-        for gene in genes_to_process
-    }
+    gene_based_results = defaultdict(list)
+    for gene in genes_to_process:
+        for this_data in json.decode(rocks_hits_db.get(f"gethits:{gene}"), type=list[dict[str, Union[str, int, float, bool, list[dict[str, Union[str, int]]]]]]):
+            this_hit = Hit(this_data["header"], gene, this_data["taxon"], this_data["ali_start"], this_data["ali_end"], this_data["seq"])
+            this_hit.ref_seqs = [RefHit(i["sstart"], i["send"], i["target"]) for i in this_data["ref_hits"]]
+            if this_data["frame"] < 0:
+                this_hit.header = (
+                    this_hit.header + "|[revcomp]:[translate("+str(abs(this_data["frame"]))+")]"
+                )
+            else:
+                this_hit.header = this_hit.header + "|[translate("+str(this_data["frame"])+")]"
+            gene_based_results[gene].append(this_hit)
 
     return gene_based_results
 
@@ -264,7 +248,7 @@ def get_gene_variants(rocks_hits_db: RocksDB) -> dict[str, list[str]]:
     Returns:
         dict: Dictionary of gene to corresponding target variants
     """
-    return orjson.loads(rocks_hits_db.get("getall:target_variants"))
+    return json.decode(rocks_hits_db.get("getall:target_variants"), type=dict[str, list[str]])
 
 
 def get_toprefs(rocks_nt_db: RocksDB) -> list[str]:
@@ -306,7 +290,7 @@ def get_core_sequences(
     Returns:
         tuple: Tuple of core AA and NT sequences
     """
-    core_seqs = orjson.loads(orthoset_db.get(f"getcore:{gene}"))
+    core_seqs = json.decode(orthoset_db.get(f"getcore:{gene}"), type=dict[str, list[tuple[str, str, str]]])
     return core_seqs["aa"], core_seqs["nt"]
 
 
@@ -695,7 +679,7 @@ def do_taxa(path: str, taxa_id: str, args: Namespace):
         this_gene_based_dupes[gene] = dupes
 
     key = "getall:reporter_dupes"
-    data = orjson.dumps(this_gene_based_dupes)
+    data = json.encode(this_gene_based_dupes)
     rocky.get_rock("rocks_nt_db").put_bytes(key, data)
 
     printv(
