@@ -1,7 +1,6 @@
 from argparse import Namespace
 from collections import Counter, defaultdict, namedtuple
 import itertools
-import json
 from math import ceil
 import os
 from shutil import rmtree
