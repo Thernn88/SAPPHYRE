@@ -12,10 +12,11 @@ import blosum as bl
 import phymmr_tools
 from Bio.Seq import Seq
 import xxhash
+from wrap_rocks import RocksDB
 from . import rocky
 from .timekeeper import TimeKeeper, KeeperMode
 from .utils import printv, writeFasta
-from wrap_rocks import RocksDB
+
 
 
 MISMATCH_AMOUNT = 1
