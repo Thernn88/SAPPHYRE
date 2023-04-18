@@ -364,11 +364,10 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
 
                     output[top_hit.gene].append(top_hit)
 
+    result = ("\n".join([",".join([str(i) for i in line]) for line in this_log]), multi_kicks, output)
+
     with open(pargs.result_fp, "wb") as result_file:
-        result_file.write(json.encode(output))#type=dict[str, list[dict[str, Union[str, bool, float, int, list[ReferenceHit]]]]]
-
-    return pargs.i, multi_kicks, this_log
-
+        result_file.write(json.encode(result))
 
 def run_process(args: Namespace, input_path: str) -> bool:
     """
@@ -581,7 +580,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         )
 
         with Pool(post_threads) as p:
-            result = p.map(process_lines, arguments)
+            p.map(process_lines, arguments)
 
         printv(
             f"Processed. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Reading thread outputs",
@@ -589,11 +588,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
         )
 
         del arguments
-        for process_index, mkicks, this_log in result:
-            this_result = temp_files[process_index]
-            with open(this_result.name, "rb") as fp:
-                this_output = json.decode(fp.read(), type = dict[str, list[Hit]])
-            this_result.close()
+        for temp_file in temp_files:
+            with open(temp_file.name, "rb") as fp:
+                this_log, mkicks, this_output = json.decode(fp.read(), type = tuple[str, int, dict[str, list[Hit]]])
             
             for gene, hits in this_output.items():
                 output[gene].extend(hits)
@@ -601,8 +598,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
             multi_kicks += mkicks
 
             if args.debug:
-                global_log.extend(this_log)
-        del this_output, mkicks, this_log, result
+                global_log.append(this_log)
+        del this_output, mkicks, this_log,
         printv(
             f"Done reading outputs. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
             args.verbose,
@@ -720,7 +717,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         if global_log:
             with open(os.path.join(input_path, "multi.log"), "w") as fp:
                 fp.write(
-                    "\n".join([",".join([str(i) for i in line]) for line in global_log])
+                    "\n".join(global_log)
                 )
 
         printv(
