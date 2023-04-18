@@ -16,7 +16,7 @@ from wrap_rocks import RocksDB
 from . import rocky
 from .timekeeper import TimeKeeper, KeeperMode
 from .utils import printv, writeFasta
-from .diamond import ReferenceHit, Hit
+from .diamond import ReporterHit
 
 MISMATCH_AMOUNT = 1
 EXACT_MATCH_AMOUNT = 4
@@ -42,7 +42,7 @@ MainArgs = namedtuple(
 )
 
 # Extend hit with new functions
-class Hit(Hit):
+class Hit(ReporterHit):
     def get_bp_trim(
         self,
         this_aa: str,

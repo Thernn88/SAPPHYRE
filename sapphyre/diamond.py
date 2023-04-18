@@ -67,6 +67,16 @@ class Hit(Struct):
     reftaxon: str = None
     reference_hits: list[ReferenceHit] = []
 
+class ReporterHit(Struct):
+    header: str
+    frame: int
+    qstart: int
+    qend: int
+    gene: str
+    est_seq: str
+    reftaxon: str
+    reference_hits: list[ReferenceHit]
+
 def get_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
     """
     Get the overlap between two ranges.
@@ -694,7 +704,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 if hit.uid in kicks:
                     continue
                 hit.est_seq = head_to_seq[hit.header]
-                out.append(hit)
+                out.append(ReporterHit(hit.header, hit.frame, hit.qstart, hit.qend, hit.gene, hit.est_seq, hit.reftaxon, hit.reference_hits))
                 dupe_divy_headers[gene].add(hit.header)
 
             passes += len(out)
