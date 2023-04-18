@@ -16,8 +16,7 @@ from wrap_rocks import RocksDB
 from . import rocky
 from .timekeeper import TimeKeeper, KeeperMode
 from .utils import printv, writeFasta
-
-
+from .diamond import ReferenceHit, Hit
 
 MISMATCH_AMOUNT = 1
 EXACT_MATCH_AMOUNT = 4
@@ -42,22 +41,8 @@ MainArgs = namedtuple(
     ],
 )
 
-
-class RefHit(Struct, frozen=True):
-    sub_start: int
-    sub_end: int
-    target: str
-
-class Hit(Struct, gc=False):
-    header: str
-    gene: str
-    ref_taxon: str
-    ali_start: int
-    ali_end: int
-    est_sequence: str
-    ref_seqs: list[RefHit] = []
-
-
+# Extend hit with new functions
+class Hit(Hit):
     def get_bp_trim(
         self,
         this_aa: str,
@@ -113,10 +98,10 @@ class Hit(Struct, gc=False):
             debug_fp.write(f">{header}\n{this_aa}\n")
 
         # For each reference sequence
-        for number, ref in enumerate(self.ref_seqs):
+        for number, ref in enumerate(self.reference_hits):
             # Trim to candidate alignment coords
             ref_seq = references[ref.target]
-            ref_seq = ref_seq[ref.sub_start - 1 : ref.sub_end]
+            ref_seq = ref_seq[ref.sstart - 1 : ref.send]
 
             # Pairwise align the reference and query
             result = ps.nw_trace_scan_profile_16(
@@ -202,11 +187,11 @@ class Hit(Struct, gc=False):
 
     def trim_to_coords(self):
         """
-        Trims the hit's est_sequence to the alignment coords
+        Trims the hit's est_seq to the alignment coords
         """
-        self.est_sequence = self.est_sequence[self.ali_start - 1 : self.ali_end]
+        self.est_seq = self.est_seq[self.qstart - 1 : self.qend]
         if "revcomp" in self.header:
-            self.est_sequence = phymmr_tools.bio_revcomp(self.est_sequence)
+            self.est_seq = phymmr_tools.bio_revcomp(self.est_seq)
 
 
 def get_diamondhits(
@@ -224,18 +209,11 @@ def get_diamondhits(
     present_genes = rocks_hits_db.get("getall:presentgenes").split(",")
     genes_to_process = list_of_wanted_genes or present_genes
 
+    decoder = json.Decoder(list[Hit]) 
+
     gene_based_results = defaultdict(list)
     for gene in genes_to_process:
-        for this_data in json.decode(rocks_hits_db.get(f"gethits:{gene}"), type=list[dict[str, Union[str, int, float, bool, list[dict[str, Union[str, int]]]]]]):
-            this_hit = Hit(this_data["header"], gene, this_data["taxon"], this_data["ali_start"], this_data["ali_end"], this_data["seq"])
-            this_hit.ref_seqs = [RefHit(i["sstart"], i["send"], i["target"]) for i in this_data["ref_hits"]]
-            if this_data["frame"] < 0:
-                this_hit.header = (
-                    this_hit.header + "|[revcomp]:[translate("+str(abs(this_data["frame"]))+")]"
-                )
-            else:
-                this_hit.header = this_hit.header + "|[translate("+str(this_data["frame"])+")]"
-            gene_based_results[gene].append(this_hit)
+        gene_based_results[gene] = decoder.decode(rocks_hits_db.get_bytes(f"gethits:{gene}"))
 
     return gene_based_results
 
@@ -372,13 +350,21 @@ def print_unmerged_sequences(
     header_seperator = "|"
 
     for hit in hits:
-        base_header, reference_frame = hit.header.split("|")
+        base_header = hit.header
+        reference_frame = str(hit.frame)
+
+        if hit.frame < 0:
+            hit.header = (
+                hit.header + "|[revcomp]:[translate("+str(abs(hit.frame))+")]"
+            )
+        else:
+            hit.header = hit.header + "|[translate("+str(hit.frame)+")]"
 
         # Format header to gene|taxa_name|taxa_id|sequence_id|frame
         header = (
             gene
             + header_seperator
-            + hit.ref_taxon
+            + hit.reftaxon
             + header_seperator
             + taxa_id
             + header_seperator
@@ -391,7 +377,7 @@ def print_unmerged_sequences(
         hit.trim_to_coords()
 
         # Translate to AA
-        nt_seq = hit.est_sequence
+        nt_seq = hit.est_seq
         aa_seq = translate_cdna(nt_seq)
 
         # Trim to match reference
@@ -456,7 +442,7 @@ def print_unmerged_sequences(
                         header = (
                             gene
                             + header_seperator
-                            + hit.ref_taxon
+                            + hit.reftaxon
                             + header_seperator
                             + taxa_id
                             + header_seperator
