@@ -583,6 +583,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
         with Pool(post_threads) as p:
             result = p.map(process_lines, arguments)
 
+        printv(
+            f"Processed. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Reading thread outputs",
+            args.verbose,
+        )
+
         del arguments
         for process_index, mkicks, this_log in result:
             this_result = temp_files[process_index]
@@ -599,7 +604,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 global_log.extend(this_log)
         del this_output, mkicks, this_log, result
         printv(
-            f"Processed. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
+            f"Done reading outputs. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
             args.verbose,
         )
 
