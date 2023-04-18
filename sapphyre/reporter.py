@@ -98,7 +98,7 @@ class Hit(ReporterHit):
             debug_fp.write(f">{header}\n{this_aa}\n")
 
         # For each reference sequence
-        for number, ref in enumerate(self.reference_hits):
+        for number, ref in enumerate(self.ref_hits):
             # Trim to candidate alignment coords
             ref_seq = references[ref.target]
             ref_seq = ref_seq[ref.sstart - 1 : ref.send]

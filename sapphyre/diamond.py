@@ -62,10 +62,9 @@ class Hit(Struct):
     gene: str = None
     length: int = None
     kick: bool = False
-    est_seq: Union[str, None] = None
     uid: int = None
     reftaxon: str = None
-    reference_hits: list[ReferenceHit] = []
+    ref_hits: list[ReferenceHit] = []
 
 class ReporterHit(Struct):
     header: str
@@ -73,9 +72,9 @@ class ReporterHit(Struct):
     qstart: int
     qend: int
     gene: str
-    est_seq: str
     reftaxon: str
-    reference_hits: list[ReferenceHit]
+    ref_hits: list[ReferenceHit]
+    est_seq: str = None
 
 def get_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
     """
@@ -332,7 +331,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             this_hit.length = this_hit.qend - this_hit.qstart + 1
             this_hit.gene, this_hit.reftaxon, _ = pargs.target_to_taxon[this_hit.target]
             this_hit.uid = hash(time())
-            this_hit.reference_hits.append(ReferenceHit(this_hit.target, this_hit.sstart, this_hit.send))
+            this_hit.ref_hits.append(ReferenceHit(this_hit.target, this_hit.sstart, this_hit.send))
             frame_to_hits[this_hit.frame].append(this_hit)
 
         for hits in frame_to_hits.values():
@@ -361,7 +360,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                         for hit in hits[1:]
                         if hit.reftaxon in pargs.pairwise_refs
                     ]
-                    top_hit.reference_hits.extend(ref_seqs)
+                    top_hit.ref_hits.extend(ref_seqs)
 
                     output[top_hit.gene].append(top_hit)
 
@@ -385,6 +384,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
     THREAD_CAP = 32
     # Amount of overshoot in estimating end
     OVERSHOOT_AMOUNT = 1.02
+
+    json_encoder = json.Encoder()
 
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     orthoset = args.orthoset
@@ -671,7 +672,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         variant_filter = {k: list(v) for k, v in variant_filter.items()}
 
-        db.put_bytes("getall:target_variants", json.encode(variant_filter)) #type=dict[str, list[str]]
+        db.put_bytes("getall:target_variants", json_encoder.encode(variant_filter)) #type=dict[str, list[str]]
 
         del variant_filter
         nt_db.put("getall:valid_refs", ",".join(list(top_refs)))
@@ -690,6 +691,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         passes = 0
         internal_kicks = 0
+        encoder = json.Encoder()
+        convert_to_hit = lambda hit: ReporterHit(hit.header, hit.frame, hit.qstart, hit.qend, hit.gene, hit.reftaxon, hit.ref_hits)
         for gene, hits in output.items():
             kicks = set()
             out = []
@@ -700,15 +703,14 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 if args.debug:
                     global_log.extend(this_log)
 
-            for hit in hits:
-                if hit.uid in kicks:
-                    continue
+            for hit in map(convert_to_hit, [i for i in hits if i.uid not in kicks]):
                 hit.est_seq = head_to_seq[hit.header]
-                out.append(ReporterHit(hit.header, hit.frame, hit.qstart, hit.qend, hit.gene, hit.est_seq, hit.reftaxon, hit.reference_hits))
+                out.append(hit)
                 dupe_divy_headers[gene].add(hit.header)
 
             passes += len(out)
-            db.put_bytes(f"gethits:{gene}", json.encode(out))#type=list[dict[str, Union[str, int, float, bool, list[ReferenceHit]]]]
+            db.put_bytes(f"gethits:{gene}", encoder.encode(out))
+            
         del head_to_seq
         if global_log:
             with open(os.path.join(input_path, "multi.log"), "w") as fp:
@@ -740,7 +742,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         db.put("getall:presentgenes", ",".join(list(output.keys())))
 
         key = "getall:gene_dupes"
-        data = json.encode(gene_dupe_count) #type=dict[str, dict[str, int]]
+        data = json_encoder.encode(gene_dupe_count) #type=dict[str, dict[str, int]]
         nt_db.put_bytes(key, data)
 
     del top_refs
