@@ -382,7 +382,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     # Due to the thread bottleneck of chunking a ceiling is set on the threads post reporter
     THREAD_CAP = 32
     # Amount of overshoot in estimating end
-    OVERSHOOT_AMOUNT = 1.02
+    OVERSHOOT_AMOUNT = 1.4
 
     json_encoder = json.Encoder()
 
@@ -588,9 +588,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
         )
 
         del arguments
+        decoder = json.Decoder(tuple[str, int, dict[str, list[Hit]]])
         for temp_file in temp_files:
             with open(temp_file.name, "rb") as fp:
-                this_log, mkicks, this_output = json.decode(fp.read(), type = tuple[str, int, dict[str, list[Hit]]])
+                this_log, mkicks, this_output = decoder.decode(fp.read())
             
             for gene, hits in this_output.items():
                 output[gene].extend(hits)
