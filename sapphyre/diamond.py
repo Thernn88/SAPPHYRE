@@ -382,7 +382,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
     # Due to the thread bottleneck of chunking a ceiling is set on the threads post reporter
     THREAD_CAP = 32
     # Amount of overshoot in estimating end
-    OVERSHOOT_AMOUNT = 1.02
+    OVERSHOOT_AMOUNT = 1.05
+    # Total minimum to overshoot when searching for slice. (This number is divded by the number of processes)
+    OVERSHOOT_MINIMUM = 500000
 
     json_encoder = json.Encoder()
 
@@ -539,7 +541,12 @@ def run_process(args: Namespace, input_path: str) -> bool:
     headers = df["header"].unique()
     if len(headers) > 0:
         per_thread = ceil(len(headers) / post_threads)
-        estimated_end = ceil((len(df) / post_threads) * OVERSHOOT_AMOUNT)
+        estimated_end = ceil((len(df) / post_threads))
+        OVERSHOOT_MINIMUM = ceil(OVERSHOOT_MINIMUM/post_threads)
+        if estimated_end < OVERSHOOT_MINIMUM or estimated_end < len(df):
+            estimated_end = OVERSHOOT_MINIMUM
+        estimated_end = ceil(estimated_end * OVERSHOOT_AMOUNT)
+        
         arguments = []
         indices = []
         for x, i in enumerate(range(0, len(headers), per_thread), 1):
@@ -550,16 +557,15 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
             if x != post_threads:
                 last_header = headers[i + per_thread - 1]
+                
                 end_index = (
                     np.where(df[start_index:(start_index+estimated_end)]["header"].values == last_header)[0][-1]
                     + start_index
                 )
-
             else:
                 end_index = len(df) - 1
 
             indices.append((start_index, end_index))
-
         temp_files = [NamedTemporaryFile(dir=gettempdir()) for _ in range(post_threads)]
 
         arguments = (
