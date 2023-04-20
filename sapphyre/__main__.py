@@ -617,9 +617,9 @@ def subcmd_finalize(subparsers):
     par.set_defaults(func=finalize, formathelp=par.format_help)
 
 
-def subcmd_sradownload(sp):
+def subcmd_download(sp):
     par = sp.add_parser(
-        "SRADownload", help="Download fastq files from www.ncbi.nlm.nih.gov"
+        "download", help="Download fastq files from www.ncbi.nlm.nih.gov"
     )
     par.add_argument(
         "INPUT",
@@ -631,13 +631,13 @@ def subcmd_sradownload(sp):
         help="Path to SRA Toolkit. Will try system's PATH if not used.",
         required=False,
     )
-    par.set_defaults(func=sradownload, formathelp=par.format_help)
+    par.set_defaults(func=download, formathelp=par.format_help)
 
 
-def sradownload(argsobj):
-    from . import sradownload
+def download(argsobj):
+    from . import download
 
-    if not sradownload.main(argsobj):
+    if not download.main(argsobj):
         print()
         print(argsobj.formathelp())
 
@@ -842,7 +842,7 @@ if __name__ == "__main__":
     subcmd_outlier(subparsers)
     subcmd_mergeoverlap(subparsers)
     subcmd_mergegenes(subparsers)
-    subcmd_sradownload(subparsers)
+    subcmd_download(subparsers)
     subcmd_archiver(subparsers)
 
     # Finalize
