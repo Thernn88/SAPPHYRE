@@ -8,7 +8,7 @@ Post-processing:
     5. align
     6. pal2nal
     7. FlexCull (optional)
-    8. OutlierCheck
+    8. Outlier
     9. MergeOverlap
     10. MergeGenes
 """
@@ -219,9 +219,9 @@ def reporter(args):
         print(args.formathelp())
 
 
-def subcmd_outliercheck(subparsers):
+def subcmd_outlier(subparsers):
     par = subparsers.add_parser(
-        "OutlierCheck",
+        "outlier",
         help="Calculates a Blosum62 distance matrix which are used to remove outlier "
         "sequences above a threshold.",
     )
@@ -288,13 +288,13 @@ def subcmd_outliercheck(subparsers):
         default=False,
         help="Log outliers to csv files",
     )
-    par.set_defaults(func=outliercheck, formathelp=par.format_help)
+    par.set_defaults(func=outlier, formathelp=par.format_help)
 
 
-def outliercheck(args):
-    from . import outliercheck
+def outlier(args):
+    from . import outlier
 
-    if not outliercheck.main(args):
+    if not outlier.main(args):
         print()
         print(args.formathelp)
 
@@ -785,7 +785,7 @@ if __name__ == "__main__":
         prog="sapphyre",
         # TODO write me
         description="Order: Prepare, Hmmsearch, BlastPal, Reporter, "
-        "align, pal2nal, FlexCull (optional), OutlierCheck, MergeOverlap, MergeGenes",
+        "align, pal2nal, FlexCull (optional), outlier, MergeOverlap, MergeGenes",
         epilog="sapphyre  Copyright (C) 2022  Sapphyre Team\n"
         "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n"
         "This program comes with ABSOLUTELY NO WARRANTY.\n"
@@ -835,11 +835,11 @@ if __name__ == "__main__":
     subcmd_diamond(subparsers)
     subcmd_reporter(subparsers)
 
-    # align > pal2nal > FlexCull (optional) > OutlierCheck > MergeOverlap
+    # align > pal2nal > FlexCull (optional) > outlier > MergeOverlap
     subcmd_align(subparsers)
     subcmd_pal2nal(subparsers)
     subcmd_flexcull(subparsers)
-    subcmd_outliercheck(subparsers)
+    subcmd_outlier(subparsers)
     subcmd_mergeoverlap(subparsers)
     subcmd_mergegenes(subparsers)
     subcmd_sradownload(subparsers)
