@@ -10,7 +10,7 @@ Post-processing:
     7. FlexCull (optional)
     8. Outlier
     9. Merge
-    10. MergeGenes
+    10. Combine
 """
 import argparse
 
@@ -360,12 +360,12 @@ def Merge(args):
         print(args.formathelp())
 
 
-def subcmd_mergegenes(subparsers):
+def subcmd_Combine(subparsers):
     dsc = (
         "Initial Dataset Construction: Merges AA and NT data files across "
         "multiple taxa into a single AA and NT pair per gene."
     )
-    par = subparsers.add_parser("MergeGenes", help=dsc, description=dsc)
+    par = subparsers.add_parser("Combine", help=dsc, description=dsc)
     par.add_argument("INPUT", help="Paths of directories.", action="extend", nargs="+")
     par.add_argument(
         "-t",
@@ -382,13 +382,13 @@ def subcmd_mergegenes(subparsers):
         required=True,
         help="Target directory for merged output. (Example: MergedGenes)",
     )
-    par.set_defaults(func=mergegenes, formathelp=par.format_help)
+    par.set_defaults(func=Combine, formathelp=par.format_help)
 
 
-def mergegenes(args):
-    from . import merge_genes
+def Combine(args):
+    from . import combine
 
-    if not merge_genes.main(args):
+    if not combine.main(args):
         print()
         print(args.formathelp())
 
@@ -785,7 +785,7 @@ if __name__ == "__main__":
         prog="sapphyre",
         # TODO write me
         description="Order: Prepare, Hmmsearch, BlastPal, Reporter, "
-        "align, pal2nal, FlexCull (optional), outlier, Merge, MergeGenes",
+        "align, pal2nal, FlexCull (optional), outlier, Merge, Combine",
         epilog="sapphyre  Copyright (C) 2022  Sapphyre Team\n"
         "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n"
         "This program comes with ABSOLUTELY NO WARRANTY.\n"
@@ -841,7 +841,7 @@ if __name__ == "__main__":
     subcmd_flexcull(subparsers)
     subcmd_outlier(subparsers)
     subcmd_Merge(subparsers)
-    subcmd_mergegenes(subparsers)
+    subcmd_Combine(subparsers)
     subcmd_download(subparsers)
     subcmd_archiver(subparsers)
 
