@@ -9,7 +9,7 @@ Post-processing:
     6. pal2nal
     7. FlexCull (optional)
     8. Outlier
-    9. MergeOverlap
+    9. Merge
     10. MergeGenes
 """
 import argparse
@@ -299,9 +299,9 @@ def outlier(args):
         print(args.formathelp)
 
 
-def subcmd_mergeoverlap(subparsers):
+def subcmd_Merge(subparsers):
     par = subparsers.add_parser(
-        "MergeOverlap",
+        "Merge",
         help="Reference-guided De-novo Assembly Algorithm which merges overlapping reads "
         "into contiguous segments (Contigs).",
     )
@@ -349,13 +349,13 @@ def subcmd_mergeoverlap(subparsers):
         default=4,
         help="Percentage for majority ruling.",
     )
-    par.set_defaults(func=mergeoverlap, formathelp=par.format_help)
+    par.set_defaults(func=Merge, formathelp=par.format_help)
 
 
-def mergeoverlap(args):
-    from . import merge_overlap
+def Merge(args):
+    from . import merge
 
-    if not merge_overlap.main(args):
+    if not merge.main(args):
         print()
         print(args.formathelp())
 
@@ -764,7 +764,7 @@ def subcmd_wrap_final(sp):
 
 
 def wrap_final(argsobj):
-    from . import merge_overlap, pal2nal, align
+    from . import merge, pal2nal, align
 
     print("Triggering Align")
     if not align.main(argsobj):
@@ -774,8 +774,8 @@ def wrap_final(argsobj):
     if not pal2nal.main(argsobj):
         print()
         print(argsobj.formathelp())
-    print("Triggering MergeOverlap")
-    if not merge_overlap.main(argsobj):
+    print("Triggering Merge")
+    if not merge.main(argsobj):
         print()
         print(argsobj.formathelp())
 
@@ -785,7 +785,7 @@ if __name__ == "__main__":
         prog="sapphyre",
         # TODO write me
         description="Order: Prepare, Hmmsearch, BlastPal, Reporter, "
-        "align, pal2nal, FlexCull (optional), outlier, MergeOverlap, MergeGenes",
+        "align, pal2nal, FlexCull (optional), outlier, Merge, MergeGenes",
         epilog="sapphyre  Copyright (C) 2022  Sapphyre Team\n"
         "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n"
         "This program comes with ABSOLUTELY NO WARRANTY.\n"
@@ -835,12 +835,12 @@ if __name__ == "__main__":
     subcmd_diamond(subparsers)
     subcmd_reporter(subparsers)
 
-    # align > pal2nal > FlexCull (optional) > outlier > MergeOverlap
+    # align > pal2nal > FlexCull (optional) > outlier > Merge
     subcmd_align(subparsers)
     subcmd_pal2nal(subparsers)
     subcmd_flexcull(subparsers)
     subcmd_outlier(subparsers)
-    subcmd_mergeoverlap(subparsers)
+    subcmd_Merge(subparsers)
     subcmd_mergegenes(subparsers)
     subcmd_download(subparsers)
     subcmd_archiver(subparsers)
