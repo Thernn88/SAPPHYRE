@@ -180,16 +180,9 @@ def run_command(args: CmdArgs) -> None:
                                 check=True
                             )
                             sig_out = sig_out.stdout.decode("utf-8")
-                            sub_clusters = {}
-                            for line in sig_out.split("\n"):
-                                line = line.strip()
-                                if line:
-                                    seq_index, clust_index = line.strip().split(",")
-                                    sub_clusters.setdefault(clust_index, []).append(
-                                        this_cluster[int(seq_index)]
-                                    )
-                            for sub_cluster in sub_clusters.values():
-                                clusters.append(sub_cluster)
+                            clusters = [    [this_cluster[int(seq_index)] for seq_index in line.strip().split(",")]
+                                for line in sig_out.split("\n") if line.strip()
+                            ]
                             continue
                     clusters.append(this_cluster)
             cluster_time = keeper.differential()
