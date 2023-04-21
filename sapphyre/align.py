@@ -1,7 +1,7 @@
 from __future__ import annotations
 from math import ceil
 import os
-from collections import namedtuple
+from collections import defaultdict, namedtuple
 from multiprocessing.pool import Pool
 from shutil import rmtree
 import subprocess
@@ -180,16 +180,15 @@ def run_command(args: CmdArgs) -> None:
                                 check=True
                             )
                             sig_out = sig_out.stdout.decode("utf-8")
-                            sub_clusters = {}
+                            sub_clusters = defaultdict(list)
                             for line in sig_out.split("\n"):
                                 line = line.strip()
                                 if line:
                                     seq_index, clust_index = line.strip().split(",")
-                                    sub_clusters.setdefault(clust_index, []).append(
+                                    sub_clusters[clust_index].append(
                                         this_cluster[int(seq_index)]
                                     )
-                            for sub_cluster in sub_clusters.values():
-                                clusters.append(sub_cluster)
+                            clusters = list(sub_clusters.values())
                             continue
                     clusters.append(this_cluster)
             cluster_time = keeper.differential()
