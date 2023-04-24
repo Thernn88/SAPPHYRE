@@ -265,7 +265,6 @@ def run_command(args: CmdArgs) -> None:
                 )
                 identity_out = identity_out.stdout.decode("utf-8")
                 identity = float(identity_out.replace("Average pairwise identity: ","").replace("%",""))
-                    writeFasta(f"Cluster_i_{identity}", parseFasta(aligned_cluster))
                 if identity <= IDENTITY_THRESHOLD:
                     printv(f"{args.gene} cluster {cluster_i} has identity {identity}. Subclustering", args.verbose, 3)
                     # Calculate the pairwise distances between sequences using Hamming distance
