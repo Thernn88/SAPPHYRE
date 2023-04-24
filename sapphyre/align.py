@@ -8,16 +8,17 @@ from shutil import rmtree
 import subprocess
 from tempfile import TemporaryDirectory, NamedTemporaryFile
 from scipy.cluster.hierarchy import fcluster, linkage
+from scipy.spatial.distance import squareform
 import numpy as np
 from .utils import printv, gettempdir, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
 
 KMER_LEN = 12
-KMER_PERCENT = 0.75
+KMER_PERCENT = 0.70
 SUBCLUSTER_AT = 1000
 CLUSTER_EVERY = 500  # Aim for x seqs per cluster
 SAFEGUARD_BP = 15000
-SINGLETON_THRESHOLD = 3
+SINGLETON_THRESHOLD = 5
 IDENTITY_THRESHOLD = 70
 SUBCLUSTER_AMOUNT = 2
 
@@ -279,7 +280,7 @@ def run_command(args: CmdArgs) -> None:
                         distances[j, i] = distances[i, j]
 
                     # Perform hierarchical clustering using complete linkage
-                    Z = linkage(distances, method='complete')
+                    Z = linkage(squareform(distances), method='complete')
 
                     # Cut the dendrogram to create subclusters
                     subclusters = fcluster(Z, SUBCLUSTER_AMOUNT, criterion='maxclust')
