@@ -212,11 +212,8 @@ def run_command(args: CmdArgs) -> None:
 
             cluster_i = 0
             for cluster in clusters:
-                aligned_cluster = os.path.join(
-                    aligned_files_tmp, f"{args.gene}_cluster_{len(cluster)}_{cluster_i}"
-                )
+                
                 cluster_i += 1
-
                 cluster_seqs = [(header, data[header]) for header in cluster]
 
                 if args.only_singletons or len(cluster_seqs) < SINGLETON_THRESHOLD:
@@ -234,27 +231,33 @@ def run_command(args: CmdArgs) -> None:
                     3,
                 )  # Debug
 
-                
+                this_clus_align = f"{args.gene}_cluster_length_{len(cluster)}_index_{cluster_i}_aligned"
+                aligned_cluster = os.path.join(
+                    aligned_files_tmp, this_clus_align
+                )
+
                 raw_cluster = os.path.join(raw_files_tmp, f"{args.gene}_cluster{cluster_i}")
                 writeFasta(raw_cluster, cluster_seqs)
                 if debug:
                     writeFasta(
-                        os.path.join(this_intermediates, f"{args.gene}_cluster{cluster_i}"),
+                        os.path.join(this_intermediates, this_clus_align),
                         cluster_seqs,
                     )
 
                 command = args.string.format(
                     in_file=raw_cluster, out_file=aligned_cluster
                 )
-
                 os.system(command)
+
+                aligned_sequences = list(parseFasta(aligned_cluster))
+
                 if debug:
                     printv(command, args.verbose, 3)
                     writeFasta(
                         os.path.join(
-                            this_intermediates, f"{args.gene}_cluster{cluster_i}_aligned"
+                            this_intermediates, os.path.split(aligned_cluster)[-1]
                         ),
-                        parseFasta(aligned_cluster),
+                        aligned_sequences
                     )
                 identity_out = subprocess.run(
                     f"identity/identity {aligned_cluster}",
@@ -266,11 +269,11 @@ def run_command(args: CmdArgs) -> None:
                 identity_out = identity_out.stdout.decode("utf-8")
                 identity = float(identity_out.replace("Average pairwise identity: ","").replace("%",""))
                 if identity <= IDENTITY_THRESHOLD:
-                    printv(f"{args.gene} cluster {cluster_i} has identity {identity}. Subclustering", args.verbose, 3)
+                    ogcluster = cluster_i
+                    printv(f"{args.gene} cluster {cluster_i} has identity {identity}. Subclustering", args.verbose, 1)
                     # Calculate the pairwise distances between sequences using Hamming distance
                     # Return aligned result
-                    cluster_seqs = list(parseFasta(aligned_cluster))
-                    sequences = [i[1] for i in cluster_seqs]
+                    sequences = [i[1] for i in aligned_sequences]
                     distances = np.zeros((len(sequences), len(sequences)))
                     for i, j in combinations(range(len(sequences)), 2):
                         # distances[i, j] = sum(s1 != s2 for s1, s2 in zip(sequences[i], sequences[j]))
@@ -284,31 +287,34 @@ def run_command(args: CmdArgs) -> None:
                     k = 2  # Change this to the desired number of subclusters
                     subclusters = fcluster(Z, k, criterion='maxclust')
 
+                    
+
                     # Save each subcluster to a separate FASTA file
                     for i in range(1, k+1):
                         subcluster_indices = [j for j, c in enumerate(subclusters) if c == i]
-                        subcluster_records = [cluster_seqs[j] for j in subcluster_indices]
+                        subcluster_records = [aligned_sequences[j] for j in subcluster_indices]
                         if subcluster_records:
                             #Delete empty cols
                             cols_to_keep = set()
                             for _, sequence in subcluster_records:
-                                for i,let in enumerate(sequence):
-                                    if i not in cols_to_keep:
+                                for x,let in enumerate(sequence):
+                                    if x not in cols_to_keep:
                                         if let != "-":
-                                            cols_to_keep.add(i)
+                                            cols_to_keep.add(x)
 
                             output = []
                             for header, sequence in subcluster_records:
-                                sequence = [let for i, let in enumerate(sequence) if i in cols_to_keep]
+                                sequence = [let for x, let in enumerate(sequence) if x in cols_to_keep]
                                 output.append((header, "".join(sequence)))
 
+                            cluster = f"{args.gene}_cluster_length_{len(cluster)}_subcluster{i}_{cluster_i}_aligned"
                             aligned_cluster = os.path.join(
-                                aligned_files_tmp, f"{args.gene}_cluster_{len(cluster)}_subcluster{i}_{cluster_i}_aligned"
+                                aligned_files_tmp, cluster
                             )
                             if debug:
                                 writeFasta(
                                     os.path.join(
-                                        this_intermediates, f"{args.gene}_cluster_{len(cluster)}_subcluster{i}_{cluster_i}_aligned"
+                                        this_intermediates, cluster
                                     ),
                                     output
                                 )
@@ -319,6 +325,8 @@ def run_command(args: CmdArgs) -> None:
                             writeFasta(aligned_cluster, output)
 
                             aligned_ingredients.append(aligned_cluster)
+                        else:
+                            print(f"Subcluster {i} for cluster {ogcluster} is empty")
                 else:
                     aligned_ingredients.append(aligned_cluster)
 
@@ -396,8 +404,8 @@ def run_command(args: CmdArgs) -> None:
                         f"mafft --anysymbol --jtt 1 --quiet --addfragments {aligned_ingredients[0]} --thread 1 {tmp.name} > {out_file}"
                     )
                     if args.debug:
-                        print(
-                            f"mafft --anysymbol --jtt 1 --quiet --addfragments {aligned_ingredients[0]} --thread 1 {tmp.name} > {out_file}"
+                        printv(
+                            f"mafft --anysymbol --jtt 1 --quiet --addfragments {aligned_ingredients[0]} --thread 1 {tmp.name} > {out_file}", args.verbose, 3
                         )
                 else:
                     os.system(
