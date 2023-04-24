@@ -271,13 +271,11 @@ def run_command(args: CmdArgs) -> None:
                 if identity <= IDENTITY_THRESHOLD:
                     printv(f"{args.gene} cluster {cluster_i} has identity {identity}. Subclustering", args.verbose, 1)
                     # Calculate the pairwise distances between sequences using Hamming distance
-                    # Return aligned result
-                    sequences = [i[1] for i in aligned_sequences]
+                    sequences = [np.array(list(seq)) for _, seq in aligned_sequences]
                     distances = np.zeros((len(sequences), len(sequences)))
                     for i, j in combinations(range(len(sequences)), 2):
-                        # distances[i, j] = 
 
-                        distances[i, j] = sum(s1 != s2 for s1, s2 in zip(sequences[i], sequences[j]))
+                        distances[i, j] = np.count_nonzero(sequences[i] != sequences[j])
                         distances[j, i] = distances[i, j]
 
                     # Perform hierarchical clustering using complete linkage
