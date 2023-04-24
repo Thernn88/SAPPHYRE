@@ -231,7 +231,7 @@ def run_command(args: CmdArgs) -> None:
                     3,
                 )  # Debug
 
-                this_clus_align = f"{args.gene}_cluster_length_{len(cluster)}_index_{cluster_i}_aligned"
+                this_clus_align = f"{args.gene}_cluster_{cluster_i}_length_{len(cluster)}_index_aligned"
                 aligned_cluster = os.path.join(
                     aligned_files_tmp, this_clus_align
                 )
@@ -269,7 +269,6 @@ def run_command(args: CmdArgs) -> None:
                 identity_out = identity_out.stdout.decode("utf-8")
                 identity = float(identity_out.replace("Average pairwise identity: ","").replace("%",""))
                 if identity <= IDENTITY_THRESHOLD:
-                    ogcluster = cluster_i
                     printv(f"{args.gene} cluster {cluster_i} has identity {identity}. Subclustering", args.verbose, 1)
                     # Calculate the pairwise distances between sequences using Hamming distance
                     # Return aligned result
@@ -307,7 +306,7 @@ def run_command(args: CmdArgs) -> None:
                                 sequence = [let for x, let in enumerate(sequence) if x in cols_to_keep]
                                 output.append((header, "".join(sequence)))
 
-                            cluster = f"{args.gene}_cluster_length_{len(cluster)}_subcluster{i}_{cluster_i}_aligned"
+                            cluster = f"{args.gene}_cluster_{cluster_i}_length_{len(cluster)}_subcluster{i}_aligned"
                             aligned_cluster = os.path.join(
                                 aligned_files_tmp, cluster
                             )
@@ -318,15 +317,13 @@ def run_command(args: CmdArgs) -> None:
                                     ),
                                     output
                                 )
-
-                            cluster_i += 1
                             
 
                             writeFasta(aligned_cluster, output)
 
                             aligned_ingredients.append(aligned_cluster)
                         else:
-                            print(f"Subcluster {i} for cluster {ogcluster} is empty")
+                            print(f"Subcluster {i} for cluster {cluster_i} is empty")
                 else:
                     aligned_ingredients.append(aligned_cluster)
 
@@ -345,7 +342,7 @@ def run_command(args: CmdArgs) -> None:
                     to_merge,
                 )
         if aligned_ingredients or to_merge:
-            aligned_ingredients.sort(key=lambda x: int(x.split("_")[-2]), reverse=True)
+            aligned_ingredients.reverse()
             if to_merge:
                 aligned_ingredients.insert(0, merged_singleton_final)
             printv(
