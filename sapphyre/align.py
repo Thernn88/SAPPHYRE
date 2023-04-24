@@ -1,4 +1,5 @@
 from __future__ import annotations
+from itertools import combinations
 from math import ceil
 import os
 from collections import defaultdict, namedtuple
@@ -6,6 +7,8 @@ from multiprocessing.pool import Pool
 from shutil import rmtree
 import subprocess
 from tempfile import TemporaryDirectory, NamedTemporaryFile
+from scipy.cluster.hierarchy import fcluster, linkage
+import numpy as np
 from .utils import printv, gettempdir, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
 
@@ -15,6 +18,7 @@ SUBCLUSTER_AT = 1000
 CLUSTER_EVERY = 500  # Aim for x seqs per cluster
 SAFEGUARD_BP = 15000
 SINGLETON_THRESHOLD = 3
+IDENTITY_THRESHOLD = 70
 
 
 def find_kmers(fasta):
@@ -206,16 +210,18 @@ def run_command(args: CmdArgs) -> None:
             items = os.listdir(raw_files_tmp)
             items.sort(key=lambda x: int(x.split("_cluster")[-1]))
 
-            for i, cluster in enumerate(clusters):
+            cluster_i = 0
+            for cluster in clusters:
                 aligned_cluster = os.path.join(
-                    aligned_files_tmp, f"{args.gene}_cluster_{len(cluster)}_{i}"
+                    aligned_files_tmp, f"{args.gene}_cluster_{len(cluster)}_{cluster_i}"
                 )
+                cluster_i += 1
 
                 cluster_seqs = [(header, data[header]) for header in cluster]
 
                 if args.only_singletons or len(cluster_seqs) < SINGLETON_THRESHOLD:
                     printv(
-                        f"Storing singleton cluster {i}. Elapsed time: {keeper.differential():.2f}",
+                        f"Storing singleton cluster {cluster_i}. Elapsed time: {keeper.differential():.2f}",
                         args.verbose,
                         3,
                     )  # Debug
@@ -223,17 +229,17 @@ def run_command(args: CmdArgs) -> None:
                     continue
 
                 printv(
-                    f"Aligning cluster {i}. Elapsed time: {keeper.differential():.2f}",
+                    f"Aligning cluster {cluster_i}. Elapsed time: {keeper.differential():.2f}",
                     args.verbose,
                     3,
                 )  # Debug
 
-                aligned_ingredients.append(aligned_cluster)
-                raw_cluster = os.path.join(raw_files_tmp, f"{args.gene}_cluster{i}")
+                
+                raw_cluster = os.path.join(raw_files_tmp, f"{args.gene}_cluster{cluster_i}")
                 writeFasta(raw_cluster, cluster_seqs)
                 if debug:
                     writeFasta(
-                        os.path.join(this_intermediates, f"{args.gene}_cluster{i}"),
+                        os.path.join(this_intermediates, f"{args.gene}_cluster{cluster_i}"),
                         cluster_seqs,
                     )
 
@@ -246,10 +252,78 @@ def run_command(args: CmdArgs) -> None:
                     printv(command, args.verbose, 3)
                     writeFasta(
                         os.path.join(
-                            this_intermediates, f"{args.gene}_cluster{i}_aligned"
+                            this_intermediates, f"{args.gene}_cluster{cluster_i}_aligned"
                         ),
                         parseFasta(aligned_cluster),
                     )
+                identity_out = subprocess.run(
+                    f"identity/identity {aligned_cluster}",
+                    shell=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=True
+                )
+                identity_out = identity_out.stdout.decode("utf-8")
+                identity = float(identity_out.replace("Average pairwise identity: ","").replace("%",""))
+                    writeFasta(f"Cluster_i_{identity}", parseFasta(aligned_cluster))
+                if identity <= IDENTITY_THRESHOLD:
+                    printv(f"{args.gene} cluster {cluster_i} has identity {identity}. Subclustering", args.verbose, 3)
+                    # Calculate the pairwise distances between sequences using Hamming distance
+                    # Return aligned result
+                    cluster_seqs = list(parseFasta(aligned_cluster))
+                    sequences = [i[1] for i in cluster_seqs]
+                    distances = np.zeros((len(sequences), len(sequences)))
+                    for i, j in combinations(range(len(sequences)), 2):
+                        # distances[i, j] = sum(s1 != s2 for s1, s2 in zip(sequences[i], sequences[j]))
+                        distances[i, j] = np.count_nonzero(sequences[i] == sequences[j])
+                        distances[j, i] = distances[i, j]
+
+                    # Perform hierarchical clustering using complete linkage
+                    Z = linkage(distances, method='complete')
+
+                    # Cut the dendrogram to create subclusters
+                    k = 2  # Change this to the desired number of subclusters
+                    subclusters = fcluster(Z, k, criterion='maxclust')
+
+                    # Save each subcluster to a separate FASTA file
+                    for i in range(1, k+1):
+                        subcluster_indices = [j for j, c in enumerate(subclusters) if c == i]
+                        subcluster_records = [cluster_seqs[j] for j in subcluster_indices]
+                        if subcluster_records:
+                            #Delete empty cols
+                            cols_to_keep = set()
+                            for _, sequence in subcluster_records:
+                                for i,let in enumerate(sequence):
+                                    if i not in cols_to_keep:
+                                        if let != "-":
+                                            cols_to_keep.add(i)
+
+                            output = []
+                            for header, sequence in subcluster_records:
+                                sequence = [let for i, let in enumerate(sequence) if i in cols_to_keep]
+                                output.append((header, "".join(sequence)))
+
+                            aligned_cluster = os.path.join(
+                                aligned_files_tmp, f"{args.gene}_cluster_{len(cluster)}_subcluster{i}_{cluster_i}_aligned"
+                            )
+                            if debug:
+                                writeFasta(
+                                    os.path.join(
+                                        this_intermediates, f"{args.gene}_cluster_{len(cluster)}_subcluster{i}_{cluster_i}_aligned"
+                                    ),
+                                    output
+                                )
+
+                            cluster_i += 1
+                            
+
+                            writeFasta(aligned_cluster, output)
+
+                            aligned_ingredients.append(aligned_cluster)
+                else:
+                    aligned_ingredients.append(aligned_cluster)
+
+
         align_time = keeper.differential() - cluster_time
         if to_merge:
             merged_singleton_final = os.path.join(
