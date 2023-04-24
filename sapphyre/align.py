@@ -19,7 +19,7 @@ CLUSTER_EVERY = 500  # Aim for x seqs per cluster
 SAFEGUARD_BP = 15000
 SINGLETON_THRESHOLD = 3
 IDENTITY_THRESHOLD = 70
-
+SUBCLUSTER_AMOUNT = 2
 
 def find_kmers(fasta):
     kmers = {}
@@ -276,21 +276,21 @@ def run_command(args: CmdArgs) -> None:
                     sequences = [i[1] for i in aligned_sequences]
                     distances = np.zeros((len(sequences), len(sequences)))
                     for i, j in combinations(range(len(sequences)), 2):
-                        # distances[i, j] = sum(s1 != s2 for s1, s2 in zip(sequences[i], sequences[j]))
-                        distances[i, j] = np.count_nonzero(sequences[i] == sequences[j])
+                        # distances[i, j] = 
+
+                        distances[i, j] = sum(s1 != s2 for s1, s2 in zip(sequences[i], sequences[j]))
                         distances[j, i] = distances[i, j]
 
                     # Perform hierarchical clustering using complete linkage
                     Z = linkage(distances, method='complete')
 
                     # Cut the dendrogram to create subclusters
-                    k = 2  # Change this to the desired number of subclusters
-                    subclusters = fcluster(Z, k, criterion='maxclust')
+                    subclusters = fcluster(Z, SUBCLUSTER_AMOUNT, criterion='maxclust')
 
                     
 
                     # Save each subcluster to a separate FASTA file
-                    for i in range(1, k+1):
+                    for i in range(1, SUBCLUSTER_AMOUNT+1):
                         subcluster_indices = [j for j, c in enumerate(subclusters) if c == i]
                         subcluster_records = [aligned_sequences[j] for j in subcluster_indices]
                         if subcluster_records:
