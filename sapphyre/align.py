@@ -19,7 +19,7 @@ SUBCLUSTER_AT = 1000
 CLUSTER_EVERY = 500  # Aim for x seqs per cluster
 SAFEGUARD_BP = 15000
 SINGLETON_THRESHOLD = 5
-IDENTITY_THRESHOLD = 70
+IDENTITY_THRESHOLD = 95
 SUBCLUSTER_AMOUNT = 2
 
 def find_kmers(fasta):
@@ -67,6 +67,57 @@ def process_genefile(fileread):
             targets[header.split("|")[2]] = header
 
     return len(data), data, targets, reinsertions, trimmed_header_to_full
+
+
+def get_identity(aligned_cluster):
+    identity_out = subprocess.run(
+        f"identity/identity {aligned_cluster}",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=True
+    )
+    identity_out = identity_out.stdout.decode("utf-8")
+    identity = float(identity_out.replace("Average pairwise identity: ","").replace("%",""))
+    return identity
+
+def subcluster(aligned_sequences):
+    sequences = [np.array(list(seq)) for _, seq in aligned_sequences]
+    distances = np.zeros((len(sequences), len(sequences)))
+    for i, j in combinations(range(len(sequences)), 2):
+
+        distances[i, j] = np.count_nonzero(sequences[i] != sequences[j])
+        distances[j, i] = distances[i, j]
+
+    # Perform hierarchical clustering using complete linkage
+    Z = linkage(squareform(distances), method='complete')
+
+    # Cut the dendrogram to create subclusters
+    subclusters = fcluster(Z, SUBCLUSTER_AMOUNT, criterion='maxclust')
+
+    
+
+    # Save each subcluster to a separate FASTA file
+    for i in range(1, SUBCLUSTER_AMOUNT+1):
+        subcluster_indices = [j for j, c in enumerate(subclusters) if c == i]
+        subcluster_records = [aligned_sequences[j] for j in subcluster_indices]
+        yield subcluster_records
+
+
+def delete_empty_cols(records):
+     #Delete empty cols
+    cols_to_keep = set()
+    output = []
+    for _, sequence in records:
+        for x,let in enumerate(sequence):
+            if x not in cols_to_keep:
+                if let != "-":
+                    cols_to_keep.add(x)
+    for header, sequence in records:
+        sequence = [let for x, let in enumerate(sequence) if x in cols_to_keep]
+        output.append((header, "".join(sequence)))
+
+    return output
 
 
 CmdArgs = namedtuple(
@@ -260,69 +311,43 @@ def run_command(args: CmdArgs) -> None:
                         ),
                         aligned_sequences
                     )
-                identity_out = subprocess.run(
-                    f"identity/identity {aligned_cluster}",
-                    shell=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    check=True
-                )
-                identity_out = identity_out.stdout.decode("utf-8")
-                identity = float(identity_out.replace("Average pairwise identity: ","").replace("%",""))
+                identity = get_identity(aligned_cluster)
                 if identity <= IDENTITY_THRESHOLD:
                     printv(f"{args.gene} cluster {cluster_i} has identity {identity}. Subclustering", args.verbose, 1)
                     # Calculate the pairwise distances between sequences using Hamming distance
-                    sequences = [np.array(list(seq)) for _, seq in aligned_sequences]
-                    distances = np.zeros((len(sequences), len(sequences)))
-                    for i, j in combinations(range(len(sequences)), 2):
+                    subcluster_i = 0
+                    to_subcluster = [aligned_ingredients]
+                    while to_subcluster:
+                        aligned_ingredients = to_subcluster[0]
+                        for subcluster_records in subcluster(aligned_sequences):
+                            subcluster_i += 1
+                            if subcluster_records:
 
-                        distances[i, j] = np.count_nonzero(sequences[i] != sequences[j])
-                        distances[j, i] = distances[i, j]
+                                output = delete_empty_cols(subcluster_records)
 
-                    # Perform hierarchical clustering using complete linkage
-                    Z = linkage(squareform(distances), method='complete')
-
-                    # Cut the dendrogram to create subclusters
-                    subclusters = fcluster(Z, SUBCLUSTER_AMOUNT, criterion='maxclust')
-
-                    
-
-                    # Save each subcluster to a separate FASTA file
-                    for i in range(1, SUBCLUSTER_AMOUNT+1):
-                        subcluster_indices = [j for j, c in enumerate(subclusters) if c == i]
-                        subcluster_records = [aligned_sequences[j] for j in subcluster_indices]
-                        if subcluster_records:
-                            #Delete empty cols
-                            cols_to_keep = set()
-                            for _, sequence in subcluster_records:
-                                for x,let in enumerate(sequence):
-                                    if x not in cols_to_keep:
-                                        if let != "-":
-                                            cols_to_keep.add(x)
-
-                            output = []
-                            for header, sequence in subcluster_records:
-                                sequence = [let for x, let in enumerate(sequence) if x in cols_to_keep]
-                                output.append((header, "".join(sequence)))
-
-                            cluster = f"{args.gene}_cluster_{cluster_i}_length_{len(cluster)}_subcluster{i}_aligned"
-                            aligned_cluster = os.path.join(
-                                aligned_files_tmp, cluster
-                            )
-                            if debug:
-                                writeFasta(
-                                    os.path.join(
-                                        this_intermediates, cluster
-                                    ),
-                                    output
+                                cluster = f"{args.gene}_cluster_{cluster_i}_length_{len(cluster)}_subcluster{subcluster_i}_aligned"
+                                aligned_cluster = os.path.join(
+                                    aligned_files_tmp, cluster
                                 )
-                            
+                                if debug:
+                                    writeFasta(
+                                        os.path.join(
+                                            this_intermediates, cluster
+                                        ),
+                                        output
+                                    )
+                                
 
-                            writeFasta(aligned_cluster, output)
-
-                            aligned_ingredients.append(aligned_cluster)
-                        else:
-                            print(f"Subcluster {i} for cluster {cluster_i} is empty")
+                                writeFasta(aligned_cluster, output)
+                                identity = get_identity(aligned_cluster)
+                                print(aligned_cluster, "has identity",identity )
+                                if identity <= IDENTITY_THRESHOLD:
+                                    to_subcluster.append(output)
+                                else:
+                                    to_subcluster.pop(0)
+                                    aligned_ingredients.append(aligned_cluster)
+                            else:
+                                print(f"Subcluster {i} for cluster {cluster_i} is empty")
                 else:
                     aligned_ingredients.append(aligned_cluster)
 
