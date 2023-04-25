@@ -316,14 +316,18 @@ def run_command(args: CmdArgs) -> None:
                     printv(f"{args.gene} cluster {cluster_i} has identity {identity}. Subclustering", args.verbose, 1)
                     # Calculate the pairwise distances between sequences using Hamming distance
                     subcluster_i = 0
-                    to_subcluster = [aligned_ingredients]
+                    to_subcluster = [aligned_sequences]
+                    done = set()
                     while to_subcluster:
-                        aligned_ingredients = to_subcluster[0]
-                        for subcluster_records in subcluster(aligned_sequences):
+                        this_sequences = to_subcluster[0]
+                        removed = False
+                        for subcluster_records in subcluster(this_sequences):
                             subcluster_i += 1
                             if subcluster_records:
-
                                 output = delete_empty_cols(subcluster_records)
+
+                                this_id = hash("".join([i[0] for i in output]))
+                                
 
                                 cluster = f"{args.gene}_cluster_{cluster_i}_length_{len(cluster)}_subcluster{subcluster_i}_aligned"
                                 aligned_cluster = os.path.join(
@@ -341,11 +345,16 @@ def run_command(args: CmdArgs) -> None:
                                 writeFasta(aligned_cluster, output)
                                 identity = get_identity(aligned_cluster)
                                 print(aligned_cluster, "has identity",identity )
-                                if identity <= IDENTITY_THRESHOLD:
+                                if identity <= IDENTITY_THRESHOLD and this_id not in done:
                                     to_subcluster.append(output)
                                 else:
-                                    to_subcluster.pop(0)
                                     aligned_ingredients.append(aligned_cluster)
+
+                                if not removed:
+                                    to_subcluster.pop(0)
+                                    removed = True
+
+                                done.add(this_id)
                             else:
                                 print(f"Subcluster {i} for cluster {cluster_i} is empty")
                 else:
