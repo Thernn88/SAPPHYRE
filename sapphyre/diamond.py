@@ -383,6 +383,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
     THREAD_CAP = 32
     # Amount of overshoot in estimating end
     OVERSHOOT_AMOUNT = 1.4
+    # Minimum amount of hits to delegate to a process
+    MINIMUM_CHUNKSIZE = 15
 
     json_encoder = json.Encoder()
 
@@ -539,7 +541,14 @@ def run_process(args: Namespace, input_path: str) -> bool:
     headers = df["header"].unique()
     if len(headers) > 0:
         per_thread = ceil(len(headers) / post_threads)
-        estimated_end = ceil((len(df) / post_threads) * OVERSHOOT_AMOUNT)
+        below_minimum = per_thread <= MINIMUM_CHUNKSIZE
+        if below_minimum:
+            per_thread = MINIMUM_CHUNKSIZE
+            chunks = ceil(len(headers) / per_thread)
+        else:
+            chunks = post_threads
+        estimated_end = ceil((len(df) / chunks) * OVERSHOOT_AMOUNT)
+
         arguments = []
         indices = []
         for x, i in enumerate(range(0, len(headers), per_thread), 1):
@@ -548,7 +557,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             else:
                 start_index = end_index + 1
 
-            if x != post_threads:
+            if x != chunks:
                 last_header = headers[i + per_thread - 1]
                 end_index = (
                     np.where(df[start_index:(start_index+estimated_end)]["header"].values == last_header)[0][-1]
@@ -560,7 +569,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
             indices.append((start_index, end_index))
 
-        temp_files = [NamedTemporaryFile(dir=gettempdir()) for _ in range(post_threads)]
+        temp_files = [NamedTemporaryFile(dir=gettempdir()) for _ in range(chunks)]
 
         arguments = (
             ProcessingArgs(
