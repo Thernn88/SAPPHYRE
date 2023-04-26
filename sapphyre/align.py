@@ -349,7 +349,10 @@ def run_command(args: CmdArgs) -> None:
                                 
 
                                 writeFasta(aligned_cluster, output)
-                                identity = get_identity(aligned_cluster)
+                                if len(output) <= 1:
+                                    identity = 100.0
+                                else:
+                                    identity = get_identity(aligned_cluster)
                                 print(aligned_cluster, "has identity",identity )
                                 if identity <= IDENTITY_THRESHOLD and this_id not in done:
                                     to_subcluster.append(output)
