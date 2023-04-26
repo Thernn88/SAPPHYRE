@@ -384,7 +384,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     # Amount of overshoot in estimating end
     OVERSHOOT_AMOUNT = 1.4
     # Minimum amount of hits to delegate to a process
-    MINIMUM_CHUNKSIZE = 15
+    MINIMUM_CHUNKSIZE = 50
 
     json_encoder = json.Encoder()
 
