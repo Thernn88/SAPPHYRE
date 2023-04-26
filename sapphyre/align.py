@@ -307,7 +307,7 @@ def run_command(args: CmdArgs) -> None:
                 )
                 os.system(command)
 
-                aligned_sequences = list(parseFasta(aligned_cluster))
+                aligned_sequences = list(parseFasta(aligned_cluster, True))
 
                 if debug:
                     printv(command, args.verbose, 3)
@@ -396,7 +396,7 @@ def run_command(args: CmdArgs) -> None:
             )  # Debug
             with NamedTemporaryFile(dir=parent_tmpdir, mode="w+") as tmp:
                 sequences = []
-                for header, sequence in parseFasta(aln_file):
+                for header, sequence in parseFasta(aln_file, True):
                     if header in targets:
                         sequences.append((targets[header], sequence))
 
@@ -457,7 +457,7 @@ def run_command(args: CmdArgs) -> None:
                             os.path.join(
                                 this_intermediates, os.path.basename(out_file)
                             ),
-                            parseFasta(out_file),
+                            parseFasta(out_file, True),
                         )
 
             for i, file in enumerate(aligned_ingredients[1:]):
@@ -482,14 +482,14 @@ def run_command(args: CmdArgs) -> None:
                     )
                     writeFasta(
                         os.path.join(this_intermediates, os.path.basename(out_file)),
-                        parseFasta(out_file),
+                        parseFasta(out_file, True),
                     )
     merge_time = keeper.differential() - align_time - cluster_time
 
     # Reinsert and sort
     to_write = []
     references = []
-    for header, sequence in parseFasta(args.result_file):
+    for header, sequence in parseFasta(args.result_file, True):
         if header.endswith("."):
             references.append((header, sequence))
         else:
@@ -530,7 +530,8 @@ def do_folder(folder, args):
     only_singletons = set()
     for gene, _ in genes:
         for _, seq in parseFasta(
-            os.path.join(aln_path, gene.split(".")[0] + ".aln.fa")
+            os.path.join(aln_path, gene.split(".")[0] + ".aln.fa"),
+            True
         ):
             if len(seq) >= SAFEGUARD_BP:
                 printv(f"{gene} will be using Singletons only", args.verbose, 3)
