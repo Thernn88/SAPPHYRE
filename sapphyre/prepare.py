@@ -136,7 +136,7 @@ class SeqDeduplicator:
         chuksize: int,
         recipe_index: List[int],
     ):
-        fasta_file = parseFasta(self.fa_file_path)
+        fasta_file = parseFasta(self.fa_file_path, True)
 
         for_loop = tqdm(fasta_file) if self.verbose else fasta_file
         current_batch = []

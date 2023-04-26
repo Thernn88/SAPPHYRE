@@ -248,7 +248,7 @@ def run_command(args: CmdArgs) -> None:
                         os.path.join(
                             this_intermediates, f"{args.gene}_cluster{i}_aligned"
                         ),
-                        parseFasta(aligned_cluster),
+                        parseFasta(aligned_cluster, True),
                     )
         align_time = keeper.differential() - cluster_time
         if to_merge:
@@ -279,7 +279,7 @@ def run_command(args: CmdArgs) -> None:
             )  # Debug
             with NamedTemporaryFile(dir=parent_tmpdir, mode="w+") as tmp:
                 sequences = []
-                for header, sequence in parseFasta(aln_file):
+                for header, sequence in parseFasta(aln_file, True):
                     if header in targets:
                         sequences.append((targets[header], sequence))
 
@@ -340,7 +340,7 @@ def run_command(args: CmdArgs) -> None:
                             os.path.join(
                                 this_intermediates, os.path.basename(out_file)
                             ),
-                            parseFasta(out_file),
+                            parseFasta(out_file, True),
                         )
 
             for i, file in enumerate(aligned_ingredients[1:]):
@@ -372,7 +372,7 @@ def run_command(args: CmdArgs) -> None:
     # Reinsert and sort
     to_write = []
     references = []
-    for header, sequence in parseFasta(args.result_file):
+    for header, sequence in parseFasta(args.result_file, True):
         if header.endswith("."):
             references.append((header, sequence))
         else:
