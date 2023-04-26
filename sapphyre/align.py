@@ -493,7 +493,7 @@ def run_command(args: CmdArgs) -> None:
         if header.endswith("."):
             references.append((header, sequence))
         else:
-            header = trimmed_header_to_full[header]
+            header = trimmed_header_to_full[header[:127]]
             if header in reinsertions:
                 for insertion_header in reinsertions[header]:
                     to_write.append((insertion_header, sequence))
