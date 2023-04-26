@@ -1,7 +1,7 @@
 biopython>=1.79
 numpy>=1.23.3
 tqdm>=4.64.1
-wrap_rocks>=0.3.3
+wrap_rocks>=0.3.6
 xxhash>=3.0.0
 phymmr_tools>=0.4.0
 pro2codon>=1.2.4

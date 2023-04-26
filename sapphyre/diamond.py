@@ -215,7 +215,32 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
     passes = [hit for hit in hits if not hit.kick]
     return len(hits) - len(passes), log
 
+def make_kick_log(hit_a: Hit, hit_b: Hit, gene: str, percent: float) -> str:
+    """Makes the log entry for internal filter.
 
+    Convenience function for running --debug
+    """
+    # (
+    #     gene,
+    #     hit_b.uid,
+    #     # hit_b.taxon,
+    #     round(hit_b.score, 2),
+    #     hit_b.qstart,
+    #     hit_b.qend,
+    #     "Internal kicked out by",
+    #     gene,
+    #     hit_a.uid,
+    #     # hit_a.taxon,
+    #     round(hit_a.score, 2),
+    #     hit_a.qstart,
+    #     hit_a.qend,
+    #     round(percent, 3),
+    # )
+    return "".join([
+        f"{gene}, {hit_b.uid}, {round(hit_b.score, 2)}, {hit_b.qstart}, ",
+        f"{hit_b.qend} Internal kicked out by {gene}, {hit_a.uid}, ",
+        f"{round(hit_a.score, 2)}, {hit_a.qstart}, {hit_a.qend}, {round(percent, 3)}"
+        ])
 def internal_filter(
     gene: str, header_based: dict, debug: bool, internal_percent: float
 ) -> tuple[set, list, int]:
@@ -261,22 +286,23 @@ def internal_filter(
 
                 if debug:
                     log.append(
-                        (
-                            gene,
-                            hit_b.uid,
-                            hit_b.taxon,
-                            round(hit_b.score, 2),
-                            hit_b.qstart,
-                            hit_b.qend,
-                            "Internal kicked out by",
-                            gene,
-                            hit_a.uid,
-                            hit_a.taxon,
-                            round(hit_a.score, 2),
-                            hit_a.qstart,
-                            hit_a.qend,
-                            round(percent, 3),
-                        )
+                        make_kick_log(hit_a, hit_b, gene, percent)
+                        # (
+                        #     gene,
+                        #     hit_b.uid,
+                        #     # hit_b.taxon,
+                        #     round(hit_b.score, 2),
+                        #     hit_b.qstart,
+                        #     hit_b.qend,
+                        #     "Internal kicked out by",
+                        #     gene,
+                        #     hit_a.uid,
+                        #     # hit_a.taxon,
+                        #     round(hit_a.score, 2),
+                        #     hit_a.qstart,
+                        #     hit_a.qend,
+                        #     round(percent, 3),
+                        # )
                     )
 
     return this_kicks, log, next(kicks)
