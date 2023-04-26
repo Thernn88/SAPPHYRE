@@ -180,10 +180,11 @@ def run_command(args: CmdArgs) -> None:
                 3,
             )  # Debug
             aligned_file = os.path.join(aligned_files_tmp, f"{args.gene}_cluster_1_0")
-            writeFasta(aligned_file, data.items())
+            sequences = list(data.items())
+            writeFasta(aligned_file, sequences)
             if args.debug:
-                writeFasta(os.path.join(this_intermediates, aligned_file), data.items())
-            aligned_ingredients.append(aligned_file)
+                writeFasta(os.path.join(this_intermediates, aligned_file), sequences)
+            aligned_ingredients.append((aligned_file, len(sequences)))
         else:
             printv(
                 f"Generating Cluster. Elapsed time: {keeper.differential():.2f}",
@@ -352,7 +353,7 @@ def run_command(args: CmdArgs) -> None:
                                 if identity <= IDENTITY_THRESHOLD and this_id not in done:
                                     to_subcluster.append(output)
                                 else:
-                                    aligned_ingredients.append(aligned_cluster)
+                                    aligned_ingredients.append((aligned_cluster, len(output)))
 
                                 if not removed:
                                     to_subcluster.pop(0)
@@ -362,7 +363,7 @@ def run_command(args: CmdArgs) -> None:
                             else:
                                 print(f"Subcluster {i} for cluster {cluster_i} is empty")
                 else:
-                    aligned_ingredients.append(aligned_cluster)
+                    aligned_ingredients.append((aligned_cluster, len(aligned_sequences)))
 
 
         align_time = keeper.differential() - cluster_time
@@ -379,7 +380,7 @@ def run_command(args: CmdArgs) -> None:
                     to_merge,
                 )
         if aligned_ingredients or to_merge:
-            aligned_ingredients.reverse()
+            aligned_ingredients = [i[0] for i in sorted(aligned_ingredients, key = lambda x: x[1])]
             if to_merge:
                 aligned_ingredients.insert(0, merged_singleton_final)
             printv(
