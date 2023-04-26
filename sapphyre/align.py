@@ -219,11 +219,12 @@ def run_command(args: CmdArgs) -> None:
                                         cluster_children[candidate_header] = None
                                         kmers[candidate_header] = None
 
+                                        
+
                                         merge_occured = True
 
-            for master, children in cluster_children.items():
-                if children is not None:
-                    this_cluster = [master] + children
+            for this_cluster in cluster_children.values():
+                if this_cluster is not None:
                     if len(this_cluster) > SUBCLUSTER_AT:
                         clusters_to_create = ceil(len(this_cluster) / CLUSTER_EVERY)
                         with NamedTemporaryFile(
