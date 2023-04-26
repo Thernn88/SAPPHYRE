@@ -191,30 +191,34 @@ def run_command(args: CmdArgs) -> None:
                 3,
             )  # Debug
             clusters = []
-            cluster_children = {header: [] for header in data}
+            cluster_children = {header: [header] for header in data}
             kmers = find_kmers(data)
-            master_headers = list(kmers.keys())
-            for i in range(len(master_headers) - 1, -1, -1):  # reverse iteration
-                master_header = master_headers[i]
-                master = kmers[master_header]
-                if master:
-                    for key in master_headers[:i]:
-                        candidate = kmers[key]
-                        if candidate:
-                            similar = master.intersection(candidate)
-                            if len(similar) != 0:
-                                if (
-                                    len(similar) / min(len(master), len(candidate))
-                                    >= KMER_PERCENT
-                                ):
-                                    candidate.update(master)
-                                    children = [
-                                        master_header.strip(">")
-                                    ] + cluster_children[master_header.strip(">")]
-                                    cluster_children[key.strip(">")].extend(children)
-                                    cluster_children[master_header.strip(">")] = None
-                                    kmers[master_header] = None
-                                    break
+            gene_headers = list(kmers.keys())
+            merge_occured = True
+            while merge_occured:
+                merge_occured = False
+                for i in range(len(gene_headers) - 1, -1, -1):  # reverse iteration
+                    master_header = gene_headers[i]
+                    master = kmers[master_header]
+                    if master:
+                        for candidate_header in gene_headers[:i]:
+                            candidate = kmers[candidate_header]
+                            if candidate:
+                                similar = master.intersection(candidate)
+                                if len(similar) != 0:
+                                    if (
+                                        len(similar) / min(len(master), len(candidate))
+                                        >= KMER_PERCENT
+                                    ):
+                                        # Merge kmeans and merge cluster headers
+                                        master.update(candidate)
+                                        cluster_children[master_header].extend(cluster_children[candidate_header])
+
+                                        # Remove candidate
+                                        cluster_children[candidate_header] = None
+                                        kmers[candidate_header] = None
+
+                                        merge_occured = True
 
             for master, children in cluster_children.items():
                 if children is not None:
