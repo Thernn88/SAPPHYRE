@@ -539,13 +539,14 @@ def subcmd_finalize(subparsers):
     par = subparsers.add_parser(
         "Finalize",
         help="Contains a handful of useful functions to finalize a dataset. "
-        "Kick taxa: Exclude taxa listed in the kick txt file. "
+        "Kick taxa: Exclude taxa listed in the --kick_file txt file. "
         "Kick columns: Removes columns where there is greater than or equal to "
         "a supplied percentage of gap characters over data characters. Also "
         "kicks sequences with less than a supplied integer of data characters. "
+        "supplied percentage: -kp, supplied integer: -bp"
         "Stop codon: Replaces stop characters with X for AA and N for NT. "
-        "Rename taxon: Uses the supplied names csv file to replace reference taxon "
-        "names using the taxa id. "
+        "Rename taxon: Uses the supplied --names_csv file to replace reference taxon "
+        "names using the taxa id. Renames all ids in col 0 of the csv to col 1"
         "Sort: Sorts genes based on presence in the supplied target txt file. "
         "Concat: Merges all the final sequences together into a single fasta file.",
     )
