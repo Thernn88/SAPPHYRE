@@ -47,53 +47,82 @@ def grab_gene(fp, to_kick: set) -> list:
     return out
 
 
+def align_kick_nt(
+        fasta_content: list,
+        to_kick: set,
+        aa_kicks: set,
+    ):
+    result = []
+    for i in range(0, len(fasta_content), 2):
+        header = fasta_content[i]
+        sequence = fasta_content[i + 1]
+        if header not in aa_kicks:
+            sequence = "".join(
+                [sequence[i:i+3] for i in range(0, len(sequence), 3) if i not in to_kick]
+            )
+
+            result.append(header)
+            result.append(sequence)
+    
+    return result
+
 def kick_empty_columns(
-    protein: str,
     fasta_content: list,
     kick_percent: float,
     minimum_bp: int,
-    aa_kicks=None,
 ) -> list:
-    aa_kicks = set()
     kicks = set()
-    step = 1 if protein == "aa" else 3
     fasta_data = {}
     out = {}
+
     for i in range(0, len(fasta_content), 2):
         header = fasta_content[i]
-        if header not in aa_kicks:  # Kick
-            sequence = fasta_content[i + 1]
+        sequence = fasta_content[i + 1]
 
-            for j in range(0, len(sequence), step):
-                let = sequence[j : j + step]
-                fasta_data.setdefault(j, []).append(let)
+        for j in range(0, len(sequence), 1):
+            let = sequence[j : j + 1]
+            fasta_data.setdefault(j, []).append(let)
 
-            out[header] = sequence
+        out[header] = sequence
 
     to_kick = set()
-    for i, characters in fasta_data.items():
-        if characters.count("-") / len(characters) > kick_percent:
-            to_kick.add(i)
+    if not to_kick:
+        for i, characters in fasta_data.items():
+            if characters.count("-") / len(characters) > kick_percent:
+                to_kick.add(i*3)
 
     result = []
-    for header in out.items():
+    for header in out.keys():
         sequence = "".join(
-            [let for i, let in enumerate(out[header]) if i not in to_kick]
+            [let for i, let in enumerate(out[header]) if i*3 not in to_kick]
         )
         if len(sequence) - sequence.count("-") >= minimum_bp:
             result.append(header)
             result.append(sequence)
         else:
+           
             kicks.add(header)
 
-    return result, kicks
+    return result, kicks, to_kick
 
 
 def stopcodon(aa_content: list, nt_content: list) -> tuple:
     aa_out = []
     nt_out = []
-    for aa_line, nt_line in zip(aa_content, nt_content):
+
+    aa_refs = []
+    aa_seqs = []
+    for i in range(0, len(aa_content), 2):
+        if aa_content[i].endswith("."):
+            aa_refs.append(aa_content[i])
+            aa_refs.append(aa_content[i + 1])
+        else:
+            aa_seqs.append(aa_content[i])
+            aa_seqs.append(aa_content[i + 1])
+            
+    for aa_line, nt_line in zip(aa_seqs, nt_content):
         if aa_line.startswith(">"):
+
             if aa_line != nt_line:
                 print(
                     "Warning STOPCODON: Nucleotide line doesn't match Amino Acid line"
@@ -114,7 +143,7 @@ def stopcodon(aa_content: list, nt_content: list) -> tuple:
 
         aa_out.append(aa_line)
         nt_out.append(nt_line)
-    return aa_out, nt_out
+    return aa_refs + aa_out, nt_out
 
 
 def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict) -> tuple:
@@ -146,16 +175,10 @@ def clean_gene(gene_config):
         nt_content = grab_gene(nt_fp, gene_config.to_kick)
 
         if gene_config.kick_columns:
-            aa_content, aa_kicks = kick_empty_columns(
-                "aa", aa_content, gene_config.kick_percentage, gene_config.minimum_bp
+            aa_content, aa_kicks, cols_to_kick = kick_empty_columns(
+              aa_content, gene_config.kick_percentage, gene_config.minimum_bp
             )
-            nt_content, _ = kick_empty_columns(
-                "nt",
-                nt_content,
-                gene_config.kick_percentage,
-                gene_config.minimum_bp,
-                aa_kicks,
-            )
+            nt_content = align_kick_nt(nt_content, cols_to_kick, aa_kicks)
 
         if gene_config.stopcodon:
             aa_content, nt_content = stopcodon(aa_content, nt_content)
