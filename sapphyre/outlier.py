@@ -277,7 +277,7 @@ def make_ref_mean(matrix: list, ignore_zeros=False) -> float:
     return isum / total_number
 
 
-def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
+def candidate_pairwise_calls(candidate: Record, refs: list, blank_indices: set) -> list:
     """
     Calls calc._pairwise on a candidate and each ref sequence in the list.
     Returns the distances as list. Used to avoid recalculating the ref distances
@@ -285,7 +285,7 @@ def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
     """
     result = []
     for ref in refs:
-        result.append(bd.blosum62_distance(str(candidate), str(ref)))
+        result.append(bd.blosum62_distance_ignore_columns(str(candidate), str(ref), blank_indices))
     result.append(0.0)
     return result
 
@@ -323,6 +323,7 @@ def compare_means(
     index_group_min_bp: int,
     ref_gap_percent: float,
     ref_min_percent: float,
+    blank_indices: set,
 ) -> tuple:
     """
     For each candidate record, finds the index of the first non-gap bp and makes
@@ -426,12 +427,13 @@ def compare_means(
         else:  # if no ref_distances, this is an orthograph, so reject
             upper_bound = "N/A"
             IQR = "N/A"
+        blanks_in_range = {i for i in range(index_pair[0], index_pair[1]) if i in blank_indices}
         for candidate in candidates_at_index:
             mean_distance = "No refs"
             candidate.grade = "Ref Fail"
             if has_ref_distances:
                 candidate_distances = candidate_pairwise_calls(
-                    candidate, ref_alignments
+                    candidate, ref_alignments, blank_indices
                 )
                 candidate.mean_distance = np.nanmean(candidate_distances)
                 candidate.iqr = IQR
@@ -600,6 +602,7 @@ def main_process(
 
     # calculate indices that have valid data columns
     rejected_indices = set()
+    blank_indices = set()
     ref_seqs = reference_sequences[1::2]
     for i in range(len(ref_seqs[0])):
         percent_of_non_dash = len([ref[i] for ref in ref_seqs if ref[i] != "-"]) / len(
@@ -607,7 +610,8 @@ def main_process(
         )
         if percent_of_non_dash <= col_cull_percent:
             rejected_indices.add(i)
-
+        if percent_of_non_dash == 1:
+            blank_indices.add(i)
     # find number of unique reference variants in file, use for refs_in_file
     if ref_check:
         refs_in_file = len(ref_check)
@@ -624,6 +628,7 @@ def main_process(
         index_group_min_bp,
         ref_gap_percent,
         ref_min_percent,
+        blank_indices
     )
     logs = []
     if passing:
