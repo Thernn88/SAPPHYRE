@@ -357,7 +357,11 @@ def run_command(args: CmdArgs) -> None:
                                 if identity <= IDENTITY_THRESHOLD and this_id not in done:
                                     to_subcluster.append(output)
                                 else:
-                                    aligned_ingredients.append((aligned_cluster, len(output)))
+                                    if len(output) < SINGLETON_THRESHOLD:
+                                        print(aligned_cluster, "is a singleton")
+                                        to_merge.extend(output)
+                                    else:
+                                        aligned_ingredients.append((aligned_cluster, len(output)))
 
                                 if not removed:
                                     to_subcluster.pop(0)
