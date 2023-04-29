@@ -8,7 +8,6 @@ from shutil import rmtree
 import subprocess
 from tempfile import TemporaryDirectory, NamedTemporaryFile
 from scipy.cluster.hierarchy import fcluster, linkage
-from scipy.spatial.distance import squareform
 import numpy as np
 from .utils import printv, gettempdir, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
@@ -90,7 +89,7 @@ def subcluster(aligned_sequences):
         distances[j, i] = distances[i, j]
 
     # Perform hierarchical clustering using complete linkage
-    Z = linkage(squareform(distances), method='complete')
+    Z = linkage(distances, method='complete')
 
     # Cut the dendrogram to create subclusters
     subclusters = fcluster(Z, SUBCLUSTER_AMOUNT, criterion='maxclust')
