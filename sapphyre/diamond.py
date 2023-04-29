@@ -514,6 +514,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
     global_log = []
     dupe_divy_headers = defaultdict(set)
+    
+    if os.stat(out_path).st_size == 0:
+        printv("Diamond returned zero hits.", args.verbose, 0)
+        return True
+
     df = pd.read_csv(
         out_path,
         engine="pyarrow",
@@ -542,6 +547,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             "send": "int32",
         },
     )
+
     target_counts = df["target"].value_counts()
     combined_count = Counter()
     taxon_to_targets = defaultdict(list)
