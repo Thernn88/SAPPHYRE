@@ -318,6 +318,7 @@ def print_unmerged_sequences(
     blosum_mode: str,
     minimum_bp: int,
     debug_fp: TextIO,
+    dupe_debug_fp: TextIO,
 ) -> tuple[dict[str, list], list[tuple[str, str]], list[tuple[str, str]]]:
     """
     Returns a list of unique trimmed sequences for a given gene with formatted headers.
@@ -409,6 +410,8 @@ def print_unmerged_sequences(
             if nt_seq_hash in seq_mapped_already:
                 mapped_to = seq_mapped_already[nt_seq_hash]
                 dupes.setdefault(mapped_to, []).append(base_header)
+                if dupe_debug_fp:
+                    dupe_debug_fp.write(f"{header}\n{nt_seq}\nis an nt dupe of\n{mapped_to}\n\n")
                 continue
             seq_mapped_already[nt_seq_hash] = base_header
 
@@ -434,6 +437,8 @@ def print_unmerged_sequences(
                             continue
                     else:
                         if aa_seq in already_mapped_sequence:
+                            if dupe_debug_fp:
+                                dupe_debug_fp.write(f"{header}\n{aa_seq}\nis an aa dupe of\n{mapped_to}\n\n")
                             continue
 
                     if base_header in header_mapped_x_times:
@@ -512,14 +517,16 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     core_seq_aa_dict = {target: seq for _, target, seq in core_sequences}
     this_aa_path = os.path.join(oargs.aa_out_path, oargs.gene + ".aa.fa")
     debug_alignments = None
+    debug_dupes = None
     if oargs.debug:
         os.makedirs(f"align_debug/{oargs.gene}", exist_ok=True)  # DEBUG
         debug_alignments = open(
-            f"align_debug/{oargs.gene}/{oargs.taxa_id}.fa", "w"
+            f"align_debug/{oargs.gene}/{oargs.taxa_id}.alignments", "w"
         )  # DEBUG
         debug_alignments.write(
             f"GAP_PENALTY: {GAP_PENALTY}\nEXTEND_PENALTY: {EXTEND_PENALTY}\n"
         )  # DEBUG
+        debug_dupes = open(f"align_debug/{oargs.gene}/{oargs.taxa_id}.dupes", "w")
 
     this_gene_dupes, aa_output, nt_output = print_unmerged_sequences(
         oargs.list_of_hits,
@@ -530,9 +537,11 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.blosum_mode,
         oargs.minimum_bp,
         debug_alignments,
+        debug_dupes,
     )
     if debug_alignments:
         debug_alignments.close()
+        debug_dupes.close()
     if aa_output:
         aa_core_sequences = print_core_sequences(
             oargs.gene, core_sequences, oargs.target_taxon, oargs.top_refs
