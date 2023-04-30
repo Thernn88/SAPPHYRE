@@ -249,7 +249,7 @@ def run_command(args: CmdArgs) -> None:
                                     sub_clusters[clust_index].append(
                                         this_cluster[int(seq_index)]
                                     )
-                            clusters = list(sub_clusters.values())
+                            clusters.extend(list(sub_clusters.values()))
                             continue
                     clusters.append(this_cluster)
             cluster_time = keeper.differential()
