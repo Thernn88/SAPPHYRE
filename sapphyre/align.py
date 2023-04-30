@@ -12,8 +12,8 @@ import numpy as np
 from .utils import printv, gettempdir, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
 
-KMER_LEN = 12
-KMER_PERCENT = 0.70
+KMER_LEN = 8
+KMER_PERCENT = 0.65
 SUBCLUSTER_AT = 1000
 CLUSTER_EVERY = 500  # Aim for x seqs per cluster
 SAFEGUARD_BP = 15000
@@ -352,12 +352,12 @@ def run_command(args: CmdArgs) -> None:
                                     identity = 100.0
                                 else:
                                     identity = get_identity(aligned_cluster)
-                                print(aligned_cluster, "has identity",identity )
+                                #printv(aligned_cluster, "has identity",identity, args.verbose, 2)
                                 if identity <= IDENTITY_THRESHOLD and this_id not in done:
                                     to_subcluster.append(output)
                                 else:
                                     if len(output) < SINGLETON_THRESHOLD:
-                                        print(aligned_cluster, "is a singleton")
+                                        #printv(aligned_cluster, "is a singleton", args.verbose, 2)
                                         to_merge.extend(output)
                                     else:
                                         aligned_ingredients.append((aligned_cluster, len(output)))
@@ -368,7 +368,7 @@ def run_command(args: CmdArgs) -> None:
 
                                 done.add(this_id)
                             else:
-                                print(f"Subcluster {i} for cluster {cluster_i} is empty")
+                                printv(f"Subcluster {i} for cluster {cluster_i} is empty", args.verbose, 2)
                 else:
                     aligned_ingredients.append((aligned_cluster, len(aligned_sequences)))
 
