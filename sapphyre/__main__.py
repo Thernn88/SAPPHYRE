@@ -468,7 +468,7 @@ def subcmd_flexcull(subparsers):
         "-mm",
         "--mismatches",
         type=int,
-        default=0,
+        default=1,
         help="Amount mismatches allowed per trim.",
     )
     par.add_argument(
