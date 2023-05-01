@@ -6,14 +6,15 @@ from collections import defaultdict, namedtuple
 from multiprocessing.pool import Pool
 from shutil import rmtree
 import subprocess
+import warnings
 from tempfile import TemporaryDirectory, NamedTemporaryFile
-from scipy.cluster.hierarchy import fcluster, linkage
+from scipy.cluster.hierarchy import fcluster, linkage, ClusterWarning
 import numpy as np
 from .utils import printv, gettempdir, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
 
 KMER_LEN = 8
-KMER_PERCENT = 0.65
+KMER_PERCENT = 0.55
 SUBCLUSTER_AT = 1000
 CLUSTER_EVERY = 500  # Aim for x seqs per cluster
 SAFEGUARD_BP = 15000
@@ -89,6 +90,7 @@ def subcluster(aligned_sequences):
         distances[j, i] = distances[i, j]
 
     # Perform hierarchical clustering using complete linkage
+    warnings.filterwarnings('ignore', category=ClusterWarning)
     Z = linkage(distances, method='complete')
 
     # Cut the dendrogram to create subclusters
