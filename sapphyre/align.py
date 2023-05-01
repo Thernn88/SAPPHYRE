@@ -13,13 +13,13 @@ import numpy as np
 from .utils import printv, gettempdir, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
 
-KMER_LEN = 8
-KMER_PERCENT = 0.55
+KMER_LEN = 15
+KMER_PERCENT = 0.5
 SUBCLUSTER_AT = 1000
 CLUSTER_EVERY = 500  # Aim for x seqs per cluster
 SAFEGUARD_BP = 15000
-SINGLETON_THRESHOLD = 5
-IDENTITY_THRESHOLD = 85
+SINGLETON_THRESHOLD = 2
+IDENTITY_THRESHOLD = 90
 SUBCLUSTER_AMOUNT = 2
 
 def find_kmers(fasta):
@@ -197,6 +197,10 @@ def run_command(args: CmdArgs) -> None:
             kmers = find_kmers(data)
             gene_headers = list(kmers.keys())
             merge_occured = True
+
+            # Add a dictionary to store child sets for each primary set
+            child_sets = {header: set() for header in data}
+
             while merge_occured:
                 merge_occured = False
                 for i in range(len(gene_headers) - 1, -1, -1):  # reverse iteration
@@ -206,23 +210,31 @@ def run_command(args: CmdArgs) -> None:
                         for candidate_header in gene_headers[:i]:
                             candidate = kmers[candidate_header]
                             if candidate:
-                                similar = master.intersection(candidate)
-                                if len(similar) != 0:
-                                    if (
-                                        len(similar) / min(len(master), len(candidate))
-                                        >= KMER_PERCENT
-                                    ):
-                                        # Merge kmeans and merge cluster headers
-                                        master.update(candidate)
-                                        cluster_children[master_header].extend(cluster_children[candidate_header])
+                                
+                                # Check similarity against both parent set and child sets
+                                sets_to_check = [master] + list(child_sets[master_header])
+                                matched = False
+                                for set_to_check in sets_to_check:
+                                    similar = set_to_check.intersection(candidate)
+                                    if len(similar) != 0:
+                                        if (
+                                            len(similar) / min(len(set_to_check), len(candidate))
+                                            >= KMER_PERCENT
+                                        ):
+                                            # Add the candidate set as a child set of the primary set
+                                            child_sets[master_header].add(frozenset(candidate))
+                                            cluster_children[master_header].extend(cluster_children[candidate_header])
 
-                                        # Remove candidate
-                                        cluster_children[candidate_header] = None
-                                        kmers[candidate_header] = None
+                                            # Remove candidate
+                                            cluster_children[candidate_header] = None
+                                            kmers[candidate_header] = None
 
-                                        
+                                            matched = True
+                                            break
+                                
+                                if matched:
+                                    merge_occured = True
 
-                                        merge_occured = True
 
             for this_cluster in cluster_children.values():
                 if this_cluster is not None:
@@ -517,7 +529,7 @@ def run_command(args: CmdArgs) -> None:
 
 
 def do_folder(folder, args):
-    printv(f"Processing: {os.path.basename(folder)}", args.verbose)
+    printv(f"Processing: {os.path.basename(folder)}", args.verbose, 0)
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     align_path = os.path.join(folder, ALIGN_FOLDER)
     aa_path = os.path.join(folder, AA_FOLDER)
@@ -588,7 +600,7 @@ def do_folder(folder, args):
     # with open("mafft_times.csv", "w") as fp:
     # fp.write("\n".join(["Gene,Clustering,Aligning,Merging,Total"]+[",".join(map(str, i)) for i in times]))
 
-    printv(f"Done! Took {time_keeper.differential():.2f}s overall", args.verbose)
+    printv(f"Done! Took {time_keeper.differential():.2f}s overall", args.verbose, 0)
     return True
 
 
