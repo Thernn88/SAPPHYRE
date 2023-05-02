@@ -200,7 +200,7 @@ def trim_around(
             continue
         if all_dashes_by_index[i]:
             continue
-        if not char in character_at_each_pos[i]:
+        if char not in character_at_each_pos[i]:
             skip_first = 1
             mismatch -= 1
 
@@ -221,7 +221,7 @@ def trim_around(
                     pass_all = False
                     break
                 match_i += 1
-            elif not sequence[i + match_i] in character_at_each_pos[i + match_i]:
+            elif sequence[i + match_i] not in character_at_each_pos[i + match_i]:
                 mismatch -= 1
                 if mismatch < 0:
                     pass_all = False
@@ -251,7 +251,7 @@ def trim_around(
         if all_dashes_at_position:
             # Don't allow cull to point of all dashes
             continue
-        if not char in character_at_each_pos[i]:
+        if char not in character_at_each_pos[i]:
             skip_last += 1
             mismatch -= 1
 
@@ -272,7 +272,7 @@ def trim_around(
                     pass_all = False
                     break
                 match_i += 1
-            elif not sequence[i - match_i] in character_at_each_pos[i - match_i]:
+            elif sequence[i - match_i] not in character_at_each_pos[i - match_i]:
                 mismatch -= 1
                 if mismatch < 0:
                     pass_all = False
@@ -328,7 +328,7 @@ def do_cull(
 
         if all_dashes_by_index[i]:
             continue
-        if not char in character_at_each_pos[i]:
+        if char not in character_at_each_pos[i]:
             skip_first = 1
             if window_start == i:
                 continue
@@ -351,7 +351,7 @@ def do_cull(
                     pass_all = False
                     break
                 match_i += 1
-            elif not sequence[i + match_i] in character_at_each_pos[i + match_i]:
+            elif sequence[i + match_i] not in character_at_each_pos[i + match_i]:
                 mismatch -= 1
                 if mismatch < 0 or sequence[i + match_i] == "*":
                     pass_all = False
@@ -385,7 +385,7 @@ def do_cull(
             if all_dashes_by_index[i]:
                 # Don't allow cull to point of all dashes
                 continue
-            if not char in character_at_each_pos[i]:
+            if char not in character_at_each_pos[i]:
                 skip_last += 1
                 if window_end == i:
                     continue
@@ -407,7 +407,7 @@ def do_cull(
                         pass_all = False
                         break
                     match_i += 1
-                elif not sequence[i - match_i] in character_at_each_pos[i - match_i]:
+                elif sequence[i - match_i] not in character_at_each_pos[i - match_i]:
                     mismatch -= 1
                     if mismatch < 0 or sequence[i - match_i] == "*":
                         pass_all = False
@@ -744,7 +744,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                 out_line = list(sequence)
                 for j, let in enumerate(out_line[seq_start : seq_end + 1], seq_start):
                     if let == "-":
-                        if not j in reference_gap_col:
+                        if j not in reference_gap_col:
                             non_ref_gap_dash_count += 1
                         raw_dash_count += 1
                     else:

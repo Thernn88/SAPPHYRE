@@ -462,7 +462,7 @@ def do_protein(
                         else:
                             if ref_stats:
                                 for reference in ref_stats:
-                                    if not reference in comparison_sequences:
+                                    if reference not in comparison_sequences:
                                         continue
                                     if taxons_of_split:
                                         if reference in taxons_of_split:

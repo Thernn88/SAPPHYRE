@@ -5,8 +5,8 @@ import os
 import shutil
 from collections import Counter, defaultdict, namedtuple
 from multiprocessing.pool import Pool
-from typing import Optional, TextIO, Union
-from msgspec import json, Struct
+from typing import Optional, TextIO
+from msgspec import json
 import parasail as ps
 import blosum as bl
 import phymmr_tools
@@ -40,6 +40,7 @@ MainArgs = namedtuple(
         "clear_output",
     ],
 )
+
 
 # Extend hit with new functions
 class Hit(ReporterHit):
@@ -209,11 +210,13 @@ def get_diamondhits(
     present_genes = rocks_hits_db.get("getall:presentgenes").split(",")
     genes_to_process = list_of_wanted_genes or present_genes
 
-    decoder = json.Decoder(list[Hit]) 
+    decoder = json.Decoder(list[Hit])
 
     gene_based_results = defaultdict(list)
     for gene in genes_to_process:
-        gene_based_results[gene] = decoder.decode(rocks_hits_db.get_bytes(f"gethits:{gene}"))
+        gene_based_results[gene] = decoder.decode(
+            rocks_hits_db.get_bytes(f"gethits:{gene}")
+        )
 
     return gene_based_results
 
@@ -227,7 +230,9 @@ def get_gene_variants(rocks_hits_db: RocksDB) -> dict[str, list[str]]:
     Returns:
         dict: Dictionary of gene to corresponding target variants
     """
-    return json.decode(rocks_hits_db.get("getall:target_variants"), type=dict[str, list[str]])
+    return json.decode(
+        rocks_hits_db.get("getall:target_variants"), type=dict[str, list[str]]
+    )
 
 
 def get_toprefs(rocks_nt_db: RocksDB) -> list[str]:
@@ -269,7 +274,9 @@ def get_core_sequences(
     Returns:
         tuple: Tuple of core AA and NT sequences
     """
-    core_seqs = json.decode(orthoset_db.get(f"getcore:{gene}"), type=dict[str, list[tuple[str, str, str]]])
+    core_seqs = json.decode(
+        orthoset_db.get(f"getcore:{gene}"), type=dict[str, list[tuple[str, str, str]]]
+    )
     return core_seqs["aa"], core_seqs["nt"]
 
 
@@ -289,10 +296,10 @@ def print_core_sequences(
     for taxon, taxa_id, seq in sorted(core_sequences):
         # Filter out non-target hits and variants
         if target_taxon:
-            if not taxa_id in target_taxon:
+            if taxa_id not in target_taxon:
                 continue
         else:
-            if not taxon in top_refs:
+            if taxon not in top_refs:
                 continue
 
         header = (
@@ -356,10 +363,10 @@ def print_unmerged_sequences(
 
         if hit.frame < 0:
             hit.header = (
-                hit.header + "|[revcomp]:[translate("+str(abs(hit.frame))+")]"
+                hit.header + "|[revcomp]:[translate(" + str(abs(hit.frame)) + ")]"
             )
         else:
-            hit.header = hit.header + "|[translate("+str(hit.frame)+")]"
+            hit.header = hit.header + "|[translate(" + str(hit.frame) + ")]"
 
         # Format header to gene|taxa_name|taxa_id|sequence_id|frame
         header = (
@@ -411,7 +418,9 @@ def print_unmerged_sequences(
                 mapped_to = seq_mapped_already[nt_seq_hash]
                 dupes.setdefault(mapped_to, []).append(base_header)
                 if dupe_debug_fp:
-                    dupe_debug_fp.write(f"{header}\n{nt_seq}\nis an nt dupe of\n{mapped_to}\n\n")
+                    dupe_debug_fp.write(
+                        f"{header}\n{nt_seq}\nis an nt dupe of\n{mapped_to}\n\n"
+                    )
                 continue
             seq_mapped_already[nt_seq_hash] = base_header
 
@@ -438,7 +447,9 @@ def print_unmerged_sequences(
                     else:
                         if aa_seq in already_mapped_sequence:
                             if dupe_debug_fp:
-                                dupe_debug_fp.write(f"{header}\n{aa_seq}\nis an aa dupe of\n{mapped_to}\n\n")
+                                dupe_debug_fp.write(
+                                    f"{header}\n{aa_seq}\nis an aa dupe of\n{mapped_to}\n\n"
+                                )
                             continue
 
                     if base_header in header_mapped_x_times:
@@ -502,7 +513,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     Args:
         oargs (OutputArgs): Output arguments
     Returns:
-        tuple: 
+        tuple:
             Tuple containing the gene name,
             a dict of removed duplicates and the number of sequences written
     """
@@ -696,8 +707,16 @@ def main(args):
     )
     result = []
     if args.matches < EXACT_MATCH_AMOUNT:
-        printv(f"ERROR: Impossible match paramaters. {EXACT_MATCH_AMOUNT} exact matches required whereas only {args.matches} matches are checked.", args.verbose, 0)
-        printv(f"Please increase the number of matches to at least {EXACT_MATCH_AMOUNT} or change the minimum amount of exact matches.\n", args.verbose, 0)
+        printv(
+            f"ERROR: Impossible match paramaters. {EXACT_MATCH_AMOUNT} exact matches required whereas only {args.matches} matches are checked.",
+            args.verbose,
+            0,
+        )
+        printv(
+            f"Please increase the number of matches to at least {EXACT_MATCH_AMOUNT} or change the minimum amount of exact matches.\n",
+            args.verbose,
+            0,
+        )
         return False
     for input_path in args.INPUT:
         rocks_db_path = os.path.join(input_path, "rocksdb")

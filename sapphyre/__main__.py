@@ -786,7 +786,9 @@ def subcmd_auto(subparsers):
         "auto", help="Aligns AA sequences against existing reference alignment."
     )
     par.add_argument(
-        "INPUT", help="Path to directory of Input folder", type= str,
+        "INPUT",
+        help="Path to directory of Input folder",
+        type=str,
     )
     par.add_argument(
         "-c",

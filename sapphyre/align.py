@@ -22,6 +22,7 @@ SINGLETON_THRESHOLD = 2
 IDENTITY_THRESHOLD = 90
 SUBCLUSTER_AMOUNT = 2
 
+
 def find_kmers(fasta):
     kmers = {}
     for header, sequence in fasta.items():
@@ -75,42 +76,42 @@ def get_identity(aligned_cluster):
         shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        check=True
+        check=True,
     )
     identity_out = identity_out.stdout.decode("utf-8")
-    identity = float(identity_out.replace("Average pairwise identity: ","").replace("%",""))
+    identity = float(
+        identity_out.replace("Average pairwise identity: ", "").replace("%", "")
+    )
     return identity
+
 
 def subcluster(aligned_sequences):
     sequences = [np.array(list(seq)) for _, seq in aligned_sequences]
     distances = np.zeros((len(sequences), len(sequences)))
     for i, j in combinations(range(len(sequences)), 2):
-
         distances[i, j] = np.count_nonzero(sequences[i] != sequences[j])
         distances[j, i] = distances[i, j]
 
     # Perform hierarchical clustering using complete linkage
-    warnings.filterwarnings('ignore', category=ClusterWarning)
-    Z = linkage(distances, method='complete')
+    warnings.filterwarnings("ignore", category=ClusterWarning)
+    Z = linkage(distances, method="complete")
 
     # Cut the dendrogram to create subclusters
-    subclusters = fcluster(Z, SUBCLUSTER_AMOUNT, criterion='maxclust')
-
-    
+    subclusters = fcluster(Z, SUBCLUSTER_AMOUNT, criterion="maxclust")
 
     # Save each subcluster to a separate FASTA file
-    for i in range(1, SUBCLUSTER_AMOUNT+1):
+    for i in range(1, SUBCLUSTER_AMOUNT + 1):
         subcluster_indices = [j for j, c in enumerate(subclusters) if c == i]
         subcluster_records = [aligned_sequences[j] for j in subcluster_indices]
         yield subcluster_records
 
 
 def delete_empty_cols(records):
-     #Delete empty cols
+    # Delete empty cols
     cols_to_keep = set()
     output = []
     for _, sequence in records:
-        for x,let in enumerate(sequence):
+        for x, let in enumerate(sequence):
             if x not in cols_to_keep:
                 if let != "-":
                     cols_to_keep.add(x)
@@ -210,20 +211,26 @@ def run_command(args: CmdArgs) -> None:
                         for candidate_header in gene_headers[:i]:
                             candidate = kmers[candidate_header]
                             if candidate:
-                                
                                 # Check similarity against both parent set and child sets
-                                sets_to_check = [master] + list(child_sets[master_header])
+                                sets_to_check = [master] + list(
+                                    child_sets[master_header]
+                                )
                                 matched = False
                                 for set_to_check in sets_to_check:
                                     similar = set_to_check.intersection(candidate)
                                     if len(similar) != 0:
                                         if (
-                                            len(similar) / min(len(set_to_check), len(candidate))
+                                            len(similar)
+                                            / min(len(set_to_check), len(candidate))
                                             >= KMER_PERCENT
                                         ):
                                             # Add the candidate set as a child set of the primary set
-                                            child_sets[master_header].add(frozenset(candidate))
-                                            cluster_children[master_header].extend(cluster_children[candidate_header])
+                                            child_sets[master_header].add(
+                                                frozenset(candidate)
+                                            )
+                                            cluster_children[master_header].extend(
+                                                cluster_children[candidate_header]
+                                            )
 
                                             # Remove candidate
                                             cluster_children[candidate_header] = None
@@ -231,10 +238,9 @@ def run_command(args: CmdArgs) -> None:
 
                                             matched = True
                                             break
-                                
+
                                 if matched:
                                     merge_occured = True
-
 
             for this_cluster in cluster_children.values():
                 if this_cluster is not None:
@@ -252,7 +258,7 @@ def run_command(args: CmdArgs) -> None:
                                 shell=True,
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE,
-                                check=True
+                                check=True,
                             )
                             sig_out = sig_out.stdout.decode("utf-8")
                             sub_clusters = defaultdict(list)
@@ -283,7 +289,6 @@ def run_command(args: CmdArgs) -> None:
 
             cluster_i = 0
             for cluster in clusters:
-                
                 cluster_i += 1
                 cluster_seqs = [(header, data[header]) for header in cluster]
 
@@ -303,11 +308,11 @@ def run_command(args: CmdArgs) -> None:
                 )  # Debug
 
                 this_clus_align = f"{args.gene}_cluster_{cluster_i}_length_{len(cluster)}_index_aligned"
-                aligned_cluster = os.path.join(
-                    aligned_files_tmp, this_clus_align
-                )
+                aligned_cluster = os.path.join(aligned_files_tmp, this_clus_align)
 
-                raw_cluster = os.path.join(raw_files_tmp, f"{args.gene}_cluster{cluster_i}")
+                raw_cluster = os.path.join(
+                    raw_files_tmp, f"{args.gene}_cluster{cluster_i}"
+                )
                 writeFasta(raw_cluster, cluster_seqs)
                 if debug:
                     writeFasta(
@@ -328,11 +333,15 @@ def run_command(args: CmdArgs) -> None:
                         os.path.join(
                             this_intermediates, os.path.split(aligned_cluster)[-1]
                         ),
-                        aligned_sequences
+                        aligned_sequences,
                     )
                 identity = get_identity(aligned_cluster)
                 if identity <= IDENTITY_THRESHOLD:
-                    printv(f"{args.gene} cluster {cluster_i} has identity {identity}. Subclustering", args.verbose, 1)
+                    printv(
+                        f"{args.gene} cluster {cluster_i} has identity {identity}. Subclustering",
+                        args.verbose,
+                        1,
+                    )
                     # Calculate the pairwise distances between sequences using Hamming distance
                     subcluster_i = 0
                     to_subcluster = [aligned_sequences]
@@ -346,7 +355,6 @@ def run_command(args: CmdArgs) -> None:
                                 output = delete_empty_cols(subcluster_records)
 
                                 this_id = hash("".join([i[0] for i in output]))
-                                
 
                                 cluster = f"{args.gene}_cluster_{cluster_i}_length_{len(cluster)}_subcluster{subcluster_i}_aligned"
                                 aligned_cluster = os.path.join(
@@ -354,27 +362,29 @@ def run_command(args: CmdArgs) -> None:
                                 )
                                 if debug:
                                     writeFasta(
-                                        os.path.join(
-                                            this_intermediates, cluster
-                                        ),
-                                        output
+                                        os.path.join(this_intermediates, cluster),
+                                        output,
                                     )
-                                
 
                                 writeFasta(aligned_cluster, output)
                                 if len(output) <= 1:
                                     identity = 100.0
                                 else:
                                     identity = get_identity(aligned_cluster)
-                                #printv(aligned_cluster, "has identity",identity, args.verbose, 2)
-                                if identity <= IDENTITY_THRESHOLD and this_id not in done:
+                                # printv(aligned_cluster, "has identity",identity, args.verbose, 2)
+                                if (
+                                    identity <= IDENTITY_THRESHOLD
+                                    and this_id not in done
+                                ):
                                     to_subcluster.append(output)
                                 else:
                                     if len(output) < SINGLETON_THRESHOLD:
-                                        #printv(aligned_cluster, "is a singleton", args.verbose, 2)
+                                        # printv(aligned_cluster, "is a singleton", args.verbose, 2)
                                         to_merge.extend(output)
                                     else:
-                                        aligned_ingredients.append((aligned_cluster, len(output)))
+                                        aligned_ingredients.append(
+                                            (aligned_cluster, len(output))
+                                        )
 
                                 if not removed:
                                     to_subcluster.pop(0)
@@ -382,10 +392,15 @@ def run_command(args: CmdArgs) -> None:
 
                                 done.add(this_id)
                             else:
-                                printv(f"Subcluster {i} for cluster {cluster_i} is empty", args.verbose, 2)
+                                printv(
+                                    f"Subcluster {i} for cluster {cluster_i} is empty",
+                                    args.verbose,
+                                    2,
+                                )
                 else:
-                    aligned_ingredients.append((aligned_cluster, len(aligned_sequences)))
-
+                    aligned_ingredients.append(
+                        (aligned_cluster, len(aligned_sequences))
+                    )
 
         align_time = keeper.differential() - cluster_time
         if to_merge:
@@ -401,7 +416,9 @@ def run_command(args: CmdArgs) -> None:
                     to_merge,
                 )
         if aligned_ingredients or to_merge:
-            aligned_ingredients = [i[0] for i in sorted(aligned_ingredients, key = lambda x: x[1])]
+            aligned_ingredients = [
+                i[0] for i in sorted(aligned_ingredients, key=lambda x: x[1])
+            ]
             if to_merge:
                 aligned_ingredients.insert(0, merged_singleton_final)
             printv(
@@ -461,7 +478,9 @@ def run_command(args: CmdArgs) -> None:
                     )
                     if args.debug:
                         printv(
-                            f"mafft --anysymbol --jtt 1 --quiet --addfragments {aligned_ingredients[0]} --thread 1 {tmp.name} > {out_file}", args.verbose, 3
+                            f"mafft --anysymbol --jtt 1 --quiet --addfragments {aligned_ingredients[0]} --thread 1 {tmp.name} > {out_file}",
+                            args.verbose,
+                            3,
                         )
                 else:
                     os.system(
@@ -550,8 +569,7 @@ def do_folder(folder, args):
     only_singletons = set()
     for gene, _ in genes:
         for _, seq in parseFasta(
-            os.path.join(aln_path, gene.split(".")[0] + ".aln.fa"),
-            True
+            os.path.join(aln_path, gene.split(".")[0] + ".aln.fa"), True
         ):
             if len(seq) >= SAFEGUARD_BP:
                 printv(f"{gene} will be using Singletons only", args.verbose, 3)
@@ -564,7 +582,7 @@ def do_folder(folder, args):
         printv("ERROR: Aln folder not found.", args.verbose, 0)
         return False
 
-    command = f"clustalo -i {{in_file}} -o {{out_file}} --threads=1 --full --iter=1 --full-iter"
+    command = "clustalo -i {in_file} -o {out_file} --threads=1 --full --iter=1 --full-iter"
     # command = f"mafft --maxiterate 2 --anysymbol --quiet --thread 1 {{in_file}} > {{out_file}}"
 
     intermediates = "intermediates"
@@ -577,7 +595,8 @@ def do_folder(folder, args):
         gene_file = os.path.join(aa_path, file)
         result_file = os.path.join(align_path, file.rstrip(".gz"))
         func_args.append(
-            (CmdArgs(
+            (
+                CmdArgs(
                     command,
                     gene_file,
                     result_file,
@@ -587,14 +606,15 @@ def do_folder(folder, args):
                     aln_path,
                     args.debug,
                     file in only_singletons,
-                ),)
+                ),
             )
-        
+        )
+
     if args.processes > 1:
         with Pool(args.processes) as pool:
-            times = pool.starmap(run_command, func_args, chunksize=1)
+            pool.starmap(run_command, func_args, chunksize=1)
     else:
-        times = [run_command(arg[0]) for arg in func_args]
+        [run_command(arg[0]) for arg in func_args]
 
     # if args.debug:
     # with open("mafft_times.csv", "w") as fp:

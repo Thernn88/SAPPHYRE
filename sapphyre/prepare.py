@@ -18,7 +18,7 @@ import xxhash
 from tqdm import tqdm
 
 from .timekeeper import TimeKeeper, KeeperMode
-from .utils import ConcurrentLogger, gettempdir, parseFasta, writeFasta
+from .utils import ConcurrentLogger, gettempdir, parseFasta
 
 ROCKSDB_FOLDER_NAME = "rocksdb"
 SEQUENCES_FOLDER_NAME = "sequences"
@@ -115,9 +115,7 @@ def glob_for_fasta_and_save_for_runs(
 
 
 class SeqDeduplicator:
-    def __init__(
-        self, db: Any, minimum_sequence_length: int, verbose: int
-    ):
+    def __init__(self, db: Any, minimum_sequence_length: int, verbose: int):
         self.minimum_sequence_length = minimum_sequence_length
         self.verbose = verbose
         self.nt_db = db
@@ -244,23 +242,23 @@ class DatabasePreparer:
 
     def dedup(self):
         deduper = SeqDeduplicator(
-                    self.nt_db, self.minimum_sequence_length, self.verbose
-                )
+            self.nt_db, self.minimum_sequence_length, self.verbose
+        )
         for fa_file_path in self.comp:
             deduper(
-                    fa_file_path,
-                    self.trim_times,
-                    self.duplicates,
-                    self.rev_comp_save,
-                    self.transcript_mapped_to,
-                    self.dupes,
-                    self.this_index,
-                    self.dedup_time,
-                )
-        
+                fa_file_path,
+                self.trim_times,
+                self.duplicates,
+                self.rev_comp_save,
+                self.transcript_mapped_to,
+                self.dupes,
+                self.this_index,
+                self.dedup_time,
+            )
+
         self.fa_file_out = deduper.lines
 
-        with NamedTemporaryFile(dir = gettempdir(), mode="w") as fp:
+        with NamedTemporaryFile(dir=gettempdir(), mode="w") as fp:
             prior = len(self.fa_file_out)
             fp.writelines(self.fa_file_out)
             os.system(f"entropy/entropy 0.7 {fp.name} {self.prepared_file_destination}")
@@ -268,11 +266,10 @@ class DatabasePreparer:
         recipe = []
         recipe_index = IndexIter()
         final = IndexIter()
-        
+
         current_count = IndexIter()
         current_batch = []
         for header, seq in parseFasta(self.prepared_file_destination):
-            
             next(final)
             current_batch.append(f">{header}\n{seq}\n")
             next(current_count)
@@ -284,7 +281,7 @@ class DatabasePreparer:
 
                 self.nt_db.put(f"ntbatch:{recipe_index.x}", "".join(current_batch))
                 current_batch = []
-        
+
         if current_batch:
             next(recipe_index)
             recipe.append(str(recipe_index.x))

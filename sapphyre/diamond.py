@@ -66,6 +66,7 @@ class Hit(Struct):
     reftaxon: str = None
     ref_hits: list[ReferenceHit] = []
 
+
 class ReporterHit(Struct):
     header: str
     frame: int
@@ -75,6 +76,7 @@ class ReporterHit(Struct):
     reftaxon: str
     ref_hits: list[ReferenceHit]
     est_seq: str = None
+
 
 def get_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
     """
@@ -215,6 +217,7 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
     passes = [hit for hit in hits if not hit.kick]
     return len(hits) - len(passes), log
 
+
 def make_kick_log(hit_a: Hit, hit_b: Hit, gene: str, percent: float) -> str:
     """Makes the log entry for internal filter.
 
@@ -236,11 +239,15 @@ def make_kick_log(hit_a: Hit, hit_b: Hit, gene: str, percent: float) -> str:
     #     hit_a.qend,
     #     round(percent, 3),
     # )
-    return "".join([
-        f"{gene}, {hit_b.uid}, {round(hit_b.score, 2)}, {hit_b.qstart}, ",
-        f"{hit_b.qend} Internal kicked out by {gene}, {hit_a.uid}, ",
-        f"{round(hit_a.score, 2)}, {hit_a.qstart}, {hit_a.qend}, {round(percent, 3)}"
-        ])
+    return "".join(
+        [
+            f"{gene}, {hit_b.uid}, {round(hit_b.score, 2)}, {hit_b.qstart}, ",
+            f"{hit_b.qend} Internal kicked out by {gene}, {hit_a.uid}, ",
+            f"{round(hit_a.score, 2)}, {hit_a.qstart}, {hit_a.qend}, {round(percent, 3)}",
+        ]
+    )
+
+
 def internal_filter(
     gene: str, header_based: dict, debug: bool, internal_percent: float
 ) -> tuple[set, list, int]:
@@ -326,7 +333,9 @@ def internal_filtering(
             and the list of hits that passed the filter.
     """
     # Perform the internal filter.
-    kicked_hits, this_log, this_kicks = internal_filter(gene, hits, debug, internal_percent)
+    kicked_hits, this_log, this_kicks = internal_filter(
+        gene, hits, debug, internal_percent
+    )
 
     # Return the gene, the number of hits kicked, a log of the hits kicked, and the list of hits
     return (gene, this_kicks, this_log, kicked_hits)
@@ -351,13 +360,17 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
         frame_to_hits = defaultdict(list)
         hits = []
         for row in sorted(header_df.values, key=lambda row: row[4], reverse=True):
-            this_hit = Hit(row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8])
+            this_hit = Hit(
+                row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]
+            )
             if this_hit.frame < 0:
                 this_hit.qend, this_hit.qstart = this_hit.qstart, this_hit.qend
             this_hit.length = this_hit.qend - this_hit.qstart + 1
             this_hit.gene, this_hit.reftaxon, _ = pargs.target_to_taxon[this_hit.target]
             this_hit.uid = hash(time())
-            this_hit.ref_hits.append(ReferenceHit(this_hit.target, this_hit.sstart, this_hit.send))
+            this_hit.ref_hits.append(
+                ReferenceHit(this_hit.target, this_hit.sstart, this_hit.send)
+            )
             frame_to_hits[this_hit.frame].append(this_hit)
 
         for hits in frame_to_hits.values():
@@ -390,10 +403,15 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
 
                     output[top_hit.gene].append(top_hit)
 
-    result = ("\n".join([",".join([str(i) for i in line]) for line in this_log]), multi_kicks, output)
+    result = (
+        "\n".join([",".join([str(i) for i in line]) for line in this_log]),
+        multi_kicks,
+        output,
+    )
 
     with open(pargs.result_fp, "wb") as result_file:
         result_file.write(json.encode(result))
+
 
 def run_process(args: Namespace, input_path: str) -> bool:
     """
@@ -418,7 +436,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
     orthoset = args.orthoset
     orthosets_dir = args.orthoset_input
 
-    strict_search_mode = args.strict_search_mode
     sensitivity = args.sensitivity
     top_amount = args.top
 
@@ -456,7 +473,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
             sys.exit(1)
     orthoset_db = wrap_rocks.RocksDB(orthoset_db_path)
 
-    target_to_taxon = json.decode(orthoset_db.get_bytes("getall:targetreference"), type=dict[str, list[Union[str, int]]])
+    target_to_taxon = json.decode(
+        orthoset_db.get_bytes("getall:targetreference"),
+        type=dict[str, list[Union[str, int]]],
+    )
 
     del orthoset_db
     time_keeper.lap()  # Reset timer
@@ -514,7 +534,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
     global_log = []
     dupe_divy_headers = defaultdict(set)
-    
+
     if os.stat(out_path).st_size == 0:
         printv("Diamond returned zero hits.", args.verbose, 0)
         return True
@@ -577,7 +597,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             per_thread = MINIMUM_CHUNKSIZE
             chunks = ceil(len(headers) / per_thread)
         else:
-            chunks = post_threads 
+            chunks = post_threads
         estimated_end = ceil((len(df) / chunks) * OVERSHOOT_AMOUNT)
         arguments = []
         indices = []
@@ -590,7 +610,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
             if x != chunks:
                 last_header = headers[i + per_thread - 1]
                 end_index = (
-                    np.where(df[start_index:(start_index+estimated_end)]["header"].values == last_header)[0][-1]
+                    np.where(
+                        df[start_index : (start_index + estimated_end)]["header"].values
+                        == last_header
+                    )[0][-1]
                     + start_index
                 )
 
@@ -603,7 +626,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         arguments = (
             ProcessingArgs(
-                i, 
+                i,
                 df.iloc[index[0] : index[1] + 1],
                 target_to_taxon,
                 args.debug,
@@ -631,7 +654,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         for temp_file in temp_files:
             with open(temp_file.name, "rb") as fp:
                 this_log, mkicks, this_output = decoder.decode(fp.read())
-            
+
             for gene, hits in this_output.items():
                 output[gene].extend(hits)
 
@@ -639,7 +662,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
             if args.debug:
                 global_log.append(this_log)
-        del this_output, mkicks, this_log,
+        del (
+            this_output,
+            mkicks,
+            this_log,
+        )
         printv(
             f"Done reading outputs. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
             args.verbose,
@@ -714,7 +741,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         variant_filter = {k: list(v) for k, v in variant_filter.items()}
 
-        db.put_bytes("getall:target_variants", json_encoder.encode(variant_filter)) #type=dict[str, list[str]]
+        db.put_bytes(
+            "getall:target_variants", json_encoder.encode(variant_filter)
+        )  # type=dict[str, list[str]]
 
         del variant_filter
         nt_db.put("getall:valid_refs", ",".join(list(top_refs)))
@@ -734,7 +763,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
         passes = 0
         internal_kicks = 0
         encoder = json.Encoder()
-        convert_to_hit = lambda hit: ReporterHit(hit.header, hit.frame, hit.qstart, hit.qend, hit.gene, hit.reftaxon, hit.ref_hits)
+        def convert_to_hit(hit):
+            return ReporterHit(hit.header, hit.frame, hit.qstart, hit.qend, hit.gene, hit.reftaxon, hit.ref_hits)
         for gene, hits in output.items():
             kicks = set()
             out = []
@@ -752,13 +782,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
             passes += len(out)
             db.put_bytes(f"gethits:{gene}", encoder.encode(out))
-            
+
         del head_to_seq
         if global_log:
             with open(os.path.join(input_path, "multi.log"), "w") as fp:
-                fp.write(
-                    "\n".join(global_log)
-                )
+                fp.write("\n".join(global_log))
 
         printv(
             f"{multi_kicks} multi kicks",
@@ -777,14 +805,12 @@ def run_process(args: Namespace, input_path: str) -> bool:
         for gene, headers in dupe_divy_headers.items():
             for base_header in headers:
                 if base_header in dupe_counts:
-                    gene_dupe_count[gene][base_header] = dupe_counts[
-                        base_header
-                    ]
+                    gene_dupe_count[gene][base_header] = dupe_counts[base_header]
 
         db.put("getall:presentgenes", ",".join(list(output.keys())))
 
         key = "getall:gene_dupes"
-        data = json_encoder.encode(gene_dupe_count) #type=dict[str, dict[str, int]]
+        data = json_encoder.encode(gene_dupe_count)  # type=dict[str, dict[str, int]]
         nt_db.put_bytes(key, data)
 
     del top_refs

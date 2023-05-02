@@ -48,23 +48,28 @@ def grab_gene(fp, to_kick: set) -> list:
 
 
 def align_kick_nt(
-        fasta_content: list,
-        to_kick: set,
-        aa_kicks: set,
-    ):
+    fasta_content: list,
+    to_kick: set,
+    aa_kicks: set,
+):
     result = []
     for i in range(0, len(fasta_content), 2):
         header = fasta_content[i]
         sequence = fasta_content[i + 1]
         if header not in aa_kicks:
             sequence = "".join(
-                [sequence[i:i+3] for i in range(0, len(sequence), 3) if i not in to_kick]
+                [
+                    sequence[i : i + 3]
+                    for i in range(0, len(sequence), 3)
+                    if i not in to_kick
+                ]
             )
 
             result.append(header)
             result.append(sequence)
-    
+
     return result
+
 
 def kick_empty_columns(
     fasta_content: list,
@@ -89,18 +94,17 @@ def kick_empty_columns(
     if not to_kick:
         for i, characters in fasta_data.items():
             if characters.count("-") / len(characters) > kick_percent:
-                to_kick.add(i*3)
+                to_kick.add(i * 3)
 
     result = []
     for header in out.keys():
         sequence = "".join(
-            [let for i, let in enumerate(out[header]) if i*3 not in to_kick]
+            [let for i, let in enumerate(out[header]) if i * 3 not in to_kick]
         )
         if len(sequence) - sequence.count("-") >= minimum_bp:
             result.append(header)
             result.append(sequence)
         else:
-           
             kicks.add(header)
 
     return result, kicks, to_kick
@@ -119,10 +123,9 @@ def stopcodon(aa_content: list, nt_content: list) -> tuple:
         else:
             aa_seqs.append(aa_content[i])
             aa_seqs.append(aa_content[i + 1])
-            
+
     for aa_line, nt_line in zip(aa_seqs, nt_content):
         if aa_line.startswith(">"):
-
             if aa_line != nt_line:
                 print(
                     "Warning STOPCODON: Nucleotide line doesn't match Amino Acid line"
@@ -176,7 +179,7 @@ def clean_gene(gene_config):
 
         if gene_config.kick_columns:
             aa_content, aa_kicks, cols_to_kick = kick_empty_columns(
-              aa_content, gene_config.kick_percentage, gene_config.minimum_bp
+                aa_content, gene_config.kick_percentage, gene_config.minimum_bp
             )
             nt_content = align_kick_nt(nt_content, cols_to_kick, aa_kicks)
 
