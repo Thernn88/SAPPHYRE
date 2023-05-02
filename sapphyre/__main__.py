@@ -781,6 +781,31 @@ def wrap_final(argsobj):
         print(argsobj.formathelp())
 
 
+def subcmd_auto(subparsers):
+    par = subparsers.add_parser(
+        "auto", help="Aligns AA sequences against existing reference alignment."
+    )
+    par.add_argument(
+        "INPUT", help="Path to directory of Input folder", type= str,
+    )
+    par.add_argument(
+        "-c",
+        "--config",
+        type=str,
+        default=None,
+        help="Config file to use. If not specified, will use default configuration.",
+    )
+    par.set_defaults(func=auto, formathelp=par.format_help)
+
+
+def auto(args):
+    from . import auto
+
+    if not auto.main(args):
+        print()
+        print(args.formathelp())
+
+
 if __name__ == "__main__":
     parser = CaseInsensitiveArgumentParser(
         prog="sapphyre",
@@ -854,6 +879,9 @@ if __name__ == "__main__":
 
     # Final wrapper
     subcmd_wrap_final(subparsers)
+
+    # Auto
+    subcmd_auto(subparsers)
 
     args = parser.parse_args()
     if not hasattr(args, "func"):
