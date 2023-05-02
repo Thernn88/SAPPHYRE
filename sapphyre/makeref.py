@@ -115,7 +115,7 @@ def get_set_path(set_name):
     return set_path
 
 
-def generate_aln(set: Sequence_Set, align_method, threads, overwrite):
+def generate_aln(set: Sequence_Set, align_method, overwrite, pool):
     sequences = set.get_gene_dict()
 
     set_path = get_set_path(set.name)
@@ -135,8 +135,7 @@ def generate_aln(set: Sequence_Set, align_method, threads, overwrite):
             )
         )
 
-    with Pool(threads) as pool:
-        aligned_sequences_components = pool.starmap(aln_function, arguments)
+    aligned_sequences_components = pool.starmap(aln_function, arguments)
 
     for gene, aligned_sequences in aligned_sequences_components:
         set.add_aligned_sequences(gene, aligned_sequences)
@@ -167,7 +166,7 @@ def aln_function(gene, content, aln_path, align_method, overwrite):
     return gene, aligned_result
 
 
-def generate_stockholm(set: Sequence_Set, threads, overwrite):
+def generate_stockholm(set: Sequence_Set, overwrite, pool):
     aligned_sequences = set.get_aligned_sequences()
 
     set_path = get_set_path(set.name)
@@ -186,8 +185,7 @@ def generate_stockholm(set: Sequence_Set, threads, overwrite):
             )
         )
 
-    with Pool(threads) as pool:
-        stockh_files = pool.starmap(f2s, arguments)
+    stockh_files = pool.starmap(f2s, arguments)
 
     return stockh_files
 
@@ -204,7 +202,7 @@ def f2s(aln_path, gene, raw_fasta, overwrite):
     return (gene, stockh_file)
 
 
-def generate_hmms(set: Sequence_Set, stockh_files, threads, overwrite):
+def generate_hmms(set: Sequence_Set, stockh_files, overwrite, pool):
     set_path = get_set_path(set.name)
     hmm_path = set_path.joinpath("hmms")
     hmm_path.mkdir(exist_ok=True)
@@ -220,8 +218,8 @@ def generate_hmms(set: Sequence_Set, stockh_files, threads, overwrite):
             )
         )
 
-    with Pool(threads) as pool:
-        pool.starmap(hmmbuild, arguments)
+    # with Pool(threads) as pool:
+    pool.starmap(hmmbuild, arguments)
 
 
 def hmmbuild(stockhfile: Path, hmm_file: Path, overwrite):
@@ -319,16 +317,16 @@ def main(args):
             if nt_id in nt_data:
                 nt_seq = nt_data[nt_id]
             this_set.add_sequence(Sequence(header, aa_seq, nt_seq, taxa, gene, id))
-    #
 
-    print("Generating aln")
-    generate_aln(this_set, align_method, threads, overwrite)
+    with Pool(threads) as pool:
+        print("Generating aln")
+        generate_aln(this_set, align_method, overwrite, pool)
 
-    print("Creating HMM's Stockholm Alignment Files")
-    stockh_files = generate_stockholm(this_set, threads, overwrite)
+        print("Creating HMM's Stockholm Alignment Files")
+        stockh_files = generate_stockholm(this_set, overwrite, pool)
 
-    print("Generating Hmms")
-    generate_hmms(this_set, stockh_files, threads, overwrite)
+        print("Generating Hmms")
+        generate_hmms(this_set, stockh_files, overwrite, pool)
 
     print("Making Diamond DB")
     target_to_taxon, taxon_to_sequences = make_diamonddb(this_set, overwrite, threads)
