@@ -61,7 +61,7 @@ def main(args):
                         )
                     )
 
-                aa_result = pool.starmap(parse_gene, arguments, chunksize=1)
+                aa_result = pool.starmap(parse_gene, arguments, chunksize=8)
 
                 for result in aa_result:
                     for path, out in result.items():
@@ -81,7 +81,7 @@ def main(args):
                         )
                     )
 
-                nt_result = pool.starmap(parse_gene, arguments, chunksize=1)
+                nt_result = pool.starmap(parse_gene, arguments, chunksize=8)
 
                 for result in nt_result:
                     for path, out in result.items():
