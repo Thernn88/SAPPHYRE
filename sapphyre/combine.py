@@ -35,61 +35,60 @@ def main(args):
     grabbed_aa_references = {}
     grabbed_nt_references = {}
 
-    for item in inputs:
-        printv(f"Merging directory: {item}", args.verbose, 0)
-        for taxa in item.iterdir():
-            aa_path = Path(taxa, "aa_merged")
-            nt_path = Path(taxa, "nt_merged")
-            if not aa_path.exists() or not nt_path.exists():
-                printv(
-                    f"WARNING: Either {aa_path} or {nt_path} doesn't exists. Abort",
-                    args.verbose,
-                    0,
-                )
-                continue
-
-            arguments = []
-            for aa_gene in aa_path.iterdir():
-                if aa_gene.name not in aa_out:
-                    grabbed_aa_references[aa_gene.name] = set()
-
-                arguments.append(
-                    (
-                        aa_gene,
-                        grabbed_aa_references[aa_gene.name],
+    with Pool(args.processes) as pool:
+        for item in inputs:
+            printv(f"Merging directory: {item}", args.verbose, 0)
+            for taxa in item.iterdir():
+                aa_path = Path(taxa, "aa_merged")
+                nt_path = Path(taxa, "nt_merged")
+                if not aa_path.exists() or not nt_path.exists():
+                    printv(
+                        f"WARNING: Either {aa_path} or {nt_path} doesn't exists. Abort",
+                        args.verbose,
+                        0,
                     )
-                )
+                    continue
 
-            with Pool(args.processes) as pool:
+                arguments = []
+                for aa_gene in aa_path.iterdir():
+                    if aa_gene.name not in aa_out:
+                        grabbed_aa_references[aa_gene.name] = set()
+
+                    arguments.append(
+                        (
+                            aa_gene,
+                            grabbed_aa_references[aa_gene.name],
+                        )
+                    )
+
                 aa_result = pool.starmap(parse_gene, arguments, chunksize=1)
 
-            for result in aa_result:
-                for path, out in result.items():
-                    out, already_grabbed = out
-                    path = path.name
-                    aa_out.setdefault(path, []).extend(out)
-                    grabbed_aa_references[path] = already_grabbed
+                for result in aa_result:
+                    for path, out in result.items():
+                        out, already_grabbed = out
+                        path = path.name
+                        aa_out.setdefault(path, []).extend(out)
+                        grabbed_aa_references[path] = already_grabbed
 
-            arguments = []
-            for nt_gene in nt_path.iterdir():
-                if nt_gene.name not in nt_out:
-                    grabbed_nt_references[nt_gene.name] = set()
-                arguments.append(
-                    (
-                        nt_gene,
-                        grabbed_nt_references[nt_gene.name],
+                arguments = []
+                for nt_gene in nt_path.iterdir():
+                    if nt_gene.name not in nt_out:
+                        grabbed_nt_references[nt_gene.name] = set()
+                    arguments.append(
+                        (
+                            nt_gene,
+                            grabbed_nt_references[nt_gene.name],
+                        )
                     )
-                )
 
-            with Pool(args.processes) as pool:
                 nt_result = pool.starmap(parse_gene, arguments, chunksize=1)
 
-            for result in nt_result:
-                for path, out in result.items():
-                    out, already_grabbed = out
-                    path = path.name
-                    nt_out.setdefault(path, []).extend(out)
-                    grabbed_nt_references[path] = already_grabbed
+                for result in nt_result:
+                    for path, out in result.items():
+                        out, already_grabbed = out
+                        path = path.name
+                        nt_out.setdefault(path, []).extend(out)
+                        grabbed_nt_references[path] = already_grabbed
 
     aa_out_path = Path(args.output_directory, "aa")
     nt_out_path = Path(args.output_directory, "nt")
@@ -106,9 +105,3 @@ def main(args):
 
     printv(f"Finished took {main_keeper.differential():.2f}s overall.", args.verbose, 0)
     return True
-
-
-if __name__ == "__main__":
-    raise Exception(
-        "Cannot be called directly, please use the module:\nsapphyre MergeGenes"
-    )
