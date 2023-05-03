@@ -325,7 +325,6 @@ def run_command(args: CmdArgs) -> None:
                         aligned_sequences,
                     )
                 identity = get_identity(aligned_cluster)
-                print(identity)
                 if identity <= IDENTITY_THRESHOLD:
                     printv(
                         f"{args.gene} cluster {cluster_i} has identity {identity}. Subclustering",
