@@ -98,60 +98,45 @@ def main(args):
         this_args = global_args.copy()
         this_args.update(sargs)
         this_args = argparse.Namespace(**this_args)
+        this_args.INPUT = args.INPUT if script == "Prepare" else sorted(list(glob(os.path.join("datasets", os.path.split(args.INPUT)[-1], "*.fa"))))
 
         if script == "Prepare":
             from . import prepare
-
-            this_args.INPUT = args.INPUT
 
             if not prepare.main(this_args):
                 print("Error in Prepare.")
         elif script == "Diamond":
             from . import diamond
 
-            this_args.INPUT = list(glob(os.path.join("datasets", os.path.split(args.INPUT)[-1], "*.fa")))
-
             if not diamond.main(this_args):
                 print("Error in Diamond.")
         elif script == "Reporter":
             from . import reporter
-
-            this_args.INPUT = list(glob(os.path.join("datasets", os.path.split(args.INPUT)[-1], "*.fa")))
 
             if not reporter.main(this_args):
                 print("Error in Reporter.")
         elif script == "Align":
             from . import align
 
-            this_args.INPUT = list(glob(os.path.join("datasets", os.path.split(args.INPUT)[-1], "*.fa")))
-
             if not align.main(this_args):
                 print("Error in Align.")
         elif script == "Pal2Nal":
             from . import pal2nal
-
-            this_args.INPUT = list(glob(os.path.join("datasets", os.path.split(args.INPUT)[-1], "*.fa")))
 
             if not pal2nal.main(this_args):
                 print("Error in Pal2Nal.")
         elif script == "FlexCull":
             from . import flexcull
 
-            this_args.INPUT = list(glob(os.path.join("datasets", os.path.split(args.INPUT)[-1], "*.fa")))
-
             if not flexcull.main(this_args):
                 print("Error in FlexCull.")
         elif script == "Outlier":
             from . import outlier
 
-            this_args.INPUT = list(glob(os.path.join("datasets", os.path.split(args.INPUT)[-1], "*.fa")))
-
             if not outlier.main(this_args):
                 print("Error in Outlier.")
         elif script == "Merge":
             from . import merge
-
-            this_args.INPUT = list(glob(os.path.join("datasets", os.path.split(args.INPUT)[-1], "*.fa")))
 
             if not merge.main(this_args):
                 print("Error in Merge.")
