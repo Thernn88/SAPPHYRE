@@ -202,14 +202,15 @@ def run_command(args: CmdArgs) -> None:
                 for i in range(len(gene_headers) - 1, -1, -1):  # reverse iteration
                     master_header = gene_headers[i]
                     master = kmers[master_header]
+                    # Check similarity against both parent set and child sets
+                    sets_to_check = [master] + list(
+                        child_sets[master_header]
+                    )
                     if master:
                         for candidate_header in gene_headers[:i]:
                             candidate = kmers[candidate_header]
                             if candidate:
-                                # Check similarity against both parent set and child sets
-                                sets_to_check = [master] + list(
-                                    child_sets[master_header]
-                                )
+
                                 matched = False
                                 for set_to_check in sets_to_check:
                                     similar = set_to_check.intersection(candidate)
