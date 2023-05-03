@@ -791,6 +791,13 @@ def subcmd_auto(subparsers):
         type=str,
     )
     par.add_argument(
+        "-s",
+        "--start",
+        type=str,
+        default="Prepare",
+        help="Step to start from. Default: Prepare",
+    )
+    par.add_argument(
         "-c",
         "--config",
         type=str,

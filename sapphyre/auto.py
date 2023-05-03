@@ -79,10 +79,21 @@ def main(args):
         with open(args.config, "r") as f:
             config = json.load(f)
 
+    start_script = args.start.title()
+
     global_args = vars(args)
     global_args.pop("config")
+    global_args.pop("start")
+    
+    scripts = list(config.keys())
+    if not start_script in scripts:
+        options = ", ".join(scripts)
+        print(f"{start_script} is not a valid start script. Please choose from: ({options})")
+        return False
+    scripts = scripts[scripts.index(start_script):]
 
-    for script, sargs in config.items():
+    for script in scripts:
+        sargs = config[script]
         print(f"Executing: {script}")
         this_args = global_args.copy()
         this_args.update(sargs)
