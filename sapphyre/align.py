@@ -24,13 +24,15 @@ SUBCLUSTER_AMOUNT = 2
 
 
 def find_kmers(fasta):
+    dtype = 'U' + str(KMER_LEN)
     kmers = {}
     for header, sequence in fasta.items():
-        kmers[header] = set()
-        for i in range(0, len(sequence) - KMER_LEN):
-            kmer = sequence[i : i + KMER_LEN]
-            if "*" not in kmer and "-" not in kmer:
-                kmers[header].add(kmer)
+        array = np.array([np.array(sequence[i:i + KMER_LEN], dtype=dtype) for i in
+                         range(0, len(sequence) - KMER_LEN) if '*' not in
+                         sequence[i:i + KMER_LEN] and '-' not in
+                         sequence[i:i + KMER_LEN]])
+        array = array.sort()
+        kmers[header] = array
     return kmers
 
 
@@ -203,21 +205,20 @@ def run_command(args: CmdArgs) -> None:
                 for i in range(len(gene_headers) - 1, -1, -1):  # reverse iteration
                     master_header = gene_headers[i]
                     master = kmers[master_header]
+                    sets_to_check = [kmers[header] for header in [master_header] + list(child_sets[master_header])
+                                     if kmers[header]]
                     if master:
                         for candidate_header in gene_headers[:i]:
                             if candidate_header in processed_headers:
                                 continue
-                            
+
                             candidate = kmers[candidate_header]
                             if candidate:
                                 # Check similarity against both parent set and child sets
                                 matched = False
-                                for header_to_check in [master_header] + list(child_sets[master_header]):
-                                    set_to_check = kmers[header_to_check]
-                                    if set_to_check is None:
-                                        continue
 
-                                    similar = set_to_check.intersection(candidate)
+                                for set_to_check in sets_to_check:
+                                    similar = np.intersect1d(set_to_check, candidate)
                                     if len(similar) != 0:
                                         if (
                                             len(similar)
@@ -241,8 +242,6 @@ def run_command(args: CmdArgs) -> None:
                                 if matched:
                                     merge_occured = True
 
-
-
             for this_cluster in cluster_children.values():
                 if this_cluster is not None:
                     if len(this_cluster) > SUBCLUSTER_AT:
@@ -254,8 +253,10 @@ def run_command(args: CmdArgs) -> None:
                                 this_tmp.name,
                                 [(header, data[header]) for header in this_cluster],
                             )
-                            with NamedTemporaryFile("r", dir = gettempdir()) as this_out:
-                                subprocess.run(f"SigClust/SigClust -c {clusters_to_create} {this_tmp.name} > {this_out.name}", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, shell=True)
+                            with NamedTemporaryFile("r", dir=gettempdir()) as this_out:
+                                subprocess.run(
+                                    f"SigClust/SigClust -c {clusters_to_create} {this_tmp.name} > {this_out.name}",
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, shell=True)
                                 sig_out = this_out.read()
                             sub_clusters = defaultdict(list)
                             for line in sig_out.split("\n"):
@@ -497,11 +498,11 @@ def run_command(args: CmdArgs) -> None:
 
             for i, file in enumerate(aligned_ingredients[1:]):
                 printv(
-                    f"Merging {i+2} of {len(aligned_ingredients)}. Elapsed time: {keeper.differential():.2f}",
+                    f"Merging {i + 2} of {len(aligned_ingredients)}. Elapsed time: {keeper.differential():.2f}",
                     args.verbose,
                     3,
                 )  # Debug
-                out_file = os.path.join(parent_tmpdir, f"part_{i+1}.fa")
+                out_file = os.path.join(parent_tmpdir, f"part_{i + 1}.fa")
                 in_file = os.path.join(parent_tmpdir, f"part_{i}.fa")
                 if file == aligned_ingredients[-1]:
                     out_file = args.result_file
