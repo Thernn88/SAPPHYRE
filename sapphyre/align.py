@@ -196,23 +196,27 @@ def run_command(args: CmdArgs) -> None:
 
             # Add a dictionary to store child sets for each primary set
             child_sets = {header: set() for header in data}
+            processed_headers = set()
 
             while merge_occured:
                 merge_occured = False
                 for i in range(len(gene_headers) - 1, -1, -1):  # reverse iteration
                     master_header = gene_headers[i]
                     master = kmers[master_header]
-                    # Check similarity against both parent set and child sets
-                    sets_to_check = [master] + list(
-                        child_sets[master_header]
-                    )
                     if master:
                         for candidate_header in gene_headers[:i]:
+                            if candidate_header in processed_headers:
+                                continue
+                            
                             candidate = kmers[candidate_header]
                             if candidate:
-
+                                # Check similarity against both parent set and child sets
                                 matched = False
-                                for set_to_check in sets_to_check:
+                                for header_to_check in [master_header] + list(child_sets[master_header]):
+                                    set_to_check = kmers[header_to_check]
+                                    if set_to_check is None:
+                                        continue
+
                                     similar = set_to_check.intersection(candidate)
                                     if len(similar) != 0:
                                         if (
@@ -221,9 +225,7 @@ def run_command(args: CmdArgs) -> None:
                                             >= KMER_PERCENT
                                         ):
                                             # Add the candidate set as a child set of the primary set
-                                            child_sets[master_header].add(
-                                                frozenset(candidate)
-                                            )
+                                            child_sets[master_header].add(candidate_header)
                                             cluster_children[master_header].extend(
                                                 cluster_children[candidate_header]
                                             )
@@ -231,12 +233,15 @@ def run_command(args: CmdArgs) -> None:
                                             # Remove candidate
                                             cluster_children[candidate_header] = None
                                             kmers[candidate_header] = None
+                                            processed_headers.add(candidate_header)
 
                                             matched = True
                                             break
 
                                 if matched:
                                     merge_occured = True
+
+
 
             for this_cluster in cluster_children.values():
                 if this_cluster is not None:
