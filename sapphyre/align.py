@@ -5,7 +5,6 @@ import os
 from collections import defaultdict, namedtuple
 from multiprocessing.pool import Pool
 from shutil import rmtree
-import subprocess
 import warnings
 from tempfile import TemporaryDirectory, NamedTemporaryFile
 from scipy.cluster.hierarchy import fcluster, linkage, ClusterWarning
@@ -71,14 +70,9 @@ def process_genefile(fileread):
 
 
 def get_identity(aligned_cluster):
-    identity_out = subprocess.run(
-        f"identity/identity {aligned_cluster}",
-        shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        check=True,
-    )
-    identity_out = identity_out.stdout.decode("utf-8")
+    with NamedTemporaryFile("r", dir=gettempdir()) as tmp_out:
+        os.system(f"identity/identity {aligned_cluster} > {tmp_out.name}")
+        identity_out = tmp_out.read()
     identity = float(
         identity_out.replace("Average pairwise identity: ", "").replace("%", "")
     )
@@ -253,14 +247,9 @@ def run_command(args: CmdArgs) -> None:
                                 this_tmp.name,
                                 [(header, data[header]) for header in this_cluster],
                             )
-                            sig_out = subprocess.run(
-                                f"SigClust/SigClust -c {clusters_to_create} {this_tmp.name}",
-                                shell=True,
-                                stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE,
-                                check=True,
-                            )
-                            sig_out = sig_out.stdout.decode("utf-8")
+                            with NamedTemporaryFile("r", dir = gettempdir()) as this_out:
+                                os.system(f"SigClust/SigClust -c {clusters_to_create} {this_tmp.name} > {this_out.name}")
+                                sig_out = sig_out.read()
                             sub_clusters = defaultdict(list)
                             for line in sig_out.split("\n"):
                                 line = line.strip()
@@ -336,6 +325,7 @@ def run_command(args: CmdArgs) -> None:
                         aligned_sequences,
                     )
                 identity = get_identity(aligned_cluster)
+                print(identity)
                 if identity <= IDENTITY_THRESHOLD:
                     printv(
                         f"{args.gene} cluster {cluster_i} has identity {identity}. Subclustering",
