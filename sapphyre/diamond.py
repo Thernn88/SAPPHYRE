@@ -426,7 +426,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     # Due to the thread bottleneck of chunking a ceiling is set on the threads post reporter
     THREAD_CAP = 32
     # Amount of overshoot in estimating end
-    OVERSHOOT_AMOUNT = 1.4
+    OVERSHOOT_AMOUNT = 1.75
     # Minimum amount of hits to delegate to a process
     MINIMUM_CHUNKSIZE = 50
 
