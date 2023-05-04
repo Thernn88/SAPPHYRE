@@ -11,7 +11,7 @@ from shutil import rmtree
 import sys
 import numpy as np
 import phymmr_tools as bd
-
+from msgspec import Struct
 from phymmr_tools import constrained_distance, dumb_consensus
 
 from .utils import parseFasta, printv, write2Line2Fasta
@@ -20,37 +20,20 @@ from .timekeeper import TimeKeeper, KeeperMode
 ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta", ".fa", ".gz", ".fq", ".fastq")
 
 
-class Record:
-    __slots__ = (
-        "id",
-        "sequence",
-        "raw",
-        "upper_bound",
-        "iqr",
-        "mean_distance",
-        "grade",
-    )
-
-    def __init__(self, head, seq, raw_seq=None):
-        self.id = head
-        self.sequence = seq
-        if raw_seq is None:
-            self.raw = seq
-        else:
-            self.raw = raw_seq
-        self.upper_bound = None
-        self.iqr = None
-        self.mean_distance = None
-        self.grade = None
-
-    def __hash__(self):
-        return hash(self.id + self.sequence)
+class Record(Struct):
+    id: str
+    sequence: str
+    raw: str
+    upper_bound: np.float16 = None
+    iqr: np.float16 = None
+    mean_distance: np.float16 = None
+    grade: str = None
 
     def __str__(self):
         return self.sequence
 
     def get_result(self):
-        return f"{self.id}, {self.mean_distance}, {self.upper_bound}, {self.grade}, {self.iqr}\n"
+        return self.id+", "+str(self.mean_distance)+", "+str(self.upper_bound)+", "+self.grade+", "+str(self.iqr)+"\n"
 
 
 def nan_check(iterable) -> bool:
@@ -217,7 +200,7 @@ def convert_to_record_objects(lines: list) -> list:
     from the biopython module. This allows us to make a MultipleSequenceAlignment
     object later.
     """
-    return [Record(lines[i], lines[i + 1]) for i in range(0, len(lines), 2)]
+    return [Record(lines[i], lines[i + 1], None) for i in range(0, len(lines), 2)]
 
 
 def find_index_groups(references: list, candidates: list) -> tuple:
