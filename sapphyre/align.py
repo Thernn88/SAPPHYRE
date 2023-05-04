@@ -1,26 +1,20 @@
 from __future__ import annotations
-from itertools import combinations
 from math import ceil
 import os
 from collections import defaultdict, namedtuple
 from multiprocessing.pool import Pool
 from shutil import rmtree
 import subprocess
-import warnings
 from tempfile import TemporaryDirectory, NamedTemporaryFile
-from scipy.cluster.hierarchy import fcluster, linkage, ClusterWarning
-import numpy as np
 from .utils import printv, gettempdir, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
 
-KMER_LEN = 8
-KMER_PERCENT = 0.35
+KMER_LEN = 12
+KMER_PERCENT = 0.30
 SUBCLUSTER_AT = 1000
 CLUSTER_EVERY = 500  # Aim for x seqs per cluster
 SAFEGUARD_BP = 15000
 SINGLETON_THRESHOLD = 2
-IDENTITY_THRESHOLD = 50
-SUBCLUSTER_AMOUNT = 2
 
 
 def find_kmers(fasta):
@@ -78,27 +72,6 @@ def get_identity(aligned_cluster):
         identity_out.replace("Average pairwise identity: ", "").replace("%", "")
     )
     return identity
-
-
-def subcluster(aligned_sequences):
-    sequences = [np.array(list(seq)) for _, seq in aligned_sequences]
-    distances = np.zeros((len(sequences), len(sequences)))
-    for i, j in combinations(range(len(sequences)), 2):
-        distances[i, j] = np.count_nonzero(sequences[i] != sequences[j])
-        distances[j, i] = distances[i, j]
-
-    # Perform hierarchical clustering using complete linkage
-    warnings.filterwarnings("ignore", category=ClusterWarning)
-    Z = linkage(distances, method="complete")
-
-    # Cut the dendrogram to create subclusters
-    subclusters = fcluster(Z, SUBCLUSTER_AMOUNT, criterion="maxclust")
-
-    # Save each subcluster to a separate FASTA file
-    for i in range(1, SUBCLUSTER_AMOUNT + 1):
-        subcluster_indices = [j for j, c in enumerate(subclusters) if c == i]
-        subcluster_records = [aligned_sequences[j] for j in subcluster_indices]
-        yield subcluster_records
 
 
 def delete_empty_cols(records):
@@ -207,12 +180,14 @@ def run_command(args: CmdArgs) -> None:
                         for candidate_header in gene_headers[:i]:
                             if candidate_header in processed_headers:
                                 continue
-                            
+
                             candidate = kmers[candidate_header]
                             if candidate:
                                 # Check similarity against both parent set and child sets
                                 matched = False
-                                for header_to_check in [master_header] + list(child_sets[master_header]):
+                                for header_to_check in [master_header] + list(
+                                    child_sets[master_header]
+                                ):
                                     set_to_check = kmers[header_to_check]
                                     if set_to_check is None:
                                         continue
@@ -225,7 +200,9 @@ def run_command(args: CmdArgs) -> None:
                                             >= KMER_PERCENT
                                         ):
                                             # Add the candidate set as a child set of the primary set
-                                            child_sets[master_header].add(candidate_header)
+                                            child_sets[master_header].add(
+                                                candidate_header
+                                            )
                                             cluster_children[master_header].extend(
                                                 cluster_children[candidate_header]
                                             )
@@ -241,8 +218,6 @@ def run_command(args: CmdArgs) -> None:
                                 if matched:
                                     merge_occured = True
 
-
-
             for this_cluster in cluster_children.values():
                 if this_cluster is not None:
                     if len(this_cluster) > SUBCLUSTER_AT:
@@ -254,8 +229,14 @@ def run_command(args: CmdArgs) -> None:
                                 this_tmp.name,
                                 [(header, data[header]) for header in this_cluster],
                             )
-                            with NamedTemporaryFile("r", dir = gettempdir()) as this_out:
-                                subprocess.run(f"SigClust/SigClust -k 8 -c {clusters_to_create} {this_tmp.name} > {this_out.name}", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, shell=True)
+                            with NamedTemporaryFile("r", dir=gettempdir()) as this_out:
+                                subprocess.run(
+                                    f"SigClust/SigClust -k 8 -c {clusters_to_create} {this_tmp.name} > {this_out.name}",
+                                    stdout=subprocess.DEVNULL,
+                                    stderr=subprocess.DEVNULL,
+                                    check=True,
+                                    shell=True,
+                                )
                                 sig_out = this_out.read()
                             sub_clusters = defaultdict(list)
                             for line in sig_out.split("\n"):
@@ -331,10 +312,8 @@ def run_command(args: CmdArgs) -> None:
                         ),
                         aligned_sequences,
                     )
-                #identity = get_identity(aligned_cluster)
-                aligned_ingredients.append(
-                        (aligned_cluster, len(aligned_sequences))
-                    )
+                # identity = get_identity(aligned_cluster)
+                aligned_ingredients.append((aligned_cluster, len(aligned_sequences)))
 
         align_time = keeper.differential() - cluster_time
         if to_merge:
@@ -516,7 +495,7 @@ def do_folder(folder, args):
         printv("ERROR: Aln folder not found.", args.verbose, 0)
         return False
 
-    command = "clustalo -i {in_file} -o {out_file} --threads=1 --full --iter=1 --full-iter"
+    command = "clustalo -i {in_file} -o {out_file} --threads=1 --full"
     # command = f"mafft --maxiterate 2 --anysymbol --quiet --thread 1 {{in_file}} > {{out_file}}"
 
     intermediates = "intermediates"
