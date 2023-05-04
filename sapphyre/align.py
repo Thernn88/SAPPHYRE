@@ -27,11 +27,11 @@ def find_kmers(fasta):
     dtype = 'U' + str(KMER_LEN)
     kmers = {}
     for header, sequence in fasta.items():
-        array = [np.array(sequence[i:i + KMER_LEN], dtype=dtype) for i in
+        array = np.array([np.array(sequence[i:i + KMER_LEN], dtype=dtype) for i in
                          range(0, len(sequence) - KMER_LEN) if '*' not in
                          sequence[i:i + KMER_LEN] and '-' not in
-                         sequence[i:i + KMER_LEN]]
-        array.sort()
+                         sequence[i:i + KMER_LEN]])
+        array = array.sort()
         kmers[header] = array
     return kmers
 
