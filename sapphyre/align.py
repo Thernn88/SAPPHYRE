@@ -13,13 +13,13 @@ import numpy as np
 from .utils import printv, gettempdir, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
 
-KMER_LEN = 15
-KMER_PERCENT = 0.5
+KMER_LEN = 8
+KMER_PERCENT = 0.35
 SUBCLUSTER_AT = 1000
 CLUSTER_EVERY = 500  # Aim for x seqs per cluster
 SAFEGUARD_BP = 15000
 SINGLETON_THRESHOLD = 2
-IDENTITY_THRESHOLD = 90
+IDENTITY_THRESHOLD = 50
 SUBCLUSTER_AMOUNT = 2
 
 
@@ -255,7 +255,7 @@ def run_command(args: CmdArgs) -> None:
                                 [(header, data[header]) for header in this_cluster],
                             )
                             with NamedTemporaryFile("r", dir = gettempdir()) as this_out:
-                                subprocess.run(f"SigClust/SigClust -c {clusters_to_create} {this_tmp.name} > {this_out.name}", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, shell=True)
+                                subprocess.run(f"SigClust/SigClust -k 8 -c {clusters_to_create} {this_tmp.name} > {this_out.name}", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, shell=True)
                                 sig_out = this_out.read()
                             sub_clusters = defaultdict(list)
                             for line in sig_out.split("\n"):
@@ -331,70 +331,8 @@ def run_command(args: CmdArgs) -> None:
                         ),
                         aligned_sequences,
                     )
-                identity = get_identity(aligned_cluster)
-                if identity <= IDENTITY_THRESHOLD:
-                    printv(
-                        f"{args.gene} cluster {cluster_i} has identity {identity}. Subclustering",
-                        args.verbose,
-                        1,
-                    )
-                    # Calculate the pairwise distances between sequences using Hamming distance
-                    subcluster_i = 0
-                    to_subcluster = [aligned_sequences]
-                    done = set()
-                    while to_subcluster:
-                        this_sequences = to_subcluster[0]
-                        removed = False
-                        for subcluster_records in subcluster(this_sequences):
-                            subcluster_i += 1
-                            if subcluster_records:
-                                output = delete_empty_cols(subcluster_records)
-
-                                this_id = hash("".join([i[0] for i in output]))
-
-                                cluster = f"{args.gene}_cluster_{cluster_i}_length_{len(cluster)}_subcluster{subcluster_i}_aligned"
-                                aligned_cluster = os.path.join(
-                                    aligned_files_tmp, cluster
-                                )
-                                if debug:
-                                    writeFasta(
-                                        os.path.join(this_intermediates, cluster),
-                                        output,
-                                    )
-
-                                writeFasta(aligned_cluster, output)
-                                if len(output) <= 1:
-                                    identity = 100.0
-                                else:
-                                    identity = get_identity(aligned_cluster)
-                                # printv(aligned_cluster, "has identity",identity, args.verbose, 2)
-                                if (
-                                    identity <= IDENTITY_THRESHOLD
-                                    and this_id not in done
-                                ):
-                                    to_subcluster.append(output)
-                                else:
-                                    if len(output) < SINGLETON_THRESHOLD:
-                                        # printv(aligned_cluster, "is a singleton", args.verbose, 2)
-                                        to_merge.extend(output)
-                                    else:
-                                        aligned_ingredients.append(
-                                            (aligned_cluster, len(output))
-                                        )
-
-                                if not removed:
-                                    to_subcluster.pop(0)
-                                    removed = True
-
-                                done.add(this_id)
-                            else:
-                                printv(
-                                    f"Subcluster {i} for cluster {cluster_i} is empty",
-                                    args.verbose,
-                                    2,
-                                )
-                else:
-                    aligned_ingredients.append(
+                #identity = get_identity(aligned_cluster)
+                aligned_ingredients.append(
                         (aligned_cluster, len(aligned_sequences))
                     )
 
@@ -480,11 +418,11 @@ def run_command(args: CmdArgs) -> None:
                         )
                 else:
                     os.system(
-                        f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1 --iter=3 --full --full-iter --is-profile --force"
+                        f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1 --full --is-profile --force"
                     )
                     if debug:
                         printv(
-                            f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1 --iter=3 --full --full-iter --is-profile --force",
+                            f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1  --full --is-profile --force",
                             args.verbose,
                             3,
                         )
@@ -507,11 +445,11 @@ def run_command(args: CmdArgs) -> None:
                     out_file = args.result_file
 
                 os.system(
-                    f"clustalo --p1 {in_file} --p2 {file} -o {out_file} --threads=1 --iter=3 --full --full-iter --is-profile --force"
+                    f"clustalo --p1 {in_file} --p2 {file} -o {out_file} --threads=1 --full --is-profile --force"
                 )
                 if debug:
                     printv(
-                        f"clustalo --p1 {in_file} --p2 {file} -o {out_file} --threads=1 --iter=3 --full --full-iter --is-profile --force",
+                        f"clustalo --p1 {in_file} --p2 {file} -o {out_file} --threads=1 --full --is-profile --force",
                         args.verbose,
                         3,
                     )
