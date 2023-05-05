@@ -190,7 +190,9 @@ def run_command(args: CmdArgs) -> None:
                             if candidate:
                                 # Check similarity against both parent set and child sets
                                 matched = False
-                                for header_to_check in [master_header] + list(child_sets.get(master_header, [])):
+                                for header_to_check in [master_header] + list(
+                                    child_sets[master_header]
+                                ):
                                     set_to_check = kmers[header_to_check]
                                     if set_to_check is None:
                                         continue
@@ -209,6 +211,9 @@ def run_command(args: CmdArgs) -> None:
                                             cluster_children[master_header].extend(
                                                 cluster_children[candidate_header]
                                             )
+                                            # Extend sets to check
+                                            sets_to_check.extend(kmers[candidate_header])
+
                                             # Remove candidate
                                             cluster_children[candidate_header] = None
                                             kmers[candidate_header] = None
@@ -230,9 +235,8 @@ def run_command(args: CmdArgs) -> None:
                             if children is not None:
                                 cluster = set(children)
                                 for child_header in children:
-                                    child_cluster = cluster_children[child_header]
+                                    child_cluster = set(cluster_children[child_header])
                                     if child_cluster is not None:
-                                        child_cluster = set(child_cluster)
                                         cluster.update(child_cluster)
                                         cluster_children[child_header] = None
                                 clusters.append(cluster)
