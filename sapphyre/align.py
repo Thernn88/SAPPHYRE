@@ -509,6 +509,8 @@ def do_folder(folder, args):
         return False
 
     command = "clustalo -i {in_file} -o {out_file} --threads=1 --full"
+    if args.second_run:
+        command += " --full-iter --iter=1" 
     # command = f"mafft --maxiterate 2 --anysymbol --quiet --thread 1 {{in_file}} > {{out_file}}"
 
     intermediates = "intermediates"

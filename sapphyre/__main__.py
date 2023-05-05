@@ -401,6 +401,13 @@ def subcmd_align(subparsers):
         "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
     )
     par.add_argument(
+        "-sr",
+        "--second_run",
+        action="store_true",
+        default=False,
+        help="Enable second run logic",
+    )
+    par.add_argument(
         "-d",
         "--debug",
         action="store_true",
@@ -733,6 +740,13 @@ def subcmd_wrap_final(sp):
         type=str,
         default="nt_aligned",
         help="Path to directory of NT folder",
+    )
+    par.add_argument(
+        "-sr",
+        "--second_run",
+        action="store_false",
+        default=True,
+        help="Enable second run logic",
     )
     par.add_argument(
         "-d",
