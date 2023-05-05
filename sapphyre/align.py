@@ -418,12 +418,13 @@ def run_command(args: CmdArgs) -> None:
                             args.verbose,
                             3,
                         )
-                        writeFasta(
-                            os.path.join(
-                                this_intermediates, os.path.basename(out_file)
-                            ),
-                            parseFasta(out_file, True),
-                        )
+                if debug:
+                    writeFasta(
+                        os.path.join(
+                            this_intermediates, os.path.basename(out_file)
+                        ),
+                        parseFasta(out_file, True),
+                    )
 
             for i, file in enumerate(aligned_ingredients[1:]):
                 printv(
