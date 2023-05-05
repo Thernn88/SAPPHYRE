@@ -665,7 +665,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                     if seq[i] != "-":
                         this_sequence[seq[i]] += 1
             # Get the count of the most occuring bp at this position
-            if sum(this_sequence.values()) >= 10:
+            if sum(this_sequence.values()) >= 5:
                 if this_sequence.most_common()[0][1] > internal_count / 2:
                     continue
             this_column_cull.add(i * 3)
