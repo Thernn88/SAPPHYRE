@@ -14,7 +14,7 @@ KMER_PERCENT = 0.30
 SUBCLUSTER_AT = 1000
 CLUSTER_EVERY = 500  # Aim for x seqs per cluster
 SAFEGUARD_BP = 15000
-SINGLETON_THRESHOLD = 2
+SINGLETON_THRESHOLD = 5
 UPPER_SINGLETON_TRESHOLD = 20000
 SINGLETONS_REQUIRED = 50 # Amount of singleton clusters required to continue checking threshold
 
@@ -271,7 +271,7 @@ def run_command(args: CmdArgs) -> None:
 
             under_threshold = 0
             for cluster in clusters:
-                if len(cluster) < SINGLETON_THRESHOLD:
+                if 1 < len(cluster) < SINGLETON_THRESHOLD:
                     under_threshold += 1
             
             singleton_allowed = under_threshold >= SINGLETONS_REQUIRED
@@ -280,8 +280,9 @@ def run_command(args: CmdArgs) -> None:
             for cluster in clusters:
                 cluster_i += 1
                 cluster_seqs = [(header, data[header]) for header in cluster]
+                cluster_length = len(cluster)
 
-                if args.only_singletons or len(cluster_seqs) < SINGLETON_THRESHOLD and singleton_allowed:
+                if args.only_singletons or cluster_length == 1 or cluster_length < SINGLETON_THRESHOLD and singleton_allowed:
                     printv(
                         f"Storing singleton cluster {cluster_i}. Elapsed time: {keeper.differential():.2f}",
                         args.verbose,
