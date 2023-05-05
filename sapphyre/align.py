@@ -414,8 +414,6 @@ def run_command(args: CmdArgs) -> None:
                 if len(aligned_ingredients) == 1:
                     out_file = args.result_file
 
-                if not aligned_ingredients:
-                    aligned_ingredients = [singleton_out]
                 os.system(
                     f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1 --full --is-profile --force"
                 )
