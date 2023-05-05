@@ -211,8 +211,6 @@ def run_command(args: CmdArgs) -> None:
                                             cluster_children[master_header].extend(
                                                 cluster_children[candidate_header]
                                             )
-                                            # Extend sets to check
-                                            sets_to_check.extend(kmers[candidate_header])
 
                                             # Remove candidate
                                             cluster_children[candidate_header] = None
@@ -220,39 +218,10 @@ def run_command(args: CmdArgs) -> None:
                                             processed_headers.add(candidate_header)
 
                                             matched = True
-                                            merge_occured = True
                                             break
 
-                                # if matched:
-                                #     merge_occured = True
-                                # if matched:
-                                    # Extend sets to check
-                                    # sets_to_check.extend(
-                                    #     [kmers[child_header] for child_header in child_sets[master_header]])
-
-                        # Cluster clusters
-                        for header, children in cluster_children.items():
-                            if children is not None:
-                                cluster = set(children)
-                                for child_header in children:
-                                    child_cluster = set(cluster_children[child_header])
-                                    if child_cluster is not None:
-                                        cluster.update(child_cluster)
-                                        cluster_children[child_header] = None
-                                clusters.append(cluster)
-
-                        # Remove clusters from child_sets
-                        for cluster in clusters:
-                            for header in cluster:
-                                child_sets.pop(header, None)
-
-                        # Reset cluster_children dictionary
-                        cluster_children = {header: [header] for header in child_sets}
-
-                        # Update gene_headers list
-                        gene_headers = list(kmers.keys())
-                        processed_headers = set()
-
+                                if matched:
+                                    merge_occured = True
 
             for this_cluster in cluster_children.values():
                 if this_cluster is not None:
