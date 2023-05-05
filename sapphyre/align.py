@@ -345,8 +345,6 @@ def run_command(args: CmdArgs) -> None:
             aligned_ingredients = [
                 i[0] for i in sorted(aligned_ingredients, key=lambda x: x[1])
             ]
-            if to_merge:
-                aligned_ingredients.insert(0, merged_singleton_final)
             printv(
                 f"Merging Alignments. Elapsed time: {keeper.differential():.2f}",
                 args.verbose,
@@ -394,37 +392,44 @@ def run_command(args: CmdArgs) -> None:
                     )
                 tmp.flush()
 
+                singleton_out = os.path.join(parent_tmpdir, "SingletonsAligned.fa")
+
+                if to_merge:
+                    os.system(
+                        f"mafft --anysymbol --jtt 1 --quiet --addfragments {merged_singleton_final} --thread 1 {tmp.name} > {singleton_out}"
+                    )
+                    records = [i for i in parseFasta(singleton_out, True) if not i[0].endswith(".")]
+                    writeFasta(singleton_out, records)
+
+                    if args.debug:
+                        printv(
+                            f"mafft --anysymbol --jtt 1 --quiet --addfragments {merged_singleton_final} --thread 1 {tmp.name} > {singleton_out}",
+                            args.verbose,
+                            3,
+                        )
+                        writeFasta(os.path.join(this_intermediates, "SingletonsAligned.fa"), records)
+                    
+
                 out_file = os.path.join(parent_tmpdir, "part_0.fa")
                 if len(aligned_ingredients) == 1:
                     out_file = args.result_file
 
-                if to_merge:
-                    os.system(
-                        f"mafft --anysymbol --jtt 1 --quiet --addfragments {aligned_ingredients[0]} --thread 1 {tmp.name} > {out_file}"
-                    )
-                    if args.debug:
-                        printv(
-                            f"mafft --anysymbol --jtt 1 --quiet --addfragments {aligned_ingredients[0]} --thread 1 {tmp.name} > {out_file}",
-                            args.verbose,
-                            3,
-                        )
-                else:
-                    os.system(
-                        f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1 --full --is-profile --force"
-                    )
-                    if debug:
-                        printv(
-                            f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1  --full --is-profile --force",
-                            args.verbose,
-                            3,
-                        )
+                os.system(
+                    f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1 --full --is-profile --force"
+                )
                 if debug:
+                    printv(
+                        f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1  --full --is-profile --force",
+                        args.verbose,
+                        3,
+                    )
                     writeFasta(
                         os.path.join(
                             this_intermediates, os.path.basename(out_file)
                         ),
                         parseFasta(out_file, True),
                     )
+                aligned_ingredients.insert(0, singleton_out)
 
             for i, file in enumerate(aligned_ingredients[1:]):
                 printv(
