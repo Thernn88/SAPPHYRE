@@ -415,13 +415,15 @@ def run_command(args: CmdArgs) -> None:
                     out_file = args.result_file
 
                 if not aligned_ingredients:
-                    aligned_ingredients = [singleton_out]
+                    first_merge = singleton_out
+                else:
+                    first_merge = aligned_ingredients[0]
                 os.system(
-                    f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1 --full --is-profile --force"
+                    f"clustalo --p1 {tmp.name} --p2 {first_merge} -o {out_file} --threads=1 --full --is-profile --force"
                 )
                 if debug:
                     printv(
-                        f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1  --full --is-profile --force",
+                        f"clustalo --p1 {tmp.name} --p2 {first_merge} -o {out_file} --threads=1  --full --is-profile --force",
                         args.verbose,
                         3,
                     )
