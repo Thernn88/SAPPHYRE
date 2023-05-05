@@ -416,7 +416,6 @@ def run_command(args: CmdArgs) -> None:
 
                 if not aligned_ingredients:
                     first_merge = singleton_out
-                    out_file = args.result_file
                 else:
                     first_merge = aligned_ingredients[0]
                 os.system(
@@ -435,6 +434,7 @@ def run_command(args: CmdArgs) -> None:
                         parseFasta(out_file, True),
                     )
                 aligned_ingredients.insert(0, singleton_out)
+
             for i, file in enumerate(aligned_ingredients[1:]):
                 printv(
                     f"Merging {i+2} of {len(aligned_ingredients)}. Elapsed time: {keeper.differential():.2f}",
