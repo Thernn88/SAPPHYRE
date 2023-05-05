@@ -15,6 +15,8 @@ SUBCLUSTER_AT = 1000
 CLUSTER_EVERY = 500  # Aim for x seqs per cluster
 SAFEGUARD_BP = 15000
 SINGLETON_THRESHOLD = 2
+UPPER_SINGLETON_TRESHOLD = 20000
+SINGLETONS_REQUIRED = 50 # Amount of singleton clusters required to continue checking threshold
 
 
 def find_kmers(fasta):
@@ -138,6 +140,9 @@ def run_command(args: CmdArgs) -> None:
             reinsertions,
             trimmed_header_to_full,
         ) = process_genefile(args.gene_file)
+
+        if len(data) > UPPER_SINGLETON_TRESHOLD:
+            args.only_singletons = True
 
         cluster_time = 0
         align_time = 0
@@ -264,12 +269,19 @@ def run_command(args: CmdArgs) -> None:
             items = os.listdir(raw_files_tmp)
             items.sort(key=lambda x: int(x.split("_cluster")[-1]))
 
+            under_threshold = 0
+            for cluster in clusters:
+                if len(cluster) < SINGLETON_THRESHOLD:
+                    under_threshold += 1
+            
+            singleton_allowed = under_threshold >= SINGLETONS_REQUIRED
+
             cluster_i = 0
             for cluster in clusters:
                 cluster_i += 1
                 cluster_seqs = [(header, data[header]) for header in cluster]
 
-                if args.only_singletons or len(cluster_seqs) < SINGLETON_THRESHOLD:
+                if args.only_singletons or len(cluster_seqs) < SINGLETON_THRESHOLD and singleton_allowed:
                     printv(
                         f"Storing singleton cluster {cluster_i}. Elapsed time: {keeper.differential():.2f}",
                         args.verbose,
