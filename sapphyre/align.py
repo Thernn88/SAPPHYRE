@@ -1,4 +1,6 @@
 from __future__ import annotations
+from itertools import combinations
+import xxhash
 from math import ceil
 import os
 from collections import defaultdict, namedtuple
@@ -19,10 +21,17 @@ UPPER_SINGLETON_TRESHOLD = 20000
 SINGLETONS_REQUIRED = 50 # Amount of singleton clusters required to continue checking threshold
 
 
-def find_kmers(fasta):
-    kmers = {}
+def find_kmers(fasta: dict) -> dict[str, set]:
+    """
+    Returns the kmers of length KMER_LEN for each sequence in the fasta dict.
+
+    Args:
+        fasta (dict): A dictionary of header -> sequence
+    Returns:
+        dict[str, set]: A dictionary of header -> set of kmers
+    """
+    kmers = defaultdict(set)
     for header, sequence in fasta.items():
-        kmers[header] = set()
         for i in range(0, len(sequence) - KMER_LEN):
             kmer = sequence[i : i + KMER_LEN]
             if "*" not in kmer and "-" not in kmer:
@@ -35,49 +44,71 @@ AA_FOLDER = "aa"
 ALN_FOLDER = "aln"
 
 
-def get_start(sequence):
+def get_start(sequence: str) -> int:
+    """
+    Returns the index of the first non-gap character in the sequence.
+
+    Args:
+        sequence (str): The sequence to check
+    Returns:
+        int: The index of the first non-gap character
+    """
     for i, char in enumerate(sequence):
         if char != "-":
             return i
     return -1
 
 
-def process_genefile(fileread):
+def process_genefile(path: str) -> tuple[int, dict[str, str], dict[str, str], dict[str, list[str]], dict[str, str]]:
+    """
+    Returns the number of sequences, the sequences, the targets, the reinsertions and the
+    trimmed header to full header.
+
+    Reinsertions are dupes where the sequences are exactly the same. To save on computation we
+    insert these duplicates into the alignment after it has been generated right next to their
+    duplicate parents with the same alignment.
+
+    Args:
+        path (str): The path to the gene file
+    Returns:
+        tuple[int, dict[str, str], dict[str, str], dict[str, list[str]], dict[str, str]]: 
+        The number of sequences, the sequences, the targets, the reinsertions and the
+        trimmed header to full header.
+    """
     data = {}
     targets = {}
-    reinsertions = {}
+    reinsertions = defaultdict(list)
+    
     seq_to_first_header = {}
     trimmed_header_to_full = {}
-    for header, sequence in parseFasta(fileread):
+    for header, sequence in parseFasta(path):
         if not header.endswith("."):
-            seq_hash = hash(sequence)
+            seq_hash = xxhash.xxh3_64(sequence).hexdigest()
             trimmed_header_to_full[header[:127]] = header
             if seq_hash not in seq_to_first_header:
                 seq_to_first_header[seq_hash] = header
             else:
-                reinsertions.setdefault(seq_to_first_header[seq_hash], []).append(
+                reinsertions[seq_to_first_header[seq_hash]].append(
                     header
                 )
+                
                 continue
-            data[header] = sequence.replace("-", "")
+            data[header] = sequence
         else:
             targets[header.split("|")[2]] = header
 
     return len(data), data, targets, reinsertions, trimmed_header_to_full
 
 
-def get_identity(aligned_cluster):
-    with NamedTemporaryFile("r", dir=gettempdir()) as tmp_out:
-        os.system(f"identity/identity {aligned_cluster} > {tmp_out.name}")
-        identity_out = tmp_out.read()
-    identity = float(
-        identity_out.replace("Average pairwise identity: ", "").replace("%", "")
-    )
-    return identity
+def delete_empty_cols(records: list[tuple[str, str]]) -> list[tuple[str, str]]:
+    """
+    Deletes columns that are empty in all sequences.
 
-
-def delete_empty_cols(records):
-    # Delete empty cols
+    Args:
+        records (list[tuple[str, str]]): A list of tuples of header, sequence
+    Returns:
+        list[tuple[str, str]]: A list of tuples of header, sequence with removed columns
+    """
     cols_to_keep = set()
     output = []
     for _, sequence in records:
@@ -90,6 +121,163 @@ def delete_empty_cols(records):
         output.append((header, "".join(sequence)))
 
     return output
+
+
+def compare_cluster(cluster_a: list[str], cluster_b: list[str], kmers: dict[str, set]) -> float:
+    """
+    Calculates the average kmer similarity between children of two clusters.
+
+    Args:
+        cluster_a (list[str]): A list of headers in cluster a
+        cluster_b (list[str]): A list of headers in cluster b
+        kmers (dict[str, set]): A dictionary of header -> set of kmers
+    Returns:
+        float: The average similarity between children of two clusters
+    """
+    average_identity = []
+    for head_a in cluster_a:
+        for head_b in cluster_b:
+            if head_a == head_b:
+                continue
+            akmers = kmers[head_a]
+            bkmers = kmers[head_b]
+
+            similar = akmers.intersection(bkmers)
+            average_identity.append(len(similar) / min(len(akmers), len(bkmers)))
+
+    return sum(average_identity) / len(average_identity)
+
+
+def generate_clusters(data: dict[str, str]) -> list[list[str]]:
+    """
+    Generates clusters from a dictionary of header -> sequence.
+
+    Clusters are based on the average identity of kmers between sequences.
+
+    Args:
+        data (dict[str, str]): A dictionary of header -> sequence
+    Returns:
+        list[list[str]]: A list of each clusters' headers
+    """
+    cluster_children = {header: [header] for header in data}
+    kmers = find_kmers(data)
+    gene_headers = list(kmers.keys())
+
+    ITERATIONS = 1
+
+    for i in range(ITERATIONS):
+        for master, candidate in combinations(gene_headers, 2):
+            master_headers = cluster_children.get(master, None)
+            if not master_headers:
+                continue
+            candidate_headers = cluster_children.get(candidate, None)
+            if not candidate_headers:
+                continue
+            
+            average_identity = compare_cluster(master_headers, candidate_headers, kmers)
+
+            if average_identity >= KMER_PERCENT:
+                cluster_children[master].extend(cluster_children[candidate])
+                cluster_children[candidate] = None
+
+    return cluster_children.values()
+
+
+def seperate_into_clusters(cluster_children: list[list[str]], parent_tmpdir: str, data: dict[str, str]) -> list[list[str]]:
+    """
+    Seperates sequence records into clusters and subclusters
+    if they are larger than SUBCLUSTER_AT.
+
+    Args:
+        cluster_children (list[list[str]]): A list of each clusters' headers
+        parent_tmpdir (str): The parent temporary directory
+        data (dict[str, str]): A dictionary of header -> sequence
+    Returns:
+        list[list[str]]: A list of each clusters' headers
+    """
+    clusters = []
+    for this_cluster in cluster_children:
+        if this_cluster is not None:
+            if len(this_cluster) > SUBCLUSTER_AT:
+                clusters_to_create = ceil(len(this_cluster) / CLUSTER_EVERY)
+                with NamedTemporaryFile(
+                    mode="w+", dir=parent_tmpdir, suffix=".fa"
+                ) as this_tmp:
+                    writeFasta(
+                        this_tmp.name,
+                        [(header, data[header]) for header in this_cluster],
+                    )
+                    with NamedTemporaryFile("r", dir=gettempdir()) as this_out:
+                        subprocess.run(
+                            f"SigClust/SigClust -k 8 -c {clusters_to_create} {this_tmp.name} > {this_out.name}",
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                            check=True,
+                            shell=True,
+                        )
+                        sig_out = this_out.read()
+                    sub_clusters = defaultdict(list)
+                    for line in sig_out.split("\n"):
+                        line = line.strip()
+                        if line:
+                            seq_index, clust_index = line.strip().split(",")
+                            sub_clusters[clust_index].append(
+                                this_cluster[int(seq_index)]
+                            )
+                    clusters.extend(list(sub_clusters.values()))
+                    continue
+            clusters.append(this_cluster)
+
+    return clusters
+
+def generate_tmp_aln(aln_file: str, targets: dict[str, str], tmp: NamedTemporaryFile, debug: float, this_intermediates: str) -> None:
+    """
+    Grabs target reference sequences and removes empty columns from the alignment.
+
+    Args:
+        aln_file (str): The path to the alignment file
+        targets (dict[str, str]): A dictionary of target -> header
+        tmp (NamedTemporaryFile): The temporary file to write to
+        debug (float): Whether to write debug files
+        this_intermediates (str): The path to the intermediates debug folder
+    Returns:
+        None
+    """
+    sequences = []
+    for header, sequence in parseFasta(aln_file, True):
+        if header in targets:
+            sequences.append((targets[header], sequence))
+
+    empty_columns = None
+    for header, sequence in sequences:
+        if empty_columns is None:
+            empty_columns = [True] * len(sequence)
+
+        for col, let in enumerate(sequence):
+            if let != "-":
+                empty_columns[col] = False
+
+    to_write = []
+    for header, sequence in sequences:
+        to_write.append(
+            (
+                header,
+                "".join(
+                    [
+                        let
+                        for col, let in enumerate(sequence)
+                        if not empty_columns[col]
+                    ]
+                ),
+            )
+        )
+
+    writeFasta(tmp.name, to_write)
+    if debug:
+        writeFasta(
+            os.path.join(this_intermediates, "references.fa"), to_write
+        )
+    tmp.flush()
 
 
 CmdArgs = namedtuple(
@@ -112,27 +300,33 @@ def run_command(args: CmdArgs) -> None:
     keeper = TimeKeeper(KeeperMode.DIRECT)
     debug = args.debug
     printv(f"Doing: {args.gene} ", args.verbose, 2)
-    # print(args.only_singletons)
+
     temp_dir = gettempdir()
 
     aligned_ingredients = []
 
+    this_intermediates = os.path.join("intermediates", args.gene)
     if debug:
-        this_intermediates = os.path.join("intermediates", args.gene)
         if not os.path.exists(this_intermediates):
             os.mkdir(this_intermediates)
 
     aln_file = os.path.join(args.aln_path, args.gene + ".aln.fa")
     to_merge = []
 
-    with TemporaryDirectory(dir=temp_dir) as parent_tmpdir, TemporaryDirectory(
-        dir=parent_tmpdir
-    ) as raw_files_tmp, TemporaryDirectory(dir=parent_tmpdir) as aligned_files_tmp:
+    with TemporaryDirectory(
+            dir=temp_dir
+        ) as parent_tmpdir, TemporaryDirectory(
+            dir=parent_tmpdir
+        ) as raw_files_tmp, TemporaryDirectory(
+            dir=parent_tmpdir
+        ) as aligned_files_tmp:
+
         printv(
             f"Cleaning NT file. Elapsed time: {keeper.differential():.2f}",
             args.verbose,
             3,
         )  # Debug
+        
         (
             seq_count,
             data,
@@ -141,9 +335,8 @@ def run_command(args: CmdArgs) -> None:
             trimmed_header_to_full,
         ) = process_genefile(args.gene_file)
 
-        only_singletons = args.only_singletons
         if len(data) > UPPER_SINGLETON_TRESHOLD:
-            only_singletons = True
+            args.only_singletons = True
 
         cluster_time = 0
         align_time = 0
@@ -167,100 +360,11 @@ def run_command(args: CmdArgs) -> None:
                 args.verbose,
                 3,
             )  # Debug
-            clusters = []
-            cluster_children = {header: [header] for header in data}
-            kmers = find_kmers(data)
-            gene_headers = list(kmers.keys())
+
+            cluster_children = generate_clusters(data)
+
+            clusters = seperate_into_clusters(cluster_children, parent_tmpdir, data)
             
-
-            # Add a dictionary to store child sets for each primary set
-            child_sets = {header: set() for header in data}
-
-            for iteration in range(2):
-                processed_headers = set()
-                merge_occured = True
-                while merge_occured:
-                    merge_occured = False
-                    for i in range(len(gene_headers) - 1, -1, -1):  # reverse iteration
-                        master_header = gene_headers[i]
-                        master = kmers[master_header]
-                        if master:
-                            for candidate_header in gene_headers[:i]:
-                                if candidate_header in processed_headers:
-                                    continue
-
-                                candidate = kmers[candidate_header]
-                                if candidate:
-                                    # Check similarity against both parent set and child sets
-                                    matched = False
-                                    for header_to_check in [master_header] + list(
-                                        child_sets[master_header]
-                                    ):
-                                        set_to_check = kmers[header_to_check]
-                                        if set_to_check is None:
-                                            continue
-
-                                        similar = set_to_check.intersection(candidate)
-                                        
-                                        if len(similar) != 0:
-                                            if (
-                                                len(similar)
-                                                / min(len(set_to_check), len(candidate))
-                                                >= KMER_PERCENT
-                                            ):
-                                                
-                                                
-                                                if iteration == 0 or iteration == 1 and len(cluster_children[master_header]) != 1:
-                                                    # Add the candidate set as a child set of the primary set
-                                                    child_sets[master_header].add(
-                                                        candidate_header
-                                                    )
-                                                    cluster_children[master_header].extend(
-                                                        cluster_children[candidate_header]
-                                                    )
-
-                                                    # Remove candidate
-                                                    cluster_children[candidate_header] = None
-                                                    kmers[candidate_header] = None
-                                                    processed_headers.add(candidate_header)
-
-                                                    matched = True
-                                                    break
-
-                                    if matched:
-                                        merge_occured = True
-
-            for this_cluster in cluster_children.values():
-                if this_cluster is not None:
-                    if len(this_cluster) > SUBCLUSTER_AT:
-                        clusters_to_create = ceil(len(this_cluster) / CLUSTER_EVERY)
-                        with NamedTemporaryFile(
-                            mode="w+", dir=parent_tmpdir, suffix=".fa"
-                        ) as this_tmp:
-                            writeFasta(
-                                this_tmp.name,
-                                [(header, data[header]) for header in this_cluster],
-                            )
-                            with NamedTemporaryFile("r", dir=gettempdir()) as this_out:
-                                subprocess.run(
-                                    f"SigClust/SigClust -k 8 -c {clusters_to_create} {this_tmp.name} > {this_out.name}",
-                                    stdout=subprocess.DEVNULL,
-                                    stderr=subprocess.DEVNULL,
-                                    check=True,
-                                    shell=True,
-                                )
-                                sig_out = this_out.read()
-                            sub_clusters = defaultdict(list)
-                            for line in sig_out.split("\n"):
-                                line = line.strip()
-                                if line:
-                                    seq_index, clust_index = line.strip().split(",")
-                                    sub_clusters[clust_index].append(
-                                        this_cluster[int(seq_index)]
-                                    )
-                            clusters.extend(list(sub_clusters.values()))
-                            continue
-                    clusters.append(this_cluster)
             cluster_time = keeper.differential()
             printv(
                 f"Found {seq_count} sequences over {len(clusters)} clusters. Elapsed time: {keeper.differential():.2f}",
@@ -289,7 +393,7 @@ def run_command(args: CmdArgs) -> None:
                 cluster_seqs = [(header, data[header]) for header in cluster]
                 cluster_length = len(cluster)
 
-                if only_singletons or cluster_length == 1 or cluster_length < SINGLETON_THRESHOLD and singleton_allowed:
+                if args.only_singletons or cluster_length == 1 or cluster_length < SINGLETON_THRESHOLD and singleton_allowed:
                     printv(
                         f"Storing singleton cluster {cluster_i}. Elapsed time: {keeper.differential():.2f}",
                         args.verbose,
@@ -332,11 +436,12 @@ def run_command(args: CmdArgs) -> None:
                         ),
                         aligned_sequences,
                     )
-                # identity = get_identity(aligned_cluster)
+
                 aligned_ingredients.append((aligned_cluster, len(aligned_sequences)))
 
         align_time = keeper.differential() - cluster_time
-        if to_merge:
+        has_singleton_merge = len(to_merge) > 0
+        if has_singleton_merge:
             merged_singleton_final = os.path.join(
                 aligned_files_tmp, f"{args.gene}_cluster_merged_singletons"
             )
@@ -348,115 +453,56 @@ def run_command(args: CmdArgs) -> None:
                     ),
                     to_merge,
                 )
-        if aligned_ingredients or to_merge:
+        if aligned_ingredients or has_singleton_merge:
             aligned_ingredients = [
                 i[0] for i in sorted(aligned_ingredients, key=lambda x: x[1])
             ]
-            if to_merge:
+            if has_singleton_merge:
                 aligned_ingredients.insert(0, merged_singleton_final)
             printv(
                 f"Merging Alignments. Elapsed time: {keeper.differential():.2f}",
                 args.verbose,
                 3,
             )  # Debug
-            printv(
-                f"Merging 1 of {len(aligned_ingredients)}. Elapsed time: {keeper.differential():.2f}",
-                args.verbose,
-                3,
-            )  # Debug
-            with NamedTemporaryFile(dir=parent_tmpdir, mode="w+") as tmp:
-                sequences = []
-                for header, sequence in parseFasta(aln_file, True):
-                    if header in targets:
-                        sequences.append((targets[header], sequence))
+            with NamedTemporaryFile(dir=parent_tmpdir, mode="w+") as tmp_aln:
+                generate_tmp_aln(aln_file, targets, tmp_aln, debug, this_intermediates)
 
-                empty_columns = None
-                for header, sequence in sequences:
-                    if empty_columns is None:
-                        empty_columns = [True] * len(sequence)
+                prev_file = tmp_aln.name
 
-                    for col, let in enumerate(sequence):
-                        if let != "-":
-                            empty_columns[col] = False
+                for i, file in enumerate(aligned_ingredients):
+                    printv(f"Merging alignment {i+1} of {len(aligned_ingredients)}.", args.verbose, 3)
+                    out_file = os.path.join(parent_tmpdir, f"part_{i}.fa")
+                    if len(aligned_ingredients) - 1 == i:
+                        out_file = args.result_file
 
-                to_write = []
-                for header, sequence in sequences:
-                    to_write.append(
-                        (
-                            header,
-                            "".join(
-                                [
-                                    let
-                                    for col, let in enumerate(sequence)
-                                    if not empty_columns[col]
-                                ]
-                            ),
+                    if has_singleton_merge and i == 0:
+                        os.system(
+                            f"mafft --anysymbol --jtt 1 --quiet --addfragments {file} --thread 1 {prev_file} > {out_file}"
                         )
-                    )
-
-                writeFasta(tmp.name, to_write)
-                if debug:
-                    writeFasta(
-                        os.path.join(this_intermediates, "references.fa"), to_write
-                    )
-                tmp.flush()
-
-                out_file = os.path.join(parent_tmpdir, "part_0.fa")
-                if len(aligned_ingredients) == 1:
-                    out_file = args.result_file
-
-                if to_merge:
-                    os.system(
-                        f"mafft --anysymbol --jtt 1 --quiet --addfragments {aligned_ingredients[0]} --thread 1 {tmp.name} > {out_file}"
-                    )
-                    if args.debug:
-                        printv(
-                            f"mafft --anysymbol --jtt 1 --quiet --addfragments {aligned_ingredients[0]} --thread 1 {tmp.name} > {out_file}",
-                            args.verbose,
-                            3,
+                        if args.debug:
+                            printv(
+                                f"mafft --anysymbol --jtt 1 --quiet --addfragments {file} --thread 1 {prev_file} > {out_file}",
+                                args.verbose,
+                                3,
+                            )
+                    else:
+                        os.system(
+                            f"clustalo --p1 {prev_file} --p2 {file} -o {out_file} --threads=1 --full --is-profile --force"
                         )
-                else:
-                    os.system(
-                        f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1 --full --is-profile --force"
-                    )
+                        if debug:
+                            printv(
+                                f"clustalo --p1 {prev_file} --p2 {file} -o {out_file} --threads=1  --full --is-profile --force",
+                                args.verbose,
+                                3,
+                            )
                     if debug:
-                        printv(
-                            f"clustalo --p1 {tmp.name} --p2 {aligned_ingredients[0]} -o {out_file} --threads=1  --full --is-profile --force",
-                            args.verbose,
-                            3,
+                        writeFasta(
+                            os.path.join(
+                                this_intermediates, os.path.basename(out_file)
+                            ),
+                            parseFasta(out_file, True),
                         )
-                if debug:
-                    writeFasta(
-                        os.path.join(
-                            this_intermediates, os.path.basename(out_file)
-                        ),
-                        parseFasta(out_file, True),
-                    )
 
-            for i, file in enumerate(aligned_ingredients[1:]):
-                printv(
-                    f"Merging {i+2} of {len(aligned_ingredients)}. Elapsed time: {keeper.differential():.2f}",
-                    args.verbose,
-                    3,
-                )  # Debug
-                out_file = os.path.join(parent_tmpdir, f"part_{i+1}.fa")
-                in_file = os.path.join(parent_tmpdir, f"part_{i}.fa")
-                if file == aligned_ingredients[-1]:
-                    out_file = args.result_file
-
-                os.system(
-                    f"clustalo --p1 {in_file} --p2 {file} -o {out_file} --threads=1 --full --is-profile --force"
-                )
-                if debug:
-                    printv(
-                        f"clustalo --p1 {in_file} --p2 {file} -o {out_file} --threads=1 --full --is-profile --force",
-                        args.verbose,
-                        3,
-                    )
-                    writeFasta(
-                        os.path.join(this_intermediates, os.path.basename(out_file)),
-                        parseFasta(out_file, True),
-                    )
     merge_time = keeper.differential() - align_time - cluster_time
 
     # Reinsert and sort
