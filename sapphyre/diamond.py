@@ -340,6 +340,42 @@ def internal_filtering(
     # Return the gene, the number of hits kicked, a log of the hits kicked, and the list of hits
     return (gene, this_kicks, this_log, kicked_hits)
 
+def containments(hits, target_to_taxon, debug):
+    PARALOG_SCORE_DIFF = 0.1
+    KICK_PERCENT = 0.8
+    hits.sort(key = lambda x: x.score, reverse = True)
+
+    log = []
+
+    for i, top_hit in enumerate(hits):
+        if top_hit.kick:
+            continue
+
+        top_hit_reference = top_hit.reftaxon
+
+        for hit in hits[i+1:]:
+            if hit.kick:
+                continue
+
+            for ref_hit in hit.ref_hits:
+                if target_to_taxon[ref_hit.target][1] != top_hit_reference:
+                    continue
+
+                if get_score_difference(top_hit.score, hit.score) < PARALOG_SCORE_DIFF:
+                    continue
+
+                overlap_percent = get_overlap(top_hit.sstart, top_hit.send, ref_hit.sstart, ref_hit.send) / min((top_hit.send-top_hit.sstart), (ref_hit.send-ref_hit.sstart))
+
+                if overlap_percent > KICK_PERCENT:
+                    hit.kick = True
+                    if debug:
+                        log.append(hit.gene+" "+hit.header+"|"+str(hit.frame)+" kicked out by "+top_hit.header+"|"+str(top_hit.frame)+f" overlap: {overlap_percent:.2f}")
+    
+    return [hit.uid for hit in hits if hit.kick], log
+
+
+
+
 
 def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]]:
     """
@@ -486,6 +522,13 @@ def run_process(args: Namespace, input_path: str) -> bool:
     nt_db_path = os.path.join(input_path, "rocksdb", "sequences", "nt")
 
     nt_db = wrap_rocks.RocksDB(nt_db_path)
+
+    # Check if sequence is assembly
+    dbis_assembly = nt_db.get("get:isassembly")
+    is_assembly = False
+    if dbis_assembly:
+        if dbis_assembly == "True":
+            is_assembly = True
 
     recipe = nt_db.get("getall:batches")
     if recipe:
@@ -698,10 +741,24 @@ def run_process(args: Namespace, input_path: str) -> bool:
         for gene, kick_count, this_log, kicked_hits in internal_results:
             internal_result[gene] = (kick_count, this_log, kicked_hits)
 
+
+        next_step = "Writing to db" if is_assembly else "Doing Assembly Containments"
         printv(
-            f"Filtering done. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Writing to db",
+            f"Filtering done. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. {next_step}",
             args.verbose,
         )
+
+        containment_kicks = 0
+        containment_log = []
+        if is_assembly:
+            for gene, hits in output.items():
+                this_kicks, log = containments(hits, target_to_taxon, args.debug)
+                containment_kicks += len(this_kicks)
+                if args.debug:
+                    containment_log.extend(log)
+
+                output[gene] = [i for i in hits if i.uid not in this_kicks]
+
         # DOING VARIANT FILTER
         variant_filter = defaultdict(list)
 
@@ -786,6 +843,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
         if global_log:
             with open(os.path.join(input_path, "multi.log"), "w") as fp:
                 fp.write("\n".join(global_log))
+        if containment_log:
+            with open(os.path.join(input_path, "containment.log"), "w") as fp:
+                fp.write("\n".join(containment_log))
 
         printv(
             f"{multi_kicks} multi kicks",
@@ -796,7 +856,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
             args.verbose,
         )
         printv(
-            f"Took {time_keeper.lap():.2f}s for {multi_kicks+internal_kicks} kicks leaving {passes} results. Writing dupes and present gene data",
+            f"{containment_kicks} containment kicks",
+            args.verbose,
+        )
+        printv(
+            f"Took {time_keeper.lap():.2f}s for {multi_kicks+internal_kicks+containment_kicks} kicks leaving {passes} results. Writing dupes and present gene data",
             args.verbose,
         )
 

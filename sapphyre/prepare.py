@@ -36,6 +36,8 @@ ALLOWED_FILETYPES_GZ = [f"{ft}.gz" for ft in ALLOWED_FILETYPES_NORMAL]
 
 ALLOWED_FILETYPES = ALLOWED_FILETYPES_NORMAL + ALLOWED_FILETYPES_GZ
 
+ASSEMBLY_LEN = 500
+
 
 class IndexIter:
     def __init__(self):
@@ -120,6 +122,7 @@ class SeqDeduplicator:
         self.verbose = verbose
         self.nt_db = db
         self.lines = []
+        self.this_assembly = False
 
     def __call__(
         self,
@@ -179,7 +182,11 @@ class SeqDeduplicator:
 
                 # If no dupe, write to prepared file and db
                 next(this_index)
-
+                
+                if not self.this_assembly:
+                    if len(seq) >= ASSEMBLY_LEN:
+                        self.this_assembly = True
+                    
                 self.lines.append(f">{header}\n{seq}\n")
 
 
@@ -257,6 +264,7 @@ class DatabasePreparer:
             )
 
         self.fa_file_out = deduper.lines
+        this_is_assembly = deduper.this_assembly
 
         with NamedTemporaryFile(dir=gettempdir(), mode="w") as fp:
             prior = len(self.fa_file_out)
@@ -293,6 +301,8 @@ class DatabasePreparer:
 
         recipe_data = ",".join(recipe)
         self.nt_db.put("getall:batches", recipe_data)
+
+        self.nt_db.put("get:isassembly", str(this_is_assembly))
 
         sequence_count = str(self.this_index)
         self.printv(
