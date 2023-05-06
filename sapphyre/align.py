@@ -11,8 +11,8 @@ from tempfile import TemporaryDirectory, NamedTemporaryFile
 from .utils import printv, gettempdir, parseFasta, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
 
-KMER_LEN = 12
-KMER_PERCENT = 0.30
+KMER_LEN = 15
+KMER_PERCENT = 0.15
 SUBCLUSTER_AT = 1000
 CLUSTER_EVERY = 500  # Aim for x seqs per cluster
 SAFEGUARD_BP = 15000

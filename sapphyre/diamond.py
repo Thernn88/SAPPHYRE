@@ -136,7 +136,7 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
     """
     # Global variables for the multi_filter function.
     MULTI_PERCENTAGE_OF_OVERLAP = 0.3
-    MULTI_SCORE_DIFFERENCE = 1.05
+    MULTI_SCORE_DIFFERENCE = 1.1
 
     log = []
 
