@@ -200,6 +200,7 @@ def run_command(args: CmdArgs) -> None:
                                     cluster_children[master].extend(cluster_children[candidate])
                                     cluster_children.pop(candidate)
                                     merge_occured = True
+                                    break
 
             for this_cluster in cluster_children.values():
                 if this_cluster is not None:
