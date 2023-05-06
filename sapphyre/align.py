@@ -365,7 +365,7 @@ def run_command(args: CmdArgs) -> None:
             cluster_children = generate_clusters(data)
 
             clusters = seperate_into_clusters(cluster_children, parent_tmpdir, data)
-            
+
             cluster_time = keeper.differential()
             printv(
                 f"Found {seq_count} sequences over {len(clusters)} clusters. Elapsed time: {keeper.differential():.2f}",
@@ -503,6 +503,8 @@ def run_command(args: CmdArgs) -> None:
                             ),
                             parseFasta(out_file, True),
                         )
+                    
+                    prev_file = out_file
 
     merge_time = keeper.differential() - align_time - cluster_time
 
