@@ -30,7 +30,10 @@ def main(args):
             "debug": False,
             "clear_output": True,
         },
-        "Align": {"debug": False},
+        "Align": {
+            "debug": False,
+            "second_run": False,
+        },
         "Pal2Nal": {"table": 1},
         "FlexCull": {
             "output": "trimmed",
