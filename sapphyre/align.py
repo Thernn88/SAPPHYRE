@@ -170,13 +170,14 @@ def run_command(args: CmdArgs) -> None:
             cluster_children = {header: [header] for header in data}
             kmers = find_kmers(data)
             gene_headers = list(kmers.keys())
-            merge_occured = True
+            
 
             # Add a dictionary to store child sets for each primary set
             child_sets = {header: set() for header in data}
 
-            for i in range(2):
+            for iteration in range(2):
                 processed_headers = set()
+                merge_occured = True
                 while merge_occured:
                     merge_occured = False
                     for i in range(len(gene_headers) - 1, -1, -1):  # reverse iteration
@@ -199,13 +200,16 @@ def run_command(args: CmdArgs) -> None:
                                             continue
 
                                         similar = set_to_check.intersection(candidate)
+                                        
                                         if len(similar) != 0:
                                             if (
                                                 len(similar)
                                                 / min(len(set_to_check), len(candidate))
                                                 >= KMER_PERCENT
                                             ):
-                                                if i == 0 or i == 1 and len(cluster_children[master_header]) != 1:
+                                                
+                                                
+                                                if iteration == 0 or iteration == 1 and len(cluster_children[master_header]) != 1:
                                                     # Add the candidate set as a child set of the primary set
                                                     child_sets[master_header].add(
                                                         candidate_header
