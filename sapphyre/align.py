@@ -172,11 +172,10 @@ def run_command(args: CmdArgs) -> None:
             cluster_children = {header: [header] for header in data}
             kmers = find_kmers(data)
             gene_headers = list(kmers.keys())
-            merge_occured = True
 
-            while merge_occured:
-                merge_occured = False
+            ITERATIONS = 1
 
+            for i in range(ITERATIONS):
                 for master, candidate in combinations(gene_headers, 2):
                     master_headers = cluster_children.get(master, None)
                     if not master_headers:
@@ -197,9 +196,9 @@ def run_command(args: CmdArgs) -> None:
                                     / min(len(master_kmers), len(candidate_kmers))
                                     >= KMER_PERCENT
                                 ):
+                                    
                                     cluster_children[master].extend(cluster_children[candidate])
                                     cluster_children.pop(candidate)
-                                    merge_occured = True
                                     break
 
             for this_cluster in cluster_children.values():
