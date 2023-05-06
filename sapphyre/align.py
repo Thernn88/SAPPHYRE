@@ -141,8 +141,9 @@ def run_command(args: CmdArgs) -> None:
             trimmed_header_to_full,
         ) = process_genefile(args.gene_file)
 
+        only_singletons = args.only_singletons
         if len(data) > UPPER_SINGLETON_TRESHOLD:
-            args.only_singletons = True
+            only_singletons = True
 
         cluster_time = 0
         align_time = 0
@@ -288,7 +289,7 @@ def run_command(args: CmdArgs) -> None:
                 cluster_seqs = [(header, data[header]) for header in cluster]
                 cluster_length = len(cluster)
 
-                if args.only_singletons or cluster_length == 1 or cluster_length < SINGLETON_THRESHOLD and singleton_allowed:
+                if only_singletons or cluster_length == 1 or cluster_length < SINGLETON_THRESHOLD and singleton_allowed:
                     printv(
                         f"Storing singleton cluster {cluster_i}. Elapsed time: {keeper.differential():.2f}",
                         args.verbose,
