@@ -499,7 +499,7 @@ def run_command(args: CmdArgs) -> None:
                     if debug:
                         writeFasta(
                             os.path.join(
-                                this_intermediates, os.path.basename(out_file)
+                                this_intermediates, f"part_{i}.fa"
                             ),
                             parseFasta(out_file, True),
                         )
@@ -511,6 +511,7 @@ def run_command(args: CmdArgs) -> None:
     # Reinsert and sort
     to_write = []
     references = []
+    inserted = 0
     for header, sequence in parseFasta(args.result_file, True):
         if header.endswith("."):
             references.append((header, sequence))
@@ -518,6 +519,7 @@ def run_command(args: CmdArgs) -> None:
             header = trimmed_header_to_full[header[:127]]
             if header in reinsertions:
                 for insertion_header in reinsertions[header]:
+                    inserted += 1
                     to_write.append((insertion_header, sequence))
             to_write.append((header, sequence))
 
