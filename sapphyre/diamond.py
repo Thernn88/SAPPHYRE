@@ -45,6 +45,7 @@ def lst() -> list:
 
 class ReferenceHit(Struct, frozen=True):
     target: str
+    reftaxon: str
     sstart: int
     send: int
 
@@ -74,6 +75,7 @@ class ReporterHit(Struct):
     qend: int
     gene: str
     reftaxon: str
+    uid: int
     ref_hits: list[ReferenceHit]
     est_seq: str = None
 
@@ -340,7 +342,7 @@ def internal_filtering(
     # Return the gene, the number of hits kicked, a log of the hits kicked, and the list of hits
     return (gene, this_kicks, this_log, kicked_hits)
 
-def containments(hits, target_to_taxon, debug):
+def containments(hits, target_to_taxon, debug, gene):
     PARALOG_SCORE_DIFF = 0.1
     KICK_PERCENT = 0.8
     hits.sort(key = lambda x: x.score, reverse = True)
@@ -371,9 +373,15 @@ def containments(hits, target_to_taxon, debug):
                     if debug:
                         log.append(hit.gene+" "+hit.header+"|"+str(hit.frame)+" kicked out by "+top_hit.header+"|"+str(top_hit.frame)+f" overlap: {overlap_percent:.2f}")
     
-    return [hit.uid for hit in hits if hit.kick], log
+    return [hit.uid for hit in hits if hit.kick], log, gene
 
 
+def convert_and_cull(hits, pairwise_refs, gene):
+    output = []
+    for hit in hits:
+        hit.ref_hits = [i for i in hit.ref_hits if i.reftaxon in pairwise_refs]
+        output.append(ReporterHit(hit.header, hit.frame, hit.qstart, hit.qend, hit.gene, hit.reftaxon, hit.uid, hit.ref_hits))
+    return gene, output
 
 
 
@@ -405,7 +413,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             this_hit.gene, this_hit.reftaxon, _ = pargs.target_to_taxon[this_hit.target]
             this_hit.uid = hash(time())
             this_hit.ref_hits.append(
-                ReferenceHit(this_hit.target, this_hit.sstart, this_hit.send)
+                ReferenceHit(this_hit.target, this_hit.reftaxon, this_hit.sstart, this_hit.send)
             )
             frame_to_hits[this_hit.frame].append(this_hit)
 
@@ -431,9 +439,8 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                     top_hit = hits[0]
 
                     ref_seqs = [
-                        ReferenceHit(hit.target, hit.sstart, hit.send)
+                        ReferenceHit(hit.target, hit.reftaxon, hit.sstart, hit.send)
                         for hit in hits[1:]
-                        if hit.reftaxon in pargs.pairwise_refs
                     ]
                     top_hit.ref_hits.extend(ref_seqs)
 
@@ -601,13 +608,13 @@ def run_process(args: Namespace, input_path: str) -> bool:
         dtype={
             "header": str,
             "target": str,
-            "frame": "int8",
+            "frame": np.int8,
             "evalue": np.float64,
             "score": np.float32,
-            "qstart": "int16",
-            "qend": "int16",
-            "sstart": "int32",
-            "send": "int32",
+            "qstart": np.uint16,
+            "qend": np.uint16,
+            "sstart": np.uint16,
+            "send": np.uint16,
         },
     )
 
@@ -750,14 +757,22 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         containment_kicks = 0
         containment_log = []
+        arguments = []
+        present_genes = []
         if is_assembly:
             for gene, hits in output.items():
-                this_kicks, log = containments(hits, target_to_taxon, args.debug)
+                arguments.append((hits, target_to_taxon, args.debug, gene,))
+
+            with Pool(post_threads) as pool:
+                results = pool.starmap(containments, arguments)
+
+            for this_kicks, log, gene in results:
                 containment_kicks += len(this_kicks)
                 if args.debug:
                     containment_log.extend(log)
 
                 output[gene] = [i for i in hits if i.uid not in this_kicks]
+                present_genes.append(gene)
 
         # DOING VARIANT FILTER
         variant_filter = defaultdict(list)
@@ -816,12 +831,17 @@ def run_process(args: Namespace, input_path: str) -> bool:
             )
         del out
 
+        arguments = []
+        for gene, hits in output.items():
+            arguments.append((hits,pairwise_refs,gene,))
+
+        with Pool(post_threads) as pool:
+            output = pool.starmap(convert_and_cull, arguments)
+
         passes = 0
         internal_kicks = 0
         encoder = json.Encoder()
-        def convert_to_hit(hit):
-            return ReporterHit(hit.header, hit.frame, hit.qstart, hit.qend, hit.gene, hit.reftaxon, hit.ref_hits)
-        for gene, hits in output.items():
+        for gene, hits in output:
             kicks = set()
             out = []
             if gene in internal_result:
@@ -831,7 +851,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 if args.debug:
                     global_log.extend(this_log)
 
-            for hit in map(convert_to_hit, [i for i in hits if i.uid not in kicks]):
+            for hit in [i for i in hits if i.uid not in kicks]:
                 hit.est_seq = head_to_seq[hit.header]
                 out.append(hit)
                 dupe_divy_headers[gene].add(hit.header)
@@ -860,7 +880,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             args.verbose,
         )
         printv(
-            f"Took {time_keeper.lap():.2f}s for {multi_kicks+internal_kicks+containment_kicks} kicks leaving {passes} results. Writing dupes and present gene data",
+            f"Took {time_keeper.lap():.2f}s for {multi_kicks+internal_kicks+containment_kicks} kicks leaving {passes} results. Writing to DB",
             args.verbose,
         )
 
@@ -870,7 +890,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 if base_header in dupe_counts:
                     gene_dupe_count[gene][base_header] = dupe_counts[base_header]
 
-        db.put("getall:presentgenes", ",".join(list(output.keys())))
+        db.put("getall:presentgenes", ",".join(present_genes))
 
         key = "getall:gene_dupes"
         data = json_encoder.encode(gene_dupe_count)  # type=dict[str, dict[str, int]]
