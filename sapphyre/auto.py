@@ -17,7 +17,7 @@ def main(args):
             "debug": False,
             "strict_search_mode": True,
             "sensitivity": "very",
-            "evalue": 0.000005,
+            "evalue": 5,
             "top": 10,
             "top_ref": 0.1,
             "internal_percent": 0.3,
