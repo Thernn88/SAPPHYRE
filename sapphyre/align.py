@@ -162,26 +162,66 @@ def generate_clusters(data: dict[str, str]) -> list[list[str]]:
     cluster_children = {header: [header] for header in data}
     kmers = find_kmers(data)
     gene_headers = list(kmers.keys())
+    
 
-    ITERATIONS = 1
+    # Add a dictionary to store child sets for each primary set
+    child_sets = {header: set() for header in data}
 
-    for i in range(ITERATIONS):
-        for master, candidate in combinations(gene_headers, 2):
-            master_headers = cluster_children.get(master, None)
-            if not master_headers:
-                continue
-            candidate_headers = cluster_children.get(candidate, None)
-            if not candidate_headers:
-                continue
-            
-            average_identity = compare_cluster(master_headers, candidate_headers, kmers)
+    for iteration in range(2):
+        processed_headers = set()
+        merge_occured = True
+        while merge_occured:
+            merge_occured = False
+            for i in range(len(gene_headers) - 1, -1, -1):  # reverse iteration
+                master_header = gene_headers[i]
+                master = kmers[master_header]
+                if master:
+                    for candidate_header in gene_headers[:i]:
+                        if candidate_header in processed_headers:
+                            continue
 
-            if average_identity >= KMER_PERCENT:
-                cluster_children[master].extend(cluster_children[candidate])
-                cluster_children[candidate] = None
+                        candidate = kmers[candidate_header]
+                        if candidate:
+                            # Check similarity against both parent set and child sets
+                            matched = False
+                            for header_to_check in [master_header] + list(
+                                child_sets[master_header]
+                            ):
+                                set_to_check = kmers[header_to_check]
+                                if set_to_check is None:
+                                    continue
+
+                                similar = set_to_check.intersection(candidate)
+                                
+                                if len(similar) != 0:
+                                    if (
+                                        len(similar)
+                                        / min(len(set_to_check), len(candidate))
+                                        >= KMER_PERCENT
+                                    ):
+                                        
+                                        
+                                        if iteration == 0 or iteration == 1 and len(cluster_children[master_header]) != 1:
+                                            # Add the candidate set as a child set of the primary set
+                                            child_sets[master_header].add(
+                                                candidate_header
+                                            )
+                                            cluster_children[master_header].extend(
+                                                cluster_children[candidate_header]
+                                            )
+
+                                            # Remove candidate
+                                            cluster_children[candidate_header] = None
+                                            kmers[candidate_header] = None
+                                            processed_headers.add(candidate_header)
+
+                                            matched = True
+                                            break
+
+                            if matched:
+                                merge_occured = True
 
     return cluster_children.values()
-
 
 def seperate_into_clusters(cluster_children: list[list[str]], parent_tmpdir: str, data: dict[str, str]) -> list[list[str]]:
     """
