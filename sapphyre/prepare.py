@@ -182,11 +182,11 @@ class SeqDeduplicator:
 
                 # If no dupe, write to prepared file and db
                 next(this_index)
-                
+
                 if not self.this_assembly:
                     if len(seq) >= ASSEMBLY_LEN:
                         self.this_assembly = True
-                    
+
                 self.lines.append(f">{header}\n{seq}\n")
 
 

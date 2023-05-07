@@ -33,7 +33,18 @@ class Record(Struct):
         return self.sequence
 
     def get_result(self):
-        return self.id+", "+str(self.mean_distance)+", "+str(self.upper_bound)+", "+self.grade+", "+str(self.iqr)+"\n"
+        return (
+            self.id
+            + ", "
+            + str(self.mean_distance)
+            + ", "
+            + str(self.upper_bound)
+            + ", "
+            + self.grade
+            + ", "
+            + str(self.iqr)
+            + "\n"
+        )
 
 
 def nan_check(iterable) -> bool:

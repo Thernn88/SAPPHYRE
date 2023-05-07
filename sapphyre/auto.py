@@ -17,7 +17,7 @@ def main(args):
             "debug": False,
             "strict_search_mode": True,
             "sensitivity": "very",
-            "evalue": 5,
+            "evalue": 6,
             "top": 10,
             "top_ref": 0.1,
             "internal_percent": 0.3,
@@ -87,13 +87,15 @@ def main(args):
     global_args = vars(args)
     global_args.pop("config")
     global_args.pop("start")
-    
+
     scripts = list(config.keys())
-    if not start_script in scripts:
+    if start_script not in scripts:
         options = ", ".join(scripts)
-        print(f"{start_script} is not a valid start script. Please choose from: ({options})")
+        print(
+            f"{start_script} is not a valid start script. Please choose from: ({options})"
+        )
         return False
-    scripts = scripts[scripts.index(start_script):]
+    scripts = scripts[scripts.index(start_script) :]
 
     for script in scripts:
         sargs = config[script]
@@ -101,7 +103,17 @@ def main(args):
         this_args = global_args.copy()
         this_args.update(sargs)
         this_args = argparse.Namespace(**this_args)
-        this_args.INPUT = args.INPUT if script == "Prepare" else sorted(list(glob(os.path.join("datasets", os.path.split(args.INPUT)[-1], "*.fa"))))
+        this_args.INPUT = (
+            args.INPUT
+            if script == "Prepare"
+            else sorted(
+                list(
+                    glob(
+                        os.path.join("datasets", os.path.split(args.INPUT)[-1], "*.fa")
+                    )
+                )
+            )
+        )
 
         if script == "Prepare":
             from . import prepare

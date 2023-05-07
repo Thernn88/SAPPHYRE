@@ -45,7 +45,7 @@ def parseFasta(
     Iterate over a Fasta file returning sequence records as string tuples.
     Designed in order to handle .gz and .fasta files with potential interleave.
     """
-    if has_interleave or str(path).rsplit('.', maxsplit=1)[-1] in {"fastq", "fq", "gz"}:
+    if has_interleave or str(path).rsplit(".", maxsplit=1)[-1] in {"fastq", "fq", "gz"}:
         fa = pyfastx.Fastx(
             str(path),
             uppercase=True,

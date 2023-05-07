@@ -9,11 +9,12 @@ from tempfile import TemporaryDirectory, NamedTemporaryFile
 from multiprocessing.pool import Pool
 from time import time
 from typing import Union
+import decimal
 import numpy as np
 import pandas as pd
 from msgspec import Struct, json
 import wrap_rocks
-import decimal
+
 
 # from phymmr_tools import Hit, ReferenceHit
 from .utils import printv, gettempdir
@@ -344,10 +345,11 @@ def internal_filtering(
     # Return the gene, the number of hits kicked, a log of the hits kicked, and the list of hits
     return (gene, this_kicks, this_log, kicked_hits)
 
+
 def containments(hits, target_to_taxon, debug, gene):
     PARALOG_SCORE_DIFF = 0.1
     KICK_PERCENT = 0.8
-    hits.sort(key = lambda x: x.score, reverse = True)
+    hits.sort(key=lambda x: x.score, reverse=True)
 
     log = []
 
@@ -357,7 +359,7 @@ def containments(hits, target_to_taxon, debug, gene):
 
         top_hit_reference = top_hit.reftaxon
 
-        for hit in hits[i+1:]:
+        for hit in hits[i + 1 :]:
             if hit.kick:
                 continue
 
@@ -368,13 +370,28 @@ def containments(hits, target_to_taxon, debug, gene):
                 if get_score_difference(top_hit.score, hit.score) < PARALOG_SCORE_DIFF:
                     continue
 
-                overlap_percent = get_overlap(top_hit.sstart, top_hit.send, ref_hit.sstart, ref_hit.send) / min((top_hit.send-top_hit.sstart), (ref_hit.send-ref_hit.sstart))
+                overlap_percent = get_overlap(
+                    top_hit.sstart, top_hit.send, ref_hit.sstart, ref_hit.send
+                ) / min(
+                    (top_hit.send - top_hit.sstart), (ref_hit.send - ref_hit.sstart)
+                )
 
                 if overlap_percent > KICK_PERCENT:
                     hit.kick = True
                     if debug:
-                        log.append(hit.gene+" "+hit.header+"|"+str(hit.frame)+" kicked out by "+top_hit.header+"|"+str(top_hit.frame)+f" overlap: {overlap_percent:.2f}")
-    
+                        log.append(
+                            hit.gene
+                            + " "
+                            + hit.header
+                            + "|"
+                            + str(hit.frame)
+                            + " kicked out by "
+                            + top_hit.header
+                            + "|"
+                            + str(top_hit.frame)
+                            + f" overlap: {overlap_percent:.2f}"
+                        )
+
     return [hit.uid for hit in hits if hit.kick], log, gene
 
 
@@ -382,9 +399,19 @@ def convert_and_cull(hits, pairwise_refs, gene):
     output = []
     for hit in hits:
         hit.ref_hits = [i for i in hit.ref_hits if i.reftaxon in pairwise_refs]
-        output.append(ReporterHit(hit.header, hit.frame, hit.qstart, hit.qend, hit.gene, hit.reftaxon, hit.uid, hit.ref_hits))
+        output.append(
+            ReporterHit(
+                hit.header,
+                hit.frame,
+                hit.qstart,
+                hit.qend,
+                hit.gene,
+                hit.reftaxon,
+                hit.uid,
+                hit.ref_hits,
+            )
+        )
     return gene, output
-
 
 
 def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]]:
@@ -415,7 +442,9 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             this_hit.gene, this_hit.reftaxon, _ = pargs.target_to_taxon[this_hit.target]
             this_hit.uid = hash(time())
             this_hit.ref_hits.append(
-                ReferenceHit(this_hit.target, this_hit.reftaxon, this_hit.sstart, this_hit.send)
+                ReferenceHit(
+                    this_hit.target, this_hit.reftaxon, this_hit.sstart, this_hit.send
+                )
             )
             frame_to_hits[this_hit.frame].append(this_hit)
 
@@ -474,8 +503,17 @@ def run_process(args: Namespace, input_path: str) -> bool:
     OVERSHOOT_AMOUNT = 1.75
     # Minimum amount of hits to delegate to a process
     MINIMUM_CHUNKSIZE = 50
-    
-    precision = decimal.Decimal('0.5') * decimal.Decimal('0.1') ** decimal.Decimal(args.evalue)
+    # print(args.evalue)
+
+    precision = decimal.Decimal("5") * decimal.Decimal("0.1") ** decimal.Decimal(
+        args.evalue
+    )
+    precision_str = (
+        "{{:.{}f}}".format(args.evalue + 1).format(precision).rstrip("0").rstrip(".")
+    )
+    print(precision_str)
+
+    # print(precision)
 
     json_encoder = json.Encoder()
 
@@ -755,8 +793,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
             output[gene] = [i for i in output[gene] if i.uid not in kicked_hits]
 
-
-        next_step = "Writing to db" if not is_assembly else "Doing Assembly Containments"
+        next_step = (
+            "Writing to db" if not is_assembly else "Doing Assembly Containments"
+        )
         printv(
             f"Filtering done. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. {next_step}",
             args.verbose,
@@ -768,7 +807,14 @@ def run_process(args: Namespace, input_path: str) -> bool:
         present_genes = []
         if is_assembly:
             for gene, hits in output.items():
-                arguments.append((hits, target_to_taxon, args.debug, gene,))
+                arguments.append(
+                    (
+                        hits,
+                        target_to_taxon,
+                        args.debug,
+                        gene,
+                    )
+                )
 
             with Pool(post_threads) as pool:
                 results = pool.starmap(containments, arguments)
@@ -779,7 +825,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 if args.debug:
                     containment_log.extend(log)
 
-                next_output.append((r_gene, [i for i in output[r_gene] if i.uid not in this_kicks]))
+                next_output.append(
+                    (r_gene, [i for i in output[r_gene] if i.uid not in this_kicks])
+                )
                 present_genes.append(r_gene)
             output = next_output
         else:
@@ -845,7 +893,13 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         arguments = []
         for gene, hits in output:
-            arguments.append((hits,pairwise_refs,gene,))
+            arguments.append(
+                (
+                    hits,
+                    pairwise_refs,
+                    gene,
+                )
+            )
 
         with Pool(post_threads) as pool:
             output = pool.starmap(convert_and_cull, arguments)

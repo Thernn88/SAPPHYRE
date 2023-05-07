@@ -111,7 +111,7 @@ def subcmd_diamond(subparsers):
         "-e",
         "--evalue",
         type=int,
-        default=5,
+        default=6,
         help="Diamond blast evalue threshold.",
     )
     par.add_argument(
