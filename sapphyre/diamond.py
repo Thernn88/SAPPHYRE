@@ -743,13 +743,16 @@ def run_process(args: Namespace, input_path: str) -> bool:
                     for gene, _ in internal_order
                 ],
             )
-
-        internal_result = defaultdict(list)
+        internal_kicks = 0
         for gene, kick_count, this_log, kicked_hits in internal_results:
-            internal_result[gene] = (kick_count, this_log, kicked_hits)
+            internal_kicks += kick_count
+            if args.debug:
+                global_log.extend(this_log)
+
+            output[gene] = [i for i in output[gene] if i.uid not in kicked_hits]
 
 
-        next_step = "Writing to db" if is_assembly else "Doing Assembly Containments"
+        next_step = "Writing to db" if not is_assembly else "Doing Assembly Containments"
         printv(
             f"Filtering done. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. {next_step}",
             args.verbose,
@@ -766,13 +769,18 @@ def run_process(args: Namespace, input_path: str) -> bool:
             with Pool(post_threads) as pool:
                 results = pool.starmap(containments, arguments)
 
-            for this_kicks, log, gene in results:
+            next_output = []
+            for this_kicks, log, r_gene in results:
                 containment_kicks += len(this_kicks)
                 if args.debug:
                     containment_log.extend(log)
 
-                output[gene] = [i for i in hits if i.uid not in this_kicks]
-                present_genes.append(gene)
+                next_output.append((r_gene, [i for i in output[r_gene] if i.uid not in this_kicks]))
+                present_genes.append(r_gene)
+            output = next_output
+        else:
+            present_genes = list(output.keys())
+            output = output.items()
 
         # DOING VARIANT FILTER
         variant_filter = defaultdict(list)
@@ -832,26 +840,17 @@ def run_process(args: Namespace, input_path: str) -> bool:
         del out
 
         arguments = []
-        for gene, hits in output.items():
+        for gene, hits in output:
             arguments.append((hits,pairwise_refs,gene,))
 
         with Pool(post_threads) as pool:
             output = pool.starmap(convert_and_cull, arguments)
 
         passes = 0
-        internal_kicks = 0
         encoder = json.Encoder()
         for gene, hits in output:
-            kicks = set()
             out = []
-            if gene in internal_result:
-                this_kicks, this_log, kicks = internal_result[gene]
-
-                internal_kicks += this_kicks
-                if args.debug:
-                    global_log.extend(this_log)
-
-            for hit in [i for i in hits if i.uid not in kicks]:
+            for hit in hits:
                 hit.est_seq = head_to_seq[hit.header]
                 out.append(hit)
                 dupe_divy_headers[gene].add(hit.header)
