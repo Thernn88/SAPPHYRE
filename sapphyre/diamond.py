@@ -31,6 +31,7 @@ ProcessingArgs = namedtuple(
         "debug",
         "result_fp",
         "pairwise_refs",
+        "evalue_threshold"
     ],
 )
 
@@ -436,6 +437,10 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             this_hit = Hit(
                 row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]
             )
+
+            if this_hit.evalue > pargs.evalue_threshold:
+                continue
+
             if this_hit.frame < 0:
                 this_hit.qend, this_hit.qstart = this_hit.qstart, this_hit.qend
             this_hit.length = this_hit.qend - this_hit.qstart + 1
@@ -503,17 +508,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
     OVERSHOOT_AMOUNT = 1.75
     # Minimum amount of hits to delegate to a process
     MINIMUM_CHUNKSIZE = 50
-    # print(args.evalue)
-
-    precision = decimal.Decimal("5") * decimal.Decimal("0.1") ** decimal.Decimal(
-        args.evalue
-    )
-    precision_str = (
-        "{{:.{}f}}".format(args.evalue + 1).format(precision).rstrip("0").rstrip(".")
-    )
-    print(precision_str)
-
-    # print(precision)
+    # Hard coded values for assembly datasets
+    ASSEMBLY_EVALUE = 35
+    ASSEMBLY_MIN_ORF = 40
+    # Default min orf value
+    NORMAL_MIN_ORF = 20
 
     json_encoder = json.Encoder()
 
@@ -574,10 +573,24 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
     # Check if sequence is assembly
     dbis_assembly = nt_db.get("get:isassembly")
+    evalue = args.evalue
+    min_orf = NORMAL_MIN_ORF
     is_assembly = False
     if dbis_assembly:
         if dbis_assembly == "True":
             is_assembly = True
+
+    if is_assembly:
+        evalue = ASSEMBLY_EVALUE
+        min_orf = ASSEMBLY_MIN_ORF
+
+    precision = decimal.Decimal("5") * decimal.Decimal("0.1") ** decimal.Decimal(
+        evalue
+    )
+    # precision_str = (
+    #     "{{:.{}f}}".format(args.evalue + 1).format(precision).rstrip("0").rstrip(".")
+    # )
+    # print(precision_str)
 
     recipe = nt_db.get("getall:batches")
     if recipe:
@@ -606,7 +619,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             )
             time_keeper.lap()  # Reset timer
             os.system(
-                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {precision} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --min-orf 20 --max-hsps 0 -p {num_threads}"
+                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {precision} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --min-orf {min_orf} --max-hsps 0 -p {num_threads}"
             )
             input_file.seek(0)
 
@@ -724,6 +737,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 args.debug,
                 temp_files[i].name,
                 pairwise_refs,
+                precision,
             )
             for i, index in enumerate(indices)
         )
