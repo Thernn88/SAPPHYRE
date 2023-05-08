@@ -577,7 +577,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     dbis_assembly = nt_db.get("get:isassembly")
     evalue = args.evalue
     min_orf = NORMAL_MIN_ORF
-    is_assembly = True
+    is_assembly = False
     if dbis_assembly:
         if dbis_assembly == "True":
             is_assembly = True
