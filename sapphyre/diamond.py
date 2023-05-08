@@ -357,41 +357,42 @@ def containments(hits, target_to_taxon, debug, gene):
     for i, top_hit in enumerate(hits):
         if top_hit.kick:
             continue
+        for top_ref_hit in top_hit.ref_hits:
+            top_hit_reference = top_ref_hit.reftaxon
 
-        top_hit_reference = top_hit.reftaxon
-
-        for hit in hits[i + 1 :]:
-            if hit.kick:
-                continue
-
-            for ref_hit in hit.ref_hits:
-                if target_to_taxon[ref_hit.target][1] != top_hit_reference:
+            for hit in hits[i + 1 :]:
+                if hit.kick:
                     continue
 
-                if get_score_difference(top_hit.score, hit.score) < PARALOG_SCORE_DIFF:
-                    continue
+                for ref_hit in hit.ref_hits: 
+                    if target_to_taxon[ref_hit.target][1] != top_hit_reference:
+                        continue
 
-                overlap_percent = get_overlap(
-                    top_hit.sstart, top_hit.send, ref_hit.sstart, ref_hit.send
-                ) / min(
-                    (top_hit.send - top_hit.sstart), (ref_hit.send - ref_hit.sstart)
-                )
+                    if get_score_difference(top_hit.score, hit.score) < PARALOG_SCORE_DIFF:
+                        continue
 
-                if overlap_percent > KICK_PERCENT:
-                    hit.kick = True
-                    if debug:
-                        log.append(
-                            hit.gene
-                            + " "
-                            + hit.header
-                            + "|"
-                            + str(hit.frame)
-                            + " kicked out by "
-                            + top_hit.header
-                            + "|"
-                            + str(top_hit.frame)
-                            + f" overlap: {overlap_percent:.2f}"
-                        )
+                    overlap_percent = get_overlap(
+                        top_ref_hit.sstart, top_ref_hit.send, ref_hit.sstart, ref_hit.send
+                    ) / min(
+                        (top_ref_hit.send - top_ref_hit.sstart), (ref_hit.send - ref_hit.sstart)
+                    )
+
+                    if overlap_percent > KICK_PERCENT:
+                        hit.kick = True
+                        if debug:
+                            log.append(
+                                hit.gene
+                                + " "
+                                + hit.header
+                                + "|"
+                                + str(hit.frame)
+                                + " kicked out by "
+                                + top_hit.header
+                                + "|"
+                                + str(top_hit.frame)
+                                + f" overlap: {overlap_percent:.2f}"
+                            )
+                        break
 
     return [hit.uid for hit in hits if hit.kick], log, gene
 
@@ -479,6 +480,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                         for hit in hits[1:]
                     ]
                     top_hit.ref_hits.extend(ref_seqs)
+
 
                     output[top_hit.gene].append(top_hit)
 
@@ -575,14 +577,12 @@ def run_process(args: Namespace, input_path: str) -> bool:
     dbis_assembly = nt_db.get("get:isassembly")
     evalue = args.evalue
     min_orf = NORMAL_MIN_ORF
-    is_assembly = False
+    is_assembly = True
     if dbis_assembly:
         if dbis_assembly == "True":
             is_assembly = True
-
-    if is_assembly:
-        evalue = ASSEMBLY_EVALUE
-        min_orf = ASSEMBLY_MIN_ORF
+            evalue = ASSEMBLY_EVALUE
+            min_orf = ASSEMBLY_MIN_ORF
 
     precision = decimal.Decimal("5") * decimal.Decimal("0.1") ** decimal.Decimal(
         evalue
