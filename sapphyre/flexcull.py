@@ -678,7 +678,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                         for i, let in enumerate(seq)
                     ]
                 )
-                if len(new_seq) - new_seq.count("-") <= fargs.bp:
+                if len(new_seq) - new_seq.count("-") < fargs.bp:
                     follow_through[header] = True, None, None, None
                     continue
                 aa_out.append((header, new_seq))
