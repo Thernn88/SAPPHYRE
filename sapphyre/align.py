@@ -94,7 +94,7 @@ def process_genefile(
                 reinsertions[seq_to_first_header[seq_hash]].append(header)
 
                 continue
-            data[header] = sequence
+            data[header] = sequence.replace("-","") # Delete gaps from previous alignment
         else:
             targets[header.split("|")[2]] = header
 
