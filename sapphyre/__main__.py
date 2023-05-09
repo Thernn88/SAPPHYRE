@@ -414,6 +414,13 @@ def subcmd_align(subparsers):
         default=False,
         help="Output intermediate files for debug",
     )
+    par.add_argument(
+        "-frag",
+        "--add_fragments",
+        action="store_true",
+        default=False,
+        help="Output intermediate files for debug",
+    )
     par.set_defaults(func=align, formathelp=par.format_help)
 
 
@@ -747,6 +754,13 @@ def subcmd_wrap_final(sp):
         action="store_false",
         default=True,
         help="Enable second run logic",
+    )
+    par.add_argument(
+        "-frag",
+        "--add_fragments",
+        action="store_true",
+        default=False,
+        help="Output intermediate files for debug",
     )
     par.add_argument(
         "-d",
