@@ -31,6 +31,7 @@ ProcessingArgs = namedtuple(
         "debug",
         "result_fp",
         "pairwise_refs",
+        "is_assembly",
         "evalue_threshold"
     ],
 )
@@ -403,10 +404,11 @@ def containments(hits, target_to_taxon, debug, gene):
     return [hit.uid for hit in hits if hit.kick], log, gene
 
 
-def convert_and_cull(hits, pairwise_refs, gene):
+def convert_and_cull(hits, pairwise_refs, gene, is_assembly):
     output = []
     for hit in hits:
-        hit.ref_hits = [i for i in hit.ref_hits if i.reftaxon in pairwise_refs]
+        if not is_assembly:
+            hit.ref_hits = [ReporterRef(i.target, i.sstart, i.send) for i in hit.ref_hits if i.reftaxon in pairwise_refs]
         output.append(
             ReporterHit(
                 hit.header,
@@ -414,7 +416,7 @@ def convert_and_cull(hits, pairwise_refs, gene):
                 hit.qstart,
                 hit.qend,
                 hit.gene,
-                [ReporterRef(i.target, i.sstart, i.send) for i in hit.ref_hits],
+                hit.reftaxon,
                 hit.uid,
                 hit.ref_hits,
             )
@@ -481,10 +483,14 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                 for _, hits in gene_hits.items():
                     top_hit = hits[0]
 
-                    ref_seqs = [
-                        ReferenceHit(hit.target, hit.reftaxon, hit.sstart, hit.send)
-                        for hit in hits[1:]
-                    ]
+                    if pargs.is_assembly:
+                        ref_seqs = [ReferenceHit(hit.target, hit.reftaxon, hit.sstart, hit.send) for hit in hits[1:]]
+                    else:
+                        ref_seqs = [
+                            ReferenceHit(hit.target, hit.reftaxon, hit.sstart, hit.send)
+                            for hit in hits[1:]
+                            if hit.reftaxon in pargs.pairwise_refs
+                        ]
                     top_hit.ref_hits.extend(ref_seqs)
 
 
@@ -743,6 +749,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 args.debug,
                 temp_files[i].name,
                 pairwise_refs,
+                is_assembly,
                 precision,
             )
             for i, index in enumerate(indices)
@@ -918,6 +925,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                     hits,
                     pairwise_refs,
                     gene,
+                    is_assembly,
                 )
             )
 
