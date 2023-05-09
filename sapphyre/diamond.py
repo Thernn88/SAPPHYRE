@@ -72,6 +72,12 @@ class Hit(Struct):
     ref_hits: list[ReferenceHit] = []
 
 
+class ReporterRef(Struct, frozen=True):
+    target: str
+    sstart: int
+    send: int
+
+
 class ReporterHit(Struct):
     header: str
     frame: int
@@ -80,7 +86,7 @@ class ReporterHit(Struct):
     gene: str
     reftaxon: str
     uid: int
-    ref_hits: list[ReferenceHit]
+    ref_hits: list[ReporterRef]
     est_seq: str = None
 
 
@@ -408,7 +414,7 @@ def convert_and_cull(hits, pairwise_refs, gene):
                 hit.qstart,
                 hit.qend,
                 hit.gene,
-                hit.reftaxon,
+                [ReporterRef(i.target, i.sstart, i.send) for i in hit.ref_hits],
                 hit.uid,
                 hit.ref_hits,
             )
