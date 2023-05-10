@@ -10,7 +10,7 @@ from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import rmtree
 from typing import Union, Literal
-import orjson
+from msgspec import json
 
 import wrap_rocks
 from Bio.Seq import Seq
@@ -792,9 +792,10 @@ def do_folder(folder: Path, args):
     dupe_tmp_file = Path(tmp_dir, "DupeSeqs.tmp")
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
     if rocks_db_path.exists():
+        decoder = json.Decoder(type=dict[str, list[str]])
         rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
-        prepare_dupe_counts = orjson.loads(rocksdb_db.get("getall:gene_dupes"))
-        reporter_dupe_counts = orjson.loads(rocksdb_db.get("getall:reporter_dupes"))
+        prepare_dupe_counts = decoder.decode(rocksdb_db.get("getall:gene_dupes"))
+        reporter_dupe_counts = decoder.decode(rocksdb_db.get("getall:reporter_dupes"))
         ref_stats = rocksdb_db.get("getall:valid_refs").split(",")
     else:
         prepare_dupe_counts = {}

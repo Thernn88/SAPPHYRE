@@ -10,7 +10,7 @@ from shutil import rmtree
 from tempfile import NamedTemporaryFile
 from time import time
 from typing import Any, Callable, Dict, Generator, List, Tuple
-import orjson
+from msgspec import json
 
 import phymmr_tools
 import wrap_rocks
@@ -311,7 +311,7 @@ class DatabasePreparer:
         )
 
         # Store the count of dupes in the database
-        self.nt_db.put_bytes("getall:dupes", orjson.dumps(self.duplicates))
+        self.nt_db.put_bytes("getall:dupes", json.encode(self.duplicates))
 
         self.printv(
             f"{self.fto} took {self.taxa_time_keeper.differential():.2f}s overall\n",

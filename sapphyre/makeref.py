@@ -4,7 +4,7 @@ import os
 from tempfile import NamedTemporaryFile
 from multiprocessing.pool import Pool
 import sqlite3
-import orjson
+from msgspec import json
 import wrap_rocks
 from Bio import SeqIO
 
@@ -276,7 +276,7 @@ def main(args):
     if input_file.split(".")[-1] == "fa":
         for seq_record in SeqIO.parse(input_file, "fasta"):
             header, data = seq_record.description.split(" ", 1)
-            data = orjson.loads(data)
+            data = json.decode(data)
             seq = str(seq_record.seq)
             taxa = data["organism_name"].replace(" ", "_")
             gene = data["pub_og_id"]
@@ -335,13 +335,14 @@ def main(args):
     rocks_db_path = get_set_path(set_name).joinpath("rocksdb")
     rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
 
-    rocksdb_db.put_bytes("getall:taxainset", orjson.dumps(this_set.get_taxa_in_set()))
+    encoder = json.Encoder()
+    rocksdb_db.put_bytes("getall:taxainset", encoder.encode(this_set.get_taxa_in_set()))
 
-    rocksdb_db.put_bytes("getall:refseqs", orjson.dumps(taxon_to_sequences))
-    rocksdb_db.put_bytes("getall:targetreference", orjson.dumps(target_to_taxon))
+    rocksdb_db.put_bytes("getall:refseqs", encoder.encode(taxon_to_sequences))
+    rocksdb_db.put_bytes("getall:targetreference", encoder.encode(target_to_taxon))
 
     for gene, data in this_set.get_core_sequences().items():
-        rocksdb_db.put_bytes(f"getcore:{gene}", orjson.dumps(data))
+        rocksdb_db.put_bytes(f"getcore:{gene}", encoder.encode(data))
 
     print("Done!")
     return True
