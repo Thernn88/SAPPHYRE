@@ -721,16 +721,6 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
             post_character_at_each_pos[col] = set(letters).union(blosum_add)
 
-        if fargs.debug:
-            aa_out = [
-                (
-                    "Reference Gap Columns DEBUG.",
-                    "".join(
-                        ["#" if i in reference_gap_col else "-" for i in reference_cols]
-                    ),
-                )
-            ] + aa_out
-
         gap_pass_through = {}
         for record_index, record in enumerate(aa_out):
             header, sequence = record
