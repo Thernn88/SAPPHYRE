@@ -1,14 +1,17 @@
 from __future__ import annotations
-from math import ceil
+
 import os
+import subprocess
 from collections import defaultdict, namedtuple
+from math import ceil
 from multiprocessing.pool import Pool
 from shutil import rmtree
-import subprocess
-from tempfile import TemporaryDirectory, NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
+
 import xxhash
-from .utils import printv, gettempdir, parseFasta, writeFasta
-from .timekeeper import TimeKeeper, KeeperMode
+
+from .timekeeper import KeeperMode, TimeKeeper
+from .utils import gettempdir, parseFasta, printv, writeFasta
 
 KMER_LEN = 15
 KMER_PERCENT = 0.15
@@ -23,10 +26,10 @@ SINGLETONS_REQUIRED = (
 
 
 def find_kmers(fasta: dict) -> dict[str, set]:
-    """
-    Returns the kmers of length KMER_LEN for each sequence in the fasta dict.
+    """Returns the kmers of length KMER_LEN for each sequence in the fasta dict.
 
     Args:
+    ----
         fasta (dict): A dictionary of header -> sequence
     Returns:
         dict[str, set]: A dictionary of header -> set of kmers
@@ -46,10 +49,10 @@ ALN_FOLDER = "aln"
 
 
 def get_start(sequence: str) -> int:
-    """
-    Returns the index of the first non-gap character in the sequence.
+    """Returns the index of the first non-gap character in the sequence.
 
     Args:
+    ----
         sequence (str): The sequence to check
     Returns:
         int: The index of the first non-gap character
@@ -63,8 +66,7 @@ def get_start(sequence: str) -> int:
 def process_genefile(
     path: str,
 ) -> tuple[int, dict[str, str], dict[str, str], dict[str, list[str]], dict[str, str]]:
-    """
-    Returns the number of sequences, the sequences, the targets, the reinsertions and the
+    """Returns the number of sequences, the sequences, the targets, the reinsertions and the
     trimmed header to full header.
 
     Reinsertions are dupes where the sequences are exactly the same. To save on computation we
@@ -72,6 +74,7 @@ def process_genefile(
     duplicate parents with the same alignment.
 
     Args:
+    ----
         path (str): The path to the gene file
     Returns:
         tuple[int, dict[str, str], dict[str, str], dict[str, list[str]], dict[str, str]]:
@@ -102,10 +105,10 @@ def process_genefile(
 
 
 def delete_empty_cols(records: list[tuple[str, str]]) -> list[tuple[str, str]]:
-    """
-    Deletes columns that are empty in all sequences.
+    """Deletes columns that are empty in all sequences.
 
     Args:
+    ----
         records (list[tuple[str, str]]): A list of tuples of header, sequence
     Returns:
         list[tuple[str, str]]: A list of tuples of header, sequence with removed columns
@@ -114,9 +117,8 @@ def delete_empty_cols(records: list[tuple[str, str]]) -> list[tuple[str, str]]:
     output = []
     for _, sequence in records:
         for x, let in enumerate(sequence):
-            if x not in cols_to_keep:
-                if let != "-":
-                    cols_to_keep.add(x)
+            if x not in cols_to_keep and let != "-":
+                cols_to_keep.add(x)
     for header, sequence in records:
         sequence = [let for x, let in enumerate(sequence) if x in cols_to_keep]
         output.append((header, "".join(sequence)))
@@ -125,12 +127,12 @@ def delete_empty_cols(records: list[tuple[str, str]]) -> list[tuple[str, str]]:
 
 
 def compare_cluster(
-    cluster_a: list[str], cluster_b: list[str], kmers: dict[str, set]
+    cluster_a: list[str], cluster_b: list[str], kmers: dict[str, set],
 ) -> float:
-    """
-    Calculates the average kmer similarity between children of two clusters.
+    """Calculates the average kmer similarity between children of two clusters.
 
     Args:
+    ----
         cluster_a (list[str]): A list of headers in cluster a
         cluster_b (list[str]): A list of headers in cluster b
         kmers (dict[str, set]): A dictionary of header -> set of kmers
@@ -152,12 +154,12 @@ def compare_cluster(
 
 
 def generate_clusters(data: dict[str, str]) -> list[list[str]]:
-    """
-    Generates clusters from a dictionary of header -> sequence.
+    """Generates clusters from a dictionary of header -> sequence.
 
     Clusters are based on the average identity of kmers between sequences.
 
     Args:
+    ----
         data (dict[str, str]): A dictionary of header -> sequence
     Returns:
         list[list[str]]: A list of each clusters' headers
@@ -186,9 +188,7 @@ def generate_clusters(data: dict[str, str]) -> list[list[str]]:
                         if candidate:
                             # Check similarity against both parent set and child sets
                             matched = False
-                            for header_to_check in [master_header] + list(
-                                child_sets[master_header]
-                            ):
+                            for header_to_check in [master_header, *list(child_sets[master_header])]:
                                 set_to_check = kmers[header_to_check]
                                 if set_to_check is None:
                                     continue
@@ -209,10 +209,10 @@ def generate_clusters(data: dict[str, str]) -> list[list[str]]:
                                         ):
                                             # Add the candidate set as a child set of the primary set
                                             child_sets[master_header].add(
-                                                candidate_header
+                                                candidate_header,
                                             )
                                             cluster_children[master_header].extend(
-                                                cluster_children[candidate_header]
+                                                cluster_children[candidate_header],
                                             )
 
                                             # Remove candidate
@@ -230,13 +230,13 @@ def generate_clusters(data: dict[str, str]) -> list[list[str]]:
 
 
 def seperate_into_clusters(
-    cluster_children: list[list[str]], parent_tmpdir: str, data: dict[str, str]
+    cluster_children: list[list[str]], parent_tmpdir: str, data: dict[str, str],
 ) -> list[list[str]]:
-    """
-    Seperates sequence records into clusters and subclusters
+    """Seperates sequence records into clusters and subclusters
     if they are larger than SUBCLUSTER_AT.
 
     Args:
+    ----
         cluster_children (list[list[str]]): A list of each clusters' headers
         parent_tmpdir (str): The parent temporary directory
         data (dict[str, str]): A dictionary of header -> sequence
@@ -249,7 +249,7 @@ def seperate_into_clusters(
             if len(this_cluster) > SUBCLUSTER_AT:
                 clusters_to_create = ceil(len(this_cluster) / CLUSTER_EVERY)
                 with NamedTemporaryFile(
-                    mode="w+", dir=parent_tmpdir, suffix=".fa"
+                    mode="w+", dir=parent_tmpdir, suffix=".fa",
                 ) as this_tmp:
                     writeFasta(
                         this_tmp.name,
@@ -270,7 +270,7 @@ def seperate_into_clusters(
                         if line:
                             seq_index, clust_index = line.strip().split(",")
                             sub_clusters[clust_index].append(
-                                this_cluster[int(seq_index)]
+                                this_cluster[int(seq_index)],
                             )
                     clusters.extend(list(sub_clusters.values()))
                     continue
@@ -286,10 +286,10 @@ def generate_tmp_aln(
     debug: float,
     this_intermediates: str,
 ) -> None:
-    """
-    Grabs target reference sequences and removes empty columns from the alignment.
+    """Grabs target reference sequences and removes empty columns from the alignment.
 
     Args:
+    ----
         aln_file (str): The path to the alignment file
         targets (dict[str, str]): A dictionary of target -> header
         tmp (NamedTemporaryFile): The temporary file to write to
@@ -318,9 +318,9 @@ def generate_tmp_aln(
             (
                 header,
                 "".join(
-                    [let for col, let in enumerate(sequence) if not empty_columns[col]]
+                    [let for col, let in enumerate(sequence) if not empty_columns[col]],
                 ),
-            )
+            ),
         )
 
     writeFasta(tmp.name, to_write)
@@ -341,7 +341,7 @@ CmdArgs = namedtuple(
         "aln_path",
         "debug",
         "only_singletons",
-        "add_fragments"
+        "add_fragments",
     ],
 )
 
@@ -356,15 +356,14 @@ def run_command(args: CmdArgs) -> None:
     aligned_ingredients = []
 
     this_intermediates = os.path.join("intermediates", args.gene)
-    if debug:
-        if not os.path.exists(this_intermediates):
-            os.mkdir(this_intermediates)
+    if debug and not os.path.exists(this_intermediates):
+        os.mkdir(this_intermediates)
 
     aln_file = os.path.join(args.aln_path, args.gene + ".aln.fa")
     to_merge = []
 
     with TemporaryDirectory(dir=temp_dir) as parent_tmpdir, TemporaryDirectory(
-        dir=parent_tmpdir
+        dir=parent_tmpdir,
     ) as raw_files_tmp, TemporaryDirectory(dir=parent_tmpdir) as aligned_files_tmp:
         printv(
             f"Cleaning NT file. Elapsed time: {keeper.differential():.2f}",
@@ -466,7 +465,7 @@ def run_command(args: CmdArgs) -> None:
                 aligned_cluster = os.path.join(aligned_files_tmp, this_clus_align)
 
                 raw_cluster = os.path.join(
-                    raw_files_tmp, f"{args.gene}_cluster{cluster_i}"
+                    raw_files_tmp, f"{args.gene}_cluster{cluster_i}",
                 )
                 writeFasta(raw_cluster, cluster_seqs)
                 if debug:
@@ -476,7 +475,7 @@ def run_command(args: CmdArgs) -> None:
                     )
 
                 command = args.string.format(
-                    in_file=raw_cluster, out_file=aligned_cluster
+                    in_file=raw_cluster, out_file=aligned_cluster,
                 )
                 os.system(command)
 
@@ -486,7 +485,7 @@ def run_command(args: CmdArgs) -> None:
                     printv(command, args.verbose, 3)
                     writeFasta(
                         os.path.join(
-                            this_intermediates, os.path.split(aligned_cluster)[-1]
+                            this_intermediates, os.path.split(aligned_cluster)[-1],
                         ),
                         aligned_sequences,
                     )
@@ -497,13 +496,13 @@ def run_command(args: CmdArgs) -> None:
         has_singleton_merge = len(to_merge) > 0
         if has_singleton_merge:
             merged_singleton_final = os.path.join(
-                aligned_files_tmp, f"{args.gene}_cluster_merged_singletons"
+                aligned_files_tmp, f"{args.gene}_cluster_merged_singletons",
             )
             writeFasta(merged_singleton_final, to_merge)
             if args.debug:
                 writeFasta(
                     os.path.join(
-                        this_intermediates, f"{args.gene}_cluster_merged_singletons"
+                        this_intermediates, f"{args.gene}_cluster_merged_singletons",
                     ),
                     to_merge,
                 )
@@ -535,7 +534,7 @@ def run_command(args: CmdArgs) -> None:
 
                     if has_singleton_merge and i == 0:
                         os.system(
-                            f"mafft --anysymbol --jtt 1 --quiet --addfragments {file} --thread 1 {prev_file} > {out_file}"
+                            f"mafft --anysymbol --jtt 1 --quiet --addfragments {file} --thread 1 {prev_file} > {out_file}",
                         )
                         if args.debug:
                             printv(
@@ -545,7 +544,7 @@ def run_command(args: CmdArgs) -> None:
                             )
                     else:
                         os.system(
-                            f"clustalo --p1 {prev_file} --p2 {file} -o {out_file} --threads=1 --full --is-profile --force"
+                            f"clustalo --p1 {prev_file} --p2 {file} -o {out_file} --threads=1 --full --is-profile --force",
                         )
                         if debug:
                             printv(
@@ -609,12 +608,11 @@ def do_folder(folder, args):
     only_singletons = set()
     for gene, _ in genes:
         for _, seq in parseFasta(
-            os.path.join(aln_path, gene.split(".")[0] + ".aln.fa"), True
+            os.path.join(aln_path, gene.split(".")[0] + ".aln.fa"), True,
         ):
             if len(seq) >= SAFEGUARD_BP:
                 printv(f"{gene} will be using Singletons only", args.verbose, 3)
                 only_singletons.add(gene)
-                # break
     if not os.path.exists(orthoset_path):
         printv("ERROR: Orthoset path not found.", args.verbose, 0)
         return False
@@ -625,7 +623,6 @@ def do_folder(folder, args):
     command = "clustalo -i {in_file} -o {out_file} --threads=1 --full"
     if args.second_run:
         command += " --full-iter --iter=1"
-    # command = f"mafft --maxiterate 2 --anysymbol --quiet --thread 1 {{in_file}} > {{out_file}}"
 
     intermediates = "intermediates"
     if not os.path.exists(intermediates):
@@ -650,7 +647,7 @@ def do_folder(folder, args):
                     file in only_singletons,
                     args.add_fragments,
                 ),
-            )
+            ),
         )
 
     if args.processes > 1:
@@ -661,7 +658,6 @@ def do_folder(folder, args):
 
     # if args.debug:
     # with open("mafft_times.csv", "w") as fp:
-    # fp.write("\n".join(["Gene,Clustering,Aligning,Merging,Total"]+[",".join(map(str, i)) for i in times]))
 
     printv(f"Done! Took {time_keeper.differential():.2f}s overall", args.verbose, 0)
     return True
@@ -683,4 +679,5 @@ def main(args):
 
 
 if __name__ == "__main__":
-    raise Exception("Cannot be called directly, please use the module:\nsapphyre align")
+    msg = "Cannot be called directly, please use the module:\nsapphyre align"
+    raise Exception(msg)

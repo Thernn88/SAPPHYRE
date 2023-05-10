@@ -16,13 +16,13 @@ def download_parallel(arguments):
     printv(f"Download {srr_acession} to {path_to_download}...", verbose)
 
     with Popen(
-        f"{command} {srr_acession} -O {path_to_download}", shell=True, stdout=PIPE
+        f"{command} {srr_acession} -O {path_to_download}", shell=True, stdout=PIPE,
     ) as p:
         try:
             print(p.stdout.read().decode())
         except UnicodeDecodeError:
             print(
-                "ErrUnicode decoding error, UTF-8 charset does not contain the bytecode for gotten character"
+                "ErrUnicode decoding error, UTF-8 charset does not contain the bytecode for gotten character",
             )
             sys.exit(1)
 
@@ -33,10 +33,9 @@ def main(args):
         cmd = Path(args.bin, cmd)
 
     csvfile = Path(args.INPUT)
-    # target_folder = csvfile.name.removesuffix(".csv")
     path_to_download = Path(os.getcwd(), csvfile.name.removesuffix(".csv"))
 
-    with open(csvfile, mode="r", encoding="utf-8") as fp:
+    with open(csvfile, encoding="utf-8") as fp:
         csv_read = csv.reader(fp, delimiter=",", quotechar='"')
         arguments = []
         for i, fields in enumerate(csv_read):
@@ -61,9 +60,8 @@ def main(args):
                     out_fields.append(f'"{srr_acession}"')
 
                     # TODO: verify download is successful
-                    # expected_directory = Path(path_to_download, f'{srr_acession}.fastq')
                     arguments.append(
-                        (cmd, srr_acession, path_to_download, args.verbose)
+                        (cmd, srr_acession, path_to_download, args.verbose),
                     )
 
         with ThreadPoolExecutor(args.processes) as pool:

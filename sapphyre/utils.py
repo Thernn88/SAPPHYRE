@@ -1,17 +1,15 @@
-# -*- coding: utf-8 -*-
 # © 2022 GPLv3+ Sapphyre Team
 import gzip
 import os
-from threading import Thread
+from collections.abc import Generator
 from queue import Queue
-from typing import Generator
-import pyfastx
+from threading import Thread
 
-# from Bio.SeqIO.QualityIO import FastqGeneralIterator
+import pyfastx
 
 
 class ConcurrentLogger(Thread):
-    def __init__(self, inq: Queue):
+    def __init__(self, inq: Queue) -> None:
         super().__init__(daemon=True)
         self.inq = inq
 
@@ -39,10 +37,9 @@ def gettempdir():
 
 
 def parseFasta(
-    path: str, has_interleave=False
+    path: str, has_interleave=False,
 ) -> Generator[tuple[str, str], None, None]:
-    """
-    Iterate over a Fasta file returning sequence records as string tuples.
+    """Iterate over a Fasta file returning sequence records as string tuples.
     Designed in order to handle .gz and .fasta files with potential interleave.
     """
     if has_interleave or str(path).rsplit(".", maxsplit=1)[-1] in {"fastq", "fq", "gz"}:
@@ -65,9 +62,7 @@ def parseFasta(
 
 
 def writeFasta(path: str, records: tuple[str, str], compress=False):
-    """
-    Writes sequence records to a Fasta format file.
-    """
+    """Writes sequence records to a Fasta format file."""
     func = open
     if compress:
         path += ".gz"

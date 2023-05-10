@@ -1,11 +1,10 @@
-# -*- coding: utf-8 -*-
 # © 2022 GPLv3+ Sapphyre Team
 """Simple helper class to measure the time a piece of code takes to execute.
 
 It can either work with 2 time point, or a series of them.
 
 Example:
-
+-------
     from timekeeper import TimeKeeper
     tike = TimeKeeper(mode=KeeperMode.DIRECT)
     ...
@@ -14,7 +13,7 @@ Example:
 To take multiple point, in the use case of a generator.
 
 Example:
-
+-------
     from timekeeper import TimeKeeper
     tike = TimeKeeper(mode=KeeperMode.SUM)
     ...
@@ -22,6 +21,7 @@ Example:
         ...
         tike.timer1("now")
     print("Loop has taken {} seconds".format(tike.differential())
+
 """
 from enum import IntFlag, auto
 from time import time
@@ -41,9 +41,9 @@ class KeeperMode(IntFlag):
 
 
 class TimeKeeper:
-    def __init__(self, mode: KeeperMode, auto_t1=True):
+    def __init__(self, mode: KeeperMode, auto_t1=True) -> None:
         if not isinstance(mode, IntFlag) or mode not in KeeperMode:
-            raise KeeperBadMode()
+            raise KeeperBadMode
         self.mode = mode
         self._t1 = None if mode is KeeperMode.DIRECT else []
         self._t2 = None
@@ -79,7 +79,8 @@ class TimeKeeper:
         elif isinstance(t1, float):
             self._t1 = t1
         else:
-            raise KeeperBadTime(f"Unable to understand value '{t1}'.")
+            msg = f"Unable to understand value '{t1}'."
+            raise KeeperBadTime(msg)
 
     def lap(self):
         t2 = self._t2
@@ -92,9 +93,11 @@ class TimeKeeper:
         if not t2:
             return time() - self.time1
         if not isinstance(t2, float):
-            raise KeeperBadTime(f"Second timestamp must be a float, got {t2} instead.")
+            msg = f"Second timestamp must be a float, got {t2} instead."
+            raise KeeperBadTime(msg)
         if not t2 >= self.time1:
-            raise KeeperBadTime("Second timestamp is lower than the first.")
+            msg = "Second timestamp is lower than the first."
+            raise KeeperBadTime(msg)
         return t2 - self.time1
 
     def format(self, string):
@@ -102,7 +105,7 @@ class TimeKeeper:
         return string.format(total=self.differential())
 
     def format2(self, string):
-        """format and return a string containing {total} and {lap}"""
+        """Format and return a string containing {total} and {lap}."""
         return string.format(total=self.differential(), lap=self.lap())
 
 

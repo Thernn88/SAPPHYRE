@@ -1,6 +1,5 @@
 #!/usr/bin/env python
-"""
-Order:
+"""Order:
     1. Prepare
     2. Diamond
     3. Reporter
@@ -10,7 +9,7 @@ Post-processing:
     7. FlexCull (optional)
     8. Outlier
     9. Merge
-    10. Combine
+    10. Combine.
 """
 import argparse
 
@@ -86,10 +85,10 @@ def subcmd_diamond(subparsers):
         help="To be written.",
     )
     par.add_argument(
-        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
+        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+",
     )
     par.add_argument(
-        "-ovw", "--overwrite", action="store_true", help="Overwrite existing files."
+        "-ovw", "--overwrite", action="store_true", help="Overwrite existing files.",
     )
     par.add_argument("-d", "--debug", action="store_true", help="Enable debug out.")
 
@@ -152,7 +151,7 @@ def subcmd_reporter(subparsers):
         help="Trims mapped sequence to mapped region." "Produces aa and nt output.",
     )
     par.add_argument(
-        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
+        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+",
     )
     par.add_argument(
         "-bp",
@@ -306,7 +305,7 @@ def subcmd_Merge(subparsers):
         "into contiguous segments (Contigs).",
     )
     par.add_argument(
-        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
+        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+",
     )
     par.add_argument(
         "-aa",
@@ -395,10 +394,10 @@ def Combine(args):
 
 def subcmd_align(subparsers):
     par = subparsers.add_parser(
-        "align", help="Aligns AA sequences against existing reference alignment."
+        "align", help="Aligns AA sequences against existing reference alignment.",
     )
     par.add_argument(
-        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
+        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+",
     )
     par.add_argument(
         "-sr",
@@ -439,7 +438,7 @@ def subcmd_pal2nal(subparsers):
         "table. Also performs basic error checking on data.",
     )
     par.add_argument(
-        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
+        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+",
     )
     par.add_argument("-t", "--table", type=int, default=1, help="Table ID.")
     par.set_defaults(func=pal2nal, formathelp=par.format_help)
@@ -460,16 +459,16 @@ def subcmd_flexcull(subparsers):
         "candidate reads to remove introns and/or other LQ bases.",
     )
     par.add_argument(
-        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
+        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+",
     )
     par.add_argument(
-        "-o", "--output", type=str, default="trimmed", help="Output Directory."
+        "-o", "--output", type=str, default="trimmed", help="Output Directory.",
     )
     par.add_argument(
-        "-aa", "--amino-acid", type=str, default="align", help="AA Folder Name."
+        "-aa", "--amino-acid", type=str, default="align", help="AA Folder Name.",
     )
     par.add_argument(
-        "-nt", "--nucleotide", type=str, default="nt_aligned", help="NT Folder Name."
+        "-nt", "--nucleotide", type=str, default="nt_aligned", help="NT Folder Name.",
     )  #
     par.add_argument(
         "-bm",
@@ -507,7 +506,7 @@ def subcmd_flexcull(subparsers):
         help="Percentage of references that must contain a gap to allow a match to continue.",
     )
     par.add_argument(
-        "-bp", "--base-pair", type=int, default=20, help="Minimum bp after cull."
+        "-bp", "--base-pair", type=int, default=20, help="Minimum bp after cull.",
     )
     par.add_argument(
         "-d",
@@ -566,10 +565,10 @@ def subcmd_finalize(subparsers):
     )
 
     par.add_argument(
-        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
+        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+",
     )
     par.add_argument(
-        "-k", "--kick_file", type=str, default="TaxaKick.txt", help="Percent"
+        "-k", "--kick_file", type=str, default="TaxaKick.txt", help="Percent",
     )
     par.add_argument(
         "-t",
@@ -634,7 +633,7 @@ def subcmd_finalize(subparsers):
 
 def subcmd_download(sp):
     par = sp.add_parser(
-        "download", help="Download fastq files from www.ncbi.nlm.nih.gov"
+        "download", help="Download fastq files from www.ncbi.nlm.nih.gov",
     )
     par.add_argument(
         "INPUT",
@@ -705,7 +704,7 @@ def subcmd_makeref(sp):
         help="What alignment method to use.",
     )
     par.add_argument(
-        "-s", "--set", type=str, help="Name of the current set being produced/modified."
+        "-s", "--set", type=str, help="Name of the current set being produced/modified.",
     )
     par.add_argument(
         "-od",
@@ -715,7 +714,7 @@ def subcmd_makeref(sp):
         help="Path to the Orthosets dir.",
     )
     par.add_argument(
-        "-ovw", "--overwrite", action="store_true", help="Overwrite existing files."
+        "-ovw", "--overwrite", action="store_true", help="Overwrite existing files.",
     )
     par.set_defaults(func=makeref, formathelp=par.format_help)
 
@@ -731,7 +730,7 @@ def makeref(argsobj):
 def subcmd_wrap_final(sp):
     par = sp.add_parser("reconcile", help="Wrapper for Second Run")  # TODO add me
     par.add_argument(
-        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+"
+        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+",
     )
     par.add_argument("-t", "--table", type=int, default=1, help="Table ID.")
     par.add_argument(
@@ -793,7 +792,7 @@ def subcmd_wrap_final(sp):
 
 
 def wrap_final(argsobj):
-    from . import merge, pal2nal, align
+    from . import align, merge, pal2nal
 
     print("Triggering Align")
     if not align.main(argsobj):
@@ -811,7 +810,7 @@ def wrap_final(argsobj):
 
 def subcmd_auto(subparsers):
     par = subparsers.add_parser(
-        "auto", help="Aligns AA sequences against existing reference alignment."
+        "auto", help="Aligns AA sequences against existing reference alignment.",
     )
     par.add_argument(
         "INPUT",
@@ -898,7 +897,6 @@ if __name__ == "__main__":
     subcmd_diamond(subparsers)
     subcmd_reporter(subparsers)
 
-    # align > pal2nal > FlexCull (optional) > outlier > Merge
     subcmd_align(subparsers)
     subcmd_pal2nal(subparsers)
     subcmd_flexcull(subparsers)

@@ -1,5 +1,4 @@
-"""
-FlexCull Description Goes Here
+"""FlexCull Description Goes Here.
 
 PyLint 9.81/10
 """
@@ -10,9 +9,11 @@ from collections import Counter, namedtuple
 from itertools import chain
 from multiprocessing.pool import Pool
 from shutil import rmtree
+
 import blosum as bl
-from .utils import printv, parseFasta, writeFasta
-from .timekeeper import TimeKeeper, KeeperMode
+
+from .timekeeper import KeeperMode, TimeKeeper
+from .utils import parseFasta, printv, writeFasta
 
 MainArgs = namedtuple(
     "MainArgs",
@@ -55,18 +56,14 @@ FlexcullArgs = namedtuple(
 
 
 def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
-    """
-    Iterates over each sequence and deletes columns
+    """Iterates over each sequence and deletes columns
     that were removed in the empty column removal.
     """
-    # raw_sequences = [
     #     i.replace("\n", "") for i in raw_fed_sequences if i.replace("\n", "") != ""
-    # ]
 
     result = []
     raw_sequences = [*chain.from_iterable(raw_fed_sequences)]
     for i in range(0, len(raw_sequences), 2):
-        # result.append(raw_sequences[i])
 
         sequence = raw_sequences[i + 1]
 
@@ -77,18 +74,13 @@ def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
 
 
 def delete_empty_columns(raw_fed_sequences: list, verbose: bool) -> tuple[list, list]:
-    """
-    Iterates over each sequence and deletes columns
+    """Iterates over each sequence and deletes columns
     that consist of 100% dashes. In this version, raw_feed_sequences
     is a list of tuples.
     """
     result = []
-    # sequences = []
-    # raw_sequences = [
     #     i.replace("\n", "") for i in raw_fed_sequences if i.replace("\n", "") != ""
-    # ]
     # for i in range(0, len(raw_sequences), 2):
-    #     sequences.append(raw_sequences[i + 1])
     raw_sequences = [*chain.from_iterable(raw_fed_sequences)]
     sequences = [x[1] for x in raw_fed_sequences]
     positions_to_keep = []
@@ -102,7 +94,6 @@ def delete_empty_columns(raw_fed_sequences: list, verbose: bool) -> tuple[list, 
         for i in range(0, len(raw_sequences), 2):
             try:
                 sequence = [raw_sequences[i + 1][x] for x in positions_to_keep]
-                # result.append(raw_sequences[i])
             except IndexError:
                 printv(
                     f"WARNING: Sequence length is not the same as other sequences: {raw_sequences[i]}",
@@ -118,9 +109,8 @@ def delete_empty_columns(raw_fed_sequences: list, verbose: bool) -> tuple[list, 
 
 
 def folder_check(output_target_path: str, input_target_path: str) -> str:
-    """
-    Checks to see if input and output directory has the necessary
-    folder structure
+    """Checks to see if input and output directory has the necessary
+    folder structure.
 
     if not, create missing folders.
 
@@ -149,16 +139,12 @@ def folder_check(output_target_path: str, input_target_path: str) -> str:
 
 
 def make_nt(aa_file_name: str) -> str:
-    """
-    Converts AA file name to NT file name
-    """
+    """Converts AA file name to NT file name."""
     return aa_file_name.replace(".aa.", ".nt.")
 
 
 def parse_fasta(fasta_path: str) -> tuple:
-    """
-    Parses fasta file into header and sequences
-    """
+    """Parses fasta file into header and sequences."""
     references = []
     candidates = []
 
@@ -183,9 +169,7 @@ def trim_around(
     character_at_each_pos,
     gap_present_threshold,
 ) -> tuple:
-    """
-    Trim around a given position in a sequence
-    """
+    """Trim around a given position in a sequence."""
     offset = amt_matches - 1
     cull_end = upper_limit
     for i in range(starting_index, len(sequence) - 1):
@@ -426,9 +410,7 @@ def do_cull(
 
 
 def get_start_end(sequence: str) -> tuple:
-    """
-    Returns the start and end of the sequence
-    """
+    """Returns the start and end of the sequence."""
     start = 0
     end = len(sequence)
     for i, char in enumerate(sequence):
@@ -443,9 +425,7 @@ def get_start_end(sequence: str) -> tuple:
 
 
 def do_gene(fargs: FlexcullArgs) -> None:
-    """
-    FlexCull main function. Culls input aa and nt using specified amount of matches
-    """
+    """FlexCull main function. Culls input aa and nt using specified amount of matches."""
     gene_path = os.path.join(fargs.aa_input, fargs.aa_file)
     this_gene = fargs.aa_file.split(".")[0]
 
@@ -468,7 +448,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
     column_cull = set()
 
-    for header, sequence in references:
+    for _header, sequence in references:
         for i, char in enumerate(sequence):
             if char == "*":
                 char = "-"
@@ -576,7 +556,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
                 if (
                     get_data_difference(
-                        left_of_trim_data_columns, left_side_ref_data_columns
+                        left_of_trim_data_columns, left_side_ref_data_columns,
                     )
                     < 0.55
                 ):  # candidate has less than % of data columns compared to reference
@@ -585,7 +565,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                         out_line[x] = "-"
                 if (
                     get_data_difference(
-                        right_of_trim_data_columns, right_side_ref_data_columns
+                        right_of_trim_data_columns, right_side_ref_data_columns,
                     )
                     < 0.55
                 ):
@@ -601,7 +581,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                 follow_through[header] = True, 0, 0, []
                 if fargs.debug:
                     log.append(
-                        gene + "," + header + ",Kicked,Codon cull found no match,0,\n"
+                        gene + "," + header + ",Kicked,Codon cull found no match,0,\n",
                     )
                 continue
 
@@ -635,7 +615,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                         + str(data_length)
                         + ","
                         + str(data_removed)
-                        + "\n"
+                        + "\n",
                     )
             else:
                 follow_through[header] = True, 0, 0, []
@@ -646,7 +626,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                         + header
                         + ",Kicked,Minimum BP Not Met,"
                         + str(bp_after_cull)
-                        + ",\n"
+                        + ",\n",
                     )
         if kick:
             follow_through[header] = True, 0, 0, []
@@ -676,7 +656,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                     [
                         let if i * 3 not in this_column_cull else "-"
                         for i, let in enumerate(seq)
-                    ]
+                    ],
                 )
                 if len(new_seq) - new_seq.count("-") < fargs.bp:
                     follow_through[header] = True, None, None, None
@@ -761,14 +741,14 @@ def do_gene(fargs: FlexcullArgs) -> None:
                                 gap_present_threshold[x] for x in range(seq_start, i)
                             )
                             left_of_trim_data_columns = len(
-                                left_after
+                                left_after,
                             ) - left_after.count("-")
 
                             right_side_ref_data_columns = sum(
                                 gap_present_threshold[x] for x in range(i, seq_end)
                             )
                             right_of_trim_data_columns = len(
-                                right_after
+                                right_after,
                             ) - right_after.count("-")
 
                             # If both sides kicked and sequence ends up being empty keep the side with the most bp.
@@ -788,7 +768,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                                 < 0.55
                             ):
                                 keep_left = len(left_after) - left_after.count(
-                                    "-"
+                                    "-",
                                 ) >= len(right_after) - right_after.count("-")
                                 keep_right = not keep_left
 
@@ -825,7 +805,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                         if fargs.debug:
                             removed_section = sequence[:seq_start] + sequence[seq_end:]
                             data_removed = len(removed_section) - removed_section.count(
-                                "-"
+                                "-",
                             )
                             log.append(
                                 gene
@@ -835,7 +815,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                                 + str(bp_after_cull)
                                 + ","
                                 + str(data_removed)
-                                + "\n"
+                                + "\n",
                             )
                         follow_through[header] = True, None, None, None
                         aa_out[record_index] = None
@@ -893,9 +873,9 @@ def do_gene(fargs: FlexcullArgs) -> None:
                                 [
                                     sequence[i : i + 3] if i not in gap_cull else "---"
                                     for i in range(0, len(sequence), 3)
-                                ]
+                                ],
                             ),
-                        )
+                        ),
                     )
                 else:
                     out_nt.append((header, sequence))
@@ -924,7 +904,7 @@ def do_folder(folder, args: MainArgs):
         if input_gene.split(".")[-1] in ["fa", "gz", "fq", "fastq", "fasta"]
     ]
     file_inputs.sort(
-        key=lambda x: os.path.getsize(os.path.join(aa_path, x)), reverse=True
+        key=lambda x: os.path.getsize(os.path.join(aa_path, x)), reverse=True,
     )
 
     blosum_mode_lower_threshold = (
@@ -955,7 +935,7 @@ def do_folder(folder, args: MainArgs):
                         args.column_cull,
                         blosum_mode_lower_threshold,
                     ),
-                )
+                ),
             )
 
         with Pool(args.processes) as pool:
@@ -977,7 +957,7 @@ def do_folder(folder, args: MainArgs):
                     args.mismatches,
                     args.column_cull,
                     blosum_mode_lower_threshold,
-                )
+                ),
             )
             for input_gene in file_inputs
         ]
@@ -990,7 +970,7 @@ def do_folder(folder, args: MainArgs):
 
         log_global.sort()
         log_global.insert(
-            0, "Gene,Header,Cull To Start,Cull To End,Data Length,Data Removed\n"
+            0, "Gene,Header,Cull To Start,Cull To End,Data Length,Data Removed\n",
         )
         log_out = os.path.join(output_path, "Culls.csv")
         with open(log_out, "w") as fp:
@@ -1012,6 +992,7 @@ def main(args):
 
 
 if __name__ == "__main__":
+    msg = "Cannot be called directly, please use the module:\nsapphyre FlexCull"
     raise Exception(
-        "Cannot be called directly, please use the module:\nsapphyre FlexCull"
+        msg,
     )

@@ -1,21 +1,21 @@
-"""
-Outlier Check
-"""
+"""Outlier Check."""
 from __future__ import annotations
+
 import os
+import sys
 from copy import deepcopy
 from itertools import combinations
 from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import rmtree
-import sys
+
 import numpy as np
 import phymmr_tools as bd
 from msgspec import Struct
 from phymmr_tools import constrained_distance, dumb_consensus
 
+from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, write2Line2Fasta
-from .timekeeper import TimeKeeper, KeeperMode
 
 ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta", ".fa", ".gz", ".fq", ".fastq")
 
@@ -29,7 +29,7 @@ class Record(Struct):
     mean_distance: np.float16 = None
     grade: str = None
 
-    def __str__(self):
+    def __str__(self) -> str:
         return self.sequence
 
     def get_result(self):
@@ -48,14 +48,10 @@ class Record(Struct):
 
 
 def nan_check(iterable) -> bool:
-    """
-    Checks elements in iterable for numeric values.
+    """Checks elements in iterable for numeric values.
     Returns True if numeric value is found. Otherwise returns False.
     """
-    for element in iterable:
-        if not np.isnan(element):
-            return True
-    return False
+    return any(not np.isnan(element) for element in iterable)
 
 
 def fast_pop(array: list, i: int):
@@ -82,8 +78,7 @@ def folder_check(path: Path, debug: bool) -> None:
 
 
 def get_headers(lines: list) -> list:
-    """
-    Returns a list of every other line in the provided argument. Used to get
+    """Returns a list of every other line in the provided argument. Used to get
     header names from a list of sequences.
     """
     result = []
@@ -93,8 +88,7 @@ def get_headers(lines: list) -> list:
 
 
 def split_sequences_ex(path: str, excluded: set) -> tuple:
-    """
-    Reads over a fasta record in the given list and returns a tuple of two smaller lists.
+    """Reads over a fasta record in the given list and returns a tuple of two smaller lists.
     The first returned list is the reference sequences found, the second returned list
     is the candidate sequences found.
     """
@@ -132,8 +126,7 @@ def split_sequences_ex(path: str, excluded: set) -> tuple:
 
 
 def split_sequences(path: str) -> tuple:
-    """
-    Reads over a fasta record in the given list and returns a tuple of two smaller lists.
+    """Reads over a fasta record in the given list and returns a tuple of two smaller lists.
     The first returned list is the reference sequences found, the second returned list
     is the candidate sequences found.
     """
@@ -169,8 +162,7 @@ def split_sequences(path: str) -> tuple:
 
 
 def make_indices(sequence: str, gap_character="-") -> tuple:
-    """
-    Finds the index of the first and last non-gap bp in a sequence.
+    """Finds the index of the first and last non-gap bp in a sequence.
     Returns the start value and the end values + 1 as a tuple.
     """
     start = None
@@ -184,13 +176,12 @@ def make_indices(sequence: str, gap_character="-") -> tuple:
             end = i + 1
             break
     if start is None or end is None:
-        raise ValueError()
+        raise ValueError
     return start, end
 
 
 def constrain_data_lines(lines: list, start: int, end: int) -> tuple:
-    """
-    Given a start and end value, iterates over the list of sequences and
+    """Given a start and end value, iterates over the list of sequences and
     trims the non-header lines to given values. No return, mutates the original data.
     """
     full = []
@@ -206,8 +197,7 @@ def constrain_data_lines(lines: list, start: int, end: int) -> tuple:
 
 
 def convert_to_record_objects(lines: list) -> list:
-    """
-    Given a list of stings from a fasta file, returns a list of Sequence objects
+    """Given a list of stings from a fasta file, returns a list of Sequence objects
     from the biopython module. This allows us to make a MultipleSequenceAlignment
     object later.
     """
@@ -215,8 +205,7 @@ def convert_to_record_objects(lines: list) -> list:
 
 
 def find_index_groups(references: list, candidates: list) -> tuple:
-    """
-    Iterate over a list of candidate fastas as lines of text and finds their start
+    """Iterate over a list of candidate fastas as lines of text and finds their start
     and stop indices. Makes a tuple out of the pairs, then uses the
     tuple as a key in two dictionaries. One dictionary stores lists of
     candidates with identical indices, and the other dictionary stores
@@ -252,8 +241,7 @@ def find_index_groups(references: list, candidates: list) -> tuple:
 
 
 def make_ref_mean(matrix: list, ignore_zeros=False) -> float:
-    """
-    Iterates over a distance matrix and calculates the mean value of all found
+    """Iterates over a distance matrix and calculates the mean value of all found
     distances. Returns the value as a float. If ignore_zeros is enabled, ignores
     any distance value of zero.
     """
@@ -272,8 +260,7 @@ def make_ref_mean(matrix: list, ignore_zeros=False) -> float:
 
 
 def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
-    """
-    Calls calc._pairwise on a candidate and each ref sequence in the list.
+    """Calls calc._pairwise on a candidate and each ref sequence in the list.
     Returns the distances as list. Used to avoid recalculating the ref distances
     for any given candidate index.
     """
@@ -285,7 +272,7 @@ def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
 
 
 def has_minimum_data(
-    seq: str, cand_rejected_indices: set, min_data: float, start_offset: int, gap="-"
+    seq: str, cand_rejected_indices: set, min_data: float, start_offset: int, gap="-",
 ):
     data_chars = []
     for raw_i, character in enumerate(seq):
@@ -300,9 +287,8 @@ def has_minimum_data(
 
 
 def is_same_variant(header1, header2) -> bool:
-    if header1[-9] == ":" and header2[-9] == ":":
-        if header1[:-9] == header2[:-9]:
-            return True
+    if header1[-9] == ":" and header2[-9] == ":" and header1[:-9] == header2[:-9]:
+        return True
     return False
 
 
@@ -318,8 +304,7 @@ def compare_means(
     ref_gap_percent: float,
     ref_min_percent: float,
 ) -> tuple:
-    """
-    For each candidate record, finds the index of the first non-gap bp and makes
+    """For each candidate record, finds the index of the first non-gap bp and makes
     matching cuts in the reference sequences. Afterwards finds the mean of the trimmed
     data.
     """
@@ -362,7 +347,7 @@ def compare_means(
             seq
             for seq in ref_records
             if has_minimum_data(
-                seq.sequence, rejected_indices, ref_gap_percent, index_pair[0]
+                seq.sequence, rejected_indices, ref_gap_percent, index_pair[0],
             )
         ]
 
@@ -394,12 +379,12 @@ def compare_means(
             except IndexError:
                 Q1 = 0.0
                 print(
-                    f'Q1 Runtime Error caused by references in {ref_alignments[0].id.split("|")[0]}'
+                    f'Q1 Runtime Error caused by references in {ref_alignments[0].id.split("|")[0]}',
                 )
             except RuntimeError:
                 Q1 = 0.0
                 print(
-                    f'Index Error caused by references in {ref_alignments[0].id.split("|")[0]}'
+                    f'Index Error caused by references in {ref_alignments[0].id.split("|")[0]}',
                 )
             # Third quartile (Q3)
             try:
@@ -407,12 +392,12 @@ def compare_means(
             except IndexError:
                 Q3 = 0.0
                 print(
-                    f'Index Error caused by references in {ref_alignments[0].id.split("|")[0]}'
+                    f'Index Error caused by references in {ref_alignments[0].id.split("|")[0]}',
                 )
             except RuntimeError:
                 Q3 = 0.0
                 print(
-                    f'Runtime Error caused by references in {ref_alignments[0].id.split("|")[0]}'
+                    f'Runtime Error caused by references in {ref_alignments[0].id.split("|")[0]}',
                 )
             # Interquartile range (IQR)
             IQR = Q3 - Q1
@@ -425,7 +410,7 @@ def compare_means(
             candidate.grade = "Ref Fail"
             if has_ref_distances:
                 candidate_distances = candidate_pairwise_calls(
-                    candidate, ref_alignments
+                    candidate, ref_alignments,
                 )
                 candidate.mean_distance = np.nanmean(candidate_distances)
                 candidate.iqr = IQR
@@ -445,8 +430,7 @@ def compare_means(
 
 
 def delete_empty_columns(raw_fed_sequences: list, verbose: bool) -> tuple[list, list]:
-    """
-    Iterates over each sequence and deletes columns
+    """Iterates over each sequence and deletes columns
     that consist of 100% dashes.
     """
     result = []
@@ -485,8 +469,7 @@ def delete_empty_columns(raw_fed_sequences: list, verbose: bool) -> tuple[list, 
 
 
 def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
-    """
-    Iterates over each sequence and deletes columns
+    """Iterates over each sequence and deletes columns
     that were removed in the empty column removal.
     """
     raw_sequences = [
@@ -508,8 +491,7 @@ def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
 
 
 def remove_excluded_sequences(lines: list, excluded: set) -> list:
-    """
-    Given a list of fasta lines and a set of headers to be excluded from output,
+    """Given a list of fasta lines and a set of headers to be excluded from output,
     returns a list of all valid headers and sequences. Use before the delete_column
     call in the nt portion.
     """
@@ -522,8 +504,7 @@ def remove_excluded_sequences(lines: list, excluded: set) -> list:
 
 
 def make_exclusion_set(path: str) -> set:
-    """
-    Reads a file at a given path and returns a set containing
+    """Reads a file at a given path and returns a set containing
     each line. Used to make a taxa exclusion list.
     """
     excluded = set()
@@ -536,8 +517,7 @@ def make_exclusion_set(path: str) -> set:
 
 
 def delete_excluded(lines: list, excluded: set) -> list:
-    """
-    Given a list of fasta lines and a set of headers to be excluded from output,
+    """Given a list of fasta lines and a set of headers to be excluded from output,
     returns a list of all valid headers and sequences.
     """
     output = []
@@ -549,8 +529,7 @@ def delete_excluded(lines: list, excluded: set) -> list:
 
 
 def original_order_sort(original: list, candidate_records: list) -> list:
-    """
-    Accepts a list of headers and a list of Records. Returns a list of
+    """Accepts a list of headers and a list of Records. Returns a list of
     Records in the order of the original list.
     """
     candidates = {cand.id: cand for cand in candidate_records}
@@ -587,9 +566,9 @@ def main_process(
     aa_output = os.path.join(aa_output, filename.rstrip(".gz"))
 
     reference_sequences, candidate_sequences, ref_check = split_sequences(file_input)
-    original_order = [line for line in candidate_sequences[0::2]]
+    original_order = list(candidate_sequences[0::2])
     ref_dict, candidates_dict = find_index_groups(
-        reference_sequences, candidate_sequences
+        reference_sequences, candidate_sequences,
     )
 
     # calculate indices that have valid data columns
@@ -597,16 +576,13 @@ def main_process(
     ref_seqs = reference_sequences[1::2]
     for i in range(len(ref_seqs[0])):
         percent_of_non_dash = len([ref[i] for ref in ref_seqs if ref[i] != "-"]) / len(
-            ref_seqs
+            ref_seqs,
         )
         if percent_of_non_dash <= col_cull_percent:
             rejected_indices.add(i)
 
     # find number of unique reference variants in file, use for refs_in_file
-    if ref_check:
-        refs_in_file = len(ref_check)
-    else:
-        refs_in_file = len(ref_seqs)
+    refs_in_file = len(ref_check) if ref_check else len(ref_seqs)
     raw_regulars, passing, failing = compare_means(
         reference_sequences,
         ref_dict,
@@ -622,7 +598,7 @@ def main_process(
     logs = []
     if passing:
         consensus = dumb_consensus(
-            [cand.raw for cand in passing], internal_consensus_threshold
+            [cand.raw for cand in passing], internal_consensus_threshold,
         )
         for i, candidate in enumerate(passing):
             distance = constrained_distance(consensus, candidate.raw)
@@ -713,7 +689,7 @@ def do_folder(folder, args):
                     args.ref_min_percent,
                     args.internal_consensus_threshold,
                     args.internal_kick_threshold,
-                )
+                ),
             )
 
         with Pool(args.processes) as pool:
@@ -738,7 +714,7 @@ def do_folder(folder, args):
                     args.ref_min_percent,
                     args.internal_consensus_threshold,
                     args.internal_kick_threshold,
-                )
+                ),
             )
     if args.debug:
         log_folder_path = os.path.join(output_path, "logs")
@@ -772,6 +748,7 @@ def main(args):
 
 
 if __name__ == "__main__":
+    msg = "Cannot be called directly, please use the module:\nsapphyre OutlierCheck"
     raise Exception(
-        "Cannot be called directly, please use the module:\nsapphyre OutlierCheck"
+        msg,
     )

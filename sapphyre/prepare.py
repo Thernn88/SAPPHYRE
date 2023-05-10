@@ -2,22 +2,22 @@ from __future__ import annotations
 
 import os
 import re
-
+from collections.abc import Callable, Generator
 from itertools import count
 from pathlib import Path
 from queue import Queue
 from shutil import rmtree
 from tempfile import NamedTemporaryFile
 from time import time
-from typing import Any, Callable, Dict, Generator, List, Tuple
-from msgspec import json
+from typing import Any
 
 import phymmr_tools
 import wrap_rocks
 import xxhash
+from msgspec import json
 from tqdm import tqdm
 
-from .timekeeper import TimeKeeper, KeeperMode
+from .timekeeper import KeeperMode, TimeKeeper
 from .utils import ConcurrentLogger, gettempdir, parseFasta
 
 ROCKSDB_FOLDER_NAME = "rocksdb"
@@ -40,11 +40,11 @@ ASSEMBLY_LEN = 500
 
 
 class IndexIter:
-    def __init__(self):
+    def __init__(self) -> None:
         self.counter = count(1)
         self.x = next(self.counter)
 
-    def __str__(self):
+    def __str__(self) -> str:
         return str(self.x)
 
     def __next__(self):
@@ -52,8 +52,7 @@ class IndexIter:
 
 
 def truncate_taxa(header: str, extension=None) -> str:
-    """
-    Given a fasta header, checks the end for problematic tails.
+    """Given a fasta header, checks the end for problematic tails.
     If found, truncates the string.
     Returns the string + suffix to check for name matches.
     """
@@ -91,19 +90,16 @@ def N_trim(parent_sequence: str, minimum_sequence_length: int, tike: TimeKeeper)
 
 
 def glob_for_fasta_and_save_for_runs(
-    globbed: Generator[Path, Any, Any]
-) -> Dict[str, List[Path]]:
-    """
-    Scan all the files in the input. Remove _R# and merge taxa
-    """
-
+    globbed: Generator[Path, Any, Any],
+) -> dict[str, list[Path]]:
+    """Scan all the files in the input. Remove _R# and merge taxa."""
     taxa_runs = {}
 
     for f in globbed:
         file_is_file = f.is_file()
 
         file_name = f.name
-        file_suffix_allowed = any([suff in file_name for suff in ALLOWED_FILETYPES])
+        file_suffix_allowed = any(suff in file_name for suff in ALLOWED_FILETYPES)
 
         if file_is_file and file_suffix_allowed:
             taxa = f.stem.split(".")[0]
@@ -117,7 +113,7 @@ def glob_for_fasta_and_save_for_runs(
 
 
 class SeqDeduplicator:
-    def __init__(self, db: Any, minimum_sequence_length: int, verbose: int):
+    def __init__(self, db: Any, minimum_sequence_length: int, verbose: int) -> None:
         self.minimum_sequence_length = minimum_sequence_length
         self.verbose = verbose
         self.nt_db = db
@@ -128,12 +124,12 @@ class SeqDeduplicator:
         self,
         fa_file_path: str,
         trim_times: TimeKeeper,
-        duplicates: Dict[str, int],
-        rev_comp_save: Dict[str, int],
-        transcript_mapped_to: Dict[str, str],
+        duplicates: dict[str, int],
+        rev_comp_save: dict[str, int],
+        transcript_mapped_to: dict[str, str],
         dupes: count[int],
         this_index: IndexIter,
-        dedup_time: List[int],
+        dedup_time: list[int],
     ):
         fasta_file = parseFasta(fa_file_path, True)
 
@@ -165,7 +161,7 @@ class SeqDeduplicator:
                     rev_seq_hash = rev_comp_save[seq_hash]
                 else:
                     rev_seq_hash = xxhash.xxh3_64(
-                        phymmr_tools.bio_revcomp(seq)
+                        phymmr_tools.bio_revcomp(seq),
                     ).hexdigest()
                     rev_comp_save[seq_hash] = rev_seq_hash
 
@@ -183,9 +179,8 @@ class SeqDeduplicator:
                 # If no dupe, write to prepared file and db
                 next(this_index)
 
-                if not self.this_assembly:
-                    if len(seq) >= ASSEMBLY_LEN:
-                        self.this_assembly = True
+                if not self.this_assembly and len(seq) >= ASSEMBLY_LEN:
+                    self.this_assembly = True
 
                 self.lines.append(f">{header}\n{seq}\n")
 
@@ -194,16 +189,16 @@ class DatabasePreparer:
     def __init__(
         self,
         formatted_taxa_out: str,
-        components: List[Path],
+        components: list[Path],
         verbose: bool,
         printv: Callable,
         clear_database: bool,
         keep_prepared: bool,
         minimum_sequence_length: int,
-        dedup_time: List[int],
+        dedup_time: list[int],
         trim_times: TimeKeeper,
         chunk_size: int,
-    ):
+    ) -> None:
         self.fto = formatted_taxa_out
         self.comp = components
         self.trim_times = trim_times
@@ -228,7 +223,7 @@ class DatabasePreparer:
         self.taxa_time_keeper = TimeKeeper(KeeperMode.DIRECT)
         self.printv(f"Preparing: {self.fto}", self.verbose, 0)
         self.printv(
-            "Formatting input sequences and inserting into database", self.verbose
+            "Formatting input sequences and inserting into database", self.verbose,
         )
 
         taxa_destination_directory = secondary_directory.joinpath(self.fto)
@@ -249,7 +244,7 @@ class DatabasePreparer:
 
     def dedup(self):
         deduper = SeqDeduplicator(
-            self.nt_db, self.minimum_sequence_length, self.verbose
+            self.nt_db, self.minimum_sequence_length, self.verbose,
         )
         for fa_file_path in self.comp:
             deduper(
@@ -327,14 +322,14 @@ class DatabasePreparer:
 
 
 def map_taxa_runs(
-    tuple_in: Tuple[str, str],
+    tuple_in: tuple[str, str],
     verbose: int,
     printv: Callable,
     clear_database: int,
     keep_prepared: int,
     minimum_sequence_length: int,
     secondary_directory: Path,
-    dedup_time: List[int],
+    dedup_time: list[int],
     trim_times: TimeKeeper,
     chunk_size,
 ):
@@ -401,7 +396,7 @@ def main(args):
         for tuple_in in taxa_runs.items()
     ]
 
-    list(map(lambda x: map_taxa_runs(x[0], *x[1:]), ls_args))
+    [map_taxa_runs(x[0], *x[1:]) for x in ls_args]
 
     printv(
         f"Finished! Took {global_time_keeper.differential():.2f}s overall.",
@@ -416,6 +411,7 @@ def main(args):
 
 
 if __name__ == "__main__":
+    msg = "Cannot be called directly, please use the module:\nsapphyre Prepare"
     raise Exception(
-        "Cannot be called directly, please use the module:\nsapphyre Prepare"
+        msg,
     )

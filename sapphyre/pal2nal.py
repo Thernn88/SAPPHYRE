@@ -1,15 +1,16 @@
 from __future__ import annotations
-from shutil import rmtree
 
+from collections.abc import Generator
 from multiprocessing import Pool
-from pathlib import Path
-from typing import Any, Dict, Generator, List, Tuple
 from os import path as ospath
+from pathlib import Path
+from shutil import rmtree
+from typing import Any
 
 from pro2codon import pn2codon
 
-from .timekeeper import TimeKeeper, KeeperMode
-from .utils import printv, parseFasta, writeFasta
+from .timekeeper import KeeperMode, TimeKeeper
+from .utils import parseFasta, printv, writeFasta
 
 DICT_TABLES = {
     "1": {
@@ -741,8 +742,8 @@ DICT_TABLES = {
 
 
 def return_aligned_paths(
-    glob_paths_taxa: List[Path],
-    glob_paths_genes: List[Path],
+    glob_paths_taxa: list[Path],
+    glob_paths_genes: list[Path],
     path_aligned: Path,
     specified_dna_table: dict,
     verbose: bool,
@@ -769,8 +770,8 @@ def return_aligned_paths(
 
 
 def prepare_taxa_and_genes(
-    input: str, specified_dna_table, verbose, compress
-) -> Tuple[Generator[Tuple[Path, Path, Path], Any, Any], int]:
+    input: str, specified_dna_table, verbose, compress,
+) -> tuple[Generator[tuple[Path, Path, Path], Any, Any], int]:
     input_path = Path(input)
 
     joined_align = input_path.joinpath(Path("align"))
@@ -798,7 +799,7 @@ def prepare_taxa_and_genes(
     )
 
     out_generator = return_aligned_paths(
-        glob_nt, glob_aa, joined_nt_aligned, specified_dna_table, verbose, compress
+        glob_nt, glob_aa, joined_nt_aligned, specified_dna_table, verbose, compress,
     )
 
     return out_generator, len(glob_aa)
@@ -819,17 +820,16 @@ def find_end(sequence: str, gap_character="-") -> int:
 
 
 def read_and_convert_fasta_files(
-    aa_file: str, nt_file: str, verbose: bool
-) -> Dict[str, Tuple[List[Tuple[str, str]], List[Tuple[str, str]]]]:
+    aa_file: str, nt_file: str, verbose: bool,
+) -> dict[str, tuple[list[tuple[str, str]], list[tuple[str, str]]]]:
     aas = []
     nts = {}
 
     nt_has_refs = False
     for i, nt in enumerate(parseFasta(nt_file)):
         nt_header = nt[0]
-        if i == 0:
-            if nt_header[-1] == ".":
-                nt_has_refs = True
+        if i == 0 and nt_header[-1] == ".":
+            nt_has_refs = True
 
         nts[nt_header] = nt
     # sort shouldn't affect refs, so they need a seperate list
@@ -902,7 +902,7 @@ def worker(
 
 
 def run_batch_threaded(
-    num_threads: int, ls: List[List[List[Tuple[Tuple[Path, Path, Path], Dict, bool]]]]
+    num_threads: int, ls: list[list[list[tuple[tuple[Path, Path, Path], dict, bool]]]],
 ):
     with Pool(num_threads) as pool:
         result = pool.starmap(worker, ls, chunksize=100)
@@ -916,7 +916,7 @@ def main(args):
     for folder in args.INPUT:
         printv(f"Processing: {ospath.basename(folder)}", args.verbose, 0)
         this_taxa_jobs, _ = prepare_taxa_and_genes(
-            folder, specified_dna_table, args.verbose, args.compress
+            folder, specified_dna_table, args.verbose, args.compress,
         )
 
         success = run_batch_threaded(num_threads=args.processes, ls=this_taxa_jobs)
@@ -931,6 +931,7 @@ def main(args):
 
 
 if __name__ == "__main__":
+    msg = "Cannot be called directly, please use the module:\nsapphyre Pal2Nal"
     raise Exception(
-        "Cannot be called directly, please use the module:\nsapphyre Pal2Nal"
+        msg,
     )

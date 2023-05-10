@@ -1,6 +1,6 @@
-import os
-import json
 import argparse
+import json
+import os
 from glob import glob
 
 
@@ -80,7 +80,7 @@ def main(args):
                 json.dump(default_config, f, indent=4)
             return True
     elif args.config:
-        with open(args.config, "r") as f:
+        with open(args.config) as f:
             config = json.load(f)
 
     start_script = args.start.title()
@@ -93,7 +93,7 @@ def main(args):
     if start_script not in scripts:
         options = ", ".join(scripts)
         print(
-            f"{start_script} is not a valid start script. Please choose from: ({options})"
+            f"{start_script} is not a valid start script. Please choose from: ({options})",
         )
         return False
     scripts = scripts[scripts.index(start_script) :]
@@ -108,12 +108,10 @@ def main(args):
             args.INPUT
             if script == "Prepare"
             else sorted(
-                list(
-                    glob(
-                        os.path.join("datasets", os.path.split(args.INPUT)[-1], "*.fa")
-                    )
+                glob(
+                        os.path.join("datasets", os.path.split(args.INPUT)[-1], "*.fa"),
+                    ),
                 )
-            )
         )
 
         if script == "Prepare":

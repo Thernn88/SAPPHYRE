@@ -1,18 +1,19 @@
-from itertools import count
-from pathlib import Path
 import os
-from tempfile import NamedTemporaryFile
-from multiprocessing.pool import Pool
 import sqlite3
-from msgspec import json
+from itertools import count
+from multiprocessing.pool import Pool
+from pathlib import Path
+from tempfile import NamedTemporaryFile
+
 import wrap_rocks
 from Bio import SeqIO
+from msgspec import json
 
 
 class Sequence:
     __slots__ = ("header", "aa_sequence", "nt_sequence", "taxa", "gene", "id")
 
-    def __init__(self, header, aa_sequence, nt_sequence, taxa, gene, id):
+    def __init__(self, header, aa_sequence, nt_sequence, taxa, gene, id) -> None:
         self.header = header
         self.aa_sequence = aa_sequence
         self.nt_sequence = nt_sequence
@@ -28,7 +29,7 @@ class Sequence:
 
 
 class Sequence_Set:
-    def __init__(self, name):
+    def __init__(self, name) -> None:
         self.name = name
         self.sequences = []
         self.aligned_sequences = {}
@@ -43,9 +44,7 @@ class Sequence_Set:
         return self.aligned_sequences
 
     def get_taxa_in_set(self) -> list:
-        """
-        Returns every taxa contained in the set
-        """
+        """Returns every taxa contained in the set."""
         data = {}
         for sequence in self.sequences:
             data[sequence.taxa] = 1
@@ -53,9 +52,7 @@ class Sequence_Set:
         return list(data.keys())
 
     def get_genes(self) -> list:
-        """
-        Returns every gene contained in the set
-        """
+        """Returns every gene contained in the set."""
         data = {}
         for sequence in self.sequences:
             data[sequence.gene] = 1
@@ -63,9 +60,7 @@ class Sequence_Set:
         return list(data.keys())
 
     def get_gene_dict(self, raw=False) -> dict:
-        """
-        Returns a dictionary with every gene and its corresponding sequences
-        """
+        """Returns a dictionary with every gene and its corresponding sequences."""
         data = {}
         for sequence in self.sequences:
             if raw:
@@ -76,18 +71,16 @@ class Sequence_Set:
         return data
 
     def get_core_sequences(self) -> dict:
-        """
-        Returns a dictionary of every gene and its corresponding taxa, headers and sequences
-        """
+        """Returns a dictionary of every gene and its corresponding taxa, headers and sequences."""
         core_sequences = {}
         for sequence in self.sequences:
             core_sequences.setdefault(sequence.gene, {}).setdefault("aa", []).append(
-                (sequence.taxa, sequence.header, sequence.aa_sequence)
+                (sequence.taxa, sequence.header, sequence.aa_sequence),
             )
             core_sequences.setdefault(sequence.gene, {}).setdefault("nt", [])
             if sequence.nt_sequence:
                 core_sequences[sequence.gene]["nt"].append(
-                    (sequence.taxa, sequence.header, sequence.nt_sequence)
+                    (sequence.taxa, sequence.header, sequence.nt_sequence),
                 )
 
         return core_sequences
@@ -105,7 +98,7 @@ class Sequence_Set:
 
         return "".join(diamond_data), target_to_taxon, taxon_to_sequences
 
-    def __str__(self):
+    def __str__(self) -> str:
         return "".join(map(str, self.sequences))
 
 
@@ -132,7 +125,7 @@ def generate_aln(set: Sequence_Set, align_method, overwrite, pool):
                 aln_path,
                 align_method,
                 overwrite,
-            )
+            ),
         )
 
     aligned_sequences_components = pool.starmap(aln_function, arguments)
@@ -151,7 +144,7 @@ def aln_function(gene, content, aln_path, align_method, overwrite):
 
         if align_method == "clustal":
             os.system(
-                f"clustalo -i '{fa_file}' -o '{aln_file}'  --full --iter=5 --full-iter --threads=4 --force"
+                f"clustalo -i '{fa_file}' -o '{aln_file}'  --full --iter=5 --full-iter --threads=4 --force",
             )  # --verbose
         else:
             os.system(f"mafft-linsi '{fa_file}' > '{aln_file}'")
@@ -182,7 +175,7 @@ def generate_stockholm(set: Sequence_Set, overwrite, pool):
                 gene,
                 raw_fasta,
                 overwrite,
-            )
+            ),
         )
 
     stockh_files = pool.starmap(f2s, arguments)
@@ -215,7 +208,7 @@ def generate_hmms(set: Sequence_Set, stockh_files, overwrite, pool):
                 stockh_file,
                 hmm_file,
                 overwrite,
-            )
+            ),
         )
 
     # with Pool(threads) as pool:
@@ -237,16 +230,15 @@ def make_diamonddb(set: Sequence_Set, overwrite, threads):
 
     diamond_db_data, target_to_taxon, taxon_to_sequences = set.get_diamond_data()
 
-    if db_file.exists():
-        if not overwrite:
-            return target_to_taxon, taxon_to_sequences
+    if db_file.exists() and not overwrite:
+        return target_to_taxon, taxon_to_sequences
 
     with NamedTemporaryFile(mode="w") as fp:
         fp.write(diamond_db_data)
         fp.flush()
 
         os.system(
-            f"diamond makedb --in '{fp.name}' --db '{db_file}' --threads {threads}"
+            f"diamond makedb --in '{fp.name}' --db '{db_file}' --threads {threads}",
         )
 
     return target_to_taxon, taxon_to_sequences

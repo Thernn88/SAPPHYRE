@@ -1,10 +1,11 @@
 import os
-from pathlib import Path
-from multiprocessing.pool import Pool
-from shutil import rmtree
 from dataclasses import dataclass
+from multiprocessing.pool import Pool
+from pathlib import Path
+from shutil import rmtree
+
+from .timekeeper import KeeperMode, TimeKeeper
 from .utils import printv
-from .timekeeper import TimeKeeper, KeeperMode
 
 AA_FOLDER = "aa_merged"
 NT_FOLDER = "nt_merged"
@@ -62,7 +63,7 @@ def align_kick_nt(
                     sequence[i : i + 3]
                     for i in range(0, len(sequence), 3)
                     if i not in to_kick
-                ]
+                ],
             )
 
             result.append(header)
@@ -97,9 +98,9 @@ def kick_empty_columns(
                 to_kick.add(i * 3)
 
     result = []
-    for header in out.keys():
+    for header in out:
         sequence = "".join(
-            [let for i, let in enumerate(out[header]) if i * 3 not in to_kick]
+            [let for i, let in enumerate(out[header]) if i * 3 not in to_kick],
         )
         if len(sequence) - sequence.count("-") >= minimum_bp:
             result.append(header)
@@ -128,7 +129,7 @@ def stopcodon(aa_content: list, nt_content: list) -> tuple:
         if aa_line.startswith(">"):
             if aa_line != nt_line:
                 print(
-                    "Warning STOPCODON: Nucleotide line doesn't match Amino Acid line"
+                    "Warning STOPCODON: Nucleotide line doesn't match Amino Acid line",
                 )
         elif STOPCODON in aa_line:
             aa_line = list(aa_line)
@@ -158,7 +159,7 @@ def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict) -> tup
             nt_components = nt_line.split("|")
             if aa_components[2] not in taxa_to_taxon:
                 print(
-                    f"Error: Taxa ID, {aa_components[2]}, not found in names csv file"
+                    f"Error: Taxa ID, {aa_components[2]}, not found in names csv file",
                 )
             taxon = taxa_to_taxon[aa_components[2]].strip("_SPM")
 
@@ -179,7 +180,7 @@ def clean_gene(gene_config):
 
         if gene_config.kick_columns:
             aa_content, aa_kicks, cols_to_kick = kick_empty_columns(
-                aa_content, gene_config.kick_percentage, gene_config.minimum_bp
+                aa_content, gene_config.kick_percentage, gene_config.minimum_bp,
             )
             nt_content = align_kick_nt(nt_content, cols_to_kick, aa_kicks)
 
@@ -188,7 +189,7 @@ def clean_gene(gene_config):
 
         if gene_config.rename:
             aa_content, nt_content = rename_taxon(
-                aa_content, nt_content, gene_config.taxa_to_taxon
+                aa_content, nt_content, gene_config.taxa_to_taxon,
             )
 
         processed_folder = gene_config.taxa_folder.joinpath("Processed")
@@ -391,6 +392,7 @@ def main(args):
 
 
 if __name__ == "__main__":
+    msg = "Cannot be called directly, please use the module:\nsapphyre finalize"
     raise Exception(
-        "Cannot be called directly, please use the module:\nsapphyre finalize"
+        msg,
     )

@@ -1,22 +1,24 @@
 from __future__ import annotations
-from argparse import Namespace
 
 import os
 import shutil
+from argparse import Namespace
 from collections import Counter, defaultdict, namedtuple
 from multiprocessing.pool import Pool
-from typing import Optional, TextIO
-from msgspec import json
-import parasail as ps
+from typing import TextIO
+
 import blosum as bl
+import parasail as ps
 import phymmr_tools
-from Bio.Seq import Seq
 import xxhash
+from Bio.Seq import Seq
+from msgspec import json
 from wrap_rocks import RocksDB
+
 from . import rocky
-from .timekeeper import TimeKeeper, KeeperMode
-from .utils import printv, writeFasta
 from .diamond import ReporterHit
+from .timekeeper import KeeperMode, TimeKeeper
+from .utils import printv, writeFasta
 
 MISMATCH_AMOUNT = 1
 EXACT_MATCH_AMOUNT = 4
@@ -53,8 +55,7 @@ class Hit(ReporterHit):
         debug_fp: TextIO,
         header: str,
     ) -> tuple[int, int]:
-        """
-        Get the bp to trim from each end so that the alignment matches for 'matches' bp.
+        """Get the bp to trim from each end so that the alignment matches for 'matches' bp.
 
         BP Trim has 3 different modes. Exact, Strict, and Lax. Exact is the most strict, and
         will only match if the reference and query are identical. Strict will match if the
@@ -63,13 +64,16 @@ class Hit(ReporterHit):
         blosum substitution matrix score is greater than or equal to 0.
 
         Args:
+        ----
             this_aa (str): The amino acid sequence to trim.
             references (dict[str, str]): A dictionary of reference sequences.
             matches (int): The number of matches to look for.
             mode (str): The mode to use. Can be "exact", "strict", or "lax".
             debug_fp (TextIO): A file pointer to write debug information to.
             header (str): The header of the sequence.
+
         Returns:
+        -------
             tuple[int, int]: The number of bp to trim from the start and end of the sequence.
         """
         # Create the distance function based on the current mode
@@ -106,7 +110,7 @@ class Hit(ReporterHit):
 
             # Pairwise align the reference and query
             result = ps.nw_trace_scan_profile_16(
-                profile, ref_seq, GAP_PENALTY, EXTEND_PENALTY
+                profile, ref_seq, GAP_PENALTY, EXTEND_PENALTY,
             )
 
             # Get the aligned sequences
@@ -142,7 +146,7 @@ class Hit(ReporterHit):
                             break
 
                 if this_pass and l_exact_matches >= EXACT_MATCH_AMOUNT:
-                    reg_starts.append((i - skip_l))
+                    reg_starts.append(i - skip_l)
                     break
 
             # Find which end position matches for 'matches' bases
@@ -187,21 +191,19 @@ class Hit(ReporterHit):
         return None, None
 
     def trim_to_coords(self):
-        """
-        Trims the hit's est_seq to the alignment coords
-        """
+        """Trims the hit's est_seq to the alignment coords."""
         self.est_seq = self.est_seq[self.qstart - 1 : self.qend]
         if "revcomp" in self.header:
             self.est_seq = phymmr_tools.bio_revcomp(self.est_seq)
 
 
 def get_diamondhits(
-    rocks_hits_db: RocksDB, list_of_wanted_genes: list
+    rocks_hits_db: RocksDB, list_of_wanted_genes: list,
 ) -> dict[str, list[Hit]]:
-    """
-    Returns a dictionary of gene to corresponding hits.
+    """Returns a dictionary of gene to corresponding hits.
 
     Args:
+    ----
         rocks_hits_db (RocksDB): RocksDB instance
         list_of_wanted_genes (set): Set of genes to filter by
     Returns:
@@ -215,31 +217,31 @@ def get_diamondhits(
     gene_based_results = defaultdict(list)
     for gene in genes_to_process:
         gene_based_results[gene] = decoder.decode(
-            rocks_hits_db.get_bytes(f"gethits:{gene}")
+            rocks_hits_db.get_bytes(f"gethits:{gene}"),
         )
 
     return gene_based_results
 
 
 def get_gene_variants(rocks_hits_db: RocksDB) -> dict[str, list[str]]:
-    """
-    Grabs the target variants from the hits database.
+    """Grabs the target variants from the hits database.
 
     Args:
+    ----
         rocks_hits_db (RocksDB): RocksDB instance
     Returns:
         dict: Dictionary of gene to corresponding target variants
     """
     return json.decode(
-        rocks_hits_db.get("getall:target_variants"), type=dict[str, list[str]]
+        rocks_hits_db.get("getall:target_variants"), type=dict[str, list[str]],
     )
 
 
 def get_toprefs(rocks_nt_db: RocksDB) -> list[str]:
-    """
-    Grabs the top references from the nt database.
+    """Grabs the top references from the nt database.
 
     Args:
+    ----
         rocks_nt_db (RocksDB): RocksDB instance
     Returns:
         list: List of top references
@@ -248,10 +250,10 @@ def get_toprefs(rocks_nt_db: RocksDB) -> list[str]:
 
 
 def translate_cdna(cdna_seq):
-    """
-    Translates Nucleotide sequence to Amino Acid sequence.
+    """Translates Nucleotide sequence to Amino Acid sequence.
 
     Args:
+    ----
         cdna_seq (str): Nucleotide sequence
     Returns:
         str: Amino Acid sequence
@@ -263,30 +265,30 @@ def translate_cdna(cdna_seq):
 
 
 def get_core_sequences(
-    gene: str, orthoset_db: RocksDB
+    gene: str, orthoset_db: RocksDB,
 ) -> tuple[list[tuple[str, str, str]], list[tuple[str, str, str]]]:
-    """
-    Returns the core reference sequences for a given gene.
+    """Returns the core reference sequences for a given gene.
 
     Args:
+    ----
         gene (str): Gene name
         orthoset_db (RocksDB): RocksDB instance
     Returns:
         tuple: Tuple of core AA and NT sequences
     """
     core_seqs = json.decode(
-        orthoset_db.get(f"getcore:{gene}"), type=dict[str, list[tuple[str, str, str]]]
+        orthoset_db.get(f"getcore:{gene}"), type=dict[str, list[tuple[str, str, str]]],
     )
     return core_seqs["aa"], core_seqs["nt"]
 
 
 def print_core_sequences(
-    gene, core_sequences, target_taxon, top_refs, header_seperator="|", identifier="."
+    gene, core_sequences, target_taxon, top_refs, header_seperator="|", identifier=".",
 ):
-    """
-    Returns a filtered list of headers and sequences for the core sequences.
+    """Returns a filtered list of headers and sequences for the core sequences.
 
     Args:
+    ----
         gene (str): Gene name
         core_sequences (list): List of core sequences
         target_taxon (str): Target taxa
@@ -327,13 +329,13 @@ def print_unmerged_sequences(
     debug_fp: TextIO,
     dupe_debug_fp: TextIO,
 ) -> tuple[dict[str, list], list[tuple[str, str]], list[tuple[str, str]]]:
-    """
-    Returns a list of unique trimmed sequences for a given gene with formatted headers.
+    """Returns a list of unique trimmed sequences for a given gene with formatted headers.
 
     For every hit in the given hits list the header is formatted, sequence is trimmed and
     translated to AA and the results are deduplicated.
 
     Args:
+    ----
         hits (list): List of hits
         gene (str): Gene name
         taxa_id (str): Taxa ID
@@ -390,7 +392,7 @@ def print_unmerged_sequences(
 
         # Trim to match reference
         r_start, r_end = hit.get_bp_trim(
-            aa_seq, core_aa_seqs, trim_matches, blosum_mode, debug_fp, header
+            aa_seq, core_aa_seqs, trim_matches, blosum_mode, debug_fp, header,
         )
         if r_start is None or r_end is None:
             print(f"WARNING: Trim kicked: {hit.header}")
@@ -419,7 +421,7 @@ def print_unmerged_sequences(
                 dupes.setdefault(mapped_to, []).append(base_header)
                 if dupe_debug_fp:
                     dupe_debug_fp.write(
-                        f"{header}\n{nt_seq}\nis an nt dupe of\n{mapped_to}\n\n"
+                        f"{header}\n{nt_seq}\nis an nt dupe of\n{mapped_to}\n\n",
                     )
                 continue
             seq_mapped_already[nt_seq_hash] = base_header
@@ -448,7 +450,7 @@ def print_unmerged_sequences(
                         if aa_seq in already_mapped_sequence:
                             if dupe_debug_fp:
                                 dupe_debug_fp.write(
-                                    f"{header}\n{aa_seq}\nis an aa dupe of\n{mapped_to}\n\n"
+                                    f"{header}\n{aa_seq}\nis an aa dupe of\n{mapped_to}\n\n",
                                 )
                             continue
 
@@ -473,7 +475,7 @@ def print_unmerged_sequences(
                     base_header_mapped_already[base_header] = header, aa_seq
 
                 header_maps_to_where[header] = len(
-                    aa_result
+                    aa_result,
                 )  # Save the index of the sequence output
 
                 # Write unique sequence
@@ -507,22 +509,21 @@ OutputArgs = namedtuple(
 
 
 def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
-    """
-    Trims, dedupes and writes the output for a given gene.
+    """Trims, dedupes and writes the output for a given gene.
 
     Args:
+    ----
         oargs (OutputArgs): Output arguments
     Returns:
         tuple:
             Tuple containing the gene name,
             a dict of removed duplicates and the number of sequences written
     """
-
     t_gene_start = TimeKeeper(KeeperMode.DIRECT)
     printv(f"Doing output for: {oargs.gene}", oargs.verbose, 2)
 
     core_sequences, core_sequences_nt = get_core_sequences(
-        oargs.gene, rocky.get_rock("rocks_orthoset_db")
+        oargs.gene, rocky.get_rock("rocks_orthoset_db"),
     )
 
     core_seq_aa_dict = {target: seq for _, target, seq in core_sequences}
@@ -532,10 +533,10 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     if oargs.debug:
         os.makedirs(f"align_debug/{oargs.gene}", exist_ok=True)  # DEBUG
         debug_alignments = open(
-            f"align_debug/{oargs.gene}/{oargs.taxa_id}.alignments", "w"
+            f"align_debug/{oargs.gene}/{oargs.taxa_id}.alignments", "w",
         )  # DEBUG
         debug_alignments.write(
-            f"GAP_PENALTY: {GAP_PENALTY}\nEXTEND_PENALTY: {EXTEND_PENALTY}\n"
+            f"GAP_PENALTY: {GAP_PENALTY}\nEXTEND_PENALTY: {EXTEND_PENALTY}\n",
         )  # DEBUG
         debug_dupes = open(f"align_debug/{oargs.gene}/{oargs.taxa_id}.dupes", "w")
 
@@ -555,14 +556,14 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         debug_dupes.close()
     if aa_output:
         aa_core_sequences = print_core_sequences(
-            oargs.gene, core_sequences, oargs.target_taxon, oargs.top_refs
+            oargs.gene, core_sequences, oargs.target_taxon, oargs.top_refs,
         )
         writeFasta(this_aa_path, aa_core_sequences + aa_output, oargs.compress)
 
         this_nt_path = os.path.join(oargs.nt_out_path, oargs.gene + ".nt.fa")
 
         nt_core_sequences = print_core_sequences(
-            oargs.gene, core_sequences_nt, oargs.target_taxon, oargs.top_refs
+            oargs.gene, core_sequences_nt, oargs.target_taxon, oargs.top_refs,
         )
         writeFasta(this_nt_path, nt_core_sequences + nt_output, oargs.compress)
 
@@ -575,17 +576,16 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
 
 
 def do_taxa(path: str, taxa_id: str, args: Namespace):
-    """
-    Main function for processing a given taxa.
+    """Main function for processing a given taxa.
 
     Args:
+    ----
         path (str): Path to the taxa directory
         taxa_id (str): Taxa ID
         args (Namespace): Reporter arguments
     Returns:
         bool: True if the taxa was processed successfully, False otherwise
     """
-
     printv(f"Processing: {taxa_id}", args.verbose, 0)
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
 
@@ -628,7 +628,7 @@ def do_taxa(path: str, taxa_id: str, args: Namespace):
     )
 
     transcripts_mapped_to = get_diamondhits(
-        rocky.get_rock("rocks_hits_db"), list_of_wanted_genes
+        rocky.get_rock("rocks_hits_db"), list_of_wanted_genes,
     )
 
     printv(
@@ -644,9 +644,9 @@ def do_taxa(path: str, taxa_id: str, args: Namespace):
         args.verbose,
     )
 
-    arguments: list[Optional[OutputArgs]] = []
+    arguments: list[OutputArgs | None] = []
     for gene in sorted(
-        transcripts_mapped_to, key=lambda k: len(transcripts_mapped_to[k]), reverse=True
+        transcripts_mapped_to, key=lambda k: len(transcripts_mapped_to[k]), reverse=True,
     ):
         arguments.append(
             (
@@ -665,7 +665,7 @@ def do_taxa(path: str, taxa_id: str, args: Namespace):
                     args.minimum_bp,
                     args.debug,
                 ),
-            )
+            ),
         )
     if args.debug:
         os.makedirs("align_debug", exist_ok=True)
@@ -703,7 +703,7 @@ def main(args):
         printv("ERROR: All folders passed as argument must exist.", args.verbose, 0)
         return False
     rocky.create_pointer(
-        "rocks_orthoset_db", os.path.join(args.orthoset_input, args.orthoset, "rocksdb")
+        "rocks_orthoset_db", os.path.join(args.orthoset_input, args.orthoset, "rocksdb"),
     )
     result = []
     if args.matches < EXACT_MATCH_AMOUNT:
@@ -721,7 +721,7 @@ def main(args):
     for input_path in args.INPUT:
         rocks_db_path = os.path.join(input_path, "rocksdb")
         rocky.create_pointer(
-            "rocks_nt_db", os.path.join(rocks_db_path, "sequences", "nt")
+            "rocks_nt_db", os.path.join(rocks_db_path, "sequences", "nt"),
         )
         rocky.create_pointer("rocks_hits_db", os.path.join(rocks_db_path, "hits"))
         result.append(
@@ -729,7 +729,7 @@ def main(args):
                 path=input_path,
                 taxa_id=os.path.basename(input_path).split(".")[0],
                 args=args,
-            )
+            ),
         )
         rocky.close_pointer("rocks_nt_db")
         rocky.close_pointer("rocks_hits_db")
@@ -740,6 +740,7 @@ def main(args):
 
 
 if __name__ == "__main__":
+    msg = "Cannot be called directly, please use the module:\nsapphyre Reporter"
     raise Exception(
-        "Cannot be called directly, please use the module:\nsapphyre Reporter"
+        msg,
     )

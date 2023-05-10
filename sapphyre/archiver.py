@@ -1,9 +1,10 @@
 import os
-from multiprocessing.pool import Pool
 import tarfile
+from multiprocessing.pool import Pool
 from shutil import rmtree
+
+from .timekeeper import KeeperMode, TimeKeeper
 from .utils import printv
-from .timekeeper import TimeKeeper, KeeperMode
 
 
 def archive_worker(folder_to_archive, verbosity) -> None:
@@ -54,7 +55,7 @@ def process_folder(args, superfolder_path):
                         (
                             os.path.join(root, file),
                             args.verbose,
-                        )
+                        ),
                     )
         #  archive logic
         else:
@@ -70,7 +71,7 @@ def process_folder(args, superfolder_path):
                     (
                         root,
                         args.verbose,
-                    )
+                    ),
                 )
     return arguments
 
@@ -97,6 +98,7 @@ def main(args):
 
 
 if __name__ == "__main__":
+    msg = "Cannot be called directly, please use the module:\nsapphyre archiver"
     raise Exception(
-        "Cannot be called directly, please use the module:\nsapphyre archiver"
+        msg,
     )

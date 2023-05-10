@@ -1,25 +1,22 @@
+import decimal
+import itertools
+import os
+import sys
 from argparse import Namespace
 from collections import Counter, defaultdict, namedtuple
-import itertools
 from math import ceil
-import os
-from shutil import rmtree
-import sys
-from tempfile import TemporaryDirectory, NamedTemporaryFile
 from multiprocessing.pool import Pool
+from shutil import rmtree
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from time import time
-from typing import Union
-import decimal
+
 import numpy as np
 import pandas as pd
-from msgspec import Struct, json
 import wrap_rocks
+from msgspec import Struct, json
 
-
-# from phymmr_tools import Hit, ReferenceHit
-from .utils import printv, gettempdir
-from .timekeeper import TimeKeeper, KeeperMode
-
+from .timekeeper import KeeperMode, TimeKeeper
+from .utils import gettempdir, printv
 
 # namedtuple for the processing arguments.
 ProcessingArgs = namedtuple(
@@ -32,7 +29,7 @@ ProcessingArgs = namedtuple(
         "result_fp",
         "pairwise_refs",
         "is_assembly",
-        "evalue_threshold"
+        "evalue_threshold",
     ],
 )
 
@@ -45,7 +42,6 @@ def lst() -> list:
 
 # call the phymmr_tools.Hit class using an unpacked list of values found in the row input.
 # def create_hit(row) -> Hit:
-#     return Hit(*row)
 
 
 class ReferenceHit(Struct, frozen=True):
@@ -92,16 +88,17 @@ class ReporterHit(Struct):
 
 
 def get_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
-    """
-    Get the overlap between two ranges.
+    """Get the overlap between two ranges.
 
     Args:
+    ----
         a_start (int): The starting position of range A.
         a_end (int): The ending position of range A.
         b_start (int): The starting position of range B.
         b_end (int): The ending position of range B.
 
     Returns:
+    -------
         int: The number of elements in the overlap between the two ranges.
     """
     # Calculate the left most position out of each range's end.
@@ -119,14 +116,15 @@ def get_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
 
 
 def get_score_difference(score_a: float, score_b: float) -> float:
-    """
-    Get the decimal difference between two scores.
+    """Get the decimal difference between two scores.
 
     Args:
+    ----
         score_a (float): The first score.
         score_b (float): The second score.
 
     Returns:
+    -------
         float: The decimal difference between the two scores.
     """
     # If either score is zero return zero.
@@ -138,13 +136,15 @@ def get_score_difference(score_a: float, score_b: float) -> float:
 
 
 def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
-    """
-    Filter out hits that imprecisely map to multiple genes.
+    """Filter out hits that imprecisely map to multiple genes.
 
     Args:
+    ----
         hits (list): A list of Hit objects.
         debug (bool): A boolean indicating whether or not to print debug messages.
+
     Returns:
+    -------
         tuple[list, int, list]: A tuple containing a list of filtered hits, the number of hits filtered, and a list of debug rows.
     """
     # Global variables for the multi_filter function.
@@ -169,7 +169,7 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
 
         # Get the amount and percentage overlap between the master and candidate
         amount_of_overlap = get_overlap(
-            master.qstart, master.qend, candidate.qstart, candidate.qend
+            master.qstart, master.qend, candidate.qstart, candidate.qend,
         )
         percentage_of_overlap = amount_of_overlap / distance
 
@@ -196,7 +196,7 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
                             master.score,
                             master.qstart,
                             master.qend,
-                        )
+                        ),
                     )
             else:
                 # If the score difference is not greater than 5% trigger miniscule score
@@ -220,7 +220,7 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
                             )
                             for hit in hits
                             if hit
-                        ]
+                        ],
                     )
                 for hit in hits:
                     hit.kick = True
@@ -236,43 +236,40 @@ def make_kick_log(hit_a: Hit, hit_b: Hit, gene: str, percent: float) -> str:
 
     Convenience function for running --debug
     """
-    # (
     #     gene,
     #     hit_b.uid,
     #     # hit_b.taxon,
-    #     round(hit_b.score, 2),
     #     hit_b.qstart,
     #     hit_b.qend,
     #     "Internal kicked out by",
     #     gene,
     #     hit_a.uid,
     #     # hit_a.taxon,
-    #     round(hit_a.score, 2),
     #     hit_a.qstart,
     #     hit_a.qend,
-    #     round(percent, 3),
-    # )
     return "".join(
         [
             f"{gene}, {hit_b.uid}, {round(hit_b.score, 2)}, {hit_b.qstart}, ",
             f"{hit_b.qend} Internal kicked out by {gene}, {hit_a.uid}, ",
             f"{round(hit_a.score, 2)}, {hit_a.qstart}, {hit_a.qend}, {round(percent, 3)}",
-        ]
+        ],
     )
 
 
 def internal_filter(
-    gene: str, header_based: dict, debug: bool, internal_percent: float
+    gene: str, header_based: dict, debug: bool, internal_percent: float,
 ) -> tuple[set, list, int]:
-    """
-    Filters out overlapping hits who map to the same gene.
+    """Filters out overlapping hits who map to the same gene.
 
     Args:
+    ----
         gene (str): The gene to filter.
         header_based (dict): A dictionary of hits grouped by header.
         debug (bool): Whether to print debug information.
         internal_percent (float): The percentage of overlap required to constitute a kick.
+
     Returns:
+    -------
         tuple[set, list, int]:
             A tuple containing the set of kicked hit headers,
             the log of kicked hits, and the number of hits kicked.
@@ -288,7 +285,7 @@ def internal_filter(
 
             # Calculate overlap percent over the internal overlap's length
             overlap_amount = get_overlap(
-                hit_a.qstart, hit_a.qend, hit_b.qstart, hit_b.qend
+                hit_a.qstart, hit_a.qend, hit_b.qstart, hit_b.qend,
             )
             internal_start = min(hit_a.qstart, hit_b.qstart)
             internal_end = max(hit_a.qend, hit_b.qend)
@@ -306,48 +303,44 @@ def internal_filter(
 
                 if debug:
                     log.append(
-                        make_kick_log(hit_a, hit_b, gene, percent)
-                        # (
+                        make_kick_log(hit_a, hit_b, gene, percent),
                         #     gene,
                         #     hit_b.uid,
                         #     # hit_b.taxon,
-                        #     round(hit_b.score, 2),
                         #     hit_b.qstart,
                         #     hit_b.qend,
                         #     "Internal kicked out by",
                         #     gene,
                         #     hit_a.uid,
                         #     # hit_a.taxon,
-                        #     round(hit_a.score, 2),
                         #     hit_a.qstart,
                         #     hit_a.qend,
-                        #     round(percent, 3),
-                        # )
                     )
 
     return this_kicks, log, next(kicks)
 
 
 def internal_filtering(
-    gene: str, hits: list, debug: bool, internal_percent: float
+    gene: str, hits: list, debug: bool, internal_percent: float,
 ) -> tuple[str, int, list, list]:
-    """
-    Performs the internal filter on a list of hits and returns a count of the number of hits
+    """Performs the internal filter on a list of hits and returns a count of the number of hits
     kicked, a log of the hits kicked, and the list of hits that passed the filter.
 
     Args:
+    ----
         gene (str): The gene that the hits belong to.
         hits (list): The list of hits to filter.
         debug (bool): Whether to log debug information or not.
 
     Returns:
+    -------
         tuple[str, int, list, list]:
             A tuple containing the gene, the number of hits kicked, a log of the hits kicked,
             and the list of hits that passed the filter.
     """
     # Perform the internal filter.
     kicked_hits, this_log, this_kicks = internal_filter(
-        gene, hits, debug, internal_percent
+        gene, hits, debug, internal_percent,
     )
 
     # Return the gene, the number of hits kicked, a log of the hits kicked, and the list of hits
@@ -371,7 +364,7 @@ def containments(hits, target_to_taxon, debug, gene):
                 if hit.kick:
                     continue
 
-                for ref_hit in hit.ref_hits: 
+                for ref_hit in hit.ref_hits:
                     if target_to_taxon[ref_hit.target][1] != top_hit_reference:
                         continue
 
@@ -379,9 +372,9 @@ def containments(hits, target_to_taxon, debug, gene):
                         continue
 
                     overlap_percent = get_overlap(
-                        top_ref_hit.sstart, top_ref_hit.send, ref_hit.sstart, ref_hit.send
+                        top_ref_hit.sstart, top_ref_hit.send, ref_hit.sstart, ref_hit.send,
                     ) / min(
-                        (top_ref_hit.send - top_ref_hit.sstart), (ref_hit.send - ref_hit.sstart)
+                        (top_ref_hit.send - top_ref_hit.sstart), (ref_hit.send - ref_hit.sstart),
                     )
 
                     if overlap_percent > KICK_PERCENT:
@@ -397,7 +390,7 @@ def containments(hits, target_to_taxon, debug, gene):
                                 + top_hit.header
                                 + "|"
                                 + str(top_hit.frame)
-                                + f" overlap: {overlap_percent:.2f}"
+                                + f" overlap: {overlap_percent:.2f}",
                             )
                         break
 
@@ -419,18 +412,20 @@ def convert_and_cull(hits, pairwise_refs, gene, is_assembly):
                 hit.reftaxon,
                 hit.uid,
                 hit.ref_hits,
-            )
+            ),
         )
     return gene, output
 
 
 def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]]:
-    """
-    Process a subset of lines from the Diamond tsv result.
+    """Process a subset of lines from the Diamond tsv result.
 
     Args:
+    ----
         pargs (ProcessingArgs): The arguments for processing the lines.
+
     Returns:
+    -------
         tuple[dict[str, Hit], int, list[str]]:
             A tuple containing the dictionary of hits grouped by header,
             the number of hits kicked, and the list of kicked hits.
@@ -444,7 +439,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
         hits = []
         for row in sorted(header_df.values, key=lambda row: row[4], reverse=True):
             this_hit = Hit(
-                row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8]
+                row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8],
             )
 
             if this_hit.evalue > pargs.evalue_threshold:
@@ -457,8 +452,8 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             this_hit.uid = hash(time())
             this_hit.ref_hits.append(
                 ReferenceHit(
-                    this_hit.target, this_hit.reftaxon, this_hit.sstart, this_hit.send
-                )
+                    this_hit.target, this_hit.reftaxon, this_hit.sstart, this_hit.send,
+                ),
             )
             frame_to_hits[this_hit.frame].append(this_hit)
 
@@ -507,13 +502,15 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
 
 
 def run_process(args: Namespace, input_path: str) -> bool:
-    """
-    Run the main process on the input path.
+    """Run the main process on the input path.
 
     Args:
+    ----
         args (Namespace): The arguments for the program.
         input_path (str): The path to the input directory.
+
     Returns:
+    -------
         bool: Whether the process was successful or not.
     """
     # Due to the thread bottleneck of chunking a ceiling is set on the threads post reporter
@@ -542,9 +539,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
     printv("Grabbing reference data from Orthoset DB.", args.verbose)
     # make dirs
     diamond_path = os.path.join(input_path, "diamond")
-    if args.overwrite:
-        if os.path.exists(diamond_path):
-            rmtree(diamond_path)
+    if args.overwrite and os.path.exists(diamond_path):
+        rmtree(diamond_path)
     os.makedirs(diamond_path, exist_ok=True)
 
     num_threads = args.processes
@@ -552,19 +548,19 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
     orthoset_db_path = os.path.join(orthosets_dir, orthoset, "rocksdb")
     diamond_db_path = os.path.join(
-        orthosets_dir, orthoset, "diamond", orthoset + ".dmnd"
+        orthosets_dir, orthoset, "diamond", orthoset + ".dmnd",
     )
     # Potato brain check
     if not os.path.exists(orthoset_db_path) or not os.path.exists(diamond_db_path):
         if (
             input(
-                f"Could not find orthoset DB at {orthoset_db_path}. Would you like to generate it? Y/N: "
+                f"Could not find orthoset DB at {orthoset_db_path}. Would you like to generate it? Y/N: ",
             ).lower()
             == "y"
         ):
             print("Attempting to generate DB")
             os.system(
-                f"python3 -m sapphyre -p {num_threads} Makeref {orthoset}.sqlite -s {orthoset}"
+                f"python3 -m sapphyre -p {num_threads} Makeref {orthoset}.sqlite -s {orthoset}",
             )
         else:
             print("Aborting")
@@ -573,7 +569,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
     target_to_taxon = json.decode(
         orthoset_db.get_bytes("getall:targetreference"),
-        type=dict[str, list[Union[str, int]]],
+        type=dict[str, list[str | int]],
     )
 
     del orthoset_db
@@ -590,26 +586,22 @@ def run_process(args: Namespace, input_path: str) -> bool:
     evalue = args.evalue
     min_orf = NORMAL_MIN_ORF
     is_assembly = False
-    if dbis_assembly:
-        if dbis_assembly == "True":
-            is_assembly = True
-            evalue = ASSEMBLY_EVALUE
-            min_orf = ASSEMBLY_MIN_ORF
+    if dbis_assembly and dbis_assembly == "True":
+        is_assembly = True
+        evalue = ASSEMBLY_EVALUE
+        min_orf = ASSEMBLY_MIN_ORF
 
     precision = decimal.Decimal("5") * decimal.Decimal("0.1") ** decimal.Decimal(
-        evalue
+        evalue,
     )
-    # precision_str = (
-    #     "{{:.{}f}}".format(args.evalue + 1).format(precision).rstrip("0").rstrip(".")
-    # )
-    # print(precision_str)
 
     recipe = nt_db.get("getall:batches")
     if recipe:
         recipe = recipe.split(",")
     else:
+        msg = "Nucleotide sequence not found in database. Did Prepare succesfully finish?"
         raise ValueError(
-            "Nucleotide sequence not found in database. Did Prepare succesfully finish?"
+            msg,
         )
     out = [nt_db.get(f"ntbatch:{i}") for i in recipe]
 
@@ -618,7 +610,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     out_path = os.path.join(diamond_path, f"{sensitivity}.tsv")
     if not os.path.exists(out_path) or os.stat(out_path).st_size == 0:
         with TemporaryDirectory(dir=gettempdir()) as dir, NamedTemporaryFile(
-            dir=dir
+            dir=dir,
         ) as input_file:
             input_file.write("".join(out).encode())
             input_file.flush()
@@ -631,7 +623,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             )
             time_keeper.lap()  # Reset timer
             os.system(
-                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {precision} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --min-orf {min_orf} --max-hsps 0 -p {num_threads}"
+                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {precision} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --min-orf {min_orf} --max-hsps 0 -p {num_threads}",
             )
             input_file.seek(0)
 
@@ -719,17 +711,14 @@ def run_process(args: Namespace, input_path: str) -> bool:
         arguments = []
         indices = []
         for x, i in enumerate(range(0, len(headers), per_thread), 1):
-            if x == 1:
-                start_index = 0
-            else:
-                start_index = end_index + 1
+            start_index = 0 if x == 1 else end_index + 1
 
             if x != chunks:
                 last_header = headers[i + per_thread - 1]
                 end_index = (
                     np.where(
                         df[start_index : (start_index + estimated_end)]["header"].values
-                        == last_header
+                        == last_header,
                     )[0][-1]
                     + start_index
                 )
@@ -840,7 +829,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                         target_to_taxon,
                         args.debug,
                         gene,
-                    )
+                    ),
                 )
 
             with Pool(post_threads) as pool:
@@ -853,7 +842,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                     containment_log.extend(log)
 
                 next_output.append(
-                    (r_gene, [i for i in output[r_gene] if i.uid not in this_kicks])
+                    (r_gene, [i for i in output[r_gene] if i.uid not in this_kicks]),
                 )
                 present_genes.append(r_gene)
             output = next_output
@@ -890,7 +879,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                         continue
 
                     out_targets.extend(
-                        [i[1] for i in this_targets if i[1] in target_has_hit]
+                        [i[1] for i in this_targets if i[1] in target_has_hit],
                     )
 
                 variant_filter[gene] = out_targets
@@ -900,7 +889,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         variant_filter = {k: list(v) for k, v in variant_filter.items()}
 
         db.put_bytes(
-            "getall:target_variants", json_encoder.encode(variant_filter)
+            "getall:target_variants", json_encoder.encode(variant_filter),
         )  # type=dict[str, list[str]]
 
         del variant_filter
@@ -914,7 +903,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                     lines[i][1:]: lines[i + 1]
                     for i in range(0, len(lines), 2)
                     if lines[i] != ""
-                }
+                },
             )
         del out
 
@@ -926,7 +915,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                     pairwise_refs,
                     gene,
                     is_assembly,
-                )
+                ),
             )
 
         with Pool(post_threads) as pool:
@@ -1004,6 +993,7 @@ def main(args):
 
 
 if __name__ == "__main__":
+    msg = "Cannot be called directly, please use the module:\nsapphyre Diamond"
     raise Exception(
-        "Cannot be called directly, please use the module:\nsapphyre Diamond"
+        msg,
     )

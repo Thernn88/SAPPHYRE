@@ -1,9 +1,10 @@
 from __future__ import annotations
-from pathlib import Path
-from multiprocessing.pool import Pool
 
-from .utils import printv, parseFasta, writeFasta
-from .timekeeper import TimeKeeper, KeeperMode
+from multiprocessing.pool import Pool
+from pathlib import Path
+
+from .timekeeper import KeeperMode, TimeKeeper
+from .utils import parseFasta, printv, writeFasta
 
 
 def prepend(inputs, directory):
@@ -58,7 +59,7 @@ def main(args):
                         (
                             aa_gene,
                             grabbed_aa_references[aa_gene.name],
-                        )
+                        ),
                     )
 
                 aa_result = pool.starmap(parse_gene, arguments, chunksize=8)
@@ -78,7 +79,7 @@ def main(args):
                         (
                             nt_gene,
                             grabbed_nt_references[nt_gene.name],
-                        )
+                        ),
                     )
 
                 nt_result = pool.starmap(parse_gene, arguments, chunksize=8)

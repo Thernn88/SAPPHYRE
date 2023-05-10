@@ -1,5 +1,4 @@
-"""
-Merges all sequences per taxa into single sequence in each gene
+"""Merges all sequences per taxa into single sequence in each gene.
 
 PyLint 9.61/10
 """
@@ -9,14 +8,14 @@ import os
 from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import rmtree
-from typing import Union, Literal
-from msgspec import json
+from typing import Literal
 
 import wrap_rocks
 from Bio.Seq import Seq
+from msgspec import json
 
-from .utils import printv, parseFasta, writeFasta
-from .timekeeper import TimeKeeper, KeeperMode
+from .timekeeper import KeeperMode, TimeKeeper
+from .utils import parseFasta, printv, writeFasta
 
 TMP_PATH = None
 if os.path.exists("/run/shm"):
@@ -98,9 +97,7 @@ def make_nt_name(x):
 
 
 def make_seq_dict(sequences: list, data_region: tuple) -> dict:
-    """
-    Creates a dictionary of each sequence present at each coordinate of a list of sequences
-    """
+    """Creates a dictionary of each sequence present at each coordinate of a list of sequences."""
     seq_dict = {
         i: [] for i in range(data_region[0], data_region[1] + 1)
     }  # exclusive, so add 1
@@ -112,9 +109,8 @@ def make_seq_dict(sequences: list, data_region: tuple) -> dict:
 
 
 def most_common_element_with_count(iterable) -> tuple:
-    """
-    Returns the most common element and corresponding
-    count within an iterable
+    """Returns the most common element and corresponding
+    count within an iterable.
     """
     counts = {}
     winner = ("dummy", -1)
@@ -127,9 +123,7 @@ def most_common_element_with_count(iterable) -> tuple:
 
 
 def parse_fasta(path: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
-    """
-    Returns references from raw fasta text input.
-    """
+    """Returns references from raw fasta text input."""
     references: list[tuple[str, str]] = []
     candidates: list[tuple[str, str]] = []
     end_of_references = False
@@ -151,9 +145,7 @@ def parse_fasta(path: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]
 
 
 def get_start_end(sequence: str) -> tuple:
-    """
-    Returns index of first and last none dash character in sequence.
-    """
+    """Returns index of first and last none dash character in sequence."""
     start = None
     end = None
     for i, character in enumerate(sequence):
@@ -168,9 +160,7 @@ def get_start_end(sequence: str) -> tuple:
 
 
 def expand_region(original: tuple, expansion: tuple) -> tuple:
-    """
-    Expands two (start, end) tuples to cover the entire region
-    """
+    """Expands two (start, end) tuples to cover the entire region."""
     start = original[0]
     if expansion[0] < start:
         start = expansion[0]
@@ -183,8 +173,7 @@ def expand_region(original: tuple, expansion: tuple) -> tuple:
 
 
 def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
-    """
-    Splits list of (header,sequence) into overlap based groups.
+    """Splits list of (header,sequence) into overlap based groups.
 
     Returns (overlap region, sequences in overlap region)
     """
@@ -216,11 +205,9 @@ def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
 
 
 def find_overlap(
-    tuple_a: tuple, tuple_b: tuple, allowed_deviation: int = 1
-) -> Union[tuple, None]:
-    """
-    Takes two start/end pairs and returns the overlap.
-    """
+    tuple_a: tuple, tuple_b: tuple, allowed_deviation: int = 1,
+) -> tuple | None:
+    """Takes two start/end pairs and returns the overlap."""
     start = max(tuple_a[0], tuple_b[0])
     end = min(tuple_a[1], tuple_b[1])
     if end - start < -allowed_deviation:
@@ -229,8 +216,7 @@ def find_overlap(
 
 
 def calculate_split(sequence_a: str, sequence_b: str, comparison_sequence: str) -> int:
-    """
-    Iterates over each position in the overlap range of sequence A and sequence B and
+    """Iterates over each position in the overlap range of sequence A and sequence B and
     creates a frankenstein sequence of sequence A + Sequence B joined at each
     position in the overlap.
 
@@ -268,9 +254,7 @@ def calculate_split(sequence_a: str, sequence_b: str, comparison_sequence: str) 
 
 
 def directory_check(target_output_path) -> str:
-    """
-    Creates necessary directories for merge output.
-    """
+    """Creates necessary directories for merge output."""
     aa_merged_path = os.path.join(target_output_path, "aa_merged")
     nt_merged_path = os.path.join(target_output_path, "nt_merged")
     rmtree(aa_merged_path, ignore_errors=True)
@@ -285,10 +269,7 @@ def directory_check(target_output_path) -> str:
 
 
 def grab_merge_start_end(taxa_pair: list) -> list[tuple]:
-    """
-    Grabs start and end of merge sequences.
-    """
-
+    """Grabs start and end of merge sequences."""
     merge_start = min(seq[0] for seq in taxa_pair)
     merge_end = max(seq[1] for seq in taxa_pair)
     sequences = []
@@ -373,13 +354,11 @@ def do_protein(
                     prep_dupe_counts.get(header, 1)
                     for header in rep_dupe_counts.get(sequence[4], [])
                 )
-                # else:
-                # count = dupe_counts.get(sequence[4], 0) + 1
                 consists_of.append((sequence[2], sequence[3], count))
 
             # Gets last pipe of each component of a merge
             stitch = "&&".join(
-                [sequence[2].split("|")[3] for sequence in this_sequences[1:]]
+                [sequence[2].split("|")[3] for sequence in this_sequences[1:]],
             )
 
             taxons = [i[2].split("|")[1] for i in this_sequences]
@@ -405,7 +384,7 @@ def do_protein(
 
             if ignore_overlap_chunks:
                 base_header = "|".join(
-                    [this_gene, this_taxa, this_taxa_id, "contig_sequence"]
+                    [this_gene, this_taxa, this_taxa_id, "contig_sequence"],
                 )
                 final_header = base_header
             else:
@@ -486,7 +465,7 @@ def do_protein(
                                                 header,
                                                 _,
                                             ) in sequences_at_current_point
-                                        ]
+                                        ],
                                     )
                                     key = f"{data_start}{data_end}{headers_here}"
                                     if key in quality_taxons_here:
@@ -501,12 +480,12 @@ def do_protein(
                                                 data_start : data_end + 1
                                             ]
                                             data = len(data_region) - data_region.count(
-                                                "-"
+                                                "-",
                                             )
                                             quality_taxons.append((data, taxon))
 
                                         comparison_taxa = max(
-                                            quality_taxons, key=lambda x: x[0]
+                                            quality_taxons, key=lambda x: x[0],
                                         )[1]
                                         quality_taxons_here[key] = comparison_taxa
 
@@ -534,7 +513,7 @@ def do_protein(
                                 split_position = already_calculated_splits[split_key]
                             else:
                                 split_position = calculate_split(
-                                    sequence_a, sequence_b, comparison_sequence
+                                    sequence_a, sequence_b, comparison_sequence,
                                 )
                                 already_calculated_splits[split_key] = split_position
 
@@ -607,7 +586,7 @@ def do_protein(
 
                 if debug:
                     majority_assignments = ["---"] * len(
-                        new_merge
+                        new_merge,
                     )  # Used for debug log
 
                 for raw_i in range(triplet_data_start, triplet_data_end + 1):
@@ -656,7 +635,7 @@ def do_protein(
                                 mode_cand_raw_character,
                                 _,
                             ) = most_common_element_with_count(
-                                candidate_chars_mapping_to_same_dna
+                                candidate_chars_mapping_to_same_dna,
                             )
                             if mode_cand_raw_character != char:
                                 new_merge[raw_i] = mode_cand_raw_character
@@ -675,7 +654,7 @@ def do_protein(
                     (
                         f"{this_taxa_id}|MajorityRulesAssigned",
                         "".join(majority_assignments),
-                    )
+                    ),
                 )
                 for header, sequence, count in consists_of:
                     if "NODE" in header.split("|")[-1]:
@@ -722,9 +701,7 @@ def do_gene(
     ignore_overlap_chunks,
     compress,
 ) -> None:
-    """
-    Merge main loop. Opens fasta file, parses sequences and merges based on taxa
-    """
+    """Merge main loop. Opens fasta file, parses sequences and merges based on taxa."""
     already_calculated_splits = {}
     printv(f"Doing: {gene}", verbosity, 2)
 
@@ -743,7 +720,6 @@ def do_gene(
         debug=debug,
     )
 
-    # print(already_calculated_splits)
 
     nt_path, nt_data = do_protein(
         "nt",
@@ -769,9 +745,7 @@ def do_gene(
 
 
 def run_command(arg_tuple: tuple) -> None:
-    """
-    Calls the do_gene() function parallel in each thread
-    """
+    """Calls the do_gene() function parallel in each thread."""
     do_gene(*arg_tuple)
 
 
@@ -813,10 +787,10 @@ def do_folder(folder: Path, args):
         arguments = []
         for target_gene in target_genes:
             prep_dupes_in_this_gene = prepare_dupe_counts.get(
-                target_gene.split(".")[0], {}
+                target_gene.split(".")[0], {},
             )
             rep_dupes_in_this_gene = reporter_dupe_counts.get(
-                target_gene.split(".")[0], {}
+                target_gene.split(".")[0], {},
             )
             target_aa_path = Path(aa_input, target_gene)
             target_nt_path = Path(nt_input, make_nt_name(target_gene))
@@ -835,17 +809,17 @@ def do_folder(folder: Path, args):
                     args.verbose,
                     args.ignore_overlap_chunks,
                     args.compress,
-                )
+                ),
             )
         with Pool(args.processes) as pool:
             pool.map(run_command, arguments, chunksize=1)
     else:
         for target_gene in target_genes:
             prep_dupes_in_this_gene = prepare_dupe_counts.get(
-                target_gene.split(".")[0], {}
+                target_gene.split(".")[0], {},
             )
             rep_dupes_in_this_gene = reporter_dupe_counts.get(
-                target_gene.split(".")[0], {}
+                target_gene.split(".")[0], {},
             )
             target_aa_path = os.path.join(aa_input, target_gene)
             target_nt_path = os.path.join(nt_input, make_nt_name(target_gene))
@@ -883,6 +857,7 @@ def main(args):
 
 
 if __name__ == "__main__":
+    msg = "Cannot be called directly, please use the module:\nsapphyre MergeOverlap"
     raise Exception(
-        "Cannot be called directly, please use the module:\nsapphyre MergeOverlap"
+        msg,
     )
