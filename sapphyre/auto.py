@@ -33,7 +33,7 @@ def main(args):
         "Align": {
             "debug": False,
             "second_run": False,
-            "add_fragments": False
+            "add_fragments": True,
         },
         "Pal2Nal": {"table": 1},
         "FlexCull": {
