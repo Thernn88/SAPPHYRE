@@ -766,10 +766,9 @@ def do_folder(folder: Path, args):
     dupe_tmp_file = Path(tmp_dir, "DupeSeqs.tmp")
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
     if rocks_db_path.exists():
-        decoder = json.Decoder(type=dict[str, dict[str, int]])
         rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
-        prepare_dupe_counts = decoder.decode(rocksdb_db.get("getall:gene_dupes"))
-        reporter_dupe_counts = decoder.decode(rocksdb_db.get("getall:reporter_dupes"))
+        prepare_dupe_counts = json.decode(rocksdb_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]])
+        reporter_dupe_counts = json.decode(rocksdb_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]])
         ref_stats = rocksdb_db.get("getall:valid_refs").split(",")
     else:
         prepare_dupe_counts = {}
