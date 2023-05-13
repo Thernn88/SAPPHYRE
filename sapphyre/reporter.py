@@ -24,6 +24,7 @@ MISMATCH_AMOUNT = 1
 EXACT_MATCH_AMOUNT = 4
 GAP_PENALTY = 2
 EXTEND_PENALTY = 1
+TRIM_WARNINGS = False
 
 MainArgs = namedtuple(
     "MainArgs",
@@ -103,10 +104,10 @@ class Hit(ReporterHit):
             debug_fp.write(f">{header}\n{this_aa}\n")
 
         # For each reference sequence
-        for number, ref in enumerate(self.ref_hits):
+        for number, ref in enumerate(self.refs):
             # Trim to candidate alignment coords
-            ref_seq = references[ref.target]
-            ref_seq = ref_seq[ref.sstart - 1 : ref.send]
+            ref_seq = references[ref.query]
+            ref_seq = ref_seq[ref.start - 1 : ref.end]
 
             # Pairwise align the reference and query
             result = ps.nw_trace_scan_profile_16(
@@ -192,9 +193,9 @@ class Hit(ReporterHit):
 
     def trim_to_coords(self):
         """Trims the hit's est_seq to the alignment coords."""
-        self.est_seq = self.est_seq[self.qstart - 1 : self.qend]
-        if "revcomp" in self.header:
-            self.est_seq = phymmr_tools.bio_revcomp(self.est_seq)
+        self.seq = self.seq[self.qstart - 1 : self.qend]
+        if "revcomp" in self.node:
+            self.seq = phymmr_tools.bio_revcomp(self.seq)
 
 
 def get_diamondhits(
@@ -360,21 +361,14 @@ def print_unmerged_sequences(
     header_seperator = "|"
 
     for hit in hits:
-        base_header = hit.header
+        base_header = hit.node
         reference_frame = str(hit.frame)
-
-        if hit.frame < 0:
-            hit.header = (
-                hit.header + "|[revcomp]:[translate(" + str(abs(hit.frame)) + ")]"
-            )
-        else:
-            hit.header = hit.header + "|[translate(" + str(hit.frame) + ")]"
 
         # Format header to gene|taxa_name|taxa_id|sequence_id|frame
         header = (
             gene
             + header_seperator
-            + hit.reftaxon
+            + hit.query
             + header_seperator
             + taxa_id
             + header_seperator
@@ -387,7 +381,7 @@ def print_unmerged_sequences(
         hit.trim_to_coords()
 
         # Translate to AA
-        nt_seq = hit.est_seq
+        nt_seq = hit.seq
         aa_seq = translate_cdna(nt_seq)
 
         # Trim to match reference
@@ -395,7 +389,8 @@ def print_unmerged_sequences(
             aa_seq, core_aa_seqs, trim_matches, blosum_mode, debug_fp, header,
         )
         if r_start is None or r_end is None:
-            print(f"WARNING: Trim kicked: {hit.header}")
+            if TRIM_WARNINGS:
+                print(f"WARNING: Trim kicked: {hit.node}|{hit.frame}")
             continue
 
         if r_end == 0:
@@ -460,7 +455,7 @@ def print_unmerged_sequences(
                         header = (
                             gene
                             + header_seperator
-                            + hit.reftaxon
+                            + hit.query
                             + header_seperator
                             + taxa_id
                             + header_seperator

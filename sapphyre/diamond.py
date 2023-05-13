@@ -9,6 +9,7 @@ from multiprocessing.pool import Pool
 from shutil import rmtree
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from time import time
+from typing import Union
 
 import numpy as np
 import pandas as pd
@@ -45,10 +46,10 @@ def lst() -> list:
 
 
 class ReferenceHit(Struct, frozen=True):
-    target: str
-    reftaxon: str
-    sstart: int
-    send: int
+    query: str
+    ref: Union[str, None]
+    start: int
+    end: int
 
 
 class Hit(Struct):
@@ -68,23 +69,16 @@ class Hit(Struct):
     reftaxon: str = None
     ref_hits: list[ReferenceHit] = []
 
-
-class ReporterRef(Struct, frozen=True):
-    target: str
-    sstart: int
-    send: int
-
-
 class ReporterHit(Struct):
-    header: str
+    node: str
     frame: int
     qstart: int
     qend: int
     gene: str
-    reftaxon: str
+    query: str
     uid: int
-    ref_hits: list[ReporterRef]
-    est_seq: str = None
+    refs: list[ReferenceHit]
+    seq: str = None
 
 
 def get_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
@@ -397,11 +391,9 @@ def containments(hits, target_to_taxon, debug, gene):
     return [hit.uid for hit in hits if hit.kick], log, gene
 
 
-def convert_and_cull(hits, pairwise_refs, gene, is_assembly):
+def convert_and_cull(hits, gene):
     output = []
     for hit in hits:
-        if not is_assembly:
-            hit.ref_hits = [ReporterRef(i.target, i.sstart, i.send) for i in hit.ref_hits if i.reftaxon in pairwise_refs]
         output.append(
             ReporterHit(
                 hit.header,
@@ -450,9 +442,10 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             this_hit.length = this_hit.qend - this_hit.qstart + 1
             this_hit.gene, this_hit.reftaxon, _ = pargs.target_to_taxon[this_hit.target]
             this_hit.uid = hash(time())
+            reftaxon = this_hit.reftaxon if pargs.is_assembly else None
             this_hit.ref_hits.append(
                 ReferenceHit(
-                    this_hit.target, this_hit.reftaxon, this_hit.sstart, this_hit.send,
+                    this_hit.target, reftaxon, this_hit.sstart, this_hit.send,
                 ),
             )
             frame_to_hits[this_hit.frame].append(this_hit)
@@ -482,7 +475,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                         ref_seqs = [ReferenceHit(hit.target, hit.reftaxon, hit.sstart, hit.send) for hit in hits[1:]]
                     else:
                         ref_seqs = [
-                            ReferenceHit(hit.target, hit.reftaxon, hit.sstart, hit.send)
+                            ReferenceHit(hit.target, None, hit.sstart, hit.send)
                             for hit in hits[1:]
                             if hit.reftaxon in pargs.pairwise_refs
                         ]
@@ -907,28 +900,38 @@ def run_process(args: Namespace, input_path: str) -> bool:
             )
         del out
 
-        arguments = []
-        for gene, hits in output:
-            arguments.append(
-                (
-                    hits,
-                    pairwise_refs,
-                    gene,
-                    is_assembly,
-                ),
-            )
+        if is_assembly:
+            arguments = []
+            for gene, hits in output:
+                arguments.append(
+                    (
+                        hits,
+                        gene,
+                    ),
+                )
 
-        with Pool(post_threads) as pool:
-            output = pool.starmap(convert_and_cull, arguments)
+            with Pool(post_threads) as pool:
+                output = pool.starmap(convert_and_cull, arguments)
 
         passes = 0
         encoder = json.Encoder()
         for gene, hits in output:
             out = []
             for hit in hits:
-                hit.est_seq = head_to_seq[hit.header]
+                if not is_assembly:
+                    hit = ReporterHit(
+                        hit.header,
+                        hit.frame,
+                        hit.qstart,
+                        hit.qend,
+                        hit.gene,
+                        hit.reftaxon,
+                        hit.uid,
+                        hit.ref_hits,
+                    )
+                hit.seq = head_to_seq[hit.node]
                 out.append(hit)
-                dupe_divy_headers[gene].add(hit.header)
+                dupe_divy_headers[gene].add(hit.node)
 
             passes += len(out)
             db.put_bytes(f"gethits:{gene}", encoder.encode(out))
