@@ -53,7 +53,7 @@ class ReferenceHit(Struct, frozen=True):
 
 
 class Hit(Struct):
-    header: str
+    node: str
     target: str
     frame: int
     evalue: float
@@ -66,8 +66,8 @@ class Hit(Struct):
     length: int = None
     kick: bool = False
     uid: int = None
-    reftaxon: str = None
-    ref_hits: list[ReferenceHit] = []
+    ref: str = None
+    refs: list[ReferenceHit] = []
 
 class ReporterHit(Struct):
     node: str
@@ -178,15 +178,15 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
                     log.append(
                         (
                             candidate.gene,
-                            candidate.header,
-                            candidate.reftaxon,
+                            candidate.node,
+                            candidate.ref,
                             candidate.score,
                             candidate.qstart,
                             candidate.qend,
                             "Kicked out by",
                             master.gene,
-                            master.header,
-                            master.reftaxon,
+                            master.node,
+                            master.ref,
                             master.score,
                             master.qstart,
                             master.qend,
@@ -199,15 +199,15 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
                         [
                             (
                                 hit.gene,
-                                hit.header,
-                                hit.reftaxon,
+                                hit.node,
+                                hit.ref,
                                 hit.score,
                                 hit.qstart,
                                 hit.qend,
                                 "Kicked due to miniscule score",
                                 master.gene,
-                                master.header,
-                                master.reftaxon,
+                                master.node,
+                                master.ref,
                                 master.score,
                                 master.qstart,
                                 master.qend,
@@ -351,24 +351,24 @@ def containments(hits, target_to_taxon, debug, gene):
     for i, top_hit in enumerate(hits):
         if top_hit.kick:
             continue
-        for top_ref_hit in top_hit.ref_hits:
-            top_hit_reference = top_ref_hit.reftaxon
+        for top_ref_hit in top_hit.refs:
+            top_hit_reference = top_ref_hit.ref
 
             for hit in hits[i + 1 :]:
                 if hit.kick:
                     continue
 
-                for ref_hit in hit.ref_hits:
-                    if target_to_taxon[ref_hit.target][1] != top_hit_reference:
+                for ref_hit in hit.refs:
+                    if target_to_taxon[ref_hit.query][1] != top_hit_reference:
                         continue
 
                     if get_score_difference(top_hit.score, hit.score) < PARALOG_SCORE_DIFF:
                         continue
 
                     overlap_percent = get_overlap(
-                        top_ref_hit.sstart, top_ref_hit.send, ref_hit.sstart, ref_hit.send,
+                        top_ref_hit.start, top_ref_hit.end, ref_hit.start, ref_hit.end,
                     ) / min(
-                        (top_ref_hit.send - top_ref_hit.sstart), (ref_hit.send - ref_hit.sstart),
+                        (top_ref_hit.end - top_ref_hit.start), (ref_hit.end - ref_hit.start),
                     )
 
                     if overlap_percent > KICK_PERCENT:
@@ -377,11 +377,11 @@ def containments(hits, target_to_taxon, debug, gene):
                             log.append(
                                 hit.gene
                                 + " "
-                                + hit.header
+                                + hit.node
                                 + "|"
                                 + str(hit.frame)
                                 + " kicked out by "
-                                + top_hit.header
+                                + top_hit.node
                                 + "|"
                                 + str(top_hit.frame)
                                 + f" overlap: {overlap_percent:.2f}",
@@ -396,14 +396,14 @@ def convert_and_cull(hits, gene):
     for hit in hits:
         output.append(
             ReporterHit(
-                hit.header,
+                hit.node,
                 hit.frame,
                 hit.qstart,
                 hit.qend,
                 hit.gene,
-                hit.reftaxon,
+                hit.ref,
                 hit.uid,
-                hit.ref_hits,
+                hit.refs,
             ),
         )
     return gene, output
@@ -440,12 +440,12 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             if this_hit.frame < 0:
                 this_hit.qend, this_hit.qstart = this_hit.qstart, this_hit.qend
             this_hit.length = this_hit.qend - this_hit.qstart + 1
-            this_hit.gene, this_hit.reftaxon, _ = pargs.target_to_taxon[this_hit.target]
+            this_hit.gene, this_hit.ref, _ = pargs.target_to_taxon[this_hit.target]
             this_hit.uid = hash(time())
-            reftaxon = this_hit.reftaxon if pargs.is_assembly else None
-            this_hit.ref_hits.append(
+            ref = this_hit.ref if pargs.is_assembly else None
+            this_hit.refs.append(
                 ReferenceHit(
-                    this_hit.target, reftaxon, this_hit.sstart, this_hit.send,
+                    this_hit.target, ref, this_hit.sstart, this_hit.send,
                 ),
             )
             frame_to_hits[this_hit.frame].append(this_hit)
@@ -472,14 +472,14 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                     top_hit = hits[0]
 
                     if pargs.is_assembly:
-                        ref_seqs = [ReferenceHit(hit.target, hit.reftaxon, hit.sstart, hit.send) for hit in hits[1:]]
+                        ref_seqs = [ReferenceHit(hit.target, hit.ref, hit.sstart, hit.send) for hit in hits[1:]]
                     else:
                         ref_seqs = [
                             ReferenceHit(hit.target, None, hit.sstart, hit.send)
                             for hit in hits[1:]
-                            if hit.reftaxon in pargs.pairwise_refs
+                            if hit.ref in pargs.pairwise_refs
                         ]
-                    top_hit.ref_hits.extend(ref_seqs)
+                    top_hit.refs.extend(ref_seqs)
 
 
                     output[top_hit.gene].append(top_hit)
@@ -776,12 +776,12 @@ def run_process(args: Namespace, input_path: str) -> bool:
             requires_internal = defaultdict(dict)
             internal_order = []
             for gene, hits in output.items():
-                this_counter = Counter([i.header for i in hits]).most_common()
+                this_counter = Counter([i.node for i in hits]).most_common()
                 if this_counter[0][1] > 1:
                     this_hits = sum(i[1] for i in this_counter if i[1] > 1)
                     this_common = {i[0] for i in this_counter if i[1] > 1}
-                    for hit in [i for i in hits if i.header in this_common]:
-                        requires_internal[gene].setdefault(hit.header, []).append(hit)
+                    for hit in [i for i in hits if i.node in this_common]:
+                        requires_internal[gene].setdefault(hit.node, []).append(hit)
 
                     internal_order.append((gene, this_hits))
 
@@ -920,14 +920,14 @@ def run_process(args: Namespace, input_path: str) -> bool:
             for hit in hits:
                 if not is_assembly:
                     hit = ReporterHit(
-                        hit.header,
+                        hit.node,
                         hit.frame,
                         hit.qstart,
                         hit.qend,
                         hit.gene,
-                        hit.reftaxon,
+                        hit.ref,
                         hit.uid,
-                        hit.ref_hits,
+                        hit.refs,
                     )
                 hit.seq = head_to_seq[hit.node]
                 out.append(hit)
