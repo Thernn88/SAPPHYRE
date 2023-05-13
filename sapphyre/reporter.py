@@ -24,7 +24,6 @@ MISMATCH_AMOUNT = 1
 EXACT_MATCH_AMOUNT = 4
 GAP_PENALTY = 2
 EXTEND_PENALTY = 1
-TRIM_WARNINGS = False
 
 MainArgs = namedtuple(
     "MainArgs",
@@ -329,6 +328,7 @@ def print_unmerged_sequences(
     minimum_bp: int,
     debug_fp: TextIO,
     dupe_debug_fp: TextIO,
+    verbose: int,
 ) -> tuple[dict[str, list], list[tuple[str, str]], list[tuple[str, str]]]:
     """Returns a list of unique trimmed sequences for a given gene with formatted headers.
 
@@ -389,8 +389,7 @@ def print_unmerged_sequences(
             aa_seq, core_aa_seqs, trim_matches, blosum_mode, debug_fp, header,
         )
         if r_start is None or r_end is None:
-            if TRIM_WARNINGS:
-                print(f"WARNING: Trim kicked: {hit.node}|{hit.frame}")
+            printv(f"WARNING: Trim kicked: {hit.node}|{hit.frame}", verbose, 2)
             continue
 
         if r_end == 0:
@@ -545,6 +544,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.minimum_bp,
         debug_alignments,
         debug_dupes,
+        oargs.verbose,
     )
     if debug_alignments:
         debug_alignments.close()
