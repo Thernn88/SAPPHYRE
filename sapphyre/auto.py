@@ -2,7 +2,7 @@ import argparse
 import json
 import os
 from glob import glob
-
+from .timekeeper import KeeperMode, TimeKeeper
 
 def main(args):
     default_config = {
@@ -98,6 +98,7 @@ def main(args):
         return False
     scripts = scripts[scripts.index(start_script) :]
 
+    time = TimeKeeper(KeeperMode.DIRECT)
     for script in scripts:
         sargs = config[script]
         print(f"Executing: {script}")
@@ -154,5 +155,8 @@ def main(args):
 
             if not merge.main(this_args):
                 print("Error in Merge.")
+
+    time = time.differential()
+    print(f"Took {time:.2f}s overall.")
 
     return True
