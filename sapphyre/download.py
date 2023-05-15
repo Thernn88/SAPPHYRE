@@ -33,7 +33,8 @@ def main(args):
         cmd = Path(args.bin, cmd)
 
     csvfile = Path(args.INPUT)
-    path_to_download = Path(os.getcwd(), csvfile.name.removesuffix(".csv"))
+    path_to_download = Path(os.getcwd(), "input", csvfile.name.removesuffix(".csv"))
+    os.makedirs(path_to_download, exist_ok=True)
 
     with open(csvfile, encoding="utf-8") as fp:
         csv_read = csv.reader(fp, delimiter=",", quotechar='"')
