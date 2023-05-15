@@ -4,6 +4,7 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from subprocess import PIPE, Popen
+import openpyxl
 
 import requests
 from bs4 import BeautifulSoup
@@ -33,38 +34,74 @@ def main(args):
         cmd = Path(args.bin, cmd)
 
     csvfile = Path(args.INPUT)
-    path_to_download = Path(os.getcwd(), "input", csvfile.name.removesuffix(".csv"))
+    this_suffix = csvfile.suffix
+        
+
+    path_to_download = Path(os.getcwd(), "input", csvfile.name.removesuffix(this_suffix))
     os.makedirs(path_to_download, exist_ok=True)
 
-    with open(csvfile, encoding="utf-8") as fp:
-        csv_read = csv.reader(fp, delimiter=",", quotechar='"')
+    if this_suffix == ".csv":
+        with open(csvfile, encoding="utf-8") as fp:
+            csv_read = csv.reader(fp, delimiter=",", quotechar='"')
+            arguments = []
+            for i, fields in enumerate(csv_read):
+                out_fields = ['"{}"'.format(str(i).replace("ï»¿", "")) for i in fields]
+                if fields[0] == "Experiment Accession":
+                    out_fields.append('"SRR Acession"')
+
+                elif fields[0] != "":
+                    acession = fields[0]
+                    print(f"Searching for runs in SRA: {acession}")
+
+                    url = f"https://www.ncbi.nlm.nih.gov/sra/{acession}[accn]"
+                    # TODO handle network errors
+                    req = requests.get(url, timeout=500)
+                    soup = BeautifulSoup(req.content, "html.parser")
+                    for srr_acession in (
+                        a.contents[0]
+                        for a in soup.find_all("a", href=True)
+                        if a["href"].startswith("//trace.ncbi.nlm.nih.gov/Traces?run")
+                    ):
+                        print(f"Attempting to download: {srr_acession}")
+                        out_fields.append(f'"{srr_acession}"')
+
+                        # TODO: verify download is successful
+                        arguments.append(
+                            (cmd, srr_acession, path_to_download, args.verbose),
+                        )
+    elif "xls" in this_suffix:
+        workbook = openpyxl.load_workbook(csvfile)
+        sheet = workbook.active
         arguments = []
-        for i, fields in enumerate(csv_read):
+
+        for row in sheet.iter_rows(values_only=True):
+            fields = list(row)
             out_fields = ['"{}"'.format(str(i).replace("ï»¿", "")) for i in fields]
+            
             if fields[0] == "Experiment Accession":
-                out_fields.append('"SRR Acession"')
-
+                out_fields.append('"SRR Accession"')
             elif fields[0] != "":
-                acession = fields[0]
-                print(f"Searching for runs in SRA: {acession}")
-
-                url = f"https://www.ncbi.nlm.nih.gov/sra/{acession}[accn]"
+                accession = fields[0]
+                print(f"Searching for runs in SRA: {accession}")
+                url = f"https://www.ncbi.nlm.nih.gov/sra/{accession}[accn]"
+                
                 # TODO handle network errors
                 req = requests.get(url, timeout=500)
                 soup = BeautifulSoup(req.content, "html.parser")
-                for srr_acession in (
+                
+                for srr_accession in (
                     a.contents[0]
                     for a in soup.find_all("a", href=True)
                     if a["href"].startswith("//trace.ncbi.nlm.nih.gov/Traces?run")
                 ):
-                    print(f"Attempting to download: {srr_acession}")
-                    out_fields.append(f'"{srr_acession}"')
-
+                    print(f"Attempting to download: {srr_accession}")
+                    out_fields.append(f'"{srr_accession}"')
+                    
                     # TODO: verify download is successful
-                    arguments.append(
-                        (cmd, srr_acession, path_to_download, args.verbose),
-                    )
+                    arguments.append((cmd, srr_accession, path_to_download, args.verbose))
 
-        with ThreadPoolExecutor(args.processes) as pool:
-            pool.map(download_parallel, arguments, chunksize=1)
+
+
+    with ThreadPoolExecutor(args.processes) as pool:
+        pool.map(download_parallel, arguments, chunksize=1)
     return True
