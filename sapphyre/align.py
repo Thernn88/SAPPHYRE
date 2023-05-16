@@ -535,7 +535,7 @@ def run_command(args: CmdArgs) -> None:
                     if has_singleton_merge and i == 0:
                         
                         if args.debug:
-                            path = os.path.join(os.getcwd(), this_intermediates, f"part_{i}.txt")
+                            path = os.path.join(this_intermediates, f"part_{i}.txt")
                             printv(
                                 f"mafft --anysymbol --jtt 1 --progress {path} --quiet --addfragments {file} --thread 1 {prev_file} > {out_file}",
                                 args.verbose,
