@@ -545,9 +545,8 @@ def run_command(args: CmdArgs) -> None:
                                 f"mafft --anysymbol --jtt 1 --progress {path} --quiet --addfragments {file} --thread 1 {prev_file} > {out_file}",
                             )
                         else:
-                            path = os.path.join(os.getcwd(), "progress", f"{args.gene}.txt")
                             os.system(
-                                f"mafft --anysymbol --jtt 1 --progress {path} --quiet --addfragments {file} --thread 1 {prev_file} > {out_file}",
+                                f"mafft --anysymbol --jtt 1 --quiet --addfragments {file} --thread 1 {prev_file} > {out_file}",
                             )
                     else:
                         os.system(
@@ -603,8 +602,6 @@ def do_folder(folder, args):
         return False
     rmtree(align_path, ignore_errors=True)
     os.mkdir(align_path)
-    
-    os.makedirs("progress", exist_ok=True)
 
     genes = [
         (gene, os.stat(os.path.join(aa_path, gene)).st_size)
