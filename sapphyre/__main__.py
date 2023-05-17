@@ -276,8 +276,8 @@ def subcmd_outlier(subparsers):
     par.add_argument(
         "-ikt",
         "--internal_kick_threshold",
-        type=int,
-        default=4,
+        type=float,
+        default=0.33,
         help="Amount of mismatches required to constitute an internal kick.",
     )
     par.add_argument(

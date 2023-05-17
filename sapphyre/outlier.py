@@ -601,7 +601,7 @@ def main_process(
             [cand.raw for cand in passing], internal_consensus_threshold,
         )
         for i, candidate in enumerate(passing):
-            distance = constrained_distance(consensus, candidate.raw)
+            distance = constrained_distance(consensus, candidate.raw)/len(candidate.sequence)
             if distance >= internal_kick_threshold:
                 candidate.grade = "Internal Fail"
                 failing.append(candidate)
