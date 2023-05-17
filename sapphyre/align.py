@@ -533,16 +533,15 @@ def run_command(args: CmdArgs) -> None:
                         out_file = args.result_file
 
                     if has_singleton_merge and i == 0:
-                        path = os.path.join(os.getcwd(), "Progress", f"{args.gene}.txt")
-                        os.system(
-                            f"mafft --anysymbol --jtt 1 --progress {path} --addfragments {file} --thread 1 {prev_file} > {out_file}",
-                        )
-                        if args.debug:
-                            printv(
-                                f"mafft --anysymbol --jtt 1 --progress {path} --addfragments {file} --thread 1 {prev_file} > {out_file}",
-                                args.verbose,
-                                3,
-                            )
+                        if debug:
+                            path = os.path.join(os.getcwd(), "Progress", f"{args.gene}.txt")
+                            command = f"mafft --anysymbol --jtt 1 --progress {path} --addfragments {file} --thread 1 {prev_file} > {out_file}"
+                        else:
+                            command = f"mafft --anysymbol --jtt 1 --quiet --addfragments {file} --thread 1 {prev_file} > {out_file}"
+                        
+                        os.system(command)
+                        if debug:
+                            printv(command, args.verbose, 3)
                     else:
                         os.system(
                             f"clustalo --p1 {prev_file} --p2 {file} -o {out_file} --threads=1 --full --is-profile --force",
