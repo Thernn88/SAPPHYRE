@@ -367,7 +367,7 @@ def subcmd_Combine(subparsers):
     par = subparsers.add_parser("Combine", help=dsc, description=dsc)
     par.add_argument("INPUT", help="Paths of directories.", action="extend", nargs="+")
     par.add_argument(
-        "-t",
+        "-pd",
         "--prepend-directory",
         action="store",
         type=str,
