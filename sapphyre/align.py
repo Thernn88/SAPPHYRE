@@ -533,12 +533,13 @@ def run_command(args: CmdArgs) -> None:
                         out_file = args.result_file
 
                     if has_singleton_merge and i == 0:
+                        path = os.path.join(os.getcwd(), "Progress", f"{args.gene}.txt")
                         os.system(
-                            f"mafft --anysymbol --jtt 1 --quiet --addfragments {file} --thread 1 {prev_file} > {out_file}",
+                            f"mafft --anysymbol --jtt 1 --progress {path} --addfragments {file} --thread 1 {prev_file} > {out_file}",
                         )
                         if args.debug:
                             printv(
-                                f"mafft --anysymbol --jtt 1 --quiet --addfragments {file} --thread 1 {prev_file} > {out_file}",
+                                f"mafft --anysymbol --jtt 1 --progress {path} --addfragments {file} --thread 1 {prev_file} > {out_file}",
                                 args.verbose,
                                 3,
                             )
@@ -596,6 +597,8 @@ def do_folder(folder, args):
         return False
     rmtree(align_path, ignore_errors=True)
     os.mkdir(align_path)
+
+    os.makedirs("Progress", exist_ok=True)
 
     genes = [
         (gene, os.stat(os.path.join(aa_path, gene)).st_size)
