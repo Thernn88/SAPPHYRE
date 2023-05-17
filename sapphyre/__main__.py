@@ -729,8 +729,21 @@ def makeref(argsobj):
 
 def subcmd_wrap_final(sp):
     par = sp.add_parser("reconcile", help="Wrapper for Second Run")  # TODO add me
+    par.add_argument("INPUT", help="Paths of directories.", action="extend", nargs="+")
     par.add_argument(
-        "INPUT", help="Path to directory of Input folder", action="extend", nargs="+",
+        "-t",
+        "--prepend-directory",
+        action="store",
+        type=str,
+        dest="DIRECTORY",
+        help="Prepend DIRECTORY to the list of INPUT.",
+    )
+    par.add_argument(
+        "-out",
+        "--output-directory",
+        type=str,
+        required=True,
+        help="Target directory for merged output. (Example: MergedGenes)",
     )
     par.add_argument("-t", "--table", type=int, default=1, help="Table ID.")
     par.add_argument(
@@ -792,18 +805,27 @@ def subcmd_wrap_final(sp):
 
 
 def wrap_final(argsobj):
-    from . import align, merge, pal2nal
+    from . import combine, align, merge, pal2nal
+
+    print("Triggering Combine")
+    if not combine.main(argsobj):
+        print()
+        print(argsobj.formathelp())
+
+    current_args = vars(argsobj)
+    current_args["INPUT"] = [argsobj.output_directory]
+    next_args = argparse.Namespace(**current_args)
 
     print("Triggering Align")
-    if not align.main(argsobj):
+    if not align.main(next_args):
         print()
         print(argsobj.formathelp())
     print("Triggering Pal2Nal")
-    if not pal2nal.main(argsobj):
+    if not pal2nal.main(next_args):
         print()
         print(argsobj.formathelp())
     print("Triggering Merge")
-    if not merge.main(argsobj):
+    if not merge.main(next_args):
         print()
         print(argsobj.formathelp())
 
