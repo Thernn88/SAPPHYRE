@@ -613,7 +613,7 @@ def main_process(
                 [(cand.raw, get_dupe_count(cand, prepare_dupe_counts, reporter_dupe_counts))
                   for cand in passing], internal_consensus_threshold,
             )
-            print(consensus+'\n')
+            # print(consensus+'\n')
             for i, candidate in enumerate(passing):
                 distance = constrained_distance(consensus, candidate.raw)/len(candidate.sequence)
                 if distance >= internal_kick_threshold:
