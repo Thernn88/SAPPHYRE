@@ -11,7 +11,8 @@ from shutil import rmtree
 
 import numpy as np
 import phymmr_tools as bd
-from msgspec import Struct
+import wrap_rocks
+from msgspec import Struct, json
 from phymmr_tools import constrained_distance, dumb_consensus
 
 from .timekeeper import KeeperMode, TimeKeeper
@@ -537,6 +538,11 @@ def original_order_sort(original: list, candidate_records: list) -> list:
     return [x for x in output if x]
 
 
+def get_dupe_count(cand: Record, prep_dupes, report_dupes) -> int:
+    node = cand.id.split('|')[3]
+    return 1 + sum(prep_dupes.get(node, 0) for node in report_dupes.get(node, []))
+    return prep_dupes[gene].get(node, 1) + sum((report_dupes[gene].get(child, 0) for child in children))
+
 def main_process(
     args_input,
     nt_input,
@@ -553,6 +559,8 @@ def main_process(
     ref_min_percent: int,
     internal_consensus_threshold: float,
     internal_kick_threshold: int,
+    prepare_dupe_counts,
+    reporter_dupe_counts
 ):
     keep_refs = not args_references
 
@@ -597,16 +605,24 @@ def main_process(
     )
     logs = []
     if passing:
-        consensus = dumb_consensus(
-            [cand.raw for cand in passing], internal_consensus_threshold,
-        )
-        for i, candidate in enumerate(passing):
-            distance = constrained_distance(consensus, candidate.raw)/len(candidate.sequence)
-            if distance >= internal_kick_threshold:
-                candidate.grade = "Internal Fail"
-                failing.append(candidate)
-                passing[i] = None
-    passing = [x for x in passing if x is not None]
+        try:
+            gene = filename.split('.')[0]
+            reporter_dupe_counts = reporter_dupe_counts[gene]
+            prepare_dupe_counts = prepare_dupe_counts[gene]
+            consensus = bd.dumb_consensus_dupe(
+                [(cand.raw, get_dupe_count(cand, prepare_dupe_counts, reporter_dupe_counts))
+                  for cand in passing], internal_consensus_threshold,
+            )
+            print(consensus+'\n')
+            for i, candidate in enumerate(passing):
+                distance = constrained_distance(consensus, candidate.raw)/len(candidate.sequence)
+                if distance >= internal_kick_threshold:
+                    candidate.grade = "Internal Fail"
+                    failing.append(candidate)
+                    passing[i] = None
+            passing = [x for x in passing if x is not None]
+        except KeyError:
+            print(f"key error for {gene}, skipping consensus")
     passing = original_order_sort(original_order, passing)
     for candidate in passing:
         raw_regulars.extend([candidate.id, candidate.raw])
@@ -648,7 +664,14 @@ def do_folder(folder, args):
     else:
         aa_input = Path(folder, "align")
         nt_input = Path(folder, "nt_aligned")
-
+    rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
+    if rocks_db_path.exists():
+        rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
+        prepare_dupe_counts = json.decode(rocksdb_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]])
+        reporter_dupe_counts = json.decode(rocksdb_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]])
+    else:
+        err = f'cannot find dupe databases for {folder}'
+        raise FileNotFoundError(err)
     printv(f"Processing: {os.path.basename(folder)}", args.verbose, 0)
 
     if not aa_input.exists():  # exit early
@@ -689,6 +712,8 @@ def do_folder(folder, args):
                     args.ref_min_percent,
                     args.internal_consensus_threshold,
                     args.internal_kick_threshold,
+                    prepare_dupe_counts,
+                    reporter_dupe_counts
                 ),
             )
 
@@ -714,6 +739,8 @@ def do_folder(folder, args):
                     args.ref_min_percent,
                     args.internal_consensus_threshold,
                     args.internal_kick_threshold,
+                    prepare_dupe_counts,
+                    reporter_dupe_counts,
                 ),
             )
     if args.debug:
