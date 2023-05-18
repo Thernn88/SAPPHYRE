@@ -6,13 +6,13 @@ from .timekeeper import KeeperMode, TimeKeeper
 
 def main(args):
     default_config = {
-        "Prepare": {
+        "prepare": {
             "clear_database": True,
             "minimum_sequence_length": 90,
             "chunk_size": 500000,
             "keep_prepared": False,
         },
-        "Diamond": {
+        "diamond": {
             "overwrite": False,
             "debug": False,
             "strict_search_mode": True,
@@ -22,7 +22,7 @@ def main(args):
             "top_ref": 0.1,
             "internal_percent": 0.3,
         },
-        "Reporter": {
+        "reporter": {
             "minimum_bp": 20,
             "matches": 7,
             "gene_list_file": None,
@@ -30,13 +30,13 @@ def main(args):
             "debug": False,
             "clear_output": True,
         },
-        "Align": {
+        "align": {
             "debug": False,
             "second_run": False,
             "add_fragments": True,
         },
-        "Pal2Nal": {"table": 1},
-        "FlexCull": {
+        "pal2nal": {"table": 1},
+        "flexcull": {
             "output": "trimmed",
             "amino_acid": "align",
             "nucleotide": "nt_aligned",
@@ -48,7 +48,7 @@ def main(args):
             "base_pair": 20,
             "debug": False,
         },
-        "Outlier": {
+        "outlier": {
             "output": "outlier",
             "threshold": 100,
             "no_references": False,
@@ -60,7 +60,7 @@ def main(args):
             "internal_kick_threshold": 4,
             "debug": False,
         },
-        "Merge": {
+        "merge": {
             "aa_input": "outlier/aa",
             "nt_input": "outlier/nt",
             "debug": False,
@@ -90,7 +90,7 @@ def main(args):
     global_args.pop("start")
 
     scripts = list(config.keys())
-    if start_script not in scripts:
+    if start_script.lower() not in scripts:
         options = ", ".join(scripts)
         print(
             f"{start_script} is not a valid start script. Please choose from: ({options})",
@@ -115,17 +115,17 @@ def main(args):
                 )
         )
 
-        if script == "Prepare":
+        if script == "prepare":
             from . import prepare
 
             if not prepare.main(this_args):
                 print("Error in Prepare.")
-        elif script == "Diamond":
+        elif script == "diamond":
             from . import diamond
 
             if not diamond.main(this_args):
                 print("Error in Diamond.")
-        elif script == "Reporter":
+        elif script == "reporter":
             from . import reporter
 
             if not reporter.main(this_args):
@@ -135,22 +135,22 @@ def main(args):
 
             if not align.main(this_args):
                 print("Error in Align.")
-        elif script == "Pal2Nal":
+        elif script == "pal2nal":
             from . import pal2nal
 
             if not pal2nal.main(this_args):
                 print("Error in Pal2Nal.")
-        elif script == "FlexCull":
+        elif script == "flexcull":
             from . import flexcull
 
             if not flexcull.main(this_args):
                 print("Error in FlexCull.")
-        elif script == "Outlier":
+        elif script == "outlier":
             from . import outlier
 
             if not outlier.main(this_args):
                 print("Error in Outlier.")
-        elif script == "Merge":
+        elif script == "merge":
             from . import merge
 
             if not merge.main(this_args):
