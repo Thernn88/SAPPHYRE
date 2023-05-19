@@ -618,7 +618,8 @@ def do_folder(folder, args):
     rmtree(align_path, ignore_errors=True)
     os.mkdir(align_path)
 
-    os.makedirs("Progress", exist_ok=True)
+    rmtree("Progress")
+    os.mkdir("Progress")
 
     genes = [
         (gene, os.stat(os.path.join(aa_path, gene)).st_size)
