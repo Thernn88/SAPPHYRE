@@ -540,8 +540,8 @@ def original_order_sort(original: list, candidate_records: list) -> list:
 
 def get_dupe_count(cand: Record, prep_dupes, report_dupes) -> int:
     node = cand.id.split('|')[3]
-    return 1 + sum(prep_dupes.get(node, 0) for node in report_dupes.get(node, []))
-    return prep_dupes[gene].get(node, 1) + sum((report_dupes[gene].get(child, 0) for child in children))
+    dupes = prep_dupes.get(node, 1) + sum(prep_dupes.get(node, 1) for node in report_dupes.get(node, []))
+    return  dupes
 
 def main_process(
     args_input,
@@ -607,8 +607,6 @@ def main_process(
     if passing:
         try:
             gene = filename.split('.')[0]
-            reporter_dupe_counts = reporter_dupe_counts[gene]
-            prepare_dupe_counts = prepare_dupe_counts[gene]
             consensus = bd.dumb_consensus_dupe(
                 [(cand.raw, get_dupe_count(cand, prepare_dupe_counts, reporter_dupe_counts))
                   for cand in passing], internal_consensus_threshold,
@@ -695,6 +693,7 @@ def do_folder(folder, args):
     if args.processes > 1:
         arguments = []
         for gene in file_inputs:
+            gene_raw = gene.stem.split(".")[0]
             arguments.append(
                 (
                     gene,
@@ -712,8 +711,8 @@ def do_folder(folder, args):
                     args.ref_min_percent,
                     args.internal_consensus_threshold,
                     args.internal_kick_threshold,
-                    prepare_dupe_counts,
-                    reporter_dupe_counts
+                    prepare_dupe_counts.get(gene_raw, {}),
+                    reporter_dupe_counts.get(gene_raw, {})
                 ),
             )
 
