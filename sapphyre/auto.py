@@ -130,7 +130,7 @@ def main(args):
 
             if not reporter.main(this_args):
                 print("Error in Reporter.")
-        elif script == "Align":
+        elif script == "align":
             from . import align
 
             if not align.main(this_args):
