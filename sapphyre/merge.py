@@ -3,6 +3,8 @@
 PyLint 9.61/10
 """
 from __future__ import annotations
+from collections import Counter, defaultdict, deque
+from itertools import islice
 
 import os
 from multiprocessing.pool import Pool
@@ -10,9 +12,11 @@ from pathlib import Path
 from shutil import rmtree
 from typing import Literal
 
+import numpy as np
+
 import wrap_rocks
 from Bio.Seq import Seq
-from msgspec import json
+from msgspec import Struct, json
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
@@ -96,30 +100,16 @@ def make_nt_name(x):
     return str(x).replace(".aa.", ".nt.")
 
 
-def make_seq_dict(sequences: list, data_region: tuple) -> dict:
+def make_seq_dict(sequences: list) -> dict:
     """Creates a dictionary of each sequence present at each coordinate of a list of sequences."""
-    seq_dict = {
-        i: [] for i in range(data_region[0], data_region[1] + 1)
-    }  # exclusive, so add 1
+    seq_dict = {seq.header: seq.sequence for seq in sequences}
+    cursor_dict = defaultdict(list)
 
     for sequence in sequences:
-        for cursor in range(sequence[0], sequence[1] + 1):  # exclusive, so add 1
-            seq_dict[cursor].append((sequence[2], sequence[3]))
-    return seq_dict
+        for cursor in range(sequence.start, sequence.end + 1):  # exclusive, so add 1
+            cursor_dict[cursor].append(sequence.header)
+    return seq_dict, cursor_dict
 
-
-def most_common_element_with_count(iterable) -> tuple:
-    """Returns the most common element and corresponding
-    count within an iterable.
-    """
-    counts = {}
-    winner = ("dummy", -1)
-    for element in iterable:
-        count = counts.get(element, 0) + 1
-        counts[element] = count
-        if count > winner[1]:
-            winner = (element, count)
-    return winner
 
 
 def parse_fasta(path: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
@@ -145,31 +135,18 @@ def parse_fasta(path: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]
 
 
 def get_start_end(sequence: str) -> tuple:
-    """Returns index of first and last none dash character in sequence."""
-    start = None
-    end = None
-    for i, character in enumerate(sequence):
-        if character != "-":
-            start = i
-            break
-    for i in range(len(sequence) - 1, -1, -1):
-        if sequence[i] != "-":
-            end = i
-            break
+    """Returns index of first and last non-dash character in sequence."""
+    start = next((i for i, character in enumerate(sequence) if character != "-"), None)
+    end = next((i for i in range(len(sequence) - 1, -1, -1) if sequence[i] != "-"), None)
     return start, end
 
 
 def expand_region(original: tuple, expansion: tuple) -> tuple:
     """Expands two (start, end) tuples to cover the entire region."""
-    start = original[0]
-    if expansion[0] < start:
-        start = expansion[0]
-
-    end = original[1]
-    if expansion[1] > end:
-        end = expansion[1]
-
+    start = min(original[0], expansion[0])
+    end = max(original[1], expansion[1])
     return start, end
+
 
 
 def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
@@ -181,27 +158,21 @@ def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
     current_group = []
     current_region = None
 
-    for start, end, header, sequence in taxa_pair:
-        if "NODE" in header.split("|")[-1]:
-            node = header.split("|")[-1]
-            frame = ""
-        else:
-            node, frame = header.split("|")[-2:]
-        this_object = (start, end, header, sequence, node, frame)
-
-        if current_region is None or find_overlap((start, end), current_region) is None:
+    for sequence in taxa_pair:
+        if current_region is None or find_overlap((sequence.start, sequence.end), current_region) is None:
             if current_group:
                 result.append((current_region, current_group))
-            current_region = (start, end)
-            current_group = [this_object]
+            current_region = (sequence.start, sequence.end)
+            current_group = [sequence]
         else:
-            current_group.append(this_object)
-            current_region = expand_region(current_region, (start, end))
+            current_group.append(sequence)
+            current_region = expand_region(current_region, (sequence.start, sequence.end))
 
     if current_group:
         result.append((current_region, current_group))
 
     return result
+
 
 
 def find_overlap(
@@ -230,26 +201,26 @@ def calculate_split(sequence_a: str, sequence_b: str, comparison_sequence: str) 
 
     overlap_start, overlap_end = find_overlap(pair_a, pair_b, 0)
 
-    sequence_a_overlap = sequence_a[overlap_start : overlap_end + 1]
-    sequence_b_overlap = sequence_b[overlap_start : overlap_end + 1]
-    comparison_overlap = comparison_sequence[overlap_start : overlap_end + 1]
+    sequence_a_overlap = list(islice(sequence_a, overlap_start, overlap_end + 1))
+    sequence_b_overlap = list(islice(sequence_b, overlap_start, overlap_end + 1))
+    comparison_overlap = list(islice(comparison_sequence, overlap_start, overlap_end + 1))
 
     base_score = 0
     highest_scoring_pos = 0
+    highest_score = -1
 
-    for i, character in enumerate(sequence_b_overlap):
-        if character == comparison_overlap[i]:
+    for i, (character_a, character_b, comparison_char) in enumerate(zip(sequence_a_overlap, sequence_b_overlap, comparison_overlap)):
+        if character_a == character_b == comparison_char:
             base_score += 1
-    highest_score = base_score
-
-    for i, character_a in enumerate(sequence_a_overlap):
-        if sequence_b_overlap[i] == comparison_overlap[i]:
+        elif character_a == comparison_char or character_b == comparison_char:
+            base_score += 1
+        else:
             base_score -= 1
-        if character_a == comparison_overlap[i]:
-            base_score += 1
+        
         if base_score >= highest_score:
             highest_score = base_score
             highest_scoring_pos = i
+
     return highest_scoring_pos + overlap_start
 
 
@@ -272,18 +243,24 @@ def grab_merge_start_end(taxa_pair: list) -> list[tuple]:
     """Grabs start and end of merge sequences."""
     merge_start = min(seq[0] for seq in taxa_pair)
     merge_end = max(seq[1] for seq in taxa_pair)
-    sequences = []
-    for start, end, header, sequence in taxa_pair:
-        if "NODE" in header.split("|")[-1]:
-            node = header.split("|")[-1]
-            frame = ""
-        else:
-            node, frame = header.split("|")[-2:]
-        this_object = (start, end, header, sequence, node, frame)
-        sequences.append(this_object)
+    
+    return merge_start, merge_end
 
-    return [((merge_start, merge_end), sequences)]
 
+class Sequence(Struct, frozen=True):
+    """Sequence object for merge."""
+
+    start: np.uint8
+    end: np.uint8
+    header: str
+    sequence: str
+    is_old_header: bool
+
+    def get_node(self) -> str:
+        if self.is_old_header:
+            return self.header.split("|")[-1]
+        return self.header.split("|")[-2]
+    
 
 def do_protein(
     protein: Literal["aa", "nt"],
@@ -319,26 +296,30 @@ def do_protein(
 
     def get_taxa(header: str) -> str:
         return header.split("|")[2]
+    
+    is_old_header = True
+    if len(candidates[0][0].split("|")[-1]) <= 2:
+        is_old_header = False
 
     for header, sequence in candidates:
         start, end = get_start_end(sequence)
-        this_object = (start, end, header, sequence)
+        this_object = Sequence(start, end, header, sequence, is_old_header)
         taxa = get_taxa(header)
         taxa_groups.setdefault(taxa, []).append(this_object)
 
-    for _, sequences_to_merge in taxa_groups.items():
+    for sequences_to_merge in taxa_groups.values():
         # Sort by start position
-        sequences_to_merge.sort(key=lambda x: x[0])
+        sequences_to_merge.sort(key=lambda x: x.start)
 
         # Disperse sequences into clusters of overlap
         if ignore_overlap_chunks:
-            overlap_groups = grab_merge_start_end(sequences_to_merge)
+            overlap_groups = [(grab_merge_start_end(sequences_to_merge), sequences_to_merge)]
         else:
             overlap_groups = disperse_into_overlap_groups(sequences_to_merge)
 
         for overlap_region, this_sequences in overlap_groups:
             # Use the header of the sequence that starts first as the base
-            base_header = this_sequences[0][2]
+            base_header = this_sequences[0].header
 
             try:
                 this_gene, _, this_taxa_id, node, frame = base_header.split("|")
@@ -350,23 +331,23 @@ def do_protein(
 
             for sequence in this_sequences:
                 # if protein == "aa":
-                count = prep_dupe_counts.get(sequence[4], 1) + sum(
+                count = prep_dupe_counts.get(sequence.get_node(), 1) + sum(
                     prep_dupe_counts.get(header, 1)
-                    for header in rep_dupe_counts.get(sequence[4], [])
+                    for header in rep_dupe_counts.get(sequence.get_node(), [])
                 )
-                consists_of.append((sequence[2], sequence[3], count))
+                consists_of.append((sequence.header, sequence.sequence, count))
 
             # Gets last pipe of each component of a merge
             stitch = "&&".join(
-                [sequence[2].split("|")[3] for sequence in this_sequences[1:]],
+                [sequence.header.split("|")[3] for sequence in this_sequences[1:]],
             )
 
-            taxons = [i[2].split("|")[1] for i in this_sequences]
+            taxons = [i.header.split("|")[1] for i in this_sequences]
             taxons_filtered = [i for i in taxons if i in ref_stats]
             if not taxons_filtered:
                 this_taxa = taxons[0]
             else:
-                most_occuring = most_common_element_with_count(taxons_filtered)
+                most_occuring = Counter(taxons_filtered).most_common(1)[0]
                 if len(taxons_filtered) > 1 and most_occuring[1] > 1:
                     this_taxa = most_occuring[0]
                 elif len(taxons_filtered) == 1:
@@ -399,26 +380,26 @@ def do_protein(
             data_start, data_end = overlap_region
 
             # As the fasta is aligned the trailing end of all sequences can be assumed to be the same as the length of the last sequence
-            trailing_end = len(this_sequences[-1][3])
+            trailing_end = len(this_sequences[-1].sequence)
 
             # Add gap characters until the first data index
             new_merge = ["-"] * data_start
 
             # Create a hashmap of the headers present at every position in the range of
             # the overlap region
-            current_point_seqs = make_seq_dict(this_sequences, overlap_region)
+            sequences_dict, current_point_seqs = make_seq_dict(this_sequences)
 
             # Create a hashmap to store the split quality taxons
             quality_taxons_here = {}
 
             for cursor in range(data_start, data_end + 1):
-                sequences_at_current_point = current_point_seqs[cursor]
-                amount_of_seqs_at_cursor = len(sequences_at_current_point)
+                headers_at_current_point = current_point_seqs[cursor]
+                amount_of_seqs_at_cursor = len(headers_at_current_point)
 
                 if amount_of_seqs_at_cursor == 0:
                     new_merge.append("-")  # Gap between sequences
                 elif amount_of_seqs_at_cursor == 1:
-                    new_merge.append(sequences_at_current_point[0][1][cursor])
+                    new_merge.append(sequences_dict[headers_at_current_point[0]][cursor])
                 elif amount_of_seqs_at_cursor > 1:
                     # If there is more than one sequence at this current index
                     splits = amount_of_seqs_at_cursor - 1
@@ -428,12 +409,12 @@ def do_protein(
                         if comparison_sequences:
                             taxons_of_split = [
                                 get_ref(header)
-                                for (header, _) in sequences_at_current_point
+                                for header in headers_at_current_point
                                 if get_ref(header) in comparison_sequences
                             ]
 
                         comparison_taxa = None
-                        most_occuring = most_common_element_with_count(taxons_of_split)
+                        most_occuring = Counter(taxons_of_split).most_common(1)[0]
                         if len(taxons_of_split) > 1 and most_occuring[1] > 1:
                             comparison_taxa = most_occuring[0]
                         elif len(taxons_of_split) == 1:
@@ -461,10 +442,7 @@ def do_protein(
                                     headers_here = "".join(
                                         [
                                             header
-                                            for (
-                                                header,
-                                                _,
-                                            ) in sequences_at_current_point
+                                            for header in headers_at_current_point
                                         ],
                                     )
                                     key = f"{data_start}{data_end}{headers_here}"
@@ -493,7 +471,7 @@ def do_protein(
                         if comparison_taxa:
                             comparison_sequence = comparison_sequences[comparison_taxa]
 
-                    next_character = sequences_at_current_point[0][1][cursor]
+                    next_character = sequences_dict[headers_at_current_point[0]][cursor]
 
                     # Iterate over each split if cursor is past calculated split
                     # position add from sequence B. We only want to add from one
@@ -501,10 +479,12 @@ def do_protein(
                     # sequence to add from here then add the character to the
                     # final merge in the next line.
                     for split_count in range(splits - 1, -1, -1):
-                        header_a, sequence_a = sequences_at_current_point[split_count]
-                        header_b, sequence_b = sequences_at_current_point[
+                        header_a = headers_at_current_point[split_count]
+                        sequence_a = sequences_dict[header_a]
+                        header_b = headers_at_current_point[
                             split_count + 1
                         ]
+                        sequence_b = sequences_dict[header_b]
 
                         split_key = header_a + header_b
 
@@ -617,7 +597,7 @@ def do_protein(
                         (
                             most_occuring_translated_char,
                             translated_char_count,
-                        ) = most_common_element_with_count(translated_characters)
+                        ) = Counter(translated_characters).most_common(1)[0]
 
                         # Check to see if its majority
                         perc_appearing = translated_char_count / total_characters
@@ -631,12 +611,9 @@ def do_protein(
                             ]
 
                             # Grab the most occurring NT that maps to that AA from the current seq
-                            (
-                                mode_cand_raw_character,
-                                _,
-                            ) = most_common_element_with_count(
+                            mode_cand_raw_character = Counter(
                                 candidate_chars_mapping_to_same_dna,
-                            )
+                            ).most_common(1)[0][0]
                             if mode_cand_raw_character != char:
                                 new_merge[raw_i] = mode_cand_raw_character
                                 if debug:
