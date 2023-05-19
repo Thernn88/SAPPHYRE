@@ -51,19 +51,19 @@ class IndexIter:
         self.x = next(self.counter)
 
 
-def truncate_taxa(header: str, extension=None) -> str:
+def truncate_taxa(taxa: str, extension=None) -> str:
     """Given a fasta header, checks the end for problematic tails.
     If found, truncates the string.
     Returns the string + suffix to check for name matches.
     """
     # search for _# and _R#, where # is digits
-    result = header
-    m = re.search(r"(_L\d\d\d){0,1}(_R\d+)(_\d\d\d){0,1}$", header)
+    result = taxa
+    m = re.search(r"(_\d.fa)|(_R\d.fa)", result+extension)
+
     if m:
         tail_length = m.end() - m.start()
-        result = result[0:-tail_length]
-    if extension:
-        result = result + extension
+        result = result[0:-tail_length] + extension
+
     return result
 
 
