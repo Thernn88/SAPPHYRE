@@ -270,14 +270,14 @@ def subcmd_outlier(subparsers):
         "-ict",
         "--internal_consensus_threshold",
         type=float,
-        default=0.85,
+        default=0.75,
         help="Consensus threshold for internal summary.",
     )
     par.add_argument(
         "-ikt",
         "--internal_kick_threshold",
         type=float,
-        default=0.33,
+        default=0.1,
         help="Amount of mismatches required to constitute an internal kick.",
     )
     par.add_argument(
