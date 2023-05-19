@@ -96,18 +96,18 @@ def main(args):
             f"{start_script} is not a valid start script. Please choose from: ({options})",
         )
         return False
-    scripts = scripts[scripts.index(start_script) :]
+    scripts = scripts[scripts.index(start_script.lower()) :]
 
     time = TimeKeeper(KeeperMode.DIRECT)
     for script in scripts:
         sargs = config[script]
-        print(f"Executing: {script}")
+        print(f"Executing: {script.title()}")
         this_args = global_args.copy()
         this_args.update(sargs)
         this_args = argparse.Namespace(**this_args)
         this_args.INPUT = (
             args.INPUT
-            if script == "Prepare"
+            if script == "prepare"
             else sorted(
                 glob(
                         os.path.join("datasets", os.path.split(args.INPUT)[-1], "*.fa"),
