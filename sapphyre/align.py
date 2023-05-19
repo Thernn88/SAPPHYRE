@@ -97,7 +97,9 @@ def process_genefile(
                 reinsertions[seq_to_first_header[seq_hash]].append(header)
 
                 continue
-            data[header] = sequence.replace("-","") # Delete gaps from previous alignment
+            data[header] = sequence.replace(
+                "-", ""
+            )  # Delete gaps from previous alignment
         else:
             targets[header.split("|")[2]] = header
 
@@ -127,7 +129,9 @@ def delete_empty_cols(records: list[tuple[str, str]]) -> list[tuple[str, str]]:
 
 
 def compare_cluster(
-    cluster_a: list[str], cluster_b: list[str], kmers: dict[str, set],
+    cluster_a: list[str],
+    cluster_b: list[str],
+    kmers: dict[str, set],
 ) -> float:
     """Calculates the average kmer similarity between children of two clusters.
 
@@ -188,7 +192,10 @@ def generate_clusters(data: dict[str, str]) -> list[list[str]]:
                         if candidate:
                             # Check similarity against both parent set and child sets
                             matched = False
-                            for header_to_check in [master_header, *list(child_sets[master_header])]:
+                            for header_to_check in [
+                                master_header,
+                                *list(child_sets[master_header]),
+                            ]:
                                 set_to_check = kmers[header_to_check]
                                 if set_to_check is None:
                                     continue
@@ -230,7 +237,9 @@ def generate_clusters(data: dict[str, str]) -> list[list[str]]:
 
 
 def seperate_into_clusters(
-    cluster_children: list[list[str]], parent_tmpdir: str, data: dict[str, str],
+    cluster_children: list[list[str]],
+    parent_tmpdir: str,
+    data: dict[str, str],
 ) -> list[list[str]]:
     """Seperates sequence records into clusters and subclusters
     if they are larger than SUBCLUSTER_AT.
@@ -249,7 +258,9 @@ def seperate_into_clusters(
             if len(this_cluster) > SUBCLUSTER_AT:
                 clusters_to_create = ceil(len(this_cluster) / CLUSTER_EVERY)
                 with NamedTemporaryFile(
-                    mode="w+", dir=parent_tmpdir, suffix=".fa",
+                    mode="w+",
+                    dir=parent_tmpdir,
+                    suffix=".fa",
                 ) as this_tmp:
                     writeFasta(
                         this_tmp.name,
@@ -465,7 +476,8 @@ def run_command(args: CmdArgs) -> None:
                 aligned_cluster = os.path.join(aligned_files_tmp, this_clus_align)
 
                 raw_cluster = os.path.join(
-                    raw_files_tmp, f"{args.gene}_cluster{cluster_i}",
+                    raw_files_tmp,
+                    f"{args.gene}_cluster{cluster_i}",
                 )
                 writeFasta(raw_cluster, cluster_seqs)
                 if debug:
@@ -475,7 +487,8 @@ def run_command(args: CmdArgs) -> None:
                     )
 
                 command = args.string.format(
-                    in_file=raw_cluster, out_file=aligned_cluster,
+                    in_file=raw_cluster,
+                    out_file=aligned_cluster,
                 )
                 os.system(command)
 
@@ -485,7 +498,8 @@ def run_command(args: CmdArgs) -> None:
                     printv(command, args.verbose, 3)
                     writeFasta(
                         os.path.join(
-                            this_intermediates, os.path.split(aligned_cluster)[-1],
+                            this_intermediates,
+                            os.path.split(aligned_cluster)[-1],
                         ),
                         aligned_sequences,
                     )
@@ -496,13 +510,15 @@ def run_command(args: CmdArgs) -> None:
         has_singleton_merge = len(to_merge) > 0
         if has_singleton_merge:
             merged_singleton_final = os.path.join(
-                aligned_files_tmp, f"{args.gene}_cluster_merged_singletons",
+                aligned_files_tmp,
+                f"{args.gene}_cluster_merged_singletons",
             )
             writeFasta(merged_singleton_final, to_merge)
             if args.debug:
                 writeFasta(
                     os.path.join(
-                        this_intermediates, f"{args.gene}_cluster_merged_singletons",
+                        this_intermediates,
+                        f"{args.gene}_cluster_merged_singletons",
                     ),
                     to_merge,
                 )
@@ -533,12 +549,17 @@ def run_command(args: CmdArgs) -> None:
                         out_file = args.result_file
 
                     if has_singleton_merge and i == 0:
+                        path = os.path.join(
+                            os.getcwd(), "Progress", f"{args.gene}.txt"
+                        )
                         if debug:
-                            path = os.path.join(os.getcwd(), "Progress", f"{args.gene}.txt")
+                            path = os.path.join(
+                                os.getcwd(), "Progress", f"{args.gene}.txt"
+                            )
                             command = f"mafft --anysymbol --jtt 1 --progress {path} --addfragments {file} --thread 1 {prev_file} > {out_file}"
                         else:
-                            command = f"mafft --anysymbol --jtt 1 --quiet --addfragments {file} --thread 1 {prev_file} > {out_file}"
-                        
+                            command = f"mafft --anysymbol --jtt 1 --progress {path} --addfragments {file} --thread 1 {prev_file} > {out_file}"
+
                         os.system(command)
                         if debug:
                             printv(command, args.verbose, 3)
@@ -610,7 +631,8 @@ def do_folder(folder, args):
     only_singletons = set()
     for gene, _ in genes:
         for _, seq in parseFasta(
-            os.path.join(aln_path, gene.split(".")[0] + ".aln.fa"), True,
+            os.path.join(aln_path, gene.split(".")[0] + ".aln.fa"),
+            True,
         ):
             if len(seq) >= SAFEGUARD_BP:
                 printv(f"{gene} will be using Singletons only", args.verbose, 3)
