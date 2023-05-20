@@ -62,7 +62,10 @@ def truncate_taxa(taxa: str, extension=None) -> str:
 
     if m:
         tail_length = m.end() - m.start()
-        result = result[0:-tail_length] + extension
+        result = result[0:-tail_length]
+
+    if extension:
+        result += extension
 
     return result
 
