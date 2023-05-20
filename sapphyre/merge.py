@@ -241,8 +241,8 @@ def directory_check(target_output_path) -> str:
 
 def grab_merge_start_end(taxa_pair: list) -> list[tuple]:
     """Grabs start and end of merge sequences."""
-    merge_start = min(seq[0] for seq in taxa_pair)
-    merge_end = max(seq[1] for seq in taxa_pair)
+    merge_start = min(seq.start for seq in taxa_pair)
+    merge_end = max(seq.end for seq in taxa_pair)
     
     return merge_start, merge_end
 
