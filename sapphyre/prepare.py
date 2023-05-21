@@ -61,7 +61,7 @@ def truncate_taxa(taxa: str, extension=None) -> str:
     m = re.search(r"(_\d.fa)|(_R\d.fa)", result+extension)
 
     if m:
-        tail_length = m.end() - m.start()
+        tail_length = m.end() - m.start() - len(extension)
         result = result[0:-tail_length]
 
     if extension:
