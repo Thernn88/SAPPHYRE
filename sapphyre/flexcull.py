@@ -54,21 +54,21 @@ FlexcullArgs = namedtuple(
     ],
 )
 
-
 def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
     """Iterates over each sequence and deletes columns
     that were removed in the empty column removal.
+
+    Args:
+        raw_fed_sequences (list): List of tuples containing header and sequence
+        positions_to_keep (list): List of positions to keep
+    Returns:
+        list: List of tuples containing header and sequence with empty columns removed
     """
-    #     i.replace("\n", "") for i in raw_fed_sequences if i.replace("\n", "") != ""
-
     result = []
-    raw_sequences = [*chain.from_iterable(raw_fed_sequences)]
-    for i in range(0, len(raw_sequences), 2):
-
-        sequence = raw_sequences[i + 1]
-
-        sequence = [sequence[i * 3 : (i * 3) + 3] for i in positions_to_keep]
-        result.append((raw_sequences[i], "".join(sequence)))
+    for raw_sequence in raw_fed_sequences:
+        sequence = raw_sequence[1]
+        sequence = ''.join([sequence[i*3:(i*3)+3] for i in positions_to_keep])
+        result.append((raw_sequence[0], sequence))
 
     return result
 
@@ -77,47 +77,46 @@ def delete_empty_columns(raw_fed_sequences: list, verbose: bool) -> tuple[list, 
     """Iterates over each sequence and deletes columns
     that consist of 100% dashes. In this version, raw_feed_sequences
     is a list of tuples.
+
+    Args:
+        raw_fed_sequences (list): List of tuples containing header and sequence
+        verbose (bool): Whether to print verbose output
+    Returns:
+        tuple[list, list]: List of tuples containing header and sequence with empty columns removed and a list of positions to keep
     """
     result = []
-    #     i.replace("\n", "") for i in raw_fed_sequences if i.replace("\n", "") != ""
-    # for i in range(0, len(raw_sequences), 2):
-    raw_sequences = [*chain.from_iterable(raw_fed_sequences)]
-    sequences = [x[1] for x in raw_fed_sequences]
     positions_to_keep = []
+    sequences = [x[1] for x in raw_fed_sequences]
     if sequences:
-        for i in range(len(sequences[0])):
-            for sequence in sequences:
-                if sequence[i] != "-":
-                    positions_to_keep.append(i)
-                    break
+        sequence_length = len(sequences[0])
+        for i in range(sequence_length):
+            if any(sequence[i] != "-" for sequence in sequences):
+                positions_to_keep.append(i)
 
-        for i in range(0, len(raw_sequences), 2):
+        for raw_sequence in raw_fed_sequences:
             try:
-                sequence = [raw_sequences[i + 1][x] for x in positions_to_keep]
+                sequence = ''.join(raw_sequence[1][x] for x in positions_to_keep)
             except IndexError:
-                printv(
-                    f"WARNING: Sequence length is not the same as other sequences: {raw_sequences[i]}",
-                    verbose,
-                    0,
-                )
+                if verbose:
+                    print(f"WARNING: Sequence length is not the same as other sequences: {raw_sequence[0]}")
                 continue
-            sequence = "".join(sequence)
 
-            result.append((raw_sequences[i], sequence))
+            result.append((raw_sequence[0], sequence))
 
     return result, positions_to_keep
 
 
-def folder_check(output_target_path: str, input_target_path: str) -> str:
+
+def folder_check(output_target_path: str) -> None:
     """Checks to see if input and output directory has the necessary
     folder structure.
 
     if not, create missing folders.
 
-    Finally, checks if linux memory temp folder exists
-    else creates tmp folder in the input
-
-    Returns path to tmp folder
+    Args:
+        output_target_path (str): Path to output directory
+    Returns:
+        None
     """
     output_aa_path = os.path.join(output_target_path, "aa")
     output_nt_path = os.path.join(output_target_path, "nt")
@@ -126,52 +125,78 @@ def folder_check(output_target_path: str, input_target_path: str) -> str:
     os.makedirs(output_aa_path, exist_ok=True)
     os.makedirs(output_nt_path, exist_ok=True)
 
-    target_tmp_path = "/run/shm"
-
-    if not os.path.exists(target_tmp_path):
-        target_tmp_path = "/dev/shm"
-
-    if not os.path.exists(target_tmp_path):
-        target_tmp_path = os.path.join(input_target_path, "tmp")
-        os.makedirs(target_tmp_path, exist_ok=True)
-
-    return target_tmp_path
-
 
 def make_nt(aa_file_name: str) -> str:
-    """Converts AA file name to NT file name."""
+    """Converts AA file name to NT file name.
+    
+    Args:
+        aa_file_name (str): AA file name
+    Returns:
+        str: NT file name
+    """
     return aa_file_name.replace(".aa.", ".nt.")
 
 
-def parse_fasta(fasta_path: str) -> tuple:
-    """Parses fasta file into header and sequences."""
+def parse_fasta(fasta_path: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """Parses fasta file into header and sequences.
+    
+    Args:
+        fasta_path (str): Path to fasta file
+    Returns:
+        tuple[list[tuple[str, str]], list[tuple[str, str]]]: Tuple containing list of reference record tuples and candidate record tuples
+    """
     references = []
     candidates = []
+    end_of_references = False
 
     for header, sequence in parseFasta(fasta_path):
+        
+        if end_of_references:
+            candidates.append((header, sequence))
+            continue
+
         if header[-1] == ".":  # Is reference
             references.append((header, sequence))
-
-        else:
-            candidates.append((header, sequence))
+            continue
+        
+        candidates.append((header, sequence))
+        end_of_references = True
 
     return references, candidates
 
 
 def trim_around(
-    starting_index,
-    lower_limit,
-    upper_limit,
-    sequence,
-    amt_matches,
-    mismatches,
-    all_dashes_by_index,
-    character_at_each_pos,
-    gap_present_threshold,
-) -> tuple:
-    """Trim around a given position in a sequence."""
+    starting_index: int,
+    lower_limit: int,
+    upper_limit: int,
+    sequence: str,
+    amt_matches: int,
+    mismatches: int,
+    all_dashes_by_index: list[bool],
+    character_at_each_pos: list[set[str]],
+    gap_present_threshold: list[bool],
+) -> range:
+    """Trim from starting index to the upper limit and from the starting index to the
+    lower limit and return the range of the trimmed slice.
+    
+    Trim will stop once the amount of matches is reached or the upper limit is reached.
+    
+    Args:
+        starting_index (int): Starting index
+        lower_limit (int): Lower limit
+        upper_limit (int): Upper limit
+        sequence (str): Sequence
+        amt_matches (int): Amount of consecutive matches required to pass
+        mismatches (int): Amount of mismatches allowed in consecutive matches
+        all_dashes_by_index (list[bool]): List of booleans indicating whether all references have a dash at the index
+        character_at_each_pos (list[set[str]]): List of sets containing characters at each position
+        gap_present_threshold (list[bool]): List of booleans indicating whether references contain gaps at the index
+    Returns:
+        range: Range of the trimmed slice"""
+    
     offset = amt_matches - 1
     cull_end = upper_limit
+    
     for i in range(starting_index, len(sequence) - 1):
         skip_first = 0
         char = sequence[i]
@@ -180,10 +205,9 @@ def trim_around(
         if i == upper_limit - offset:
             break
 
-        if char == "-":
+        if char == "-" or all_dashes_by_index[i]:
             continue
-        if all_dashes_by_index[i]:
-            continue
+
         if char not in character_at_each_pos[i]:
             skip_first = 1
             mismatch -= 1
@@ -200,12 +224,14 @@ def trim_around(
                 pass_all = False
                 break
 
-            if sequence[i + match_i] == "-":
+            next_char = sequence[i + match_i]
+
+            if next_char == "-":
                 if gap_present_threshold[i + match_i]:
                     pass_all = False
                     break
                 match_i += 1
-            elif sequence[i + match_i] not in character_at_each_pos[i + match_i]:
+            elif next_char not in character_at_each_pos[i + match_i]:
                 mismatch -= 1
                 if mismatch < 0:
                     pass_all = False
@@ -221,20 +247,19 @@ def trim_around(
             break
 
     cull_start = starting_index
+    
     for i in range(starting_index - 1, -1, -1):
         mismatch = mismatches
         skip_last = 0
 
         char = sequence[i]
+        
         if i < lower_limit + offset:
             break
-        if char == "-":
+            
+        if char == "-" or all_dashes_by_index[i]:
             continue
-
-        all_dashes_at_position = all_dashes_by_index[i]
-        if all_dashes_at_position:
-            # Don't allow cull to point of all dashes
-            continue
+            
         if char not in character_at_each_pos[i]:
             skip_last += 1
             mismatch -= 1
@@ -251,12 +276,14 @@ def trim_around(
                 pass_all = False
                 break
 
-            if sequence[i - match_i] == "-":
+            prev_char = sequence[i - match_i]
+
+            if prev_char == "-":
                 if gap_present_threshold[i - match_i]:
                     pass_all = False
                     break
                 match_i += 1
-            elif sequence[i - match_i] not in character_at_each_pos[i - match_i]:
+            elif prev_char not in character_at_each_pos[i - match_i]:
                 mismatch -= 1
                 if mismatch < 0:
                     pass_all = False
@@ -270,6 +297,7 @@ def trim_around(
         if pass_all:
             cull_start = i - skip_last + 1  # Inclusive
             break
+
     return range(cull_start, cull_end)
 
 
@@ -284,18 +312,34 @@ def get_data_difference(trim, ref):
 
 
 def do_cull(
-    sequence,
-    sequence_length,
-    offset,
-    amt_matches,
-    mismatches,
-    all_dashes_by_index,
-    character_at_each_pos,
-    gap_present_threshold,
-    kick,
-):
+    sequence: str,
+    sequence_length: int,
+    offset: int,
+    amt_matches: int,
+    mismatches: int,
+    all_dashes_by_index: list[bool],
+    character_at_each_pos: list[set[str]],
+    gap_present_threshold: list[bool],
+) -> tuple[int, int, bool]:
+    """
+    Culls leading and trailing bp from a sequence based on if the bp is present in a reference sequence.
+
+    Args:
+        sequence (str): Sequence to cull
+        sequence_length (int): Length of the sequence
+        offset (int): Offset to start culling from
+        amt_matches (int): Amount of consecutive matches required to pass
+        mismatches (int): Amount of mismatches allowed in consecutive matches
+        all_dashes_by_index (list[bool]): List of booleans indicating whether all references have a dash at the index
+        character_at_each_pos (list[set[str]]): List of sets containing characters at each position
+        gap_present_threshold (list[bool]): List of booleans indicating whether references contain gaps at the index
+    Returns:
+        tuple: Tuple containing the index of the first bp that has required consecutive matches,
+        the index of the last bp that has required consecutive matches, and a boolean indicating whether the trim kicked the entire sequence
+    """
     cull_start = None
     cull_end = None
+    kick = False
     for i, char in enumerate(sequence):
         mismatch = mismatches
         skip_first = 0
@@ -409,46 +453,39 @@ def do_cull(
     return cull_start, cull_end, kick
 
 
+
 def get_start_end(sequence: str) -> tuple:
     """Returns the start and end of the sequence."""
-    start = 0
-    end = len(sequence)
-    for i, char in enumerate(sequence):
-        if char != "-":
-            start = i
-            break
-    for i, char in enumerate(sequence[::-1]):
-        if char != "-":
-            end = len(sequence) - i
-            break
+    start = next((i for i, char in enumerate(sequence) if char != "-"), 0)
+    end = next((len(sequence) - i for i, char in enumerate(sequence[::-1]) if char != "-"), len(sequence))
     return start, end
 
 
-def do_gene(fargs: FlexcullArgs) -> None:
-    """FlexCull main function. Culls input aa and nt using specified amount of matches."""
-    gene_path = os.path.join(fargs.aa_input, fargs.aa_file)
-    this_gene = fargs.aa_file.split(".")[0]
+def process_refs(references: list[tuple], gap_threshold:float, column_cull_percent: float, blosum_mode_lower_threshold: int) -> tuple:
+    """
+    Processes the references to generate the character_at_each_pos, gap_present_threshold , column_cull and all_dashes_by_index.
 
-    printv(f"Doing: {this_gene}", fargs.verbosity, 2)
+    Args:
+        references (list[tuple]): List of tuples containing the reference name and sequence
+        gap_threshold (float): Threshold for the amount of gaps required in a reference for it to be a reference gap column
+        column_cull_percent (float): Percent of data required in a column to allow it to pass
+        blosum_mode_lower_threshold (int): Lower threshold for the blosum mode
+    Returns:
+        tuple: Tuple containing the character_at_each_pos, gap_present_threshold , column_cull and all_dashes_by_index tables
 
-    references, candidates = parse_fasta(gene_path)
-
+    """
     character_at_each_pos = {}
     gap_present_threshold = {}
-
+    all_dashes_by_index = {}
+    column_cull = set()
     mat = bl.BLOSUM(62)
 
-    #  make a list, each index will match an index in the reference strings
-    #  check this later instead of counting hyphens
-    #  convert this to an int if you need to break on more than one data character
     max_ref_length = 0
     for _, sequence in references:
         max_ref_length = max(max_ref_length, len(sequence))
-    all_dashes_by_index = [True] * max_ref_length
+    all_dashes_by_index = {i: True for i in range(max_ref_length)}
 
-    column_cull = set()
-
-    for _header, sequence in references:
+    for _, sequence in references:
         for i, char in enumerate(sequence):
             if char == "*":
                 char = "-"
@@ -462,16 +499,260 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
     for i, chars in list(character_at_each_pos.items()):
         data_present = 1 - (chars.count("-") / len(chars))
-        gap_present_threshold[i] = data_present >= fargs.gap_threshold
-        if data_present < fargs.column_cull_percent:
+        gap_present_threshold[i] = data_present >= gap_threshold
+        if data_present < column_cull_percent:
             column_cull.add(i * 3)
 
         blosum_add = set()
         for char in chars:
             for blosum_sub, val in mat[char].items():
-                if val > fargs.blosum_mode_lower_threshold:
+                if val > blosum_mode_lower_threshold:
                     blosum_add.add(blosum_sub)
         character_at_each_pos[i] = set(chars).union(blosum_add)
+
+    return character_at_each_pos, gap_present_threshold, all_dashes_by_index, column_cull
+
+
+def column_cull_seqs(this_seqs: list[tuple], column_cull: set, minimum_bp: int) -> tuple[list[tuple], list[str], set]:
+    aa_out = []
+    kicks = []
+
+    this_column_cull = set()
+    for nt_i in column_cull:
+        i = nt_i // 3
+        this_sequence = Counter()
+        internal_count = 0
+        for _, seq, start, end in this_seqs:
+            if start <= i <= end:
+                internal_count += 1
+                if seq[i] != "-":
+                    this_sequence[seq[i]] += 1
+        # Get the count of the most occuring bp at this position
+        if sum(this_sequence.values()) >= 5:
+            if this_sequence.most_common()[0][1] > internal_count / 2:
+                continue
+        this_column_cull.add(i * 3)
+
+    if this_column_cull:
+        for header, seq, _, _ in this_seqs:
+            new_seq = "".join(
+                [
+                    let if i * 3 not in this_column_cull else "-"
+                    for i, let in enumerate(seq)
+                ],
+            )
+            if len(new_seq) - new_seq.count("-") < minimum_bp:
+                kicks.append(header)
+                continue
+            aa_out.append((header, new_seq))
+    else:
+        aa_out.extend([(header, sequence) for header, sequence, _, _ in this_seqs])
+
+    return aa_out, kicks, this_column_cull
+
+
+def cull_codons(out_line: str, cull_start: int, cull_end: int, amt_matches:int, mismatches: int, all_dashes_by_index: dict, character_at_each_pos: dict, gap_present_threshold: dict):
+    positions_to_trim = set()
+    codons = []
+    for i in range(cull_start, cull_end):
+        char = out_line[i]
+        if char == "*":
+            codons.append(i)
+
+    non_trimmed_codons = [c for c in codons if c * 3 not in positions_to_trim]
+    while non_trimmed_codons:
+        i = non_trimmed_codons[int(len(non_trimmed_codons) / 2)]
+        positions = trim_around(
+            i,
+            cull_start,
+            cull_end,
+            out_line,
+            amt_matches,
+            mismatches,
+            all_dashes_by_index,
+            character_at_each_pos,
+            gap_present_threshold,
+        )
+        for x in positions:
+            positions_to_trim.add(x * 3)
+            out_line[x] = "-"
+
+        left_after = out_line[cull_start:i]
+        right_after = out_line[i:cull_end]
+
+        left_side_ref_data_columns = sum(
+            gap_present_threshold[x] for x in range(cull_start, i)
+        )
+        left_of_trim_data_columns = len(left_after) - left_after.count("-")
+
+        right_side_ref_data_columns = sum(
+            gap_present_threshold[x] for x in range(i, cull_end)
+        )
+        right_of_trim_data_columns = len(right_after) - right_after.count("-")
+
+        if (
+            get_data_difference(
+                left_of_trim_data_columns, left_side_ref_data_columns,
+            )
+            < 0.55
+        ):  # candidate has less than % of data columns compared to reference
+            for x in range(cull_start, i):
+                positions_to_trim.add(x * 3)
+                out_line[x] = "-"
+        if (
+            get_data_difference(
+                right_of_trim_data_columns, right_side_ref_data_columns,
+            )
+            < 0.55
+        ):
+            for x in range(i, cull_end):
+                positions_to_trim.add(x * 3)
+                out_line[x] = "-"
+
+        non_trimmed_codons.remove(i)
+
+    return out_line, positions_to_trim
+
+
+def trim_large_gaps(aa_out, reference_gap_col, amt_matches, mismatches, post_all_dashes_by_index, post_character_at_each_pos, post_gap_present_threshold, minimum_bp, debug):
+    log = []
+    kicks = []
+    gap_pass_through = {}
+    for record_index, record in enumerate(aa_out):
+        header, sequence = record
+        if not header.endswith("."):
+            gap_cull = set()
+            seq_start, seq_end = get_start_end(sequence)
+            change_made = False
+            non_ref_gap_dash_count = 0
+            raw_dash_count = 0
+            out_line = list(sequence)
+            for j, let in enumerate(out_line[seq_start : seq_end + 1], seq_start):
+                if let == "-":
+                    if j not in reference_gap_col:
+                        non_ref_gap_dash_count += 1
+                    raw_dash_count += 1
+                else:
+                    if non_ref_gap_dash_count >= 80:
+                        i = j - (raw_dash_count // 2)
+                        positions = trim_around(
+                            i,
+                            seq_start,
+                            seq_end,
+                            out_line,
+                            amt_matches,
+                            mismatches,
+                            post_all_dashes_by_index,
+                            post_character_at_each_pos,
+                            post_gap_present_threshold,
+                        )
+                        for x in positions:
+                            gap_cull.add(x * 3)
+                            out_line[x] = "-"
+
+                        left_after = out_line[seq_start:i]
+                        right_after = out_line[i:seq_end]
+                        left_side_ref_data_columns = sum(
+                            post_gap_present_threshold[x] for x in range(seq_start, i)
+                        )
+                        left_of_trim_data_columns = len(
+                            left_after,
+                        ) - left_after.count("-")
+
+                        right_side_ref_data_columns = sum(
+                            post_gap_present_threshold[x] for x in range(i, seq_end)
+                        )
+                        right_of_trim_data_columns = len(
+                            right_after,
+                        ) - right_after.count("-")
+
+                        # If both sides kicked and sequence ends up being empty keep the side with the most bp.
+                        keep_left = False
+                        keep_right = False
+
+                        if (
+                            get_data_difference(
+                                left_of_trim_data_columns,
+                                left_side_ref_data_columns,
+                            )
+                            < 0.55
+                            and get_data_difference(
+                                right_of_trim_data_columns,
+                                right_side_ref_data_columns,
+                            )
+                            < 0.55
+                        ):
+                            keep_left = len(left_after) - left_after.count(
+                                "-",
+                            ) >= len(right_after) - right_after.count("-")
+                            keep_right = not keep_left
+
+                        if (
+                            get_data_difference(
+                                left_of_trim_data_columns,
+                                left_side_ref_data_columns,
+                            )
+                            < 0.55
+                            and not keep_left
+                        ):  # candidate has less than % of data columns compared to reference
+                            for x in range(seq_start, i):
+                                gap_cull.add(x * 3)
+                                out_line[x] = "-"
+                        if (
+                            get_data_difference(
+                                right_of_trim_data_columns,
+                                right_side_ref_data_columns,
+                            )
+                            < 0.55
+                            and not keep_right
+                        ):
+                            for x in range(i, seq_end):
+                                gap_cull.add(x * 3)
+                                out_line[x] = "-"
+                        change_made = True
+
+                    non_ref_gap_dash_count = 0
+                    raw_dash_count = 0
+            if change_made:
+                bp_after_cull = len(out_line) - out_line.count("-")
+                if bp_after_cull < minimum_bp:
+                    if debug:
+                        removed_section = sequence[:seq_start] + sequence[seq_end:]
+                        data_removed = len(removed_section) - removed_section.count(
+                            "-",
+                        )
+                        log.append(
+                            header.split("|")[0]
+                            + ","
+                            + header
+                            + ",Not enough BP after gap cull,,"
+                            + str(bp_after_cull)
+                            + ","
+                            + str(data_removed)
+                            + "\n",
+                        )
+                    kicks.append(header)
+                    aa_out[record_index] = None
+                else:
+                    aa_out[record_index] = (header, "".join(out_line))
+
+                gap_pass_through[header] = gap_cull
+
+
+    return [i for i in aa_out if i is not None], gap_pass_through, log, kicks
+
+def do_gene(fargs: FlexcullArgs) -> None:
+    """FlexCull main function. Culls input aa and nt using specified amount of matches."""
+    gene_path = os.path.join(fargs.aa_input, fargs.aa_file)
+    this_gene = fargs.aa_file.split(".")[0]
+
+    printv(f"Doing: {this_gene}", fargs.verbosity, 2)
+
+    references, candidates = parse_fasta(gene_path)
+
+    character_at_each_pos, gap_present_threshold, all_dashes_by_index, column_cull = process_refs(
+        references, fargs.gap_threshold, fargs.column_cull_percent, fargs.blosum_mode_lower_threshold
+    )
 
     log = []
 
@@ -484,11 +765,6 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
     for header, sequence in candidates:
         sequence = list(sequence)
-
-        for i in range(len(sequence) - 1, -1, -1):
-            if sequence[i] != "-":
-                seq_end = i
-                break
 
         gene = header.split("|")[0]
 
@@ -507,7 +783,6 @@ def do_gene(fargs: FlexcullArgs) -> None:
             all_dashes_by_index,
             character_at_each_pos,
             gap_present_threshold,
-            kick,
         )
 
         if not kick:  # If also passed Cull End Calc. Finish
@@ -516,76 +791,10 @@ def do_gene(fargs: FlexcullArgs) -> None:
             characters_till_end = sequence_length - len(out_line)
             out_line += ["-"] * characters_till_end
 
-            positions_to_trim = set()
-            codons = []
-            for i in range(cull_start, cull_end):
-                char = out_line[i]
-                if char == "*":
-                    codons.append(i)
-
-            non_trimmed_codons = [c for c in codons if c * 3 not in positions_to_trim]
-            while non_trimmed_codons:
-                i = non_trimmed_codons[int(len(non_trimmed_codons) / 2)]
-                positions = trim_around(
-                    i,
-                    cull_start,
-                    cull_end,
-                    out_line,
-                    fargs.amt_matches,
-                    fargs.mismatches,
-                    all_dashes_by_index,
-                    character_at_each_pos,
-                    gap_present_threshold,
-                )
-                for x in positions:
-                    positions_to_trim.add(x * 3)
-                    out_line[x] = "-"
-
-                left_after = out_line[cull_start:i]
-                right_after = out_line[i:cull_end]
-
-                left_side_ref_data_columns = sum(
-                    gap_present_threshold[x] for x in range(cull_start, i)
-                )
-                left_of_trim_data_columns = len(left_after) - left_after.count("-")
-
-                right_side_ref_data_columns = sum(
-                    gap_present_threshold[x] for x in range(i, cull_end)
-                )
-                right_of_trim_data_columns = len(right_after) - right_after.count("-")
-
-                if (
-                    get_data_difference(
-                        left_of_trim_data_columns, left_side_ref_data_columns,
-                    )
-                    < 0.55
-                ):  # candidate has less than % of data columns compared to reference
-                    for x in range(cull_start, i):
-                        positions_to_trim.add(x * 3)
-                        out_line[x] = "-"
-                if (
-                    get_data_difference(
-                        right_of_trim_data_columns, right_side_ref_data_columns,
-                    )
-                    < 0.55
-                ):
-                    for x in range(i, cull_end):
-                        positions_to_trim.add(x * 3)
-                        out_line[x] = "-"
-
-                non_trimmed_codons = [
-                    c for c in codons if c * 3 not in positions_to_trim
-                ]
-
-            if kick:
-                follow_through[header] = True, 0, 0, []
-                if fargs.debug:
-                    log.append(
-                        gene + "," + header + ",Kicked,Codon cull found no match,0,\n",
-                    )
-                continue
+            out_line, positions_to_trim = cull_codons(out_line, cull_start, cull_end, fargs.amt_matches, fargs.mismatches, all_dashes_by_index, character_at_each_pos, gap_present_threshold)
 
             out_line = "".join(out_line)
+
 
             data_length = cull_end - cull_start
             bp_after_cull = len(out_line) - out_line.count("-")
@@ -633,198 +842,34 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
             if fargs.debug:
                 log.append(gene + "," + header + ",Kicked,Zero Data After Cull,0,\n")
-    if this_seqs:
-        this_column_cull = set()
-        for nt_i in column_cull:
-            i = nt_i // 3
-            this_sequence = Counter()
-            internal_count = 0
-            for _, seq, start, end in this_seqs:
-                if start <= i <= end:
-                    internal_count += 1
-                    if seq[i] != "-":
-                        this_sequence[seq[i]] += 1
-            # Get the count of the most occuring bp at this position
-            if sum(this_sequence.values()) >= 5:
-                if this_sequence.most_common()[0][1] > internal_count / 2:
-                    continue
-            this_column_cull.add(i * 3)
 
-        if this_column_cull:
-            for header, seq, _, _ in this_seqs:
-                new_seq = "".join(
-                    [
-                        let if i * 3 not in this_column_cull else "-"
-                        for i, let in enumerate(seq)
-                    ],
-                )
-                if len(new_seq) - new_seq.count("-") < fargs.bp:
-                    follow_through[header] = True, None, None, None
-                    continue
-                aa_out.append((header, new_seq))
-        else:
-            aa_out.extend([(header, sequence) for header, sequence, _, _ in this_seqs])
-        # remove empty columns from refs and
-        aa_out, aa_positions_to_keep = delete_empty_columns(aa_out, False)
+    if this_seqs:
+        this_seqs, kicks, this_column_cull = column_cull_seqs(this_seqs, column_cull, fargs.gap_threshold)
+        for header in kicks:
+            follow_through[header] = True, 0, 0, []
+
+        # remove empty columns from refs and candidates
+        aa_out, aa_positions_to_keep = delete_empty_columns(aa_out + this_seqs, False)
         if len(aa_out) == len(references):
             return log  # Only refs
 
-        # Internal gap cull
-        reference_cols = {}
-        reference_gap_col = set()
-        for header, sequence in aa_out:
-            if header.endswith("."):
-                for i, let in enumerate(sequence):
-                    reference_cols.setdefault(i, []).append(let)
-            else:
-                break
+        # Recalcuate position based tables
+        post_references = [i for i in aa_out if i[0].endswith(".")]
 
-        post_gap_present_threshold = {}
-        post_all_dashes_by_index = {}
-        post_character_at_each_pos = {}
-        for col, letters in reference_cols.items():
-            gaps_present = letters.count("-") / len(letters)
-            data_present = 1 - gaps_present
-            post_gap_present_threshold[col] = data_present >= fargs.gap_threshold
-            if gaps_present >= fargs.gap_threshold:
-                reference_gap_col.add(col)
-            if gaps_present == 1:
-                post_all_dashes_by_index[col] = True
-            else:
-                post_all_dashes_by_index[col] = False
+        post_character_at_each_pos, post_gap_present_threshold, post_all_dashes_by_index, _ = process_refs(
+            post_references, fargs.gap_threshold, fargs.column_cull_percent, fargs.blosum_mode_lower_threshold
+        )
 
-            blosum_add = set()
-            for letter in letters:
-                for blosum_sub, val in mat[letter].items():
-                    if val > fargs.blosum_mode_lower_threshold:
-                        blosum_add.add(blosum_sub)
+        reference_gap_col = {i for i, x in post_gap_present_threshold.items() if not x}
+        
+        aa_out, gap_pass_through, trim_log, kicks = trim_large_gaps(aa_out, reference_gap_col, fargs.amt_matches, fargs.mismatches, post_all_dashes_by_index, post_character_at_each_pos, post_gap_present_threshold, fargs.bp, fargs.debug)
 
-            post_character_at_each_pos[col] = set(letters).union(blosum_add)
+        if fargs.debug:
+            log.extend(trim_log)
+        
+        for kick in kicks:
+            follow_through[kick] = True, 0, 0, []
 
-        gap_pass_through = {}
-        for record_index, record in enumerate(aa_out):
-            header, sequence = record
-            if not header.endswith("."):
-                gap_cull = set()
-                kick, cull_start, seq_end, positions_to_trim = follow_through[header]
-                seq_start, seq_end = get_start_end(sequence)
-                change_made = False
-                non_ref_gap_dash_count = 0
-                raw_dash_count = 0
-                out_line = list(sequence)
-                for j, let in enumerate(out_line[seq_start : seq_end + 1], seq_start):
-                    if let == "-":
-                        if j not in reference_gap_col:
-                            non_ref_gap_dash_count += 1
-                        raw_dash_count += 1
-                    else:
-                        if non_ref_gap_dash_count >= 80:
-                            i = j - (raw_dash_count // 2)
-                            positions = trim_around(
-                                i,
-                                seq_start,
-                                seq_end,
-                                out_line,
-                                fargs.amt_matches,
-                                fargs.mismatches,
-                                post_all_dashes_by_index,
-                                post_character_at_each_pos,
-                                post_gap_present_threshold,
-                            )
-                            for x in positions:
-                                gap_cull.add(x * 3)
-                                out_line[x] = "-"
-
-                            left_after = out_line[seq_start:i]
-                            right_after = out_line[i:seq_end]
-                            left_side_ref_data_columns = sum(
-                                gap_present_threshold[x] for x in range(seq_start, i)
-                            )
-                            left_of_trim_data_columns = len(
-                                left_after,
-                            ) - left_after.count("-")
-
-                            right_side_ref_data_columns = sum(
-                                gap_present_threshold[x] for x in range(i, seq_end)
-                            )
-                            right_of_trim_data_columns = len(
-                                right_after,
-                            ) - right_after.count("-")
-
-                            # If both sides kicked and sequence ends up being empty keep the side with the most bp.
-                            keep_left = False
-                            keep_right = False
-
-                            if (
-                                get_data_difference(
-                                    left_of_trim_data_columns,
-                                    left_side_ref_data_columns,
-                                )
-                                < 0.55
-                                and get_data_difference(
-                                    right_of_trim_data_columns,
-                                    right_side_ref_data_columns,
-                                )
-                                < 0.55
-                            ):
-                                keep_left = len(left_after) - left_after.count(
-                                    "-",
-                                ) >= len(right_after) - right_after.count("-")
-                                keep_right = not keep_left
-
-                            if (
-                                get_data_difference(
-                                    left_of_trim_data_columns,
-                                    left_side_ref_data_columns,
-                                )
-                                < 0.55
-                                and not keep_left
-                            ):  # candidate has less than % of data columns compared to reference
-                                for x in range(seq_start, i):
-                                    gap_cull.add(x * 3)
-                                    out_line[x] = "-"
-                            if (
-                                get_data_difference(
-                                    right_of_trim_data_columns,
-                                    right_side_ref_data_columns,
-                                )
-                                < 0.55
-                                and not keep_right
-                            ):
-                                for x in range(i, seq_end):
-                                    gap_cull.add(x * 3)
-                                    out_line[x] = "-"
-                            change_made = True
-
-                        non_ref_gap_dash_count = 0
-                        raw_dash_count = 0
-                if change_made:
-                    data_length = seq_end - seq_start
-                    bp_after_cull = len(out_line) - out_line.count("-")
-                    if bp_after_cull < fargs.bp:
-                        if fargs.debug:
-                            removed_section = sequence[:seq_start] + sequence[seq_end:]
-                            data_removed = len(removed_section) - removed_section.count(
-                                "-",
-                            )
-                            log.append(
-                                gene
-                                + ","
-                                + header
-                                + ",Not enough BP after gap cull,,"
-                                + str(bp_after_cull)
-                                + ","
-                                + str(data_removed)
-                                + "\n",
-                            )
-                        follow_through[header] = True, None, None, None
-                        aa_out[record_index] = None
-                    else:
-                        aa_out[record_index] = (header, "".join(out_line))
-
-                    gap_pass_through[header] = gap_cull
-
-        aa_out = [i for i in aa_out if i is not None]
         if len(aa_out) != len(references):
             writeFasta(aa_out_path, aa_out, fargs.compress)
 
@@ -897,11 +942,11 @@ def do_folder(folder, args: MainArgs):
             args.verbose,
         )
         return
-    folder_check(output_path, folder)
+    folder_check(output_path)
     file_inputs = [
         input_gene
         for input_gene in os.listdir(aa_path)
-        if input_gene.split(".")[-1] in ["fa", "gz", "fq", "fastq", "fasta"]
+        if input_gene.split(".")[-1] in {"fa", "gz", "fq", "fastq", "fasta"}
     ]
     file_inputs.sort(
         key=lambda x: os.path.getsize(os.path.join(aa_path, x)), reverse=True,
