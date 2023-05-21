@@ -556,9 +556,9 @@ def run_command(args: CmdArgs) -> None:
                             path = os.path.join(
                                 os.getcwd(), "Progress", f"{args.gene}.txt"
                             )
-                            command = f"mafft --anysymbol --jtt 1 --progress {path} --addfragments {file} --thread 1 {prev_file} > {out_file}"
+                            command = f"mafft --anysymbol --jtt 1 --progress {path} --addfragments {file} --thread -1 {prev_file} > {out_file}"
                         else:
-                            command = f"mafft --anysymbol --jtt 1 --progress {path} --addfragments {file} --thread 1 {prev_file} > {out_file}"
+                            command = f"mafft --anysymbol --jtt 1 --progress {path} --addfragments {file} --thread -1 {prev_file} > {out_file}"
 
                         os.system(command)
                         if debug:
