@@ -190,13 +190,6 @@ class Hit(ReporterHit):
         # If no trims were found, return None
         return None, None
 
-    def trim_to_coords(self):
-        """Trims the hit's est_seq to the alignment coords."""
-        self.seq = self.seq[self.qstart - 1 : self.qend]
-        if "revcomp" in self.node:
-            self.seq = phymmr_tools.bio_revcomp(self.seq)
-
-
 def get_diamondhits(
     rocks_hits_db: RocksDB, list_of_wanted_genes: list,
 ) -> dict[str, list[Hit]]:
@@ -376,10 +369,7 @@ def print_unmerged_sequences(
             + header_seperator
             + reference_frame
         )
-
-        # Trim to alignment coords
-        hit.trim_to_coords()
-
+        
         # Translate to AA
         nt_seq = hit.seq
         aa_seq = translate_cdna(nt_seq)
