@@ -607,44 +607,6 @@ def run_command(args: CmdArgs) -> None:
     return args.gene, cluster_time, align_time, merge_time, keeper.differential()
 
 
-def barebones_align(args: CmdArgs):
-    printv(f"Doing: {args.gene} ", args.verbose, 2)
-    aln_file = os.path.join(args.aln_path, args.gene + ".aln.fa")
-    (
-        _,
-        _,
-        targets,
-        reinsertions,
-        trimmed_header_to_full,
-    ) = process_genefile(args.gene_file)
-    
-    with NamedTemporaryFile(dir=gettempdir(), mode="w+") as tmp_aln:
-        generate_tmp_aln(aln_file, targets, tmp_aln, args.debug, None)
-
-        command = f"mafft --anysymbol --jtt 1 --addfragments {args.gene_file} --quiet --thread 1 {tmp_aln.name} > {args.result_file}"
-
-        os.system(command)
-    
-    # Reinsert and sort
-    to_write = []
-    references = []
-    inserted = 0
-    for header, sequence in parseFasta(args.result_file, True):
-        if header.endswith("."):
-            references.append((header, sequence))
-        else:
-            header = trimmed_header_to_full[header[:127]]
-            if header in reinsertions:
-                for insertion_header in reinsertions[header]:
-                    inserted += 1
-                    to_write.append((insertion_header, sequence))
-            to_write.append((header, sequence))
-
-    to_write.sort(key=lambda x: get_start(x[1]))
-
-    writeFasta(args.result_file, references + to_write)
-
-
 def do_folder(folder, args):
     printv(f"Processing: {os.path.basename(folder)}", args.verbose, 0)
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
@@ -656,8 +618,7 @@ def do_folder(folder, args):
     rmtree(align_path, ignore_errors=True)
     os.mkdir(align_path)
 
-    if os.path.exists("Progress"):
-        rmtree("Progress")
+    rmtree("Progress")
     os.mkdir("Progress")
 
     genes = [
@@ -692,11 +653,6 @@ def do_folder(folder, args):
     if not os.path.exists(intermediates):
         os.mkdir(intermediates)
 
-    if not args.add_fragments:
-        func = run_command
-    else:
-        func = barebones_align
-
     func_args = []
     for file, _ in genes:
         gene = file.split(".")[0]
@@ -721,9 +677,9 @@ def do_folder(folder, args):
 
     if args.processes > 1:
         with Pool(args.processes) as pool:
-            pool.starmap(func, func_args, chunksize=1)
+            pool.starmap(run_command, func_args, chunksize=1)
     else:
-        [func(arg[0]) for arg in func_args]
+        [run_command(arg[0]) for arg in func_args]
 
     # if args.debug:
     # with open("mafft_times.csv", "w") as fp:
