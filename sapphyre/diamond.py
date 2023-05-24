@@ -742,58 +742,67 @@ def run_process(args: Namespace, input_path: str) -> bool:
             args.verbose,
         )
 
-        with Pool(post_threads) as pool:
-            pool.map(process_lines, arguments)
+        if post_threads > 1:
+            with Pool(post_threads) as pool:
+                pool.map(process_lines, arguments)
+        else:
+            for arg in arguments:
+                process_lines(arg)
 
-            printv(
-                f"Processed. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Reading thread outputs",
-                args.verbose,
-            )
+        printv(
+            f"Processed. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Reading thread outputs",
+            args.verbose,
+        )
 
-            del arguments
-            decoder = json.Decoder(tuple[str, int, dict[str, list[Hit]]])
-            for temp_file in temp_files:
-                with open(temp_file.name, "rb") as fp:
-                    this_log, mkicks, this_output = decoder.decode(fp.read())
+        del arguments
+        decoder = json.Decoder(tuple[str, int, dict[str, list[Hit]]])
+        for temp_file in temp_files:
+            with open(temp_file.name, "rb") as fp:
+                this_log, mkicks, this_output = decoder.decode(fp.read())
 
-                for gene, hits in this_output.items():
-                    output[gene].extend(hits)
+            for gene, hits in this_output.items():
+                output[gene].extend(hits)
 
-                multi_kicks += mkicks
+            multi_kicks += mkicks
 
-                if args.debug:
-                    global_log.append(this_log)
-            del (
-                this_output,
-                mkicks,
-                this_log,
-            )
-            printv(
-                f"Done reading outputs. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
-                args.verbose,
-            )
+            if args.debug:
+                global_log.append(this_log)
+        del (
+            this_output,
+            mkicks,
+            this_log,
+        )
+        printv(
+            f"Done reading outputs. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
+            args.verbose,
+        )
 
-            requires_internal = defaultdict(dict)
-            internal_order = []
-            for gene, hits in output.items():
-                this_counter = Counter([i.node for i in hits]).most_common()
-                if this_counter[0][1] > 1:
-                    this_hits = sum(i[1] for i in this_counter if i[1] > 1)
-                    this_common = {i[0] for i in this_counter if i[1] > 1}
-                    for hit in [i for i in hits if i.node in this_common]:
-                        requires_internal[gene].setdefault(hit.node, []).append(hit)
+        requires_internal = defaultdict(dict)
+        internal_order = []
+        for gene, hits in output.items():
+            this_counter = Counter([i.node for i in hits]).most_common()
+            if this_counter[0][1] > 1:
+                this_hits = sum(i[1] for i in this_counter if i[1] > 1)
+                this_common = {i[0] for i in this_counter if i[1] > 1}
+                for hit in [i for i in hits if i.node in this_common]:
+                    requires_internal[gene].setdefault(hit.node, []).append(hit)
 
-                    internal_order.append((gene, this_hits))
+                internal_order.append((gene, this_hits))
 
-            internal_order.sort(key=lambda x: x[1], reverse=True)
+        internal_order.sort(key=lambda x: x[1], reverse=True)
 
-            internal_results = pool.starmap(
-                internal_filtering,
-                [
-                    (gene, requires_internal[gene], args.debug, args.internal_percent)
-                    for gene, _ in internal_order
-                ],
-            )
+        if post_threads > 1:
+            with Pool(post_threads) as pool:
+                internal_results = pool.starmap(
+                    internal_filtering,
+                    [
+                        (gene, requires_internal[gene], args.debug, args.internal_percent)
+                        for gene, _ in internal_order
+                    ],
+                )
+        else:
+            internal_results = [internal_filtering(gene, requires_internal[gene], args.debug, args.internal_percent) for gene, _ in internal_order]
+            
         internal_kicks = 0
         for gene, kick_count, this_log, kicked_hits in internal_results:
             internal_kicks += kick_count
@@ -825,8 +834,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
                     ),
                 )
 
-            with Pool(post_threads) as pool:
-                results = pool.starmap(containments, arguments)
+            if post_threads > 1:
+                with Pool(post_threads) as pool:
+                    results = pool.starmap(containments, arguments)
+            else:
+                results = [containments(*arg) for arg in arguments]
 
             next_output = []
             for this_kicks, log, r_gene in results:
@@ -910,8 +922,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
                     ),
                 )
 
-            with Pool(post_threads) as pool:
-                output = pool.starmap(convert_and_cull, arguments)
+            if post_threads > 1:
+                with Pool(post_threads) as pool:
+                    output = pool.starmap(convert_and_cull, arguments)
+            else:
+                output = [convert_and_cull(*arg) for arg in arguments]
 
         passes = 0
         encoder = json.Encoder()
