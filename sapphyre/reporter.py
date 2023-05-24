@@ -45,7 +45,7 @@ MainArgs = namedtuple(
 
 
 # Extend hit with new functions
-class Hit(ReporterHit):
+class Hit(ReporterHit, frozen = True):
     def get_bp_trim(
         self,
         this_aa: str,
@@ -54,6 +54,7 @@ class Hit(ReporterHit):
         mode: str,
         debug_fp: TextIO,
         header: str,
+        mat: dict
     ) -> tuple[int, int]:
         """Get the bp to trim from each end so that the alignment matches for 'matches' bp.
 
@@ -91,8 +92,7 @@ class Hit(ReporterHit):
 
             def dist(bp_a, bp_b, mat):
                 return mat[bp_a][bp_b] >= 0.0 and bp_a != "-" and bp_b != "-"
-
-        mat = bl.BLOSUM(62)
+            
         reg_starts = []
         reg_ends = []
 
@@ -322,6 +322,7 @@ def print_unmerged_sequences(
     debug_fp: TextIO,
     dupe_debug_fp: TextIO,
     verbose: int,
+    mat: dict,
 ) -> tuple[dict[str, list], list[tuple[str, str]], list[tuple[str, str]]]:
     """Returns a list of unique trimmed sequences for a given gene with formatted headers.
 
@@ -376,7 +377,7 @@ def print_unmerged_sequences(
 
         # Trim to match reference
         r_start, r_end = hit.get_bp_trim(
-            aa_seq, core_aa_seqs, trim_matches, blosum_mode, debug_fp, header,
+            aa_seq, core_aa_seqs, trim_matches, blosum_mode, debug_fp, header, mat
         )
         if r_start is None or r_end is None:
             printv(f"WARNING: Trim kicked: {hit.node}|{hit.frame}", verbose, 2)
@@ -524,6 +525,8 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         )  # DEBUG
         debug_dupes = open(f"align_debug/{oargs.gene}/{oargs.taxa_id}.dupes", "w")
 
+    mat = bl.BLOSUM(62)
+
     this_gene_dupes, aa_output, nt_output = print_unmerged_sequences(
         oargs.list_of_hits,
         oargs.gene,
@@ -535,6 +538,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         debug_alignments,
         debug_dupes,
         oargs.verbose,
+        mat,
     )
     if debug_alignments:
         debug_alignments.close()
