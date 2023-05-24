@@ -51,7 +51,7 @@ class Hit(ReporterHit, frozen = True):
         this_aa: str,
         references: dict[str, str],
         matches: int,
-        mode: str,
+        is_positive_match: callable,
         debug_fp: TextIO,
         header: str,
         mat: dict
@@ -78,21 +78,6 @@ class Hit(ReporterHit, frozen = True):
             tuple[int, int]: The number of bp to trim from the start and end of the sequence.
         """
         # Create the distance function based on the current mode
-        if mode == "exact":
-
-            def dist(bp_a, bp_b, _):
-                return bp_a == bp_b and bp_a != "-" and bp_b != "-"
-
-        elif mode == "strict":
-
-            def dist(bp_a, bp_b, mat):
-                return mat[bp_a][bp_b] > 0.0 and bp_a != "-" and bp_b != "-"
-
-        else:
-
-            def dist(bp_a, bp_b, mat):
-                return mat[bp_a][bp_b] >= 0.0 and bp_a != "-" and bp_b != "-"
-            
         reg_starts = []
         reg_ends = []
 
@@ -136,7 +121,7 @@ class Hit(ReporterHit, frozen = True):
                     if this_aa[i + j] == ref_seq[i + j]:
                         l_exact_matches += 1
 
-                    if not dist(ref_seq[i + j], this_aa[i + j], mat):
+                    if not is_positive_match(ref_seq[i + j], this_aa[i + j], mat):
                         if j == 0 or this_aa[i + j] == "*":
                             this_pass = False
                             break
@@ -167,7 +152,7 @@ class Hit(ReporterHit, frozen = True):
                     if this_aa[i - j] == ref_seq[i - j]:
                         r_exact_matches += 1
 
-                    if not dist(ref_seq[i - j], this_aa[i - j], mat):
+                    if not is_positive_match(ref_seq[i - j], this_aa[i - j], mat):
                         if j == 0 or this_aa[i - j] == "*":
                             this_pass = False
                             break
@@ -317,7 +302,7 @@ def print_unmerged_sequences(
     taxa_id: str,
     core_aa_seqs: list,
     trim_matches: int,
-    blosum_mode: str,
+    is_positive_match: callable,
     minimum_bp: int,
     debug_fp: TextIO,
     dupe_debug_fp: TextIO,
@@ -377,7 +362,7 @@ def print_unmerged_sequences(
 
         # Trim to match reference
         r_start, r_end = hit.get_bp_trim(
-            aa_seq, core_aa_seqs, trim_matches, blosum_mode, debug_fp, header, mat
+            aa_seq, core_aa_seqs, trim_matches, is_positive_match, debug_fp, header, mat
         )
         if r_start is None or r_end is None:
             printv(f"WARNING: Trim kicked: {hit.node}|{hit.frame}", verbose, 2)
@@ -526,6 +511,16 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         debug_dupes = open(f"align_debug/{oargs.gene}/{oargs.taxa_id}.dupes", "w")
 
     mat = bl.BLOSUM(62)
+    if oargs.blosum_mode == "exact":
+        def dist(bp_a, bp_b, _):
+            return bp_a == bp_b and bp_a != "-" and bp_b != "-"
+    elif oargs.blosum_mode == "strict":
+        def dist(bp_a, bp_b, mat):
+            return mat[bp_a][bp_b] > 0.0 and bp_a != "-" and bp_b != "-"
+    else:
+
+        def dist(bp_a, bp_b, mat):
+            return mat[bp_a][bp_b] >= 0.0 and bp_a != "-" and bp_b != "-"
 
     this_gene_dupes, aa_output, nt_output = print_unmerged_sequences(
         oargs.list_of_hits,
@@ -533,7 +528,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.taxa_id,
         core_seq_aa_dict,
         oargs.matches,
-        oargs.blosum_mode,
+        dist,
         oargs.minimum_bp,
         debug_alignments,
         debug_dupes,
