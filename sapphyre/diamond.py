@@ -454,6 +454,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             frame_to_hits[this_hit.frame].append(this_hit)
 
         for hits in frame_to_hits.values():
+            hits.sort(key=lambda x: x.score, reverse=True)
             genes_present = {hit.gene for hit in hits}
 
             kicks = set()
