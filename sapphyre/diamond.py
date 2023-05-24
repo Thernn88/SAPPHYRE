@@ -52,7 +52,7 @@ class ReferenceHit(Struct, frozen=True):
     end: int
 
 
-class Hit(Struct):
+class Hit(Struct, frozen = True):
     node: str
     target: str
     frame: int
@@ -62,12 +62,10 @@ class Hit(Struct):
     qend: int
     sstart: int
     send: int
-    gene: str = None
-    length: int = None
-    kick: bool = False
-    uid: int = None
-    ref: str = None
-    refs: list[ReferenceHit] = []
+    gene: str
+    uid: int
+    ref: str
+    refs: list[ReferenceHit]
 
 class ReporterHit(Struct):
     node: str
@@ -152,6 +150,8 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
 
     # Assign all the lower scoring hits as candidates
     candidates = hits[1:]
+    kicks = set()
+    passes = len(hits)
 
     for i, candidate in enumerate(candidates, 1):
         # Skip if the candidate has been kicked already or if master and candidate are internal hits:
@@ -172,8 +172,9 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
             score_difference = get_score_difference(master.score, candidate.score)
             if score_difference >= MULTI_SCORE_DIFFERENCE:
                 # Kick the candidate
-                hits[i].kick = True
-                candidates[i - 1].kick = True
+                passes -= 1
+                kicks.add(hits[i].uid)
+                kicks.add(candidates[i - 1].uid)
                 if debug:
                     log.append(
                         (
@@ -216,13 +217,12 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
                             if hit
                         ],
                     )
-                for hit in hits:
-                    hit.kick = True
-                return len(hits), log
+                
+                kicks = set(hit.uid for hit in hits)
+                
+                return len(hits), log, kicks
 
-    # Filter out the None values
-    passes = [hit for hit in hits if not hit.kick]
-    return len(hits) - len(passes), log
+    return len(hits) - passes, log, kicks
 
 
 def make_kick_log(hit_a: Hit, hit_b: Hit, gene: str, percent: float) -> str:
@@ -274,7 +274,7 @@ def internal_filter(
 
     for hits in header_based.values():
         for hit_a, hit_b in itertools.combinations(hits, 2):
-            if hit_a.kick or hit_b.kick:
+            if hit_a.uid in this_kicks or hit_b.uid in this_kicks:
                 continue
 
             # Calculate overlap percent over the internal overlap's length
@@ -290,7 +290,6 @@ def internal_filter(
             if overlap_amount > 0 and percent >= internal_percent:
                 # Iterate the kicks counter and set the kick attribute to True
                 next(kicks)
-                hit_b.kick = True
 
                 # Add the hit to the kicked set
                 this_kicks.add(hit_b.uid)
@@ -347,15 +346,16 @@ def containments(hits, target_to_taxon, debug, gene):
     hits.sort(key=lambda x: x.score, reverse=True)
 
     log = []
+    kicks = set()
 
     for i, top_hit in enumerate(hits):
-        if top_hit.kick:
+        if top_hit.uid in kicks:
             continue
         for top_ref_hit in top_hit.refs:
             top_hit_reference = top_ref_hit.ref
 
             for hit in hits[i + 1 :]:
-                if hit.kick:
+                if hit.uid in kicks:
                     continue
 
                 for ref_hit in hit.refs:
@@ -372,7 +372,7 @@ def containments(hits, target_to_taxon, debug, gene):
                     )
 
                     if overlap_percent > KICK_PERCENT:
-                        hit.kick = True
+                        kicks.add(hit.uid)
                         if debug:
                             log.append(
                                 hit.gene
@@ -388,7 +388,7 @@ def containments(hits, target_to_taxon, debug, gene):
                             )
                         break
 
-    return [hit.uid for hit in hits if hit.kick], log, gene
+    return [hit.uid for hit in hits if hit.uid in kicks], log, gene
 
 
 def convert_and_cull(hits, gene):
@@ -429,32 +429,36 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
     for _, header_df in pargs.grouped_data.groupby("header"):
         frame_to_hits = defaultdict(list)
         hits = []
-        for row in sorted(header_df.values, key=lambda row: row[4], reverse=True):
-            this_hit = Hit(
-                row[0], row[1], row[2], row[3], row[4], row[5], row[6], row[7], row[8],
-            )
+        for row in header_df.values:
+            target = row[1]
+            sstart = row[7]
+            send = row[8]
+            frame = row[2]
+            qstart = row[5]
+            qend = row[6]
+            evalue = row[3]
 
-            if this_hit.evalue > pargs.evalue_threshold:
+            if evalue > pargs.evalue_threshold:
                 continue
 
-            if this_hit.frame < 0:
-                this_hit.qend, this_hit.qstart = this_hit.qstart, this_hit.qend
-            this_hit.length = this_hit.qend - this_hit.qstart + 1
-            this_hit.gene, this_hit.ref, _ = pargs.target_to_taxon[this_hit.target]
-            this_hit.uid = hash(time())
-            ref = this_hit.ref if pargs.is_assembly else None
-            this_hit.refs.append(
-                ReferenceHit(
-                    this_hit.target, ref, this_hit.sstart, this_hit.send,
-                ),
+            if frame < 0:
+                qend, qstart = qstart, qend
+            gene, ref, _ = pargs.target_to_taxon[target]
+
+            refs = [ReferenceHit(target, ref, sstart, send)]
+
+            this_hit = Hit(
+                row[0], target, row[2], row[3], row[4], qstart, qend, sstart, send, gene, hash(time()), ref, refs
             )
+
             frame_to_hits[this_hit.frame].append(this_hit)
 
         for hits in frame_to_hits.values():
             genes_present = {hit.gene for hit in hits}
 
+            kicks = set()
             if len(genes_present) > 1:
-                this_kicks, log = multi_filter(hits, pargs.debug)
+                this_kicks, log, kicks = multi_filter(hits, pargs.debug)
                 multi_kicks += this_kicks
                 if pargs.debug:
                     this_log.extend(log)
@@ -463,10 +467,10 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                 if len(genes_present) > 1:
                     gene_hits = defaultdict(list)
                     for hit in hits:
-                        if not hit.kick:
+                        if not hit.uid in kicks:
                             gene_hits[hit.gene].append(hit)
                 else:
-                    gene_hits = {hits[0].gene: [hit for hit in hits if not hit.kick]}
+                    gene_hits = {hits[0].gene: [hit for hit in hits if not hit.uid in kicks]}
 
                 for _, hits in gene_hits.items():
                     top_hit = hits[0]
@@ -596,7 +600,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         raise ValueError(
             msg,
         )
-    out = [nt_db.get(f"ntbatch:{i}") for i in recipe]
+    out = [nt_db.get_bytes(f"ntbatch:{i}") for i in recipe]
 
     dupe_counts = json.decode(nt_db.get_bytes("getall:dupes"), type=dict[str, int])
 
@@ -605,7 +609,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         with TemporaryDirectory(dir=gettempdir()) as dir, NamedTemporaryFile(
             dir=dir,
         ) as input_file:
-            input_file.write("".join(out).encode())
+            input_file.write(b"".join(out))
             input_file.flush()
 
             quiet = "--quiet" if args.verbose == 0 else ""
@@ -902,7 +906,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         head_to_seq = {}
         for content in out:
-            lines = content.split("\n")
+            lines = content.decode().split("\n")
             head_to_seq.update(
                 {
                     lines[i][1:]: lines[i + 1]
