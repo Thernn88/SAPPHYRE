@@ -630,10 +630,8 @@ def trim_large_gaps(aa_out: list[tuple], reference_gap_col: set, amt_matches: in
     log = []
     kicks = []
     gap_pass_through = {}
-
     for record_index, record in enumerate(aa_out):
         header, sequence = record
-
         if not header.endswith("."):
             gap_cull = set()
             seq_start, seq_end = get_start_end(sequence)
@@ -641,9 +639,6 @@ def trim_large_gaps(aa_out: list[tuple], reference_gap_col: set, amt_matches: in
             non_ref_gap_dash_count = 0
             raw_dash_count = 0
             out_line = list(sequence)
-            trimmed_left = False
-            trimmed_right = False
-
             for j, let in enumerate(out_line[seq_start : seq_end + 1], seq_start):
                 if let == "-":
                     if j not in reference_gap_col:
@@ -663,63 +658,90 @@ def trim_large_gaps(aa_out: list[tuple], reference_gap_col: set, amt_matches: in
                             post_character_at_each_pos,
                             post_gap_present_threshold,
                         )
-
                         for x in positions:
                             gap_cull.add(x * 3)
                             out_line[x] = "-"
 
-                        trimmed_left |= i > seq_start
-                        trimmed_right |= i < seq_end
+                        left_after = out_line[seq_start:i]
+                        right_after = out_line[i:seq_end]
+                        left_side_ref_data_columns = sum(
+                            post_gap_present_threshold[x] for x in range(seq_start, i)
+                        )
+                        left_of_trim_data_columns = len(
+                            left_after,
+                        ) - left_after.count("-")
+
+                        right_side_ref_data_columns = sum(
+                            post_gap_present_threshold[x] for x in range(i, seq_end)
+                        )
+                        right_of_trim_data_columns = len(
+                            right_after,
+                        ) - right_after.count("-")
+
+                        # If both sides kicked and sequence ends up being empty keep the side with the most bp.
+                        keep_left = False
+                        keep_right = False
+
+                        if (
+                            get_data_difference(
+                                left_of_trim_data_columns,
+                                left_side_ref_data_columns,
+                            )
+                            < 0.55
+                            and get_data_difference(
+                                right_of_trim_data_columns,
+                                right_side_ref_data_columns,
+                            )
+                            < 0.55
+                        ):
+                            keep_left = len(left_after) - left_after.count(
+                                "-",
+                            ) >= len(right_after) - right_after.count("-")
+                            keep_right = not keep_left
+
+                        if (
+                            get_data_difference(
+                                left_of_trim_data_columns,
+                                left_side_ref_data_columns,
+                            )
+                            < 0.55
+                            and not keep_left
+                        ):  # candidate has less than % of data columns compared to reference
+                            for x in range(seq_start, i):
+                                gap_cull.add(x * 3)
+                                out_line[x] = "-"
+                        if (
+                            get_data_difference(
+                                right_of_trim_data_columns,
+                                right_side_ref_data_columns,
+                            )
+                            < 0.55
+                            and not keep_right
+                        ):
+                            for x in range(i, seq_end):
+                                gap_cull.add(x * 3)
+                                out_line[x] = "-"
                         change_made = True
 
                     non_ref_gap_dash_count = 0
                     raw_dash_count = 0
-
             if change_made:
-                left_after = out_line[seq_start:i]
-                right_after = out_line[i:seq_end]
-                left_side_ref_data_columns = sum(
-                    post_gap_present_threshold[x] for x in range(seq_start, i)
-                )
-                left_of_trim_data_columns = len(left_after) - left_after.count("-")
-                right_side_ref_data_columns = sum(
-                    post_gap_present_threshold[x] for x in range(i, seq_end)
-                )
-                right_of_trim_data_columns = len(right_after) - right_after.count("-")
-
-                if trimmed_left and trimmed_right:
-                    keep_left = left_of_trim_data_columns >= right_of_trim_data_columns
-                    keep_right = not keep_left
-                else:
-                    keep_left = False
-                    keep_right = False
-
-                if (
-                    get_data_difference(left_of_trim_data_columns, left_side_ref_data_columns) < 0.55
-                    and get_data_difference(right_of_trim_data_columns, right_side_ref_data_columns) < 0.55
-                ):
-                    keep_left = len(left_after) - left_after.count("-") >= len(right_after) - right_after.count("-")
-                    keep_right = not keep_left
-
-                if (
-                    get_data_difference(left_of_trim_data_columns, left_side_ref_data_columns) < 0.55
-                    and not keep_left
-                ):
-                    gap_cull.update(range(seq_start, i))
-                if (
-                    get_data_difference(right_of_trim_data_columns, right_side_ref_data_columns) < 0.55
-                    and not keep_right
-                ):
-                    gap_cull.update(range(i, seq_end))
-
                 bp_after_cull = len(out_line) - out_line.count("-")
-
                 if bp_after_cull < minimum_bp:
                     if debug:
                         removed_section = sequence[:seq_start] + sequence[seq_end:]
-                        data_removed = len(removed_section) - removed_section.count("-")
+                        data_removed = len(removed_section) - removed_section.count(
+                            "-",
+                        )
                         log.append(
-                            f"{header.split('|')[0]},{header},Not enough BP after gap cull,,{bp_after_cull},{data_removed}\n"
+                            header.split("|")[0]
+                            + ","
+                            + header
+                            + ",Not enough BP after gap cull,,"
+                            + str(bp_after_cull)
+                            + ","
+                            + str(data_removed)
+                            + "\n",
                         )
                     kicks.append(header)
                     aa_out[record_index] = None
