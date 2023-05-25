@@ -11,7 +11,7 @@ from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import rmtree
 from typing import Literal
-
+from phymmr_tools import score_splits
 import numpy as np
 
 import wrap_rocks
@@ -203,25 +203,14 @@ def calculate_split(sequence_a: str, sequence_b: str, comparison_sequence: str) 
 
     sequence_a_overlap = list(islice(sequence_a, overlap_start, overlap_end + 1))
     sequence_b_overlap = list(islice(sequence_b, overlap_start, overlap_end + 1))
-    comparison_overlap = list(islice(comparison_sequence, overlap_start, overlap_end + 1))
+    comparison_overlap = comparison_sequence[overlap_start: overlap_end + 1]
 
-    base_score = 0
-    highest_scoring_pos = 0
-    highest_score = -1
+    seqs = [("".join(sequence_a_overlap[:i] + sequence_b_overlap[i:]), i) for i in range(len(sequence_a_overlap)+1)]
 
-    for i, (character_a, character_b, comparison_char) in enumerate(zip(sequence_a_overlap, sequence_b_overlap, comparison_overlap)):
-        if character_a == character_b == comparison_char:
-            base_score += 1
-        elif character_a == comparison_char or character_b == comparison_char:
-            base_score += 1
-        else:
-            base_score -= 1
-        
-        if base_score >= highest_score:
-            highest_score = base_score
-            highest_scoring_pos = i
+    # Score splits using hamming distance and return the highest scoring split position
+    position = score_splits(comparison_overlap, seqs)
 
-    return highest_scoring_pos + overlap_start
+    return position + overlap_start
 
 
 def directory_check(target_output_path) -> str:
