@@ -54,7 +54,7 @@ def main(args):
             "no_references": False,
             "col_cull_percent": 0.33,
             "ref_gap_percent": 0.5,
-            "ref_min_percent": 0.5,
+            "ref_min_percent": 0.33,
             "index_group_min_bp": 20,
             "internal_consensus_threshold": 0.85,
             "internal_kick_threshold": 4,

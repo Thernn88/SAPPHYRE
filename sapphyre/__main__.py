@@ -256,7 +256,7 @@ def subcmd_outlier(subparsers):
         "-refmp",
         "--ref-min-percent",
         type=float,
-        default=0.5,
+        default=0.33,
         help="Minimum percent of references required after kick",
     )
     par.add_argument(
