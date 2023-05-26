@@ -279,7 +279,7 @@ def subcmd_outlier(subparsers):
         "-ict",
         "--internal_consensus_threshold",
         type=float,
-        default=0.75,
+        default=0.65,
         help="Consensus threshold for internal summary.",
     )
     par.add_argument(

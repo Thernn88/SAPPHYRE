@@ -57,8 +57,8 @@ def main(args):
             "ref_gap_percent": 0.5,
             "ref_min_percent": 0.33,
             "index_group_min_bp": 20,
-            "internal_consensus_threshold": 0.85,
-            "internal_kick_threshold": 4,
+            "internal_consensus_threshold": 0.65,
+            "internal_kick_threshold": .1,
             "debug": False,
         },
         "merge": {
