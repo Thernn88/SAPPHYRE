@@ -606,10 +606,15 @@ def run_process(args: Namespace, input_path: str) -> bool:
     dupe_counts = json.decode(nt_db.get_bytes("getall:dupes"), type=dict[str, int])
 
     out_path = os.path.join(diamond_path, f"{sensitivity}")
-    for extension in [".tsv", ".tsv.tar.gz", ".gz"]:
+    extension_found = False
+    for extension in [".tsv", ".tsv.tar.gz", ".gz", ".tsv.gz"]:
         if os.path.exists(out_path + extension):
             out_path += extension
+            extension_found = True
             break
+    if not extension_found:
+        out_path += ".tsv"
+    
 
     if not os.path.exists(out_path) or os.stat(out_path).st_size == 0:
         with TemporaryDirectory(dir=gettempdir()) as dir, NamedTemporaryFile(
