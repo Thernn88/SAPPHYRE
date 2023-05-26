@@ -605,7 +605,12 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
     dupe_counts = json.decode(nt_db.get_bytes("getall:dupes"), type=dict[str, int])
 
-    out_path = os.path.join(diamond_path, f"{sensitivity}.tsv")
+    out_path = os.path.join(diamond_path, f"{sensitivity}")
+    for extension in [".tsv", ".tsv.gz", ".tsv.tar.gz"]:
+        if os.path.exists(out_path + extension):
+            out_path += extension
+            break
+
     if not os.path.exists(out_path) or os.stat(out_path).st_size == 0:
         with TemporaryDirectory(dir=gettempdir()) as dir, NamedTemporaryFile(
             dir=dir,
@@ -621,7 +626,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             )
             time_keeper.lap()  # Reset timer
             os.system(
-                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {precision} --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --min-orf {min_orf} --max-hsps 0 -p {num_threads}",
+                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {precision} --compress 1 --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --min-orf {min_orf} --max-hsps 0 -p {num_threads}",
             )
             input_file.seek(0)
 
@@ -641,6 +646,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
     global_log = []
     dupe_divy_headers = defaultdict(set)
+
+    
 
     if os.stat(out_path).st_size == 0:
         printv("Diamond returned zero hits.", args.verbose, 0)
