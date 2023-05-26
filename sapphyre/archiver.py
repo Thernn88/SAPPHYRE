@@ -8,12 +8,15 @@ from .utils import printv
 
 
 def archive_worker(folder_to_archive, verbosity) -> None:
-    if os.path.isdir(folder_to_archive):
+    if os.path.isdir(folder_to_archive) or os.path.isfile(folder_to_archive):
         printv(f"Archiving {folder_to_archive}", verbosity, 2)
         with tarfile.open(str(folder_to_archive) + ".tar.gz", "w:gz") as tf:
             tf.add(str(folder_to_archive), arcname=os.path.split(folder_to_archive)[-1])
 
-        rmtree(folder_to_archive)
+        if os.path.isdir(folder_to_archive):
+            rmtree(folder_to_archive)
+        else:
+            os.remove(folder_to_archive)
 
 
 def unarchive_worker(file_to_unarchive, verbosity) -> None:
@@ -37,7 +40,6 @@ def process_folder(args, superfolder_path):
             "blast",
             "aa",
             "nt",
-            "diamond",
         ]
     else:
         directories_to_archive = args.specific_directories
@@ -58,21 +60,29 @@ def process_folder(args, superfolder_path):
                         ),
                     )
         #  archive logic
-        else:
-            if os.path.basename(root) in directories_to_archive:
-                if os.path.basename(os.path.split(root)[0]) in directories_to_archive:
-                    continue
-                if (
-                    os.path.basename(os.path.split(root)[0]) == "sequences"
-                ):  # rocksdb/sequences
-                    continue
+        elif os.path.basename(root) in directories_to_archive:
+            if os.path.basename(os.path.split(root)[0]) in directories_to_archive:
+                continue
+            if (
+                os.path.basename(os.path.split(root)[0]) == "sequences"
+            ):  # rocksdb/sequences
+                continue
 
-                arguments.append(
-                    (
-                        root,
-                        args.verbose,
-                    ),
-                )
+            arguments.append(
+                (
+                    root,
+                    args.verbose,
+                ),
+            )
+        else:
+            for file in files:
+                if file in directories_to_archive:
+                    arguments.append(
+                        (
+                            os.path.join(root, file),
+                            args.verbose,
+                        ),
+                    )
     return arguments
 
 
