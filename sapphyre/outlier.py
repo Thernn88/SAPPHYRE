@@ -1,17 +1,16 @@
 """Outlier Check."""
 from __future__ import annotations
-
-import os
 import sys
-from copy import deepcopy
+import numpy as np
+import os
+import phymmr_tools as bd
+import wrap_rocks
+
+from collections import defaultdict
 from itertools import combinations
 from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import rmtree
-
-import numpy as np
-import phymmr_tools as bd
-import wrap_rocks
 from msgspec import Struct, json
 from phymmr_tools import constrained_distance, dumb_consensus
 
@@ -23,8 +22,8 @@ ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta", ".fa", ".gz", ".fq", ".fastq")
 
 class Record(Struct):
     id: str
-    sequence: str
     raw: str
+    sequence: str = None
     upper_bound: np.float16 = None
     iqr: np.float16 = None
     mean_distance: np.float16 = None
@@ -55,13 +54,6 @@ def nan_check(iterable) -> bool:
     return any(not np.isnan(element) for element in iterable)
 
 
-def fast_pop(array: list, i: int):
-    temp = array[i]
-    array[i] = array[-1]
-    array[-1] = temp
-    return array.pop()
-
-
 def folder_check(path: Path, debug: bool) -> None:
     """Create subfolders 'aa' and 'nt' to given path."""
     aa_folder = Path(path, "aa")
@@ -76,54 +68,6 @@ def folder_check(path: Path, debug: bool) -> None:
     if debug:
         logs_folder = Path(path, "logs")
         logs_folder.mkdir(parents=True, exist_ok=True)
-
-
-def get_headers(lines: list) -> list:
-    """Returns a list of every other line in the provided argument. Used to get
-    header names from a list of sequences.
-    """
-    result = []
-    for i in range(0, len(lines), 2):
-        result.append(lines[i])
-    return result
-
-
-def split_sequences_ex(path: str, excluded: set) -> tuple:
-    """Reads over a fasta record in the given list and returns a tuple of two smaller lists.
-    The first returned list is the reference sequences found, the second returned list
-    is the candidate sequences found.
-    """
-    references = []
-    candidates = []
-    end_of_references = False
-    ref_check = set()
-    try:
-        for header, sequence in parseFasta(path):
-            header = ">" + header
-
-            if end_of_references is False:
-                # The reference header identifier is present in the header
-                if header[-1] == ".":
-                    if header.split("|")[1].lower() in excluded:
-                        continue
-                    if header[-9] == ":":
-                        ref_check.add(header[:-9])
-
-                    references.append(header)
-                    references.append(sequence)
-                else:
-                    end_of_references = True
-
-            if end_of_references is True:
-                candidates.append(header)
-                candidates.append(sequence)
-    except ValueError:
-        print(f"Error in file: {path}, error reading {header}")
-        sys.exit(1)
-    except TypeError:
-        print(f"Wrong IO type: {path}")
-        sys.exit(1)
-    return references, candidates, ref_check
 
 
 def split_sequences(path: str) -> tuple:
@@ -145,14 +89,12 @@ def split_sequences(path: str) -> tuple:
                     if header[-9] == ":":
                         ref_check.add(header[:-9])
 
-                    references.append(header)
-                    references.append(sequence)
+                    references.append(Record(header, sequence))
                 else:
                     end_of_references = True
 
             if end_of_references is True:
-                candidates.append(header)
-                candidates.append(sequence)
+                candidates.append(Record(header, sequence))
     except ValueError:
         print(f"Error in file: {path}, Problem with {header}")
         sys.exit(1)
@@ -162,102 +104,20 @@ def split_sequences(path: str) -> tuple:
     return references, candidates, ref_check
 
 
-def make_indices(sequence: str, gap_character="-") -> tuple:
-    """Finds the index of the first and last non-gap bp in a sequence.
-    Returns the start value and the end values + 1 as a tuple.
-    """
-    start = None
-    end = None
-    for i, character in enumerate(sequence):
-        if character != gap_character:
-            start = i
-            break
-    for i in range(len(sequence) - 1, -1, -1):
-        if sequence[i] != gap_character:
-            end = i + 1
-            break
-    if start is None or end is None:
-        raise ValueError
-    return start, end
-
-
-def constrain_data_lines(lines: list, start: int, end: int) -> tuple:
-    """Given a start and end value, iterates over the list of sequences and
-    trims the non-header lines to given values. No return, mutates the original data.
-    """
-    full = []
-    heads = []
-    for i in range(0, len(lines), 2):
-        newline = lines[i + 1][start:end]
-        # Do work if the string contains a non-gap character.
-        if any(character != "-" for character in newline):
-            full.append(lines[i])
-            full.append(newline)
-            heads.append(lines[i])
-    return (full, heads)
-
-
-def convert_to_record_objects(lines: list) -> list:
-    """Given a list of stings from a fasta file, returns a list of Sequence objects
-    from the biopython module. This allows us to make a MultipleSequenceAlignment
-    object later.
-    """
-    return [Record(lines[i], lines[i + 1], None) for i in range(0, len(lines), 2)]
-
-
-def find_index_groups(references: list, candidates: list) -> tuple:
+def find_index_groups(candidates: list) -> dict:
     """Iterate over a list of candidate fastas as lines of text and finds their start
     and stop indices. Makes a tuple out of the pairs, then uses the
     tuple as a key in two dictionaries. One dictionary stores lists of
     candidates with identical indices, and the other dictionary stores
     the ref set after constraining to those indices.
     """
-    candidate_dict = {}
-    for i in range(0, len(candidates), 2):
-        sequence = candidates[i + 1]
-        raw_seq = sequence
-        index_tuple = make_indices(sequence)
-        start, stop = index_tuple
-        lines = [candidates[i], candidates[i + 1]]
-        lines, _ = constrain_data_lines(lines, start, stop)
-        cand_seq = Record(lines[0], lines[1], raw_seq)
-        made_already = candidate_dict.get(index_tuple, False)
-        if not made_already:
-            seq_list = []
-            seq_list.append(cand_seq)
-            candidate_dict[index_tuple] = seq_list
-        else:
-            made_already.append(cand_seq)
-            candidate_dict[index_tuple] = made_already
-    # after processing candidates, make appropriate ref sets
-    reference_dict = {}
-    raw_ref_dict = {}
-    for key in candidate_dict:
-        start, stop = key
-        ref_lines = deepcopy(references)
-        raw_ref_dict[key] = ref_lines
-        ref_lines, _ = constrain_data_lines(ref_lines, start, stop)
-        reference_dict[key] = ref_lines
-    return reference_dict, candidate_dict
-
-
-def make_ref_mean(matrix: list, ignore_zeros=False) -> float:
-    """Iterates over a distance matrix and calculates the mean value of all found
-    distances. Returns the value as a float. If ignore_zeros is enabled, ignores
-    any distance value of zero.
-    """
-    isum = 0
-    zeros_found = 0
-    total_number = 0
-    for row in matrix:
-        for column in row:
-            isum += column
-            total_number += 1
-            if column == 0:
-                zeros_found += 1
-    if ignore_zeros:
-        total_number -= zeros_found
-    return isum / total_number
+    lst = lambda: []
+    candidate_dict = defaultdict(lst)
+    for candidate in candidates:
+        start, stop = bd.find_index_pair(candidate.raw, '-')
+        candidate.sequence = candidate.raw[start:stop]
+        candidate_dict[(start, stop)].append(candidate)
+    return candidate_dict
 
 
 def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
@@ -267,13 +127,13 @@ def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
     """
     result = []
     for ref in refs:
-        result.append(bd.blosum62_candidate_to_reference(str(candidate), str(ref)))
+        result.append(bd.blosum62_candidate_to_reference(candidate.sequence, ref.sequence))
     result.append(0.0)
     return result
 
 
 def has_minimum_data(
-    seq: str, cand_rejected_indices: set, min_data: float, start_offset: int, gap="-",
+    seq: str, cand_rejected_indices: set, min_data: float, start_offset: int, gap="-"
 ):
     data_chars = []
     for raw_i, character in enumerate(seq):
@@ -295,7 +155,7 @@ def is_same_variant(header1, header2) -> bool:
 
 def compare_means(
     references: list,
-    ref_dict: dict,
+    regulars: list,
     candidates_dict: dict,
     threshold: float,
     keep_refs: bool,
@@ -309,16 +169,12 @@ def compare_means(
     matching cuts in the reference sequences. Afterwards finds the mean of the trimmed
     data.
     """
-    regulars = []
     passing = []
     failing = []
-    if keep_refs:
-        for line in references:
-            regulars.append(line)
-    for index_pair, current_refs in ref_dict.items():
-        # get candidates in this index group
-        candidates_at_index = candidates_dict[index_pair]
-
+    for index_pair, candidates_at_index in candidates_dict.items():
+        # constrain refs here to avoid deepcopy
+        for ref in references:
+            ref.sequence = ref.raw[index_pair[0]: index_pair[1]]
         # get first candidate in group and check the amount of bp left after
         # column cull
         first_candidate = str(candidates_at_index[0])
@@ -343,35 +199,30 @@ def compare_means(
             continue
 
         # first we have to calculate the reference distances to make the ref mean
-        ref_records = convert_to_record_objects(current_refs)
         ref_alignments = [
-            seq
-            for seq in ref_records
-            if has_minimum_data(
-                seq.sequence, rejected_indices, ref_gap_percent, index_pair[0],
+            ref for ref in references if has_minimum_data(
+                ref.sequence, rejected_indices, ref_gap_percent, index_pair[0]
             )
         ]
 
         ref_distances = []
 
         # find number of unique ref variants remaining after bp kick
-        if ref_records[0].id[-9] == ":":
+        if references[0].id[-9] == ":":
             found_set = set()
-            for ref in ref_records:
+            for ref in references:
                 found_set.add(ref.id[:-9])
             found = len(found_set)
         else:
-            found = len(ref_records)
-
-        if found / refs_in_file < ref_min_percent:
+            found = len(references)
+        # hadrcode a lower bound in case there are too few refs
+        refs_needed = max(2, refs_in_file * ref_min_percent)
+        if found < refs_needed:
             has_ref_distances = False
         else:
-            for seq1, seq2 in combinations(ref_alignments, 2):
-                if is_same_variant(seq1.id, seq2.id):
-                    continue
-                ref1 = str(seq1)
-                ref2 = str(seq2)
-                ref_distances.append(bd.blosum62_distance(ref1, ref2))
+            ref_distances = [bd.blosum62_distance(ref1.sequence, ref2.sequence) for
+                            ref1, ref2 in combinations(ref_alignments, 2) if
+                            not is_same_variant(ref1.id, ref2.id)]
             has_ref_distances = nan_check(ref_distances)
         if has_ref_distances:
             # First quartile (Q1)
@@ -430,45 +281,6 @@ def compare_means(
     return regulars, passing, failing
 
 
-def delete_empty_columns(raw_fed_sequences: list, verbose: bool) -> tuple[list, list]:
-    """Iterates over each sequence and deletes columns
-    that consist of 100% dashes.
-    """
-    result = []
-    sequences = []
-    raw_sequences = [
-        i.replace("\n", "") for i in raw_fed_sequences if i.replace("\n", "") != ""
-    ]
-
-    for i in range(0, len(raw_sequences), 2):
-        sequences.append(raw_sequences[i + 1])
-
-    positions_to_keep = []
-    if sequences:
-        for i in range(len(sequences[0])):
-            for sequence in sequences:
-                if sequence[i] != "-":
-                    positions_to_keep.append(i)
-                    break
-
-        for i in range(0, len(raw_sequences), 2):
-            try:
-                sequence = [raw_sequences[i + 1][x] for x in positions_to_keep]
-                result.append(raw_sequences[i])
-            except IndexError:
-                printv(
-                    f"WARNING: Sequence length is not the same as other sequences: {raw_sequences[i]}",
-                    verbose,
-                    0,
-                )
-                continue
-            sequence = "".join(sequence)
-
-            result.append(sequence)
-
-    return result, positions_to_keep
-
-
 def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
     """Iterates over each sequence and deletes columns
     that were removed in the empty column removal.
@@ -504,31 +316,6 @@ def remove_excluded_sequences(lines: list, excluded: set) -> list:
     return output
 
 
-def make_exclusion_set(path: str) -> set:
-    """Reads a file at a given path and returns a set containing
-    each line. Used to make a taxa exclusion list.
-    """
-    excluded = set()
-    if not path:
-        return excluded
-    with open(path) as f:
-        for line in f:
-            excluded.add(line.rstrip())
-    return excluded
-
-
-def delete_excluded(lines: list, excluded: set) -> list:
-    """Given a list of fasta lines and a set of headers to be excluded from output,
-    returns a list of all valid headers and sequences.
-    """
-    output = []
-    for i in range(0, len(lines), 2):
-        if lines[i].strip() not in excluded:
-            output.append(lines[i])
-            output.append(lines[i + 1])
-    return output
-
-
 def original_order_sort(original: list, candidate_records: list) -> list:
     """Accepts a list of headers and a list of Records. Returns a list of
     Records in the order of the original list.
@@ -541,7 +328,8 @@ def original_order_sort(original: list, candidate_records: list) -> list:
 def get_dupe_count(cand: Record, prep_dupes, report_dupes) -> int:
     node = cand.id.split('|')[3]
     dupes = prep_dupes.get(node, 1) + sum(prep_dupes.get(node, 1) for node in report_dupes.get(node, []))
-    return  dupes
+    return dupes
+
 
 def main_process(
     args_input,
@@ -573,15 +361,15 @@ def main_process(
     aa_output = os.path.join(args_output, "aa")
     aa_output = os.path.join(aa_output, filename.rstrip(".gz"))
 
-    reference_sequences, candidate_sequences, ref_check = split_sequences(file_input)
-    original_order = list(candidate_sequences[0::2])
-    ref_dict, candidates_dict = find_index_groups(
-        reference_sequences, candidate_sequences,
-    )
+    reference_records, candidate_records, ref_check = split_sequences(file_input)
+    # original_order = [line for line in candidate_records[0::2]]
+    original_order = [candidate.id for candidate in candidate_records]
+    candidates_dict = find_index_groups(candidate_records)
 
     # calculate indices that have valid data columns
     rejected_indices = set()
-    ref_seqs = reference_sequences[1::2]
+    # ref_seqs = reference_sequences[1::2]
+    ref_seqs = [ref.raw for ref in reference_records]
     for i in range(len(ref_seqs[0])):
         percent_of_non_dash = len([ref[i] for ref in ref_seqs if ref[i] != "-"]) / len(
             ref_seqs,
@@ -590,10 +378,19 @@ def main_process(
             rejected_indices.add(i)
 
     # find number of unique reference variants in file, use for refs_in_file
-    refs_in_file = len(ref_check) if ref_check else len(ref_seqs)
+    if ref_check:
+        refs_in_file = len(ref_check)
+    else:
+        refs_in_file = len(ref_seqs)
+    regulars = []
+    if keep_refs:
+        for ref in reference_records:
+            regulars.append(ref.id)
+            regulars.append(ref.raw)
+    # reference_records = [ref for ref in reference_records if bd.has_data(ref.raw)]
     raw_regulars, passing, failing = compare_means(
-        reference_sequences,
-        ref_dict,
+        reference_records,
+        regulars,
         candidates_dict,
         threshold,
         keep_refs,
@@ -624,8 +421,8 @@ def main_process(
     passing = original_order_sort(original_order, passing)
     for candidate in passing:
         raw_regulars.extend([candidate.id, candidate.raw])
-    regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
-
+    # regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
+    regulars, allowed_columns = bd.delete_empty_columns(raw_regulars)
     to_be_excluded = {candidate.id for candidate in failing}
     if passing:  # If candidate added to fasta
         write2Line2Fasta(aa_output, regulars, compress)
