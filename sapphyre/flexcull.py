@@ -8,6 +8,11 @@ import os
 from collections import Counter, namedtuple
 from itertools import chain
 from multiprocessing.pool import Pool
+from phymmr_tools import (
+    join_by_tripled_index,
+    join_with_exclusions,
+    join_triplets_with_exclusions,
+)
 from shutil import rmtree
 
 import numpy as np
@@ -69,7 +74,8 @@ def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
     result = []
     for raw_sequence in raw_fed_sequences:
         sequence = raw_sequence[1]
-        sequence = ''.join(sequence[i*3:(i*3)+3] for i in positions_to_keep)
+        # sequence = ''.join(sequence[i*3:(i*3)+3] for i in positions_to_keep)
+        sequence = join_by_tripled_index(sequence, positions_to_keep)
         result.append((raw_sequence[0], sequence))
 
     return result
@@ -531,12 +537,13 @@ def column_cull_seqs(this_seqs: list[tuple], column_cull: set, minimum_bp: int) 
 
     if this_column_cull:
         for header, seq, _, _ in this_seqs:
-            new_seq = "".join(
-                [
-                    let if i * 3 not in this_column_cull else "-"
-                    for i, let in enumerate(seq)
-                ],
-            )
+            # new_seq = "".join(
+            #     [
+            #         let if i * 3 not in this_column_cull else "-"
+            #         for i, let in enumerate(seq)
+            #     ],
+            # )
+            new_seq = join_with_exclusions(seq, this_column_cull)
             if len(new_seq) - new_seq.count("-") < minimum_bp:
                 kicks.append(header)
                 continue
@@ -909,14 +916,16 @@ def do_gene(fargs: FlexcullArgs) -> None:
                         "-" * characters_till_end
                     )  # Add dashes till reached input distance
 
-                    out_line = [
-                        out_line[i : i + 3]
-                        if i not in positions_to_trim and i not in this_column_cull
-                        else "---"
-                        for i in range(0, len(out_line), 3)
-                    ]
-                    out_line = "".join(out_line)
-
+                    # out_line = [
+                    #     out_line[i : i + 3]
+                    #     if i not in positions_to_trim and i not in this_column_cull
+                    #     else "---"
+                    #     for i in range(0, len(out_line), 3)
+                    # ]
+                    # out_line = "".join(out_line)
+                    out_line = join_triplets_with_exclusions(
+                        out_line, positions_to_trim, this_column_cull
+                    )
                     nt_out.append((header, out_line))
             nt_out = align_col_removal(nt_out, aa_positions_to_keep)
             out_nt = []
