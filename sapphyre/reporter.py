@@ -9,7 +9,6 @@ from typing import TextIO
 
 import blosum as bl
 import parasail as ps
-import phymmr_tools
 import xxhash
 from Bio.Seq import Seq
 from msgspec import json
@@ -45,7 +44,7 @@ MainArgs = namedtuple(
 
 
 # Extend hit with new functions
-class Hit(ReporterHit, frozen = True):
+class Hit(ReporterHit, frozen=True):
     def get_bp_trim(
         self,
         this_aa: str,
@@ -54,7 +53,7 @@ class Hit(ReporterHit, frozen = True):
         is_positive_match: callable,
         debug_fp: TextIO,
         header: str,
-        mat: dict
+        mat: dict,
     ) -> tuple[int, int]:
         """Get the bp to trim from each end so that the alignment matches for 'matches' bp.
 
@@ -95,7 +94,10 @@ class Hit(ReporterHit, frozen = True):
 
             # Pairwise align the reference and query
             result = ps.nw_trace_scan_profile_16(
-                profile, ref_seq, GAP_PENALTY, EXTEND_PENALTY,
+                profile,
+                ref_seq,
+                GAP_PENALTY,
+                EXTEND_PENALTY,
             )
 
             # Get the aligned sequences
@@ -175,8 +177,10 @@ class Hit(ReporterHit, frozen = True):
         # If no trims were found, return None
         return None, None
 
+
 def get_diamondhits(
-    rocks_hits_db: RocksDB, list_of_wanted_genes: list,
+    rocks_hits_db: RocksDB,
+    list_of_wanted_genes: list,
 ) -> dict[str, list[Hit]]:
     """Returns a dictionary of gene to corresponding hits.
 
@@ -211,7 +215,8 @@ def get_gene_variants(rocks_hits_db: RocksDB) -> dict[str, list[str]]:
         dict: Dictionary of gene to corresponding target variants
     """
     return json.decode(
-        rocks_hits_db.get("getall:target_variants"), type=dict[str, list[str]],
+        rocks_hits_db.get("getall:target_variants"),
+        type=dict[str, list[str]],
     )
 
 
@@ -243,7 +248,8 @@ def translate_cdna(cdna_seq):
 
 
 def get_core_sequences(
-    gene: str, orthoset_db: RocksDB,
+    gene: str,
+    orthoset_db: RocksDB,
 ) -> tuple[list[tuple[str, str, str]], list[tuple[str, str, str]]]:
     """Returns the core reference sequences for a given gene.
 
@@ -255,13 +261,19 @@ def get_core_sequences(
         tuple: Tuple of core AA and NT sequences
     """
     core_seqs = json.decode(
-        orthoset_db.get(f"getcore:{gene}"), type=dict[str, list[tuple[str, str, str]]],
+        orthoset_db.get(f"getcore:{gene}"),
+        type=dict[str, list[tuple[str, str, str]]],
     )
     return core_seqs["aa"], core_seqs["nt"]
 
 
 def print_core_sequences(
-    gene, core_sequences, target_taxon, top_refs, header_seperator="|", identifier=".",
+    gene,
+    core_sequences,
+    target_taxon,
+    top_refs,
+    header_seperator="|",
+    identifier=".",
 ):
     """Returns a filtered list of headers and sequences for the core sequences.
 
@@ -355,7 +367,7 @@ def print_unmerged_sequences(
             + header_seperator
             + reference_frame
         )
-        
+
         # Translate to AA
         nt_seq = hit.seq
         aa_seq = translate_cdna(nt_seq)
@@ -493,7 +505,8 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     printv(f"Doing output for: {oargs.gene}", oargs.verbose, 2)
 
     core_sequences, core_sequences_nt = get_core_sequences(
-        oargs.gene, rocky.get_rock("rocks_orthoset_db"),
+        oargs.gene,
+        rocky.get_rock("rocks_orthoset_db"),
     )
 
     core_seq_aa_dict = {target: seq for _, target, seq in core_sequences}
@@ -503,7 +516,8 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     if oargs.debug:
         os.makedirs(f"align_debug/{oargs.gene}", exist_ok=True)  # DEBUG
         debug_alignments = open(
-            f"align_debug/{oargs.gene}/{oargs.taxa_id}.alignments", "w",
+            f"align_debug/{oargs.gene}/{oargs.taxa_id}.alignments",
+            "w",
         )  # DEBUG
         debug_alignments.write(
             f"GAP_PENALTY: {GAP_PENALTY}\nEXTEND_PENALTY: {EXTEND_PENALTY}\n",
@@ -512,11 +526,15 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
 
     mat = bl.BLOSUM(62)
     if oargs.blosum_mode == "exact":
+
         def dist(bp_a, bp_b, _):
             return bp_a == bp_b and bp_a != "-" and bp_b != "-"
+
     elif oargs.blosum_mode == "strict":
+
         def dist(bp_a, bp_b, mat):
             return mat[bp_a][bp_b] > 0.0 and bp_a != "-" and bp_b != "-"
+
     else:
 
         def dist(bp_a, bp_b, mat):
@@ -540,14 +558,20 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         debug_dupes.close()
     if aa_output:
         aa_core_sequences = print_core_sequences(
-            oargs.gene, core_sequences, oargs.target_taxon, oargs.top_refs,
+            oargs.gene,
+            core_sequences,
+            oargs.target_taxon,
+            oargs.top_refs,
         )
         writeFasta(this_aa_path, aa_core_sequences + aa_output, oargs.compress)
 
         this_nt_path = os.path.join(oargs.nt_out_path, oargs.gene + ".nt.fa")
 
         nt_core_sequences = print_core_sequences(
-            oargs.gene, core_sequences_nt, oargs.target_taxon, oargs.top_refs,
+            oargs.gene,
+            core_sequences_nt,
+            oargs.target_taxon,
+            oargs.top_refs,
         )
         writeFasta(this_nt_path, nt_core_sequences + nt_output, oargs.compress)
 
@@ -612,7 +636,8 @@ def do_taxa(path: str, taxa_id: str, args: Namespace):
     )
 
     transcripts_mapped_to = get_diamondhits(
-        rocky.get_rock("rocks_hits_db"), list_of_wanted_genes,
+        rocky.get_rock("rocks_hits_db"),
+        list_of_wanted_genes,
     )
 
     printv(
@@ -630,7 +655,9 @@ def do_taxa(path: str, taxa_id: str, args: Namespace):
 
     arguments: list[OutputArgs | None] = []
     for gene in sorted(
-        transcripts_mapped_to, key=lambda k: len(transcripts_mapped_to[k]), reverse=True,
+        transcripts_mapped_to,
+        key=lambda k: len(transcripts_mapped_to[k]),
+        reverse=True,
     ):
         arguments.append(
             (
@@ -687,7 +714,8 @@ def main(args):
         printv("ERROR: All folders passed as argument must exist.", args.verbose, 0)
         return False
     rocky.create_pointer(
-        "rocks_orthoset_db", os.path.join(args.orthoset_input, args.orthoset, "rocksdb"),
+        "rocks_orthoset_db",
+        os.path.join(args.orthoset_input, args.orthoset, "rocksdb"),
     )
     result = []
     if args.matches < EXACT_MATCH_AMOUNT:
@@ -705,7 +733,8 @@ def main(args):
     for input_path in args.INPUT:
         rocks_db_path = os.path.join(input_path, "rocksdb")
         rocky.create_pointer(
-            "rocks_nt_db", os.path.join(rocks_db_path, "sequences", "nt"),
+            "rocks_nt_db",
+            os.path.join(rocks_db_path, "sequences", "nt"),
         )
         rocky.create_pointer("rocks_hits_db", os.path.join(rocks_db_path, "hits"))
         result.append(

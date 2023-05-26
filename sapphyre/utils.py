@@ -37,7 +37,8 @@ def gettempdir():
 
 
 def parseFasta(
-    path: str, has_interleave=False,
+    path: str,
+    has_interleave=False,
 ) -> Generator[tuple[str, str], None, None]:
     """Iterate over a Fasta file returning sequence records as string tuples.
     Designed in order to handle .gz and .fasta files with potential interleave.

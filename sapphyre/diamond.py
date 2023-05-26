@@ -52,7 +52,7 @@ class ReferenceHit(Struct, frozen=True):
     end: int
 
 
-class Hit(Struct, frozen = True):
+class Hit(Struct, frozen=True):
     node: str
     target: str
     frame: int
@@ -66,6 +66,7 @@ class Hit(Struct, frozen = True):
     uid: int
     ref: str
     refs: list[ReferenceHit]
+
 
 class ReporterHit(Struct):
     node: str
@@ -163,7 +164,10 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
 
         # Get the amount and percentage overlap between the master and candidate
         amount_of_overlap = get_overlap(
-            master.qstart, master.qend, candidate.qstart, candidate.qend,
+            master.qstart,
+            master.qend,
+            candidate.qstart,
+            candidate.qend,
         )
         percentage_of_overlap = amount_of_overlap / distance
 
@@ -217,9 +221,9 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
                             if hit
                         ],
                     )
-                
+
                 kicks = set(hit.uid for hit in hits)
-                
+
                 return len(hits), log, kicks
 
     return len(hits) - passes, log, kicks
@@ -251,7 +255,10 @@ def make_kick_log(hit_a: Hit, hit_b: Hit, gene: str, percent: float) -> str:
 
 
 def internal_filter(
-    gene: str, header_based: dict, debug: bool, internal_percent: float,
+    gene: str,
+    header_based: dict,
+    debug: bool,
+    internal_percent: float,
 ) -> tuple[set, list, int]:
     """Filters out overlapping hits who map to the same gene.
 
@@ -279,7 +286,10 @@ def internal_filter(
 
             # Calculate overlap percent over the internal overlap's length
             overlap_amount = get_overlap(
-                hit_a.qstart, hit_a.qend, hit_b.qstart, hit_b.qend,
+                hit_a.qstart,
+                hit_a.qend,
+                hit_b.qstart,
+                hit_b.qend,
             )
             internal_start = min(hit_a.qstart, hit_b.qstart)
             internal_end = max(hit_a.qend, hit_b.qend)
@@ -314,7 +324,10 @@ def internal_filter(
 
 
 def internal_filtering(
-    gene: str, hits: list, debug: bool, internal_percent: float,
+    gene: str,
+    hits: list,
+    debug: bool,
+    internal_percent: float,
 ) -> tuple[str, int, list, list]:
     """Performs the internal filter on a list of hits and returns a count of the number of hits
     kicked, a log of the hits kicked, and the list of hits that passed the filter.
@@ -333,7 +346,10 @@ def internal_filtering(
     """
     # Perform the internal filter.
     kicked_hits, this_log, this_kicks = internal_filter(
-        gene, hits, debug, internal_percent,
+        gene,
+        hits,
+        debug,
+        internal_percent,
     )
 
     # Return the gene, the number of hits kicked, a log of the hits kicked, and the list of hits
@@ -362,13 +378,20 @@ def containments(hits, target_to_taxon, debug, gene):
                     if target_to_taxon[ref_hit.query][1] != top_hit_reference:
                         continue
 
-                    if get_score_difference(top_hit.score, hit.score) < PARALOG_SCORE_DIFF:
+                    if (
+                        get_score_difference(top_hit.score, hit.score)
+                        < PARALOG_SCORE_DIFF
+                    ):
                         continue
 
                     overlap_percent = get_overlap(
-                        top_ref_hit.start, top_ref_hit.end, ref_hit.start, ref_hit.end,
+                        top_ref_hit.start,
+                        top_ref_hit.end,
+                        ref_hit.start,
+                        ref_hit.end,
                     ) / min(
-                        (top_ref_hit.end - top_ref_hit.start), (ref_hit.end - ref_hit.start),
+                        (top_ref_hit.end - top_ref_hit.start),
+                        (ref_hit.end - ref_hit.start),
                     )
 
                     if overlap_percent > KICK_PERCENT:
@@ -448,7 +471,19 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             refs = [ReferenceHit(target, ref, sstart, send)]
 
             this_hit = Hit(
-                row[0], target, row[2], row[3], row[4], qstart, qend, sstart, send, gene, hash(time()), ref, refs
+                row[0],
+                target,
+                row[2],
+                row[3],
+                row[4],
+                qstart,
+                qend,
+                sstart,
+                send,
+                gene,
+                hash(time()),
+                ref,
+                refs,
             )
 
             frame_to_hits[this_hit.frame].append(this_hit)
@@ -468,16 +503,21 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                 if len(genes_present) > 1:
                     gene_hits = defaultdict(list)
                     for hit in hits:
-                        if not hit.uid in kicks:
+                        if hit.uid not in kicks:
                             gene_hits[hit.gene].append(hit)
                 else:
-                    gene_hits = {hits[0].gene: [hit for hit in hits if not hit.uid in kicks]}
+                    gene_hits = {
+                        hits[0].gene: [hit for hit in hits if hit.uid not in kicks]
+                    }
 
                 for _, hits in gene_hits.items():
                     top_hit = hits[0]
 
                     if pargs.is_assembly:
-                        ref_seqs = [ReferenceHit(hit.target, hit.ref, hit.sstart, hit.send) for hit in hits[1:]]
+                        ref_seqs = [
+                            ReferenceHit(hit.target, hit.ref, hit.sstart, hit.send)
+                            for hit in hits[1:]
+                        ]
                     else:
                         ref_seqs = [
                             ReferenceHit(hit.target, None, hit.sstart, hit.send)
@@ -485,7 +525,6 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                             if hit.ref in pargs.pairwise_refs
                         ]
                     top_hit.refs.extend(ref_seqs)
-
 
                     output[top_hit.gene].append(top_hit)
 
@@ -546,7 +585,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
     orthoset_db_path = os.path.join(orthosets_dir, orthoset, "rocksdb")
     diamond_db_path = os.path.join(
-        orthosets_dir, orthoset, "diamond", orthoset + ".dmnd",
+        orthosets_dir,
+        orthoset,
+        "diamond",
+        orthoset + ".dmnd",
     )
     # Potato brain check
     if not os.path.exists(orthoset_db_path) or not os.path.exists(diamond_db_path):
@@ -597,7 +639,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
     if recipe:
         recipe = recipe.split(",")
     else:
-        msg = "Nucleotide sequence not found in database. Did Prepare succesfully finish?"
+        msg = (
+            "Nucleotide sequence not found in database. Did Prepare succesfully finish?"
+        )
         raise ValueError(
             msg,
         )
@@ -614,7 +658,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
             break
     if not extension_found:
         out_path += ".tsv"
-    
 
     if not os.path.exists(out_path) or os.stat(out_path).st_size == 0:
         with TemporaryDirectory(dir=gettempdir()) as dir, NamedTemporaryFile(
@@ -651,8 +694,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
     global_log = []
     dupe_divy_headers = defaultdict(set)
-
-    
 
     if os.stat(out_path).st_size == 0:
         printv("Diamond returned zero hits.", args.verbose, 0)
@@ -813,13 +854,23 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 internal_results = pool.starmap(
                     internal_filtering,
                     [
-                        (gene, requires_internal[gene], args.debug, args.internal_percent)
+                        (
+                            gene,
+                            requires_internal[gene],
+                            args.debug,
+                            args.internal_percent,
+                        )
                         for gene, _ in internal_order
                     ],
                 )
         else:
-            internal_results = [internal_filtering(gene, requires_internal[gene], args.debug, args.internal_percent) for gene, _ in internal_order]
-            
+            internal_results = [
+                internal_filtering(
+                    gene, requires_internal[gene], args.debug, args.internal_percent
+                )
+                for gene, _ in internal_order
+            ]
+
         internal_kicks = 0
         for gene, kick_count, this_log, kicked_hits in internal_results:
             internal_kicks += kick_count
@@ -911,7 +962,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
         variant_filter = {k: list(v) for k, v in variant_filter.items()}
 
         db.put_bytes(
-            "getall:target_variants", json_encoder.encode(variant_filter),
+            "getall:target_variants",
+            json_encoder.encode(variant_filter),
         )  # type=dict[str, list[str]]
 
         del variant_filter

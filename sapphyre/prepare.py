@@ -58,7 +58,7 @@ def truncate_taxa(taxa: str, extension=None) -> str:
     """
     # search for _# and _R#, where # is digits
     result = taxa
-    m = re.search(r"(_\d.fa)|(_R\d.fa)", result+extension)
+    m = re.search(r"(_\d.fa)|(_R\d.fa)", result + extension)
 
     if m:
         tail_length = m.end() - m.start() - len(extension)
@@ -226,7 +226,8 @@ class DatabasePreparer:
         self.taxa_time_keeper = TimeKeeper(KeeperMode.DIRECT)
         self.printv(f"Preparing: {self.fto}", self.verbose, 0)
         self.printv(
-            "Formatting input sequences and inserting into database", self.verbose,
+            "Formatting input sequences and inserting into database",
+            self.verbose,
         )
 
         taxa_destination_directory = secondary_directory.joinpath(self.fto)
@@ -247,7 +248,9 @@ class DatabasePreparer:
 
     def dedup(self):
         deduper = SeqDeduplicator(
-            self.nt_db, self.minimum_sequence_length, self.verbose,
+            self.nt_db,
+            self.minimum_sequence_length,
+            self.verbose,
         )
         for fa_file_path in self.comp:
             deduper(

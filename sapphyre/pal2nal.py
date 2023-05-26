@@ -770,7 +770,10 @@ def return_aligned_paths(
 
 
 def prepare_taxa_and_genes(
-    input: str, specified_dna_table, verbose, compress,
+    input: str,
+    specified_dna_table,
+    verbose,
+    compress,
 ) -> tuple[Generator[tuple[Path, Path, Path], Any, Any], int]:
     input_path = Path(input)
 
@@ -799,7 +802,12 @@ def prepare_taxa_and_genes(
     )
 
     out_generator = return_aligned_paths(
-        glob_nt, glob_aa, joined_nt_aligned, specified_dna_table, verbose, compress,
+        glob_nt,
+        glob_aa,
+        joined_nt_aligned,
+        specified_dna_table,
+        verbose,
+        compress,
     )
 
     return out_generator, len(glob_aa)
@@ -820,7 +828,9 @@ def find_end(sequence: str, gap_character="-") -> int:
 
 
 def read_and_convert_fasta_files(
-    aa_file: str, nt_file: str, verbose: bool,
+    aa_file: str,
+    nt_file: str,
+    verbose: bool,
 ) -> dict[str, tuple[list[tuple[str, str]], list[tuple[str, str]]]]:
     aas = []
     nts = {}
@@ -902,7 +912,8 @@ def worker(
 
 
 def run_batch_threaded(
-    num_threads: int, ls: list[list[list[tuple[tuple[Path, Path, Path], dict, bool]]]],
+    num_threads: int,
+    ls: list[list[list[tuple[tuple[Path, Path, Path], dict, bool]]]],
 ):
     with Pool(num_threads) as pool:
         result = pool.starmap(worker, ls, chunksize=100)
@@ -916,7 +927,10 @@ def main(args):
     for folder in args.INPUT:
         printv(f"Processing: {ospath.basename(folder)}", args.verbose, 0)
         this_taxa_jobs, _ = prepare_taxa_and_genes(
-            folder, specified_dna_table, args.verbose, args.compress,
+            folder,
+            specified_dna_table,
+            args.verbose,
+            args.compress,
         )
 
         success = run_batch_threaded(num_threads=args.processes, ls=this_taxa_jobs)

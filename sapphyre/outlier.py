@@ -12,7 +12,7 @@ from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import rmtree
 from msgspec import Struct, json
-from phymmr_tools import constrained_distance, dumb_consensus
+from phymmr_tools import constrained_distance
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, write2Line2Fasta
@@ -111,10 +111,11 @@ def find_index_groups(candidates: list) -> dict:
     candidates with identical indices, and the other dictionary stores
     the ref set after constraining to those indices.
     """
-    lst = lambda: []
+    def lst():
+        return []
     candidate_dict = defaultdict(lst)
     for candidate in candidates:
-        start, stop = bd.find_index_pair(candidate.raw, '-')
+        start, stop = bd.find_index_pair(candidate.raw, "-")
         candidate.sequence = candidate.raw[start:stop]
         candidate_dict[(start, stop)].append(candidate)
     return candidate_dict
@@ -127,7 +128,9 @@ def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
     """
     result = []
     for ref in refs:
-        result.append(bd.blosum62_candidate_to_reference(candidate.sequence, ref.sequence))
+        result.append(
+            bd.blosum62_candidate_to_reference(candidate.sequence, ref.sequence)
+        )
     result.append(0.0)
     return result
 
@@ -174,7 +177,7 @@ def compare_means(
     for index_pair, candidates_at_index in candidates_dict.items():
         # constrain refs here to avoid deepcopy
         for ref in references:
-            ref.sequence = ref.raw[index_pair[0]: index_pair[1]]
+            ref.sequence = ref.raw[index_pair[0] : index_pair[1]]
         # get first candidate in group and check the amount of bp left after
         # column cull
         first_candidate = str(candidates_at_index[0])
@@ -200,7 +203,9 @@ def compare_means(
 
         # first we have to calculate the reference distances to make the ref mean
         ref_alignments = [
-            ref for ref in references if has_minimum_data(
+            ref
+            for ref in references
+            if has_minimum_data(
                 ref.sequence, rejected_indices, ref_gap_percent, index_pair[0]
             )
         ]
@@ -220,9 +225,11 @@ def compare_means(
         if found < refs_needed:
             has_ref_distances = False
         else:
-            ref_distances = [bd.blosum62_distance(ref1.sequence, ref2.sequence) for
-                            ref1, ref2 in combinations(ref_alignments, 2) if
-                            not is_same_variant(ref1.id, ref2.id)]
+            ref_distances = [
+                bd.blosum62_distance(ref1.sequence, ref2.sequence)
+                for ref1, ref2 in combinations(ref_alignments, 2)
+                if not is_same_variant(ref1.id, ref2.id)
+            ]
             has_ref_distances = nan_check(ref_distances)
         if has_ref_distances:
             # First quartile (Q1)
@@ -262,7 +269,8 @@ def compare_means(
             candidate.grade = "Ref Fail"
             if has_ref_distances:
                 candidate_distances = candidate_pairwise_calls(
-                    candidate, ref_alignments,
+                    candidate,
+                    ref_alignments,
                 )
                 candidate.mean_distance = np.nanmean(candidate_distances)
                 candidate.iqr = IQR
@@ -326,8 +334,10 @@ def original_order_sort(original: list, candidate_records: list) -> list:
 
 
 def get_dupe_count(cand: Record, prep_dupes, report_dupes) -> int:
-    node = cand.id.split('|')[3]
-    dupes = prep_dupes.get(node, 1) + sum(prep_dupes.get(node, 1) for node in report_dupes.get(node, []))
+    node = cand.id.split("|")[3]
+    dupes = prep_dupes.get(node, 1) + sum(
+        prep_dupes.get(node, 1) for node in report_dupes.get(node, [])
+    )
     return dupes
 
 
@@ -348,7 +358,7 @@ def main_process(
     internal_consensus_threshold: float,
     internal_kick_threshold: int,
     prepare_dupe_counts,
-    reporter_dupe_counts
+    reporter_dupe_counts,
 ):
     keep_refs = not args_references
 
@@ -403,14 +413,22 @@ def main_process(
     logs = []
     if passing:
         try:
-            gene = filename.split('.')[0]
+            gene = filename.split(".")[0]
             consensus = bd.dumb_consensus_dupe(
-                [(cand.raw, get_dupe_count(cand, prepare_dupe_counts, reporter_dupe_counts))
-                  for cand in passing], internal_consensus_threshold,
+                [
+                    (
+                        cand.raw,
+                        get_dupe_count(cand, prepare_dupe_counts, reporter_dupe_counts),
+                    )
+                    for cand in passing
+                ],
+                internal_consensus_threshold,
             )
             # print(consensus+'\n')
             for i, candidate in enumerate(passing):
-                distance = constrained_distance(consensus, candidate.raw)/len(candidate.sequence)
+                distance = constrained_distance(consensus, candidate.raw) / len(
+                    candidate.sequence
+                )
                 if distance >= internal_kick_threshold:
                     candidate.grade = "Internal Fail"
                     failing.append(candidate)
@@ -462,10 +480,14 @@ def do_folder(folder, args):
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
     if rocks_db_path.exists():
         rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
-        prepare_dupe_counts = json.decode(rocksdb_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]])
-        reporter_dupe_counts = json.decode(rocksdb_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]])
+        prepare_dupe_counts = json.decode(
+            rocksdb_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]]
+        )
+        reporter_dupe_counts = json.decode(
+            rocksdb_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]]
+        )
     else:
-        err = f'cannot find dupe databases for {folder}'
+        err = f"cannot find dupe databases for {folder}"
         raise FileNotFoundError(err)
     printv(f"Processing: {os.path.basename(folder)}", args.verbose, 0)
 
@@ -509,7 +531,7 @@ def do_folder(folder, args):
                     args.internal_consensus_threshold,
                     args.internal_kick_threshold,
                     prepare_dupe_counts.get(gene_raw, {}),
-                    reporter_dupe_counts.get(gene_raw, {})
+                    reporter_dupe_counts.get(gene_raw, {}),
                 ),
             )
 

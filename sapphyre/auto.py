@@ -4,6 +4,7 @@ import os
 from glob import glob
 from .timekeeper import KeeperMode, TimeKeeper
 
+
 def main(args):
     default_config = {
         "prepare": {
@@ -110,9 +111,9 @@ def main(args):
             if script == "prepare"
             else sorted(
                 glob(
-                        os.path.join("datasets", os.path.split(args.INPUT)[-1], "*.fa"),
-                    ),
-                )
+                    os.path.join("datasets", os.path.split(args.INPUT)[-1], "*.fa"),
+                ),
+            )
         )
 
         if script == "prepare":

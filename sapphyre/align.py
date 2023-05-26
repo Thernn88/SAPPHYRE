@@ -549,9 +549,7 @@ def run_command(args: CmdArgs) -> None:
                         out_file = args.result_file
 
                     if has_singleton_merge and i == 0:
-                        path = os.path.join(
-                            os.getcwd(), "Progress", f"{args.gene}.txt"
-                        )
+                        path = os.path.join(os.getcwd(), "Progress", f"{args.gene}.txt")
                         if debug:
                             path = os.path.join(
                                 os.getcwd(), "Progress", f"{args.gene}.txt"

@@ -180,7 +180,9 @@ def clean_gene(gene_config):
 
         if gene_config.kick_columns:
             aa_content, aa_kicks, cols_to_kick = kick_empty_columns(
-                aa_content, gene_config.kick_percentage, gene_config.minimum_bp,
+                aa_content,
+                gene_config.kick_percentage,
+                gene_config.minimum_bp,
             )
             nt_content = align_kick_nt(nt_content, cols_to_kick, aa_kicks)
 
@@ -189,7 +191,9 @@ def clean_gene(gene_config):
 
         if gene_config.rename:
             aa_content, nt_content = rename_taxon(
-                aa_content, nt_content, gene_config.taxa_to_taxon,
+                aa_content,
+                nt_content,
+                gene_config.taxa_to_taxon,
             )
 
         processed_folder = gene_config.taxa_folder.joinpath("Processed")

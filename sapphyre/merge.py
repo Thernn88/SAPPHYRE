@@ -3,7 +3,7 @@
 PyLint 9.61/10
 """
 from __future__ import annotations
-from collections import Counter, defaultdict, deque
+from collections import Counter, defaultdict
 from itertools import islice
 
 import os
@@ -111,7 +111,6 @@ def make_seq_dict(sequences: list) -> dict:
     return seq_dict, cursor_dict
 
 
-
 def parse_fasta(path: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """Returns references from raw fasta text input."""
     references: list[tuple[str, str]] = []
@@ -137,7 +136,9 @@ def parse_fasta(path: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]
 def get_start_end(sequence: str) -> tuple:
     """Returns index of first and last non-dash character in sequence."""
     start = next((i for i, character in enumerate(sequence) if character != "-"), None)
-    end = next((i for i in range(len(sequence) - 1, -1, -1) if sequence[i] != "-"), None)
+    end = next(
+        (i for i in range(len(sequence) - 1, -1, -1) if sequence[i] != "-"), None
+    )
     return start, end
 
 
@@ -146,7 +147,6 @@ def expand_region(original: tuple, expansion: tuple) -> tuple:
     start = min(original[0], expansion[0])
     end = max(original[1], expansion[1])
     return start, end
-
 
 
 def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
@@ -159,14 +159,19 @@ def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
     current_region = None
 
     for sequence in taxa_pair:
-        if current_region is None or find_overlap((sequence.start, sequence.end), current_region) is None:
+        if (
+            current_region is None
+            or find_overlap((sequence.start, sequence.end), current_region) is None
+        ):
             if current_group:
                 result.append((current_region, current_group))
             current_region = (sequence.start, sequence.end)
             current_group = [sequence]
         else:
             current_group.append(sequence)
-            current_region = expand_region(current_region, (sequence.start, sequence.end))
+            current_region = expand_region(
+                current_region, (sequence.start, sequence.end)
+            )
 
     if current_group:
         result.append((current_region, current_group))
@@ -174,9 +179,10 @@ def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
     return result
 
 
-
 def find_overlap(
-    tuple_a: tuple, tuple_b: tuple, allowed_deviation: int = 1,
+    tuple_a: tuple,
+    tuple_b: tuple,
+    allowed_deviation: int = 1,
 ) -> tuple | None:
     """Takes two start/end pairs and returns the overlap."""
     start = max(tuple_a[0], tuple_b[0])
@@ -203,9 +209,12 @@ def calculate_split(sequence_a: str, sequence_b: str, comparison_sequence: str) 
 
     sequence_a_overlap = list(islice(sequence_a, overlap_start, overlap_end + 1))
     sequence_b_overlap = list(islice(sequence_b, overlap_start, overlap_end + 1))
-    comparison_overlap = comparison_sequence[overlap_start: overlap_end + 1]
+    comparison_overlap = comparison_sequence[overlap_start : overlap_end + 1]
 
-    seqs = [("".join(sequence_a_overlap[:i] + sequence_b_overlap[i:]), i) for i in range(len(sequence_a_overlap)+1)]
+    seqs = [
+        ("".join(sequence_a_overlap[:i] + sequence_b_overlap[i:]), i)
+        for i in range(len(sequence_a_overlap) + 1)
+    ]
 
     # Score splits using hamming distance and return the highest scoring split position
     position = score_splits(comparison_overlap, seqs)
@@ -232,7 +241,7 @@ def grab_merge_start_end(taxa_pair: list) -> list[tuple]:
     """Grabs start and end of merge sequences."""
     merge_start = min(seq.start for seq in taxa_pair)
     merge_end = max(seq.end for seq in taxa_pair)
-    
+
     return merge_start, merge_end
 
 
@@ -249,7 +258,7 @@ class Sequence(Struct, frozen=True):
         if self.is_old_header:
             return self.header.split("|")[-1]
         return self.header.split("|")[-2]
-    
+
 
 def do_protein(
     protein: Literal["aa", "nt"],
@@ -285,7 +294,7 @@ def do_protein(
 
     def get_taxa(header: str) -> str:
         return header.split("|")[2]
-    
+
     is_old_header = True
     if len(candidates[0][0].split("|")[-1]) <= 2:
         is_old_header = False
@@ -302,7 +311,9 @@ def do_protein(
 
         # Disperse sequences into clusters of overlap
         if ignore_overlap_chunks:
-            overlap_groups = [(grab_merge_start_end(sequences_to_merge), sequences_to_merge)]
+            overlap_groups = [
+                (grab_merge_start_end(sequences_to_merge), sequences_to_merge)
+            ]
         else:
             overlap_groups = disperse_into_overlap_groups(sequences_to_merge)
 
@@ -388,7 +399,9 @@ def do_protein(
                 if amount_of_seqs_at_cursor == 0:
                     new_merge.append("-")  # Gap between sequences
                 elif amount_of_seqs_at_cursor == 1:
-                    new_merge.append(sequences_dict[headers_at_current_point[0]][cursor])
+                    new_merge.append(
+                        sequences_dict[headers_at_current_point[0]][cursor]
+                    )
                 elif amount_of_seqs_at_cursor > 1:
                     # If there is more than one sequence at this current index
                     splits = amount_of_seqs_at_cursor - 1
@@ -429,10 +442,7 @@ def do_protein(
                                     )
                                 else:
                                     headers_here = "".join(
-                                        [
-                                            header
-                                            for header in headers_at_current_point
-                                        ],
+                                        [header for header in headers_at_current_point],
                                     )
                                     key = f"{data_start}{data_end}{headers_here}"
                                     if key in quality_taxons_here:
@@ -452,7 +462,8 @@ def do_protein(
                                             quality_taxons.append((data, taxon))
 
                                         comparison_taxa = max(
-                                            quality_taxons, key=lambda x: x[0],
+                                            quality_taxons,
+                                            key=lambda x: x[0],
                                         )[1]
                                         quality_taxons_here[key] = comparison_taxa
 
@@ -470,9 +481,7 @@ def do_protein(
                     for split_count in range(splits - 1, -1, -1):
                         header_a = headers_at_current_point[split_count]
                         sequence_a = sequences_dict[header_a]
-                        header_b = headers_at_current_point[
-                            split_count + 1
-                        ]
+                        header_b = headers_at_current_point[split_count + 1]
                         sequence_b = sequences_dict[header_b]
 
                         split_key = header_a + header_b
@@ -482,7 +491,9 @@ def do_protein(
                                 split_position = already_calculated_splits[split_key]
                             else:
                                 split_position = calculate_split(
-                                    sequence_a, sequence_b, comparison_sequence,
+                                    sequence_a,
+                                    sequence_b,
+                                    comparison_sequence,
                                 )
                                 already_calculated_splits[split_key] = split_position
 
@@ -686,7 +697,6 @@ def do_gene(
         debug=debug,
     )
 
-
     nt_path, nt_data = do_protein(
         "nt",
         nt_path,
@@ -733,8 +743,12 @@ def do_folder(folder: Path, args):
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
     if rocks_db_path.exists():
         rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
-        prepare_dupe_counts = json.decode(rocksdb_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]])
-        reporter_dupe_counts = json.decode(rocksdb_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]])
+        prepare_dupe_counts = json.decode(
+            rocksdb_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]]
+        )
+        reporter_dupe_counts = json.decode(
+            rocksdb_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]]
+        )
         ref_stats = rocksdb_db.get("getall:valid_refs").split(",")
     else:
         prepare_dupe_counts = {}
@@ -752,10 +766,12 @@ def do_folder(folder: Path, args):
         arguments = []
         for target_gene in target_genes:
             prep_dupes_in_this_gene = prepare_dupe_counts.get(
-                target_gene.split(".")[0], {},
+                target_gene.split(".")[0],
+                {},
             )
             rep_dupes_in_this_gene = reporter_dupe_counts.get(
-                target_gene.split(".")[0], {},
+                target_gene.split(".")[0],
+                {},
             )
             target_aa_path = Path(aa_input, target_gene)
             target_nt_path = Path(nt_input, make_nt_name(target_gene))
@@ -781,10 +797,12 @@ def do_folder(folder: Path, args):
     else:
         for target_gene in target_genes:
             prep_dupes_in_this_gene = prepare_dupe_counts.get(
-                target_gene.split(".")[0], {},
+                target_gene.split(".")[0],
+                {},
             )
             rep_dupes_in_this_gene = reporter_dupe_counts.get(
-                target_gene.split(".")[0], {},
+                target_gene.split(".")[0],
+                {},
             )
             target_aa_path = os.path.join(aa_input, target_gene)
             target_nt_path = os.path.join(nt_input, make_nt_name(target_gene))
