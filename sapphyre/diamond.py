@@ -411,7 +411,7 @@ def containments(hits, target_to_taxon, debug, gene):
                             )
                         break
 
-    return [hit.uid for hit in hits if hit.uid in kicks], log, gene
+    return kicks, log, gene
 
 
 def convert_and_cull(hits, gene):
