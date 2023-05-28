@@ -14,7 +14,7 @@ from phymmr_tools import (
     join_triplets_with_exclusions,
 )
 from shutil import rmtree
-
+import wrap_rocks
 import numpy as np
 
 import blosum as bl
@@ -58,6 +58,7 @@ FlexcullArgs = namedtuple(
         "mismatches",
         "column_cull_percent",
         "filtered_mat",
+        "is_assembly",
     ],
 )
 
@@ -515,7 +516,7 @@ def process_refs(references: list[tuple], gap_threshold:float, column_cull_perce
 
 
 
-def column_cull_seqs(this_seqs: list[tuple], column_cull: set, minimum_bp: int) -> tuple[list[tuple], list[str], set]:
+def column_cull_seqs(this_seqs: list[tuple], column_cull: set, minimum_bp: int, is_assembly: bool) -> tuple[list[tuple], list[str], set]:
     aa_out = []
     kicks = []
 
@@ -530,8 +531,8 @@ def column_cull_seqs(this_seqs: list[tuple], column_cull: set, minimum_bp: int) 
                 if seq[i] != "-":
                     this_sequence[seq[i]] += 1
         # Get the count of the most occuring bp at this position
-        if sum(this_sequence.values()) >= 5:
-            if this_sequence.most_common()[0][1] > internal_count / 2:
+        if sum(this_sequence.values()) >= 5 if is_assembly else 1:
+            if this_sequence.most_common()[0][1] > internal_count / 3:
                 continue
         this_column_cull.add(i * 3)
 
@@ -863,7 +864,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                 log.append(gene + "," + header + ",Kicked,Zero Data After Cull,0,\n")
 
     if this_seqs:
-        this_seqs, kicks, this_column_cull = column_cull_seqs(this_seqs, column_cull, fargs.gap_threshold)
+        this_seqs, kicks, this_column_cull = column_cull_seqs(this_seqs, column_cull, fargs.gap_threshold, fargs.is_assembly)
         for header in kicks:
             follow_through[header] = True, 0, 0, []
 
@@ -963,6 +964,14 @@ def do_folder(folder, args: MainArgs):
             args.verbose,
         )
         return
+
+    nt_db_path = os.path.join(folder, "rocksdb", "sequences", "nt")
+    nt_db = wrap_rocks.RocksDB(nt_db_path)
+    dbis_assembly = nt_db.get("get:isassembly")
+    is_assembly = False
+    if dbis_assembly and dbis_assembly == "True":
+        is_assembly = True
+
     folder_check(output_path)
     file_inputs = [
         input_gene
@@ -1003,6 +1012,7 @@ def do_folder(folder, args: MainArgs):
                         args.mismatches,
                         args.column_cull,
                         filtered_mat,
+                        is_assembly,
                     ),
                 ),
             )
@@ -1026,6 +1036,7 @@ def do_folder(folder, args: MainArgs):
                     args.mismatches,
                     args.column_cull,
                     filtered_mat,
+                    is_assembly,
                 ),
             )
             for input_gene in file_inputs
