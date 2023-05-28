@@ -20,6 +20,81 @@ from .utils import parseFasta, printv, write2Line2Fasta
 ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta", ".fa", ".gz", ".fq", ".fastq")
 
 
+# def split_indices(sequence: str):
+#     substrings = []
+#     start = 0
+#     gap_count = 0
+#     in_gap = False
+#
+#     for i in range(len(sequence)):
+#         if sequence[i] == '-':
+#             gap_count += 1
+#             if gap_count >= 20:
+#                 if not in_gap:
+#                     in_gap = True
+#                     substrings.append((start, i - gap_count + 1))
+#         else:
+#             gap_count = 0
+#             if in_gap:
+#                 in_gap = False
+#                 start = i
+#
+#     # If the last character is a data character, add the final substring
+#     if not in_gap:
+#         substrings.append((start, len(sequence)))
+#     return substrings
+def split_indices(sequence):
+    substrings = []
+    start = None
+    gap_count = 0
+
+    for i in range(len(sequence)):
+        if sequence[i] == '-':
+            gap_count += 1
+            if gap_count >= 20:
+                if start is not None:
+                    substrings.append((start, i - gap_count))
+                start = None
+        else:
+            gap_count = 0
+            if start is None:
+                start = i
+
+    # If the last character is a data character, add the final substring
+    if start is not None:
+        substrings.append((start, len(sequence)))
+
+    return substrings
+
+#
+# class AsmParent:
+#
+#     def find_indices(self, sequence: str):
+#         breakpoint = 20
+#         reading_data = False
+#         current = []
+#         indices = [current]
+#         gap_count = 0
+#         for i, bp in enumerate(sequence):
+#             if reading_data:  # not in a gap
+#                 if bp == '-':
+#                     current.append(i)
+#                     gap_count = 1
+#             else:  # not reading data
+#                 if bp == '-':
+#                     gap_count += 1
+#                 else:  # data character
+#                     if gap_count >= 20:
+#                         current = []
+#                         indices.append(current)
+#         return indices
+#
+#     def __init__(self, header, seq):
+#         self.id = header
+#         self.children = self.find_indices(seq)
+#         self.record =
+
+
 class Record(Struct):
     id: str
     raw: str
@@ -119,6 +194,58 @@ def find_index_groups(candidates: list) -> dict:
         candidate.sequence = candidate.raw[start:stop]
         candidate_dict[(start, stop)].append(candidate)
     return candidate_dict
+
+def find_asm_index_groups(candidates: list) -> dict:
+    def lst():
+        return []
+    def st():
+        return set()
+    candidate_dict = defaultdict(lst)
+    # header_to_intron_records = defaultdict(lst)
+    # header_to_candidate = {candidate.id:candidate for candidate in candidates}
+    for candidate in candidates:
+        # first, last = bd.find_index_pair(candidate.raw, "-")
+        indices = split_indices(candidate.raw)
+        # indices = [(x+first, y+first) for x,y in indices]
+        for num, index_pair in enumerate(indices):
+            start, stop = index_pair
+            header = candidate.id + f"$${start}$${stop}"
+            intron_candidate = Record(header, candidate.raw)
+            intron_candidate.sequence = intron_candidate.raw[start: stop]
+            candidate_dict[(start, stop)].append(intron_candidate)
+            # header_to_intron_records[candidate.id].append(intron_candidate)
+
+    return candidate_dict
+
+
+def remake_introns(passing: list):
+    def lst():
+        return []
+    result = {}
+    header_to_intron_records = defaultdict(lst)
+    # first pass to find passing indices
+    for record in passing:
+        header, start, stop = record.id.split("$$")
+        start = int(start)
+        stop = int(stop)
+        header_to_intron_records[header].append((start, stop))
+    # second pass to reconstruct records with only valid indices
+    valid_indices = set()
+    for record in passing:
+        header, start, stop = record.id.split("$$")
+        if header in result: continue
+        indices_list = header_to_intron_records[header]
+        # make a single set of all sites to use
+        for index_pair in indices_list:
+            valid_indices.update({num for num in range(index_pair[0], index_pair[1])})
+        seq = list(record.raw)
+        for i, bp in enumerate(seq):
+            if i not in valid_indices:
+                seq[i] = "-"
+        record.raw = "".join(seq)
+        record.id = header
+        result[header] = record
+    return list(result.values())
 
 
 def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
@@ -359,6 +486,7 @@ def main_process(
     internal_kick_threshold: int,
     prepare_dupe_counts,
     reporter_dupe_counts,
+    assembly: bool
 ):
     keep_refs = not args_references
 
@@ -370,12 +498,12 @@ def main_process(
     threshold = args_threshold / 100
     aa_output = os.path.join(args_output, "aa")
     aa_output = os.path.join(aa_output, filename.rstrip(".gz"))
-
     reference_records, candidate_records, ref_check = split_sequences(file_input)
-    # original_order = [line for line in candidate_records[0::2]]
     original_order = [candidate.id for candidate in candidate_records]
-    candidates_dict = find_index_groups(candidate_records)
-
+    if not assembly:
+        candidates_dict = find_index_groups(candidate_records)
+    else:
+        candidates_dict = find_asm_index_groups(candidate_records)
     # calculate indices that have valid data columns
     rejected_indices = set()
     # ref_seqs = reference_sequences[1::2]
@@ -412,6 +540,8 @@ def main_process(
     )
     logs = []
     if passing:
+        if assembly:
+            passing = remake_introns(passing)
         try:
             gene = filename.split(".")[0]
             consensus = bd.dumb_consensus_dupe(
@@ -486,6 +616,12 @@ def do_folder(folder, args):
         reporter_dupe_counts = json.decode(
             rocksdb_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]]
         )
+        assembly = (rocksdb_db.get("get:isassembly"))
+        if assembly == "True":
+            assembly = True
+        else:
+            assembly = False
+
     else:
         err = f"cannot find dupe databases for {folder}"
         raise FileNotFoundError(err)
@@ -532,6 +668,7 @@ def do_folder(folder, args):
                     args.internal_kick_threshold,
                     prepare_dupe_counts.get(gene_raw, {}),
                     reporter_dupe_counts.get(gene_raw, {}),
+                    assembly,
                 ),
             )
 
@@ -559,6 +696,7 @@ def do_folder(folder, args):
                     args.internal_kick_threshold,
                     prepare_dupe_counts,
                     reporter_dupe_counts,
+                    assembly,
                 ),
             )
     if args.debug:
