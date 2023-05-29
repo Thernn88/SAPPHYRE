@@ -531,7 +531,7 @@ def column_cull_seqs(this_seqs: list[tuple], column_cull: set, minimum_bp: int, 
                 if seq[i] != "-":
                     this_sequence[seq[i]] += 1
         # Get the count of the most occuring bp at this position
-        if sum(this_sequence.values()) >= 5 or (is_assembly and sum(this_sequence.values()) >= 1):
+        if sum(this_sequence.values()) >= 5:
             if this_sequence.most_common()[0][1] > internal_count / 3:
                 continue
         this_column_cull.add(i * 3)
