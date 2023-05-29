@@ -14,8 +14,8 @@ from shutil import rmtree
 from msgspec import Struct, json
 from phymmr_tools import constrained_distance
 
-from sapphyre.timekeeper import KeeperMode, TimeKeeper
-from sapphyre.utils import parseFasta, printv, write2Line2Fasta
+from .timekeeper import KeeperMode, TimeKeeper
+from .utils import parseFasta, printv, write2Line2Fasta
 
 ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta", ".fa", ".gz", ".fq", ".fastq")
 
