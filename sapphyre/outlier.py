@@ -447,6 +447,20 @@ def get_dupe_count(cand: Record, prep_dupes, report_dupes) -> int:
     return dupes
 
 
+def make_asm_exclusions(passing: list, failing: list) -> set:
+    """Makes to_be_excluded set for assembly files.
+
+    Finds failing - passing. These names need to be
+    excluded from the nt files. This function is required because
+    the intron location has been appended to the record's id, so
+    it's possible to have a single name in both passing and failing.
+    """
+    failing_set = {record.id.split("$$")[0] for record in failing}
+    passing_set = {record.id.split("$$")[0] for record in passing}
+
+    return failing_set.difference(passing_set)
+
+
 def main_process(
     args_input,
     nt_input,
@@ -518,11 +532,11 @@ def main_process(
         ref_min_percent,
     )
     logs = []
+    gene = filename.split(".")[0]
     if passing:
         if assembly:
             passing, header_to_indices = remake_introns(passing)
         try:
-            gene = filename.split(".")[0]
             consensus = bd.dumb_consensus_dupe(
                 [
                     (
@@ -549,7 +563,11 @@ def main_process(
         raw_regulars.extend([candidate.id, candidate.raw])
     # regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
     regulars, allowed_columns = bd.delete_empty_columns(raw_regulars)
-    to_be_excluded = {candidate.id for candidate in failing}
+    if assembly:
+        to_be_excluded = make_asm_exclusions(passing, failing)
+    else:
+        to_be_excluded = {candidate.id for candidate in failing}
+
     if passing:  # If candidate added to fasta
         write2Line2Fasta(aa_output, regulars, compress)
 
