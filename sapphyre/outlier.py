@@ -14,8 +14,8 @@ from shutil import rmtree
 from msgspec import Struct, json
 from phymmr_tools import constrained_distance
 
-from .timekeeper import KeeperMode, TimeKeeper
-from .utils import parseFasta, printv, write2Line2Fasta
+from sapphyre.timekeeper import KeeperMode, TimeKeeper
+from sapphyre.utils import parseFasta, printv, write2Line2Fasta
 
 ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta", ".fa", ".gz", ".fq", ".fastq")
 
@@ -175,12 +175,12 @@ def remake_introns(passing: list) -> tuple:
         stop = int(stop)
         header_to_intron_records[header].append((start, stop))
     # second pass to reconstruct records with only valid indices
-    valid_indices = set()
     for record in passing:
         header, start, stop = record.id.split("$$")
         if header in result: continue
         indices_list = header_to_intron_records[header]
         # make a single set of all sites to use
+        valid_indices = set()
         for index_pair in indices_list:
             valid_indices.update({num for num in range(index_pair[0], index_pair[1])})
         seq = list(record.raw)
