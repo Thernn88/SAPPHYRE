@@ -20,29 +20,6 @@ from .utils import parseFasta, printv, write2Line2Fasta
 ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta", ".fa", ".gz", ".fq", ".fastq")
 
 
-# def split_indices(sequence: str):
-#     substrings = []
-#     start = 0
-#     gap_count = 0
-#     in_gap = False
-#
-#     for i in range(len(sequence)):
-#         if sequence[i] == '-':
-#             gap_count += 1
-#             if gap_count >= 20:
-#                 if not in_gap:
-#                     in_gap = True
-#                     substrings.append((start, i - gap_count + 1))
-#         else:
-#             gap_count = 0
-#             if in_gap:
-#                 in_gap = False
-#                 start = i
-#
-#     # If the last character is a data character, add the final substring
-#     if not in_gap:
-#         substrings.append((start, len(sequence)))
-#     return substrings
 def split_indices(sequence):
     substrings = []
     start = None
@@ -65,34 +42,6 @@ def split_indices(sequence):
         substrings.append((start, len(sequence)))
 
     return substrings
-
-#
-# class AsmParent:
-#
-#     def find_indices(self, sequence: str):
-#         breakpoint = 20
-#         reading_data = False
-#         current = []
-#         indices = [current]
-#         gap_count = 0
-#         for i, bp in enumerate(sequence):
-#             if reading_data:  # not in a gap
-#                 if bp == '-':
-#                     current.append(i)
-#                     gap_count = 1
-#             else:  # not reading data
-#                 if bp == '-':
-#                     gap_count += 1
-#                 else:  # data character
-#                     if gap_count >= 20:
-#                         current = []
-#                         indices.append(current)
-#         return indices
-#
-#     def __init__(self, header, seq):
-#         self.id = header
-#         self.children = self.find_indices(seq)
-#         self.record =
 
 
 class Record(Struct):
@@ -195,30 +144,26 @@ def find_index_groups(candidates: list) -> dict:
         candidate_dict[(start, stop)].append(candidate)
     return candidate_dict
 
+
 def find_asm_index_groups(candidates: list) -> dict:
     def lst():
         return []
     def st():
         return set()
     candidate_dict = defaultdict(lst)
-    # header_to_intron_records = defaultdict(lst)
-    # header_to_candidate = {candidate.id:candidate for candidate in candidates}
     for candidate in candidates:
-        # first, last = bd.find_index_pair(candidate.raw, "-")
         indices = split_indices(candidate.raw)
-        # indices = [(x+first, y+first) for x,y in indices]
         for num, index_pair in enumerate(indices):
             start, stop = index_pair
             header = candidate.id + f"$${start}$${stop}"
             intron_candidate = Record(header, candidate.raw)
             intron_candidate.sequence = intron_candidate.raw[start: stop]
             candidate_dict[(start, stop)].append(intron_candidate)
-            # header_to_intron_records[candidate.id].append(intron_candidate)
 
     return candidate_dict
 
 
-def remake_introns(passing: list):
+def remake_introns(passing: list) -> tuple:
     def lst():
         return []
     result = {}
@@ -245,7 +190,7 @@ def remake_introns(passing: list):
         record.raw = "".join(seq)
         record.id = header
         result[header] = record
-    return list(result.values())
+    return list(result.values()), header_to_intron_records
 
 
 def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
@@ -438,6 +383,40 @@ def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
     return result
 
 
+def aa_to_nt(index: int):
+    return [index*3, index*3 + 1, index*3 + 2]
+
+
+def align_intron_removal(lines: list, header_to_indices: dict) -> list:
+    """Replaces failing introns with hyphens.
+
+    Iterates over the nt lines. For each two lines, pulls the header and
+    checks the aa indices, translates those to nt indices, and then gaps
+    the appropriate sites. Returns the altered list of nt lines. This should
+    only be called when the assembly flag is found in the nt database.
+    """
+    def st():
+        return set()
+    nt_indices = defaultdict(st)
+    # convert aa index pairs to nt indices
+    for header, index_list in header_to_indices.items():
+        for start, stop in index_list:
+            index_set = sum([aa_to_nt(index) for index in range(start, stop)], [])
+            nt_indices[header].update(index_set)
+    # gap introns at any index not present in nt_indices
+    for i in range(0, len(lines), 2):
+        header = lines[i].strip()
+        if header not in nt_indices:
+            continue
+        indices = nt_indices[header]
+        sequence = list(lines[i+1].strip())
+
+        for j in range(len(sequence)):
+            if j not in indices:
+                sequence[j] = "-"
+        lines[i+1] = "".join(sequence)
+    return lines
+
 def remove_excluded_sequences(lines: list, excluded: set) -> list:
     """Given a list of fasta lines and a set of headers to be excluded from output,
     returns a list of all valid headers and sequences. Use before the delete_column
@@ -541,7 +520,7 @@ def main_process(
     logs = []
     if passing:
         if assembly:
-            passing = remake_introns(passing)
+            passing, header_to_indices = remake_introns(passing)
         try:
             gene = filename.split(".")[0]
             consensus = bd.dumb_consensus_dupe(
@@ -554,7 +533,6 @@ def main_process(
                 ],
                 internal_consensus_threshold,
             )
-            # print(consensus+'\n')
             for i, candidate in enumerate(passing):
                 distance = constrained_distance(consensus, candidate.raw) / len(
                     candidate.sequence
@@ -592,6 +570,8 @@ def main_process(
             lines.append(sequence)
 
         non_empty_lines = remove_excluded_sequences(lines, to_be_excluded)
+        if assembly:
+            non_empty_lines = align_intron_removal(non_empty_lines, header_to_indices)
         non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
 
         write2Line2Fasta(nt_output_path, non_empty_lines, compress)
