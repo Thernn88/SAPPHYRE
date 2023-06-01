@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import os
 from collections import Counter, namedtuple
-from itertools import chain
 from multiprocessing.pool import Pool
 from phymmr_tools import (
     join_by_tripled_index,
@@ -15,7 +14,6 @@ from phymmr_tools import (
 )
 from shutil import rmtree
 import wrap_rocks
-import numpy as np
 
 import blosum as bl
 
