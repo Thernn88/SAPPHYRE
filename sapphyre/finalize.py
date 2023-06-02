@@ -151,7 +151,8 @@ def stopcodon(aa_content: list, nt_content: list) -> tuple:
 
 
 def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict) -> tuple:
-    for i, (aa_line, nt_line) in enumerate(zip(aa_content, nt_content)):
+    new_aa_content, new_nt_content = [], []
+    for aa_line, nt_line in zip(aa_content, nt_content):
         if aa_line.startswith(">") and not aa_line.endswith("."):
             if aa_line != nt_line:
                 print("Warning RENAME: Nucleotide line doesn't match Amino Acid line")
@@ -161,15 +162,16 @@ def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict) -> tup
                 print(
                     f"Error: Taxa ID, {aa_components[2]}, not found in names csv file",
                 )
-            taxon = taxa_to_taxon[aa_components[2]].strip("_SPM")
+            taxon = taxa_to_taxon[aa_components[2]].rstrip("_SPM")
+            # print(taxon)
             aa_components[1] = taxon
             nt_components[1] = taxon
 
             aa_line = "|".join(aa_components)
             nt_line = "|".join(nt_components)
 
-            aa_content[i] = aa_line
-            nt_content[i] = nt_line
+        new_aa_content.append(aa_line)
+        new_nt_content.append(nt_line)
 
     return aa_content, nt_content
 
@@ -214,6 +216,7 @@ def clean_gene(gene_config):
         if gene_config.gene in gene_config.target or not gene_config.sort:
             with on_target_aa.joinpath(gene_config.aa_file.name).open(mode="w") as fp:
                 for line in aa_content:
+                    
                     fp.write(line + "\n")
                     aa_target_content.append(line)
             with on_target_nt.joinpath(gene_config.nt_file.name).open(mode="w") as fp:
