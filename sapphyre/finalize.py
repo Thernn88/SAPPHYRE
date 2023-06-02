@@ -152,7 +152,7 @@ def stopcodon(aa_content: list, nt_content: list) -> tuple:
 
 def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict) -> tuple:
     for aa_line, nt_line in zip(aa_content, nt_content):
-        if aa_line.startswith(">"):
+        if aa_line.startswith(">") and not aa_line.endswith("."):
             if aa_line != nt_line:
                 print("Warning RENAME: Nucleotide line doesn't match Amino Acid line")
             aa_components = aa_line.split("|")
