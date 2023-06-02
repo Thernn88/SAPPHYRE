@@ -157,12 +157,11 @@ def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict) -> tup
                 print("Warning RENAME: Nucleotide line doesn't match Amino Acid line")
             aa_components = aa_line.split("|")
             nt_components = nt_line.split("|")
-            taxa = aa_components[2].replace("-","_")
-            if taxa not in taxa_to_taxon:
+            if aa_components[2] not in taxa_to_taxon:
                 print(
-                    f"Error: Taxa ID, {taxa}, not found in names csv file",
+                    f"Error: Taxa ID, {aa_components[2]}, not found in names csv file",
                 )
-            taxon = taxa_to_taxon[taxa].strip("_SPM")
+            taxon = taxa_to_taxon[aa_components[2]].strip("_SPM")
             aa_components[1] = taxon
             nt_components[1] = taxon
 
