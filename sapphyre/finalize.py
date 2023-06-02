@@ -173,7 +173,7 @@ def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict) -> tup
         new_aa_content.append(aa_line)
         new_nt_content.append(nt_line)
 
-    return aa_content, nt_content
+    return new_aa_content, new_nt_content
 
 
 def clean_gene(gene_config):
