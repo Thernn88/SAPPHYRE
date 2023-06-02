@@ -151,7 +151,7 @@ def stopcodon(aa_content: list, nt_content: list) -> tuple:
 
 
 def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict) -> tuple:
-    for aa_line, nt_line in zip(aa_content, nt_content):
+    for i, (aa_line, nt_line) in enumerate(zip(aa_content, nt_content)):
         if aa_line.startswith(">") and not aa_line.endswith("."):
             if aa_line != nt_line:
                 print("Warning RENAME: Nucleotide line doesn't match Amino Acid line")
@@ -162,12 +162,14 @@ def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict) -> tup
                     f"Error: Taxa ID, {aa_components[2]}, not found in names csv file",
                 )
             taxon = taxa_to_taxon[aa_components[2]].strip("_SPM")
-
             aa_components[1] = taxon
             nt_components[1] = taxon
 
             aa_line = "|".join(aa_components)
             nt_line = "|".join(nt_components)
+
+            aa_content[i] = aa_line
+            nt_content[i] = nt_line
 
     return aa_content, nt_content
 
