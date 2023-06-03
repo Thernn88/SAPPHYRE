@@ -236,7 +236,7 @@ def get_taxa_local(aa_content: list) -> set:
     return taxa_local
 
 def taxa_present(aa_content: list, names: list) -> dict:
-     = {i: 0 for i in names}
+    taxac_present = {i: 0 for i in names}
     for header, _ in aa_content:
         if not header.endswith('.'):
             taxa = header.split("|")[2]
