@@ -644,6 +644,12 @@ def subcmd_finalize(subparsers):
         help="Sort taxa based on target file provided.",
     )
     par.add_argument(
+        "-ct",
+        "--count",
+        action="store_true",
+        help="Count taxa in each gene and output to csv file.",
+    )
+    par.add_argument(
         "-kt",
         "--kick_taxa",
         action="store_true",

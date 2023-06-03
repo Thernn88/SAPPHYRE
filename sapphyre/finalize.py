@@ -1,3 +1,4 @@
+from collections import defaultdict
 import os
 from dataclasses import dataclass
 from multiprocessing.pool import Pool
@@ -5,7 +6,7 @@ from pathlib import Path
 from shutil import rmtree
 
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import printv
+from .utils import printv, parseFasta, writeFasta
 
 AA_FOLDER = "aa_merged"
 NT_FOLDER = "nt_merged"
@@ -31,20 +32,15 @@ class GeneConfig:
     taxa_to_taxon: dict
     target: set
     verbose: int
+    count_taxa: bool
 
 
-def grab_gene(fp, to_kick: set) -> list:
+def kick_taxa(content: list[tuple, tuple], to_kick: set) -> list:
     out = []
-    for line in fp:
-        if line.startswith(">"):
-            taxon = line.split("|")[1]
-            if taxon in to_kick:
-                next(fp)  # Skip this row and sequence row
-            else:
-                out.append(line.strip())
-        else:
-            if line.strip() != "":
-                out.append(line.strip())
+    for header, sequence in content:
+        taxon = header.split("|")[1]
+        if not taxon in to_kick:
+            out.append((header, sequence))
     return out
 
 
@@ -54,9 +50,7 @@ def align_kick_nt(
     aa_kicks: set,
 ):
     result = []
-    for i in range(0, len(fasta_content), 2):
-        header = fasta_content[i]
-        sequence = fasta_content[i + 1]
+    for header, sequence in fasta_content:
         if header not in aa_kicks:
             sequence = "".join(
                 [
@@ -66,9 +60,7 @@ def align_kick_nt(
                 ],
             )
 
-            result.append(header)
-            result.append(sequence)
-
+            result.append((header, sequence))
     return result
 
 
@@ -77,25 +69,21 @@ def kick_empty_columns(
     kick_percent: float,
     minimum_bp: int,
 ) -> list:
+    
     kicks = set()
-    fasta_data = {}
+    fasta_data = defaultdict(list)
     out = {}
 
-    for i in range(0, len(fasta_content), 2):
-        header = fasta_content[i]
-        sequence = fasta_content[i + 1]
-
-        for j in range(0, len(sequence), 1):
-            let = sequence[j : j + 1]
-            fasta_data.setdefault(j, []).append(let)
+    for (header, sequence) in fasta_content:
+        for i, let in enumerate(sequence):
+            fasta_data[i].append(let)
 
         out[header] = sequence
 
     to_kick = set()
-    if not to_kick:
-        for i, characters in fasta_data.items():
-            if characters.count("-") / len(characters) > kick_percent:
-                to_kick.add(i * 3)
+    for i, characters in fasta_data.items():
+        if characters.count("-") / len(characters) > kick_percent:
+            to_kick.add(i * 3)
 
     result = []
     for header in out:
@@ -103,8 +91,7 @@ def kick_empty_columns(
             [let for i, let in enumerate(out[header]) if i * 3 not in to_kick],
         )
         if len(sequence) - sequence.count("-") >= minimum_bp:
-            result.append(header)
-            result.append(sequence)
+            result.append((header, sequence))
         else:
             kicks.add(header)
 
@@ -117,20 +104,18 @@ def stopcodon(aa_content: list, nt_content: list) -> tuple:
 
     aa_refs = []
     aa_seqs = []
-    for i in range(0, len(aa_content), 2):
-        if aa_content[i].endswith("."):
-            aa_refs.append(aa_content[i])
-            aa_refs.append(aa_content[i + 1])
+    for header, sequence in aa_content:
+        if header.endswith("."):
+            aa_refs.append((header, sequence))
         else:
-            aa_seqs.append(aa_content[i])
-            aa_seqs.append(aa_content[i + 1])
+            aa_seqs.append((header, sequence))
 
-    for aa_line, nt_line in zip(aa_seqs, nt_content):
-        if aa_line.startswith(">"):
-            if aa_line != nt_line:
-                print(
-                    "Warning STOPCODON: Nucleotide line doesn't match Amino Acid line",
-                )
+    for (aa_header, aa_line), (nt_header, nt_line) in zip(aa_seqs, nt_content):
+        
+        if aa_header != nt_header:
+            print(
+                "Warning STOPCODON: Nucleotide order doesn't match Amino Acid order",
+            )
         elif STOPCODON in aa_line:
             aa_line = list(aa_line)
             nt_line = list(nt_line)
@@ -145,104 +130,125 @@ def stopcodon(aa_content: list, nt_content: list) -> tuple:
             aa_line = "".join(aa_line)
             nt_line = "".join(nt_line)
 
-        aa_out.append(aa_line)
-        nt_out.append(nt_line)
+        aa_out.append((aa_header, aa_line))
+        nt_out.append((nt_header, nt_line))
+
     return aa_refs + aa_out, nt_out
 
 
 def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict) -> tuple:
     new_aa_content, new_nt_content = [], []
-    for aa_line, nt_line in zip(aa_content, nt_content):
-        if aa_line.startswith(">") and not aa_line.endswith("."):
-            if aa_line != nt_line:
-                print("Warning RENAME: Nucleotide line doesn't match Amino Acid line")
-            aa_components = aa_line.split("|")
-            nt_components = nt_line.split("|")
-            if aa_components[2] not in taxa_to_taxon:
+    for (aa_header, aa_line), (nt_header, nt_line) in zip(aa_content, nt_content):
+        if not aa_header.endswith("."):
+            if aa_header != nt_header:
+                print("Warning RENAME: Nucleotide order doesn't match Amino Acid order")
+            aa_components = aa_header.split("|")
+            nt_components = nt_header.split("|")
+            taxa = aa_components[2]
+            if taxa not in taxa_to_taxon:
                 print(
-                    f"Error: Taxa ID, {aa_components[2]}, not found in names csv file",
+                    f"Error: Taxa ID, {taxa}, not found in names csv file",
                 )
-            taxon = taxa_to_taxon[aa_components[2]].rstrip("_SPM")
+
+            taxon = taxa_to_taxon[taxa].rstrip("_SPM")
             # print(taxon)
             aa_components[1] = taxon
             nt_components[1] = taxon
 
-            aa_line = "|".join(aa_components)
-            nt_line = "|".join(nt_components)
+            aa_header = "|".join(aa_components)
+            nt_header = "|".join(nt_components)
 
-        new_aa_content.append(aa_line)
-        new_nt_content.append(nt_line)
+        new_aa_content.append((aa_header, aa_line))
+        new_nt_content.append((nt_header, nt_line))
 
     return new_aa_content, new_nt_content
 
 
-def clean_gene(gene_config):
+def clean_gene(gene_config: GeneConfig):
     printv(f"Doing: {gene_config.gene}", gene_config.verbose, 2)
-    with gene_config.aa_file.open() as aa_fp, gene_config.nt_file.open() as nt_fp:
-        aa_content = grab_gene(aa_fp, gene_config.to_kick)
-        nt_content = grab_gene(nt_fp, gene_config.to_kick)
+    aa_content = parseFasta(str(gene_config.aa_file))
+    nt_content = parseFasta(str(gene_config.nt_file))
 
-        if gene_config.kick_columns:
-            aa_content, aa_kicks, cols_to_kick = kick_empty_columns(
-                aa_content,
-                gene_config.kick_percentage,
-                gene_config.minimum_bp,
-            )
-            nt_content = align_kick_nt(nt_content, cols_to_kick, aa_kicks)
+    if gene_config.stopcodon:
+        aa_content, nt_content = stopcodon(aa_content, nt_content)
 
-        if gene_config.stopcodon:
-            aa_content, nt_content = stopcodon(aa_content, nt_content)
+    if gene_config.rename:
+        aa_content, nt_content = rename_taxon(
+            aa_content,
+            nt_content,
+            gene_config.taxa_to_taxon,
+        )
 
-        if gene_config.rename:
-            aa_content, nt_content = rename_taxon(
-                aa_content,
-                nt_content,
-                gene_config.taxa_to_taxon,
-            )
+    if gene_config.to_kick:
+        aa_content = kick_taxa(aa_content, gene_config.to_kick)
+        nt_content = kick_taxa(nt_content, gene_config.to_kick)
 
-        processed_folder = gene_config.taxa_folder.joinpath("Processed")
+    if gene_config.kick_columns:
+        aa_content, aa_kicks, cols_to_kick = kick_empty_columns(
+            aa_content,
+            gene_config.kick_percentage,
+            gene_config.minimum_bp,
+        )
+        nt_content = align_kick_nt(nt_content, cols_to_kick, aa_kicks)
 
-        on_target = Path(processed_folder).joinpath("Target")
-        on_target_aa = Path(on_target).joinpath("aa")
-        on_target_nt = Path(on_target).joinpath("nt")
+    processed_folder = gene_config.taxa_folder.joinpath("Processed")
 
-        off_target = Path(processed_folder).joinpath("Off_Target")
-        off_target_aa = Path(off_target).joinpath("aa")
-        off_target_nt = Path(off_target).joinpath("nt")
+    on_target = Path(processed_folder).joinpath("Target")
+    on_target_aa = Path(on_target).joinpath("aa")
+    on_target_nt = Path(on_target).joinpath("nt")
 
-        aa_target_content = []
-        nt_target_content = []
+    off_target = Path(processed_folder).joinpath("Off_Target")
+    off_target_aa = Path(off_target).joinpath("aa")
+    off_target_nt = Path(off_target).joinpath("nt")
 
-        if gene_config.gene in gene_config.target or not gene_config.sort:
-            with on_target_aa.joinpath(gene_config.aa_file.name).open(mode="w") as fp:
-                for line in aa_content:
-                    
-                    fp.write(line + "\n")
-                    aa_target_content.append(line)
-            with on_target_nt.joinpath(gene_config.nt_file.name).open(mode="w") as fp:
-                for line in nt_content:
-                    fp.write(line + "\n")
-                    nt_target_content.append(line)
-        else:
-            with off_target_aa.joinpath(gene_config.aa_file.name).open(mode="w") as fp:
-                for line in aa_content:
-                    fp.write(line + "\n")
-            with off_target_nt.joinpath(gene_config.nt_file.name).open(mode="w") as fp:
-                for line in nt_content:
-                    fp.write(line + "\n")
+    aa_target_content = []
+    # nt_target_content = []
 
-        taxa_local = get_taxa_local(aa_target_content)
+    if gene_config.gene in gene_config.target or not gene_config.sort:
+        if gene_config.count_taxa:
+            taxa_names = set(gene_config.taxa_to_taxon.keys())
+            taxa_count = taxa_present(aa_content, taxa_names)
 
-        return gene_config.gene, taxa_local, aa_target_content  # , nt_target_content
+            out = ["Taxa,Taxon,Count"]
+            for taxa in taxa_count:
+                out.append(f"{taxa},{gene_config.taxa_to_taxon[taxa]},{taxa_count[taxa]}")
+
+            out_lines = "\n".join(out)
+
+            with open(str(processed_folder.joinpath("TaxaPresent.csv")), "w") as fp:
+                fp.write(out_lines)
+
+        aa_target_content.extend(aa_content)
+        writeFasta(str(on_target_aa.joinpath(gene_config.aa_file.name)), aa_content)
+        writeFasta(str(on_target_nt.joinpath(gene_config.nt_file.name)), nt_content)
+
+    else:
+        writeFasta(str(off_target_aa.joinpath(gene_config.aa_file.name)), aa_content)
+        writeFasta(str(off_target_nt.joinpath(gene_config.nt_file.name)), nt_content)
+
+    taxa_local = get_taxa_local(aa_target_content)
+
+    return gene_config.gene, taxa_local, aa_target_content  # , nt_target_content
 
 
 def get_taxa_local(aa_content: list) -> set:
     taxa_local = set()
-    for line in aa_content:
-        if line.startswith(">"):
-            taxa_local.add(line.split("|")[1])
+    for header, _ in aa_content:
+        taxa_local.add(header.split("|")[1])
 
     return taxa_local
+
+def taxa_present(aa_content: list, names: list) -> dict:
+    taxac_present = {i: 0 for i in names}
+    for header, _ in aa_content:
+        if not header.endswith('.'):
+            taxa = header.split("|")[2]
+            if taxa in taxac_present:
+                taxac_present[taxa] += 1
+            else:
+                print(f"WARNING Taxa Present: Taxa, {taxa}, not found in names file")
+
+    return taxac_present
 
 
 def process_folder(args, input_path):
@@ -293,7 +299,7 @@ def process_folder(args, input_path):
                 target.add(line.strip())
 
     taxa_to_taxon = {}
-    if args.rename:
+    if args.rename or args.count:
         with open(taxa_folder.joinpath(args.names_csv), encoding="utf-8-sig") as fp:
             for line in fp:
                 if line != "\n":
@@ -303,6 +309,7 @@ def process_folder(args, input_path):
                     name = parse[1]
 
                     taxa_to_taxon[id] = name
+        
 
     arguments = []
     for aa_file in aa_folder.glob("*.fa"):
@@ -323,6 +330,7 @@ def process_folder(args, input_path):
             taxa_to_taxon,
             target,
             args.verbose,
+            args.count,
         )
         arguments.append((this_config,))
 
@@ -330,7 +338,7 @@ def process_folder(args, input_path):
         to_write = pool.starmap(clean_gene, arguments, chunksize=1)
 
     if args.concat:
-        sequences = {}
+        sequences = defaultdict(dict)
         gene_lengths = {}
         taxa_sequences_global = {}
         taxa_global = set()
@@ -339,16 +347,12 @@ def process_folder(args, input_path):
             taxa_global.update(taxa_local)
             this_gene_global_length = 0
 
-            for i in range(0, len(aa_content), 2):
-                header = aa_content[i]
-                sequence = aa_content[i + 1]
-
+            for i, (header, sequence) in enumerate(aa_content):
                 if i == 0:
                     this_gene_global_length = len(sequence)
                     gene_lengths[gene] = this_gene_global_length
 
                 taxon = header.split("|")[1]
-                sequences.setdefault(gene, {})
                 sequences[gene][taxon] = sequence
 
         for gene in sequences:
