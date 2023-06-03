@@ -203,20 +203,17 @@ def clean_gene(gene_config: GeneConfig):
 
     aa_target_content = []
     # nt_target_content = []
+    taxa_count = {}
 
     if gene_config.gene in gene_config.target or not gene_config.sort:
         if gene_config.count_taxa:
             taxa_names = set(gene_config.taxa_to_taxon.keys())
             taxa_count = taxa_present(aa_content, taxa_names)
 
-            out = ["Taxa,Taxon,Count"]
-            for taxa in taxa_count:
-                out.append(f"{taxa},{gene_config.taxa_to_taxon[taxa]},{taxa_count[taxa]}")
 
-            out_lines = "\n".join(out)
 
-            with open(str(processed_folder.joinpath("TaxaPresent.csv")), "w") as fp:
-                fp.write(out_lines)
+
+
 
         aa_target_content.extend(aa_content)
         writeFasta(str(on_target_aa.joinpath(gene_config.aa_file.name)), aa_content)
@@ -228,7 +225,7 @@ def clean_gene(gene_config: GeneConfig):
 
     taxa_local = get_taxa_local(aa_target_content)
 
-    return gene_config.gene, taxa_local, aa_target_content  # , nt_target_content
+    return gene_config.gene, taxa_local, aa_target_content, taxa_count  # , nt_target_content
 
 
 def get_taxa_local(aa_content: list) -> set:
@@ -239,7 +236,7 @@ def get_taxa_local(aa_content: list) -> set:
     return taxa_local
 
 def taxa_present(aa_content: list, names: list) -> dict:
-    taxac_present = {i: 0 for i in names}
+     = {i: 0 for i in names}
     for header, _ in aa_content:
         if not header.endswith('.'):
             taxa = header.split("|")[2]
@@ -337,13 +334,24 @@ def process_folder(args, input_path):
     with Pool(args.processes) as pool:
         to_write = pool.starmap(clean_gene, arguments, chunksize=1)
 
+    if args.count and not args.concat:
+        total = {i: 0 for i in taxa_to_taxon.keys()}
+        for _, _, _, taxa_count in to_write:
+            for taxa, count in taxa_count.items():
+                total[taxa] += count
+ 
+        
     if args.concat:
         sequences = defaultdict(dict)
         gene_lengths = {}
         taxa_sequences_global = {}
         taxa_global = set()
         log = {}
-        for gene, taxa_local, aa_content in to_write:
+        total = {i: 0 for i in taxa_to_taxon.keys()}
+        for gene, taxa_local, aa_content, taxa_count in to_write:
+            for taxa, count in taxa_count.items():
+
+                total[taxa] += count
             taxa_global.update(taxa_local)
             this_gene_global_length = 0
 
@@ -388,7 +396,17 @@ def process_folder(args, input_path):
                 fp.write(f"CHARSET {gene} = {start}-{end} ;\n")
 
             fp.write("end;\n")
+    if args.count:
+        out = ["Taxa,Taxon,Total"]
 
+        for taxa, total_taxa in total.items():
+
+            out.append(f"{taxa},{taxa_to_taxon[taxa]},{total_taxa}")
+
+        with open(str(processed_folder.joinpath("TaxaPresent.csv")), "w") as fp:
+
+            fp.write("\n".join(out))
+            
     printv(f"Done! Took {tk.lap():.2f}s", 1)
 
 
