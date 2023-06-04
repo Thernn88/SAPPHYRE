@@ -59,12 +59,18 @@ def main(args):
             csv_read = csv.reader(fp, delimiter=",", quotechar='"')
             arguments = []
             for i, fields in enumerate(csv_read):
+                if i == 0:
+                    continue
                 prefix = fields[0]
                 url = f'https://www.ncbi.nlm.nih.gov/Traces/wgs/{prefix}'
                 req = requests.get(url)
 
                 soup = BeautifulSoup(req.content, "html.parser")
-                container = soup.find('em', text='FASTA:').find_parent()
+                em = soup.find('em', text='FASTA:')
+                if not em:
+                    continue
+
+                container = em.find_parent()
                 for a in container.find_all("a", href=True):
                     if "sra-download.ncbi.nlm.nih.gov" in a["href"]:
                         print(f"Attempting to download: {a.contents[0]}")
