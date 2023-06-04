@@ -188,6 +188,9 @@ class SeqDeduplicator:
                         header = f"NODE_{this_index}"
                         self.lines.append(f">{header}\n{seq[i:i+CHOMP_LEN]}\n")
                         next(this_index)
+                else:
+                    self.lines.append(f">{header}\n{seq}\n")
+                    next(this_index)
                 
 
 
