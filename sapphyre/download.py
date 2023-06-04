@@ -55,20 +55,21 @@ def main(args):
     )
     os.makedirs(path_to_download, exist_ok=True)
     if args.wgs:
-        csv_read = csv.reader(fp, delimiter=",", quotechar='"')
-        arguments = []
-        for i, fields in enumerate(csv_read):
-            prefix = fields[0]
-            url = f'https://www.ncbi.nlm.nih.gov/Traces/wgs/{prefix}'
-            req = requests.get(url)
+        with open(csvfile, encoding="utf-8") as fp:
+            csv_read = csv.reader(fp, delimiter=",", quotechar='"')
+            arguments = []
+            for i, fields in enumerate(csv_read):
+                prefix = fields[0]
+                url = f'https://www.ncbi.nlm.nih.gov/Traces/wgs/{prefix}'
+                req = requests.get(url)
 
-            soup = BeautifulSoup(req.content, "html.parser")
-            container = soup.find('em', text='FASTA').find_parent()
-            for a in container.find_all("a", href=True):
-                if "sra-download.ncbi.nlm.nih.gov" in a["href"]:
-                    print(f"Attempting to download: {a.contents[0]}")
-                    
-                    arguments.append((a.href, path_to_download, args.verbose))
+                soup = BeautifulSoup(req.content, "html.parser")
+                container = soup.find('em', text='FASTA:').find_parent()
+                for a in container.find_all("a", href=True):
+                    if "sra-download.ncbi.nlm.nih.gov" in a["href"]:
+                        print(f"Attempting to download: {a.contents[0]}")
+                        
+                        arguments.append((a["href"], path_to_download, args.verbose))
     elif this_suffix == ".csv":
         with open(csvfile, encoding="utf-8") as fp:
             csv_read = csv.reader(fp, delimiter=",", quotechar='"')
@@ -133,4 +134,5 @@ def main(args):
     func = download_parallel_srr if not args.wgs else download_parallel_wgs
     with ThreadPoolExecutor(args.processes) as pool:
         pool.map(func, arguments, chunksize=1)
+
     return True
