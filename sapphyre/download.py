@@ -68,7 +68,7 @@ def main(args):
                 soup = BeautifulSoup(req.content, "html.parser")
                 em = soup.find('em', text='FASTA:')
                 if not em:
-                    continue
+                    print(f"Failed to find FASTA: {prefix}")
 
                 container = em.find_parent()
                 for a in container.find_all("a", href=True):
