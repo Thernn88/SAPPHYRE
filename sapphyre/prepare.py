@@ -37,6 +37,7 @@ ALLOWED_FILETYPES_GZ = [f"{ft}.gz" for ft in ALLOWED_FILETYPES_NORMAL]
 ALLOWED_FILETYPES = ALLOWED_FILETYPES_NORMAL + ALLOWED_FILETYPES_GZ
 
 ASSEMBLY_LEN = 750
+CHOMP_LEN = 1000
 
 
 class IndexIter:
@@ -179,13 +180,15 @@ class SeqDeduplicator:
                 seq_end = time()
                 dedup_time[0] += seq_end - seq_start
 
-                # If no dupe, write to prepared file and db
-                next(this_index)
-
                 if not self.this_assembly and len(seq) >= ASSEMBLY_LEN:
                     self.this_assembly = True
 
-                self.lines.append(f">{header}\n{seq}\n")
+                if len(seq) > CHOMP_LEN:
+                    for i in range(0, len(seq), CHOMP_LEN):
+                        header = f"NODE_{this_index}"
+                        self.lines.append(f">{header}\n{seq[i:i+CHOMP_LEN]}\n")
+                        next(this_index)
+                
 
 
 class DatabasePreparer:
