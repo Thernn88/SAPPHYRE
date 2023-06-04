@@ -12,7 +12,7 @@ from bs4 import BeautifulSoup
 from .utils import printv
 
 
-def download_parallel(arguments):
+def download_parallel_srr(arguments):
     command, srr_acession, path_to_download, verbose = arguments
     printv(f"Download {srr_acession} to {path_to_download}...", verbose)
 
@@ -29,6 +29,18 @@ def download_parallel(arguments):
             )
             sys.exit(1)
 
+def download_parallel_wgs(arguments):
+    download_link, path_to_download, verbose = arguments
+    
+    
+    file_name = download_link.split('/')[-1]
+
+    printv(f"Download {file_name} to {path_to_download}...", verbose)
+    download = requests.get(download_link)
+
+    path = os.path.join(path_to_download, file_name)
+
+    open(path,'wb').write(download.content)
 
 def main(args):
     cmd = "fastq-dump --gzip"
@@ -42,8 +54,22 @@ def main(args):
         os.getcwd(), "input", csvfile.name.removesuffix(this_suffix)
     )
     os.makedirs(path_to_download, exist_ok=True)
+    if args.wgs:
+        csv_read = csv.reader(fp, delimiter=",", quotechar='"')
+        arguments = []
+        for i, fields in enumerate(csv_read):
+            prefix = fields[0]
+            url = f'https://www.ncbi.nlm.nih.gov/Traces/wgs/{prefix}'
+            req = requests.get(url)
 
-    if this_suffix == ".csv":
+            soup = BeautifulSoup(req.content, "html.parser")
+            container = soup.find('em', text='FASTA').find_parent()
+            for a in container.find_all("a", href=True):
+                if "sra-download.ncbi.nlm.nih.gov" in a["href"]:
+                    print(f"Attempting to download: {a.contents[0]}")
+                    
+                    arguments.append((a.href, path_to_download, args.verbose))
+    elif this_suffix == ".csv":
         with open(csvfile, encoding="utf-8") as fp:
             csv_read = csv.reader(fp, delimiter=",", quotechar='"')
             arguments = []
@@ -104,7 +130,7 @@ def main(args):
                     arguments.append(
                         (cmd, srr_accession, path_to_download, args.verbose)
                     )
-
+    func = download_parallel_srr if not args.wgs else download_parallel_wgs
     with ThreadPoolExecutor(args.processes) as pool:
-        pool.map(download_parallel, arguments, chunksize=1)
+        pool.map(func, arguments, chunksize=1)
     return True

@@ -697,6 +697,12 @@ def subcmd_download(sp):
         help="Path to SRA Toolkit. Will try system's PATH if not used.",
         required=False,
     )
+    par.add_argument(
+        "-wgs",
+        "--wgs",
+        help="Download from wgs.",
+        action="store_true",
+    )
     par.set_defaults(func=download, formathelp=par.format_help)
 
 
