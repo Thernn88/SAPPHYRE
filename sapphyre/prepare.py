@@ -31,6 +31,7 @@ ALLOWED_FILETYPES_NORMAL = [
     ".fq",
     ".fastq",
     ".fq",
+    ".fsa_nt",
 ]
 ALLOWED_FILETYPES_GZ = [f"{ft}.gz" for ft in ALLOWED_FILETYPES_NORMAL]
 
@@ -388,7 +389,7 @@ def main(args):
     dedup_time = [0]
     global_time_keeper = TimeKeeper(KeeperMode.DIRECT)
 
-    globbed = list(input_path.glob("*.f[aq]*"))
+    globbed = list(input_path.glob("*"))
     globbed.sort()
     taxa_runs = glob_for_fasta_and_save_for_runs(globbed)
 
