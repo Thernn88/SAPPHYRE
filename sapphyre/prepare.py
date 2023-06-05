@@ -186,9 +186,9 @@ class SeqDeduplicator:
                     self.this_assembly = True
 
                 if len(seq) > CHOMP_LEN:
-                    for i in range(0, len(seq) - CHOMP_LEN + 1, OVERLAP_CHOMP):
-                        start = i
-                        end = i + CHOMP_LEN
+                    for x, i in enumerate(range(0, len(seq), CHOMP_LEN)):
+                        start = i if i != 0 else i - (x * OVERLAP_CHOMP)
+                        end = i + CHOMP_LEN - (x * OVERLAP_CHOMP)
                         header = f"NODE_{this_index}"
                         self.lines.append(f">{header}\n{seq[start:end]}\n")
                         next(this_index)
