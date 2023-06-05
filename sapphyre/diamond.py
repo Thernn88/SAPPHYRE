@@ -557,8 +557,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
     # Minimum amount of hits to delegate to a process
     MINIMUM_CHUNKSIZE = 50
     # Hard coded values for assembly datasets
-    ASSEMBLY_EVALUE = 35
-    ASSEMBLY_MIN_ORF = 40
+    ASSEMBLY_EVALUE = 5
+    ASSEMBLY_MIN_ORF = 30
     # Default min orf value
     NORMAL_MIN_ORF = 20
 
