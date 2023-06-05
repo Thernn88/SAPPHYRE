@@ -221,7 +221,7 @@ def clean_gene(gene_config: GeneConfig):
 
     taxa_local = get_taxa_local(aa_target_content)
 
-    return gene_config.gene, taxa_local, nt_target_content, taxa_count  # , nt_target_content
+    return gene_config.gene, taxa_local, aa_target_content, nt_target_content, taxa_count  # , nt_target_content
 
 
 def get_taxa_local(aa_content: list) -> set:
@@ -338,13 +338,14 @@ def process_folder(args, input_path):
  
         
     if args.concat:
-        sequences = defaultdict(dict)
-        gene_lengths = {}
-        taxa_sequences_global = {}
+        
         taxa_global = set()
-        log = {}
+
+        sequences = {"aa": defaultdict(dict), "nt": defaultdict(dict)}
+        gene_lengths = defaultdict(dict)
+    
         total = {i: 0 for i in taxa_to_taxon.keys()}
-        for gene, taxa_local, aa_content, taxa_count in to_write:
+        for gene, taxa_local, aa_content, nt_content, taxa_count in to_write:
             for taxa, count in taxa_count.items():
 
                 total[taxa] += count
@@ -354,44 +355,55 @@ def process_folder(args, input_path):
             for i, (header, sequence) in enumerate(aa_content):
                 if i == 0:
                     this_gene_global_length = len(sequence)
-                    gene_lengths[gene] = this_gene_global_length
+                    gene_lengths["aa"][gene] = this_gene_global_length
 
                 taxon = header.split("|")[1]
-                sequences[gene][taxon] = sequence
+                sequences["aa"][gene][taxon] = sequence
 
-        for gene in sequences:
-            this_sequences = sequences[gene]
-            for taxa in taxa_global:
-                if taxa not in this_sequences:
-                    seq = "-" * gene_lengths[gene]
-                else:
-                    seq = this_sequences[taxa]
-                if taxa not in taxa_sequences_global:
-                    start = 1
-                    taxa_sequences_global[taxa] = seq
-                    end = len(taxa_sequences_global[taxa])
-                else:
-                    start = len(taxa_sequences_global[taxa]) + 1
-                    taxa_sequences_global[taxa] += seq
-                    end = len(taxa_sequences_global[taxa])
+            for i, (header, sequence) in enumerate(nt_content):
+                if i == 0:
+                    this_gene_global_length = len(sequence)
+                    gene_lengths["nt"][gene] = this_gene_global_length
 
-            log[gene] = (start, end)
+                taxon = header.split("|")[1]
+                sequences["nt"][gene][taxon] = sequence
 
-        output_fas = processed_folder.joinpath(no_suffix + ".fas")
-        output_nex = processed_folder.joinpath(no_suffix + ".nex")
+        for type_ in ["aa", "nt"]:
+            taxa_sequences_global = {}
+            log = {}
+            for gene in sequences[type_]:
+                this_sequences = sequences[type_][gene]
+                for taxa in taxa_global:
+                    if taxa not in this_sequences:
+                        seq = "-" * gene_lengths[type_][gene]
+                    else:
+                        seq = this_sequences[taxa]
+                    if taxa not in taxa_sequences_global:
+                        start = 1
+                        taxa_sequences_global[taxa] = seq
+                        end = len(taxa_sequences_global[taxa])
+                    else:
+                        start = len(taxa_sequences_global[taxa]) + 1
+                        taxa_sequences_global[taxa] += seq
+                        end = len(taxa_sequences_global[taxa])
 
-        with open(output_fas, "w", encoding="utf-8-sig") as fp:
-            for taxa in taxa_sequences_global:
-                fp.write(">" + taxa + "\n")
-                fp.write(taxa_sequences_global[taxa] + "\n")
+                log[gene] = (start, end)
 
-        with open(output_nex, "w", encoding="utf-8-sig") as fp:
-            fp.write("#nexus\nbegin sets;\n")
-            for gene in log:
-                start, end = log[gene]
-                fp.write(f"CHARSET {gene} = {start}-{end} ;\n")
+            output_fas = processed_folder.joinpath(no_suffix + f".{type_}.fas")
+            output_nex = processed_folder.joinpath(no_suffix + f".{type_}.nex")
 
-            fp.write("end;\n")
+            with open(output_fas, "w", encoding="utf-8-sig") as fp:
+                for taxa in taxa_sequences_global:
+                    fp.write(">" + taxa + "\n")
+                    fp.write(taxa_sequences_global[taxa] + "\n")
+
+            with open(output_nex, "w", encoding="utf-8-sig") as fp:
+                fp.write("#nexus\nbegin sets;\n")
+                for gene in log:
+                    start, end = log[gene]
+                    fp.write(f"CHARSET {gene} = {start}-{end} ;\n")
+
+                fp.write("end;\n")
     if args.count:
         out = ["Taxa,Taxon,Total"]
 
