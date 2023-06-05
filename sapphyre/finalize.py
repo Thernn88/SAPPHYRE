@@ -202,7 +202,7 @@ def clean_gene(gene_config: GeneConfig):
     off_target_nt = Path(off_target).joinpath("nt")
 
     aa_target_content = []
-    # nt_target_content = []
+    nt_target_content = []
     taxa_count = {}
 
     if gene_config.gene in gene_config.target or not gene_config.sort:
@@ -215,7 +215,7 @@ def clean_gene(gene_config: GeneConfig):
 
 
 
-        aa_target_content.extend(aa_content)
+        nt_target_content.extend(nt_content)
         writeFasta(str(on_target_aa.joinpath(gene_config.aa_file.name)), aa_content)
         writeFasta(str(on_target_nt.joinpath(gene_config.nt_file.name)), nt_content)
 
@@ -225,7 +225,7 @@ def clean_gene(gene_config: GeneConfig):
 
     taxa_local = get_taxa_local(aa_target_content)
 
-    return gene_config.gene, taxa_local, aa_target_content, taxa_count  # , nt_target_content
+    return gene_config.gene, taxa_local, nt_target_content, taxa_count  # , nt_target_content
 
 
 def get_taxa_local(aa_content: list) -> set:
