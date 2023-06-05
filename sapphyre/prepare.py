@@ -39,7 +39,6 @@ ALLOWED_FILETYPES = ALLOWED_FILETYPES_NORMAL + ALLOWED_FILETYPES_GZ
 
 ASSEMBLY_LEN = 750
 CHOMP_LEN = 1000
-OVERLAP_CHOMP = 250
 
 
 class IndexIter:
@@ -186,11 +185,9 @@ class SeqDeduplicator:
                     self.this_assembly = True
 
                 if len(seq) > CHOMP_LEN:
-                    for x, i in enumerate(range(0, len(seq), CHOMP_LEN)):
-                        start = i if i != 0 else i - (x * OVERLAP_CHOMP)
-                        end = i + CHOMP_LEN - (x * OVERLAP_CHOMP)
+                    for i in range(0, len(seq), CHOMP_LEN):
                         header = f"NODE_{this_index}"
-                        self.lines.append(f">{header}\n{seq[start:end]}\n")
+                        self.lines.append(f">{header}\n{seq[i:i+CHOMP_LEN]}\n")
                         next(this_index)
                 else:
                     self.lines.append(f">{header}\n{seq}\n")
