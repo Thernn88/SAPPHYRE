@@ -60,7 +60,7 @@ def truncate_taxa(taxa: str, extension=None) -> str:
     """
     # search for _# and _R#, where # is digits
     result = taxa
-    m = re.search(r"(_\d.fa)|(_R\d.fa)", result + extension)
+    m = re.search(r"(_\d.fa)|(_R\d.fa)|(_part\d.fa)", result + extension)
 
     if m:
         tail_length = m.end() - m.start() - len(extension)
