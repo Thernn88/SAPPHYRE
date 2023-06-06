@@ -150,7 +150,7 @@ def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict) -> tup
                     f"Error: Taxa ID, {taxa}, not found in names csv file",
                 )
 
-            taxon = taxa_to_taxon[taxa].rstrip("_SPM")
+            taxon = taxa_to_taxon[taxa]
             # print(taxon)
             aa_components[1] = taxon
             nt_components[1] = taxon
