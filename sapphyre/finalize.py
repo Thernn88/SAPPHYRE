@@ -392,12 +392,12 @@ def process_folder(args, input_path):
             output_fas = processed_folder.joinpath(no_suffix + f".{type_}.fas")
             output_nex = processed_folder.joinpath(no_suffix + f".{type_}.nex")
 
-            with open(output_fas, "w", encoding="utf-8-sig") as fp:
+            with open(output_fas, "w", encoding="UTF-8") as fp:
                 for taxa in taxa_sequences_global:
                     fp.write(">" + taxa + "\n")
                     fp.write(taxa_sequences_global[taxa] + "\n")
 
-            with open(output_nex, "w", encoding="utf-8-sig") as fp:
+            with open(output_nex, "w", encoding="UTF-8") as fp:
                 fp.write("#nexus\nbegin sets;\n")
                 for gene in log:
                     start, end = log[gene]
