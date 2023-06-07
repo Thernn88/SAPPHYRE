@@ -332,7 +332,7 @@ def process_folder(args, input_path):
 
     if args.count and not args.concat:
         total = {i: 0 for i in taxa_to_taxon.keys()}
-        for _, _, _, taxa_count in to_write:
+        for _, _, _, _, taxa_count in to_write:
             for taxa, count in taxa_count.items():
                 total[taxa] += count
  
