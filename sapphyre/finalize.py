@@ -367,8 +367,9 @@ def process_folder(args, input_path):
 
                 taxon = header.split("|")[1]
                 sequences["nt"][gene][taxon] = sequence
-        log = {}
+        
         for type_ in ["aa", "nt"]:
+            log = {}
             taxa_sequences_global = {}
             
             for gene in sequences[type_]:
@@ -386,8 +387,7 @@ def process_folder(args, input_path):
                         start = len(taxa_sequences_global[taxa]) + 1
                         taxa_sequences_global[taxa] += seq
                         end = len(taxa_sequences_global[taxa])
-                if type_ == "aa":
-                    log[gene] = (start, end)
+                log[gene] = (start, end)
 
             output_fas = processed_folder.joinpath(no_suffix + f".{type_}.fas")
             output_nex = processed_folder.joinpath(no_suffix + f".{type_}.nex")
@@ -401,9 +401,6 @@ def process_folder(args, input_path):
                 fp.write("#nexus\nbegin sets;\n")
                 for gene in log:
                     start, end = log[gene]
-                    if type_ == "nt":
-                        start *= 3
-                        end *= 3
                     fp.write(f"CHARSET {gene} = {start}-{end} ;\n")
 
                 fp.write("end;\n")
