@@ -29,18 +29,19 @@ def download_parallel_srr(arguments):
             )
             sys.exit(1)
 
+
 def download_parallel_wgs(arguments):
     download_link, path_to_download, verbose = arguments
-    
-    
-    file_name = download_link.split('/')[-1]
+
+    file_name = download_link.split("/")[-1]
 
     printv(f"Download {file_name} to {path_to_download}...", verbose)
     download = requests.get(download_link)
 
     path = os.path.join(path_to_download, file_name)
 
-    open(path,'wb').write(download.content)
+    open(path, "wb").write(download.content)
+
 
 def main(args):
     cmd = "fastq-dump --gzip"
@@ -62,11 +63,11 @@ def main(args):
                 if i == 0:
                     continue
                 prefix = fields[0]
-                url = f'https://www.ncbi.nlm.nih.gov/Traces/wgs/{prefix}'
+                url = f"https://www.ncbi.nlm.nih.gov/Traces/wgs/{prefix}"
                 req = requests.get(url)
 
                 soup = BeautifulSoup(req.content, "html.parser")
-                em = soup.find('em', text='FASTA:')
+                em = soup.find("em", text="FASTA:")
                 if not em:
                     print(f"Failed to find FASTA: {prefix}")
 
@@ -74,7 +75,7 @@ def main(args):
                 for a in container.find_all("a", href=True):
                     if "sra-download.ncbi.nlm.nih.gov" in a["href"]:
                         print(f"Attempting to download: {a.contents[0]}")
-                        
+
                         arguments.append((a["href"], path_to_download, args.verbose))
     elif this_suffix == ".csv":
         with open(csvfile, encoding="utf-8") as fp:

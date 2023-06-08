@@ -60,6 +60,7 @@ FlexcullArgs = namedtuple(
     ],
 )
 
+
 def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
     """Iterates over each sequence and deletes columns
     that were removed in the empty column removal.
@@ -102,16 +103,17 @@ def delete_empty_columns(raw_fed_sequences: list, verbose: bool) -> tuple[list, 
 
         for raw_sequence in raw_fed_sequences:
             try:
-                sequence = ''.join(raw_sequence[1][x] for x in positions_to_keep)
+                sequence = "".join(raw_sequence[1][x] for x in positions_to_keep)
             except IndexError:
                 if verbose:
-                    print(f"WARNING: Sequence length is not the same as other sequences: {raw_sequence[0]}")
+                    print(
+                        f"WARNING: Sequence length is not the same as other sequences: {raw_sequence[0]}"
+                    )
                 continue
 
             result.append((raw_sequence[0], sequence))
 
     return result, positions_to_keep
-
 
 
 def folder_check(output_target_path: str) -> None:
@@ -135,7 +137,7 @@ def folder_check(output_target_path: str) -> None:
 
 def make_nt(aa_file_name: str) -> str:
     """Converts AA file name to NT file name.
-    
+
     Args:
         aa_file_name (str): AA file name
     Returns:
@@ -146,7 +148,7 @@ def make_nt(aa_file_name: str) -> str:
 
 def parse_fasta(fasta_path: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """Parses fasta file into header and sequences.
-    
+
     Args:
         fasta_path (str): Path to fasta file
     Returns:
@@ -157,7 +159,6 @@ def parse_fasta(fasta_path: str) -> tuple[list[tuple[str, str]], list[tuple[str,
     end_of_references = False
 
     for header, sequence in parseFasta(fasta_path):
-        
         if end_of_references:
             candidates.append((header, sequence))
             continue
@@ -165,7 +166,7 @@ def parse_fasta(fasta_path: str) -> tuple[list[tuple[str, str]], list[tuple[str,
         if header[-1] == ".":  # Is reference
             references.append((header, sequence))
             continue
-        
+
         candidates.append((header, sequence))
         end_of_references = True
 
@@ -185,9 +186,9 @@ def trim_around(
 ) -> range:
     """Trim from starting index to the upper limit and from the starting index to the
     lower limit and return the range of the trimmed slice.
-    
+
     Trim will stop once the amount of matches is reached or the upper limit is reached.
-    
+
     Args:
         starting_index (int): Starting index
         lower_limit (int): Lower limit
@@ -200,10 +201,10 @@ def trim_around(
         gap_present_threshold (list[bool]): List of booleans indicating whether references contain gaps at the index
     Returns:
         range: Range of the trimmed slice"""
-    
+
     offset = amt_matches - 1
     cull_end = upper_limit
-    
+
     for i in range(starting_index, len(sequence) - 1):
         skip_first = 0
         char = sequence[i]
@@ -254,19 +255,19 @@ def trim_around(
             break
 
     cull_start = starting_index
-    
+
     for i in range(starting_index - 1, -1, -1):
         mismatch = mismatches
         skip_last = 0
 
         char = sequence[i]
-        
+
         if i < lower_limit + offset:
             break
-            
+
         if char == "-" or all_dashes_by_index[i]:
             continue
-            
+
         if char not in character_at_each_pos[i]:
             skip_last += 1
             mismatch -= 1
@@ -463,15 +464,19 @@ def do_cull(
     return cull_start, cull_end, kick
 
 
-
 def get_start_end(sequence: str) -> tuple:
     """Returns the start and end of the sequence."""
     start = next((i for i, char in enumerate(sequence) if char != "-"), 0)
-    end = next((len(sequence) - i for i, char in enumerate(sequence[::-1]) if char != "-"), len(sequence))
+    end = next(
+        (len(sequence) - i for i, char in enumerate(sequence[::-1]) if char != "-"),
+        len(sequence),
+    )
     return start, end
 
 
-def process_refs(references: list[tuple], gap_threshold:float, column_cull_percent: float, mat: dict) -> tuple:
+def process_refs(
+    references: list[tuple], gap_threshold: float, column_cull_percent: float, mat: dict
+) -> tuple:
     """
     Processes the references to generate the character_at_each_pos, gap_present_threshold , column_cull and all_dashes_by_index.
 
@@ -508,13 +513,21 @@ def process_refs(references: list[tuple], gap_threshold:float, column_cull_perce
         if data_present < column_cull_percent:
             column_cull.add(i * 3)
 
-        character_at_each_pos[i] = set(chars).union(blosum_sub for char in chars for blosum_sub in mat.get(char, {}).keys())
+        character_at_each_pos[i] = set(chars).union(
+            blosum_sub for char in chars for blosum_sub in mat.get(char, {}).keys()
+        )
 
-    return character_at_each_pos, gap_present_threshold, all_dashes_by_index, column_cull
+    return (
+        character_at_each_pos,
+        gap_present_threshold,
+        all_dashes_by_index,
+        column_cull,
+    )
 
 
-
-def column_cull_seqs(this_seqs: list[tuple], column_cull: set, minimum_bp: int, is_assembly: bool) -> tuple[list[tuple], list[str], set]:
+def column_cull_seqs(
+    this_seqs: list[tuple], column_cull: set, minimum_bp: int, is_assembly: bool
+) -> tuple[list[tuple], list[str], set]:
     aa_out = []
     kicks = []
 
@@ -553,7 +566,16 @@ def column_cull_seqs(this_seqs: list[tuple], column_cull: set, minimum_bp: int, 
     return aa_out, kicks, this_column_cull
 
 
-def cull_codons(out_line: str, cull_start: int, cull_end: int, amt_matches:int, mismatches: int, all_dashes_by_index: dict, character_at_each_pos: dict, gap_present_threshold: dict):
+def cull_codons(
+    out_line: str,
+    cull_start: int,
+    cull_end: int,
+    amt_matches: int,
+    mismatches: int,
+    all_dashes_by_index: dict,
+    character_at_each_pos: dict,
+    gap_present_threshold: dict,
+):
     positions_to_trim = set()
     codons = []
     for i in range(cull_start, cull_end):
@@ -594,7 +616,8 @@ def cull_codons(out_line: str, cull_start: int, cull_end: int, amt_matches:int, 
 
         if (
             get_data_difference(
-                left_of_trim_data_columns, left_side_ref_data_columns,
+                left_of_trim_data_columns,
+                left_side_ref_data_columns,
             )
             < 0.55
         ):  # candidate has less than % of data columns compared to reference
@@ -603,7 +626,8 @@ def cull_codons(out_line: str, cull_start: int, cull_end: int, amt_matches:int, 
                 out_line[x] = "-"
         if (
             get_data_difference(
-                right_of_trim_data_columns, right_side_ref_data_columns,
+                right_of_trim_data_columns,
+                right_side_ref_data_columns,
             )
             < 0.55
         ):
@@ -616,7 +640,17 @@ def cull_codons(out_line: str, cull_start: int, cull_end: int, amt_matches:int, 
     return out_line, positions_to_trim
 
 
-def trim_large_gaps(aa_out: list[tuple], reference_gap_col: set, amt_matches: int, mismatches: int, post_all_dashes_by_index: dict, post_character_at_each_pos: dict, post_gap_present_threshold: dict, minimum_bp: int, debug:bool):
+def trim_large_gaps(
+    aa_out: list[tuple],
+    reference_gap_col: set,
+    amt_matches: int,
+    mismatches: int,
+    post_all_dashes_by_index: dict,
+    post_character_at_each_pos: dict,
+    post_gap_present_threshold: dict,
+    minimum_bp: int,
+    debug: bool,
+):
     """
     Trims gaps with a length of 80 or more non-reference gap column gaps.
 
@@ -702,7 +736,9 @@ def trim_large_gaps(aa_out: list[tuple], reference_gap_col: set, amt_matches: in
                         ):
                             keep_left = len(left_after) - left_after.count(
                                 "-",
-                            ) >= len(right_after) - right_after.count("-")
+                            ) >= len(
+                                right_after
+                            ) - right_after.count("-")
                             keep_right = not keep_left
 
                         if (
@@ -759,6 +795,7 @@ def trim_large_gaps(aa_out: list[tuple], reference_gap_col: set, amt_matches: in
     aa_out = [i for i in aa_out if i is not None]
     return aa_out, gap_pass_through, log, kicks
 
+
 def do_gene(fargs: FlexcullArgs) -> None:
     """FlexCull main function. Culls input aa and nt using specified amount of matches."""
     gene_path = os.path.join(fargs.aa_input, fargs.aa_file)
@@ -768,7 +805,12 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
     references, candidates = parse_fasta(gene_path)
 
-    character_at_each_pos, gap_present_threshold, all_dashes_by_index, column_cull = process_refs(
+    (
+        character_at_each_pos,
+        gap_present_threshold,
+        all_dashes_by_index,
+        column_cull,
+    ) = process_refs(
         references, fargs.gap_threshold, fargs.column_cull_percent, fargs.filtered_mat
     )
 
@@ -809,10 +851,18 @@ def do_gene(fargs: FlexcullArgs) -> None:
             characters_till_end = sequence_length - len(out_line)
             out_line += ["-"] * characters_till_end
 
-            out_line, positions_to_trim = cull_codons(out_line, cull_start, cull_end, fargs.amt_matches, fargs.mismatches, all_dashes_by_index, character_at_each_pos, gap_present_threshold)
+            out_line, positions_to_trim = cull_codons(
+                out_line,
+                cull_start,
+                cull_end,
+                fargs.amt_matches,
+                fargs.mismatches,
+                all_dashes_by_index,
+                character_at_each_pos,
+                gap_present_threshold,
+            )
 
             out_line = "".join(out_line)
-
 
             data_length = cull_end - cull_start
             bp_after_cull = len(out_line) - out_line.count("-")
@@ -862,7 +912,9 @@ def do_gene(fargs: FlexcullArgs) -> None:
                 log.append(gene + "," + header + ",Kicked,Zero Data After Cull,0,\n")
 
     if this_seqs:
-        this_seqs, kicks, this_column_cull = column_cull_seqs(this_seqs, column_cull, fargs.gap_threshold, fargs.is_assembly)
+        this_seqs, kicks, this_column_cull = column_cull_seqs(
+            this_seqs, column_cull, fargs.gap_threshold, fargs.is_assembly
+        )
         for header in kicks:
             follow_through[header] = True, 0, 0, []
 
@@ -874,17 +926,35 @@ def do_gene(fargs: FlexcullArgs) -> None:
         # Recalcuate position based tables
         post_references = [i for i in aa_out if i[0].endswith(".")]
 
-        post_character_at_each_pos, post_gap_present_threshold, post_all_dashes_by_index, _ = process_refs(
-            post_references, fargs.gap_threshold, fargs.column_cull_percent, fargs.filtered_mat
+        (
+            post_character_at_each_pos,
+            post_gap_present_threshold,
+            post_all_dashes_by_index,
+            _,
+        ) = process_refs(
+            post_references,
+            fargs.gap_threshold,
+            fargs.column_cull_percent,
+            fargs.filtered_mat,
         )
 
         reference_gap_col = {i for i, x in post_gap_present_threshold.items() if not x}
-        
-        aa_out, gap_pass_through, trim_log, kicks = trim_large_gaps(aa_out, reference_gap_col, fargs.amt_matches, fargs.mismatches, post_all_dashes_by_index, post_character_at_each_pos, post_gap_present_threshold, fargs.bp, fargs.debug)
+
+        aa_out, gap_pass_through, trim_log, kicks = trim_large_gaps(
+            aa_out,
+            reference_gap_col,
+            fargs.amt_matches,
+            fargs.mismatches,
+            post_all_dashes_by_index,
+            post_character_at_each_pos,
+            post_gap_present_threshold,
+            fargs.bp,
+            fargs.debug,
+        )
 
         if fargs.debug:
             log.extend(trim_log)
-        
+
         for kick in kicks:
             follow_through[kick] = True, 0, 0, []
 
@@ -977,7 +1047,8 @@ def do_folder(folder, args: MainArgs):
         if input_gene.split(".")[-1] in {"fa", "gz", "fq", "fastq", "fasta"}
     ]
     file_inputs.sort(
-        key=lambda x: os.path.getsize(os.path.join(aa_path, x)), reverse=True,
+        key=lambda x: os.path.getsize(os.path.join(aa_path, x)),
+        reverse=True,
     )
 
     blosum_mode_lower_threshold = (
@@ -989,7 +1060,14 @@ def do_folder(folder, args: MainArgs):
     )
 
     mat = bl.BLOSUM(62)
-    filtered_mat = {key: {sub_key: value for sub_key, value in sub_dict.items() if value > blosum_mode_lower_threshold} for key, sub_dict in mat.items()}
+    filtered_mat = {
+        key: {
+            sub_key: value
+            for sub_key, value in sub_dict.items()
+            if value > blosum_mode_lower_threshold
+        }
+        for key, sub_dict in mat.items()
+    }
 
     if args.processes > 1:
         arguments = []
@@ -1048,7 +1126,8 @@ def do_folder(folder, args: MainArgs):
 
         log_global.sort()
         log_global.insert(
-            0, "Gene,Header,Cull To Start,Cull To End,Data Length,Data Removed\n",
+            0,
+            "Gene,Header,Cull To Start,Cull To End,Data Length,Data Removed\n",
         )
         log_out = os.path.join(output_path, "Culls.csv")
         with open(log_out, "w") as fp:

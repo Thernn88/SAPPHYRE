@@ -40,13 +40,15 @@ def process_folder(args, superfolder_path):
             "blast",
             "aa",
             "nt",
-            "very.tsv"
+            "very.tsv",
         ]
     else:
         directories_to_archive = args.specific_directories
 
     if args.unarchive:
-        directories_to_archive = [i + ".tar.gz" for i in directories_to_archive] + ["diamond.tar.gz"] # Add diamond
+        directories_to_archive = [i + ".tar.gz" for i in directories_to_archive] + [
+            "diamond.tar.gz"
+        ]  # Add diamond
 
     arguments = []
     for root, _, files in os.walk(superfolder_path):

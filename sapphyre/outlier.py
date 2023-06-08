@@ -1,7 +1,6 @@
 """Outlier Check."""
 from __future__ import annotations
 import sys
-import numpy as np
 import os
 import phymmr_tools as bd
 import wrap_rocks
@@ -11,6 +10,7 @@ from itertools import combinations
 from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import rmtree
+import numpy as np
 from msgspec import Struct, json
 from phymmr_tools import constrained_distance
 
@@ -26,7 +26,7 @@ def split_indices(sequence):
     gap_count = 0
 
     for i in range(len(sequence)):
-        if sequence[i] == '-':
+        if sequence[i] == "-":
             gap_count += 1
             if gap_count >= 20:
                 if start is not None:
@@ -135,8 +135,10 @@ def find_index_groups(candidates: list) -> dict:
     candidates with identical indices, and the other dictionary stores
     the ref set after constraining to those indices.
     """
+
     def lst():
         return []
+
     candidate_dict = defaultdict(lst)
     for candidate in candidates:
         start, stop = bd.find_index_pair(candidate.raw, "-")
@@ -148,8 +150,10 @@ def find_index_groups(candidates: list) -> dict:
 def find_asm_index_groups(candidates: list) -> dict:
     def lst():
         return []
+
     def st():
         return set()
+
     candidate_dict = defaultdict(lst)
     for candidate in candidates:
         indices = split_indices(candidate.raw)
@@ -157,7 +161,7 @@ def find_asm_index_groups(candidates: list) -> dict:
             start, stop = index_pair
             header = candidate.id + f"$${start}$${stop}"
             intron_candidate = Record(header, candidate.raw)
-            intron_candidate.sequence = intron_candidate.raw[start: stop]
+            intron_candidate.sequence = intron_candidate.raw[start:stop]
             candidate_dict[(start, stop)].append(intron_candidate)
 
     return candidate_dict
@@ -166,6 +170,7 @@ def find_asm_index_groups(candidates: list) -> dict:
 def remake_introns(passing: list) -> tuple:
     def lst():
         return []
+
     result = {}
     header_to_intron_records = defaultdict(lst)
     # first pass to find passing indices
@@ -177,7 +182,8 @@ def remake_introns(passing: list) -> tuple:
     # second pass to reconstruct records with only valid indices
     for record in passing:
         header, start, stop = record.id.split("$$")
-        if header in result: continue
+        if header in result:
+            continue
         indices_list = header_to_intron_records[header]
         # make a single set of all sites to use
         valid_indices = set()
@@ -384,7 +390,7 @@ def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
 
 
 def aa_to_nt(index: int):
-    return [index*3, index*3 + 1, index*3 + 2]
+    return [index * 3, index * 3 + 1, index * 3 + 2]
 
 
 def align_intron_removal(lines: list, header_to_indices: dict) -> list:
@@ -395,8 +401,10 @@ def align_intron_removal(lines: list, header_to_indices: dict) -> list:
     the appropriate sites. Returns the altered list of nt lines. This should
     only be called when the assembly flag is found in the nt database.
     """
+
     def st():
         return set()
+
     nt_indices = defaultdict(st)
     # convert aa index pairs to nt indices
     for header, index_list in header_to_indices.items():
@@ -409,13 +417,14 @@ def align_intron_removal(lines: list, header_to_indices: dict) -> list:
         if header not in nt_indices:
             continue
         indices = nt_indices[header]
-        sequence = list(lines[i+1].strip())
+        sequence = list(lines[i + 1].strip())
 
         for j in range(len(sequence)):
             if j not in indices:
                 sequence[j] = "-"
-        lines[i+1] = "".join(sequence)
+        lines[i + 1] = "".join(sequence)
     return lines
+
 
 def remove_excluded_sequences(lines: list, excluded: set) -> list:
     """Given a list of fasta lines and a set of headers to be excluded from output,
@@ -479,7 +488,7 @@ def main_process(
     internal_kick_threshold: int,
     prepare_dupe_counts,
     reporter_dupe_counts,
-    assembly: bool
+    assembly: bool,
 ):
     keep_refs = not args_references
 
@@ -614,7 +623,7 @@ def do_folder(folder, args):
         reporter_dupe_counts = json.decode(
             rocksdb_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]]
         )
-        assembly = (rocksdb_db.get("get:isassembly"))
+        assembly = rocksdb_db.get("get:isassembly")
         if assembly == "True":
             assembly = True
         else:

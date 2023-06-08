@@ -39,7 +39,7 @@ def kick_taxa(content: list[tuple, tuple], to_kick: set) -> list:
     out = []
     for header, sequence in content:
         taxon = header.split("|")[1]
-        if not taxon in to_kick:
+        if taxon not in to_kick:
             out.append((header, sequence))
     return out
 
@@ -69,12 +69,11 @@ def kick_empty_columns(
     kick_percent: float,
     minimum_bp: int,
 ) -> list:
-    
     kicks = set()
     fasta_data = defaultdict(list)
     out = {}
 
-    for (header, sequence) in fasta_content:
+    for header, sequence in fasta_content:
         for i, let in enumerate(sequence):
             fasta_data[i].append(let)
 
@@ -111,7 +110,6 @@ def stopcodon(aa_content: list, nt_content: list) -> tuple:
             aa_seqs.append((header, sequence))
 
     for (aa_header, aa_line), (nt_header, nt_line) in zip(aa_seqs, nt_content):
-        
         if aa_header != nt_header:
             print(
                 "Warning STOPCODON: Nucleotide order doesn't match Amino Acid order",
@@ -221,7 +219,13 @@ def clean_gene(gene_config: GeneConfig):
 
     taxa_local = get_taxa_local(aa_target_content)
 
-    return gene_config.gene, taxa_local, aa_target_content, nt_target_content, taxa_count  # , nt_target_content
+    return (
+        gene_config.gene,
+        taxa_local,
+        aa_target_content,
+        nt_target_content,
+        taxa_count,
+    )  # , nt_target_content
 
 
 def get_taxa_local(aa_content: list) -> set:
@@ -231,10 +235,11 @@ def get_taxa_local(aa_content: list) -> set:
 
     return taxa_local
 
+
 def taxa_present(aa_content: list, names: list) -> dict:
     taxac_present = {i: 0 for i in names}
     for header, _ in aa_content:
-        if not header.endswith('.'):
+        if not header.endswith("."):
             taxa = header.split("|")[2]
             if taxa in taxac_present:
                 taxac_present[taxa] += 1
@@ -302,7 +307,6 @@ def process_folder(args, input_path):
                     name = parse[1]
 
                     taxa_to_taxon[id] = name
-        
 
     arguments = []
     for aa_file in aa_folder.glob("*.fa"):
@@ -335,19 +339,16 @@ def process_folder(args, input_path):
         for _, _, _, _, taxa_count in to_write:
             for taxa, count in taxa_count.items():
                 total[taxa] += count
- 
-        
+
     if args.concat:
-        
         taxa_global = set()
 
         sequences = {"aa": defaultdict(dict), "nt": defaultdict(dict)}
         gene_lengths = defaultdict(dict)
-    
+
         total = {i: 0 for i in taxa_to_taxon.keys()}
         for gene, taxa_local, aa_content, nt_content, taxa_count in to_write:
             for taxa, count in taxa_count.items():
-
                 total[taxa] += count
             taxa_global.update(taxa_local)
             this_gene_global_length = 0
@@ -367,11 +368,11 @@ def process_folder(args, input_path):
 
                 taxon = header.split("|")[1]
                 sequences["nt"][gene][taxon] = sequence
-        
+
         for type_ in ["aa", "nt"]:
             log = {}
             taxa_sequences_global = {}
-            
+
             for gene in sequences[type_]:
                 this_sequences = sequences[type_][gene]
                 for taxa in taxa_global:
@@ -408,13 +409,11 @@ def process_folder(args, input_path):
         out = ["Taxa,Taxon,Total"]
 
         for taxa, total_taxa in total.items():
-
             out.append(f"{taxa},{taxa_to_taxon[taxa]},{total_taxa}")
 
         with open(str(processed_folder.joinpath("TaxaPresent.csv")), "w") as fp:
-
             fp.write("\n".join(out))
-            
+
     printv(f"Done! Took {tk.lap():.2f}s", 1)
 
 

@@ -192,7 +192,6 @@ class SeqDeduplicator:
                 else:
                     self.lines.append(f">{header}\n{seq}\n")
                     next(this_index)
-                
 
 
 class DatabasePreparer:
