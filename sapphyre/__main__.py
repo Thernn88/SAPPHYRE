@@ -714,8 +714,8 @@ def download(argsobj):
         print(argsobj.formathelp())
 
 
-def subcmd_archiver(sp):
-    par = sp.add_parser("Archiver", help="Recursive archiver/unarchiver")  # TODO add me
+def subcmd_archive(sp):
+    par = sp.add_parser("Archive", help="Recursive archiver/unarchiver")  # TODO add me
     par.add_argument(
         "INPUT",
         help="Path to input directory.",
@@ -736,13 +736,13 @@ def subcmd_archiver(sp):
         action="store_true",
         help="Unarchive directories.",
     )
-    par.set_defaults(func=archiver, formathelp=par.format_help)
+    par.set_defaults(func=archive, formathelp=par.format_help)
 
 
-def archiver(argsobj):
-    from . import archiver
+def archive(argsobj):
+    from . import archive
 
-    if not archiver.main(argsobj):
+    if not archive.main(argsobj):
         print()
         print(argsobj.formathelp())
 
@@ -991,7 +991,7 @@ if __name__ == "__main__":
     subcmd_Merge(subparsers)
     subcmd_Combine(subparsers)
     subcmd_download(subparsers)
-    subcmd_archiver(subparsers)
+    subcmd_archive(subparsers)
 
     # Finalize
     subcmd_finalize(subparsers)
