@@ -25,8 +25,8 @@ def split_indices(sequence):
     start = None
     gap_count = 0
 
-    for i in range(len(sequence)):
-        if sequence[i] == "-":
+    for i, char in enumerate(sequence):
+        if char == "-":
             gap_count += 1
             if gap_count >= 20:
                 if start is not None:
@@ -151,13 +151,10 @@ def find_asm_index_groups(candidates: list) -> dict:
     def lst():
         return []
 
-    def st():
-        return set()
-
     candidate_dict = defaultdict(lst)
     for candidate in candidates:
         indices = split_indices(candidate.raw)
-        for num, index_pair in enumerate(indices):
+        for index_pair in indices:
             start, stop = index_pair
             header = candidate.id + f"$${start}$${stop}"
             intron_candidate = Record(header, candidate.raw)
@@ -188,9 +185,9 @@ def remake_introns(passing: list) -> tuple:
         # make a single set of all sites to use
         valid_indices = set()
         for index_pair in indices_list:
-            valid_indices.update({num for num in range(index_pair[0], index_pair[1])})
+            valid_indices.update(set(range(index_pair[0], index_pair[1])))
         seq = list(record.raw)
-        for i, bp in enumerate(seq):
+        for i, _ in enumerate(seq):
             if i not in valid_indices:
                 seq[i] = "-"
         record.raw = "".join(seq)
@@ -229,17 +226,13 @@ def has_minimum_data(
 
 
 def is_same_variant(header1, header2) -> bool:
-    if header1[-9] == ":" and header2[-9] == ":" and header1[:-9] == header2[:-9]:
-        return True
-    return False
-
+    return header1[0:-8] == header2[0:-8]
 
 def compare_means(
     references: list,
     regulars: list,
     candidates_dict: dict,
     threshold: float,
-    keep_refs: bool,
     refs_in_file: int,
     rejected_indices: set,
     index_group_min_bp: int,
@@ -402,10 +395,10 @@ def align_intron_removal(lines: list, header_to_indices: dict) -> list:
     only be called when the assembly flag is found in the nt database.
     """
 
-    def st():
+    def set_shim():
         return set()
 
-    nt_indices = defaultdict(st)
+    nt_indices = defaultdict(set_shim)
     # convert aa index pairs to nt indices
     for header, index_list in header_to_indices.items():
         for start, stop in index_list:
@@ -419,7 +412,7 @@ def align_intron_removal(lines: list, header_to_indices: dict) -> list:
         indices = nt_indices[header]
         sequence = list(lines[i + 1].strip())
 
-        for j in range(len(sequence)):
+        for j, _ in enumerate(sequence):
             if j not in indices:
                 sequence[j] = "-"
         lines[i + 1] = "".join(sequence)
@@ -533,7 +526,6 @@ def main_process(
         regulars,
         candidates_dict,
         threshold,
-        keep_refs,
         refs_in_file,
         rejected_indices,
         index_group_min_bp,
@@ -624,11 +616,7 @@ def do_folder(folder, args):
             rocksdb_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]]
         )
         assembly = rocksdb_db.get("get:isassembly")
-        if assembly == "True":
-            assembly = True
-        else:
-            assembly = False
-
+        assembly = assembly == "True"
     else:
         err = f"cannot find dupe databases for {folder}"
         raise FileNotFoundError(err)
@@ -709,18 +697,15 @@ def do_folder(folder, args):
     if args.debug:
         log_folder_path = os.path.join(output_path, "logs")
         global_csv_path = os.path.join(log_folder_path, "outliers_global.csv")
-        global_csv = open(global_csv_path, "w", encoding="UTF-8")
-        global_csv.write("Gene,Header,Mean_Dist,Ref_Mean,IQR\n")
+        with open(global_csv_path, "w", encoding="UTF-8") as global_csv:
+            global_csv.write("Gene,Header,Mean_Dist,Ref_Mean,IQR\n")
 
-    for log_data in process_data:
-        if args.debug:
-            for line in log_data:
-                if line.split(",")[-2] != "Pass":
-                    if line[-1] != "\n":
-                        line = f"{line}\n"
-                    global_csv.write(line)
-    if args.debug:
-        global_csv.close()
+            for log_data in process_data:
+                for line in log_data:
+                    if line.split(",")[-2] != "Pass":
+                        if line[-1] != "\n":
+                            line = f"{line}\n"
+                        global_csv.write(line)
 
     printv(f"Done! Took {time_keeper.differential():.2f}s", args.verbose)
 
@@ -738,7 +723,7 @@ def main(args):
 
 
 if __name__ == "__main__":
-    msg = "Cannot be called directly, please use the module:\nsapphyre OutlierCheck"
-    raise Exception(
-        msg,
+    MSG = "Cannot be called directly, please use the module:\nsapphyre OutlierCheck"
+    raise RuntimeError(
+        MSG,
     )
