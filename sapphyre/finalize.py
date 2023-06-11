@@ -416,7 +416,7 @@ def process_folder(args, input_path):
 
                 fp.write("end;\n")
     if args.count:
-        out = ["Taxa,Taxon,Present,Total BP"]
+        out = ["Taxa,Taxon,Present,Total AA"]
 
         for taxon, total_taxa in total.items():
             out.append(f"{taxon_to_taxa.get(taxon, '')},{taxon},{total_taxa['p']},{total_taxa['bp']}")
