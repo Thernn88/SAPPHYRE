@@ -202,6 +202,7 @@ def clean_gene(gene_config: GeneConfig):
     aa_target_content = []
     nt_target_content = []
     taxon_count = {}
+    gene_taxon_to_taxa = {}
 
     if gene_config.gene in gene_config.target or not gene_config.sort:
         if gene_config.count_taxa:
