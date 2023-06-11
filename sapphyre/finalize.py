@@ -315,7 +315,7 @@ def process_folder(args, input_path):
         this_config = GeneConfig(
             gene,
             args.kick_columns,
-            args.kick_percentage,
+            args.kick_percentage if args.kick_percenatge <= 1 else args.kick_percentage / 100,
             args.minimum_bp,
             args.stopcodon,
             args.rename,
