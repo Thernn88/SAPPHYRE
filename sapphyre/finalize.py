@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import Counter, defaultdict
 import os
 from dataclasses import dataclass
 from multiprocessing.pool import Pool
@@ -201,12 +201,11 @@ def clean_gene(gene_config: GeneConfig):
 
     aa_target_content = []
     nt_target_content = []
-    taxa_count = {}
+    taxon_count = {}
 
     if gene_config.gene in gene_config.target or not gene_config.sort:
         if gene_config.count_taxa:
-            taxa_names = set(gene_config.taxa_to_taxon.keys())
-            taxa_count = taxa_present(aa_content, taxa_names)
+            taxon_count, gene_taxon_to_taxa = taxon_present(aa_content)
 
         aa_target_content.extend(aa_content)
         nt_target_content.extend(nt_content)
@@ -224,8 +223,9 @@ def clean_gene(gene_config: GeneConfig):
         taxa_local,
         aa_target_content,
         nt_target_content,
-        taxa_count,
-    )  # , nt_target_content
+        taxon_count,
+        gene_taxon_to_taxa,
+    )
 
 
 def get_taxa_local(aa_content: list) -> set:
@@ -236,17 +236,20 @@ def get_taxa_local(aa_content: list) -> set:
     return taxa_local
 
 
-def taxa_present(aa_content: list, names: list) -> dict:
-    taxac_present = {i: 0 for i in names}
-    for header, _ in aa_content:
+def taxon_present(aa_content: list) -> dict:
+    taxonc_present = defaultdict({"p": 0, "bp": 0}.copy)
+    gene_taxon_to_taxa = {}
+    for header, sequence in aa_content:
+        taxa = header.split("|")[2]
+        taxon = header.split("|")[1]
+        
         if not header.endswith("."):
-            taxa = header.split("|")[2]
-            if taxa in taxac_present:
-                taxac_present[taxa] += 1
-            else:
-                print(f"WARNING Taxa Present: Taxa, {taxa}, not found in names file")
+            gene_taxon_to_taxa[taxon] = taxa
 
-    return taxac_present
+        taxonc_present[taxon]["p"] += 1
+        taxonc_present[taxon]["bp"] += len(sequence) - sequence.count("-")
+
+    return taxonc_present, gene_taxon_to_taxa
 
 
 def process_folder(args, input_path):
@@ -315,7 +318,7 @@ def process_folder(args, input_path):
         this_config = GeneConfig(
             gene,
             args.kick_columns,
-            args.kick_percentage if args.kick_percenatge <= 1 else args.kick_percentage / 100,
+            args.kick_percentage if args.kick_percentage <= 1 else args.kick_percentage / 100,
             args.minimum_bp,
             args.stopcodon,
             args.rename,
@@ -335,10 +338,13 @@ def process_folder(args, input_path):
         to_write = pool.starmap(clean_gene, arguments, chunksize=1)
 
     if args.count and not args.concat:
-        total = {i: 0 for i in taxa_to_taxon.keys()}
-        for _, _, _, _, taxa_count in to_write:
-            for taxa, count in taxa_count.items():
-                total[taxa] += count
+        total = defaultdict({"p": 0, "bp": 0}.copy)
+        taxon_to_taxa = {}
+        for _, _, _, _, taxon_count, gene_taxon_to_taxa in to_write:
+            taxon_to_taxa.update(gene_taxon_to_taxa)
+            for taxon, count in taxon_count.items():
+                total[taxon]["p"] += count["p"]
+                total[taxon]["bp"] += count["bp"]
 
     if args.concat:
         taxa_global = set()
@@ -346,10 +352,13 @@ def process_folder(args, input_path):
         sequences = {"aa": defaultdict(dict), "nt": defaultdict(dict)}
         gene_lengths = defaultdict(dict)
 
-        total = {i: 0 for i in taxa_to_taxon.keys()}
-        for gene, taxa_local, aa_content, nt_content, taxa_count in to_write:
-            for taxa, count in taxa_count.items():
-                total[taxa] += count
+        total = defaultdict({"p": 0, "bp": 0}.copy)
+        taxon_to_taxa = {}
+        for gene, taxa_local, aa_content, nt_content, taxon_count, gene_taxon_to_taxa in to_write:
+            taxon_to_taxa.update(gene_taxon_to_taxa)
+            for taxon, count in taxon_count.items():
+                total[taxon]["p"] += count["p"]
+                total[taxon]["bp"] += count["bp"]
             taxa_global.update(taxa_local)
             this_gene_global_length = 0
 
@@ -406,10 +415,10 @@ def process_folder(args, input_path):
 
                 fp.write("end;\n")
     if args.count:
-        out = ["Taxa,Taxon,Total"]
+        out = ["Taxa,Taxon,Present,Total BP"]
 
-        for taxa, total_taxa in total.items():
-            out.append(f"{taxa},{taxa_to_taxon[taxa]},{total_taxa}")
+        for taxon, total_taxa in total.items():
+            out.append(f"{taxon_to_taxa.get(taxon, '')},{taxon},{total_taxa['p']},{total_taxa['bp']}")
 
         with open(str(processed_folder.joinpath("TaxaPresent.csv")), "w") as fp:
             fp.write("\n".join(out))
