@@ -56,12 +56,38 @@ def main(args):
     )
     os.makedirs(path_to_download, exist_ok=True)
     if args.wgs:
-        with open(csvfile, encoding="utf-8") as fp:
-            csv_read = csv.reader(fp, delimiter=",", quotechar='"')
+        if 'csv' in csvfile.suffix:
+            with open(csvfile, encoding="utf-8") as fp:
+                csv_read = csv.reader(fp, delimiter=",", quotechar='"')
+                arguments = []
+                for i, fields in enumerate(csv_read):
+                    if i == 0:
+                        continue
+                    prefix = fields[0]
+                    url = f"https://www.ncbi.nlm.nih.gov/Traces/wgs/{prefix}"
+                    req = requests.get(url)
+
+                    soup = BeautifulSoup(req.content, "html.parser")
+                    em = soup.find("em", text="FASTA:")
+                    if not em:
+                        print(f"Failed to find FASTA: {prefix}")
+                        continue
+
+                    container = em.find_parent()
+                    for a in container.find_all("a", href=True):
+                        if "sra-download.ncbi.nlm.nih.gov" in a["href"]:
+                            print(f"Attempting to download: {a.contents[0]}")
+
+                            arguments.append((a["href"], path_to_download, args.verbose))
+        elif 'xls' in csvfile.suffix:
+            workbook = openpyxl.load_workbook(csvfile)
+            sheet = workbook.active
             arguments = []
-            for i, fields in enumerate(csv_read):
+
+            for i, row in enumerate(sheet.iter_rows(values_only=True)):
                 if i == 0:
                     continue
+                fields = list(row)
                 prefix = fields[0]
                 url = f"https://www.ncbi.nlm.nih.gov/Traces/wgs/{prefix}"
                 req = requests.get(url)
@@ -70,6 +96,7 @@ def main(args):
                 em = soup.find("em", text="FASTA:")
                 if not em:
                     print(f"Failed to find FASTA: {prefix}")
+                    continue
 
                 container = em.find_parent()
                 for a in container.find_all("a", href=True):
