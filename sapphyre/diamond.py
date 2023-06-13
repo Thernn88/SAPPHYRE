@@ -249,7 +249,7 @@ def multi_filter(this_args: MultiArgs) -> tuple[list, int, list]:
 
                 kicks = set(hit.uid for hit in this_args.hits)
 
-                return len(this_args.hits), log, kicks
+                return MultiReturn(len(this_args.hits), log, kicks)
 
     return MultiReturn(len(this_args.hits) - passes, log, kicks)
 
