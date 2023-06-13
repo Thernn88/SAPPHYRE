@@ -19,28 +19,6 @@ from msgspec import Struct, json
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import gettempdir, printv
 
-# namedtuple for the processing arguments.
-ProcessingArgs = namedtuple(
-    "ProcessingArgs",
-    [
-        "i",
-        "grouped_data",
-        "target_to_taxon",
-        "debug",
-        "result_fp",
-        "pairwise_refs",
-        "is_assembly",
-        "evalue_threshold",
-    ],
-)
-
-
-# Define a function lst that returns an empty list when called.
-# This function will be used as the default_factory argument for a defaultdict object.
-def lst() -> list:
-    return []
-
-
 # call the phymmr_tools.Hit class using an unpacked list of values found in the row input.
 # def create_hit(row) -> Hit:
 
@@ -78,6 +56,54 @@ class ReporterHit(Struct):
     uid: int
     refs: list[ReferenceHit]
     seq: str = None
+
+
+class ProcessingArgs(Struct, frozen=True):
+    i: int
+    grouped_data: pd.DataFrame
+    target_to_taxon: dict[str, tuple[str, str, int]]
+    debug: bool
+    result_fp: str
+    pairwise_refs: set[str]
+    is_assembly: bool
+    evalue_threshold: float
+
+
+class InternalArgs(Struct, frozen=True):
+    gene: str
+    this_hits: list[Hit]
+    debug: bool
+    internal_percent: float
+
+
+class InternalReturn(Struct, frozen=True):
+    gene: str
+    kick_count: int
+    log: list[str]
+    this_kicks: set
+    
+
+class MultiArgs(Struct, frozen=True):
+    hits: list[Hit]
+    debug: bool
+
+class MultiReturn(Struct, frozen=True):
+    kick_count: int
+    log: list[str]
+    this_kicks: set
+
+class ContainmentArgs(Struct, frozen=True):
+    hits: list[Hit]
+    target_to_taxon: dict[str, tuple[str, str, int]]
+    debug: bool
+    gene: str
+    
+class ContainmentReturn(Struct, frozen=True):
+    kicks: set
+    kick_count: int
+    log: list[str]
+    gene: str
+    
 
 
 def get_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
@@ -128,13 +154,12 @@ def get_score_difference(score_a: float, score_b: float) -> float:
     return max(score_a, score_b) / min(score_a, score_b)
 
 
-def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
+def multi_filter(this_args: MultiArgs) -> tuple[list, int, list]:
     """Filter out hits that imprecisely map to multiple genes.
 
     Args:
     ----
-        hits (list): A list of Hit objects.
-        debug (bool): A boolean indicating whether or not to print debug messages.
+        this_args (MultiArgs): The arguments for the multi_filter function.
 
     Returns:
     -------
@@ -147,12 +172,12 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
     log = []
 
     # Assign the highest scoring hit as the master
-    master = hits[0]
+    master = this_args.hits[0]
 
     # Assign all the lower scoring hits as candidates
-    candidates = hits[1:]
+    candidates = this_args.hits[1:]
     kicks = set()
-    passes = len(hits)
+    passes = len(this_args.hits)
 
     for i, candidate in enumerate(candidates, 1):
         # Skip if the candidate has been kicked already or if master and candidate are internal hits:
@@ -177,9 +202,9 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
             if score_difference >= MULTI_SCORE_DIFFERENCE:
                 # Kick the candidate
                 passes -= 1
-                kicks.add(hits[i].uid)
+                kicks.add(this_args.hits[i].uid)
                 kicks.add(candidates[i - 1].uid)
-                if debug:
+                if this_args.debug:
                     log.append(
                         (
                             candidate.gene,
@@ -199,7 +224,7 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
                     )
             else:
                 # If the score difference is not greater than 5% trigger miniscule score
-                if debug:
+                if this_args.debug:
                     log.extend(
                         [
                             (
@@ -217,57 +242,26 @@ def multi_filter(hits: list, debug: bool) -> tuple[list, int, list]:
                                 master.qstart,
                                 master.qend,
                             )
-                            for hit in hits
+                            for hit in this_args.hits
                             if hit
                         ],
                     )
 
-                kicks = set(hit.uid for hit in hits)
+                kicks = set(hit.uid for hit in this_args.hits)
 
-                return len(hits), log, kicks
+                return len(this_args.hits), log, kicks
 
-    return len(hits) - passes, log, kicks
-
-
-def make_kick_log(hit_a: Hit, hit_b: Hit, gene: str, percent: float) -> str:
-    """Makes the log entry for internal filter.
-
-    Convenience function for running --debug
-    """
-    #     gene,
-    #     hit_b.uid,
-    #     # hit_b.taxon,
-    #     hit_b.qstart,
-    #     hit_b.qend,
-    #     "Internal kicked out by",
-    #     gene,
-    #     hit_a.uid,
-    #     # hit_a.taxon,
-    #     hit_a.qstart,
-    #     hit_a.qend,
-    return "".join(
-        [
-            f"{gene}, {hit_b.uid}, {round(hit_b.score, 2)}, {hit_b.qstart}, ",
-            f"{hit_b.qend} Internal kicked out by {gene}, {hit_a.uid}, ",
-            f"{round(hit_a.score, 2)}, {hit_a.qstart}, {hit_a.qend}, {round(percent, 3)}",
-        ],
-    )
+    return MultiReturn(len(this_args.hits) - passes, log, kicks)
 
 
 def internal_filter(
-    gene: str,
-    header_based: dict,
-    debug: bool,
-    internal_percent: float,
+    this_args: InternalArgs
 ) -> tuple[set, list, int]:
     """Filters out overlapping hits who map to the same gene.
 
     Args:
     ----
-        gene (str): The gene to filter.
-        header_based (dict): A dictionary of hits grouped by header.
-        debug (bool): Whether to print debug information.
-        internal_percent (float): The percentage of overlap required to constitute a kick.
+        this_args (InternalArgs): The arguments for the internal filter.
 
     Returns:
     -------
@@ -279,8 +273,8 @@ def internal_filter(
     kicks = itertools.count()
     this_kicks = set()
 
-    for hits in header_based.values():
-        for hit_a, hit_b in itertools.combinations(hits, 2):
+    for header_hits in this_args.this_hits:
+        for hit_a, hit_b in itertools.combinations(header_hits, 2):
             if hit_a.uid in this_kicks or hit_b.uid in this_kicks:
                 continue
 
@@ -297,85 +291,47 @@ def internal_filter(
             percent = overlap_amount / internal_length
 
             # If bp overlap and the percent of overlap is greater than or equal to the internal percent arg
-            if overlap_amount > 0 and percent >= internal_percent:
+            if overlap_amount > 0 and percent >= this_args.internal_percent:
                 # Iterate the kicks counter and set the kick attribute to True
                 next(kicks)
 
                 # Add the hit to the kicked set
                 this_kicks.add(hit_b.uid)
 
-                if debug:
+                if this_args.debug:
                     log.append(
-                        make_kick_log(hit_a, hit_b, gene, percent),
-                        #     gene,
-                        #     hit_b.uid,
-                        #     # hit_b.taxon,
-                        #     hit_b.qstart,
-                        #     hit_b.qend,
-                        #     "Internal kicked out by",
-                        #     gene,
-                        #     hit_a.uid,
-                        #     # hit_a.taxon,
-                        #     hit_a.qstart,
-                        #     hit_a.qend,
+                       "".join(
+        [
+                                f"{this_args.gene}, {hit_b.uid}, {round(hit_b.score, 2)}, {hit_b.qstart}, ",
+                                f"{hit_b.qend} Internal kicked out by {this_args.gene}, {hit_a.uid}, ",
+                                f"{round(hit_a.score, 2)}, {hit_a.qstart}, {hit_a.qend}, {round(percent, 3)}",
+                            ],
+                        )
                     )
 
-    return this_kicks, log, next(kicks)
+    return InternalReturn(this_args.gene, next(kicks), log, this_kicks)
 
 
-def internal_filtering(
-    gene: str,
-    hits: list,
-    debug: bool,
-    internal_percent: float,
-) -> tuple[str, int, list, list]:
-    """Performs the internal filter on a list of hits and returns a count of the number of hits
-    kicked, a log of the hits kicked, and the list of hits that passed the filter.
-
-    Args:
-    ----
-        gene (str): The gene that the hits belong to.
-        hits (list): The list of hits to filter.
-        debug (bool): Whether to log debug information or not.
-
-    Returns:
-    -------
-        tuple[str, int, list, list]:
-            A tuple containing the gene, the number of hits kicked, a log of the hits kicked,
-            and the list of hits that passed the filter.
-    """
-    # Perform the internal filter.
-    kicked_hits, this_log, this_kicks = internal_filter(
-        gene,
-        hits,
-        debug,
-        internal_percent,
-    )
-
-    # Return the gene, the number of hits kicked, a log of the hits kicked, and the list of hits
-    return (gene, this_kicks, this_log, kicked_hits)
-
-
-def containments(hits, target_to_taxon, debug, gene):
+def containments(this_args: ContainmentArgs):
     PARALOG_SCORE_DIFF = 0.1
     KICK_PERCENT = 0.8
-    hits.sort(key=lambda x: x.score, reverse=True)
+    this_args.hits.sort(key=lambda x: x.score, reverse=True)
 
     log = []
     kicks = set()
 
-    for i, top_hit in enumerate(hits):
+    for i, top_hit in enumerate(this_args.hits):
         if top_hit.uid in kicks:
             continue
         for top_ref_hit in top_hit.refs:
             top_hit_reference = top_ref_hit.ref
 
-            for hit in hits[i + 1 :]:
+            for hit in this_args.hits[i + 1 :]:
                 if hit.uid in kicks:
                     continue
 
                 for ref_hit in hit.refs:
-                    if target_to_taxon[ref_hit.query][1] != top_hit_reference:
+                    if this_args.target_to_taxon[ref_hit.query][1] != top_hit_reference:
                         continue
 
                     if (
@@ -396,7 +352,7 @@ def containments(hits, target_to_taxon, debug, gene):
 
                     if overlap_percent > KICK_PERCENT:
                         kicks.add(hit.uid)
-                        if debug:
+                        if this_args.debug:
                             log.append(
                                 hit.gene
                                 + " "
@@ -411,7 +367,7 @@ def containments(hits, target_to_taxon, debug, gene):
                             )
                         break
 
-    return kicks, log, gene
+    return ContainmentReturn(kicks, len(kicks), log, this_args.gene)
 
 
 def convert_and_cull(hits, gene):
@@ -494,10 +450,11 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
 
             kicks = set()
             if len(genes_present) > 1:
-                this_kicks, log, kicks = multi_filter(hits, pargs.debug)
-                multi_kicks += this_kicks
+                result = multi_filter(MultiArgs(hits, pargs.debug))
+                kicks = result.this_kicks
+                multi_kicks += result.kick_count
                 if pargs.debug:
-                    this_log.extend(log)
+                    this_log.extend(result.log)
 
             if any(hits):
                 if len(genes_present) > 1:
@@ -844,7 +801,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 this_hits = sum(i[1] for i in this_counter if i[1] > 1)
                 this_common = {i[0] for i in this_counter if i[1] > 1}
                 for hit in [i for i in hits if i.node in this_common]:
-                    requires_internal[gene].setdefault(hit.node, []).append(hit)
+                    requires_internal[gene].setdefault(hit.node ,[]).append(hit)
 
                 internal_order.append((gene, this_hits))
 
@@ -852,12 +809,12 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         if post_threads > 1:
             with Pool(post_threads) as pool:
-                internal_results = pool.starmap(
-                    internal_filtering,
+                internal_results = pool.map(
+                    internal_filter,
                     [
-                        (
+                        InternalArgs(
                             gene,
-                            requires_internal[gene],
+                            list(requires_internal[gene].values()),
                             args.debug,
                             args.internal_percent,
                         )
@@ -866,19 +823,19 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 )
         else:
             internal_results = [
-                internal_filtering(
-                    gene, requires_internal[gene], args.debug, args.internal_percent
+                internal_filter(
+                    InternalArgs(gene, list(requires_internal[gene].values()), args.debug, args.internal_percent)
                 )
                 for gene, _ in internal_order
             ]
 
         internal_kicks = 0
-        for gene, kick_count, this_log, kicked_hits in internal_results:
-            internal_kicks += kick_count
+        for result in internal_results:
+            internal_kicks += result.kick_count
             if args.debug:
-                global_log.extend(this_log)
+                global_log.extend(result.log)
 
-            output[gene] = [i for i in output[gene] if i.uid not in kicked_hits]
+            output[gene] = [i for i in output[gene] if i.uid not in result.this_kicks]
 
         next_step = (
             "Writing to db" if not is_assembly else "Doing Assembly Containments"
@@ -895,7 +852,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         if is_assembly:
             for gene, hits in output.items():
                 arguments.append(
-                    (
+                    ContainmentArgs(
                         hits,
                         target_to_taxon,
                         args.debug,
@@ -905,20 +862,20 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
             if post_threads > 1:
                 with Pool(post_threads) as pool:
-                    results = pool.starmap(containments, arguments)
+                    results = pool.map(containments, arguments)
             else:
-                results = [containments(*arg) for arg in arguments]
+                results = [containments(arg) for arg in arguments]
 
             next_output = []
-            for this_kicks, log, r_gene in results:
-                containment_kicks += len(this_kicks)
+            for result in results:
+                containment_kicks += result.kick_count
                 if args.debug:
-                    containment_log.extend(log)
+                    containment_log.extend(result.log)
 
                 next_output.append(
-                    (r_gene, [i for i in output[r_gene] if i.uid not in this_kicks]),
+                    (result.gene, [i for i in output[result.gene] if i.uid not in result.kicks]),
                 )
-                present_genes.append(r_gene)
+                present_genes.append(result.gene)
             output = next_output
         else:
             present_genes = list(output.keys())
@@ -994,7 +951,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
             if post_threads > 1:
                 with Pool(post_threads) as pool:
-                    output = pool.starmap(convert_and_cull, arguments)
+                    output = pool.map(convert_and_cull, arguments)
             else:
                 output = [convert_and_cull(*arg) for arg in arguments]
 
