@@ -104,6 +104,13 @@ class ContainmentReturn(Struct, frozen=True):
     log: list[str]
     gene: str
     
+class ConvertArgs(Struct, frozen=True):
+    hits: list[Hit]
+    gene: str
+
+class ConvertReturn(Struct, frozen=True):
+    gene: str
+    output: list[ReporterHit]
 
 
 def get_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
@@ -385,7 +392,7 @@ def convert_and_cull(hits, gene):
                 hit.refs,
             ),
         )
-    return gene, output
+    return ConvertReturn(gene, output)
 
 
 def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]]:
@@ -943,7 +950,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             arguments = []
             for gene, hits in output:
                 arguments.append(
-                    (
+                    ConvertArgs(
                         hits,
                         gene,
                     ),
@@ -953,13 +960,13 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 with Pool(post_threads) as pool:
                     output = pool.map(convert_and_cull, arguments)
             else:
-                output = [convert_and_cull(*arg) for arg in arguments]
+                output = [convert_and_cull(arg) for arg in arguments]
 
         passes = 0
         encoder = json.Encoder()
-        for gene, hits in output:
+        for result in output:
             out = []
-            for hit in hits:
+            for hit in result,hits:
                 if not is_assembly:
                     hit = ReporterHit(
                         hit.node,
@@ -975,7 +982,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 if hit.frame < 0:
                     hit.seq = phymmr_tools.bio_revcomp(hit.seq)
                 out.append(hit)
-                dupe_divy_headers[gene].add(hit.node)
+                dupe_divy_headers[result.gene].add(hit.node)
 
             passes += len(out)
             db.put_bytes(f"gethits:{gene}", encoder.encode(out))
