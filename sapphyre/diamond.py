@@ -966,7 +966,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         encoder = json.Encoder()
         for result in output:
             out = []
-            for hit in result,hits:
+            for hit in result.hits:
                 if not is_assembly:
                     hit = ReporterHit(
                         hit.node,
