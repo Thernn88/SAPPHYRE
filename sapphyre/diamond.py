@@ -968,7 +968,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             if is_assembly:
                 hits, gene = result.hits, result.gene
             else:
-                hits, gene = result
+                gene, hits = result
             out = []
             for hit in hits:
                 if not is_assembly:
