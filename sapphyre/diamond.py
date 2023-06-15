@@ -965,8 +965,12 @@ def run_process(args: Namespace, input_path: str) -> bool:
         passes = 0
         encoder = json.Encoder()
         for result in output:
+            if is_assembly:
+                hits, gene = result.hits, result.gene
+            else:
+                hits, gene = result
             out = []
-            for hit in result.hits:
+            for hit in hits:
                 if not is_assembly:
                     hit = ReporterHit(
                         hit.node,
@@ -982,7 +986,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 if hit.frame < 0:
                     hit.seq = phymmr_tools.bio_revcomp(hit.seq)
                 out.append(hit)
-                dupe_divy_headers[result.gene].add(hit.node)
+                dupe_divy_headers[gene].add(hit.node)
 
             passes += len(out)
             db.put_bytes(f"gethits:{gene}", encoder.encode(out))
