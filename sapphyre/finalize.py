@@ -416,32 +416,36 @@ def process_folder(args, input_path):
 
         for type_ in ["aa", "nt"]:
             log = {}
-            taxa_sequences_global = {}
+            taxa_sequences_global = defaultdict(list)
 
-            for gene in sequences[type_]:
+            for gene_i, gene in enumerate(sequences[type_]):
                 this_sequences = sequences[type_][gene]
+
+                if gene_i == 0:
+                    start = 1
+                    end = gene_lengths[type_][gene]
+                else:
+                    start = end + 1
+                    end = start + (gene_lengths[type_][gene] - 1)
+
+
                 for taxa in taxa_global:
                     if taxa not in this_sequences:
                         seq = "-" * gene_lengths[type_][gene]
                     else:
                         seq = this_sequences[taxa]
-                    if taxa not in taxa_sequences_global:
-                        start = 1
-                        taxa_sequences_global[taxa] = seq
-                        end = len(taxa_sequences_global[taxa])
-                    else:
-                        start = len(taxa_sequences_global[taxa]) + 1
-                        taxa_sequences_global[taxa] += seq
-                        end = len(taxa_sequences_global[taxa])
+
+                    taxa_sequences_global[taxa].append(seq)
+
                 log[gene] = (start, end)
 
             output_fas = processed_folder.joinpath(no_suffix + f".{type_}.fas")
             output_nex = processed_folder.joinpath(no_suffix + f".{type_}.nex")
 
             with open(output_fas, "w", encoding="UTF-8") as fp:
-                for taxa in taxa_sequences_global:
+                for taxa, taxa_contig_sequence in taxa_sequences_global.items():
                     fp.write(">" + taxa + "\n")
-                    fp.write(taxa_sequences_global[taxa] + "\n")
+                    fp.write("".join(taxa_contig_sequence) + "\n")
 
             with open(output_nex, "w", encoding="UTF-8") as fp:
                 fp.write("#nexus\nbegin sets;\n")
