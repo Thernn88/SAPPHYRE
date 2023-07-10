@@ -33,6 +33,7 @@ class GeneConfig:
     target: set
     verbose: int
     count_taxa: bool
+    gene_kick: float
 
 
 def kick_taxa(content: list[tuple, tuple], to_kick: set) -> list:
@@ -162,6 +163,25 @@ def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict) -> tup
     return new_aa_content, new_nt_content
 
 
+def get_taxa_total(aa_content):
+    taxa_set = set()
+    for header, _ in aa_content:
+        if not header.endswith("."):
+            taxa = header.split("|")[2]
+            taxa_set.add(taxa)
+
+    return len(taxa_set)
+
+
+def kick_gene(content, minimum_percentage, global_total_taxa):
+    present_taxa = set()
+    for header, _ in content:
+        if not header.endswith("."):
+            taxa = header.split("|")[2]
+            present_taxa.add(taxa)
+
+    return (len(present_taxa) / global_total_taxa) <= minimum_percentage
+
 def clean_gene(gene_config: GeneConfig):
     printv(f"Doing: {gene_config.gene}", gene_config.verbose, 2)
     aa_content = parseFasta(str(gene_config.aa_file))
@@ -189,6 +209,17 @@ def clean_gene(gene_config: GeneConfig):
         )
         nt_content = align_kick_nt(nt_content, cols_to_kick, aa_kicks)
 
+    gk_kicked_genes = set()
+    if gene_config.gene_kick:
+        if not gene_config.kick_columns or not gene_config.to_kick or not gene_config.rename or not gene_config.stopcodon:
+            # aa_content is still a generator
+            aa_content = list(aa_content)
+
+        total_taxa = get_taxa_total(aa_content)
+
+        if kick_gene(aa_content, gene_config.gene_kick, total_taxa):
+            gk_kicked_genes.add(gene_config.gene)
+
     processed_folder = gene_config.taxa_folder.joinpath("Processed")
 
     on_target = Path(processed_folder).joinpath("Target")
@@ -204,7 +235,7 @@ def clean_gene(gene_config: GeneConfig):
     taxon_count = {}
     gene_taxon_to_taxa = {}
 
-    if gene_config.gene in gene_config.target or not gene_config.sort:
+    if (gene_config.gene in gene_config.target or not gene_config.sort) and (gene_config.gene not in gk_kicked_genes):
         if gene_config.count_taxa:
             taxon_count, gene_taxon_to_taxa = taxon_present(aa_content)
 
@@ -332,6 +363,7 @@ def process_folder(args, input_path):
             target,
             args.verbose,
             args.count,
+            args.gene_kick,
         )
         arguments.append((this_config,))
 

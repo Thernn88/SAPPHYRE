@@ -609,6 +609,13 @@ def subcmd_finalize(subparsers):
         nargs="+",
     )
     par.add_argument(
+        "-gk",
+        "--gene_kick",
+        type=float,
+        default=0,
+        help="Adjustable value for gene kick.",
+    )
+    par.add_argument(
         "-k",
         "--kick_file",
         type=str,
