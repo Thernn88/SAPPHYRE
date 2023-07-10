@@ -367,8 +367,11 @@ def process_folder(args, input_path):
         )
         arguments.append((this_config,))
 
-    with Pool(args.processes) as pool:
-        to_write = pool.starmap(clean_gene, arguments, chunksize=1)
+    if args.processes > 1:
+        with Pool(args.processes) as pool:
+            to_write = pool.starmap(clean_gene, arguments, chunksize=1)
+    else:
+        to_write = [clean_gene(argument[0]) for argument in arguments]
 
     if args.count and not args.concat:
         total = defaultdict({"p": 0, "bp": 0}.copy)
