@@ -19,8 +19,7 @@ NT_REPLACE = "N"
 @dataclass
 class GeneConfig:
     gene: str
-    kick_columns: bool
-    kick_percentage: float
+    kick_columns: float
     minimum_bp: int
     stopcodon: bool
     rename: bool
@@ -180,6 +179,9 @@ def kick_gene(content, minimum_percentage, global_total_taxa):
             taxa = header.split("|")[2]
             present_taxa.add(taxa)
 
+    if len(present_taxa) == 0:
+        return 0 <= minimum_percentage
+
     return (len(present_taxa) / global_total_taxa) <= minimum_percentage
 
 def clean_gene(gene_config: GeneConfig):
@@ -204,7 +206,7 @@ def clean_gene(gene_config: GeneConfig):
     if gene_config.kick_columns:
         aa_content, aa_kicks, cols_to_kick = kick_empty_columns(
             aa_content,
-            gene_config.kick_percentage,
+            gene_config.kick_columns,
             gene_config.minimum_bp,
         )
         nt_content = align_kick_nt(nt_content, cols_to_kick, aa_kicks)
@@ -349,8 +351,7 @@ def process_folder(args, input_path):
         nt_file = nt_folder.joinpath(makent(gene))
         this_config = GeneConfig(
             gene,
-            args.kick_columns,
-            args.kick_percentage if args.kick_percentage <= 1 else args.kick_percentage / 100,
+            args.kick_columns if args.kick_columns <= 1 else args.kick_columns / 100,
             args.minimum_bp,
             args.stopcodon,
             args.rename,

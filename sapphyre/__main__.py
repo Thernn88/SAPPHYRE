@@ -631,8 +631,8 @@ def subcmd_finalize(subparsers):
     )
     par.add_argument("-n", "--names_csv", type=str, default="names.csv", help="Percent")
     par.add_argument(
-        "-kp",
-        "--kick_percentage",
+        "-kc",
+        "--kick_columns",
         type=float,
         default=0.85,
         help="Adjustable value for kick columns. Float value of minimum percentage of non-gap characters",
@@ -661,12 +661,6 @@ def subcmd_finalize(subparsers):
         "--kick_taxa",
         action="store_true",
         help="Kick taxa present in kick file provided.",
-    )
-    par.add_argument(
-        "-kc",
-        "--kick_columns",
-        action="store_true",
-        help="Kick columns based on amount of gap characters.",
     )
     par.add_argument(
         "-stop",
