@@ -375,7 +375,6 @@ def process_folder(args, input_path):
     for gene, taxa_local, aa_content, nt_content, taxon_count, gene_taxon_to_taxa, path_to in to_write:
         if args.gene_kick:
             if kick_gene(taxa_local, gene_kick, taxa_global):
-                print(f"Kicking {gene}, {len(taxa_local)}/{len(taxa_global)}")
                 aa_path, nt_path = path_to
                 os.remove(aa_path) # TODO Can do this better
                 os.remove(nt_path)
