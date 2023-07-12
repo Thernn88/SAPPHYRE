@@ -367,6 +367,11 @@ def process_folder(args, input_path):
         taxa_global.update(taxa_local)
     gene_kick = args.gene_kick if args.gene_kick <= 1 else (args.gene_kick / 100)
 
+    sequences = {"aa": defaultdict(dict), "nt": defaultdict(dict)}
+    gene_lengths = defaultdict(dict)
+    total = defaultdict({"p": 0, "bp": 0}.copy)
+    taxon_to_taxa = {}
+
     for gene, taxa_local, aa_content, nt_content, taxon_count, gene_taxon_to_taxa, path_to in to_write:
         if args.gene_kick:
             if kick_gene(taxa_local, gene_kick, taxa_global):
@@ -375,25 +380,13 @@ def process_folder(args, input_path):
                 os.remove(aa_path) # TODO Can do this better
                 os.remove(nt_path)
                 continue
-        if args.count and not args.concat:
-            total = defaultdict({"p": 0, "bp": 0}.copy)
-            taxon_to_taxa = {}
+        if args.count:
             taxon_to_taxa.update(gene_taxon_to_taxa)
             for taxon, count in taxon_count.items():
                 total[taxon]["p"] += count["p"]
                 total[taxon]["bp"] += count["bp"]
 
         if args.concat:
-            sequences = {"aa": defaultdict(dict), "nt": defaultdict(dict)}
-            gene_lengths = defaultdict(dict)
-
-            total = defaultdict({"p": 0, "bp": 0}.copy)
-            taxon_to_taxa = {}
-            
-            taxon_to_taxa.update(gene_taxon_to_taxa)
-            for taxon, count in taxon_count.items():
-                total[taxon]["p"] += count["p"]
-                total[taxon]["bp"] += count["bp"]
             this_gene_global_length = 0
 
             for i, (header, sequence) in enumerate(aa_content):
@@ -412,54 +405,55 @@ def process_folder(args, input_path):
                 taxon = header.split("|")[1]
                 sequences["nt"][gene][taxon] = sequence
 
-            for type_ in ["aa", "nt"]:
-                log = {}
-                taxa_sequences_global = defaultdict(list)
+    if args.concat:
+        for type_ in ["aa", "nt"]:
+            log = {}
+            taxa_sequences_global = defaultdict(list)
 
-                for gene_i, gene in enumerate(sequences[type_]):
-                    this_sequences = sequences[type_][gene]
+            for gene_i, gene in enumerate(sequences[type_]):
+                this_sequences = sequences[type_][gene]
 
-                    if gene_i == 0:
-                        start = 1
-                        end = gene_lengths[type_][gene]
+                if gene_i == 0:
+                    start = 1
+                    end = gene_lengths[type_][gene]
+                else:
+                    start = end + 1
+                    end = start + (gene_lengths[type_][gene] - 1)
+
+
+                for taxa in taxa_global:
+                    if taxa not in this_sequences:
+                        seq = "-" * gene_lengths[type_][gene]
                     else:
-                        start = end + 1
-                        end = start + (gene_lengths[type_][gene] - 1)
+                        seq = this_sequences[taxa]
 
+                    taxa_sequences_global[taxa].append(seq)
 
-                    for taxa in taxa_global:
-                        if taxa not in this_sequences:
-                            seq = "-" * gene_lengths[type_][gene]
-                        else:
-                            seq = this_sequences[taxa]
+                log[gene] = (start, end)
 
-                        taxa_sequences_global[taxa].append(seq)
+            output_fas = processed_folder.joinpath(no_suffix + f".{type_}.fas")
+            output_nex = processed_folder.joinpath(no_suffix + f".{type_}.nex")
 
-                    log[gene] = (start, end)
+            with open(output_fas, "w", encoding="UTF-8") as fp:
+                for taxa, taxa_contig_sequence in taxa_sequences_global.items():
+                    fp.write(">" + taxa + "\n")
+                    fp.write("".join(taxa_contig_sequence) + "\n")
 
-                output_fas = processed_folder.joinpath(no_suffix + f".{type_}.fas")
-                output_nex = processed_folder.joinpath(no_suffix + f".{type_}.nex")
+            with open(output_nex, "w", encoding="UTF-8") as fp:
+                fp.write("#nexus\nbegin sets;\n")
+                for gene in log:
+                    start, end = log[gene]
+                    fp.write(f"CHARSET {gene} = {start}-{end} ;\n")
 
-                with open(output_fas, "w", encoding="UTF-8") as fp:
-                    for taxa, taxa_contig_sequence in taxa_sequences_global.items():
-                        fp.write(">" + taxa + "\n")
-                        fp.write("".join(taxa_contig_sequence) + "\n")
+                fp.write("end;\n")
+    if args.count:
+        out = ["Taxa,Taxon,Present,Total AA"]
 
-                with open(output_nex, "w", encoding="UTF-8") as fp:
-                    fp.write("#nexus\nbegin sets;\n")
-                    for gene in log:
-                        start, end = log[gene]
-                        fp.write(f"CHARSET {gene} = {start}-{end} ;\n")
+        for taxon, total_taxa in total.items():
+            out.append(f"{taxon_to_taxa.get(taxon, '')},{taxon},{total_taxa['p']},{total_taxa['bp']}")
 
-                    fp.write("end;\n")
-        if args.count:
-            out = ["Taxa,Taxon,Present,Total AA"]
-
-            for taxon, total_taxa in total.items():
-                out.append(f"{taxon_to_taxa.get(taxon, '')},{taxon},{total_taxa['p']},{total_taxa['bp']}")
-
-            with open(str(processed_folder.joinpath("TaxaPresent.csv")), "w") as fp:
-                fp.write("\n".join(out))
+        with open(str(processed_folder.joinpath("TaxaPresent.csv")), "w") as fp:
+            fp.write("\n".join(out))
 
     printv(f"Done! Took {tk.lap():.2f}s", 1)
 
