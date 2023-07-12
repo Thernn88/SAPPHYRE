@@ -363,7 +363,7 @@ def process_folder(args, input_path):
             target,
             args.verbose,
             args.count,
-            args.gene_kick,
+            args.gene_kick if args.gene_kick <= 1 else args.gene_kick / 100,
         )
         arguments.append((this_config,))
 
