@@ -362,9 +362,10 @@ def process_folder(args, input_path):
     else:
         to_write = [clean_gene(argument[0]) for argument in arguments]
 
+    taxa_global = set()
     for _, taxa_local, _, _, _, _, _ in to_write:
-        taxa_global = set()
         taxa_global.update(taxa_local)
+
     gene_kick = args.gene_kick if args.gene_kick <= 1 else (args.gene_kick / 100)
 
     sequences = {"aa": defaultdict(dict), "nt": defaultdict(dict)}
