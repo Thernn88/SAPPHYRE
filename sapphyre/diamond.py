@@ -377,9 +377,9 @@ def containments(this_args: ContainmentArgs):
     return ContainmentReturn(kicks, len(kicks), log, this_args.gene)
 
 
-def convert_and_cull(hits, gene):
+def convert_and_cull(this_args: ConvertArgs) -> ConvertReturn:
     output = []
-    for hit in hits:
+    for hit in this_args.hits:
         output.append(
             ReporterHit(
                 hit.node,
@@ -392,7 +392,7 @@ def convert_and_cull(hits, gene):
                 hit.refs,
             ),
         )
-    return ConvertReturn(gene, output)
+    return ConvertReturn(this_args.gene, output)
 
 
 def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]]:
