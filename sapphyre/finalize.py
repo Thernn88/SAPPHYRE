@@ -1,9 +1,13 @@
 from collections import Counter, defaultdict
+from math import ceil
 import os
 from dataclasses import dataclass
 from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import rmtree
+from bs4 import BeautifulSoup
+
+import requests
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import printv, parseFasta, writeFasta
@@ -275,6 +279,37 @@ def taxon_present(aa_content: list) -> dict:
     return taxonc_present, gene_taxon_to_taxa
 
 
+def scrape_taxa(taxas):
+    result = {}
+    for taxa in taxas:
+
+        req = requests.get(f"https://www.ncbi.nlm.nih.gov/sra/{taxa}[accn]")
+        soup = BeautifulSoup(req.content, "html.parser")
+
+        got_res = False
+        try:
+            for anchor in soup.find("div", {"id": "maincontent"}).find_all("a"):
+                if anchor.get("href", "").startswith("/Taxonomy/Browser/wwwtax.cgi?"):
+                    result[taxa] = anchor.contents[0]
+                    got_res = True
+                    break
+        except:
+            pass
+
+        if got_res:
+            continue
+
+        req = requests.get(f"https://www.ncbi.nlm.nih.gov/Traces/wgs/?page=1&view=all&search={taxa}")
+        soup = BeautifulSoup(req.content, "html.parser")
+        for anchor in soup.find("table", {"class": "geo_zebra"}).find_all("a"):
+            if anchor.get("href", "").lower() == taxa.lower():
+                for anchor_2 in anchor.parent.parent.find_all("a"):
+                    if anchor_2.get("href", "").startswith("https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?"):
+                        result[taxa] = anchor_2.contents[0]
+                break
+
+    return result
+
 def process_folder(args, input_path):
     tk = TimeKeeper(KeeperMode.DIRECT)
     taxa_folder = Path(input_path)
@@ -323,16 +358,21 @@ def process_folder(args, input_path):
                 target.add(line.strip())
 
     taxa_to_taxon = {}
+    generate_names = False
     if args.rename or args.count:
-        with open(taxa_folder.joinpath(args.names_csv), encoding="utf-8-sig") as fp:
-            for line in fp:
-                if line != "\n":
-                    parse = line.strip().split(",")
+        if args.names_csv and os.path.exists(taxa_folder.joinpath(args.names_csv)):
+            with open(taxa_folder.joinpath(args.names_csv), encoding="utf-8-sig") as fp:
+                for line in fp:
+                    if line != "\n":
+                        parse = line.strip().split(",")
 
-                    id = parse[0]
-                    name = parse[1]
+                        id = parse[0]
+                        name = parse[1]
 
-                    taxa_to_taxon[id] = name
+                        taxa_to_taxon[id] = name
+        else:
+            printv("No Names.csv file provided. Will continue and generate blank names.csv\nWARNING: Rename and Taxa Count will not run.", args.verbose)
+            generate_names = True
 
     arguments = []
     for aa_file in aa_folder.glob("*.fa"):
@@ -343,7 +383,7 @@ def process_folder(args, input_path):
             args.kick_columns if args.kick_columns <= 1 else args.kick_columns / 100,
             args.minimum_bp,
             args.stopcodon,
-            args.rename,
+            args.rename and not generate_names,
             args.sort,
             taxa_folder,
             aa_file,
@@ -352,7 +392,7 @@ def process_folder(args, input_path):
             taxa_to_taxon,
             target,
             args.verbose,
-            args.count,
+            args.count and not generate_names,
         )
         arguments.append((this_config,))
 
@@ -365,6 +405,27 @@ def process_folder(args, input_path):
     taxa_global = set()
     for _, taxa_local, _, _, _, _, _ in to_write:
         taxa_global.update(taxa_local)
+
+    if generate_names:
+        printv("Attempting to scrape names.csv", args.verbose)
+        to_scrape = list(taxa_global)
+        per_thread = ceil(len(to_scrape) / args.processes)
+        to_scrape = [to_scrape[i:i+per_thread] for i in range(0, len(to_scrape), per_thread)]
+
+        if args.processes > 1:
+            with Pool(args.processes) as pool:
+                scrape_components = pool.map(scrape_taxa, to_scrape)
+        else:
+            scrape_components = [scrape_taxa(i) for i in to_scrape]
+
+        scrape = {}
+        for component in scrape_components:
+            scrape.update(component)
+
+        with open(taxa_folder.joinpath("names.csv"), "w") as fp:
+            for taxa in to_scrape:
+                organism_name = scrape.get(taxa, "").replace(" ", "_")
+                fp.write(f"{taxa},{organism_name}\n")
 
     gene_kick = args.gene_kick if args.gene_kick <= 1 else (args.gene_kick / 100)
 
