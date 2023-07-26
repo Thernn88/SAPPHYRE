@@ -1,4 +1,5 @@
 from collections import Counter, defaultdict
+import json
 from math import ceil
 import os
 from dataclasses import dataclass
@@ -36,6 +37,7 @@ class GeneConfig:
     target: set
     verbose: int
     count_taxa: bool
+    generating_names: bool
 
 
 def kick_taxa(content: list[tuple, tuple], to_kick: set) -> list:
@@ -189,7 +191,7 @@ def clean_gene(gene_config: GeneConfig):
     if gene_config.stopcodon:
         aa_content, nt_content = stopcodon(aa_content, nt_content)
 
-    if gene_config.rename:
+    if gene_config.rename and not gene_config.generating_names:
         aa_content, nt_content = rename_taxon(
             aa_content,
             nt_content,
@@ -224,7 +226,7 @@ def clean_gene(gene_config: GeneConfig):
     gene_taxon_to_taxa = {}
 
     if (gene_config.gene in gene_config.target or not gene_config.sort):
-        if gene_config.count_taxa:
+        if gene_config.count_taxa or gene_config.generating_names:
             taxon_count, gene_taxon_to_taxa = taxon_present(aa_content)
 
         aa_target_content.extend(aa_content)
@@ -282,12 +284,10 @@ def taxon_present(aa_content: list) -> dict:
 def scrape_taxa(taxas):
     result = {}
     for taxa in taxas:
-
-        req = requests.get(f"https://www.ncbi.nlm.nih.gov/sra/{taxa}[accn]")
-        soup = BeautifulSoup(req.content, "html.parser")
-
         got_res = False
         try:
+            req = requests.get(f"https://www.ncbi.nlm.nih.gov/sra/{taxa}[accn]")
+            soup = BeautifulSoup(req.content, "html.parser")
             for anchor in soup.find("div", {"id": "maincontent"}).find_all("a"):
                 if anchor.get("href", "").startswith("/Taxonomy/Browser/wwwtax.cgi?"):
                     result[taxa] = anchor.contents[0]
@@ -299,16 +299,19 @@ def scrape_taxa(taxas):
         if got_res:
             continue
 
-        req = requests.get(f"https://www.ncbi.nlm.nih.gov/Traces/wgs/?page=1&view=all&search={taxa}")
-        soup = BeautifulSoup(req.content, "html.parser")
-        for anchor in soup.find("table", {"class": "geo_zebra"}).find_all("a"):
-            if anchor.get("href", "").lower() == taxa.lower():
-                for anchor_2 in anchor.parent.parent.find_all("a"):
-                    if anchor_2.get("href", "").startswith("https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?"):
-                        result[taxa] = anchor_2.contents[0]
-                break
+        try:
+            req = requests.get(f"https://www.ncbi.nlm.nih.gov/Traces/wgs/?page=1&view=all&search={taxa}")
+            soup = BeautifulSoup(req.content, "html.parser")
+            for anchor in soup.find("table", {"class": "geo_zebra"}).find_all("a"):
+                if anchor.get("href", "").lower() == taxa.lower():
+                    for anchor_2 in anchor.parent.parent.find_all("a"):
+                        if anchor_2.get("href", "").startswith("https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?"):
+                            result[taxa] = anchor_2.contents[0]
+                    break
+        except:
+            pass
 
-    return result
+    return json.dumps(result)
 
 def process_folder(args, input_path):
     tk = TimeKeeper(KeeperMode.DIRECT)
@@ -383,7 +386,7 @@ def process_folder(args, input_path):
             args.kick_columns if args.kick_columns <= 1 else args.kick_columns / 100,
             args.minimum_bp,
             args.stopcodon,
-            args.rename and not generate_names,
+            args.rename,
             args.sort,
             taxa_folder,
             aa_file,
@@ -392,7 +395,8 @@ def process_folder(args, input_path):
             taxa_to_taxon,
             target,
             args.verbose,
-            args.count and not generate_names,
+            args.count,
+            generate_names,
         )
         arguments.append((this_config,))
 
@@ -403,24 +407,27 @@ def process_folder(args, input_path):
         to_write = [clean_gene(argument[0]) for argument in arguments]
 
     taxa_global = set()
-    for _, taxa_local, _, _, _, _, _ in to_write:
+    to_scrape = set()
+    for _, taxa_local, _, _, _, gene_taxon_to_taxa, _ in to_write:
         taxa_global.update(taxa_local)
+        if generate_names:
+            to_scrape.update(gene_taxon_to_taxa.values())
 
     if generate_names:
         printv("Attempting to scrape names.csv", args.verbose)
-        to_scrape = list(taxa_global)
+        to_scrape = list(to_scrape)
         per_thread = ceil(len(to_scrape) / args.processes)
-        to_scrape = [to_scrape[i:i+per_thread] for i in range(0, len(to_scrape), per_thread)]
+        scrape_args = [to_scrape[i:i+per_thread] for i in range(0, len(to_scrape), per_thread)]
 
         if args.processes > 1:
             with Pool(args.processes) as pool:
-                scrape_components = pool.map(scrape_taxa, to_scrape)
+                scrape_components = pool.map(scrape_taxa, scrape_args)
         else:
-            scrape_components = [scrape_taxa(i) for i in to_scrape]
+            scrape_components = [scrape_taxa(i) for i in scrape_args]
 
         scrape = {}
         for component in scrape_components:
-            scrape.update(component)
+            scrape.update(json.loads(component))
 
         with open(taxa_folder.joinpath("names.csv"), "w") as fp:
             for taxa in to_scrape:
