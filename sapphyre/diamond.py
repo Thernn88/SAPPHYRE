@@ -110,7 +110,7 @@ class ConvertArgs(Struct, frozen=True):
 
 class ConvertReturn(Struct, frozen=True):
     gene: str
-    output: list[ReporterHit]
+    hits: list[ReporterHit]
 
 
 def get_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
@@ -965,7 +965,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         passes = 0
         encoder = json.Encoder()
         for result in output:
-            hits, gene = result.output, result.gene
+            hits, gene = result.hits, result.gene
 
             out = []
             for hit in hits:
