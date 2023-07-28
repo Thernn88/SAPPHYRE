@@ -663,6 +663,13 @@ def subcmd_finalize(subparsers):
         help="Kick taxa present in kick file provided.",
     )
     par.add_argument(
+        "-p",
+        "--position",
+        type=str,
+        default="123",
+        help="Positions of Nucleotide to keep. Any combination of 1,2,3.",
+    )
+    par.add_argument(
         "-stop",
         "--stopcodon",
         action="store_true",

@@ -224,6 +224,7 @@ def clean_gene(gene_config: GeneConfig):
     nt_target_content = []
     taxon_count = {}
     gene_taxon_to_taxa = {}
+    consensus = set()
 
     if (gene_config.gene in gene_config.target or not gene_config.sort):
         if gene_config.count_taxa or gene_config.generating_names:
@@ -526,8 +527,16 @@ def process_folder(args, input_path):
             output_fas = processed_folder.joinpath(no_suffix + f".{type_}.fas")
             output_nex = processed_folder.joinpath(no_suffix + f".{type_}.nex")
 
+            positions = None
+            if args.position != {1,2,3}:
+                positions = list(map(int, args.position))
+
             with open(output_fas, "w", encoding="UTF-8") as fp:
                 for taxa, taxa_contig_sequence in taxa_sequences_global.items():
+                    if positions and type_ == "nt":
+                        taxa_contig_sequence = "".join(taxa_contig_sequence)
+                        triplets = [taxa_contig_sequence[i:i+3] for i in range(0, len(taxa_contig_sequence), 3)]
+                        taxa_contig_sequence = ["".join([triplet[i-1] for i in positions]) for triplet in triplets]
                     fp.write(">" + taxa + "\n")
                     fp.write("".join(taxa_contig_sequence) + "\n")
 
