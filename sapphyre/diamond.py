@@ -965,7 +965,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
         passes = 0
         encoder = json.Encoder()
         for result in output:
-            hits, gene = result.hits, result.gene
+            if is_assembly:
+                hits, gene = result.hits, result.gene
+            else:
+                gene, hits = result
 
             out = []
             for hit in hits:
