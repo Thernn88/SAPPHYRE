@@ -317,22 +317,17 @@ def scrape_taxa(taxas):
                     id = req.url.split("/")[-1]
                     req = requests.get(f"https://www.ncbi.nlm.nih.gov/taxonomy?LinkName=nuccore_taxonomy&from_uid={id}")
             
-            got_res = False
             soup = BeautifulSoup(req.content, "html.parser")
-            for anchor in soup.find_all("a"):
-                if anchor.get("href", "").startswith("/Taxonomy/Browser/wwwtax.cgi?"):
-                    result[taxa] = anchor.contents[0]
-                    got_res = True
-                    break
-
-            if not got_res:
-                #Try again
-                req = requests.get(req.url, allow_redirects=True)
-                soup = BeautifulSoup(req.content, "html.parser")
+            res=False
+            for titlep in soup.find_all("p", {"class":"title"}):
                 for anchor in soup.find_all("a"):
                     if anchor.get("href", "").startswith("/Taxonomy/Browser/wwwtax.cgi?"):
                         result[taxa] = anchor.contents[0]
+                        res=True
                         break
+                if res:
+                    break
+
         except:
             pass
 
