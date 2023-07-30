@@ -299,7 +299,7 @@ def scrape_taxa(taxas):
                     got_res = True
                     break
         except:
-            pass
+            got_res = False
 
         if got_res:
             continue
@@ -329,7 +329,7 @@ def scrape_taxa(taxas):
                     break
 
         except:
-            pass
+            res = False
 
     return json.dumps(result)
 
