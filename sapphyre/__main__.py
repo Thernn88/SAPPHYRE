@@ -18,18 +18,24 @@ class CaseInsensitiveArgumentParser(argparse.ArgumentParser):
     def _parse_known_args(self, arg_strings, *args, **kwargs):
         # Iterate through the subparsers to find the command
         lower_arg_string = list(map(str.lower, arg_strings))
+        functions = []
         for action in self._actions:
             if isinstance(action, argparse._SubParsersAction):
-                subparsers = action.choices
-                for subparser in subparsers:
-                    # Check if the command matches the argument string (case-insensitive)
-                    if subparser.lower() in lower_arg_string:
-                        # Replace the argument string with the command (case-sensitive)
-                        arg_strings[
-                            lower_arg_string.index(subparser.lower())
-                        ] = subparser
-                        break
+                functions = action.choices.keys()
                 break
+        
+        for arg in lower_arg_string:
+            for subparser in functions:
+                # Check if the command matches the argument string (case-insensitive)
+                if subparser.lower() == arg:
+                    # Replace the argument string with the command (case-sensitive)
+                    arg_strings[
+                        lower_arg_string.index(subparser.lower())
+                    ] = subparser
+                    # Only replace first and only instance of command
+                    return super()._parse_known_args(arg_strings, *args, **kwargs)
+
+        # print(arg_strings)
         return super()._parse_known_args(arg_strings, *args, **kwargs)
 
 
