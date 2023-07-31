@@ -307,7 +307,7 @@ def scrape_taxa(taxas):
                     got_res = True
                     break
         except:
-            got_res = False
+            pass
 
         if got_res:
             continue
@@ -337,7 +337,7 @@ def scrape_taxa(taxas):
                     break
 
         except:
-            res = False
+            pass
 
     return json.dumps(result)
 
