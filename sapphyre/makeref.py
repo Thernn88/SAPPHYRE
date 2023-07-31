@@ -1,3 +1,5 @@
+from collections import Counter, defaultdict
+from math import ceil
 import os
 import sqlite3
 from itertools import count
@@ -8,16 +10,18 @@ from tempfile import NamedTemporaryFile
 import wrap_rocks
 from Bio import SeqIO
 from msgspec import json
+from .utils import printv
+from .timekeeper import TimeKeeper, KeeperMode
 
 
 class Sequence:
-    __slots__ = ("header", "aa_sequence", "nt_sequence", "taxa", "gene", "id")
+    __slots__ = ("header", "aa_sequence", "nt_sequence", "taxon", "gene", "id")
 
-    def __init__(self, header, aa_sequence, nt_sequence, taxa, gene, id) -> None:
+    def __init__(self, header, aa_sequence, nt_sequence, taxon, gene, id) -> None:
         self.header = header
         self.aa_sequence = aa_sequence
         self.nt_sequence = nt_sequence
-        self.taxa = taxa
+        self.taxon = taxon
         self.gene = gene
         self.id = id
 
@@ -42,22 +46,35 @@ class Sequence_Set:
 
     def get_aligned_sequences(self) -> str:
         return self.aligned_sequences
+    
+    def get_last_id(self) -> int:
+        if not self.sequences:
+            return 0
+        return self.sequences[-1].id
 
-    def get_taxa_in_set(self) -> list:
-        """Returns every taxa contained in the set."""
-        data = {}
+    def get_gene_taxon_count(self) -> Counter:
+        data = defaultdict(set)
+
+        for seq in self.sequences:
+            data[seq.taxon].add(seq.gene)
+
+        return Counter({taxon: len(genes) for taxon, genes in data.items()})
+
+    def get_taxon_in_set(self) -> list:
+        """Returns every taxon contained in the set."""
+        data = set()
         for sequence in self.sequences:
-            data[sequence.taxa] = 1
+            data.add(sequence.taxon)
 
-        return list(data.keys())
+        return list(data)
 
     def get_genes(self) -> list:
         """Returns every gene contained in the set."""
-        data = {}
+        data = set()
         for sequence in self.sequences:
-            data[sequence.gene] = 1
+            data.add(sequence.gene)
 
-        return list(data.keys())
+        return list(data)
 
     def get_gene_dict(self, raw=False) -> dict:
         """Returns a dictionary with every gene and its corresponding sequences."""
@@ -71,16 +88,16 @@ class Sequence_Set:
         return data
 
     def get_core_sequences(self) -> dict:
-        """Returns a dictionary of every gene and its corresponding taxa, headers and sequences."""
+        """Returns a dictionary of every gene and its corresponding taxon, headers and sequences."""
         core_sequences = {}
         for sequence in self.sequences:
             core_sequences.setdefault(sequence.gene, {}).setdefault("aa", []).append(
-                (sequence.taxa, sequence.header, sequence.aa_sequence),
+                (sequence.taxon, sequence.header, sequence.aa_sequence),
             )
             core_sequences.setdefault(sequence.gene, {}).setdefault("nt", [])
             if sequence.nt_sequence:
                 core_sequences[sequence.gene]["nt"].append(
-                    (sequence.taxa, sequence.header, sequence.nt_sequence),
+                    (sequence.taxon, sequence.header, sequence.nt_sequence),
                 )
 
         return core_sequences
@@ -92,26 +109,27 @@ class Sequence_Set:
 
         for seq in self.sequences:
             diamond_data.append(f">{seq.header}\n{seq.aa_sequence}\n")
-            target_to_taxon[seq.header] = seq.gene, seq.taxa, len(seq.aa_sequence)
+            target_to_taxon[seq.header] = seq.gene, seq.taxon, len(seq.aa_sequence)
 
-            taxon_to_sequences.setdefault(seq.gene, {})[seq.taxa] = seq.aa_sequence
+            taxon_to_sequences.setdefault(seq.gene, {})[seq.taxon] = seq.aa_sequence
 
         return "".join(diamond_data), target_to_taxon, taxon_to_sequences
 
     def __str__(self) -> str:
         return "".join(map(str, self.sequences))
+    
+    def absorb(self, other):
+        current_cursor = self.get_last_id() + 1
+        for i, seq in enumerate(other.sequences):
+            seq.id = current_cursor + i
+            self.sequences.append(seq)
+        for i, seq in enumerate(other.aligned_sequences):
+            seq.id = current_cursor + i
+            self.aligned_sequences[i] = seq
 
 
-def get_set_path(set_name):
-    set_path = SETS_DIR.joinpath(set_name)
-    set_path.mkdir(exist_ok=True)
-    return set_path
-
-
-def generate_aln(set: Sequence_Set, align_method, overwrite, pool):
+def generate_aln(set: Sequence_Set, align_method, overwrite, pool, verbosity, set_path):
     sequences = set.get_gene_dict()
-
-    set_path = get_set_path(set.name)
 
     aln_path = set_path.joinpath("aln")
     aln_path.mkdir(exist_ok=True)
@@ -125,6 +143,7 @@ def generate_aln(set: Sequence_Set, align_method, overwrite, pool):
                 aln_path,
                 align_method,
                 overwrite,
+                verbosity,
             ),
         )
 
@@ -134,11 +153,11 @@ def generate_aln(set: Sequence_Set, align_method, overwrite, pool):
         set.add_aligned_sequences(gene, aligned_sequences)
 
 
-def aln_function(gene, content, aln_path, align_method, overwrite):
+def aln_function(gene, content, aln_path, align_method, overwrite, verbosity):
     fa_file = aln_path.joinpath(gene + ".fa")
     aln_file = fa_file.with_suffix(".aln.fa")
     if not aln_file.exists() or overwrite:
-        print(f"Generating: {gene}")
+        printv(f"Generating: {gene}", verbosity, 2)
         with fa_file.open(mode="w") as fp:
             fp.writelines(content)
 
@@ -157,70 +176,6 @@ def aln_function(gene, content, aln_path, align_method, overwrite):
         aligned_result.append((header, seq))
 
     return gene, aligned_result
-
-
-def generate_stockholm(set: Sequence_Set, overwrite, pool):
-    aligned_sequences = set.get_aligned_sequences()
-
-    set_path = get_set_path(set.name)
-
-    aln_path = set_path.joinpath("aln")
-    aln_path.mkdir(exist_ok=True)
-
-    arguments = []
-    for gene, raw_fasta in aligned_sequences.items():
-        arguments.append(
-            (
-                aln_path,
-                gene,
-                raw_fasta,
-                overwrite,
-            ),
-        )
-
-    stockh_files = pool.starmap(f2s, arguments)
-
-    return stockh_files
-
-
-def f2s(aln_path, gene, raw_fasta, overwrite):
-    stockh_file = aln_path.joinpath(gene + ".stockh")
-    if not stockh_file.exists() or overwrite:
-        with stockh_file.open(mode="w") as fp:
-            fp.write("# STOCKHOLM 1.0\n")
-            for seq_tuple in raw_fasta:
-                header, aa_sequence = seq_tuple
-                fp.write(f"{header: <50}{aa_sequence}\n")
-            fp.write("//")
-    return (gene, stockh_file)
-
-
-def generate_hmms(set: Sequence_Set, stockh_files, overwrite, pool):
-    set_path = get_set_path(set.name)
-    hmm_path = set_path.joinpath("hmms")
-    hmm_path.mkdir(exist_ok=True)
-    arguments = []
-    for gene, stockh_file in stockh_files:
-        hmm_file = hmm_path.joinpath(gene).with_suffix(".hmm")
-
-        arguments.append(
-            (
-                stockh_file,
-                hmm_file,
-                overwrite,
-            ),
-        )
-
-    # with Pool(threads) as pool:
-    pool.starmap(hmmbuild, arguments)
-
-
-def hmmbuild(stockhfile: Path, hmm_file: Path, overwrite):
-    hmmname = hmm_file.with_suffix("").name
-
-    if not hmm_file.exists() or overwrite:
-        os.system(f"hmmbuild -n '{hmmname}' '{hmm_file}' '{stockhfile}'")
-
 
 def make_diamonddb(set: Sequence_Set, overwrite, threads):
     diamond_dir = Path(SETS_DIR, set.name, "diamond")
@@ -246,35 +201,78 @@ def make_diamonddb(set: Sequence_Set, overwrite, threads):
 
 SETS_DIR = None
 
+def generate_subset(file_paths, taxon_to_kick:set):
+    subset = Sequence_Set("subset")
+    index = count()
+    for file in file_paths:
+        for seq_record in SeqIO.parse(file, "fasta"):
+            header, data = seq_record.description.split(" ", 1)
+            data = json.decode(data)
+            seq = str(seq_record.seq)
+            taxon = data["organism_name"].replace(" ", "_")
+            if taxon not in taxon_to_kick:
+                gene = data["pub_og_id"]
+
+                subset.add_sequence(Sequence(header, seq, "", taxon, gene, next(index)))
+
+    return subset
 
 def main(args):
+    tk = TimeKeeper(KeeperMode.DIRECT)
     global SETS_DIR
     SETS_DIR = Path(args.orthoset_dir)
 
-    if not args.INPUT:
-        print("Fatal: Missing input file")
-    if not args.set:
-        print("Fatal: Missing set name (-s)")
+    verbosity = args.verbose  # 0
 
-    set_name = args.set  # "Ortholog_set_Mecopterida_v4"
+    set_name = args.set  # eg "Ortholog_set_Mecopterida_v4"
+    if not set_name:
+        printv("Fatal: Missing set name (-s)", verbosity, 0)
+        assume = os.path.basename(args.INPUT).split(".")[0].replace(" ", "_")
+        if input(f"Would you like to use the input file name as the set name? ({assume}) (y/n): ").lower() == "y":
+            set_name = assume
+        else:
+            return False
+        
+    kick = args.kick
+    if kick:
+        if not os.path.exists(kick):
+            printv(f"Warning: Kick file {kick} does not exist, Ignoring", verbosity, 0)
+            kick = None
+        else:
+            with open(kick) as fp:
+                kick = set(fp.read().split("\n"))
+            printv(f"Found {len(kick)} taxon to kick.", verbosity)
+        
     input_file = args.INPUT  # "Ortholog_set_Mecopterida_v4.sqlite"
+    if not input_file or not os.path.exists(input_file):
+        printv("Fatal: Input file not defined or does not exist (-i)", verbosity, 0)
+        return False
     align_method = args.align_method  # "clustal"
     threads = args.processes  # 2
     overwrite = args.overwrite  # False
+    do_align = args.align or args.all
+    do_count = args.count or args.all
+    do_diamond = args.diamond or args.all
     this_set = Sequence_Set(set_name)
 
     index = count()
 
+    set_path = SETS_DIR.joinpath(set_name)
+    set_path.mkdir(exist_ok=True)
+
     if input_file.split(".")[-1] == "fa":
+        printv("Input Detected: Single fasta", verbosity)
         for seq_record in SeqIO.parse(input_file, "fasta"):
             header, data = seq_record.description.split(" ", 1)
             data = json.decode(data)
             seq = str(seq_record.seq)
-            taxa = data["organism_name"].replace(" ", "_")
-            gene = data["pub_og_id"]
+            taxon = data["organism_name"].replace(" ", "_")
+            if taxon not in kick:
+                gene = data["pub_og_id"]
 
-            this_set.add_sequence(Sequence(header, seq, "", taxa, gene, next(index)))
-    else:
+                this_set.add_sequence(Sequence(header, seq, "", taxon, gene, next(index)))
+    elif input_file.split(".")[-1] in {"sql", "sqlite", "sqlite3", "db", "db3", "s3db", "sl3"}:
+        printv("Input Detected: Legacy SQL database", verbosity)
         input_path = Path(input_file)
         if not input_path.exists():
             input_path = SETS_DIR.joinpath(input_file)
@@ -305,36 +303,60 @@ def main(args):
 
         for row in rows:
             nt_seq = None
-            nt_id, taxa, gene, header, aa_seq, id = row
-            if nt_id in nt_data:
-                nt_seq = nt_data[nt_id]
-            this_set.add_sequence(Sequence(header, aa_seq, nt_seq, taxa, gene, id))
+            nt_id, taxon, gene, header, aa_seq, id = row
+            if taxon not in kick:
+                if nt_id in nt_data:
+                    nt_seq = nt_data[nt_id]
+                this_set.add_sequence(Sequence(header, aa_seq, nt_seq, taxon, gene, id))
+    else:
+        printv("Input Detected: Folder containing Fasta", verbosity)
+        file_paths = []
+        for file in os.listdir(input_file):
+            if file.endswith(".fa"):
+                file_paths.append(os.path.join(input_file, file))
 
-    with Pool(threads) as pool:
-        print("Generating aln")
-        generate_aln(this_set, align_method, overwrite, pool)
+        per_thread = ceil(len(file_paths) / threads)
+        distributed_files = [(file_paths[i: i + per_thread], kick,) for i in range(0, len(file_paths), per_thread)]
 
-        print("Creating HMM's Stockholm Alignment Files")
-        stockh_files = generate_stockholm(this_set, overwrite, pool)
+        printv(f"Generating {threads} subsets containing {per_thread} fasta files each", verbosity)
+        with Pool(threads) as pool:
+            subsets = pool.starmap(generate_subset, distributed_files)
 
-        print("Generating Hmms")
-        generate_hmms(this_set, stockh_files, overwrite, pool)
+        printv("Merging subsets", verbosity)
+        for subset in subsets:
+            this_set.absorb(subset)
 
-    print("Making Diamond DB")
-    target_to_taxon, taxon_to_sequences = make_diamonddb(this_set, overwrite, threads)
+    if do_count:
+        printv("Generating taxon stats", verbosity)
+        with open(os.path.join(set_path, "taxon_stats.csv"), "w") as fp:
+            fp.write("taxon,count\n")
+            counter = this_set.get_gene_taxon_count()
 
-    print("Writing to DB")
-    rocks_db_path = get_set_path(set_name).joinpath("rocksdb")
+            for taxon, tcount in counter.most_common():
+                fp.write(f"{taxon},{tcount}\n")
+
+    if do_align:
+        with Pool(threads) as pool:
+            printv("Generating aln", verbosity)
+            generate_aln(this_set, align_method, overwrite, pool, verbosity, set_path)
+
+    if do_diamond:
+        printv("Making Diamond DB", verbosity)
+        target_to_taxon, taxon_to_sequences = make_diamonddb(this_set, overwrite, threads)
+
+    printv("Writing to RocksDB", verbosity, 1)
+    rocks_db_path = set_path.joinpath("rocksdb")
     rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
 
     encoder = json.Encoder()
-    rocksdb_db.put_bytes("getall:taxainset", encoder.encode(this_set.get_taxa_in_set()))
+    rocksdb_db.put_bytes("getall:taxoninset", encoder.encode(this_set.get_taxon_in_set()))
 
-    rocksdb_db.put_bytes("getall:refseqs", encoder.encode(taxon_to_sequences))
-    rocksdb_db.put_bytes("getall:targetreference", encoder.encode(target_to_taxon))
+    if do_diamond:
+        rocksdb_db.put_bytes("getall:refseqs", encoder.encode(taxon_to_sequences))
+        rocksdb_db.put_bytes("getall:targetreference", encoder.encode(target_to_taxon))
 
     for gene, data in this_set.get_core_sequences().items():
         rocksdb_db.put_bytes(f"getcore:{gene}", encoder.encode(data))
 
-    print("Done!")
+    printv(f"Done! Took {tk.differential():.2f}s", verbosity, 1)
     return True

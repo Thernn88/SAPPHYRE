@@ -766,7 +766,42 @@ def subcmd_makeref(sp):
     par.add_argument(
         "INPUT",
         type=str,
-        help="Input file for current set (Either .fa or .sqlite)",
+        help="Input file for current set (Either folder containing .fa, .fa or .sqlite)",
+    )
+    par.add_argument(
+        "-aln",
+        "--align",
+        action="store_true",
+        help="Align sequences using align method.",
+        default = False,
+    )
+    par.add_argument(
+        "-ct",
+        "--count",
+        action="store_true",
+        help="Count taxon in each gene and output to csv file.",
+        default = False,
+    )
+    par.add_argument(
+        "-k",
+        "--kick",
+        type=str,
+        help="Kick taxon present in kick file provided.",
+        default = None,
+    )
+    par.add_argument(
+        "-d",
+        "--diamond",
+        action="store_true",
+        help="Generate diamond database.",
+        default = False,
+    )
+    par.add_argument(
+        "-all",
+        "--all",
+        action="store_true",
+        help="Run all necessary steps.",
+        default = False,
     )
     par.add_argument(
         "-m",
