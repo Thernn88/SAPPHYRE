@@ -177,6 +177,10 @@ def get_taxon_total(aa_content):
     return len(taxon_set)
 
 
+def taxon_only(content):
+    return [(header.split("|")[1],sequence) for header, sequence in content]
+
+
 def kick_gene(present_taxa, minimum_percentage, global_total_taxon):
     if len(present_taxa) == 0:
         return 0 <= minimum_percentage
@@ -239,6 +243,10 @@ def clean_gene(gene_config: GeneConfig):
     else:
         aa_path = str(off_target_aa.joinpath(gene_config.aa_file.name))
         nt_path = str(off_target_nt.joinpath(gene_config.nt_file.name))
+
+    if gene_config.rename and not gene_config.generating_names:
+        aa_content = taxon_only(aa_content)
+        nt_content = taxon_only(nt_content)
 
     writeFasta(aa_path, aa_content)
     writeFasta(nt_path, nt_content)
