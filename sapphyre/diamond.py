@@ -554,25 +554,33 @@ def run_process(args: Namespace, input_path: str) -> bool:
         "diamond",
         orthoset + ".dmnd",
     )
-    # Potato brain check
+    # Legacy db check
     if not os.path.exists(orthoset_db_path) or not os.path.exists(diamond_db_path):
-        if (
-            input(
-                f"Could not find orthoset DB at {orthoset_db_path}. Would you like to generate it? Y/N: ",
-            ).lower()
-            == "y"
-        ):
-            print("Attempting to generate DB")
-            os.system(
-                f"python3 -m sapphyre -p {num_threads} Makeref {orthoset}.sqlite -s {orthoset}",
-            )
-        else:
+        gen = False
+        if os.path.exists(f"{orthoset}.sqlite"):
+            if (
+                input(
+                    f"Could not find orthoset DB at {orthoset_db_path}.\nDetected legacy orthoset: {orthoset}.sqlite\nWould you like to generate new Orthoset DB? Y/N: ",
+                ).lower()
+                == "y"
+            ):
+                print("Attempting to generate DB")
+                os.system(
+                    f"python3 -m sapphyre -p {num_threads} Makeref {orthoset}.sqlite -s {orthoset} -all",
+                )
+                gen = True
+        if not gen:
             print("Aborting")
-            sys.exit(1)
+            return False
     orthoset_db = wrap_rocks.RocksDB(orthoset_db_path)
 
+    target_to_taxon_raw = orthoset_db.get_bytes("getall:targetreference")
+    if not target_to_taxon_raw:
+        print("Diamond DB is missing data. Try regenerating your diamond DB using 'Makeref --diamond'.")
+        return False
+
     target_to_taxon = json.decode(
-        orthoset_db.get_bytes("getall:targetreference"),
+        target_to_taxon_raw,
         type=dict[str, list[str | int]],
     )
 
