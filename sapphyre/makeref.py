@@ -163,7 +163,7 @@ def aln_function(gene, content, aln_path, align_method, overwrite, verbosity):
 
         if align_method == "clustal":
             os.system(
-                f"clustalo -i '{fa_file}' -o '{aln_file}'  --full --iter=5 --full-iter --threads=4 --force",
+                f"clustalo -i '{fa_file}' -o '{aln_file}'  --full --iter=5 --full-iter --threads=1 --force",
             )  # --verbose
         else:
             os.system(f"mafft-linsi '{fa_file}' > '{aln_file}'")
