@@ -640,8 +640,8 @@ def subcmd_finalize(subparsers):
         "-kc",
         "--kick_columns",
         type=float,
-        default=0.85,
-        help="Adjustable value for kick columns. Float value of minimum percentage of non-gap characters",
+        default=0.5,
+        help="Adjustable value for kick columns. Float value of minimum percentage of non-gap characters to constitute a kick",
     )
     par.add_argument(
         "-mb",
