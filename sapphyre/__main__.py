@@ -657,6 +657,12 @@ def subcmd_finalize(subparsers):
         help="Sort taxa based on target file provided.",
     )
     par.add_argument(
+        "-no-ref",
+        "--no-references",
+        action="store_true",
+        help="Exclude reference sequences from output.",
+    )
+    par.add_argument(
         "-ct",
         "--count",
         action="store_true",

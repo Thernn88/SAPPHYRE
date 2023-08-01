@@ -38,6 +38,7 @@ class GeneConfig:
     verbose: int
     count_taxa: bool
     generating_names: bool
+    no_references: bool
 
 
 def kick_taxa(content: list[tuple, tuple], to_kick: set) -> list:
@@ -213,6 +214,10 @@ def clean_gene(gene_config: GeneConfig):
             gene_config.minimum_bp,
         )
         nt_content = align_kick_nt(nt_content, cols_to_kick, aa_kicks)
+
+    if gene_config.no_references:
+        aa_content = [i for i in aa_content if not i[0].endswith(".")]
+        nt_content = [i for i in nt_content if not i[0].endswith(".")]
 
     processed_folder = gene_config.taxa_folder.joinpath("Processed")
 
@@ -406,6 +411,7 @@ def process_folder(args, input_path):
             args.verbose,
             args.count,
             generate_names,
+            args.no_references,
         )
         arguments.append((this_config,))
 
