@@ -1,4 +1,5 @@
 from collections import Counter, defaultdict
+from functools import cached_property
 from math import ceil
 import os
 import sqlite3
@@ -25,6 +26,9 @@ class Sequence:
         self.gene = gene
         self.id = id
 
+    def raw_seq(self):
+        return self.aa_sequence.replace("-", "")
+
     def to_tuple(self):
         return self.header, self.aa_sequence
 
@@ -37,11 +41,14 @@ class Sequence_Set:
         self.name = name
         self.sequences = []
         self.aligned_sequences = {}
+        self.has_aligned = False
 
     def add_sequence(self, seq: Sequence) -> None:
         self.sequences.append(seq)
 
-    def add_aligned_sequences(self, gene: str, aligned_sequences: str) -> None:
+    def add_aligned_sequences(self, gene: str, aligned_sequences: list[Sequence]) -> None:
+        if not self.has_aligned:
+            self.has_aligned = True
         self.aligned_sequences[gene] = aligned_sequences
 
     def get_aligned_sequences(self) -> str:
@@ -75,7 +82,7 @@ class Sequence_Set:
             data.add(sequence.gene)
 
         return list(data)
-
+    
     def get_gene_dict(self, raw=False) -> dict:
         """Returns a dictionary with every gene and its corresponding sequences."""
         data = {}
@@ -90,16 +97,17 @@ class Sequence_Set:
     def get_core_sequences(self) -> dict:
         """Returns a dictionary of every gene and its corresponding taxon, headers and sequences."""
         core_sequences = {}
-        for sequence in self.sequences:
+        from_sequence_list = self.aligned_sequences.values() if self.has_aligned else self.sequences
+        for sequence in from_sequence_list:
             core_sequences.setdefault(sequence.gene, {}).setdefault("aa", []).append(
-                (sequence.taxon, sequence.header, sequence.aa_sequence),
+                (sequence.taxon, sequence.header, sequence.aa_sequence if not self.has_aligned else sequence.get_raw()),
             )
             core_sequences.setdefault(sequence.gene, {}).setdefault("nt", [])
             if sequence.nt_sequence:
                 core_sequences[sequence.gene]["nt"].append(
-                    (sequence.taxon, sequence.header, sequence.nt_sequence),
+                    (sequence.taxon, sequence.header, sequence.aa_sequence if not self.has_aligned else sequence.get_raw()),
                 )
-
+    
         return core_sequences
 
     def get_diamond_data(self):
@@ -107,8 +115,10 @@ class Sequence_Set:
         target_to_taxon = {}
         taxon_to_sequences = {}
 
-        for seq in self.sequences:
-            diamond_data.append(f">{seq.header}\n{seq.aa_sequence}\n")
+        from_sequence_list = self.aligned_sequences.values() if self.has_aligned else self.sequences
+        for seq in from_sequence_list:
+            aaseq = seq.raw_seq() if self.has_aligned else seq.aa_sequence
+            diamond_data.append(f">{seq.header}\n{aaseq}\n")
             target_to_taxon[seq.header] = seq.gene, seq.taxon, len(seq.aa_sequence)
 
             taxon_to_sequences.setdefault(seq.gene, {})[seq.taxon] = seq.aa_sequence
@@ -128,11 +138,31 @@ class Sequence_Set:
             self.aligned_sequences[i] = seq
 
 
-def generate_aln(set: Sequence_Set, align_method, overwrite, pool, verbosity, set_path):
-    sequences = set.get_gene_dict()
+def cull(sequences, percent):
+    msa_length = len(sequences[0][1])
+
+    for i in range(msa_length):
+        cull_start = i
+        if sum([1 for seq in sequences if seq[1][i] != '-']) / len(sequences) >= percent:
+            break
+
+    for i in range(msa_length-1, 0, -1):
+        cull_end = i
+        if sum([1 for seq in sequences if seq[1][i] != '-']) / len(sequences) >= percent:
+            break
+
+    sequences = [(seq[0], seq[1][cull_start:cull_end+1]) for seq in sequences]
+
+    return sequences
+
+def generate_aln(set: Sequence_Set, align_method, overwrite, pool, verbosity, set_path, do_cull, cull_percent):
+    sequences = set.get_gene_dict(True).copy()
 
     aln_path = set_path.joinpath("aln")
     aln_path.mkdir(exist_ok=True)
+
+    raw_path = set_path.joinpath("raw")
+    raw_path.mkdir(exist_ok=True)
 
     arguments = []
     for gene, fasta in sequences.items():
@@ -140,10 +170,13 @@ def generate_aln(set: Sequence_Set, align_method, overwrite, pool, verbosity, se
             (
                 gene,
                 fasta,
+                raw_path,
                 aln_path,
                 align_method,
                 overwrite,
                 verbosity,
+                do_cull,
+                cull_percent,
             ),
         )
 
@@ -153,29 +186,41 @@ def generate_aln(set: Sequence_Set, align_method, overwrite, pool, verbosity, se
         set.add_aligned_sequences(gene, aligned_sequences)
 
 
-def aln_function(gene, content, aln_path, align_method, overwrite, verbosity):
-    fa_file = aln_path.joinpath(gene + ".fa")
-    aln_file = fa_file.with_suffix(".aln.fa")
+def aln_function(gene, sequences, raw_path, aln_path, align_method, overwrite, verbosity, do_cull, cull_percent):
+    raw_fa_file = raw_path.joinpath(gene + ".fa")
+    aln_file = aln_path.joinpath(gene + ".aln.fa")
     if not aln_file.exists() or overwrite:
         printv(f"Generating: {gene}", verbosity, 2)
-        with fa_file.open(mode="w") as fp:
-            fp.writelines(content)
+        with raw_fa_file.open(mode="w") as fp:
+            fp.write("".join(map(str, sequences)))
 
         if align_method == "clustal":
             os.system(
-                f"clustalo -i '{fa_file}' -o '{aln_file}'  --full --iter=5 --full-iter --threads=1 --force",
+                f"clustalo -i '{raw_fa_file}' -o '{aln_file}'  --full --iter=5 --full-iter --threads=1 --force",
             )  # --verbose
         else:
-            os.system(f"mafft-linsi '{fa_file}' > '{aln_file}'")
+            os.system(f"mafft-linsi '{raw_fa_file}' > '{aln_file}'")
 
     aligned_result = []
-    file = aln_file if aln_file.exists() else fa_file  # No alignment required
+    aligned_dict = {}
+    file = aln_file if aln_file.exists() else raw_fa_file  # No alignment required
     for seq_record in SeqIO.parse(file, "fasta"):
         header = seq_record.description
         seq = str(seq_record.seq)
+        if not do_cull:
+            aligned_dict[header] = seq
+            continue
         aligned_result.append((header, seq))
 
-    return gene, aligned_result
+    if do_cull:
+        aligned_result = cull(aligned_result, cull_percent)
+        for header, seq in aligned_result:
+            aligned_dict[header] = seq
+
+    for seq in sequences:
+        seq.aa_sequence = aligned_dict[seq.header]
+
+    return gene, sequences
 
 def make_diamonddb(set: Sequence_Set, overwrite, threads):
     diamond_dir = Path(SETS_DIR, set.name, "diamond")
@@ -237,13 +282,16 @@ def main(args):
     if kick:
         if not os.path.exists(kick):
             printv(f"Warning: Kick file {kick} does not exist, Ignoring", verbosity, 0)
-            kick = None
+            kick = set()
         else:
             with open(kick) as fp:
                 kick = set(fp.read().split("\n"))
             printv(f"Found {len(kick)} taxon to kick.", verbosity)
+    else:
+        kick = set()
         
     input_file = args.INPUT  # "Ortholog_set_Mecopterida_v4.sqlite"
+    print(input_file)
     if not input_file or not os.path.exists(input_file):
         printv("Fatal: Input file not defined or does not exist (-i)", verbosity, 0)
         return False
@@ -253,6 +301,8 @@ def main(args):
     do_align = args.align or args.all
     do_count = args.count or args.all
     do_diamond = args.diamond or args.all
+    cull_percent = args.cull_percent
+    do_cull = cull_percent != 1
     this_set = Sequence_Set(set_name)
 
     index = count()
@@ -335,10 +385,10 @@ def main(args):
             for taxon, tcount in counter.most_common():
                 fp.write(f"{taxon},{tcount}\n")
 
-    if do_align:
+    if do_align or do_cull:
         with Pool(threads) as pool:
             printv("Generating aln", verbosity)
-            generate_aln(this_set, align_method, overwrite, pool, verbosity, set_path)
+            generate_aln(this_set, align_method, overwrite, pool, verbosity, set_path, do_cull, cull_percent)
 
     if do_diamond:
         printv("Making Diamond DB", verbosity)
