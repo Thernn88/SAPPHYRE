@@ -788,7 +788,7 @@ def subcmd_makeref(sp):
         help="Count taxon in each gene and output to csv file.",
         default = False,
     )
-    parser.add_argument(
+    par.add_argument(
         "-cp",
         "--cull_percent",
         help="Percentage of non-gap characters required (percent of non gap characters >= this arg)",

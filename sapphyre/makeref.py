@@ -97,15 +97,15 @@ class Sequence_Set:
     def get_core_sequences(self) -> dict:
         """Returns a dictionary of every gene and its corresponding taxon, headers and sequences."""
         core_sequences = {}
-        from_sequence_list = self.aligned_sequences.values() if self.has_aligned else self.sequences
+        from_sequence_list = [item for sublist in self.aligned_sequences.values() for item in sublist] if self.has_aligned else self.sequences
         for sequence in from_sequence_list:
             core_sequences.setdefault(sequence.gene, {}).setdefault("aa", []).append(
-                (sequence.taxon, sequence.header, sequence.aa_sequence if not self.has_aligned else sequence.get_raw()),
+                (sequence.taxon, sequence.header, sequence.aa_sequence if not self.has_aligned else sequence.raw_seq()),
             )
             core_sequences.setdefault(sequence.gene, {}).setdefault("nt", [])
             if sequence.nt_sequence:
                 core_sequences[sequence.gene]["nt"].append(
-                    (sequence.taxon, sequence.header, sequence.aa_sequence if not self.has_aligned else sequence.get_raw()),
+                    (sequence.taxon, sequence.header, sequence.aa_sequence if not self.has_aligned else sequence.raw_seq()),
                 )
     
         return core_sequences
@@ -196,10 +196,10 @@ def aln_function(gene, sequences, raw_path, aln_path, align_method, overwrite, v
 
         if align_method == "clustal":
             os.system(
-                f"clustalo -i '{raw_fa_file}' -o '{aln_file}'  --full --iter=5 --full-iter --threads=1 --force",
+                f"clustalo -i '{raw_fa_file}' -o '{aln_file}'  --full --iter=5 --threads=1 --full-iter --force",
             )  # --verbose
         else:
-            os.system(f"mafft-linsi '{raw_fa_file}' > '{aln_file}'")
+            os.system(f"mafft-linsi --thread 1 '{raw_fa_file}' > '{aln_file}'")
 
     aligned_result = []
     aligned_dict = {}
