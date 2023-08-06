@@ -14,7 +14,6 @@ from msgspec import json
 from .utils import printv
 from .timekeeper import TimeKeeper, KeeperMode
 
-
 class Sequence:
     __slots__ = ("header", "aa_sequence", "nt_sequence", "taxon", "gene", "id")
 
@@ -289,9 +288,20 @@ def main(args):
             printv(f"Found {len(kick)} taxon to kick.", verbosity)
     else:
         kick = set()
+
+    nc_genes = args.non_coding_genes
+    if nc_genes:
+        if not os.path.exists(nc_genes):
+            printv(f"Warning: NCD Gene file {nc_genes} does not exist, Ignoring", verbosity, 0)
+            nc_genes = set()
+        else:
+            with open(nc_genes) as fp:
+                nc_genes = set(fp.read().split("\n"))
+            printv(f"Found {len(nc_genes)} non-coding genes.", verbosity)
+    else:
+        nc_genes = set()
         
     input_file = args.INPUT  # "Ortholog_set_Mecopterida_v4.sqlite"
-    print(input_file)
     if not input_file or not os.path.exists(input_file):
         printv("Fatal: Input file not defined or does not exist (-i)", verbosity, 0)
         return False
@@ -400,6 +410,8 @@ def main(args):
 
     encoder = json.Encoder()
     rocksdb_db.put_bytes("getall:taxoninset", encoder.encode(this_set.get_taxon_in_set()))
+
+    rocksdb_db.put_bytes("getall:nc_genes", ",".join(list(nc_genes)))
 
     if do_diamond:
         rocksdb_db.put_bytes("getall:refseqs", encoder.encode(taxon_to_sequences))

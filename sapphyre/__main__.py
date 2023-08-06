@@ -796,10 +796,17 @@ def subcmd_makeref(sp):
         default=1,
     )
     par.add_argument(
+        "-ncg",
+        "--non_coding_genes",
+        type=str,
+        help="A new line delimited file containg genes that are allowed to contain stop codons.", # TODO elaborate why
+        default = None,
+    )
+    par.add_argument(
         "-k",
         "--kick",
         type=str,
-        help="Kick taxon present in kick file provided.",
+        help="A new line delimited file containing taxon to kick.",
         default = None,
     )
     par.add_argument(

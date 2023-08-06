@@ -57,6 +57,7 @@ FlexcullArgs = namedtuple(
         "column_cull_percent",
         "filtered_mat",
         "is_assembly",
+        "is_ncg", #non coding gene
     ],
 )
 
@@ -851,16 +852,18 @@ def do_gene(fargs: FlexcullArgs) -> None:
             characters_till_end = sequence_length - len(out_line)
             out_line += ["-"] * characters_till_end
 
-            out_line, positions_to_trim = cull_codons(
-                out_line,
-                cull_start,
-                cull_end,
-                fargs.amt_matches,
-                fargs.mismatches,
-                all_dashes_by_index,
-                character_at_each_pos,
-                gap_present_threshold,
-            )
+            positions_to_trim = set()
+            if not fargs.is_ncg:
+                out_line, positions_to_trim = cull_codons(
+                    out_line,
+                    cull_start,
+                    cull_end,
+                    fargs.amt_matches,
+                    fargs.mismatches,
+                    all_dashes_by_index,
+                    character_at_each_pos,
+                    gap_present_threshold,
+                )
 
             out_line = "".join(out_line)
 
@@ -1020,7 +1023,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
     return log
 
 
-def do_folder(folder, args: MainArgs):
+def do_folder(folder, args: MainArgs, non_coding_gene: set):
     folder_time = TimeKeeper(KeeperMode.DIRECT)
     printv(f"Processing: {folder}", args.verbose, 0)
     aa_path = os.path.join(folder, args.amino_acid)
@@ -1089,6 +1092,7 @@ def do_folder(folder, args: MainArgs):
                         args.column_cull,
                         filtered_mat,
                         is_assembly,
+                        input_gene in non_coding_gene,
                     ),
                 ),
             )
@@ -1113,6 +1117,7 @@ def do_folder(folder, args: MainArgs):
                     args.column_cull,
                     filtered_mat,
                     is_assembly,
+                    input_gene in non_coding_gene,
                 ),
             )
             for input_gene in file_inputs
@@ -1141,8 +1146,16 @@ def main(args):
     if not all(os.path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
+    
+    orthoset = args.orthoset
+    orthosets_dir = args.orthoset_input
+    orthoset_db_path = os.path.join(orthosets_dir, orthoset, "rocksdb")
+    orthoset_db = wrap_rocks.RocksDB(orthoset_db_path)
+    orthoset_non_coding_genes = orthoset_db.get("get:nc_genes")
+    orthoset_non_coding_genes = set(orthoset_non_coding_genes.split(",")) if orthoset_non_coding_genes else set()
+
     for folder in args.INPUT:
-        do_folder(folder, args)
+        do_folder(folder, args, orthoset_non_coding_genes)
     if len(args.INPUT) > 1 or not args.verbose:
         printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
     return True
