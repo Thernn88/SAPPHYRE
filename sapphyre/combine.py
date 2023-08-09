@@ -17,10 +17,10 @@ def parse_gene(path, already_grabbed_references):
         if header.endswith("."):
             fields = header.split("|")
             if fields[2] not in already_grabbed_references:
-                this_out.append((header, sequence))
+                this_out.append((header, sequence.replace("-","")))
                 already_grabbed_references.add(fields[2])
         else:
-            this_out.append((header, sequence))
+            this_out.append((header, sequence.replace("-","")))
     return {path: (this_out, already_grabbed_references)}
 
 
