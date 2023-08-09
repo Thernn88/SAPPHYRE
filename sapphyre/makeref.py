@@ -2,6 +2,7 @@ from collections import Counter, defaultdict
 from functools import cached_property
 from math import ceil
 import os
+from shutil import rmtree
 import sqlite3
 from itertools import count
 from multiprocessing.pool import Pool
@@ -11,7 +12,7 @@ from tempfile import NamedTemporaryFile
 import wrap_rocks
 from Bio import SeqIO
 from msgspec import json
-from .utils import printv
+from .utils import printv, writeFasta
 from .timekeeper import TimeKeeper, KeeperMode
 
 class Sequence:
@@ -30,6 +31,9 @@ class Sequence:
 
     def to_tuple(self):
         return self.header, self.aa_sequence
+    
+    def seq_with_regen_data(self):
+        return f">{self.header}"+' {"organism_name": "'+self.taxon+'", "pub_og_id": "'+self.gene+'"}'+f"\n{self.aa_sequence}\n"
 
     def __str__(self) -> str:
         return f">{self.header}\n{self.aa_sequence}\n"
@@ -163,6 +167,12 @@ def generate_aln(set: Sequence_Set, align_method, overwrite, pool, verbosity, se
     raw_path = set_path.joinpath("raw")
     raw_path.mkdir(exist_ok=True)
 
+    trimmed_path = set_path.joinpath("trimmed")
+    if os.path.exists(trimmed_path):
+        rmtree(trimmed_path)
+
+    trimmed_path.mkdir(exist_ok=True)
+
     arguments = []
     for gene, fasta in sequences.items():
         arguments.append(
@@ -171,6 +181,7 @@ def generate_aln(set: Sequence_Set, align_method, overwrite, pool, verbosity, se
                 fasta,
                 raw_path,
                 aln_path,
+                trimmed_path,
                 align_method,
                 overwrite,
                 verbosity,
@@ -185,13 +196,14 @@ def generate_aln(set: Sequence_Set, align_method, overwrite, pool, verbosity, se
         set.add_aligned_sequences(gene, aligned_sequences)
 
 
-def aln_function(gene, sequences, raw_path, aln_path, align_method, overwrite, verbosity, do_cull, cull_percent):
+def aln_function(gene, sequences, raw_path, aln_path, trimmed_path, align_method, overwrite, verbosity, do_cull, cull_percent):
     raw_fa_file = raw_path.joinpath(gene + ".fa")
     aln_file = aln_path.joinpath(gene + ".aln.fa")
+    trimmed_path = trimmed_path.joinpath(gene+".fa")
     if not aln_file.exists() or overwrite:
         printv(f"Generating: {gene}", verbosity, 2)
         with raw_fa_file.open(mode="w") as fp:
-            fp.write("".join(map(str, sequences)))
+            fp.write("".join([i.seq_with_regen_data() for i in sequences]))
 
         if align_method == "clustal":
             os.system(
@@ -204,7 +216,7 @@ def aln_function(gene, sequences, raw_path, aln_path, align_method, overwrite, v
     aligned_dict = {}
     file = aln_file if aln_file.exists() else raw_fa_file  # No alignment required
     for seq_record in SeqIO.parse(file, "fasta"):
-        header = seq_record.description
+        header = seq_record.description.split(" ")[0]
         seq = str(seq_record.seq)
         if not do_cull:
             aligned_dict[header] = seq
@@ -213,6 +225,7 @@ def aln_function(gene, sequences, raw_path, aln_path, align_method, overwrite, v
 
     if do_cull:
         aligned_result = cull(aligned_result, cull_percent)
+        writeFasta(trimmed_path, aligned_result, False)
         for header, seq in aligned_result:
             aligned_dict[header] = seq
 
