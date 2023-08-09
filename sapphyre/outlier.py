@@ -534,31 +534,31 @@ def main_process(
     )
     logs = []
     gene = filename.split(".")[0]
-    if passing:
-        if assembly:
-            passing, header_to_indices = remake_introns(passing)
-        try:
-            consensus = bd.dumb_consensus_dupe(
-                [
-                    (
-                        cand.raw,
-                        get_dupe_count(cand, prepare_dupe_counts, reporter_dupe_counts),
-                    )
-                    for cand in passing
-                ],
-                internal_consensus_threshold,
-            )
-            for i, candidate in enumerate(passing):
-                distance = constrained_distance(consensus, candidate.raw) / len(
-                    candidate.sequence
-                )
-                if distance >= internal_kick_threshold:
-                    candidate.grade = "Internal Fail"
-                    failing.append(candidate)
-                    passing[i] = None
-            passing = [x for x in passing if x is not None]
-        except KeyError:
-            print(f"key error for {gene}, skipping consensus")
+    # if passing:
+    #     if assembly:
+    #         passing, header_to_indices = remake_introns(passing)
+    #     try:
+    #         consensus = bd.dumb_consensus_dupe(
+    #             [
+    #                 (
+    #                     cand.raw,
+    #                     get_dupe_count(cand, prepare_dupe_counts, reporter_dupe_counts),
+    #                 )
+    #                 for cand in passing
+    #             ],
+    #             internal_consensus_threshold,
+    #         )
+    #         for i, candidate in enumerate(passing):
+    #             distance = constrained_distance(consensus, candidate.raw) / len(
+    #                 candidate.sequence
+    #             )
+    #             if distance >= internal_kick_threshold:
+    #                 candidate.grade = "Internal Fail"
+    #                 failing.append(candidate)
+    #                 passing[i] = None
+    #         passing = [x for x in passing if x is not None]
+    #     except KeyError:
+    #         print(f"key error for {gene}, skipping consensus")
     passing = original_order_sort(original_order, passing)
     for candidate in passing:
         raw_regulars.extend([candidate.id, candidate.raw])
