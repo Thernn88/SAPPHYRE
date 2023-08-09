@@ -284,7 +284,7 @@ def main(args):
             kick = set()
         else:
             with open(kick) as fp:
-                kick = set(fp.read().split("\n"))
+                kick = set([i.lower() for i in fp.read().split("\n") if i.strip()])
             printv(f"Found {len(kick)} taxon to kick.", verbosity)
     else:
         kick = set()
@@ -327,7 +327,7 @@ def main(args):
             data = json.decode(data)
             seq = str(seq_record.seq)
             taxon = data["organism_name"].replace(" ", "_")
-            if taxon not in kick:
+            if taxon.lower() not in kick and data["organism_name"].lower() not in kick:
                 gene = data["pub_og_id"]
 
                 this_set.add_sequence(Sequence(header, seq, "", taxon, gene, next(index)))
