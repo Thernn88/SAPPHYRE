@@ -793,7 +793,7 @@ def subcmd_makeref(sp):
         "--cull_percent",
         help="Percentage of non-gap characters required (percent of non gap characters >= this arg)",
         type=float,
-        default=1,
+        default=0,
     )
     par.add_argument(
         "-ncg",
