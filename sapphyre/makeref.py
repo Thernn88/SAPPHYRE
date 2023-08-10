@@ -118,7 +118,7 @@ class Sequence_Set:
         target_to_taxon = {}
         taxon_to_sequences = {}
 
-        from_sequence_list = self.aligned_sequences.values() if self.has_aligned else self.sequences
+        from_sequence_list = [item for sublist in self.aligned_sequences.values() for item in sublist] if self.has_aligned else self.sequences
         for seq in from_sequence_list:
             aaseq = seq.raw_seq() if self.has_aligned else seq.aa_sequence
             diamond_data.append(f">{seq.header}\n{aaseq}\n")
