@@ -635,7 +635,7 @@ def do_folder(folder, args):
         for gene in aa_input.iterdir()
         if ".aa" in gene.suffixes and gene.suffix in ALLOWED_EXTENSIONS
     ]
-    output_path = Path(folder, args.output)
+    output_path = Path(folder, "outlier")
     nt_output_path = os.path.join(output_path, "nt")
     folder_check(output_path, args.debug)
 
