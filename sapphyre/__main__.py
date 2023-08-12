@@ -313,26 +313,26 @@ def subcmd_outlier(subparsers):
 def outlier(args):
     from . import outlier, collapser
 
-    print("Triggering blossum outlier")
+    print("Blosum62 Outlier Removal.")
 
     if not outlier.main(args):
         print()
         print(args.formathelp())
         return
     
-    print("Triggering excise flag")
+    print("Checking for severe contamination.")
     #TODO
 
-    print("Triggering collapser")
+    print("Simple Assembly Ensures Consistency.")
     if not collapser.main(args):
         print()
         print(args.formathelp())
         return
     
-    print("Triggering excise cut")
+    print("Detecting and Removing Ambiguous Regions.")
     #TODO
     
-    print("Triggering internals")
+    print("Removing Gross Consensus Disagreements.")
     #TODO
     
 
