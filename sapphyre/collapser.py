@@ -17,6 +17,7 @@ class CollapserArgs(Struct):
     kick_overlap: float
     contig_percent: float
     verbose: bool
+    debug: bool
 
 class NODE(Struct):
     header: str
@@ -45,11 +46,19 @@ class NODE(Struct):
     def is_kick(self, node_2, overlap_coords, kick_percent, overlap_amount):
         kmer_current = self.sequence[overlap_coords[0]:overlap_coords[1]]
         kmer_next = node_2.sequence[overlap_coords[0]:overlap_coords[1]]
-        non_matching_chars = constrained_distance(kmer_current, kmer_next)
+        non_matching_chars = hamming_distance(kmer_current, kmer_next)
         non_mathching_percent = (non_matching_chars / overlap_amount)
         matching_percent = 1 - non_mathching_percent
 
         return matching_percent < kick_percent, matching_percent
+    
+    def contig_header(self):
+        contig_node = self.header.split("|")[3]
+        children_nodes = "|".join([i.split("|")[3] for i in self.children])
+        return f"CONTIG_{contig_node}|{children_nodes}"
+
+def hamming_distance(seq1, seq2):
+    return sum([1 for i in range(len(seq1)) if seq1[i] != seq2[i]])
 
 def get_start_end(seq):
     start = 0
@@ -101,11 +110,20 @@ def do_folder(args, input_path):
         with Pool(args.processes) as pool:
             results = pool.starmap(process_batch, batched_arguments)
 
+    all_passed = all([i[0] for i in results])
+    
+    all_kicks = ["".join(i[1]) for i in results if i[1] != []]
+    if all_kicks:
+        with open(os.path.join(collapsed_path, "kicks.txt"), "w") as f:
+            f.write("\n".join(all_kicks))
+            
+
     printv(f"Took {time_keeper.differential():.2f}s to process {len(genes)} genes.", args.verbose, 1)
 
-    return all(results)
+    return all_passed
 
 def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out_path):
+    kicks = []
     for gene in genes:
         printv(f"Doing: {gene}", args.verbose, 2)
 
@@ -143,8 +161,7 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
                 splice_occured = False
 
                 # Reverse
-                for j in range(len(nodes)-1, i, -1):
-                    other_node = nodes[j]
+                for j, other_node in enumerate(nodes[i+1:], i+1):
                     if other_node is None or j in doesnt_overlap:
                         continue
 
@@ -168,7 +185,8 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
         contigs.sort(key=lambda x: x.length, reverse=True)
 
         reads = [node for node in nodes if node is not None and not node.is_contig]
-        kicks = []
+        kicks.append(f"Kicks for {gene}\n")
+        kicks.append("Header B,,Header A,Overlap Percent,Matching Percent\n")
         kicked_headers = set()
                             
         for (i, contig_a), (j, contig_b) in combinations(enumerate(contigs), 2):
@@ -182,14 +200,15 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
                     is_kick, matching_percent = contig_a.is_kick(contig_b, overlap_coords, args.contig_percent, overlap_amount)
                     if is_kick:
                         contigs[j] = None
-                        kicks.append((contig_b.header, "Contig Kicked By", contig_a.header, percent, matching_percent, "Match"))
+                        kicks.append(f"{contig_b.header},Contig Kicked By,{contig_a.header},{percent},{matching_percent}\n")
                         kicked_headers.add(contig_b.header)
                         kicked_headers.update(contig_b.children)
         
         contigs = [contig for contig in contigs if contig is not None]
 
         for read in reads:
-            kick = None
+            keep = False
+            kick = False
             for contig in contigs:
                 overlap_coords = read.get_overlap(contig, args.minimum_overlap)
 
@@ -197,32 +216,42 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
                     overlap_amount = overlap_coords[1] - overlap_coords[0]
                     percent = overlap_amount / read.length
                     if percent >= args.kick_overlap:
-                        if kick is None: kick = True
                         is_kick, matching_percent = read.is_kick(contig, overlap_coords, args.required_percent, overlap_amount)
-                        if not is_kick:
-                            kick = False
+                        
+                        if is_kick:
+                            kick = True
+                        else:
+                            keep = True
+                            break
             
-            if kick:
-                kicks.append((read.header, "Kicked", contig.header, percent, matching_percent, "Match"))
+            if kick and not keep:
+                kicks.append(f"{read.header},Kicked By,{contig.contig_header()},{percent},{matching_percent}\n")
                 kicked_headers.add(read.header)
+            if keep:
+                kicks.append(f"{read.header},Saved By,{contig.contig_header()},{percent},{matching_percent}\n")
+                
 
         writeFasta(nt_out, [i for i in nt_output if i[0] not in kicked_headers], args.compress)
 
         aa_sequences = [(header, sequence) for header, sequence in parseFasta(aa_in) if header not in kicked_headers]
         writeFasta(aa_out, aa_sequences, args.compress)
 
-    return True
+    if args.debug:
+        return True, kicks
+
+    return True, []
 def main(args):
     global_time = TimeKeeper(KeeperMode.DIRECT)
     if not all(os.path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
     results = []
-    
-    this_args = CollapserArgs(args.compress, args.processes, args.minimum_bp_overlap, args.required_matching_percent, args.minimum_kick_overlap, args.contig_matching_percent, args.verbose)
+    #args.processes
+    this_args = CollapserArgs(args.compress, 1, args.minimum_bp_overlap, args.required_matching_percent, args.minimum_kick_overlap, args.contig_matching_percent, args.verbose, args.debug)
 
     for input_path in args.INPUT:
         results.append(do_folder(this_args, input_path))
+        
     if len(args.INPUT) >= 1 or not args.verbose:
         printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
     return all(results)
