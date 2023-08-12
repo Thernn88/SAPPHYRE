@@ -130,18 +130,22 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
             nodes.append(NODE(header=header, sequence=sequence, start=start, end=end, length=(end-start), children=[], is_contig=False))
             
         #Rescurive scan
-        splice_occured = True
-        while splice_occured:
-            splice_occured = False
+        
 
-            for i, node in enumerate(nodes):
-                if node is None:
-                    continue
+        for i, node in enumerate(nodes):
+            if node is None:
+                continue
 
-                longest_merge_size = -1
-                longest_merge = None
-                for j, other_node in enumerate(nodes[i+1:], i+1):
-                    if other_node is None:
+            doesnt_overlap = set()
+                
+            splice_occured = True
+            while splice_occured:
+                splice_occured = False
+
+                # Reverse
+                for j in range(len(nodes)-1, i, -1):
+                    other_node = nodes[j]
+                    if other_node is None or j in doesnt_overlap:
                         continue
 
                     overlap_coords = node.get_overlap(other_node, args.minimum_overlap)
@@ -153,16 +157,12 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
                         distance = constrained_distance(node_kmer, other_kmer)
 
                         if distance == 0:
-                            size_increae = other_node.end - overlap_coords[1]
-                            if size_increae > longest_merge_size:
-                                longest_merge_size = size_increae
-                                longest_merge = (j, overlap_coords[0])
+                            splice_occured = True
+                            node.extend(other_node, overlap_coords[1])
+                            nodes[j] = None
+                    else:
+                        doesnt_overlap.add(j)
 
-                if longest_merge is not None:
-                    longest_merge_index, overlap_index = longest_merge
-                    splice_occured = True
-                    node.extend(nodes[longest_merge_index], overlap_index)
-                    nodes[longest_merge_index] = None
 
         contigs = [node for node in nodes if node is not None and node.is_contig]
         contigs.sort(key=lambda x: x.length, reverse=True)
@@ -211,14 +211,14 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
         aa_sequences = [(header, sequence) for header, sequence in parseFasta(aa_in) if header not in kicked_headers]
         writeFasta(aa_out, aa_sequences, args.compress)
 
-        return True
+    return True
 def main(args):
     global_time = TimeKeeper(KeeperMode.DIRECT)
     if not all(os.path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
     results = []
-
+    
     this_args = CollapserArgs(args.compress, args.processes, args.minimum_bp_overlap, args.required_matching_percent, args.minimum_kick_overlap, args.contig_matching_percent, args.verbose)
 
     for input_path in args.INPUT:
