@@ -9,6 +9,15 @@ from .timekeeper import KeeperMode, TimeKeeper
 from .utils import writeFasta, parseFasta, printv
 import os
 
+class CollapserArgs(Struct):
+    compress: bool
+    processes: int
+    minimum_overlap: int
+    required_percent: float
+    kick_overlap: float
+    contig_percent: float
+    verbose: bool
+
 class NODE(Struct):
     header: str
     sequence: str
@@ -56,7 +65,7 @@ def get_start_end(seq):
     return start, end
 
 def do_folder(args, input_path):
-    printv(f"Processing: {os.path.basename(input_path)}", args.verbose, 0)
+    printv(f"Processing: {os.path.basename(input_path)}", args.verbose, 1)
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     nt_input_path = os.path.join(input_path,"outlier","nt")
     aa_input_path = os.path.join(input_path,"outlier","aa")
@@ -85,21 +94,26 @@ def do_folder(args, input_path):
     batched_arguments = [(args, genes[i : i + per_thread], nt_input_path, nt_out_path, aa_input_path, aa_out_path) for i in range(0, len(genes), per_thread)]
 
     if args.processes <= 1:
+        results = []
         for batch in batched_arguments:
-            process_batch(*batch)
+            results.append(process_batch(*batch))
     else:
         with Pool(args.processes) as pool:
             results = pool.starmap(process_batch, batched_arguments)
 
+    printv(f"Took {time_keeper.differential():.2f}s to process {len(genes)} genes.", args.verbose, 1)
+
+    return all(results)
+
 def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out_path):
     for gene in genes:
-        printv(f"Doing: {gene}", args.verbose, 1)
+        printv(f"Doing: {gene}", args.verbose, 2)
 
         nt_out = os.path.join(nt_out_path, gene)
-        aa_out = os.path.join(aa_out_path, gene)
+        aa_out = os.path.join(aa_out_path, gene.replace('.nt.','.aa.'))
 
         nt_in = os.path.join(nt_input_path, gene)
-        aa_in = os.path.join(aa_input_path, gene)
+        aa_in = os.path.join(aa_input_path, gene.replace('.nt.','.aa.'))
 
         nt_sequences = parseFasta(nt_in)
         nt_output = []
@@ -175,13 +189,15 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
         contigs = [contig for contig in contigs if contig is not None]
 
         for read in reads:
-            kick = True
+            kick = None
             for contig in contigs:
                 overlap_coords = read.get_overlap(contig, args.minimum_overlap)
+
                 if overlap_coords:
                     overlap_amount = overlap_coords[1] - overlap_coords[0]
                     percent = overlap_amount / read.length
                     if percent >= args.kick_overlap:
+                        if kick is None: kick = True
                         is_kick, matching_percent = read.is_kick(contig, overlap_coords, args.required_percent, overlap_amount)
                         if not is_kick:
                             kick = False
@@ -194,14 +210,19 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
 
         aa_sequences = [(header, sequence) for header, sequence in parseFasta(aa_in) if header not in kicked_headers]
         writeFasta(aa_out, aa_sequences, args.compress)
+
+        return True
 def main(args):
     global_time = TimeKeeper(KeeperMode.DIRECT)
     if not all(os.path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
     results = []
+
+    this_args = CollapserArgs(args.compress, args.processes, args.minimum_bp_overlap, args.required_matching_percent, args.minimum_kick_overlap, args.contig_matching_percent, args.verbose)
+
     for input_path in args.INPUT:
-        results.append(do_folder(args, input_path))
+        results.append(do_folder(this_args, input_path))
     if len(args.INPUT) >= 1 or not args.verbose:
         printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
     return all(results)

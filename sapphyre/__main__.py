@@ -317,7 +317,7 @@ def outlier(args):
 
     if not outlier.main(args):
         print()
-        print(args.formathelp)
+        print(args.formathelp())
         return
     
     print("Triggering excise flag")
@@ -326,7 +326,7 @@ def outlier(args):
     print("Triggering collapser")
     if not collapser.main(args):
         print()
-        print(args.formathelp)
+        print(args.formathelp())
         return
     
     print("Triggering excise cut")
