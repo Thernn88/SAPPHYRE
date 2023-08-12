@@ -303,7 +303,7 @@ def subcmd_outlier(subparsers):
         help="Log outliers to csv files",
     )
     #Collapser commands
-    parser.add_argument("-mbo", "--minimum_bp_overlap", help="Minimum overlap distance", type=int, default=12)
+    parser.add_argument("-mbo", "--minimum_bp_overlap", help="Minimum overlap distance", type=int, default=18)
     parser.add_argument("-rmp", "--required_matching_percent", help="Required percent for reads matching columns", default=0.8)
     parser.add_argument("-mko", "--minimum_kick_overlap", help="Minimum percent of overlap for a contig to kick a read", type=float, default=0.75)
     parser.add_argument("-cp", "--contig_matching_percent", help="Minimum percent of similar columns required for contigs ", type=float, default=0.8)
