@@ -294,9 +294,9 @@ def subcmd_outlier(subparsers):
     parser.add_argument("-mko", "--minimum_kick_overlap", help="Minimum percent of overlap for a contig to kick a read", type=float, default=0.75)
     parser.add_argument("-cp", "--contig_matching_percent", help="Minimum percent of similar columns required for contigs ", type=float, default=0.8)
     # Excise commands
-    parser.add_argument('-ect', '--excise_consensus_threshold', default=0.65, type=float, dest="consensus",
+    parser.add_argument('-ct', '--excise_consensus_threshold', default=0.65, type=float, dest="consensus",
                         help="Threshold for selecting a consensus bp")
-    parser.add_argument('-ept', '--excise_placeholder_threshold', default=0.40, type=float, dest="excise",
+    parser.add_argument('-et', '--excise_placeholder_threshold', default=0.40, type=float, dest="excise",
                         help="Maximum percent of allowable X characters in consensus tail")
     parser.add_argument('-nd', '--no_dupes', default=True, action='store_false', dest="dupes",
                         help="Use prepare and reporter dupe counts in consensus generation")
@@ -307,8 +307,10 @@ def subcmd_outlier(subparsers):
     parser.add_argument("--cut", default=False, dest="cut", action="store_true",
                         help="Remove any regions flagged by excise.")
     # Internal Commands
-    parser.add_argument("-o", "--output", type=str, help="Path to output directory")
-
+    parser.add_argument("-sd", "--sub_directory", default=outlier,
+                        help="Name of input subfolder")
+    parser.add_argument("-o", "--output", type=str, default="internal",
+                        help="Path to output directory")
     parser.add_argument("-ict", "--internal_consensus_threshold", type=float, default=0.65,
                         dest="internal_consensus_threshold",
                         help="Minimum ratio for choosing a character in the consensus sequence")
@@ -1102,8 +1104,10 @@ if __name__ == "__main__":
         parser = subparser.add_parser("internal",
                                       help="Filter sequences by distance to the consensus sequence")
         parser.add_argument("INPUT", help="Paths of directories.", action="extend", nargs="+")
-        parser.add_argument("-o", "--output", type=str, help="Path to output directory")
-
+        parser.add_argument("-sd", "--sub_directory", default=outlier,
+                            help="Name of input subfolder")
+        parser.add_argument("-o", "--output", type=str, default="internal",
+                            help="Path to output directory")
         parser.add_argument("-ict", "--internal_consensus_threshold", type=float, default=0.65, dest="internal_consensus_threshold",
                             help="Minimum ratio for choosing a character in the consensus sequence")
         parser.add_argument("-idt", "--internal_distance_threshold", type=float, default=0.40, dest="internal_distance_threshold",

@@ -140,8 +140,8 @@ def run_internal(
 
 
 def do_folder(folder, args):
-    aa_input = Path(folder, "outlier", "aa")
-    nt_input = Path(folder, "outlier", "nt")
+    aa_input = Path(folder, args.sub_directory, "aa")
+    nt_input = Path(folder, args.sub_directory, "nt")
     prepare_dupe_counts, reporter_dupe_counts = load_dupes(folder)
     file_inputs = [
         gene
