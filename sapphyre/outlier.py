@@ -477,10 +477,6 @@ def main_process(
     index_group_min_bp: int,
     ref_gap_percent: float,
     ref_min_percent: int,
-    internal_consensus_threshold: float,
-    internal_kick_threshold: int,
-    prepare_dupe_counts,
-    reporter_dupe_counts,
     assembly: bool,
 ):
     keep_refs = not args_references
@@ -533,32 +529,9 @@ def main_process(
         ref_min_percent,
     )
     logs = []
-    gene = filename.split(".")[0]
-    # if passing:
-    #     if assembly:
-    #         passing, header_to_indices = remake_introns(passing)
-    #     try:
-    #         consensus = bd.dumb_consensus_dupe(
-    #             [
-    #                 (
-    #                     cand.raw,
-    #                     get_dupe_count(cand, prepare_dupe_counts, reporter_dupe_counts),
-    #                 )
-    #                 for cand in passing
-    #             ],
-    #             internal_consensus_threshold,
-    #         )
-    #         for i, candidate in enumerate(passing):
-    #             distance = constrained_distance(consensus, candidate.raw) / len(
-    #                 candidate.sequence
-    #             )
-    #             if distance >= internal_kick_threshold:
-    #                 candidate.grade = "Internal Fail"
-    #                 failing.append(candidate)
-    #                 passing[i] = None
-    #         passing = [x for x in passing if x is not None]
-    #     except KeyError:
-    #         print(f"key error for {gene}, skipping consensus")
+    if passing:
+        if assembly:
+            passing, header_to_indices = remake_introns(passing)
     passing = original_order_sort(original_order, passing)
     for candidate in passing:
         raw_regulars.extend([candidate.id, candidate.raw])
@@ -659,10 +632,10 @@ def do_folder(folder, args):
                     args.index_group_min_bp,
                     args.ref_gap_percent,
                     args.ref_min_percent,
-                    args.internal_consensus_threshold,
-                    args.internal_kick_threshold,
-                    prepare_dupe_counts.get(gene_raw, {}),
-                    reporter_dupe_counts.get(gene_raw, {}),
+                    # args.internal_consensus_threshold,
+                    # args.internal_kick_threshold,
+                    # prepare_dupe_counts.get(gene_raw, {}),
+                    # reporter_dupe_counts.get(gene_raw, {}),
                     assembly,
                 ),
             )
@@ -687,10 +660,10 @@ def do_folder(folder, args):
                     args.index_group_min_bp,
                     args.ref_gap_percent,
                     args.ref_min_percent,
-                    args.internal_consensus_threshold,
-                    args.internal_kick_threshold,
-                    prepare_dupe_counts,
-                    reporter_dupe_counts,
+                    # args.internal_consensus_threshold,
+                    # args.internal_kick_threshold,
+                    # prepare_dupe_counts,
+                    # reporter_dupe_counts,
                     assembly,
                 ),
             )

@@ -282,20 +282,6 @@ def subcmd_outlier(subparsers):
         help="Minimum bp for index group after column cull.",
     )
     par.add_argument(
-        "-ict",
-        "--internal_consensus_threshold",
-        type=float,
-        default=0.65,
-        help="Consensus threshold for internal summary.",
-    )
-    par.add_argument(
-        "-ikt",
-        "--internal_kick_threshold",
-        type=float,
-        default=0.075,
-        help="Amount of mismatches required to constitute an internal kick.",
-    )
-    par.add_argument(
         "-d",
         "--debug",
         action="store_true",
@@ -307,34 +293,73 @@ def subcmd_outlier(subparsers):
     parser.add_argument("-rmp", "--required_matching_percent", help="Required percent for reads matching columns", default=0.8)
     parser.add_argument("-mko", "--minimum_kick_overlap", help="Minimum percent of overlap for a contig to kick a read", type=float, default=0.75)
     parser.add_argument("-cp", "--contig_matching_percent", help="Minimum percent of similar columns required for contigs ", type=float, default=0.8)
+    # Excise commands
+    parser.add_argument('-ct', '--consensus_threshold', default=0.65, type=float,
+                        help="Threshold for selecting a consensus bp")
+    parser.add_argument('-et', '--excise_threshold', default=0.40, type=float,
+                        help="Maximum percent of allowable X characters in consensus tail")
+    parser.add_argument('-nd', '--no_dupes', default=True, action='store_false', dest="dupes",
+                        help="Use prepare and reporter dupe counts in consensus generation")
+    parser.add_argument("--debug", default=False, action="store_true",
+                        help="Log the truncated consensus sequence and the removed tail.")
+    parser.add_argument("--flag", default=False, dest="cut", action="store_false",
+                        help="Set excise to detect, but not cut, regions")
+    parser.add_argument("--cut", default=False, dest="cut", action="store_true",
+                        help="Remove any regions flagged by excise.")
+    # Internal Commands
+    par.add_argument(
+        "-ict",
+        "--internal_consensus_threshold",
+        dest="consensus",
+        type=float,
+        default=0.65,
+        help="Consensus threshold for internal summary.",
+    )
+    par.add_argument(
+        "-ikt",
+        "--internal_kick_threshold",
+        dest="excise",
+        type=float,
+        default=0.075,
+        help="Amount of mismatches required to constitute an internal kick.",
+    )
     par.set_defaults(func=outlier, formathelp=par.format_help)
 
 
-def outlier(args):
-    from . import outlier, collapser
+def outlier(argsobj):
+    from . import outlier, collapser, excise, internal
 
     print("Blosum62 Outlier Removal.")
 
-    if not outlier.main(args):
+    if not outlier.main(argsobj):
         print()
-        print(args.formathelp())
+        print(argsobj.formathelp())
         return
-    
-    print("Checking for severe contamination.")
-    #TODO
 
-    print("Simple Assembly Ensures Consistency.")
-    if not collapser.main(args):
+    # first_args = vars(argsobj)
+    # first_args["INPUT"] = [argsobj.output_directory]
+    # second_args = argparse.Namespace(**first_args)
+    print("Checking for severe contamination.")
+    if not excise.main(argsobj):
         print()
-        print(args.formathelp())
+        print(argsobj.formathelp())
+    print("Simple Assembly Ensures Consistency.")
+    if not collapser.main(argsobj):
+        print()
+        print(argsobj.formathelp())
         return
-    
+    current_args = vars(argsobj)
+    current_args["cut"] = True
+    second_args = argparse.Namespace(**current_args)
     print("Detecting and Removing Ambiguous Regions.")
-    #TODO
+    if not excise.main(second_args):
+        print()
+        print(second_args.formathelp())
     
     print("Removing Gross Consensus Disagreements.")
-    #TODO
-    
+    if not internal.main(second_args):
+        print()
+        print(second_args.format)
 
 
 def subcmd_Merge(subparsers):
