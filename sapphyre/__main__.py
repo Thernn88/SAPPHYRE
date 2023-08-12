@@ -1095,6 +1095,30 @@ if __name__ == "__main__":
         default="Ortholog_set_Mecopterida_v4",
         help="Current Orthoset to be used.",
     )
+
+
+    def internal(argsobj):
+        from . import internal
+
+        if not internal.main(argsobj):
+            print()
+            print(argsobj.formathelp())
+
+
+    def subcmd_internal(subparser):
+        parser = subparser.add_parser("internal",
+                                      help="Filter sequences by distance to the consensus sequence")
+        parser.add_argument("INPUT", help="Paths of directories.", action="extend", nargs="+")
+        parser.add_argument("-o", "--output", type=str, help="Path to output directory")
+
+        parser.add_argument("-ct", "--consensus_threshold", type=float, default=0.65,
+                            help="Minimum ratio for choosing a character in the consensus sequence")
+        parser.add_argument("-dt", "--distance-threshold", type=float, default=0.40,
+                            help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence.")
+        parser.add_argument("--dupes", default=False, action="store_true")
+        parser.set_defaults(func=internal, formathelp=parser.format_help)
+
+
     subparsers = parser.add_subparsers()
     # The order in which those functions are called define the order in which
     # the subcommands will be displayed.
@@ -1106,6 +1130,7 @@ if __name__ == "__main__":
     subcmd_pal2nal(subparsers)
     subcmd_flexcull(subparsers)
     subcmd_outlier(subparsers)
+    subcmd_internal(subparsers)
     subcmd_Merge(subparsers)
     subcmd_Combine(subparsers)
     subcmd_download(subparsers)
