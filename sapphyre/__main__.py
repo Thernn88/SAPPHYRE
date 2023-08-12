@@ -294,9 +294,9 @@ def subcmd_outlier(subparsers):
     parser.add_argument("-mko", "--minimum_kick_overlap", help="Minimum percent of overlap for a contig to kick a read", type=float, default=0.75)
     parser.add_argument("-cp", "--contig_matching_percent", help="Minimum percent of similar columns required for contigs ", type=float, default=0.8)
     # Excise commands
-    parser.add_argument('-ct', '--consensus_threshold', default=0.65, type=float,
+    parser.add_argument('-ect', '--excise_consensus_threshold', default=0.65, type=float, dest="consensus",
                         help="Threshold for selecting a consensus bp")
-    parser.add_argument('-et', '--excise_threshold', default=0.40, type=float,
+    parser.add_argument('-ept', '--excise_placeholder_threshold', default=0.40, type=float, dest="excise",
                         help="Maximum percent of allowable X characters in consensus tail")
     parser.add_argument('-nd', '--no_dupes', default=True, action='store_false', dest="dupes",
                         help="Use prepare and reporter dupe counts in consensus generation")
@@ -307,22 +307,15 @@ def subcmd_outlier(subparsers):
     parser.add_argument("--cut", default=False, dest="cut", action="store_true",
                         help="Remove any regions flagged by excise.")
     # Internal Commands
-    par.add_argument(
-        "-ict",
-        "--internal_consensus_threshold",
-        dest="consensus",
-        type=float,
-        default=0.65,
-        help="Consensus threshold for internal summary.",
-    )
-    par.add_argument(
-        "-ikt",
-        "--internal_kick_threshold",
-        dest="excise",
-        type=float,
-        default=0.075,
-        help="Amount of mismatches required to constitute an internal kick.",
-    )
+    parser.add_argument("-o", "--output", type=str, help="Path to output directory")
+
+    parser.add_argument("-ict", "--internal_consensus_threshold", type=float, default=0.65,
+                        dest="internal_consensus_threshold",
+                        help="Minimum ratio for choosing a character in the consensus sequence")
+    parser.add_argument("-idt", "--internal_distance_threshold", type=float, default=0.40,
+                        dest="internal_distance_threshold",
+                        help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence.")
+    parser.add_argument("--dupes", default=False, action="store_true")
     par.set_defaults(func=outlier, formathelp=par.format_help)
 
 
@@ -1111,9 +1104,9 @@ if __name__ == "__main__":
         parser.add_argument("INPUT", help="Paths of directories.", action="extend", nargs="+")
         parser.add_argument("-o", "--output", type=str, help="Path to output directory")
 
-        parser.add_argument("-ct", "--consensus_threshold", type=float, default=0.65,
+        parser.add_argument("-ict", "--internal_consensus_threshold", type=float, default=0.65, dest="internal_consensus_threshold",
                             help="Minimum ratio for choosing a character in the consensus sequence")
-        parser.add_argument("-dt", "--distance-threshold", type=float, default=0.40,
+        parser.add_argument("-idt", "--internal_distance_threshold", type=float, default=0.40, dest="internal_distance_threshold",
                             help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence.")
         parser.add_argument("--dupes", default=False, action="store_true")
         parser.set_defaults(func=internal, formathelp=parser.format_help)

@@ -154,14 +154,14 @@ def do_folder(folder, args):
     file_inputs.sort(key=lambda x: x.stat().st_size, reverse=True)
     arguments = []
 
-    if args.consensus_threshold > 100 or args.consensus_threshold <= 0:
+    if args.internal_consensus_threshold > 100 or args.internal_consensus_threshold <= 0:
         raise ValueError("cannot express given consensus threshold as a percent")
-    if args.consensus_threshold > 1:
-        args.consensus_threshold = args.consensus_thesold / 100
-    if args.distance_threshold > 100 or args.distance_threshold <= 0:
+    if args.internal_consensus_threshold > 1:
+        args.internal_consensus_threshold = args.consensus_thesold / 100
+    if args.internal_distance_threshold > 100 or args.internal_distance_threshold <= 0:
         raise ValueError("cannot express given distance threshold as a percent")
-    if args.distance_threshold > 1:
-        args.distance_threshold = args.distance_thesold / 100
+    if args.internal_distance_threshold > 1:
+        args.internal_distance_threshold = args.distance_thesold / 100
 
     for gene in file_inputs:
         gene_raw = gene.stem.split(".")[0]
@@ -176,8 +176,8 @@ def do_folder(folder, args):
                 nt_input,
                 output_path,
                 nt_output_path,
-                args.consensus_threshold,
-                args.distance_threshold,
+                args.internal_consensus_threshold,
+                args.internal_distance_threshold,
                 args.dupes,
                 prepare_dupes,
                 reporter_dupes,
