@@ -311,7 +311,7 @@ def subcmd_outlier(subparsers):
     par.add_argument("--cut", default=False, dest="cut", action="store_true",
                         help="Remove any regions flagged by excise.")
     # Internal Commands
-    par.add_argument("-sd", "--sub_directory", default=outlier,
+    par.add_argument("-sd", "--sub_directory", default="outlier",
                         help="Name of input subfolder")
     par.add_argument("-o", "--output", type=str, default="internal",
                         help="Path to output directory")
@@ -1108,7 +1108,7 @@ if __name__ == "__main__":
         parser = subparser.add_parser("internal",
                                       help="Filter sequences by distance to the consensus sequence")
         parser.add_argument("INPUT", help="Paths of directories.", action="extend", nargs="+")
-        parser.add_argument("-sd", "--sub_directory", default=outlier,
+        parser.add_argument("-sd", "--sub_directory", default="outlier",
                             help="Name of input subfolder")
         parser.add_argument("-o", "--output", type=str, default="internal",
                             help="Path to output directory")
