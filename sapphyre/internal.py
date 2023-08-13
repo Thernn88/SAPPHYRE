@@ -72,12 +72,13 @@ def aa_internal(
             candidates.append((header, seq))
         else:
             references.append((header, seq))
-    sequences = [tup[1] for tup in candidates]
     if dupes:
         consensus_func = bd.dumb_consensus_dupe
-        sequences = bundle_seqs_and_dupes(sequences, prepare_dupes, reporter_dupes)
+        sequences = bundle_seqs_and_dupes(candidates, prepare_dupes, reporter_dupes)
     else:
         consensus_func = bd.dumb_consensus
+        sequences = [tup[1] for tup in candidates]
+
     consensus = consensus_func(sequences, consensus_threshold)
     for candidate in candidates:
         distance = bd.constrained_distance(consensus, candidate[1]) / len(candidate[1])
