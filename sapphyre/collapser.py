@@ -239,13 +239,18 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
             output = contigs+reads
             output.sort(key=lambda x: x.start)
             with open(nt_out, "w") as f:
+                for header, sequence in nt_output:
+                    if header.endswith('.'):
+                        f.write(f">{header}\n{sequence}\n")
+
                 for node in output:
                     if node is None:
                         continue
+                    is_kick = "_KICKED"  if node.kick or node.header in kicked_headers else ""
                     if node.is_contig:
-                        f.write(f">{node.contig_header()}\n{node.sequence}\n")
+                        f.write(f">{node.contig_header()}{is_kick}\n{node.sequence}\n")
                         continue
-                    f.write(f">{node.header}\n{node.sequence}\n")
+                    f.write(f">{node.header}{is_kick}\n{node.sequence}\n")
         else:     
             writeFasta(nt_out, [i for i in nt_output if i[0] not in kicked_headers], args.compress)
 
