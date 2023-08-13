@@ -12,6 +12,13 @@ from .utils import parseFasta, printv, writeFasta, write2Line2Fasta
 
 ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta", ".fa", ".gz", ".fq", ".fastq")
 
+class Record(Struct):
+    id: str
+    seq: str
+
+    def __str__(self):
+        return f">{self.id}\n{self.seq}\n"
+
 def folder_check(path: Path, debug: bool) -> None:
     """Create subfolders 'aa' and 'nt' to given path."""
     aa_folder = Path(path, "aa")
@@ -30,13 +37,13 @@ def folder_check(path: Path, debug: bool) -> None:
 
 def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_counts):
     output = []
-    for header, seq in sequences:
-        node = header.split("|")[3]
+    for rec in sequences:
+        node = rec.id.split("|")[3]
         dupes = prepare_dupe_counts.get(node, 1) + sum(
             prepare_dupe_counts.get(node, 1)
             for node in reporter_dupe_counts.get(node, [])
         )
-        output.append((seq, dupes))
+        output.append((rec.seq, dupes))
     return output
 
 
@@ -64,29 +71,29 @@ def aa_internal(
     prepare_dupes,
     reporter_dupes,
 ):
-    passing = {}
-    failing = {}
+    failing = set()
     candidates, references = [], []
     for header, seq in parseFasta(gene):
         if header[-1] != ".":
-            candidates.append((header, seq))
+            candidates.append(Record(header, seq))
         else:
-            references.append((header, seq))
+            references.append(Record(header, seq))
     if dupes:
         consensus_func = bd.dumb_consensus_dupe
         sequences = bundle_seqs_and_dupes(candidates, prepare_dupes, reporter_dupes)
     else:
         consensus_func = bd.dumb_consensus
-        sequences = [tup[1] for tup in candidates]
+        sequences = [rec.seq for rec in candidates]
 
     consensus = consensus_func(sequences, consensus_threshold)
-    for candidate in candidates:
-        distance = bd.constrained_distance(consensus, candidate[1]) / len(candidate[1])
+    for i, candidate in enumerate(candidates):
+        distance = bd.constrained_distance(consensus, candidate.seq) / len(candidate.seq)
         if distance >= distance_threshold:
-            failing[candidate[0]] = candidate[1]
-        else:
-            passing[candidate[0]] = candidate[1]
-    return passing, failing, references
+            # failing[candidate[0]] = candidate[1]
+            failing.add(candidate.id)
+            candidates[i] = None
+    candidates = [cand for cand in candidates if cand != None]
+    return candidates, failing, references
 
 
 def mirror_nt(input_path, output_path, failing, gene):
@@ -94,11 +101,9 @@ def mirror_nt(input_path, output_path, failing, gene):
     input_path = Path(input_path, gene)
     if not os.path.exists(input_path):
         return
+    records = ((header, seq) for header, seq in parseFasta(input_path) if header not in failing)
     with open(output_path, "w") as f:
-        for header, seq in parseFasta(input_path):
-            if header in failing:
-                continue
-            f.write(f">{header}\n{seq}\n")
+        f.writelines((f">{header}\n{seq}\n" for header, seq in records))
 
 
 def run_internal(
@@ -121,8 +126,10 @@ def run_internal(
         reporter_dupes,
     )
     aa_output = Path(output_path, "aa", gene.name)
-    passing_lines = [(head, seq) for head, seq in passing.items()]
-    writeFasta(aa_output, passing_lines)
+    # passing_lines = [(rec.id) for head, seq in passing.items()]
+    # writeFasta(aa_output, passing_lines)
+    with open(aa_output,"w") as f:
+        f.writelines((str(rec) for rec in passing))
     mirror_nt(nt_input, nt_output_path,passing, aa_output.name.replace(".aa.", ".nt."))
 
 
@@ -140,21 +147,11 @@ def run_internal(
 #         print(f"key error for {gene}, skipping consensus")
 
 
-def do_folder(folder, args):
-    aa_input = Path(folder, args.sub_directory, "aa")
-    nt_input = Path(folder, args.sub_directory, "nt")
-    prepare_dupe_counts, reporter_dupe_counts = load_dupes(folder)
-    file_inputs = [
-        gene
-        for gene in aa_input.iterdir()
-        if ".aa" in gene.suffixes and gene.suffix in ALLOWED_EXTENSIONS
-    ]
-    output_path = Path(folder, "internal")
-    nt_output_path = os.path.join(output_path, "nt")
-    folder_check(output_path, False)
-    file_inputs.sort(key=lambda x: x.stat().st_size, reverse=True)
-    arguments = []
+# def do_folder(folder, args):
 
+
+def main(args):
+    global_time = TimeKeeper(KeeperMode.DIRECT)
     if args.internal_consensus_threshold > 100 or args.internal_consensus_threshold <= 0:
         raise ValueError("cannot express given consensus threshold as a percent")
     if args.internal_consensus_threshold > 1:
@@ -164,37 +161,49 @@ def do_folder(folder, args):
     if args.internal_distance_threshold > 1:
         args.internal_distance_threshold = args.distance_thesold / 100
 
-    for gene in file_inputs:
-        gene_raw = gene.stem.split(".")[0]
-        if args.dupes:
-            prepare_dupes = prepare_dupe_counts.get(gene_raw, {})
-            reporter_dupes = reporter_dupe_counts.get(gene_raw, {})
-        else:
-            prepare_dupes, reporter_dupes = None, None
-        arguments.append(
-            (
-                gene,
-                nt_input,
-                output_path,
-                nt_output_path,
-                args.internal_consensus_threshold,
-                args.internal_distance_threshold,
-                args.dupes,
-                prepare_dupes,
-                reporter_dupes,
-            ),
-        )
-        with Pool(args.processes) as pool:
-            pool.starmap(run_internal, arguments, chunksize=1)
-
-
-def main(args):
-    global_time = TimeKeeper(KeeperMode.DIRECT)
     if not all(os.path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
-    for folder in args.INPUT:
-        do_folder(Path(folder), args)
+    with Pool(args.processes) as pool:
+        for folder in args.INPUT:
+            aa_input = Path(folder, args.sub_directory, "aa")
+            nt_input = Path(folder, args.sub_directory, "nt")
+            prepare_dupe_counts, reporter_dupe_counts = load_dupes(folder)
+            file_inputs = [
+                gene
+                for gene in aa_input.iterdir()
+                if ".aa" in gene.suffixes and gene.suffix in ALLOWED_EXTENSIONS
+            ]
+            output_path = Path(folder, "internal")
+            nt_output_path = os.path.join(output_path, "nt")
+            folder_check(output_path, False)
+            file_inputs.sort(key=lambda x: x.stat().st_size, reverse=True)
+            arguments = []
+
+
+            for gene in file_inputs:
+                gene_raw = gene.stem.split(".")[0]
+                if args.dupes:
+                    prepare_dupes = prepare_dupe_counts.get(gene_raw, {})
+                    reporter_dupes = reporter_dupe_counts.get(gene_raw, {})
+                else:
+                    prepare_dupes, reporter_dupes = None, None
+                arguments.append(
+                    (
+                        gene,
+                        nt_input,
+                        output_path,
+                        nt_output_path,
+                        args.internal_consensus_threshold,
+                        args.internal_distance_threshold,
+                        args.dupes,
+                        prepare_dupes,
+                        reporter_dupes,
+                    ),
+                )
+            pool.starmap(run_internal, arguments, chunksize=1)
+
+        # do_folder(Path(folder), args)
     if len(args.INPUT) > 1 or not args.verbose:
         printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
     return True
