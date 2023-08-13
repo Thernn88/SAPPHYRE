@@ -297,6 +297,7 @@ def subcmd_outlier(subparsers):
     par.add_argument("-krp","--keep_read_percent",help="Similarity percent to keep read even if it's kicked elsewhere", type=float, default=0.8)
     par.add_argument("-mko", "--minimum_kick_overlap", help="Minimum percent of overlap for a contig to kick a read", type=float, default=0.75)
     par.add_argument("-cmp", "--contig_matching_percent", help="Minimum percent of similar columns required for contigs ", type=float, default=0.8)
+    par.add_argument("-sp", "--sub_percent", help="Percentage difference to allow for blosum substitution", type=float, default=0.1)
     # Excise commands
     par.add_argument('-ct', '--excise_consensus_threshold', default=0.65, type=float, dest="consensus",
                         help="Threshold for selecting a consensus bp")

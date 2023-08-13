@@ -3,6 +3,8 @@ from math import ceil
 from multiprocessing import Pool
 from shutil import rmtree
 
+import blosum as bl
+
 from msgspec import Struct
 from phymmr_tools import constrained_distance
 from .timekeeper import KeeperMode, TimeKeeper
@@ -20,6 +22,8 @@ class CollapserArgs(Struct):
     required_read_percent: float
     required_contig_percent: float
     keep_read_percent: float
+
+    sub_percent: float
 
     verbose: int
     debug: int
@@ -143,6 +147,7 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
         aa_in = os.path.join(aa_input_path, gene.replace('.nt.','.aa.'))
 
         nt_sequences = parseFasta(nt_in)
+        aa_sequences = {header:sequence for header,sequence in parseFasta(aa_in)}
         nt_output = []
 
         nodes = []
@@ -155,10 +160,8 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
             start,end = get_start_end(sequence)
 
             nodes.append(NODE(header=header, sequence=sequence, start=start, end=end, length=(end-start), children=[], is_contig=False, kick=False))
-            
+        mat = bl.BLOSUM(62)
         #Rescurive scan
-        
-
         for i, node in enumerate(nodes):
             if node is None:
                 continue
@@ -176,14 +179,38 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
                     
                     if overlap_coords:
                         node_kmer = node.sequence[overlap_coords[0]:overlap_coords[1]]
-                        other_kmer = other_node.sequence[overlap_coords[0]:overlap_coords[1]]
+                        other_kmer = other_node.sequence[overlap_coords[0]:overlap_coords[1]]                        
 
                         distance = constrained_distance(node_kmer, other_kmer)
 
                         if distance == 0:
                             splice_occured = True
-                            node.extend(other_node, overlap_coords[1])
+                            node.extend(other_node, overlap_coords[0])
                             nodes[j] = None
+                            continue
+                        overlap_amount = overlap_coords[1] - overlap_coords[0]
+                        diff_percent = distance / overlap_amount
+
+                        if diff_percent <= args.sub_percent and overlap_amount != other_node.length:
+                            allow_sub = True
+                            for k in range(0, overlap_amount, 3):
+                                position = (overlap_coords[0]+k) // 3
+
+                                aa_node_bp = aa_sequences[node.header][position]
+                                aa_other_bp = aa_sequences[other_node.header][position]
+
+                                if aa_node_bp == aa_other_bp:
+                                    continue
+
+                                subs = mat[aa_node_bp][aa_other_bp]
+                                if subs >= 0:
+                                    allow_sub = True
+                                if subs < 0:
+                                    allow_sub = False
+                            if allow_sub:
+                                splice_occured = True
+                                node.extend(other_node, overlap_coords[1])
+                                nodes[j] = None
 
         contigs = [node for node in nodes if node is not None and node.is_contig]
         contigs.sort(key=lambda x: x.length, reverse=True)
@@ -254,7 +281,7 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
         else:     
             writeFasta(nt_out, [i for i in nt_output if i[0] not in kicked_headers], args.compress)
 
-        aa_sequences = [(header, sequence) for header, sequence in parseFasta(aa_in) if header not in kicked_headers]
+        aa_sequences = [(header,sequence) for header,sequence in aa_sequences.items() if header not in kicked_headers]
         writeFasta(aa_out, aa_sequences, args.compress)
 
     count = len(kicked_headers)
@@ -282,6 +309,8 @@ def main(args):
         required_read_percent=args.read_matching_percent,
         required_contig_percent=args.contig_matching_percent,
         keep_read_percent=args.keep_read_percent,
+
+        sub_percent=args.sub_percent,
 
         verbose=args.verbose,
         debug=args.debug,
