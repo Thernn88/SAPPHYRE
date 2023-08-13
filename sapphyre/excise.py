@@ -265,7 +265,11 @@ def main(args):
             raise ValueError("Cannot convert excise to a percent. Use a decimal or a whole number between 0 and 100")
 
     for folder in args.INPUT:
-        aa_folder = Path(folder, "trimmed", "aa")
+        if args.cut:
+            sub_dir = "collapsed"
+        else:
+            sub_dir = "outlier"
+        aa_folder = Path(folder, sub_dir, "aa")
         fastas = [Path(aa_folder, fasta) for fasta in os.listdir(aa_folder) if ".fa" in fasta]
         log_path = Path(folder, "excise_indices.tsv")
         with open(log_path, "w") as f:
