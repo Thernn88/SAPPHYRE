@@ -208,7 +208,7 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
                         kicked_headers.add(contig_b.header)
                         kicked_headers.update(contig_b.children)
         
-        contigs = [contig for contig in contigs if contig is not None]
+        contigs = [contig for contig in contigs if not contig.kick]
 
         for read in reads:
             keep = False
