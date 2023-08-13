@@ -37,6 +37,7 @@ class NODE(Struct):
     children: list
     is_contig: bool
     kick: bool
+    splices: dict
 
     def get_overlap(self, node_2, min_overlap=0):
         overlap_start = max(self.start, node_2.start)
@@ -45,12 +46,23 @@ class NODE(Struct):
             return overlap_start, overlap_end
         
         return None
+    
+    def get_sequence_at_coord(self, position):
+        seq_at_position = None
+        for header, coord in self.splices.items():
+            if position >= coord:
+                seq_at_position = header
+            else:
+                break
+        return seq_at_position
 
     def extend(self, node_2, overlap_coord):
         self.sequence = self.sequence[:overlap_coord] + node_2.sequence[overlap_coord:]
+        self.splices[node_2.header] = overlap_coord
         self.end = node_2.end
         self.length = self.end - self.start
         self.children.append(node_2.header)
+        self.children.extend(node_2.children)
         self.is_contig = True
 
     def is_kick(self, node_2, overlap_coords, kick_percent, overlap_amount):
@@ -159,45 +171,44 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
 
             start,end = get_start_end(sequence)
 
-            nodes.append(NODE(header=header, sequence=sequence, start=start, end=end, length=(end-start), children=[], is_contig=False, kick=False))
+            nodes.append(NODE(header=header, sequence=sequence, start=start, end=end, length=(end-start), children=[], is_contig=False, kick=False, splices={header: start}))
         mat = bl.BLOSUM(62)
         #Rescurive scan
-        for i, node in enumerate(nodes):
-            if node is None:
-                continue
-                
-            splice_occured = True
-            while splice_occured:
-                splice_occured = False
-
-                # Reverse
-                for j, other_node in enumerate(nodes[i+1:], i+1):
-                    if other_node is None:
+        splice_occured = True
+        while splice_occured:
+            splice_occured = False
+            for i, node in enumerate(nodes):
+                if node.kick:
+                    continue
+                for j, node_2 in enumerate(nodes):
+                    if node_2.kick:
                         continue
-
-                    overlap_coords = node.get_overlap(other_node, args.merge_overlap)
-                    
+                    if i == j:
+                        continue
+                    overlap_coords = node.get_overlap(node_2, args.merge_overlap)
+                        
                     if overlap_coords:
                         node_kmer = node.sequence[overlap_coords[0]:overlap_coords[1]]
-                        other_kmer = other_node.sequence[overlap_coords[0]:overlap_coords[1]]                        
+                        other_kmer = node_2.sequence[overlap_coords[0]:overlap_coords[1]]                        
 
                         distance = constrained_distance(node_kmer, other_kmer)
 
                         if distance == 0:
                             splice_occured = True
-                            node.extend(other_node, overlap_coords[0])
-                            nodes[j] = None
+                            node.extend(node_2, overlap_coords[0])
+                            nodes[j].kick = True
                             continue
                         overlap_amount = overlap_coords[1] - overlap_coords[0]
                         diff_percent = distance / overlap_amount
 
-                        if diff_percent <= args.sub_percent and overlap_amount != other_node.length:
+                        if diff_percent <= args.sub_percent and overlap_amount != node_2.length:
                             allow_sub = True
                             for k in range(0, overlap_amount, 3):
-                                position = (overlap_coords[0]+k) // 3
+                                nt_pos = overlap_coords[0] + k
+                                aa_pos = (nt_pos) // 3
 
-                                aa_node_bp = aa_sequences[node.header][position]
-                                aa_other_bp = aa_sequences[other_node.header][position]
+                                aa_node_bp = aa_sequences[node.get_sequence_at_coord(nt_pos)][aa_pos]
+                                aa_other_bp = aa_sequences[node_2.get_sequence_at_coord(nt_pos)][aa_pos]
 
                                 if aa_node_bp == aa_other_bp:
                                     continue
@@ -207,15 +218,16 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
                                     allow_sub = True
                                 if subs < 0:
                                     allow_sub = False
+
                             if allow_sub:
                                 splice_occured = True
-                                node.extend(other_node, overlap_coords[1])
-                                nodes[j] = None
+                                node.extend(node_2, overlap_coords[0])
+                                node_2.kick = True
 
-        contigs = [node for node in nodes if node is not None and node.is_contig]
+        contigs = [node for node in nodes if not node.kick and node.is_contig]
         contigs.sort(key=lambda x: x.length, reverse=True)
 
-        reads = [node for node in nodes if node is not None and not node.is_contig]
+        reads = [node for node in nodes if not node.kick and not node.is_contig]
         kicks.append(f"Kicks for {gene}\n")
         kicks.append("Header B,,Header A,Overlap Percent,Matching Percent\n")
         kicked_headers = set()
