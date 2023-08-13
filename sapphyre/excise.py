@@ -221,8 +221,8 @@ def log_excised_consensus(path: Path, consensus_threshold=0.65, excise_threshold
         consensus_func = bd.dumb_consensus
     consensus_seq = consensus_func(sequences, consensus_threshold)
     consensus_seq = bd.convert_consensus(sequences, consensus_seq)
-    if verbose:
-        print(f"{gene}\n{consensus_seq}\n")
+    # if verbose:
+    #     print(f"{gene}\n{consensus_seq}\n")
     bad_regions = check_bad_regions(consensus_seq, excise_threshold)
     if bad_regions:
         if len(bad_regions) == 1:
