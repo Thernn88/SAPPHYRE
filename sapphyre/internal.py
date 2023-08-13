@@ -167,8 +167,8 @@ def do_folder(folder, args):
     for gene in file_inputs:
         gene_raw = gene.stem.split(".")[0]
         if args.dupes:
-            prepare_dupes = (prepare_dupe_counts.get(gene_raw, {}),)
-            reporter_dupes = (reporter_dupe_counts.get(gene_raw, {}),)
+            prepare_dupes = prepare_dupe_counts.get(gene_raw, {})
+            reporter_dupes = reporter_dupe_counts.get(gene_raw, {})
         else:
             prepare_dupes, reporter_dupes = None, None
         arguments.append(
