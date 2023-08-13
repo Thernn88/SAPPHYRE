@@ -271,7 +271,6 @@ def main(args):
         return False
     results = []
     #args.processes
-    print(args.read_overlap)
     this_args = CollapserArgs(
         compress=args.compress,
         processes=args.processes,
