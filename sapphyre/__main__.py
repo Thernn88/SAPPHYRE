@@ -315,7 +315,7 @@ def subcmd_outlier(subparsers):
                         help="Maximum percent of allowable X characters in consensus tail")
     par.add_argument('-nd', '--no_dupes', default=True, action='store_false', dest="dupes",
                         help="Use prepare and reporter dupe counts in consensus generation")
-    par.add_argument('-me', '--majority_excise', default=0.5, help="Percentage of loci containg bad regions to move")
+    par.add_argument('-me', '--majority_excise', default=0.35, help="Percentage of loci containg bad regions to move")
     par.add_argument('-mf', '--move_fails', default="datasets/bad", help="Percentage of loci containg bad regions to move")
     # par.add_argument("--debug", default=False, action="store_true",
     #                     help="Log the truncated consensus sequence and the removed tail.")
