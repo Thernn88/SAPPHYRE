@@ -593,7 +593,6 @@ def do_folder(folder, args):
     else:
         err = f"cannot find dupe databases for {folder}"
         raise FileNotFoundError(err)
-    printv(f"Processing: {os.path.basename(folder)}", args.verbose, 0)
 
     if not aa_input.exists():  # exit early
         printv(
@@ -608,9 +607,11 @@ def do_folder(folder, args):
         for gene in aa_input.iterdir()
         if ".aa" in gene.suffixes and gene.suffix in ALLOWED_EXTENSIONS
     ]
-    output_path = Path(folder, "outlier")
+    output_path = Path(folder, "outlier", "blosum")
     nt_output_path = os.path.join(output_path, "nt")
     folder_check(output_path, args.debug)
+
+    compress = not args.uncompress_intermediates or args.compress
 
     file_inputs.sort(key=lambda x: x.stat().st_size, reverse=True)
     if args.processes > 1:
@@ -627,7 +628,7 @@ def do_folder(folder, args):
                     nt_output_path,
                     args.debug,
                     args.verbose,
-                    args.compress,
+                    compress,
                     args.col_cull_percent,
                     args.index_group_min_bp,
                     args.ref_gap_percent,
@@ -655,7 +656,7 @@ def do_folder(folder, args):
                     nt_output_path,
                     args.debug,
                     args.verbose,
-                    args.compress,
+                    compress,
                     args.col_cull_percent,
                     args.index_group_min_bp,
                     args.ref_gap_percent,
@@ -680,19 +681,11 @@ def do_folder(folder, args):
                             line = f"{line}\n"
                         global_csv.write(line)
 
-    printv(f"Done! Took {time_keeper.differential():.2f}s", args.verbose)
-
+    printv(f"Done! Took {time_keeper.differential():.2f} seconds", args.verbose)
+    return True
 
 def main(args):
-    global_time = TimeKeeper(KeeperMode.DIRECT)
-    if not all(os.path.exists(i) for i in args.INPUT):
-        printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
-        return False
-    for folder in args.INPUT:
-        do_folder(Path(folder), args)
-    if len(args.INPUT) > 1 or not args.verbose:
-        printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
-    return True
+    return do_folder(Path(args.INPUT), args)
 
 
 if __name__ == "__main__":

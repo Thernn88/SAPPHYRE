@@ -1,11 +1,13 @@
+from multiprocessing import Pool
 import os
+from shutil import move, rmtree
 import phymmr_tools as bd
 import wrap_rocks
 
 from msgspec import json
 from pathlib import Path
-from pyfastx import Fastx
-
+from .utils import parseFasta, writeFasta, printv
+from .timekeeper import KeeperMode, TimeKeeper
 
 def find_quesion_marks(sequences: list, start: int, stop: int) -> set:
     def check_index(index: int):
@@ -126,37 +128,17 @@ def check_bad_regions(consensus: str, limit: float, initial_window=16) -> list:
                 output[b] = (a, b)
     return [*output.values()]
 
-    # for i in range(first, last, window):
-    #     ratio = consensus[i:i + window].count("X") / window
-    #     if ratio >= limit:
-    #         if begin is None:
-    #             begin = i
-    #     else:
-    #         if begin is not None:
-    #             # the new first is the old window end
-    #             a, b = first_last_X(consensus[begin:i])
-    #             output.append((a + begin, b + begin))
-    #             begin = None
-    # if begin is not None:
-    #     a, b = first_last_X(consensus[begin:last])
-    #     if a is not None and b is not None:
-    #         output.append((a + begin, b + begin))
-
-    # return output
-
-    # while (first + window) <= last:
-    #     ratio = num_x / total
-    #     if ratio > limit:
-    #         in_region = True
-    #         num_x += consensus[window] == "X"
-    #         total += 1
-    #         window += 1
-    #     else:
-    #         if in_region:
-    #             output.append(bd.find_index_pair(consensus[first:first+window], "X"))
+def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_counts):
+        output = []
+        for header, seq in sequences:
+            node = header.split("|")[3]
+            dupes = prepare_dupe_counts.get(node, 1) + sum(
+                prepare_dupe_counts.get(node, 1) for node in reporter_dupe_counts.get(node, []))
+            output.append((seq, dupes))
+        return output
 
 
-def log_excised_consensus(path: Path, consensus_threshold=0.65, excise_threshold=0.40, dupes=False, log_path=None, debug=False, verbose=False, cut=False):
+def log_excised_consensus(gene:str, input_path: Path, output_path: Path, compress_intermediates: bool, consensus_threshold, excise_threshold, prepare_dupes: dict, reporter_dupes: dict, debug, verbose, cut):
     """
     By default, this does non-dupe consensus. If you pass "dupes=True", it will call
     the dupe-weighted version of consensus. If dupes is enable, the program needs dupe counts
@@ -179,45 +161,21 @@ def log_excised_consensus(path: Path, consensus_threshold=0.65, excise_threshold
     The second field in the log file is the cut-index in regular slice notation. It starts at the index of the
     first removed character, inclusive. The end is the length of the string, which is exclusive.
     """
+    log_output = ""
+    
+    aa_in = input_path.joinpath("aa", gene)
+    aa_out = output_path.joinpath("aa", gene)
 
-    sub_folder = path.parent
-    folder = sub_folder.parent.parent
-    if not log_path:
-        log_path = Path(path.parent.parent.parent, "excise.tsv")
-    gene = Path(path).name.split(".")[0]
+    nt_in = input_path.joinpath("nt", gene.replace('.aa.', '.nt.'))
+    nt_out = output_path.joinpath("nt", gene.replace('.aa.', '.nt.'))
 
-    def load_dupes():
-        rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
-        if rocks_db_path.exists():
-
-            rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
-            prepare_dupe_counts = json.decode(
-                rocksdb_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]]
-            )
-            reporter_dupe_counts = json.decode(
-                rocksdb_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]]
-            )
-        else:
-            err = f"cannot find dupe databases for {folder}"
-            raise FileNotFoundError(err)
-        return prepare_dupe_counts, reporter_dupe_counts
-
-    def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_counts):
-        output = []
-        for header, seq in sequences:
-            node = header.split("|")[3]
-            dupes = prepare_dupe_counts.get(node, 1) + sum(
-                prepare_dupe_counts.get(node, 1) for node in reporter_dupe_counts.get(node, []))
-            output.append((seq, dupes))
-        return output
-
-    if not dupes:
-        prepare_dupes, reporter_dupes = load_dupes()
-        sequences = [(header, seq) for header,seq in Fastx(str(path)) if header[-1] != "."]
+    raw_sequences = list(parseFasta(str(aa_in)))
+    if prepare_dupes and reporter_dupes:
+        sequences = [(header, seq) for header,seq in raw_sequences if header[-1] != "."]
         sequences = bundle_seqs_and_dupes(sequences, prepare_dupes, reporter_dupes)
         consensus_func = bd.dumb_consensus_dupe
     else:
-        sequences = [x[1] for x in Fastx(str(path)) if x[0][-1] != "."]
+        sequences = [x[1] for x in raw_sequences if x[0][-1] != "."]
         consensus_func = bd.dumb_consensus
     consensus_seq = consensus_func(sequences, consensus_threshold)
     consensus_seq = bd.convert_consensus(sequences, consensus_seq)
@@ -228,30 +186,54 @@ def log_excised_consensus(path: Path, consensus_threshold=0.65, excise_threshold
         if len(bad_regions) == 1:
             a, b = bad_regions[0]
             if b - a != len(consensus_seq):
-                with open(log_path, "a") as f:
-                    f.write(f"{gene}\t{a}:{b}")
-                    if debug:
-                        f.write("\t"+consensus_seq)
-                    f.write("\n")
+                    log_output += f"{gene}\t{a}:{b}\t{consensus_seq}\n" if debug else f"{gene}\t{a}:{b}\n"
         else:
-            with open(log_path, "a") as f:
-                f.write(f"{gene}\t")
-                for region in bad_regions:
-                    a, b = region
-                    f.write(f"{a}:{b}\t")
-                    if debug:
-                        f.write(consensus_seq)
-                f.write("\n")
+            for region in bad_regions:
+                a, b = region
+                log_output += f"{gene}\t{a}:{b}\t{consensus_seq}\n" if debug else f"{gene}\t{a}:{b}\n"
+           
+        if cut:
+            positions_to_cull = {i for a, b in bad_regions for i in range(a, b)}
 
-    # TODO:  if cut==True, cut and output here
+            aa_output = []
+            for header, sequence in raw_sequences:
+                if header[-1] == ".":
+                    aa_output.append((header, sequence))
+                    continue
+                sequence = [let for i,let in enumerate(sequence) if i not in positions_to_cull]
+                sequence = "".join(sequence)
+                aa_output.append((header, sequence))
+            writeFasta(str(aa_out), aa_output, compress_intermediates)
 
+            nt_output = []
+            for header, sequence in parseFasta(str(nt_in)):
+                if header[-1] == ".":
+                    nt_output.append((header, sequence))
+                    continue
+
+                sequence = [sequence[i:i+3] for i in range(0, len(sequence), 3) if i//3 not in positions_to_cull]
+                sequence = "".join(sequence)
+                nt_output.append((header, sequence))
+            writeFasta(str(nt_out), nt_output, compress_intermediates)
     else:
         if debug:
-            with open(log_path, "a") as f:
-                f.write(f"{gene}\tN/A\t{consensus_seq}\n")
+            log_output += f"{gene}\tN/A\t{consensus_seq}\n"
+
+    return log_output, bad_regions != []
+    
+def load_dupes(rocks_db_path: Path):
+    rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
+    prepare_dupe_counts = json.decode(
+        rocksdb_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]]
+    )
+    reporter_dupe_counts = json.decode(
+        rocksdb_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]]
+    )
+    return prepare_dupe_counts, reporter_dupe_counts
 
 
 def main(args):
+    timer = TimeKeeper(KeeperMode.DIRECT)
     if not (0 < args.consensus < 1.0):
         if 0 < args.consensus <= 100:
             args.consensus = args.consensus/100
@@ -263,21 +245,68 @@ def main(args):
             args.excise = args.excise/100
         else:
             raise ValueError("Cannot convert excise to a percent. Use a decimal or a whole number between 0 and 100")
+    folder = args.INPUT
+    if args.cut:
+        sub_dir = "collapsed"
+    else:
+        sub_dir = "blosum"
 
-    for folder in args.INPUT:
-        if args.cut:
-            sub_dir = "collapsed"
-        else:
-            sub_dir = "outlier"
-        aa_folder = Path(folder, sub_dir, "aa")
-        fastas = [Path(aa_folder, fasta) for fasta in os.listdir(aa_folder) if ".fa" in fasta]
-        log_path = Path(folder, "excise_indices.tsv")
+    input_folder = Path(folder, "outlier", sub_dir)
+    output_folder = Path(folder, "outlier", "excise")
+
+    output_aa_folder = output_folder.joinpath("aa")
+    output_nt_folder = output_folder.joinpath("nt")
+
+    if os.path.exists(output_folder):
+        rmtree(output_folder)
+    os.mkdir(str(output_folder))
+    os.mkdir(str(output_aa_folder))
+    os.mkdir(str(output_nt_folder))
+
+    aa_input = input_folder.joinpath("aa")
+
+    rocksdb_path = Path(folder, "rocksdb", "sequences", "nt")
+
+    if args.dupes:
+        if not rocksdb_path.exists():
+            err = f"cannot find rocksdb for {folder}"
+            raise FileNotFoundError(err)
+        prepare_dupes, reporter_dupes = load_dupes(rocksdb_path)
+    else:
+        prepare_dupes, reporter_dupes = {}, {}
+
+    compress = not args.uncompress_intermediates or args.compress
+    
+    genes = [fasta for fasta in os.listdir(aa_input) if ".fa" in fasta]
+    log_path = Path(output_folder, "excise_indices.tsv")
+    if args.processes > 1:
+        arguments = [(gene, input_folder, output_folder, compress, args.consensus, args.excise, prepare_dupes.get(gene.split('.')[0], {}), reporter_dupes.get(gene.split('.')[0], {}), args.debug, args.verbose, args.cut) for gene in genes]
+        with Pool(args.processes) as pool:
+            results = pool.starmap(log_excised_consensus, arguments)
+    else:
+        results = []
+        for gene in genes:
+            results.append(log_excised_consensus(gene, input_folder, output_folder, compress, args.consensus, args.excise, prepare_dupes.get(gene.split('.')[0], {}), reporter_dupes.get(gene.split('.')[0], {}), args.debug,
+                                args.verbose, args.cut))
+    
+    log_output = [x[0] for x in results]
+    loci_containg_bad_regions = len([x[1] for x in results if x[1]])
+
+    if args.debug:
         with open(log_path, "w") as f:
             f.write(f"Gene\tCut-Indices\n")
-        for fasta in fastas:
-            log_excised_consensus(fasta, args.consensus, args.excise, dupes=args.dupes, log_path=log_path, debug=args.debug,
-                                  verbose=args.verbose, cut=args.cut)
-    return True
+            f.write("".join(log_output))
+
+    new_path = folder
+    if not args.cut:
+        if loci_containg_bad_regions / len(genes) >= args.majority_excise:
+            bad_folder = Path(args.move_fails, os.path.basename(folder))
+            move(folder, bad_folder)
+            printv(f"{os.path.basename(folder)} has too many bad regions, moving to {bad_folder}", args.verbose)
+            new_path = str(bad_folder)
+        
+    printv(f"Done! Took {timer.differential():.2f} seconds", args.verbose)
+    return True, new_path
 
 
 if __name__ == "__main__":

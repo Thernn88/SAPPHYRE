@@ -13,6 +13,7 @@ import os
 
 class CollapserArgs(Struct):
     compress: bool
+    uncompress_intermediates: bool
     processes: int
 
     merge_overlap: int
@@ -96,12 +97,11 @@ def get_start_end(seq):
     return start, end
 
 def do_folder(args, input_path):
-    printv(f"Processing: {os.path.basename(input_path)}", args.verbose, 1)
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
-    nt_input_path = os.path.join(input_path,"outlier","nt")
-    aa_input_path = os.path.join(input_path,"outlier","aa")
+    nt_input_path = os.path.join(input_path,"outlier","blosum","nt")
+    aa_input_path = os.path.join(input_path,"outlier","blosum","aa")
 
-    collapsed_path = os.path.join(input_path,"collapsed")
+    collapsed_path = os.path.join(input_path,"outlier","collapsed")
     nt_out_path = os.path.join(collapsed_path,"nt")
     aa_out_path = os.path.join(collapsed_path,"aa")
 
@@ -122,7 +122,9 @@ def do_folder(args, input_path):
 
     per_thread = ceil(len(genes) / args.processes)
 
-    batched_arguments = [(args, genes[i : i + per_thread], nt_input_path, nt_out_path, aa_input_path, aa_out_path) for i in range(0, len(genes), per_thread)]
+    compress = not args.uncompress_intermediates or args.compress 
+
+    batched_arguments = [(args, genes[i : i + per_thread], nt_input_path, nt_out_path, aa_input_path, aa_out_path, compress) for i in range(0, len(genes), per_thread)]
 
     if args.processes <= 1:
         results = []
@@ -143,11 +145,11 @@ def do_folder(args, input_path):
                 kick_list = data[1]
                 fp.write("".join(kick_list))
 
-    printv(f"Took {time_keeper.differential():.2f}s to process {len(genes)} genes.", args.verbose, 1)
+    printv(f"Done! Took {time_keeper.differential():.2f} seconds", args.verbose, 1)
 
     return all_passed
 
-def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out_path):
+def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out_path, compress):
     kicks = []
     for gene in genes:
         printv(f"Doing: {gene}", args.verbose, 2)
@@ -291,10 +293,10 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
                         continue
                     f.write(f">{node.header}{is_kick}\n{node.sequence}\n")
         else:     
-            writeFasta(nt_out, [i for i in nt_output if i[0] not in kicked_headers], args.compress)
+            writeFasta(nt_out, [i for i in nt_output if i[0] not in kicked_headers], compress)
 
         aa_sequences = [(header,sequence) for header,sequence in aa_sequences.items() if header not in kicked_headers]
-        writeFasta(aa_out, aa_sequences, args.compress)
+        writeFasta(aa_out, aa_sequences, compress)
 
     count = len(kicked_headers)
     kicks.append(f"Total Kicks: {count}\n")
@@ -304,14 +306,9 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
 
     return True, [], 0
 def main(args):
-    global_time = TimeKeeper(KeeperMode.DIRECT)
-    if not all(os.path.exists(i) for i in args.INPUT):
-        printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
-        return False
-    results = []
-    #args.processes
     this_args = CollapserArgs(
         compress=args.compress,
+        uncompress_intermediates = args.uncompress_intermediates,
         processes=args.processes,
 
         merge_overlap=args.merge_overlap,
@@ -328,12 +325,7 @@ def main(args):
         debug=args.debug,
     )
 
-    for input_path in args.INPUT:
-        results.append(do_folder(this_args, input_path))
-        
-    if len(args.INPUT) >= 1 or not args.verbose:
-        printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
-    return all(results)
+    return do_folder(this_args, args.INPUT)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,10 @@ Post-processing:
     10. Combine.
 """
 import argparse
+import os
+
+from .utils import printv
+from .timekeeper import TimeKeeper, KeeperMode
 
 
 class CaseInsensitiveArgumentParser(argparse.ArgumentParser):
@@ -246,6 +250,12 @@ def subcmd_outlier(subparsers):
         action="count",
         help="Log outliers to csv files",
     )
+    par.add_argument(
+        "-uci",
+        "--uncompress-intermediates",
+        action="store_true",
+        help="Compress intermediate files",
+    )
     #Outlier main loop
     par.add_argument("INPUT", help="Path to taxa", action="extend", nargs="+")
     par.add_argument(
@@ -305,6 +315,8 @@ def subcmd_outlier(subparsers):
                         help="Maximum percent of allowable X characters in consensus tail")
     par.add_argument('-nd', '--no_dupes', default=True, action='store_false', dest="dupes",
                         help="Use prepare and reporter dupe counts in consensus generation")
+    par.add_argument('-me', '--majority_excise', default=0.5, help="Percentage of loci containg bad regions to move")
+    par.add_argument('-mf', '--move_fails', default="datasets/bad", help="Percentage of loci containg bad regions to move")
     # par.add_argument("--debug", default=False, action="store_true",
     #                     help="Log the truncated consensus sequence and the removed tail.")
     par.add_argument("--flag", default=False, dest="cut", action="store_false",
@@ -312,7 +324,7 @@ def subcmd_outlier(subparsers):
     par.add_argument("--cut", default=False, dest="cut", action="store_true",
                         help="Remove any regions flagged by excise.")
     # Internal Commands
-    par.add_argument("-sd", "--sub_directory", default="outlier",
+    par.add_argument("-sd", "--sub_directory", default="excise",
                         help="Name of input subfolder")
     par.add_argument("-o", "--output", type=str, default="internal",
                         help="Path to output directory")
@@ -328,39 +340,52 @@ def subcmd_outlier(subparsers):
 
 def outlier(argsobj):
     from . import outlier, collapser, excise, internal
+    timer = TimeKeeper(KeeperMode.DIRECT)
+    for folder in argsobj.INPUT:
+        if not os.path.exists(folder):
+            printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
+            return
+        
+        printv(f"Processing: {folder}", argsobj.verbose)
+        printv("Blosum62 Outlier Removal.", argsobj.verbose)
+        this_args = vars(argsobj)
+        this_args["INPUT"] = folder
+        this_args = argparse.Namespace(**this_args)
 
-    print("Blosum62 Outlier Removal.")
+        if not outlier.main(this_args):
+            print()
+            print(argsobj.formathelp())
+            return
+        
+        printv("Checking for severe contamination.", argsobj.verbose)
+        module_return_tuple = excise.main(this_args)
+        if not module_return_tuple:
+            print()
+            print(argsobj.formathelp())
 
-    if not outlier.main(argsobj):
-        print()
-        print(argsobj.formathelp())
-        return
-
-    # first_args = vars(argsobj)
-    # first_args["INPUT"] = [argsobj.output_directory]
-    # second_args = argparse.Namespace(**first_args)
-    print("Checking for severe contamination.")
-    if not excise.main(argsobj):
-        print()
-        print(argsobj.formathelp())
-    print("Simple Assembly Ensures Consistency.")
-    if not collapser.main(argsobj):
-        print()
-        print(argsobj.formathelp())
-        return
-    current_args = vars(argsobj)
-    current_args["cut"] = True
-    second_args = argparse.Namespace(**current_args)
-    print("Detecting and Removing Ambiguous Regions.")
-    if not excise.main(second_args):
-        print()
-        print(second_args.formathelp())
-    
-    print("Removing Gross Consensus Disagreements.")
-    if not internal.main(second_args):
-        print()
-        print(second_args.format)
-
+        new_path = module_return_tuple[1]
+        after_excise_args = vars(argsobj)
+        after_excise_args["INPUT"] = new_path
+        after_excise_args["cut"] = True
+        after_excise_args = argparse.Namespace(**after_excise_args)
+        
+        printv("Simple Assembly To Ensure Consistency.", argsobj.verbose)
+        if not collapser.main(after_excise_args):
+            print()
+            print(argsobj.formathelp())
+            return
+        
+        printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
+        module_return_tuple = excise.main(after_excise_args)
+        if not module_return_tuple:
+            print()
+            print(argsobj.formathelp())
+        
+        printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
+        if not internal.main(after_excise_args):
+            print()
+            print(argsobj.format)
+    printv(f"Took {timer.differential():.2f} seconds overall.", argsobj.verbose)
 
 def subcmd_Merge(subparsers):
     par = subparsers.add_parser(

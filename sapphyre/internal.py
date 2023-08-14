@@ -151,7 +151,7 @@ def run_internal(
 
 
 def main(args):
-    global_time = TimeKeeper(KeeperMode.DIRECT)
+    timer = TimeKeeper(KeeperMode.DIRECT)
     if args.internal_consensus_threshold > 100 or args.internal_consensus_threshold <= 0:
         raise ValueError("cannot express given consensus threshold as a percent")
     if args.internal_consensus_threshold > 1:
@@ -161,51 +161,45 @@ def main(args):
     if args.internal_distance_threshold > 1:
         args.internal_distance_threshold = args.distance_thesold / 100
 
-    if not all(os.path.exists(i) for i in args.INPUT):
-        printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
-        return False
     with Pool(args.processes) as pool:
-        for folder in args.INPUT:
-            aa_input = Path(folder, args.sub_directory, "aa")
-            nt_input = Path(folder, args.sub_directory, "nt")
-            prepare_dupe_counts, reporter_dupe_counts = load_dupes(folder)
-            file_inputs = [
-                gene
-                for gene in aa_input.iterdir()
-                if ".aa" in gene.suffixes and gene.suffix in ALLOWED_EXTENSIONS
-            ]
-            output_path = Path(folder, "internal")
-            nt_output_path = os.path.join(output_path, "nt")
-            folder_check(output_path, False)
-            file_inputs.sort(key=lambda x: x.stat().st_size, reverse=True)
-            arguments = []
+        folder = args.INPUT
+        aa_input = Path(folder, "outlier", args.sub_directory, "aa")
+        nt_input = Path(folder, "outlier", args.sub_directory, "nt")
+        prepare_dupe_counts, reporter_dupe_counts = load_dupes(folder)
+        file_inputs = [
+            gene
+            for gene in aa_input.iterdir()
+            if ".aa" in gene.suffixes and gene.suffix in ALLOWED_EXTENSIONS
+        ]
+        output_path = Path(folder, "outlier", "internal")
+        nt_output_path = os.path.join(output_path, "nt")
+        folder_check(output_path, False)
+        file_inputs.sort(key=lambda x: x.stat().st_size, reverse=True)
+        arguments = []
 
 
-            for gene in file_inputs:
-                gene_raw = gene.stem.split(".")[0]
-                if args.dupes:
-                    prepare_dupes = prepare_dupe_counts.get(gene_raw, {})
-                    reporter_dupes = reporter_dupe_counts.get(gene_raw, {})
-                else:
-                    prepare_dupes, reporter_dupes = None, None
-                arguments.append(
-                    (
-                        gene,
-                        nt_input,
-                        output_path,
-                        nt_output_path,
-                        args.internal_consensus_threshold,
-                        args.internal_distance_threshold,
-                        args.dupes,
-                        prepare_dupes,
-                        reporter_dupes,
-                    ),
-                )
-            pool.starmap(run_internal, arguments, chunksize=1)
-
-        # do_folder(Path(folder), args)
-    if len(args.INPUT) > 1 or not args.verbose:
-        printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
+        for gene in file_inputs:
+            gene_raw = gene.stem.split(".")[0]
+            if args.dupes:
+                prepare_dupes = prepare_dupe_counts.get(gene_raw, {})
+                reporter_dupes = reporter_dupe_counts.get(gene_raw, {})
+            else:
+                prepare_dupes, reporter_dupes = None, None
+            arguments.append(
+                (
+                    gene,
+                    nt_input,
+                    output_path,
+                    nt_output_path,
+                    args.internal_consensus_threshold,
+                    args.internal_distance_threshold,
+                    args.dupes,
+                    prepare_dupes,
+                    reporter_dupes,
+                ),
+            )
+        pool.starmap(run_internal, arguments, chunksize=1)
+    printv(f"Done! Took {timer.differential():.2f}s", args.verbose)
     return True
 
 
