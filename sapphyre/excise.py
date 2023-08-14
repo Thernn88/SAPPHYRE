@@ -203,7 +203,10 @@ def log_excised_consensus(gene:str, input_path: Path, output_path: Path, compres
                 if header[-1] == ".":
                     aa_output.append((header, sequence))
                     continue
-                sequence = [let for i,let in enumerate(sequence) if i not in positions_to_cull]
+                sequence = list(sequence)
+                for i in positions_to_cull:
+                    sequence[i] = "-"
+                # sequence = [let for i,let in enumerate(sequence) if i not in positions_to_cull]
                 sequence = "".join(sequence)
                 aa_output.append((header, sequence))
             writeFasta(str(aa_out), aa_output, compress_intermediates)
