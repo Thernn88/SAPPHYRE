@@ -78,6 +78,9 @@ def aa_internal(
             candidates.append(Record(header, seq))
         else:
             references.append(Record(header, seq))
+    if not candidates:  # if no candidates are found, report to user
+        print(f"{gene}: No Candidate Sequences found in file. Returning.")
+        return [], {}, []
     if dupes:
         consensus_func = bd.dumb_consensus_dupe
         sequences = bundle_seqs_and_dupes(candidates, prepare_dupes, reporter_dupes)

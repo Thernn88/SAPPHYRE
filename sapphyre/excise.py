@@ -111,11 +111,13 @@ def find_coverage_regions(consensus: str, start: int, stop: int, ambiguous="?") 
     return output
 
 
-def check_bad_regions(consensus: str, limit: float, initial_window=16, offset=0) -> list:
+def check_bad_regions(consensus: str, limit: float, initial_window=16, offset=0, test=False, rig=False) -> list:
     # if start is None and stop is None:
-    first, last = bd.find_index_pair(consensus, "X")
     # else:
-    #     first, last = start, stop
+    if not rig:
+        first, last = 0, len(consensus)
+    else:
+        first, last = bd.find_index_pair(consensus, "X")
     if first is None or last is None:
         return []
     l, r = first, first + initial_window
@@ -152,7 +154,7 @@ def check_bad_regions(consensus: str, limit: float, initial_window=16, offset=0)
     return [*output.values()]
 
 
-def check_covered_bad_regions(consensus: str, limit: float, aa_in, initial_window=16, ambiguous="?") -> list:
+def check_covered_bad_regions(consensus: str, limit: float, initial_window=16, ambiguous="?", test=False) -> list:
     """
     Creates a list of covered indices, then checks those slices for bad regions
     """
@@ -160,12 +162,10 @@ def check_covered_bad_regions(consensus: str, limit: float, aa_in, initial_windo
     bad_regions = []
     covered_indices = find_coverage_regions(consensus, start, stop, ambiguous=ambiguous)
     for begin, end in covered_indices:
-        subregions = check_bad_regions(consensus[begin:end], limit, offset=begin, initial_window=initial_window)
+        subregions = check_bad_regions(consensus[begin:end], limit, offset=begin, initial_window=initial_window, test=test)
         if subregions:
             bad_regions.extend(subregions)
     return bad_regions
-
-
 
 
 def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_counts):
@@ -224,7 +224,10 @@ def log_excised_consensus(gene:str, input_path: Path, output_path: Path, compres
     consensus_seq = bd.convert_consensus(sequences, consensus_seq)
     # if verbose:
     #     print(f"{gene}\n{consensus_seq}\n")
-    bad_regions = check_covered_bad_regions(consensus_seq, excise_threshold, aa_in)
+    old_bad_regions = check_bad_regions(consensus_seq, excise_threshold, rig=True)
+    bad_regions = check_covered_bad_regions(consensus_seq, excise_threshold, test=False)
+    if old_bad_regions and not bad_regions:
+        bad_regions = check_covered_bad_regions(consensus_seq, excise_threshold, test=True)
     if bad_regions:
         if len(bad_regions) == 1:
             a, b = bad_regions[0]
