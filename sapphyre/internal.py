@@ -79,7 +79,7 @@ def aa_internal(
         else:
             references.append(Record(header, seq))
     if not candidates:  # if no candidates are found, report to user
-        print(f"{gene}: No Candidate Sequences found in file. Returning.")
+        # print(f"{gene}: No Candidate Sequences found in file. Returning.")
         return [], {}, []
     if dupes:
         consensus_func = bd.dumb_consensus_dupe
@@ -128,9 +128,9 @@ def run_internal(
         prepare_dupes,
         reporter_dupes,
     )
+    if not passing:  # if no eligible candidates, don't create the output filegi
+        return
     aa_output = Path(output_path, "aa", gene.name)
-    # passing_lines = [(rec.id) for head, seq in passing.items()]
-    # writeFasta(aa_output, passing_lines)
     with open(aa_output,"w") as f:
         f.writelines((str(rec) for rec in passing))
     mirror_nt(nt_input, nt_output_path,passing, aa_output.name.replace(".aa.", ".nt."))
