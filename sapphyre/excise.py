@@ -294,6 +294,7 @@ def main(args):
     
     log_output = [x[0] for x in results]
     loci_containg_bad_regions = len([x[1] for x in results if x[1]])
+    printv(f"{input_folder}: {loci_containg_bad_regions} bad loci found", args.verbose)
 
     if args.debug:
         with open(log_path, "w") as f:
