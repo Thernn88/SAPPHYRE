@@ -88,8 +88,27 @@ def sensitive_check_bad_regions(consensus: str, limit: float, window=16) -> list
     return output
 
 
-def check_bad_regions(consensus: str, limit: float, initial_window=16) -> list:
+def find_coverage_regions(consensus: str, start: int, stop: int, ambiguous="?") -> list:
+    output = []
+    last_seen_data = None
+    for i, bp in enumerate(consensus[start:stop], start):
+        if bp is not ambiguous:
+            if last_seen_data is None:  # start of data region
+                last_seen_data = i
+        else:  # bp is ambiguous character
+            if last_seen_data is not None:
+                output.append((last_seen_data, i))
+            last_seen_data = None
+    if last_seen_data is not None:
+        output.append((last_seen_data, stop))
+    return output
+
+
+def check_bad_regions(consensus: str, limit: float, initial_window=16, offset=0) -> list:
+    # if start is None and stop is None:
     first, last = bd.find_index_pair(consensus, "X")
+    # else:
+    #     first, last = start, stop
     if first is None or last is None:
         return []
     l, r = first, first + initial_window
@@ -110,23 +129,37 @@ def check_bad_regions(consensus: str, limit: float, initial_window=16) -> list:
         else:
             if begin is not None:
                 a, b = first_last_X(consensus[begin:last])
-                a, b = a + begin, b + begin
+                a, b = a + begin + offset, b + begin + offset
                 if b not in output:
                     output[b] = (a,b)
-                # if a is not None and b is not None:
-                # output.append((a + begin, b + begin))
-                # begin = None
             l = r
             r = l + initial_window
             begin = None
             num_x = consensus[l:r].count("X")
     if begin is not None:
         a, b = first_last_X(consensus[begin:last])
-        a, b = a + begin, b + begin
+        a, b = a + begin + offset, b + begin + offset
         if a is not None and b is not None:
             if b not in output:
                 output[b] = (a, b)
     return [*output.values()]
+
+
+def check_covered_bad_regions(consensus: str, limit: float, aa_in, initial_window=16, ambiguous="?") -> list:
+    """
+    Creates a list of covered indices, then checks those slices for bad regions
+    """
+    start, stop = bd.find_index_pair(consensus, "X")
+    bad_regions = []
+    covered_indices = find_coverage_regions(consensus, start, stop, ambiguous=ambiguous)
+    for begin, end in covered_indices:
+        subregions = check_bad_regions(consensus[begin:end], limit, offset=begin, initial_window=initial_window)
+        if subregions:
+            bad_regions.extend(subregions)
+    return bad_regions
+
+
+
 
 def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_counts):
         output = []
@@ -184,7 +217,7 @@ def log_excised_consensus(gene:str, input_path: Path, output_path: Path, compres
     consensus_seq = bd.convert_consensus(sequences, consensus_seq)
     # if verbose:
     #     print(f"{gene}\n{consensus_seq}\n")
-    bad_regions = check_bad_regions(consensus_seq, excise_threshold)
+    bad_regions = check_covered_bad_regions(consensus_seq, excise_threshold, aa_in)
     if bad_regions:
         if len(bad_regions) == 1:
             a, b = bad_regions[0]
@@ -202,6 +235,8 @@ def log_excised_consensus(gene:str, input_path: Path, output_path: Path, compres
             for header, sequence in raw_sequences:
                 if header[-1] == ".":
                     aa_output.append((header, sequence))
+                    continue
+                if len(sequence) - len(positions_to_cull) < 20:
                     continue
                 sequence = list(sequence)
                 for i in positions_to_cull:
