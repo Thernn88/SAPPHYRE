@@ -138,6 +138,12 @@ def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_co
         return output
 
 
+def make_duped_consensus(raw_sequences: list, prepare_dupes: dict, reporter_dupes: dict, threshold: float) -> str:
+    seqs = [(header, seq) for header,seq in raw_sequences if header[-1] != "."]
+    bundled_seqs = bundle_seqs_and_dupes(seqs, prepare_dupes, reporter_dupes)
+    return bd.dumb_consensus_dupe(bundled_seqs, threshold)
+
+
 def log_excised_consensus(gene:str, input_path: Path, output_path: Path, compress_intermediates: bool, consensus_threshold, excise_threshold, prepare_dupes: dict, reporter_dupes: dict, debug, verbose, cut):
     """
     By default, this does non-dupe consensus. If you pass "dupes=True", it will call
@@ -170,14 +176,11 @@ def log_excised_consensus(gene:str, input_path: Path, output_path: Path, compres
     nt_out = output_path.joinpath("nt", gene.replace('.aa.', '.nt.'))
 
     raw_sequences = list(parseFasta(str(aa_in)))
+    sequences = [x[1] for x in raw_sequences if x[0][-1] != "."]
     if prepare_dupes and reporter_dupes:
-        sequences = [(header, seq) for header,seq in raw_sequences if header[-1] != "."]
-        sequences = bundle_seqs_and_dupes(sequences, prepare_dupes, reporter_dupes)
-        consensus_func = bd.dumb_consensus_dupe
+        consensus_seq = make_duped_consensus(raw_sequences, prepare_dupes, reporter_dupes, consensus_threshold)
     else:
-        sequences = [x[1] for x in raw_sequences if x[0][-1] != "."]
-        consensus_func = bd.dumb_consensus
-    consensus_seq = consensus_func(sequences, consensus_threshold)
+        consensus_seq = bd.dumb_consensus(sequences, consensus_threshold)
     consensus_seq = bd.convert_consensus(sequences, consensus_seq)
     # if verbose:
     #     print(f"{gene}\n{consensus_seq}\n")
