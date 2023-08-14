@@ -9,6 +9,13 @@ from pathlib import Path
 from .utils import parseFasta, writeFasta, printv
 from .timekeeper import KeeperMode, TimeKeeper
 
+
+def min_aa_check(sequence: list, minimum: int) -> bool:
+    start, stop = bd.find_index_pair(sequence, "X")
+    invalid = ["-", "X"]
+    valid_count = sum((bp not in invalid for bp in sequence[start:stop]))
+    return valid_count >= minimum
+
 def find_quesion_marks(sequences: list, start: int, stop: int) -> set:
     def check_index(index: int):
         for seq in sequences:
@@ -236,13 +243,13 @@ def log_excised_consensus(gene:str, input_path: Path, output_path: Path, compres
                 if header[-1] == ".":
                     aa_output.append((header, sequence))
                     continue
-                if len(sequence) - len(positions_to_cull) < 20:
-                    continue
                 sequence = list(sequence)
                 for i in positions_to_cull:
                     sequence[i] = "-"
                 # sequence = [let for i,let in enumerate(sequence) if i not in positions_to_cull]
                 sequence = "".join(sequence)
+                if not min_aa_check(sequence, 20):
+                    continue
                 aa_output.append((header, sequence))
             writeFasta(str(aa_out), aa_output, compress_intermediates)
 
@@ -331,8 +338,8 @@ def main(args):
                                 args.verbose, args.cut))
     
     log_output = [x[0] for x in results]
-    loci_containg_bad_regions = len([x[1] for x in results if x[1]])
-    printv(f"{input_folder}: {loci_containg_bad_regions} bad loci found", args.verbose)
+    loci_containing_bad_regions = len([x[1] for x in results if x[1]])
+    printv(f"{input_folder}: {loci_containing_bad_regions} bad loci found", args.verbose)
 
     if args.debug:
         with open(log_path, "w") as f:
@@ -341,7 +348,7 @@ def main(args):
 
     new_path = folder
     if not args.cut:
-        if loci_containg_bad_regions / len(genes) >= args.majority_excise:
+        if loci_containing_bad_regions / len(genes) >= args.majority_excise:
             bad_folder = Path(args.move_fails, os.path.basename(folder))
             move(folder, bad_folder)
             printv(f"{os.path.basename(folder)} has too many bad regions, moving to {bad_folder}", args.verbose)
