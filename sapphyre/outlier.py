@@ -2,17 +2,17 @@
 from __future__ import annotations
 import sys
 import os
-import phymmr_tools as bd
-import wrap_rocks
 
 from collections import defaultdict
 from itertools import combinations
 from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import rmtree
+
+import phymmr_tools as bd
+import wrap_rocks
 import numpy as np
-from msgspec import Struct, json
-from phymmr_tools import constrained_distance
+from msgspec import Struct
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, write2Line2Fasta
@@ -227,6 +227,7 @@ def has_minimum_data(
 
 def is_same_variant(header1, header2) -> bool:
     return header1[0:-8] == header2[0:-8]
+
 
 def compare_means(
     references: list,
@@ -582,12 +583,6 @@ def do_folder(folder, args):
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
     if rocks_db_path.exists():
         rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
-        prepare_dupe_counts = json.decode(
-            rocksdb_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]]
-        )
-        reporter_dupe_counts = json.decode(
-            rocksdb_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]]
-        )
         assembly = rocksdb_db.get("get:isassembly")
         assembly = assembly == "True"
     else:
@@ -617,7 +612,6 @@ def do_folder(folder, args):
     if args.processes > 1:
         arguments = []
         for gene in file_inputs:
-            gene_raw = gene.stem.split(".")[0]
             arguments.append(
                 (
                     gene,
@@ -635,8 +629,6 @@ def do_folder(folder, args):
                     args.ref_min_percent,
                     # args.internal_consensus_threshold,
                     # args.internal_kick_threshold,
-                    # prepare_dupe_counts.get(gene_raw, {}),
-                    # reporter_dupe_counts.get(gene_raw, {}),
                     assembly,
                 ),
             )
@@ -663,8 +655,6 @@ def do_folder(folder, args):
                     args.ref_min_percent,
                     # args.internal_consensus_threshold,
                     # args.internal_kick_threshold,
-                    # prepare_dupe_counts,
-                    # reporter_dupe_counts,
                     assembly,
                 ),
             )
@@ -683,6 +673,7 @@ def do_folder(folder, args):
 
     printv(f"Done! Took {time_keeper.differential():.2f} seconds", args.verbose)
     return True
+
 
 def main(args):
     return do_folder(Path(args.INPUT), args)

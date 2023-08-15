@@ -1,11 +1,11 @@
 from multiprocessing import Pool
 import os
 from shutil import move, rmtree
+from pathlib import Path
 import phymmr_tools as bd
 import wrap_rocks
 
 from msgspec import json
-from pathlib import Path
 from .utils import parseFasta, writeFasta, printv
 from .timekeeper import KeeperMode, TimeKeeper
 
@@ -14,12 +14,14 @@ def min_aa_check(sequence: list, minimum: int) -> bool:
     valid_count = len(sequence) - sequence.count("-") - sequence.count("X")
     return valid_count >= minimum
 
+
 def find_quesion_marks(sequences: list, start: int, stop: int) -> set:
     def check_index(index: int):
         for seq in sequences:
             if seq[i] != "-":
                 return False
         return True
+
     output = set()
     for i in range(start, stop):
         if check_index(i):
@@ -30,17 +32,17 @@ def find_quesion_marks(sequences: list, start: int, stop: int) -> set:
 def replace_inner_gaps(seq: list, start, stop, question_marks) -> str:
     # start = None
     for i, bp in enumerate(seq[start:stop], start):
-        if i not in question_marks: continue
+        if i not in question_marks:
+            continue
         if bp == "?":
             if start is None:
                 start = i
                 continue
-            else:
-                if start is not None:
-                    if i - start >= 7:
-                        for index in range(start, i+1):
-                            seq[index] = "-"
-                    start = None
+            if start is not None:
+                if i - start >= 7:
+                    for index in range(start, i + 1):
+                        seq[index] = "-"
+                start = None
     if start is not None:
         if len(seq) - start >= 7:
             for index in range(start, i + 1):
@@ -55,13 +57,13 @@ def first_last_X(string: str) -> tuple:
         if bp == "X":
             first = i
             break
-    for i in range(len(string)-1, -1, -1):
+    for i in range(len(string) - 1, -1, -1):
         if string[i] == "X":
             last = i
             break
     if first is None or last is None:
         return None, None
-    return first, last+1
+    return first, last + 1
 
 
 def sensitive_check_bad_regions(consensus: str, limit: float, window=16) -> list:
@@ -70,12 +72,10 @@ def sensitive_check_bad_regions(consensus: str, limit: float, window=16) -> list
     first, last = bd.find_index_pair(consensus, "X")
     if first is None or last is None:
         return []
-    num_x = consensus[first:first+window].count("X")
-    in_region = False
     begin = None
     output = []
     for i in range(first, last, window):
-        ratio = consensus[i:i+window].count("X") / window
+        ratio = consensus[i : i + window].count("X") / window
         if ratio >= limit:
             if begin is None:
                 begin = i
@@ -83,7 +83,7 @@ def sensitive_check_bad_regions(consensus: str, limit: float, window=16) -> list
             if begin is not None:
                 # the new first is the old window end
                 a, b = first_last_X(consensus[begin:i])
-                output.append((a+begin, b+begin))
+                output.append((a + begin, b + begin))
                 begin = None
     if begin is not None:
         a, b = first_last_X(consensus[begin:last])
@@ -109,7 +109,9 @@ def find_coverage_regions(consensus: str, start: int, stop: int, ambiguous="?") 
     return output
 
 
-def check_bad_regions(consensus: str, limit: float, initial_window=16, offset=0, test=False, rig=False) -> list:
+def check_bad_regions(
+    consensus: str, limit: float, initial_window=16, offset=0, test=False, rig=False
+) -> list:
     # if start is None and stop is None:
     # else:
     if not rig:
@@ -124,7 +126,7 @@ def check_bad_regions(consensus: str, limit: float, initial_window=16, offset=0,
     output = {}
 
     while r <= last:
-        ratio = num_x / (r-l)
+        ratio = num_x / (r - l)
         if ratio > limit:
             if begin is None:
                 begin = l
@@ -133,16 +135,15 @@ def check_bad_regions(consensus: str, limit: float, initial_window=16, offset=0,
             num_x += consensus[r] == "X"
             r += 1
             continue
-        else:
-            if begin is not None:
-                a, b = first_last_X(consensus[begin:last])
-                a, b = a + begin + offset, b + begin + offset
-                if b not in output:
-                    output[b] = (a,b)
-            l = r
-            r = l + initial_window
-            begin = None
-            num_x = consensus[l:r].count("X")
+        if begin is not None:
+            a, b = first_last_X(consensus[begin:last])
+            a, b = a + begin + offset, b + begin + offset
+            if b not in output:
+                output[b] = (a, b)
+        l = r
+        r = l + initial_window
+        begin = None
+        num_x = consensus[l:r].count("X")
     if begin is not None:
         a, b = first_last_X(consensus[begin:last])
         a, b = a + begin + offset, b + begin + offset
@@ -152,7 +153,9 @@ def check_bad_regions(consensus: str, limit: float, initial_window=16, offset=0,
     return [*output.values()]
 
 
-def check_covered_bad_regions(consensus: str, limit: float, initial_window=16, ambiguous="?", test=False) -> list:
+def check_covered_bad_regions(
+    consensus: str, limit: float, initial_window=16, ambiguous="?", test=False
+) -> list:
     """
     Creates a list of covered indices, then checks those slices for bad regions
     """
@@ -160,29 +163,51 @@ def check_covered_bad_regions(consensus: str, limit: float, initial_window=16, a
     bad_regions = []
     covered_indices = find_coverage_regions(consensus, start, stop, ambiguous=ambiguous)
     for begin, end in covered_indices:
-        subregions = check_bad_regions(consensus[begin:end], limit, offset=begin, initial_window=initial_window, test=test)
+        subregions = check_bad_regions(
+            consensus[begin:end],
+            limit,
+            offset=begin,
+            initial_window=initial_window,
+            test=test,
+        )
         if subregions:
             bad_regions.extend(subregions)
     return bad_regions
 
 
 def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_counts):
-        output = []
-        for header, seq in sequences:
-            node = header.split("|")[3]
-            dupes = prepare_dupe_counts.get(node, 1) + sum(
-                prepare_dupe_counts.get(node, 1) for node in reporter_dupe_counts.get(node, []))
-            output.append((seq, dupes))
-        return output
+    output = []
+    for header, seq in sequences:
+        node = header.split("|")[3]
+        dupes = prepare_dupe_counts.get(node, 1) + sum(
+            prepare_dupe_counts.get(node, 1)
+            for node in reporter_dupe_counts.get(node, [])
+        )
+        output.append((seq, dupes))
+    return output
 
 
-def make_duped_consensus(raw_sequences: list, prepare_dupes: dict, reporter_dupes: dict, threshold: float) -> str:
-    seqs = [(header, seq) for header,seq in raw_sequences if header[-1] != "."]
+def make_duped_consensus(
+    raw_sequences: list, prepare_dupes: dict, reporter_dupes: dict, threshold: float
+) -> str:
+    seqs = [(header, seq) for header, seq in raw_sequences if header[-1] != "."]
     bundled_seqs = bundle_seqs_and_dupes(seqs, prepare_dupes, reporter_dupes)
     return bd.dumb_consensus_dupe(bundled_seqs, threshold)
 
 
-def log_excised_consensus(gene:str, input_path: Path, output_path: Path, compress_intermediates: bool, consensus_threshold, excise_threshold, prepare_dupes: dict, reporter_dupes: dict, debug, verbose, cut):
+def log_excised_consensus(
+    gene: str,
+    input_path: Path,
+    output_path: Path,
+    compress_intermediates: bool,
+    consensus_threshold,
+    excise_threshold,
+    prepare_dupes: dict,
+    reporter_dupes: dict,
+    debug,
+    verbose,
+    cut,
+):
     """
     By default, this does non-dupe consensus. If you pass "dupes=True", it will call
     the dupe-weighted version of consensus. If dupes is enable, the program needs dupe counts
@@ -206,17 +231,19 @@ def log_excised_consensus(gene:str, input_path: Path, output_path: Path, compres
     first removed character, inclusive. The end is the length of the string, which is exclusive.
     """
     log_output = ""
-    
+
     aa_in = input_path.joinpath("aa", gene)
     aa_out = output_path.joinpath("aa", gene)
 
-    nt_in = input_path.joinpath("nt", gene.replace('.aa.', '.nt.'))
-    nt_out = output_path.joinpath("nt", gene.replace('.aa.', '.nt.'))
+    nt_in = input_path.joinpath("nt", gene.replace(".aa.", ".nt."))
+    nt_out = output_path.joinpath("nt", gene.replace(".aa.", ".nt."))
 
     raw_sequences = list(parseFasta(str(aa_in)))
     sequences = [x[1] for x in raw_sequences if x[0][-1] != "."]
     if prepare_dupes and reporter_dupes:
-        consensus_seq = make_duped_consensus(raw_sequences, prepare_dupes, reporter_dupes, consensus_threshold)
+        consensus_seq = make_duped_consensus(
+            raw_sequences, prepare_dupes, reporter_dupes, consensus_threshold
+        )
     else:
         consensus_seq = bd.dumb_consensus(sequences, consensus_threshold)
     consensus_seq = bd.convert_consensus(sequences, consensus_seq)
@@ -225,17 +252,27 @@ def log_excised_consensus(gene:str, input_path: Path, output_path: Path, compres
     old_bad_regions = check_bad_regions(consensus_seq, excise_threshold, rig=True)
     bad_regions = check_covered_bad_regions(consensus_seq, excise_threshold, test=False)
     if old_bad_regions and not bad_regions:
-        bad_regions = check_covered_bad_regions(consensus_seq, excise_threshold, test=True)
+        bad_regions = check_covered_bad_regions(
+            consensus_seq, excise_threshold, test=True
+        )
     if bad_regions:
         if len(bad_regions) == 1:
             a, b = bad_regions[0]
             if b - a != len(consensus_seq):
-                    log_output += f"{gene}\t{a}:{b}\t{consensus_seq}\n" if debug else f"{gene}\t{a}:{b}\n"
+                log_output += (
+                    f"{gene}\t{a}:{b}\t{consensus_seq}\n"
+                    if debug
+                    else f"{gene}\t{a}:{b}\n"
+                )
         else:
             for region in bad_regions:
                 a, b = region
-                log_output += f"{gene}\t{a}:{b}\t{consensus_seq}\n" if debug else f"{gene}\t{a}:{b}\n"
-           
+                log_output += (
+                    f"{gene}\t{a}:{b}\t{consensus_seq}\n"
+                    if debug
+                    else f"{gene}\t{a}:{b}\n"
+                )
+
         if cut:
             positions_to_cull = [i for a, b in bad_regions for i in range(a, b)]
 
@@ -267,7 +304,7 @@ def log_excised_consensus(gene:str, input_path: Path, output_path: Path, compres
 
                 sequence = list(sequence)
                 for i in positions_to_cull:
-                    sequence[i*3:i*3+3] = ["-", "-", "-"]
+                    sequence[i * 3 : i * 3 + 3] = ["-", "-", "-"]
                 sequence = "".join(sequence)
                 nt_output.append((header, sequence))
             writeFasta(str(nt_out), nt_output, compress_intermediates)
@@ -276,7 +313,8 @@ def log_excised_consensus(gene:str, input_path: Path, output_path: Path, compres
             log_output += f"{gene}\tN/A\t{consensus_seq}\n"
 
     return log_output, bad_regions != []
-    
+
+
 def load_dupes(rocks_db_path: Path):
     rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
     prepare_dupe_counts = json.decode(
@@ -292,6 +330,7 @@ def load_dupes(rocks_db_path: Path):
 def do_move(from_, to_):
     move(from_, to_)
 
+
 def move_flagged(to_move, processes):
     if processes <= 1:
         for from_, to_ in to_move:
@@ -299,21 +338,28 @@ def move_flagged(to_move, processes):
     else:
         with Pool(processes) as pool:
             pool.starmap(do_move, to_move)
+
+
 ###
+
 
 def main(args, override_cut=None):
     timer = TimeKeeper(KeeperMode.DIRECT)
     if not (0 < args.consensus < 1.0):
         if 0 < args.consensus <= 100:
-            args.consensus = args.consensus/100
+            args.consensus = args.consensus / 100
         else:
-            raise ValueError("Cannot convert consensus to a percent. Use a decimal or a whole number between 0 and 100")
+            raise ValueError(
+                "Cannot convert consensus to a percent. Use a decimal or a whole number between 0 and 100"
+            )
 
     if not (0 < args.excise < 1.0):
         if 0 < args.excise <= 100:
-            args.excise = args.excise/100
+            args.excise = args.excise / 100
         else:
-            raise ValueError("Cannot convert excise to a percent. Use a decimal or a whole number between 0 and 100")
+            raise ValueError(
+                "Cannot convert excise to a percent. Use a decimal or a whole number between 0 and 100"
+            )
     folder = args.INPUT
     if override_cut is None:
         cut = args.cut
@@ -350,22 +396,52 @@ def main(args, override_cut=None):
         prepare_dupes, reporter_dupes = {}, {}
 
     compress = not args.uncompress_intermediates or args.compress
-    
+
     genes = [fasta for fasta in os.listdir(aa_input) if ".fa" in fasta]
     log_path = Path(output_folder, "excise_indices.tsv")
     if args.processes > 1:
-        arguments = [(gene, input_folder, output_folder, compress, args.consensus, args.excise, prepare_dupes.get(gene.split('.')[0], {}), reporter_dupes.get(gene.split('.')[0], {}), args.debug, args.verbose, cut) for gene in genes]
+        arguments = [
+            (
+                gene,
+                input_folder,
+                output_folder,
+                compress,
+                args.consensus,
+                args.excise,
+                prepare_dupes.get(gene.split(".")[0], {}),
+                reporter_dupes.get(gene.split(".")[0], {}),
+                args.debug,
+                args.verbose,
+                cut,
+            )
+            for gene in genes
+        ]
         with Pool(args.processes) as pool:
             results = pool.starmap(log_excised_consensus, arguments)
     else:
         results = []
         for gene in genes:
-            results.append(log_excised_consensus(gene, input_folder, output_folder, compress, args.consensus, args.excise, prepare_dupes.get(gene.split('.')[0], {}), reporter_dupes.get(gene.split('.')[0], {}), args.debug,
-                                args.verbose, cut))
-    
+            results.append(
+                log_excised_consensus(
+                    gene,
+                    input_folder,
+                    output_folder,
+                    compress,
+                    args.consensus,
+                    args.excise,
+                    prepare_dupes.get(gene.split(".")[0], {}),
+                    reporter_dupes.get(gene.split(".")[0], {}),
+                    args.debug,
+                    args.verbose,
+                    cut,
+                )
+            )
+
     log_output = [x[0] for x in results]
     loci_containing_bad_regions = len([x[1] for x in results if x[1]])
-    printv(f"{input_folder}: {loci_containing_bad_regions} bad loci found", args.verbose)
+    printv(
+        f"{input_folder}: {loci_containing_bad_regions} bad loci found", args.verbose
+    )
 
     if args.debug:
         with open(log_path, "w") as f:

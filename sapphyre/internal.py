@@ -8,9 +8,10 @@ from msgspec import Struct, json
 import phymmr_tools as bd
 import wrap_rocks
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import parseFasta, printv, writeFasta, write2Line2Fasta
+from .utils import parseFasta, printv
 
 ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta", ".fa", ".gz", ".fq", ".fastq")
+
 
 class Record(Struct):
     id: str
@@ -18,6 +19,7 @@ class Record(Struct):
 
     def __str__(self):
         return f">{self.id}\n{self.seq}\n"
+
 
 def folder_check(path: Path, debug: bool) -> None:
     """Create subfolders 'aa' and 'nt' to given path."""
@@ -90,12 +92,14 @@ def aa_internal(
 
     consensus = consensus_func(sequences, consensus_threshold)
     for i, candidate in enumerate(candidates):
-        distance = bd.constrained_distance(consensus, candidate.seq) / len(candidate.seq)
+        distance = bd.constrained_distance(consensus, candidate.seq) / len(
+            candidate.seq
+        )
         if distance >= distance_threshold:
             # failing[candidate[0]] = candidate[1]
             failing.add(candidate.id)
             candidates[i] = None
-    candidates = [cand for cand in candidates if cand != None]
+    candidates = [cand for cand in candidates if cand is not None]
     return candidates, failing, references
 
 
@@ -104,7 +108,9 @@ def mirror_nt(input_path, output_path, failing, gene):
     input_path = Path(input_path, gene)
     if not os.path.exists(input_path):
         return
-    records = ((header, seq) for header, seq in parseFasta(input_path) if header not in failing)
+    records = (
+        (header, seq) for header, seq in parseFasta(input_path) if header not in failing
+    )
     with open(output_path, "w") as f:
         f.writelines((f">{header}\n{seq}\n" for header, seq in records))
 
@@ -131,11 +137,9 @@ def run_internal(
     if not passing:  # if no eligible candidates, don't create the output filegi
         return
     aa_output = Path(output_path, "aa", gene.name)
-    with open(aa_output,"w") as f:
-        f.writelines((str(rec) for rec in references+passing))
-    mirror_nt(nt_input, nt_output_path,failing, aa_output.name.replace(".aa.", ".nt."))
-
-
+    with open(aa_output, "w") as f:
+        f.writelines((str(rec) for rec in references + passing))
+    mirror_nt(nt_input, nt_output_path, failing, aa_output.name.replace(".aa.", ".nt."))
 
 
 #             distance = constrained_distance(consensus, candidate.raw) / len(
@@ -155,7 +159,10 @@ def run_internal(
 
 def main(args):
     timer = TimeKeeper(KeeperMode.DIRECT)
-    if args.internal_consensus_threshold > 100 or args.internal_consensus_threshold <= 0:
+    if (
+        args.internal_consensus_threshold > 100
+        or args.internal_consensus_threshold <= 0
+    ):
         raise ValueError("cannot express given consensus threshold as a percent")
     if args.internal_consensus_threshold > 1:
         args.internal_consensus_threshold = args.consensus_thesold / 100
@@ -179,7 +186,6 @@ def main(args):
         folder_check(output_path, False)
         file_inputs.sort(key=lambda x: x.stat().st_size, reverse=True)
         arguments = []
-
 
         for gene in file_inputs:
             gene_raw = gene.stem.split(".")[0]

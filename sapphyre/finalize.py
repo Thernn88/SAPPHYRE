@@ -1,4 +1,4 @@
-from collections import Counter, defaultdict
+from collections import defaultdict
 import json
 from math import ceil
 import os
@@ -179,7 +179,7 @@ def get_taxon_total(aa_content):
 
 
 def taxon_only(content):
-    return [(header.split("|")[1],sequence) for header, sequence in content]
+    return [(header.split("|")[1], sequence) for header, sequence in content]
 
 
 def kick_gene(present_taxa, minimum_percentage, global_total_taxon):
@@ -187,6 +187,7 @@ def kick_gene(present_taxa, minimum_percentage, global_total_taxon):
         return 0 <= minimum_percentage
 
     return (len(present_taxa) / len(global_total_taxon)) <= minimum_percentage
+
 
 def clean_gene(gene_config: GeneConfig):
     printv(f"Doing: {gene_config.gene}", gene_config.verbose, 2)
@@ -233,9 +234,8 @@ def clean_gene(gene_config: GeneConfig):
     nt_target_content = []
     taxon_count = {}
     gene_taxon_to_taxa = {}
-    consensus = set()
 
-    if (gene_config.gene in gene_config.target or not gene_config.sort):
+    if gene_config.gene in gene_config.target or not gene_config.sort:
         if gene_config.count_taxa or gene_config.generating_names:
             taxon_count, gene_taxon_to_taxa = taxon_present(aa_content)
 
@@ -285,7 +285,7 @@ def taxon_present(aa_content: list) -> dict:
     for header, sequence in aa_content:
         taxa = header.split("|")[2]
         taxon = header.split("|")[1]
-        
+
         if not header.endswith("."):
             gene_taxon_to_taxa[taxon] = taxa
 
@@ -314,18 +314,23 @@ def scrape_taxa(taxas):
             continue
 
         try:
-            req = requests.get(f"https://www.ncbi.nlm.nih.gov/Traces/wgs/?page=1&view=all&search={taxa}")
+            req = requests.get(
+                f"https://www.ncbi.nlm.nih.gov/Traces/wgs/?page=1&view=all&search={taxa}"
+            )
             soup = BeautifulSoup(req.content, "html.parser")
             for anchor in soup.find("table", {"class": "geo_zebra"}).find_all("a"):
                 if anchor.get("href", "").lower() == taxa.lower():
                     for anchor_2 in anchor.parent.parent.find_all("a"):
-                        if anchor_2.get("href", "").startswith("https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?"):
+                        if anchor_2.get("href", "").startswith(
+                            "https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?"
+                        ):
                             result[taxa] = anchor_2.contents[0]
                     break
         except:
             pass
 
     return json.dumps(result)
+
 
 def process_folder(args, input_path):
     tk = TimeKeeper(KeeperMode.DIRECT)
@@ -388,7 +393,10 @@ def process_folder(args, input_path):
 
                         taxa_to_taxon[id] = name
         else:
-            printv("No Names.csv file provided. Will continue and generate blank names.csv\nWARNING: Rename and Taxa Count will not run.", args.verbose)
+            printv(
+                "No Names.csv file provided. Will continue and generate blank names.csv\nWARNING: Rename and Taxa Count will not run.",
+                args.verbose,
+            )
             generate_names = True
 
     arguments = []
@@ -432,7 +440,9 @@ def process_folder(args, input_path):
         printv("Attempting to scrape names.csv", args.verbose)
         to_scrape = list(to_scrape)
         per_thread = ceil(len(to_scrape) / args.processes)
-        scrape_args = [to_scrape[i:i+per_thread] for i in range(0, len(to_scrape), per_thread)]
+        scrape_args = [
+            to_scrape[i : i + per_thread] for i in range(0, len(to_scrape), per_thread)
+        ]
 
         if args.processes > 1:
             with Pool(args.processes) as pool:
@@ -456,11 +466,19 @@ def process_folder(args, input_path):
     total = defaultdict({"p": 0, "bp": 0}.copy)
     taxon_to_taxa = {}
 
-    for gene, taxa_local, aa_content, nt_content, taxon_count, gene_taxon_to_taxa, path_to in to_write:
+    for (
+        gene,
+        taxa_local,
+        aa_content,
+        nt_content,
+        taxon_count,
+        gene_taxon_to_taxa,
+        path_to,
+    ) in to_write:
         if args.gene_kick:
             if kick_gene(taxa_local, gene_kick, taxa_global):
                 aa_path, nt_path = path_to
-                os.remove(aa_path) # TODO Can do this better
+                os.remove(aa_path)  # TODO Can do this better
                 os.remove(nt_path)
                 continue
         if args.count:
@@ -503,7 +521,6 @@ def process_folder(args, input_path):
                     start = end + 1
                     end = start + (gene_lengths[type_][gene] - 1)
 
-
                 for taxa in taxa_global:
                     if taxa not in this_sequences:
                         seq = "-" * gene_lengths[type_][gene]
@@ -518,15 +535,21 @@ def process_folder(args, input_path):
             output_nex = processed_folder.joinpath(no_suffix + f".{type_}.nex")
 
             positions = None
-            if args.position != {1,2,3}:
+            if args.position != {1, 2, 3}:
                 positions = list(map(int, args.position))
 
             with open(output_fas, "w", encoding="UTF-8") as fp:
                 for taxa, taxa_contig_sequence in taxa_sequences_global.items():
                     if positions and type_ == "nt":
                         taxa_contig_sequence = "".join(taxa_contig_sequence)
-                        triplets = [taxa_contig_sequence[i:i+3] for i in range(0, len(taxa_contig_sequence), 3)]
-                        taxa_contig_sequence = ["".join([triplet[i-1] for i in positions]) for triplet in triplets]
+                        triplets = [
+                            taxa_contig_sequence[i : i + 3]
+                            for i in range(0, len(taxa_contig_sequence), 3)
+                        ]
+                        taxa_contig_sequence = [
+                            "".join([triplet[i - 1] for i in positions])
+                            for triplet in triplets
+                        ]
                     fp.write(">" + taxa + "\n")
                     fp.write("".join(taxa_contig_sequence) + "\n")
 
@@ -541,7 +564,9 @@ def process_folder(args, input_path):
         out = ["Taxa,Taxon,Present,Total AA"]
 
         for taxon, total_taxa in total.items():
-            out.append(f"{taxon_to_taxa.get(taxon, '')},{taxon},{total_taxa['p']},{total_taxa['bp']}")
+            out.append(
+                f"{taxon_to_taxa.get(taxon, '')},{taxon},{total_taxa['p']},{total_taxa['bp']}"
+            )
 
         with open(str(processed_folder.joinpath("TaxaPresent.csv")), "w") as fp:
             fp.write("\n".join(out))

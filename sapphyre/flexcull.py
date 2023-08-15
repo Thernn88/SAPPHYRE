@@ -7,12 +7,12 @@ from __future__ import annotations
 import os
 from collections import Counter, namedtuple
 from multiprocessing.pool import Pool
+from shutil import rmtree
 from phymmr_tools import (
     join_by_tripled_index,
     join_with_exclusions,
     join_triplets_with_exclusions,
 )
-from shutil import rmtree
 import wrap_rocks
 
 import blosum as bl
@@ -57,7 +57,7 @@ FlexcullArgs = namedtuple(
         "column_cull_percent",
         "filtered_mat",
         "is_assembly",
-        "is_ncg", #non coding gene
+        "is_ncg",  # non coding gene
     ],
 )
 
@@ -1146,13 +1146,17 @@ def main(args):
     if not all(os.path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
-    
+
     orthoset = args.orthoset
     orthosets_dir = args.orthoset_input
     orthoset_db_path = os.path.join(orthosets_dir, orthoset, "rocksdb")
     orthoset_db = wrap_rocks.RocksDB(orthoset_db_path)
     orthoset_non_coding_genes = orthoset_db.get("get:nc_genes")
-    orthoset_non_coding_genes = set(orthoset_non_coding_genes.split(",")) if orthoset_non_coding_genes else set()
+    orthoset_non_coding_genes = (
+        set(orthoset_non_coding_genes.split(","))
+        if orthoset_non_coding_genes
+        else set()
+    )
 
     for folder in args.INPUT:
         do_folder(folder, args, orthoset_non_coding_genes)
