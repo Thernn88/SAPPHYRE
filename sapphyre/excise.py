@@ -303,7 +303,7 @@ def move_flagged(to_move, processes):
             pool.starmap(do_move, to_move)
 ###
 
-def main(args):
+def main(args, override_cut=None):
     timer = TimeKeeper(KeeperMode.DIRECT)
     if not (0 < args.consensus < 1.0):
         if 0 < args.consensus <= 100:
@@ -317,7 +317,12 @@ def main(args):
         else:
             raise ValueError("Cannot convert excise to a percent. Use a decimal or a whole number between 0 and 100")
     folder = args.INPUT
-    if args.cut:
+    if override_cut is None:
+        cut = args.cut
+    else:
+        cut = override_cut
+
+    if cut:
         sub_dir = "collapsed"
     else:
         sub_dir = "blosum"
@@ -351,14 +356,14 @@ def main(args):
     genes = [fasta for fasta in os.listdir(aa_input) if ".fa" in fasta]
     log_path = Path(output_folder, "excise_indices.tsv")
     if args.processes > 1:
-        arguments = [(gene, input_folder, output_folder, compress, args.consensus, args.excise, prepare_dupes.get(gene.split('.')[0], {}), reporter_dupes.get(gene.split('.')[0], {}), args.debug, args.verbose, args.cut) for gene in genes]
+        arguments = [(gene, input_folder, output_folder, compress, args.consensus, args.excise, prepare_dupes.get(gene.split('.')[0], {}), reporter_dupes.get(gene.split('.')[0], {}), args.debug, args.verbose, cut) for gene in genes]
         with Pool(args.processes) as pool:
             results = pool.starmap(log_excised_consensus, arguments)
     else:
         results = []
         for gene in genes:
             results.append(log_excised_consensus(gene, input_folder, output_folder, compress, args.consensus, args.excise, prepare_dupes.get(gene.split('.')[0], {}), reporter_dupes.get(gene.split('.')[0], {}), args.debug,
-                                args.verbose, args.cut))
+                                args.verbose, cut))
     
     log_output = [x[0] for x in results]
     loci_containing_bad_regions = len([x[1] for x in results if x[1]])

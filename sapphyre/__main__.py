@@ -359,7 +359,7 @@ def outlier(argsobj):
             return
         
         printv("Checking for severe contamination.", argsobj.verbose)
-        module_return_tuple = excise.main(this_args)
+        module_return_tuple = excise.main(this_args, False)
         if not module_return_tuple:
             print()
             print(argsobj.formathelp())
@@ -368,25 +368,21 @@ def outlier(argsobj):
         if is_flagged:
             bad_folder = os.path.join(this_args.move_fails, os.path.basename(folder))
             to_move.append((folder, bad_folder))
-
-        after_excise_args = vars(argsobj)
-        after_excise_args["cut"] = True
-        after_excise_args = argparse.Namespace(**after_excise_args)
         
         printv("Simple Assembly To Ensure Consistency.", argsobj.verbose)
-        if not collapser.main(after_excise_args):
+        if not collapser.main(this_args):
             print()
             print(argsobj.formathelp())
             return
         
         printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
-        module_return_tuple = excise.main(after_excise_args)
+        module_return_tuple = excise.main(this_args, True)
         if not module_return_tuple:
             print()
             print(argsobj.formathelp())
         
         printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
-        if not internal.main(after_excise_args):
+        if not internal.main(this_args):
             print()
             print(argsobj.format)
 
