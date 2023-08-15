@@ -11,9 +11,7 @@ from .timekeeper import KeeperMode, TimeKeeper
 
 
 def min_aa_check(sequence: list, minimum: int) -> bool:
-    start, stop = bd.find_index_pair(sequence, "X")
-    invalid = ["-", "X"]
-    valid_count = sum((bp not in invalid for bp in sequence[start:stop]))
+    valid_count = len(sequence) - sequence.count("-") - sequence.count("X")
     return valid_count >= minimum
 
 def find_quesion_marks(sequences: list, start: int, stop: int) -> set:
