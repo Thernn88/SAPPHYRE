@@ -1138,8 +1138,8 @@ if __name__ == "__main__":
     def subcmd_internal(subparser):
         parser = subparser.add_parser("internal",
                                       help="Filter sequences by distance to the consensus sequence")
-        parser.add_argument("INPUT", help="Paths of directories.", action="extend", nargs="+")
-        parser.add_argument("-sd", "--sub_directory",
+        parser.add_argument("INPUT", help="Paths of directories.", type=str)
+        parser.add_argument("-sd", "--sub_directory", default="excise",
                             help="Name of input subfolder")
         parser.add_argument("-o", "--output", type=str, default="internal",
                             help="Path to output directory")

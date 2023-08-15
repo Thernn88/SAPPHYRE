@@ -132,8 +132,8 @@ def run_internal(
         return
     aa_output = Path(output_path, "aa", gene.name)
     with open(aa_output,"w") as f:
-        f.writelines((str(rec) for rec in passing))
-    mirror_nt(nt_input, nt_output_path,passing, aa_output.name.replace(".aa.", ".nt."))
+        f.writelines((str(rec) for rec in references+passing))
+    mirror_nt(nt_input, nt_output_path,failing, aa_output.name.replace(".aa.", ".nt."))
 
 
 
