@@ -65,6 +65,24 @@ def load_dupes(folder):
     return prepare_dupe_counts, reporter_dupe_counts
 
 
+def excise_data_replacement(candidates: list, gene: Path) -> list:
+    """
+    Turn the given path of a collapsed file into an equivalent path in the excise folder.
+    If the excise path exists, read it and replace any candidate sequences with the version
+    from the excise file.
+    """
+    excise_path = str(gene).replace("/collapsed/", "/excise/")
+    if not os.path.exists(excise_path):
+        # print("no excise data for ", gene)
+        return candidates
+    replacements = {header: seq for header, seq in parseFasta(excise_path)}
+    # print("excise data found for ", gene)
+    for candidate in candidates:
+        if candidate.id in replacements:
+            candidate.seq = replacements[candidate.id]
+    return candidates
+
+
 def aa_internal(
     gene: str,
     consensus_threshold,
@@ -83,6 +101,7 @@ def aa_internal(
     if not candidates:  # if no candidates are found, report to user
         # print(f"{gene}: No Candidate Sequences found in file. Returning.")
         return [], {}, []
+    candidates = excise_data_replacement(candidates, gene)
     if dupes:
         consensus_func = bd.dumb_consensus_dupe
         sequences = bundle_seqs_and_dupes(candidates, prepare_dupes, reporter_dupes)
@@ -109,10 +128,11 @@ def mirror_nt(input_path, output_path, failing, gene):
     if not os.path.exists(input_path):
         return
     records = (
-        (header, seq) for header, seq in parseFasta(input_path) if header not in failing
+        Record(header, seq) for header, seq in parseFasta(input_path) if header not in failing
     )
+    records = excise_data_replacement(records, input_path)
     with open(output_path, "w") as f:
-        f.writelines((f">{header}\n{seq}\n" for header, seq in records))
+        f.writelines((f">{candidate.id}\n{candidate.seq}\n" for candidate in records))
 
 
 def run_internal(
@@ -173,14 +193,15 @@ def main(args):
 
     with Pool(args.processes) as pool:
         folder = args.INPUT
-        aa_input = Path(folder, "outlier", args.sub_directory, "aa")
-        nt_input = Path(folder, "outlier", args.sub_directory, "nt")
+        aa_input = Path(folder, "outlier", "collapsed", "aa")
+        nt_input = Path(folder, "outlier", "collapsed", "nt")
         prepare_dupe_counts, reporter_dupe_counts = load_dupes(folder)
         file_inputs = [
             gene
             for gene in aa_input.iterdir()
             if ".aa" in gene.suffixes and gene.suffix in ALLOWED_EXTENSIONS
         ]
+
         output_path = Path(folder, "outlier", "internal")
         nt_output_path = os.path.join(output_path, "nt")
         folder_check(output_path, False)
