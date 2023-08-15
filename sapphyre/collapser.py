@@ -48,26 +48,45 @@ class NODE(Struct):
         
         return None
     
+    def get_header_index_at_coord(self, position):
+        return self.splices[position]
+    
     def get_sequence_at_coord(self, position):
-        seq_at_position = None
-        for header, coord in self.splices.items():
-            if position >= coord:
-                seq_at_position = header
-            else:
-                break
-        return seq_at_position
+        if self.splices[position] == -1:
+            return self.header
+        child_index = self.splices.get(position, None)
+        if child_index is not None:
+            return self.children[child_index]
 
     def extend(self, node_2, overlap_coord):
         if node_2.start >= self.start and node_2.end <= self.end:
             self.sequence = self.sequence[:overlap_coord] + node_2.sequence[overlap_coord:node_2.end] + self.sequence[node_2.end:]
+            for i in range(overlap_coord, node_2.end):
+                self.splices[i] = len(self.children) if node_2.get_header_index_at_coord(i) == -1 else len(self.children) + node_2.get_header_index_at_coord(i)
+
         elif self.start >= node_2.start and self.end <= node_2.end:
             self.sequence = node_2.sequence[:overlap_coord] + self.sequence[overlap_coord:self.end] + node_2.sequence[self.end:]
+            for i in range(node_2.start, overlap_coord):
+                self.splices[i] = len(self.children) if node_2.get_header_index_at_coord(i) == -1 else len(self.children) + node_2.get_header_index_at_coord(i)
+            for i in range(self.end, node_2.end):
+                self.splices[i] = len(self.children) if node_2.get_header_index_at_coord(i) == -1 else len(self.children) + node_2.get_header_index_at_coord(i)
+            self.start = node_2.start
+            self.end = node_2.end
+
         elif node_2.start >= self.start:
             self.sequence = self.sequence[:overlap_coord] + node_2.sequence[overlap_coord:]
+            for i in range(overlap_coord, node_2.end):
+                self.splices[i] = len(self.children) if node_2.get_header_index_at_coord(i) == -1 else len(self.children) + node_2.get_header_index_at_coord(i)
+            self.end = node_2.end
+
         else:
             self.sequence = node_2.sequence[:overlap_coord] + self.sequence[overlap_coord:]
-        self.splices[node_2.header] = overlap_coord
-        self.end = node_2.end
+            for i in range(node_2.start, overlap_coord):
+                self.splices[i] = len(self.children) if node_2.get_header_index_at_coord(i) == -1 else len(self.children) + node_2.get_header_index_at_coord(i)
+            self.start = node_2.start
+
+        
+
         self.length = self.end - self.start
         self.children.append(node_2.header)
         self.children.extend(node_2.children)
@@ -180,17 +199,17 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
 
             start,end = get_start_end(sequence)
 
-            nodes.append(NODE(header=header, sequence=sequence, start=start, end=end, length=(end-start), children=[], is_contig=False, kick=False, splices={header: start}))
+            nodes.append(NODE(header=header, sequence=sequence, start=start, end=end, length=(end-start), children=[], is_contig=False, kick=False, splices={i: -1 for i in range(start, end)}))
         mat = bl.BLOSUM(62)
         #Rescurive scan
         splice_occured = True
         while splice_occured:
             splice_occured = False
             for i, node in enumerate(nodes):
-                if node.kick:
+                if node is None:
                     continue
                 for j, node_2 in enumerate(nodes):
-                    if node_2.kick:
+                    if node_2 is None:
                         continue
                     if i == j:
                         continue
@@ -205,7 +224,7 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
                         if distance == 0:
                             splice_occured = True
                             node.extend(node_2, overlap_coords[0])
-                            nodes[j].kick = True
+                            nodes[j] = None
                             continue
                         overlap_amount = overlap_coords[1] - overlap_coords[0]
                         diff_percent = distance / overlap_amount
@@ -231,12 +250,12 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
                             if allow_sub:
                                 splice_occured = True
                                 node.extend(node_2, overlap_coords[0])
-                                node_2.kick = True
+                                nodes[j] = None
 
-        contigs = [node for node in nodes if not node.kick and node.is_contig]
-        contigs.sort(key=lambda x: x.length, reverse=True)
+        og_contigs = [node for node in nodes if node is not None and node.is_contig]
+        contigs = sorted(og_contigs, key=lambda x: x.length, reverse=True)
 
-        reads = [node for node in nodes if not node.kick and not node.is_contig]
+        reads = [node for node in nodes if node is not None and not node.is_contig]
         kicks.append(f"Kicks for {gene}\n")
         kicks.append("Header B,,Header A,Overlap Percent,Matching Percent\n")
         kicked_headers = set()
@@ -255,7 +274,6 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
                         kicks.append(f"{contig_b.contig_header()},Contig Kicked By,{contig_a.contig_header()},{percent},{matching_percent}\n")
                         kicked_headers.add(contig_b.header)
                         kicked_headers.update(contig_b.children)
-        
         contigs = [contig for contig in contigs if not contig.kick]
 
         for read in reads:
@@ -284,7 +302,7 @@ def process_batch(args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out
                 kicks.append(f"{read.header},Saved By,{contig.contig_header()},{percent},{matching_percent}\n")
 
         if args.debug == 2:
-            output = contigs+reads
+            output = og_contigs+reads
             output.sort(key=lambda x: x.start)
             with open(nt_out, "w") as f:
                 for header, sequence in nt_output:
