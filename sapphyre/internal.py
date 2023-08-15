@@ -127,9 +127,11 @@ def mirror_nt(input_path, output_path, failing, gene):
     input_path = Path(input_path, gene)
     if not os.path.exists(input_path):
         return
-    records = (
-        Record(header, seq) for header, seq in parseFasta(input_path) if header not in failing
-    )
+    records = [
+        Record(header, seq)
+        for header, seq in parseFasta(input_path)
+        if header not in failing
+    ]
     records = excise_data_replacement(records, input_path)
     with open(output_path, "w") as f:
         f.writelines((f">{candidate.id}\n{candidate.seq}\n" for candidate in records))
