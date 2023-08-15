@@ -344,7 +344,7 @@ def outlier(argsobj):
     to_move = []
     for folder in argsobj.INPUT:
         if not os.path.exists(folder):
-            printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
+            printv("ERROR: All folders passed as argument must exists.", argsobj.verbose, 0)
             return
         
         printv(f"Processing: {folder}", argsobj.verbose)
