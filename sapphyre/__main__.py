@@ -408,14 +408,14 @@ def subcmd_Merge(subparsers):
         "-aa",
         "--aa_input",
         type=str,
-        default="outlier/aa",
+        default="outlier/internal/aa",
         help="Path to directory of AA folder",
     )
     par.add_argument(
         "-nt",
         "--nt_input",
         type=str,
-        default="outlier/nt",
+        default="outlier/internal/nt",
         help="Path to directory of NT folder",
     )
     par.add_argument(
@@ -1139,7 +1139,7 @@ if __name__ == "__main__":
         parser = subparser.add_parser("internal",
                                       help="Filter sequences by distance to the consensus sequence")
         parser.add_argument("INPUT", help="Paths of directories.", action="extend", nargs="+")
-        parser.add_argument("-sd", "--sub_directory", default="outlier",
+        parser.add_argument("-sd", "--sub_directory",
                             help="Name of input subfolder")
         parser.add_argument("-o", "--output", type=str, default="internal",
                             help="Path to output directory")
