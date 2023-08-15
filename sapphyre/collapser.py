@@ -58,7 +58,14 @@ class NODE(Struct):
         return seq_at_position
 
     def extend(self, node_2, overlap_coord):
-        self.sequence = self.sequence[:overlap_coord] + node_2.sequence[overlap_coord:]
+        if node_2.start >= self.start and node_2.end <= self.end:
+            self.sequence = self.sequence[:overlap_coord] + node_2.sequence[overlap_coord:node_2.end] + self.sequence[node_2.end:]
+        elif self.start >= node_2.start and self.end <= node_2.end:
+            self.sequence = node_2.sequence[:overlap_coord] + self.sequence[overlap_coord:self.end] + node_2.sequence[self.end:]
+        elif node_2.start >= self.start:
+            self.sequence = self.sequence[:overlap_coord] + node_2.sequence[overlap_coord:]
+        else:
+            self.sequence = node_2.sequence[:overlap_coord] + self.sequence[overlap_coord:]
         self.splices[node_2.header] = overlap_coord
         self.end = node_2.end
         self.length = self.end - self.start
