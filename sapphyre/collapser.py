@@ -84,9 +84,6 @@ class NODE(Struct):
             for i in range(node_2.start, overlap_coord):
                 self.splices[i] = len(self.children) if node_2.get_header_index_at_coord(i) == -1 else len(self.children) + node_2.get_header_index_at_coord(i)
             self.start = node_2.start
-
-        
-
         self.length = self.end - self.start
         self.children.append(node_2.header)
         self.children.extend(node_2.children)

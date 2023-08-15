@@ -341,6 +341,7 @@ def subcmd_outlier(subparsers):
 def outlier(argsobj):
     from . import outlier, collapser, excise, internal
     timer = TimeKeeper(KeeperMode.DIRECT)
+    to_move = []
     for folder in argsobj.INPUT:
         if not os.path.exists(folder):
             printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
@@ -363,9 +364,12 @@ def outlier(argsobj):
             print()
             print(argsobj.formathelp())
 
-        new_path = module_return_tuple[1]
+        is_flagged = module_return_tuple[1]
+        if is_flagged:
+            bad_folder = os.path.join(this_args.move_fails, os.path.basename(folder))
+            to_move.append((folder, bad_folder))
+
         after_excise_args = vars(argsobj)
-        after_excise_args["INPUT"] = new_path
         after_excise_args["cut"] = True
         after_excise_args = argparse.Namespace(**after_excise_args)
         
@@ -385,6 +389,11 @@ def outlier(argsobj):
         if not internal.main(after_excise_args):
             print()
             print(argsobj.format)
+
+    printv("Moving Pre-flagged Folders.", argsobj.verbose)
+
+    excise.move_flagged(to_move, this_args.processes)
+
     printv(f"Took {timer.differential():.2f} seconds overall.", argsobj.verbose)
 
 def subcmd_Merge(subparsers):

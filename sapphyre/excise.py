@@ -239,9 +239,10 @@ def log_excised_consensus(gene:str, input_path: Path, output_path: Path, compres
                 log_output += f"{gene}\t{a}:{b}\t{consensus_seq}\n" if debug else f"{gene}\t{a}:{b}\n"
            
         if cut:
-            positions_to_cull = {i for a, b in bad_regions for i in range(a, b)}
+            positions_to_cull = [i for a, b in bad_regions for i in range(a, b)]
 
             aa_output = []
+            aa_kicks = set()
             for header, sequence in raw_sequences:
                 if header[-1] == ".":
                     aa_output.append((header, sequence))
@@ -249,9 +250,10 @@ def log_excised_consensus(gene:str, input_path: Path, output_path: Path, compres
                 sequence = list(sequence)
                 for i in positions_to_cull:
                     sequence[i] = "-"
-                # sequence = [let for i,let in enumerate(sequence) if i not in positions_to_cull]
+
                 sequence = "".join(sequence)
                 if not min_aa_check(sequence, 20):
+                    aa_kicks.add(header)
                     continue
                 aa_output.append((header, sequence))
             writeFasta(str(aa_out), aa_output, compress_intermediates)
@@ -262,7 +264,12 @@ def log_excised_consensus(gene:str, input_path: Path, output_path: Path, compres
                     nt_output.append((header, sequence))
                     continue
 
-                sequence = [sequence[i:i+3] for i in range(0, len(sequence), 3) if i//3 not in positions_to_cull]
+                if header in aa_kicks:
+                    continue
+
+                sequence = list(sequence)
+                for i in positions_to_cull:
+                    sequence[i*3:i*3+3] = ["-", "-", "-"]
                 sequence = "".join(sequence)
                 nt_output.append((header, sequence))
             writeFasta(str(nt_out), nt_output, compress_intermediates)
@@ -282,6 +289,19 @@ def load_dupes(rocks_db_path: Path):
     )
     return prepare_dupe_counts, reporter_dupe_counts
 
+
+### USED BY __main__
+def do_move(from_, to_):
+    move(from_, to_)
+
+def move_flagged(to_move, processes):
+    if processes <= 1:
+        for from_, to_ in to_move:
+            move(from_, to_)
+    else:
+        with Pool(processes) as pool:
+            pool.starmap(do_move, to_move)
+###
 
 def main(args):
     timer = TimeKeeper(KeeperMode.DIRECT)
@@ -349,16 +369,8 @@ def main(args):
             f.write(f"Gene\tCut-Indices\n")
             f.write("".join(log_output))
 
-    new_path = folder
-    if not args.cut:
-        if loci_containing_bad_regions / len(genes) >= args.majority_excise:
-            bad_folder = Path(args.move_fails, os.path.basename(folder))
-            move(folder, bad_folder)
-            printv(f"{os.path.basename(folder)} has too many bad regions, moving to {bad_folder}", args.verbose)
-            new_path = str(bad_folder)
-        
     printv(f"Done! Took {timer.differential():.2f} seconds", args.verbose)
-    return True, new_path
+    return True, loci_containing_bad_regions / len(genes) >= args.majority_excise
 
 
 if __name__ == "__main__":
