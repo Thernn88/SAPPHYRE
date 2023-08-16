@@ -543,8 +543,11 @@ def process_folder(args, input_path):
             output_fas = processed_folder.joinpath(no_suffix + f".{type_}.fas")
             output_nex = processed_folder.joinpath(no_suffix + f".{type_}.nex")
 
+            taxa_present = sorted(taxa_sequences_global.keys())
+
             with open(output_fas, "w", encoding="UTF-8") as fp:
-                for taxa, taxa_contig_sequence in taxa_sequences_global.items():
+                for taxa in taxa_present:
+                    taxa_contig_sequence = taxa_sequences_global[taxa]
                     fp.write(">" + taxa + "\n")
                     fp.write("".join(taxa_contig_sequence) + "\n")
 
