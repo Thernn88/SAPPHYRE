@@ -140,19 +140,6 @@ class NODE(Struct):
 def hamming_distance(seq1, seq2):
     return sum(1 for i in range(len(seq1)) if seq1[i] != seq2[i])
 
-def get_start_end(seq):
-    start = 0
-    end = len(seq)
-    for i, let in enumerate(seq):
-        if let != "-":
-            start = i
-            break
-    for i in range(len(seq) - 1, -1, -1):
-        if seq[i] != "-":
-            end = i
-            break
-    return start, end
-
 
 def do_folder(args, input_path):
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
