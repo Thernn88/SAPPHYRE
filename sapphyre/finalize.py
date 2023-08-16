@@ -468,8 +468,7 @@ def process_folder(args, input_path):
     
     positions = None
     if args.position != {1, 2, 3}:
-        positions = list(map(int, args.position))
-        print(positions)
+        positions = [i for i in range(3) if str(i+1) not in set(str(args.position))]
 
     for (
         gene,
@@ -504,9 +503,12 @@ def process_folder(args, input_path):
 
             for i, (header, sequence) in enumerate(nt_content):
                 if positions:
-                    triplets = [sequence[i : i + 3] for i in range(0, len(sequence), 3)]
-                    triplets = [''.join(map(lambda i: triplet[i - 1], positions)) for triplet in triplets]
-                    sequence = "".join(triplets)
+                    sequence = list(sequence)
+                    for ai in range(0, len(sequence), 3):
+                        for ti in range(3):
+                            if ti in positions:
+                                sequence[ai+ti] = ""
+                    sequence = "".join(sequence)
 
                 if i == 0:
                     this_gene_global_length = len(sequence)
