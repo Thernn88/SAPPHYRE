@@ -175,7 +175,7 @@ def cull(sequences, percent):
     for i in range(msa_length):
         cull_start = i
         if (
-            sum([1 for seq in sequences if seq[1][i] != "-"]) / len(sequences)
+            sum(1 for seq in sequences if seq[1][i] != "-") / len(sequences)
             >= percent
         ):
             break
@@ -183,7 +183,7 @@ def cull(sequences, percent):
     for i in range(msa_length - 1, 0, -1):
         cull_end = i
         if (
-            sum([1 for seq in sequences if seq[1][i] != "-"]) / len(sequences)
+            sum(1 for seq in sequences if seq[1][i] != "-") / len(sequences)
             >= percent
         ):
             break

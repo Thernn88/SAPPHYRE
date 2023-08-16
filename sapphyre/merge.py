@@ -442,7 +442,7 @@ def do_protein(
                                     )
                                 else:
                                     headers_here = "".join(
-                                        [header for header in headers_at_current_point],
+                                       headers_at_current_point
                                     )
                                     key = f"{data_start}{data_end}{headers_here}"
                                     if key in quality_taxons_here:

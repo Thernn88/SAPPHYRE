@@ -91,9 +91,9 @@ def kick_empty_columns(
             to_kick.add(i * 3)
 
     result = []
-    for header in out:
+    for header, sequence in out.items():
         sequence = "".join(
-            [let for i, let in enumerate(out[header]) if i * 3 not in to_kick],
+            [let for i, let in enumerate(sequence) if i * 3 not in to_kick],
         )
         if len(sequence) - sequence.count("-") >= minimum_bp:
             result.append((header, sequence))
@@ -554,8 +554,7 @@ def process_folder(args, input_path):
 
             with open(output_nex, "w", encoding="UTF-8") as fp:
                 fp.write("#nexus\nbegin sets;\n")
-                for gene in log:
-                    start, end = log[gene]
+                for gene, (start, end) in log.items():
                     fp.write(f"CHARSET {gene} = {start}-{end} ;\n")
 
                 fp.write("end;\n")

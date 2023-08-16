@@ -56,9 +56,8 @@ class NODE(Struct):
     def get_sequence_at_coord(self, position):
         if self.splices[position] == -1:
             return self.header
-        child_index = self.splices.get(position, None)
-        if child_index is not None:
-            return self.children[child_index]
+        
+        return self.splices.get(position, None)
 
     def extend(self, node_2, overlap_coord):
         if node_2.start >= self.start and node_2.end <= self.end:
@@ -139,14 +138,13 @@ class NODE(Struct):
 
 
 def hamming_distance(seq1, seq2):
-    return sum([1 for i in range(len(seq1)) if seq1[i] != seq2[i]])
-
+    return sum(1 for i in range(len(seq1)) if seq1[i] != seq2[i])
 
 def get_start_end(seq):
     start = 0
     end = len(seq)
-    for i in range(len(seq)):
-        if seq[i] != "-":
+    for i, let in enumerate(seq):
+        if let != "-":
             start = i
             break
     for i in range(len(seq) - 1, -1, -1):
@@ -351,40 +349,40 @@ def process_batch(
                         kicked_headers.add(contig_b.header)
                         kicked_headers.update(contig_b.children)
         contigs = [contig for contig in contigs if not contig.kick]
+        if contigs:
+            for read in reads:
+                keep = False
+                kick = False
+                for contig in contigs:
+                    overlap_coords = read.get_overlap(contig)
 
-        for read in reads:
-            keep = False
-            kick = False
-            for contig in contigs:
-                overlap_coords = read.get_overlap(contig)
+                    if overlap_coords:
+                        overlap_amount = overlap_coords[1] - overlap_coords[0]
+                        percent = overlap_amount / read.length
+                        if percent >= args.read_percent:
+                            is_kick, matching_percent = read.is_kick(
+                                contig,
+                                overlap_coords,
+                                args.required_read_percent,
+                                overlap_amount,
+                            )
 
-                if overlap_coords:
-                    overlap_amount = overlap_coords[1] - overlap_coords[0]
-                    percent = overlap_amount / read.length
-                    if percent >= args.read_percent:
-                        is_kick, matching_percent = read.is_kick(
-                            contig,
-                            overlap_coords,
-                            args.required_read_percent,
-                            overlap_amount,
-                        )
+                            if is_kick:
+                                kick = True
 
-                        if is_kick:
-                            kick = True
+                            if matching_percent >= args.keep_read_percent:
+                                keep = True
+                                break
 
-                        if matching_percent >= args.keep_read_percent:
-                            keep = True
-                            break
-
-            if kick and not keep:
-                kicks.append(
-                    f"{read.header},Kicked By,{contig.contig_header()},{percent},{matching_percent}\n"
-                )
-                kicked_headers.add(read.header)
-            if keep:
-                kicks.append(
-                    f"{read.header},Saved By,{contig.contig_header()},{percent},{matching_percent}\n"
-                )
+                if kick and not keep:
+                    kicks.append(
+                        f"{read.header},Kicked By,{contig.contig_header()},{percent},{matching_percent}\n"
+                    )
+                    kicked_headers.add(read.header)
+                if keep:
+                    kicks.append(
+                        f"{read.header},Saved By,{contig.contig_header()},{percent},{matching_percent}\n"
+                    )
 
         if args.debug == 2:
             output = og_contigs + reads

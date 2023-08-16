@@ -110,7 +110,7 @@ def find_coverage_regions(consensus: str, start: int, stop: int, ambiguous="?") 
 
 
 def check_bad_regions(
-    consensus: str, limit: float, initial_window=16, offset=0, test=False, rig=False
+    consensus: str, limit: float, initial_window=16, offset=0, rig=False
 ) -> list:
     # if start is None and stop is None:
     # else:
@@ -154,7 +154,7 @@ def check_bad_regions(
 
 
 def check_covered_bad_regions(
-    consensus: str, limit: float, initial_window=16, ambiguous="?", test=False
+    consensus: str, limit: float, initial_window=16, ambiguous="?"
 ) -> list:
     """
     Creates a list of covered indices, then checks those slices for bad regions
@@ -168,7 +168,6 @@ def check_covered_bad_regions(
             limit,
             offset=begin,
             initial_window=initial_window,
-            test=test,
         )
         if subregions:
             bad_regions.extend(subregions)
@@ -205,7 +204,6 @@ def log_excised_consensus(
     prepare_dupes: dict,
     reporter_dupes: dict,
     debug,
-    verbose,
     cut,
 ):
     """
@@ -250,7 +248,7 @@ def log_excised_consensus(
     # if verbose:
     #     print(f"{gene}\n{consensus_seq}\n")
     # old_bad_regions = check_bad_regions(consensus_seq, excise_threshold, rig=True)
-    bad_regions = check_covered_bad_regions(consensus_seq, excise_threshold, test=False)
+    bad_regions = check_covered_bad_regions(consensus_seq, excise_threshold)
     # if old_bad_regions and not bad_regions:
     #     bad_regions = check_covered_bad_regions(
     #         consensus_seq, excise_threshold, test=True
@@ -411,7 +409,6 @@ def main(args, override_cut=None):
                 prepare_dupes.get(gene.split(".")[0], {}),
                 reporter_dupes.get(gene.split(".")[0], {}),
                 args.debug,
-                args.verbose,
                 cut,
             )
             for gene in genes
@@ -432,7 +429,6 @@ def main(args, override_cut=None):
                     prepare_dupes.get(gene.split(".")[0], {}),
                     reporter_dupes.get(gene.split(".")[0], {}),
                     args.debug,
-                    args.verbose,
                     cut,
                 )
             )
@@ -445,7 +441,7 @@ def main(args, override_cut=None):
 
     if args.debug:
         with open(log_path, "w") as f:
-            f.write(f"Gene\tCut-Indices\n")
+            f.write("Gene\tCut-Indices\n")
             f.write("".join(log_output))
 
     printv(f"Done! Took {timer.differential():.2f} seconds", args.verbose)
