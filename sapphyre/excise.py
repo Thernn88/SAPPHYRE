@@ -16,7 +16,7 @@ def min_aa_check(sequence: list, minimum: int) -> bool:
 
 
 def find_quesion_marks(sequences: list, start: int, stop: int) -> set:
-    def check_index(index: int):
+    def check_index(i: int):
         for seq in sequences:
             if seq[i] != "-":
                 return False
