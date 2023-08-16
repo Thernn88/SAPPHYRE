@@ -7,7 +7,7 @@ import os
 import blosum as bl
 
 from msgspec import Struct
-from phymmr_tools import constrained_distance
+from phymmr_tools import constrained_distance, find_index_pair
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import writeFasta, parseFasta, printv
 
@@ -243,7 +243,7 @@ def process_batch(
             if header.endswith("."):
                 continue
 
-            start, end = get_start_end(sequence)
+            start,end = find_index_pair(sequence, "-")
 
             nodes.append(
                 NODE(
