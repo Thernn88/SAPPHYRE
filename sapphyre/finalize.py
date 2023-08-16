@@ -465,6 +465,11 @@ def process_folder(args, input_path):
     gene_lengths = defaultdict(dict)
     total = defaultdict({"p": 0, "bp": 0}.copy)
     taxon_to_taxa = {}
+    
+    positions = None
+    if args.position != {1, 2, 3}:
+        positions = list(map(int, args.position))
+        print(positions)
 
     for (
         gene,
@@ -489,10 +494,6 @@ def process_folder(args, input_path):
 
         if args.concat:
             this_gene_global_length = 0
-            positions = None
-            if args.position != {1, 2, 3}:
-                positions = list(map(int, args.position))
-
             for i, (header, sequence) in enumerate(aa_content):
                 if i == 0:
                     this_gene_global_length = len(sequence)
@@ -504,7 +505,7 @@ def process_folder(args, input_path):
             for i, (header, sequence) in enumerate(nt_content):
                 if positions:
                     triplets = [sequence[i : i + 3] for i in range(0, len(sequence), 3)]
-                    triplets = [triplet[i - 1] for i in positions for triplet in triplets]
+                    triplets = [''.join(map(lambda i: triplet[i - 1], positions)) for triplet in triplets]
                     sequence = "".join(triplets)
 
                 if i == 0:
