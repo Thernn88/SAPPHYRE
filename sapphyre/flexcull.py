@@ -12,6 +12,7 @@ from phymmr_tools import (
     join_by_tripled_index,
     join_with_exclusions,
     join_triplets_with_exclusions,
+    find_index_pair,
 )
 import wrap_rocks
 
@@ -37,6 +38,8 @@ MainArgs = namedtuple(
         "mismatches",
         "column_cull",
         "blosum_strictness",
+        "orthoset",
+        "orthoset_input",
     ],
 )
 
@@ -676,6 +679,8 @@ def trim_large_gaps(
         if not header.endswith("."):
             gap_cull = set()
             seq_start, seq_end = get_start_end(sequence)
+            print(seq_start, seq_end)
+            input(find_index_pair(sequence))
             change_made = False
             non_ref_gap_dash_count = 0
             raw_dash_count = 0
@@ -1146,7 +1151,6 @@ def main(args):
     if not all(os.path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
-
     orthoset = args.orthoset
     orthosets_dir = args.orthoset_input
     orthoset_db_path = os.path.join(orthosets_dir, orthoset, "rocksdb")
