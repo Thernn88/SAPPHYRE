@@ -489,6 +489,9 @@ def process_folder(args, input_path):
 
         if args.concat:
             this_gene_global_length = 0
+            positions = None
+            if args.position != {1, 2, 3}:
+                positions = list(map(int, args.position))
 
             for i, (header, sequence) in enumerate(aa_content):
                 if i == 0:
@@ -499,6 +502,11 @@ def process_folder(args, input_path):
                 sequences["aa"][gene][taxon] = sequence
 
             for i, (header, sequence) in enumerate(nt_content):
+                if positions:
+                    triplets = [sequence[i : i + 3] for i in range(0, len(sequence), 3)]
+                    triplets = [triplet[i - 1] for i in positions for triplet in triplets]
+                    sequence = "".join(triplets)
+
                 if i == 0:
                     this_gene_global_length = len(sequence)
                     gene_lengths["nt"][gene] = this_gene_global_length
@@ -534,24 +542,10 @@ def process_folder(args, input_path):
             output_fas = processed_folder.joinpath(no_suffix + f".{type_}.fas")
             output_nex = processed_folder.joinpath(no_suffix + f".{type_}.nex")
 
-            positions = None
-            if args.position != {1, 2, 3}:
-                positions = list(map(int, args.position))
-
             with open(output_fas, "w", encoding="UTF-8") as fp:
                 for taxa, taxa_contig_sequence in taxa_sequences_global.items():
-                    if positions and type_ == "nt":
-                        taxa_contig_sequence = "".join(taxa_contig_sequence)
-                        triplets = [
-                            taxa_contig_sequence[i : i + 3]
-                            for i in range(0, len(taxa_contig_sequence), 3)
-                        ]
-                        taxa_contig_sequence = [
-                            "".join([triplet[i - 1] for i in positions])
-                            for triplet in triplets
-                        ]
                     fp.write(">" + taxa + "\n")
-                    fp.write("".join(taxa_contig_sequence) + "\n")
+                    fp.write(taxa_contig_sequence + "\n")
 
             with open(output_nex, "w", encoding="UTF-8") as fp:
                 fp.write("#nexus\nbegin sets;\n")
