@@ -545,7 +545,7 @@ def process_folder(args, input_path):
             with open(output_fas, "w", encoding="UTF-8") as fp:
                 for taxa, taxa_contig_sequence in taxa_sequences_global.items():
                     fp.write(">" + taxa + "\n")
-                    fp.write(taxa_contig_sequence + "\n")
+                    fp.write("".join(taxa_contig_sequence) + "\n")
 
             with open(output_nex, "w", encoding="UTF-8") as fp:
                 fp.write("#nexus\nbegin sets;\n")
