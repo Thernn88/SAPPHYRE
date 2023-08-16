@@ -505,9 +505,8 @@ def process_folder(args, input_path):
                 if positions:
                     sequence = list(sequence)
                     for ai in range(0, len(sequence), 3):
-                        for ti in range(3):
-                            if ti in positions:
-                                sequence[ai+ti] = ""
+                        for ti in positions:
+                            sequence[ai+ti] = ""
                     sequence = "".join(sequence)
 
                 if i == 0:
