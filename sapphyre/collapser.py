@@ -205,9 +205,9 @@ def do_folder(args, input_path):
         with Pool(args.processes) as pool:
             results = pool.starmap(process_batch, batched_arguments)
 
-    all_passed = all([i[0] for i in results])
+    all_passed = all(i[0] for i in results)
 
-    total_kicks = sum([i[2] for i in results if i[2] != 0])
+    total_kicks = sum(i[2] for i in results if i[2] != 0)
 
     if args.debug:
         with open(os.path.join(collapsed_path, "kicks.txt"), "w") as fp:
@@ -235,7 +235,7 @@ def process_batch(
         aa_in = os.path.join(aa_input_path, gene.replace(".nt.", ".aa."))
 
         nt_sequences = parseFasta(nt_in)
-        aa_sequences = {header: sequence for header, sequence in parseFasta(aa_in)}
+        aa_sequences = dict(parseFasta(aa_in))
         nt_output = []
 
         nodes = []
