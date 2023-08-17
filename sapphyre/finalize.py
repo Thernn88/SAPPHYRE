@@ -107,23 +107,7 @@ def stopcodon(aa_content: list, nt_content: list) -> tuple:
     aa_out = []
     nt_out = []
 
-    aa_refs = []
-    aa_seqs = []
-    for header, sequence in aa_content:
-        if header.endswith("."):
-            aa_refs.append((header, sequence))
-        else:
-            aa_seqs.append((header, sequence))
-
-    nt_refs = []
-    nt_seqs = []
-    for header, sequence in nt_content:
-        if header.endswith("."):
-            nt_refs.append((header, sequence))
-        else:
-            nt_seqs.append((header, sequence))
-
-    for (aa_header, aa_line), (nt_header, nt_line) in zip(aa_seqs, nt_seqs):
+    for (aa_header, aa_line), (nt_header, nt_line) in zip(aa_content, nt_content):
         if aa_header != nt_header:
             print(
                 "Warning STOPCODON: Nucleotide order doesn't match Amino Acid order",
@@ -145,7 +129,7 @@ def stopcodon(aa_content: list, nt_content: list) -> tuple:
         aa_out.append((aa_header, aa_line))
         nt_out.append((nt_header, nt_line))
 
-    return aa_refs + aa_out, nt_refs + nt_out
+    return aa_out, nt_out
 
 
 def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict) -> tuple:
