@@ -361,7 +361,7 @@ def compare_means(
     return regulars, passing, failing
 
 
-def align_col_removal(raw_fed_sequences: list, positions_to_remove: set) -> list:
+def align_col_removal(raw_fed_sequences: list, positions_to_keep: set) -> list:
     """Iterates over each sequence and deletes columns
     that were removed in the empty column removal.
     """
@@ -370,10 +370,9 @@ def align_col_removal(raw_fed_sequences: list, positions_to_remove: set) -> list
     for i in range(0, len(raw_fed_sequences), 2):
         result.append(raw_fed_sequences[i])
 
-        sequence = list(raw_fed_sequences[i + 1])
-        for position in positions_to_remove:
-            sequence[position] = "-"
-        result.append("".join(sequence))
+        sequence = raw_fed_sequences[i + 1]
+        
+        result.append("".join([sequence[i: i+3] for i in range(0, len(sequence), 3)]))
 
     return result
 
@@ -561,9 +560,7 @@ def main_process(
         if assembly:
             non_empty_lines = align_intron_removal(non_empty_lines, header_to_indices)
 
-        msa_length = len(non_empty_lines[1])
-        not_allowed_columns = set(range(msa_length)).difference(allowed_columns)
-        non_empty_lines = align_col_removal(non_empty_lines, not_allowed_columns)
+        non_empty_lines = align_col_removal(non_empty_lines, set(allowed_columns))
 
         write2Line2Fasta(nt_output_path, non_empty_lines, compress)
     return logs
