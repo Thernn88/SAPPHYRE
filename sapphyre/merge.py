@@ -11,7 +11,7 @@ from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import rmtree
 from typing import Literal
-from phymmr_tools import score_splits
+from phymmr_tools import score_splits, get_overlap, find_index_pair
 import numpy as np
 
 import wrap_rocks
@@ -133,15 +133,6 @@ def parse_fasta(path: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]
     return references, candidates
 
 
-def get_start_end(sequence: str) -> tuple:
-    """Returns index of first and last non-dash character in sequence."""
-    start = next((i for i, character in enumerate(sequence) if character != "-"), None)
-    end = next(
-        (i for i in range(len(sequence) - 1, -1, -1) if sequence[i] != "-"), None
-    )
-    return start, end
-
-
 def expand_region(original: tuple, expansion: tuple) -> tuple:
     """Expands two (start, end) tuples to cover the entire region."""
     start = min(original[0], expansion[0])
@@ -161,7 +152,7 @@ def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
     for sequence in taxa_pair:
         if (
             current_region is None
-            or find_overlap((sequence.start, sequence.end), current_region) is None
+            or get_overlap(sequence.start, sequence.end, current_region[0], current_region[1], -1) is None
         ):
             if current_group:
                 result.append((current_region, current_group))
@@ -178,20 +169,6 @@ def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
 
     return result
 
-
-def find_overlap(
-    tuple_a: tuple,
-    tuple_b: tuple,
-    allowed_deviation: int = 1,
-) -> tuple | None:
-    """Takes two start/end pairs and returns the overlap."""
-    start = max(tuple_a[0], tuple_b[0])
-    end = min(tuple_a[1], tuple_b[1])
-    if end - start < -allowed_deviation:
-        return None
-    return start, end
-
-
 def calculate_split(sequence_a: str, sequence_b: str, comparison_sequence: str) -> int:
     """Iterates over each position in the overlap range of sequence A and sequence B and
     creates a frankenstein sequence of sequence A + Sequence B joined at each
@@ -202,10 +179,10 @@ def calculate_split(sequence_a: str, sequence_b: str, comparison_sequence: str) 
     Score is determined by the amount of characters that are the same between each
     position in the frankenstein sequence and the comparison sequence.
     """
-    pair_a = get_start_end(sequence_a)
-    pair_b = get_start_end(sequence_b)
+    pair_a = find_index_pair(sequence_a, "-")
+    pair_b = find_index_pair(sequence_b, "-")
 
-    overlap_start, overlap_end = find_overlap(pair_a, pair_b, 0)
+    overlap_start, overlap_end = get_overlap(pair_a[0], pair_a[1], pair_b[0], pair_b[1], 0)
 
     sequence_a_overlap = list(islice(sequence_a, overlap_start, overlap_end + 1))
     sequence_b_overlap = list(islice(sequence_b, overlap_start, overlap_end + 1))
@@ -300,7 +277,7 @@ def do_protein(
         is_old_header = False
 
     for header, sequence in candidates:
-        start, end = get_start_end(sequence)
+        start, end = find_index_pair(sequence, "-")
         this_object = Sequence(start, end, header, sequence, is_old_header)
         taxa = get_taxa(header)
         taxa_groups.setdefault(taxa, []).append(this_object)
@@ -530,7 +507,7 @@ def do_protein(
 
                     for header, sequence, count in consists_of:
                         if header not in start_ends:
-                            start_ends[header] = get_start_end(sequence)
+                            start_ends[header] = find_index_pair(sequence, "-")
                         start, end = start_ends[header]
 
                         # If sequence has data at this position
@@ -578,7 +555,7 @@ def do_protein(
 
                     for header, sequence, count in consists_of:
                         if header not in start_ends:
-                            start_ends[header] = get_start_end(sequence)
+                            start_ends[header] = find_index_pair(sequence, "-")
                         start, end = start_ends[header]
 
                         if start <= i <= end:
