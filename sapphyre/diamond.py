@@ -131,18 +131,17 @@ def get_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
     -------
         int: The number of elements in the overlap between the two ranges.
     """
-    # Calculate the left most position out of each range's end.
-    overlap_end = min(a_end, b_end)
-    # Calculate the right most position out of each range's start.
-    overlap_start = max(a_start, b_start)
-
-    # If the ranges do not overlap, return 0.
-    if overlap_end < overlap_start:
+    overlap_coords = phymmr_tools.get_overlap(
+        a_start,
+        a_end,
+        b_start,
+        b_end,
+        0,
+    )
+    if overlap_coords == None:
         return 0
-
-    # Calculate the number of elements in the overlap.
-    amount = (overlap_end - overlap_start) + 1
-    return amount
+    
+    return (overlap_coords[1] - overlap_coords[0]) + 1
 
 
 def get_score_difference(score_a: float, score_b: float) -> float:
