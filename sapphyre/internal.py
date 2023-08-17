@@ -8,7 +8,7 @@ from msgspec import Struct, json
 import phymmr_tools as bd
 import wrap_rocks
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import parseFasta, printv
+from .utils import parseFasta, printv, writeFasta
 
 ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta", ".fa", ".gz", ".fq", ".fastq")
 
@@ -20,6 +20,8 @@ class Record(Struct):
     def __str__(self):
         return f">{self.id}\n{self.seq}\n"
 
+    def get_pair(self):
+        return (self.id, self.seq)
 
 def folder_check(path: Path, debug: bool) -> None:
     """Create subfolders 'aa' and 'nt' to given path."""
@@ -119,7 +121,7 @@ def aa_internal(
     return candidates, failing, references
 
 
-def mirror_nt(input_path, output_path, failing, gene):
+def mirror_nt(input_path, output_path, failing, gene, compression):
     output_path = Path(output_path, gene)
     input_path = Path(input_path, gene)
     if not os.path.exists(input_path):
@@ -132,8 +134,9 @@ def mirror_nt(input_path, output_path, failing, gene):
     records = excise_data_replacement(records, input_path)
     if not records:
         return
-    with open(output_path, "w") as f:
-        f.writelines((f">{candidate.id}\n{candidate.seq}\n" for candidate in records))
+    # with open(output_path, "w") as f:
+    #     f.writelines((f">{candidate.id}\n{candidate.seq}\n" for candidate in records))
+    writeFasta(str(output_path), [rec.get_pair() for rec in records], compress=compression)
 
 
 def run_internal(
@@ -146,7 +149,9 @@ def run_internal(
     dupes,
     prepare_dupes,
     reporter_dupes,
+    decompress
 ):
+    compression = not decompress
     passing, failing, references = aa_internal(
         gene,
         consensus_threshold,
@@ -158,9 +163,10 @@ def run_internal(
     if not passing:  # if no eligible candidates, don't create the output filegi
         return
     aa_output = Path(output_path, "aa", gene.name)
-    with open(aa_output, "w") as f:
-        f.writelines((str(rec) for rec in references + passing))
-    mirror_nt(nt_input, nt_output_path, failing, aa_output.name.replace(".aa.", ".nt."))
+    # with open(aa_output, "w") as f:
+    #     f.writelines((str(rec) for rec in references + passing))
+    writeFasta(str(aa_output), [rec.get_pair() for rec in passing], compress=compression)
+    mirror_nt(nt_input, nt_output_path, failing, aa_output.name.replace(".aa.", ".nt."), compression)
 
 
 def main(args):
@@ -212,6 +218,7 @@ def main(args):
                     args.dupes,
                     prepare_dupes,
                     reporter_dupes,
+                    args.uncompress_intermediates
                 ),
             )
         pool.starmap(run_internal, arguments, chunksize=1)
