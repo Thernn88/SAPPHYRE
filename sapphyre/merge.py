@@ -106,7 +106,7 @@ def make_seq_dict(sequences: list) -> dict:
     cursor_dict = defaultdict(list)
 
     for sequence in sequences:
-        for cursor in range(sequence.start, sequence.end + 1):  # exclusive, so add 1
+        for cursor in range(sequence.start, sequence.end):  # exclusive, so add 1  edit: its already incremented
             cursor_dict[cursor].append(sequence.header)
     return seq_dict, cursor_dict
 
@@ -475,8 +475,10 @@ def do_protein(
                                 already_calculated_splits[split_key] = split_position
 
                         elif protein == "nt":
+                            # try:
                             split_position = already_calculated_splits[split_key] * 3
-
+                            # except KeyError:
+                            #     pass
                         if cursor >= split_position:
                             next_character = sequence_b[cursor]
                             break
