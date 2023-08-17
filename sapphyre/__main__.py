@@ -1241,6 +1241,24 @@ if __name__ == "__main__":
         #     "-sd", "--sub_directory", default="collapsed", help="Name of input subfolder"
         # )
         parser.add_argument(
+            "-uci",
+            "--uncompress-intermediates",
+            default=False,
+            action="store_true",
+            help="Compress intermediate files",
+        )
+        parser.add_argument(
+            "-c",
+            "--compress",
+            # default=False,
+            action="store_false",
+            dest="uncompress_intermediates",
+            help="Compress intermediate files",
+        )
+        # parser.add_argument(
+        #     ""
+        # )
+        parser.add_argument(
             "-o",
             "--output",
             type=str,
