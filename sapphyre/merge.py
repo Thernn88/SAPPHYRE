@@ -369,7 +369,7 @@ def do_protein(
             # Create a hashmap to store the split quality taxons
             quality_taxons_here = {}
 
-            for cursor in range(data_start, data_end + 1):
+            for cursor in range(data_start, data_end):
                 headers_at_current_point = current_point_seqs[cursor]
                 amount_of_seqs_at_cursor = len(headers_at_current_point)
 
@@ -497,7 +497,7 @@ def do_protein(
                     majority_assignments = ["-"] * len(new_merge)  # Used for debug log
 
                 start_ends = {}
-                for i in range(data_start, data_end + 1):
+                for i in range(data_start, data_end):
                     candidate_characters = {}
                     total_characters = 0
                     mode = -999
@@ -546,9 +546,12 @@ def do_protein(
                         new_merge,
                     )  # Used for debug log
 
-                for raw_i in range(triplet_data_start, triplet_data_end + 1):
+                for raw_i in range(triplet_data_start, triplet_data_end):
                     i = raw_i * 3
-                    char = new_merge[raw_i]
+                    try:
+                        char = new_merge[raw_i]
+                    except IndexError:
+                        pass
 
                     candidate_characters = []
                     total_characters = 0
