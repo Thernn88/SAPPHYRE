@@ -80,6 +80,13 @@ def excise_data_replacement(candidates: list, gene: Path) -> list:
     return replacements
 
 
+def has_candidates(records: list) -> bool:
+    for rec in records:
+        if rec.id[-1] != ".":
+            return True
+    return False
+
+
 def aa_internal(
     gene: str,
     consensus_threshold,
@@ -134,10 +141,8 @@ def mirror_nt(input_path, output_path, failing, gene, compression):
         if header not in failing
     ]
     records = excise_data_replacement(records, input_path)
-    if not records:
+    if not has_candidates(records):
         return
-    # with open(output_path, "w") as f:
-    #     f.writelines((f">{candidate.id}\n{candidate.seq}\n" for candidate in records))
     writeFasta(str(output_path), [rec.get_pair() for rec in records], compress=compression)
 
 
@@ -162,7 +167,7 @@ def run_internal(
         prepare_dupes,
         reporter_dupes,
     )
-    if not passing and not references:  # if no eligible candidates, don't create the output file
+    if not passing:  # if no eligible candidates, don't create the output file
         return
     aa_output = Path(output_path, "aa", gene.name)
     writeFasta(str(aa_output), [rec.get_pair() for rec in references + passing], compress=compression)
@@ -187,7 +192,8 @@ def main(args):
         folder = args.INPUT
         aa_input = Path(folder, "outlier", "collapsed", "aa")
         nt_input = Path(folder, "outlier", "collapsed", "nt")
-        prepare_dupe_counts, reporter_dupe_counts = load_dupes(folder)
+        if args.dupes:
+            prepare_dupe_counts, reporter_dupe_counts = load_dupes(folder)
         file_inputs = [
             gene
             for gene in aa_input.iterdir()
