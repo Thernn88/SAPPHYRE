@@ -76,7 +76,7 @@ def excise_data_replacement(candidates: list, gene: Path) -> list:
     excise_path = str(gene).replace("/collapsed/", "/excise/")
     if not os.path.exists(excise_path):
         return candidates
-    replacements = [Record(header, seq) for header, seq in parseFasta(excise_path) if header[-1] != "."]
+    replacements = [Record(header, seq) for header, seq in parseFasta(excise_path)]
     return replacements
 
 
@@ -89,18 +89,20 @@ def aa_internal(
     reporter_dupes,
 ):
     failing = set()
+    raws = [Record(head, seq) for head, seq in parseFasta(gene)]
+    raws = excise_data_replacement(raws, gene)
     candidates, references = [], []
-    for header, seq in parseFasta(gene):
-        if header[-1] != ".":
-            candidates.append(Record(header, seq))
+    for record in raws:
+        if record.id[-1] != ".":
+            candidates.append(record)
         else:
-            references.append(Record(header, seq))
-    if not candidates:  # if no candidates are found, report to user
-        # print(f"{gene}: No Candidate Sequences found in file. Returning.")
-        return [], {}, []
-    candidates = excise_data_replacement(candidates, gene)
+            references.append(record)
+    # if not candidates:  # if no candidates are found, report to user
+    #     print(f"{gene}: No Candidate Sequences found in file. Returning.")
+        # return [], {}, []
+    # candidates = excise_data_replacement(candidates, gene)
     if not candidates:
-        return [], {}, []
+        return [], {}, references
     if dupes:
         consensus_func = bd.dumb_consensus_dupe
         sequences = bundle_seqs_and_dupes(candidates, prepare_dupes, reporter_dupes)
@@ -160,12 +162,10 @@ def run_internal(
         prepare_dupes,
         reporter_dupes,
     )
-    if not passing:  # if no eligible candidates, don't create the output filegi
+    if not passing and not references:  # if no eligible candidates, don't create the output file
         return
     aa_output = Path(output_path, "aa", gene.name)
-    # with open(aa_output, "w") as f:
-    #     f.writelines((str(rec) for rec in references + passing))
-    writeFasta(str(aa_output), [rec.get_pair() for rec in passing], compress=compression)
+    writeFasta(str(aa_output), [rec.get_pair() for rec in references + passing], compress=compression)
     mirror_nt(nt_input, nt_output_path, failing, aa_output.name.replace(".aa.", ".nt."), compression)
 
 
