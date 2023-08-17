@@ -52,7 +52,11 @@ class NODE(Struct):
         if self.splices[position] == -1:
             return self.header
         
-        return self.splices.get(position, None)
+        child_index = self.splices.get(position, None)
+        if child_index is None:
+            return None
+
+        return self.children[child_index]
 
     def extend(self, node_2, overlap_coord):
         if node_2.start >= self.start and node_2.end <= self.end:
@@ -279,7 +283,6 @@ def process_batch(
                             for k in range(0, overlap_amount, 3):
                                 nt_pos = overlap_coords[0] + k
                                 aa_pos = (nt_pos) // 3
-
                                 aa_node_bp = aa_sequences[
                                     node.get_sequence_at_coord(nt_pos)
                                 ][aa_pos]
