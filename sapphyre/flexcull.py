@@ -467,6 +467,17 @@ def do_cull(
 
     return cull_start, cull_end, kick
 
+
+def get_start_end(sequence: str) -> tuple:
+    """Returns the start and end of the sequence."""
+    start = next((i for i, char in enumerate(sequence) if char != "-"), 0)
+    end = next(
+        (len(sequence) - i for i, char in enumerate(sequence[::-1]) if char != "-"),
+        len(sequence),
+    )
+    return start, end
+
+
 def process_refs(
     references: list[tuple], gap_threshold: float, column_cull_percent: float, mat: dict
 ) -> tuple:
@@ -491,8 +502,9 @@ def process_refs(
     gap_present_threshold = {}
     all_dashes_by_index = {}
     column_cull = set()
-    msa_length = len(references[0][1])
-    all_dashes_by_index = {i: True for i in range(msa_length)}
+
+    max_ref_length = max(len(sequence) for _, sequence in references)
+    all_dashes_by_index = {i: True for i in range(max_ref_length)}
 
     for _, sequence in references:
         for i, char in enumerate(sequence.replace("*", "-")):
@@ -666,7 +678,9 @@ def trim_large_gaps(
         header, sequence = record
         if not header.endswith("."):
             gap_cull = set()
-            seq_start, seq_end = find_index_pair(sequence, "-")
+            seq_start, seq_end = get_start_end(sequence)
+            print(seq_start, seq_end)
+            input(find_index_pair(sequence))
             change_made = False
             non_ref_gap_dash_count = 0
             raw_dash_count = 0
@@ -869,7 +883,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                     positions_to_trim,
                 )
 
-                this_seqs.append((header, out_line, *find_index_pair(out_line, "-")))
+                this_seqs.append((header, out_line, *get_start_end(out_line)))
 
                 if fargs.debug:
                     removed_section = sequence[:cull_start] + sequence[cull_end:]
