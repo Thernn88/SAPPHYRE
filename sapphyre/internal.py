@@ -73,14 +73,9 @@ def excise_data_replacement(candidates: list, gene: Path) -> list:
     """
     excise_path = str(gene).replace("/collapsed/", "/excise/")
     if not os.path.exists(excise_path):
-        # print("no excise data for ", gene)
         return candidates
-    replacements = {header: seq for header, seq in parseFasta(excise_path)}
-    # print("excise data found for ", gene)
-    for candidate in candidates:
-        if candidate.id in replacements:
-            candidate.seq = replacements[candidate.id]
-    return candidates
+    replacements = [Record(header, seq) for header, seq in parseFasta(excise_path) if header[-1] != "."]
+    return replacements
 
 
 def aa_internal(
@@ -102,6 +97,8 @@ def aa_internal(
         # print(f"{gene}: No Candidate Sequences found in file. Returning.")
         return [], {}, []
     candidates = excise_data_replacement(candidates, gene)
+    if not candidates:
+        return [], {}, []
     if dupes:
         consensus_func = bd.dumb_consensus_dupe
         sequences = bundle_seqs_and_dupes(candidates, prepare_dupes, reporter_dupes)
@@ -133,6 +130,8 @@ def mirror_nt(input_path, output_path, failing, gene):
         if header not in failing
     ]
     records = excise_data_replacement(records, input_path)
+    if not records:
+        return
     with open(output_path, "w") as f:
         f.writelines((f">{candidate.id}\n{candidate.seq}\n" for candidate in records))
 
@@ -162,21 +161,6 @@ def run_internal(
     with open(aa_output, "w") as f:
         f.writelines((str(rec) for rec in references + passing))
     mirror_nt(nt_input, nt_output_path, failing, aa_output.name.replace(".aa.", ".nt."))
-
-
-#             distance = constrained_distance(consensus, candidate.raw) / len(
-#                 candidate.sequence
-#             )
-#             if distance >= internal_kick_threshold:
-#                 candidate.grade = "Internal Fail"
-#                 failing.append(candidate)
-#                 passing[i] = None
-#         passing = [x for x in passing if x is not None]
-#     except KeyError:
-#         print(f"key error for {gene}, skipping consensus")
-
-
-# def do_folder(folder, args):
 
 
 def main(args):
