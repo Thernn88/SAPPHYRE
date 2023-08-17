@@ -7,7 +7,7 @@ import os
 import blosum as bl
 
 from msgspec import Struct
-from phymmr_tools import constrained_distance, find_index_pair
+from phymmr_tools import constrained_distance, find_index_pair, get_overlap
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import writeFasta, parseFasta, printv
 
@@ -43,12 +43,7 @@ class NODE(Struct):
     splices: dict
 
     def get_overlap(self, node_2, min_overlap=0):
-        overlap_start = max(self.start, node_2.start)
-        overlap_end = min(self.end, node_2.end)
-        if overlap_end - overlap_start >= min_overlap:
-            return overlap_start, overlap_end
-
-        return None
+        return get_overlap(self.start, self.end, node_2.start, node_2.end, min_overlap)
 
     def get_header_index_at_coord(self, position):
         return self.splices[position]
