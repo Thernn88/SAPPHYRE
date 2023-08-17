@@ -548,10 +548,7 @@ def do_protein(
 
                 for raw_i in range(triplet_data_start, triplet_data_end):
                     i = raw_i * 3
-                    try:
-                        char = new_merge[raw_i]
-                    except IndexError:
-                        pass
+                    char = new_merge[raw_i]
 
                     candidate_characters = []
                     total_characters = 0
