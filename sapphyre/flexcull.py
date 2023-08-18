@@ -790,6 +790,14 @@ def trim_large_gaps(
     return aa_out, gap_pass_through, log, kicks
 
 
+def align_to_aa_order(nt_out, aa_content):
+    headers = [header for header, _ in aa_content if not header.endswith('.')]
+
+    nt_out = dict(nt_out)
+    for header in headers:
+        yield (header, nt_out[header])
+
+
 def do_gene(fargs: FlexcullArgs) -> None:
     """FlexCull main function. Culls input aa and nt using specified amount of matches."""
     gene_path = os.path.join(fargs.aa_input, fargs.aa_file)
@@ -1010,6 +1018,8 @@ def do_gene(fargs: FlexcullArgs) -> None:
                     )
                 else:
                     out_nt.append((header, sequence))
+
+            out_nt = align_to_aa_order(out_nt, aa_out)
 
             writeFasta(nt_out_path, out_nt, fargs.compress)
 
