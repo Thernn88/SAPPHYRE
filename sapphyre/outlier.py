@@ -361,18 +361,24 @@ def compare_means(
     return regulars, passing, failing
 
 
-def align_col_removal(raw_fed_sequences: list, positions_to_keep: set) -> list:
+def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
     """Iterates over each sequence and deletes columns
     that were removed in the empty column removal.
     """
+    raw_sequences = [
+        i.replace("\n", "") for i in raw_fed_sequences if i.replace("\n", "") != ""
+    ]
+
     result = []
 
-    for i in range(0, len(raw_fed_sequences), 2):
-        result.append(raw_fed_sequences[i])
+    for i in range(0, len(raw_sequences), 2):
+        result.append(raw_sequences[i])
 
-        sequence = raw_fed_sequences[i + 1]
-        
-        result.append("".join([sequence[i: i+3] for i in range(0, len(sequence), 3)]))
+        sequence = raw_sequences[i + 1]
+
+        sequence = [sequence[i * 3 : (i * 3) + 3] for i in positions_to_keep]
+
+        result.append("".join(sequence))
 
     return result
 
@@ -559,8 +565,7 @@ def main_process(
         non_empty_lines = remove_excluded_sequences(lines, to_be_excluded)
         if assembly:
             non_empty_lines = align_intron_removal(non_empty_lines, header_to_indices)
-
-        non_empty_lines = align_col_removal(non_empty_lines, set(allowed_columns))
+        non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
 
         write2Line2Fasta(nt_output_path, non_empty_lines, compress)
     return logs
