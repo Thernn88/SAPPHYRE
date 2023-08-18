@@ -12,6 +12,19 @@ from .timekeeper import KeeperMode, TimeKeeper
 from .utils import writeFasta, parseFasta, printv
 
 
+def get_start_end(seq):
+    start = 0
+    end = len(seq)
+    for i, let in enumerate(seq):
+        if let != "-":
+            start = i
+            break
+    for i in range(len(seq) - 1, -1, -1):
+        if seq[i] != "-":
+            end = i
+            break
+    return start, end
+
 class CollapserArgs(Struct):
     compress: bool
     uncompress_intermediates: bool
@@ -229,7 +242,7 @@ def process_batch(
             if header.endswith("."):
                 continue
 
-            start,end = find_index_pair(sequence, "-")
+            start,end = get_start_end(sequence)#find_index_pair(sequence, "-")
 
             nodes.append(
                 NODE(
