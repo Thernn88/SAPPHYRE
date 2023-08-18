@@ -757,6 +757,8 @@ def flexcull(args):
         args.mismatches,
         args.column_cull,
         args.blosum_mode,
+        args.orthoset,
+        args.orthoset_input,
     )
     if not flexcull.main(flexargs):
         print()
