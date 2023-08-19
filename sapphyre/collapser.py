@@ -205,7 +205,7 @@ def do_folder(args, input_path):
             results.append(process_batch(batch))
     else:
         with Pool(args.processes) as pool:
-            results = pool.starmap(process_batch, batched_arguments)
+            results = pool.map(process_batch, batched_arguments)
 
     all_passed = all(i[0] for i in results)
     
