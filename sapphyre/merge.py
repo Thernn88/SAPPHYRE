@@ -152,7 +152,7 @@ def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
     for sequence in taxa_pair:
         if (
             current_region is None
-            or get_overlap(sequence.start, sequence.end, current_region[0], current_region[1], -1) is None
+            or get_overlap(sequence.start, sequence.end, current_region[0], current_region[1], 0) is None
         ):
             if current_group:
                 result.append((current_region, current_group))
@@ -431,7 +431,7 @@ def do_protein(
                                             sequence,
                                         ) in comparison_sequences.items():
                                             data_region = sequence[
-                                                data_start : data_end + 1
+                                                data_start : data_end
                                             ]
                                             data = len(data_region) - data_region.count(
                                                 "-",
@@ -485,7 +485,7 @@ def do_protein(
 
                     new_merge.append(next_character)
 
-            new_merge.extend(["-"] * (trailing_end - data_end - 1))
+            new_merge.extend(["-"] * (trailing_end - data_end))
 
             # Doing MR Outlier Check
             #
