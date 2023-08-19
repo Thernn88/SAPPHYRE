@@ -400,10 +400,6 @@ def process_batch(
                         f"{read.header},Kicked By,{contig.contig_header()},{percent},{matching_percent}\n"
                     )
                     kicked_headers.add(read.header)
-                if keep:
-                    kicks.append(
-                        f"{read.header},Saved By,{contig.contig_header()},{percent},{matching_percent}\n"
-                    )
 
         if args.debug == 2:
             output = og_contigs + reads
