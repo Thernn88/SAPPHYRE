@@ -282,7 +282,8 @@ def compare_means(
             )
         ]
 
-        ref_distances = []
+
+        # ref_distances = []
 
         # find number of unique ref variants remaining after bp kick
         if references[0].id[-9] == ":":
@@ -296,67 +297,27 @@ def compare_means(
         refs_needed = max(2, refs_in_file * ref_min_percent)
         if found < refs_needed:
             has_ref_distances = False
-        else:
-            ref_distances = [
-                bd.blosum62_distance(ref1.sequence, ref2.sequence)
-                for ref1, ref2 in combinations(ref_alignments, 2)
-                if not is_same_variant(ref1.id, ref2.id)
-            ]
-            has_ref_distances = nan_check(ref_distances)
-        if has_ref_distances:
-            # First quartile (Q1)
-            try:
-                Q1 = np.nanpercentile(ref_distances, 25, method="midpoint")
-            except IndexError:
-                Q1 = 0.0
-                print(
-                    f'Q1 Runtime Error caused by references in {ref_alignments[0].id.split("|")[0]}',
+            # TODO: function needs to auto-fail all candidates if has_ref_distances is False
+        else:  # TODO: this should use a guard statement instead of if-else, this satisfies above TODO for now
+            ref_consensus = bd.dumb_consensus(
+                [ref.sequence for ref in ref_alignments],
+                0.65,  # this needs a consensus threshold arg
+            )
+            for candidate in candidates_at_index:
+                # mean_distance = "No refs"
+                candidate.grade = "Ref Fail"
+                candidate.mean_distance = bd.blosum62_candidate_to_reference(
+                    candidate.sequence,
+                    ref_consensus
                 )
-            except RuntimeError:
-                Q1 = 0.0
-                print(
-                    f'Index Error caused by references in {ref_alignments[0].id.split("|")[0]}',
-                )
-            # Third quartile (Q3)
-            try:
-                Q3 = np.nanpercentile(ref_distances, 75, method="midpoint")
-            except IndexError:
-                Q3 = 0.0
-                print(
-                    f'Index Error caused by references in {ref_alignments[0].id.split("|")[0]}',
-                )
-            except RuntimeError:
-                Q3 = 0.0
-                print(
-                    f'Runtime Error caused by references in {ref_alignments[0].id.split("|")[0]}',
-                )
-            # Interquartile range (IQR)
-            IQR = Q3 - Q1
-            upper_bound = Q3 + (threshold * IQR) + 0.02
-        else:  # if no ref_distances, this is an orthograph, so reject
-            upper_bound = "N/A"
-            IQR = "N/A"
-        for candidate in candidates_at_index:
-            mean_distance = "No refs"
-            candidate.grade = "Ref Fail"
-            if has_ref_distances:
-                candidate_distances = candidate_pairwise_calls(
-                    candidate,
-                    ref_alignments,
-                )
-                candidate.mean_distance = np.nanmean(candidate_distances)
-                candidate.iqr = IQR
-                candidate.upper_bound = upper_bound
-                if candidate.mean_distance <= upper_bound:
+                # candidate.mean_distance = candidate_distance
+                if candidate.mean_distance >= 0.5:  # TODO: this needs to be an arg
+                    candidate.grade = "Fail"
+                    failing.append(candidate)
+                else:  # passs
                     candidate.grade = "Pass"
                     passing.append(candidate)
-                else:
-                    failing.append(candidate)
-            else:
-                candidate.mean_distance = mean_distance
-                candidate.iqr = IQR
-                candidate.upper_bound = upper_bound
-                failing.append(candidate)
+
 
     return regulars, passing, failing
 
