@@ -234,6 +234,8 @@ def process_batch(
     batch_args: BatchArgs,
 ):
     args = batch_args.args
+    kicked_genes = []
+    total = 0
 
     kicks = []
     for gene in batch_args.genes:
@@ -251,7 +253,7 @@ def process_batch(
 
         nodes = []
 
-        kicked_genes = []
+  
 
         for header, sequence in nt_sequences:
             nt_output.append((header, sequence))
@@ -338,7 +340,7 @@ def process_batch(
         og_contigs = [node for node in nodes if node is not None and node.is_contig]
 
         if not og_contigs:
-            kicked_genes.append(gene)
+            kicked_genes.append(gene.split(".")[0])
             continue
 
         contigs = sorted(og_contigs, key=lambda x: x.length, reverse=True)
@@ -431,11 +433,12 @@ def process_batch(
         ]
         writeFasta(aa_out, aa_sequences, batch_args.compress)
 
-    count = len(kicked_headers)
-    kicks.append(f"Total Kicks: {count}\n")
+        count = len(kicked_headers)
+        kicks.append(f"Total Kicks: {count}\n")
+        total += count
 
     if args.debug:
-        return True, kicks, count, kicked_genes
+        return True, kicks, total, kicked_genes
 
     return True, [], 0, kicked_genes
 
