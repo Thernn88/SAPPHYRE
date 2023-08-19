@@ -208,15 +208,22 @@ def do_folder(args, input_path):
             results = pool.starmap(process_batch, batched_arguments)
 
     all_passed = all(i[0] for i in results)
-
-    total_kicks = sum(i[2] for i in results if i[2] != 0)
+    
 
     if args.debug:
+        total_kicks = sum(i[2] for i in results if i[2] != 0)
+        kicked_genes = "\n".join(["\n".join(i[3]) for i in results])
+
+        with open(os.path.join(collapsed_path, "kicked_genes.txt"), "w") as fp:
+            fp.write(kicked_genes)
+
         with open(os.path.join(collapsed_path, "kicks.txt"), "w") as fp:
             fp.write(f"Total Kicks: {total_kicks}\n")
             for data in results:
                 kick_list = data[1]
                 fp.write("".join(kick_list))
+
+                
 
     printv(f"Done! Took {time_keeper.differential():.2f} seconds", args.verbose, 1)
 
@@ -243,6 +250,8 @@ def process_batch(
         nt_output = []
 
         nodes = []
+
+        kicked_genes = []
 
         for header, sequence in nt_sequences:
             nt_output.append((header, sequence))
@@ -327,6 +336,11 @@ def process_batch(
                                 nodes[j] = None
 
         og_contigs = [node for node in nodes if node is not None and node.is_contig]
+
+        if not og_contigs:
+            kicked_genes.append(gene)
+            continue
+
         contigs = sorted(og_contigs, key=lambda x: x.length, reverse=True)
 
         reads = [node for node in nodes if node is not None and not node.is_contig]
@@ -425,9 +439,9 @@ def process_batch(
     kicks.append(f"Total Kicks: {count}\n")
 
     if args.debug:
-        return True, kicks, count
+        return True, kicks, count, kicked_genes
 
-    return True, [], 0
+    return True, [], 0, kicked_genes
 
 
 def main(args):
