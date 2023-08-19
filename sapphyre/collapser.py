@@ -9,8 +9,8 @@ import blosum as bl
 from msgspec import Struct
 from phymmr_tools import constrained_distance, find_index_pair, get_overlap
 from .timekeeper import KeeperMode, TimeKeeper
+import wrap_rocks
 from .utils import writeFasta, parseFasta, printv
-
 
 class CollapserArgs(Struct):
     compress: bool
@@ -30,6 +30,16 @@ class CollapserArgs(Struct):
     verbose: int
     debug: int
 
+
+class BatchArgs(Struct):
+    args: CollapserArgs
+    genes: list
+    nt_input_path: str
+    nt_out_path: str
+    aa_input_path: str
+    aa_out_path: str
+    compress: bool
+    is_assembly: bool
 
 class NODE(Struct):
     header: str
@@ -157,6 +167,13 @@ def do_folder(args, input_path):
     os.mkdir(nt_out_path)
     os.mkdir(aa_out_path)
 
+    nt_db_path = os.path.join(input_path, "rocksdb", "sequences", "nt")
+    nt_db = wrap_rocks.RocksDB(nt_db_path)
+    dbis_assembly = nt_db.get("get:isassembly")
+    is_assembly = False
+    if dbis_assembly and dbis_assembly == "True":
+        is_assembly = True
+
     # Process NT
     genes = [
         gene
@@ -169,7 +186,7 @@ def do_folder(args, input_path):
     compress = not args.uncompress_intermediates or args.compress
 
     batched_arguments = [
-        (
+        BatchArgs(
             args,
             genes[i : i + per_thread],
             nt_input_path,
@@ -177,6 +194,7 @@ def do_folder(args, input_path):
             aa_input_path,
             aa_out_path,
             compress,
+            is_assembly
         )
         for i in range(0, len(genes), per_thread)
     ]
@@ -184,7 +202,7 @@ def do_folder(args, input_path):
     if args.processes <= 1:
         results = []
         for batch in batched_arguments:
-            results.append(process_batch(*batch))
+            results.append(process_batch(batch))
     else:
         with Pool(args.processes) as pool:
             results = pool.starmap(process_batch, batched_arguments)
@@ -206,17 +224,19 @@ def do_folder(args, input_path):
 
 
 def process_batch(
-    args, genes, nt_input_path, nt_out_path, aa_input_path, aa_out_path, compress
+    batch_args: BatchArgs,
 ):
+    args = batch_args.args
+
     kicks = []
-    for gene in genes:
+    for gene in batch_args.genes:
         printv(f"Doing: {gene}", args.verbose, 2)
 
-        nt_out = os.path.join(nt_out_path, gene)
-        aa_out = os.path.join(aa_out_path, gene.replace(".nt.", ".aa."))
+        nt_out = os.path.join(batch_args.nt_out_path, gene)
+        aa_out = os.path.join(batch_args.aa_out_path, gene.replace(".nt.", ".aa."))
 
-        nt_in = os.path.join(nt_input_path, gene)
-        aa_in = os.path.join(aa_input_path, gene.replace(".nt.", ".aa."))
+        nt_in = os.path.join(batch_args.nt_input_path, gene)
+        aa_in = os.path.join(batch_args.aa_input_path, gene.replace(".nt.", ".aa."))
 
         nt_sequences = parseFasta(nt_in)
         aa_sequences = dict(parseFasta(aa_in))
@@ -231,6 +251,8 @@ def process_batch(
 
             start,end = find_index_pair(sequence, "-")
 
+            node_is_contig = batch_args.is_assembly or "&&" in header
+
             nodes.append(
                 NODE(
                     header=header,
@@ -239,7 +261,7 @@ def process_batch(
                     end=end,
                     length=(end - start),
                     children=[],
-                    is_contig=False,
+                    is_contig=node_is_contig,
                     kick=False,
                     splices={i: -1 for i in range(start, end)},
                 )
@@ -389,7 +411,7 @@ def process_batch(
                     f.write(f">{node.header}{is_kick}\n{node.sequence}\n")
         else:
             writeFasta(
-                nt_out, [i for i in nt_output if i[0] not in kicked_headers], compress
+                nt_out, [i for i in nt_output if i[0] not in kicked_headers], batch_args.compress
             )
 
         aa_sequences = [
@@ -397,7 +419,7 @@ def process_batch(
             for header, sequence in aa_sequences.items()
             if header not in kicked_headers
         ]
-        writeFasta(aa_out, aa_sequences, compress)
+        writeFasta(aa_out, aa_sequences, batch_args.compress)
 
     count = len(kicked_headers)
     kicks.append(f"Total Kicks: {count}\n")
