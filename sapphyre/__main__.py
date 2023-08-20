@@ -425,7 +425,7 @@ def subcmd_outlier(subparsers):
         "-idt",
         "--internal_distance_threshold",
         type=float,
-        default=0.40,
+        default=0.075,
         dest="internal_distance_threshold",
         help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence.",
     )
@@ -1279,7 +1279,7 @@ if __name__ == "__main__":
             "-idt",
             "--internal_distance_threshold",
             type=float,
-            default=0.40,
+            default=0.075,
             dest="internal_distance_threshold",
             help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence.",
         )

@@ -116,12 +116,12 @@ def aa_internal(
     else:
         consensus_func = bd.dumb_consensus
         sequences = [rec.seq for rec in candidates]
-
+    MIN_BP_RATIO = 0.6
+    consensus_bp_ratios = {}
     consensus = consensus_func(sequences, consensus_threshold)
     for i, candidate in enumerate(candidates):
-        distance = bd.constrained_distance(consensus, candidate.seq) / len(
-            candidate.seq
-        )
+        start, stop = bd.find_index_pair(candidate.seq, "-")
+        distance = bd.constrained_distance(consensus, candidate.seq) / (stop-start)
         if distance >= distance_threshold:
             # failing[candidate[0]] = candidate[1]
             failing.add(candidate.id)
