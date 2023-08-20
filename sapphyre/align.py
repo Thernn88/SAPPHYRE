@@ -550,9 +550,9 @@ def run_command(args: CmdArgs) -> None:
 
                     if has_singleton_merge and i == 0:
                         if debug:
-                            command = f"mafft --anysymbol --jtt 1 --addfragments {file} --thread -1 {prev_file} > {out_file}"
+                            command = f"mafft --anysymbol --quiet --jtt 1 --addfragments {file} --thread -1 {prev_file} > {out_file}"
                         else:
-                            command = f"mafft --anysymbol --jtt 1 --addfragments {file} --thread -1 {prev_file} > {out_file}"
+                            command = f"mafft --anysymbol --quiet --jtt 1 --addfragments {file} --thread -1 {prev_file} > {out_file}"
 
                         os.system(command)
                         if debug:
