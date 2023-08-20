@@ -1194,8 +1194,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "-c",
         "--compress",
-        action="store_true",
-        default=False,
+        action="store_false",
+        default=True,
         help="Output fasta files as compressed files using gzip",
     )
     parser.add_argument(
