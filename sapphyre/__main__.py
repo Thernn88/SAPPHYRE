@@ -12,11 +12,6 @@ Post-processing:
     10. Combine.
 """
 import argparse
-import os
-
-from .utils import printv
-from .timekeeper import TimeKeeper, KeeperMode
-
 
 class CaseInsensitiveArgumentParser(argparse.ArgumentParser):
     def _parse_known_args(self, arg_strings, *args, **kwargs):
@@ -434,61 +429,11 @@ def subcmd_outlier(subparsers):
 
 
 def outlier(argsobj):
-    from . import outlier, collapser, excise, internal
+    from . import outlier
 
-    timer = TimeKeeper(KeeperMode.DIRECT)
-    to_move = []
-    for folder in argsobj.INPUT:
-        if not os.path.exists(folder):
-            printv(
-                "ERROR: All folders passed as argument must exists.", argsobj.verbose, 0
-            )
-            return
-
-        printv(f"Processing: {folder}", argsobj.verbose)
-        printv("Blosum62 Outlier Removal.", argsobj.verbose)
-        this_args = vars(argsobj)
-        this_args["INPUT"] = folder
-        this_args = argparse.Namespace(**this_args)
-
-        if not outlier.main(this_args):
-            print()
-            print(argsobj.formathelp())
-            return
-
-        printv("Checking for severe contamination.", argsobj.verbose)
-        module_return_tuple = excise.main(this_args, False)
-        if not module_return_tuple:
-            print()
-            print(argsobj.formathelp())
-
-        is_flagged = module_return_tuple[1]
-        if is_flagged:
-            bad_folder = os.path.join(this_args.move_fails, os.path.basename(folder))
-            to_move.append((folder, bad_folder))
-
-        printv("Simple Assembly To Ensure Consistency.", argsobj.verbose)
-        if not collapser.main(this_args):
-            print()
-            print(argsobj.formathelp())
-            return
-
-        printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
-        module_return_tuple = excise.main(this_args, True)
-        if not module_return_tuple:
-            print()
-            print(argsobj.formathelp())
-
-        printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
-        if not internal.main(this_args):
-            print()
-            print(argsobj.format)
-
-    printv("Moving Pre-flagged Folders.", argsobj.verbose)
-
-    excise.move_flagged(to_move, this_args.processes)
-
-    printv(f"Took {timer.differential():.2f} seconds overall.", argsobj.verbose)
+    if not outlier.main(argsobj):
+        print()
+        print(argsobj.formathelp())
 
 
 def subcmd_Merge(subparsers):
