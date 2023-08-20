@@ -7,7 +7,7 @@ import os
 import blosum as bl
 
 from msgspec import Struct
-from phymmr_tools import constrained_distance, find_index_pair, get_overlap
+from phymmr_tools import constrained_distance, find_index_pair, get_overlap, dumb_consensus, blosum62_candidate_to_reference
 from .timekeeper import KeeperMode, TimeKeeper
 import wrap_rocks
 from .utils import writeFasta, parseFasta, printv
@@ -30,6 +30,9 @@ class CollapserArgs(Struct):
     verbose: int
     debug: int
 
+    consensus_percent: float
+    matching_consensus_percent: float
+
 
 class BatchArgs(Struct):
     args: CollapserArgs
@@ -40,6 +43,8 @@ class BatchArgs(Struct):
     aa_out_path: str
     compress: bool
     is_assembly: bool
+    consensus_percent: float
+    matching_consensus_percent: float
 
 class NODE(Struct):
     header: str
@@ -68,15 +73,9 @@ class NODE(Struct):
     def get_header_index_at_coord(self, position):
         return self.splices[position]
 
-    def get_sequence_at_coord(self, position):
-        if self.splices[position] == -1:
-            return self.header
-        
-        child_index = self.splices.get(position, None)
-        if child_index is None:
-            return None
 
-        return self.children[child_index]
+    def get_sequence_at_coord(self, position):
+        return self.splices[position]
 
     def extend(self, node_2, overlap_coord):
         if node_2.start >= self.start and node_2.end <= self.end:
@@ -87,9 +86,7 @@ class NODE(Struct):
             )
             for i in range(overlap_coord, node_2.end):
                 self.splices[i] = (
-                    len(self.children)
-                    if node_2.get_header_index_at_coord(i) == -1
-                    else len(self.children) + node_2.get_header_index_at_coord(i)
+                    node_2.get_sequence_at_coord(i)
                 )
 
         elif self.start >= node_2.start and self.end <= node_2.end:
@@ -100,16 +97,13 @@ class NODE(Struct):
             )
             for i in range(node_2.start, overlap_coord):
                 self.splices[i] = (
-                    len(self.children)
-                    if node_2.get_header_index_at_coord(i) == -1
-                    else len(self.children) + node_2.get_header_index_at_coord(i)
+                    node_2.get_sequence_at_coord(i)
                 )
             for i in range(self.end, node_2.end):
                 self.splices[i] = (
-                    len(self.children)
-                    if node_2.get_header_index_at_coord(i) == -1
-                    else len(self.children) + node_2.get_header_index_at_coord(i)
+                    node_2.get_sequence_at_coord(i)
                 )
+
             self.start = node_2.start
             self.end = node_2.end
 
@@ -119,9 +113,7 @@ class NODE(Struct):
             )
             for i in range(overlap_coord, node_2.end):
                 self.splices[i] = (
-                    len(self.children)
-                    if node_2.get_header_index_at_coord(i) == -1
-                    else len(self.children) + node_2.get_header_index_at_coord(i)
+                    node_2.get_sequence_at_coord(i)
                 )
             self.end = node_2.end
 
@@ -131,12 +123,11 @@ class NODE(Struct):
             )
             for i in range(node_2.start, overlap_coord):
                 self.splices[i] = (
-                    len(self.children)
-                    if node_2.get_header_index_at_coord(i) == -1
-                    else len(self.children) + node_2.get_header_index_at_coord(i)
+                    node_2.get_sequence_at_coord(i)
                 )
             self.start = node_2.start
         self.length = self.end - self.start
+
         self.children.append(node_2.header)
         self.children.extend(node_2.children)
         self.is_contig = True
@@ -144,7 +135,7 @@ class NODE(Struct):
     def is_kick(self, node_2, overlap_coords, kick_percent, overlap_amount):
         kmer_current = self.sequence[overlap_coords[0] : overlap_coords[1]]
         kmer_next = node_2.sequence[overlap_coords[0] : overlap_coords[1]]
-        non_matching_chars = hamming_distance(kmer_current, kmer_next)
+        non_matching_chars = constrained_distance(kmer_current, kmer_next)
         non_mathching_percent = non_matching_chars / overlap_amount
         matching_percent = 1 - non_mathching_percent
 
@@ -172,7 +163,7 @@ def average_match(seq_a, consensus, start, end):
     if total == 0:
         return 0
 
-    return match / nonambigous
+    return match / total
 
 def do_folder(args, input_path):
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
@@ -220,7 +211,9 @@ def do_folder(args, input_path):
             aa_input_path,
             aa_out_path,
             compress,
-            is_assembly
+            is_assembly,
+            args.consensus_percent,
+            args.matching_consensus_percent,
         )
         for i in range(0, len(genes), per_thread)
     ]
@@ -239,9 +232,13 @@ def do_folder(args, input_path):
     if args.debug:
         total_kicks = sum(i[2] for i in results if i[2] != 0)
         kicked_genes = "\n".join(["\n".join(i[3]) for i in results])
+        kicked_consensus = "".join(["".join(i[4]) for i in results])
 
         with open(os.path.join(collapsed_path, "kicked_genes.txt"), "w") as fp:
             fp.write(kicked_genes)
+
+        with open(os.path.join(collapsed_path, "kicked_consensus.txt"), "w") as fp:
+            fp.write(kicked_consensus)
 
         with open(os.path.join(collapsed_path, "kicks.txt"), "w") as fp:
             fp.write(f"Total Kicks: {total_kicks}\n")
@@ -288,6 +285,7 @@ def process_batch(
 ):
     args = batch_args.args
     kicked_genes = []
+    consensus_kicks = []
     total = 0
 
     kicks = []
@@ -301,7 +299,12 @@ def process_batch(
         aa_in = os.path.join(batch_args.aa_input_path, gene.replace(".nt.", ".aa."))
 
         nt_sequences = parseFasta(nt_in)
-        aa_sequences = dict(parseFasta(aa_in))
+        aa_sequences = {}
+        aa_headers = {}
+        for i, (header, sequence) in enumerate(parseFasta(aa_in)):
+            aa_sequences[i] = (header, sequence)
+            aa_headers[header] = i
+        
         nt_output = []
 
         nodes = []
@@ -327,9 +330,10 @@ def process_batch(
                     children=[],
                     is_contig=node_is_contig,
                     kick=False,
-                    splices={i: -1 for i in range(start, end)},
+                    splices={i: aa_headers[header] for i in range(start, end)},
                 )
             )
+
         mat = bl.BLOSUM(62)
         # Rescurive scan
         splice_occured = True
@@ -367,7 +371,7 @@ def process_batch(
                             diff_percent <= args.sub_percent
                             and overlap_amount != node_2.length
                         ):
-                            allow_sub = blosum_sub_merge(mat, overlap_coords, overlap_amount, aa_sequences[node.header], aa_sequences[node_2.header])
+                            allow_sub = blosum_sub_merge(mat, overlap_coords, overlap_amount, aa_sequences[aa_headers[node.header]][1], aa_sequences[aa_headers[node_2.header]][1])
                             
 
                             if allow_sub:
@@ -403,7 +407,7 @@ def process_batch(
                                 diff_percent <= args.sub_percent
                                 and overlap_amount != node_2.length
                             ):
-                                allow_sub = blosum_sub_merge(mat, overlap_coords, overlap_amount, aa_sequences[node.header], aa_sequences[node_2.header])
+                                allow_sub = blosum_sub_merge(mat, overlap_coords, overlap_amount, aa_sequences[aa_headers[node.header]][1], aa_sequences[aa_headers[node_2.header]][1])
                                 if allow_sub:
                                     splice_occured = True
                                     node.extend(node_2, overlap_coords[0])
@@ -472,6 +476,7 @@ def process_batch(
                                 break
 
                 if kick and not keep:
+                    read.kick = True
                     kicks.append(
                         f"{read.header},Kicked By,{contig.contig_header()},{percent},{matching_percent}\n"
                     )
@@ -525,10 +530,6 @@ def process_batch(
                 consensus_kicks.append(f"{gene},{read.header},{average_matching_cols},{read.length}\n")
                 kicked_headers.add(read.header)
 
-        if len(kicked_headers) == len(nt_output):
-            kicked_genes.append(gene.split(".")[0])
-            continue
-
         nt_output_after_kick = sum(1 for i in nt_output if i[0] not in kicked_headers and not i[0].endswith(".")) > 0
 
         if not nt_output_after_kick:
@@ -555,12 +556,12 @@ def process_batch(
                     f.write(f">{node.header}{is_kick}\n{node.sequence}\n")
         else:
             writeFasta(
-                nt_out, [i for i in nt_output if i[0] not in kicked_headers], batch_args.compress
+                nt_out, nt_output, batch_args.compress
             )
 
         aa_sequences = [
             (header, sequence)
-            for header, sequence in aa_sequences.items()
+            for header, sequence in aa_sequences.values()
             if header not in kicked_headers
         ]
         writeFasta(aa_out, aa_sequences, batch_args.compress)
@@ -570,9 +571,9 @@ def process_batch(
         total += count
 
     if args.debug:
-        return True, kicks, total, kicked_genes
+        return True, kicks, total, kicked_genes, consensus_kicks
 
-    return True, [], 0, kicked_genes
+    return True, [], 0, kicked_genes, consensus_kicks
 
 
 def main(args):
@@ -589,6 +590,8 @@ def main(args):
         sub_percent=args.sub_percent,
         verbose=args.verbose,
         debug=args.debug,
+        consensus_percent = args.consensus_percent,
+        matching_consensus_percent = args.matching_consensus_percent,
     )
 
     return do_folder(this_args, args.INPUT)

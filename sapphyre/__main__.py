@@ -348,6 +348,21 @@ def subcmd_outlier(subparsers):
         type=float,
         default=0.1,
     )
+    par.add_argument(
+        "-conp",
+        "--consensus_percent",
+        help="Percent arg for consensus gen",
+        type=float,
+        default=0.8,
+    )
+    par.add_argument(
+        "-mcp",
+        "--matching_consensus_percent",
+        help="Minimum percent of similar columns required for consensus ",
+        type=float,
+        default=0.65,
+    )
+    
     # Excise commands
     par.add_argument(
         "-ct",
