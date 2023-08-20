@@ -676,7 +676,12 @@ def do_folder(folder, args):
 
 
 def main(args):
-    return do_folder(Path(args.INPUT), args)
+    if type(args.INPUT) == list:
+        for folder in args.INPUT:
+            do_folder(Path(folder), args)
+    elif type(args.INPUT == str):
+        do_folder(Path(args.INPUT), args)
+    return True
 
 
 if __name__ == "__main__":
