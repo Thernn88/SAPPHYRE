@@ -144,9 +144,7 @@ class Sequence_Set:
         target_to_taxon = {}
         taxon_to_sequences = {}
 
-        from_sequence_list = (
-            self.aligned_sequences.values() if self.has_aligned else self.sequences
-        )
+        from_sequence_list = [item for sublist in self.aligned_sequences.values() for item in sublist] if self.has_aligned else self.sequences
         for seq in from_sequence_list:
             aaseq = seq.raw_seq() if self.has_aligned else seq.aa_sequence
             diamond_data.append(f">{seq.header}\n{aaseq}\n")
@@ -324,7 +322,7 @@ def generate_subset(file_paths, taxon_to_kick: set):
             data = json.decode(data)
             seq = str(seq_record.seq)
             taxon = data["organism_name"].replace(" ", "_")
-            if taxon not in taxon_to_kick:
+            if taxon.lower() not in taxon_to_kick and data["organism_name"].lower() not in taxon_to_kick:
                 gene = data["pub_og_id"]
 
                 subset.add_sequence(Sequence(header, seq, "", taxon, gene, next(index)))
@@ -392,7 +390,7 @@ def main(args):
     do_count = args.count or args.all
     do_diamond = args.diamond or args.all
     cull_percent = args.cull_percent
-    do_cull = cull_percent != 1
+    do_cull = cull_percent != 0
     this_set = Sequence_Set(set_name)
 
     index = count()
@@ -523,7 +521,7 @@ def main(args):
         "getall:taxoninset", encoder.encode(this_set.get_taxon_in_set())
     )
 
-    rocksdb_db.put_bytes("getall:nc_genes", ",".join(list(nc_genes)))
+    rocksdb_db.put_bytes("getall:nc_genes", ",".join(list(nc_genes)).encode())
 
     if do_diamond:
         rocksdb_db.put_bytes("getall:refseqs", encoder.encode(taxon_to_sequences))
