@@ -7,12 +7,13 @@ from __future__ import annotations
 import os
 from collections import Counter, namedtuple
 from multiprocessing.pool import Pool
+from shutil import rmtree
 from phymmr_tools import (
     join_by_tripled_index,
     join_with_exclusions,
     join_triplets_with_exclusions,
+    find_index_pair,
 )
-from shutil import rmtree
 import wrap_rocks
 
 import blosum as bl
@@ -37,6 +38,8 @@ MainArgs = namedtuple(
         "mismatches",
         "column_cull",
         "blosum_strictness",
+        "orthoset",
+        "orthoset_input",
     ],
 )
 
@@ -57,7 +60,7 @@ FlexcullArgs = namedtuple(
         "column_cull_percent",
         "filtered_mat",
         "is_assembly",
-        "is_ncg", #non coding gene
+        "is_ncg",  # non coding gene
     ],
 )
 
@@ -465,16 +468,6 @@ def do_cull(
     return cull_start, cull_end, kick
 
 
-def get_start_end(sequence: str) -> tuple:
-    """Returns the start and end of the sequence."""
-    start = next((i for i, char in enumerate(sequence) if char != "-"), 0)
-    end = next(
-        (len(sequence) - i for i, char in enumerate(sequence[::-1]) if char != "-"),
-        len(sequence),
-    )
-    return start, end
-
-
 def process_refs(
     references: list[tuple], gap_threshold: float, column_cull_percent: float, mat: dict
 ) -> tuple:
@@ -675,12 +668,12 @@ def trim_large_gaps(
         header, sequence = record
         if not header.endswith("."):
             gap_cull = set()
-            seq_start, seq_end = get_start_end(sequence)
+            seq_start, seq_end = find_index_pair(sequence, "-")
             change_made = False
             non_ref_gap_dash_count = 0
             raw_dash_count = 0
             out_line = list(sequence)
-            for j, let in enumerate(out_line[seq_start : seq_end + 1], seq_start):
+            for j, let in enumerate(out_line[seq_start : seq_end], seq_start):
                 if let == "-":
                     if j not in reference_gap_col:
                         non_ref_gap_dash_count += 1
@@ -797,6 +790,14 @@ def trim_large_gaps(
     return aa_out, gap_pass_through, log, kicks
 
 
+def align_to_aa_order(nt_out, aa_content):
+    headers = [header for header, _ in aa_content if not header.endswith('.')]
+
+    nt_out = dict(nt_out)
+    for header in headers:
+        yield (header, nt_out[header])
+
+
 def do_gene(fargs: FlexcullArgs) -> None:
     """FlexCull main function. Culls input aa and nt using specified amount of matches."""
     gene_path = os.path.join(fargs.aa_input, fargs.aa_file)
@@ -878,7 +879,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                     positions_to_trim,
                 )
 
-                this_seqs.append((header, out_line, *get_start_end(out_line)))
+                this_seqs.append((header, out_line, *find_index_pair(out_line, "-")))
 
                 if fargs.debug:
                     removed_section = sequence[:cull_start] + sequence[cull_end:]
@@ -1018,6 +1019,8 @@ def do_gene(fargs: FlexcullArgs) -> None:
                 else:
                     out_nt.append((header, sequence))
 
+            out_nt = align_to_aa_order(out_nt, aa_out)
+
             writeFasta(nt_out_path, out_nt, fargs.compress)
 
     return log
@@ -1146,13 +1149,16 @@ def main(args):
     if not all(os.path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
-    
     orthoset = args.orthoset
     orthosets_dir = args.orthoset_input
     orthoset_db_path = os.path.join(orthosets_dir, orthoset, "rocksdb")
     orthoset_db = wrap_rocks.RocksDB(orthoset_db_path)
     orthoset_non_coding_genes = orthoset_db.get("get:nc_genes")
-    orthoset_non_coding_genes = set(orthoset_non_coding_genes.split(",")) if orthoset_non_coding_genes else set()
+    orthoset_non_coding_genes = (
+        set(orthoset_non_coding_genes.split(","))
+        if orthoset_non_coding_genes
+        else set()
+    )
 
     for folder in args.INPUT:
         do_folder(folder, args, orthoset_non_coding_genes)

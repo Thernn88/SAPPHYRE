@@ -66,7 +66,8 @@ def writeFasta(path: str, records: tuple[str, str], compress=False):
     """Writes sequence records to a Fasta format file."""
     func = open
     if compress:
-        path += ".gz"
+        if not path.endswith(".gz"):
+            path += ".gz"
         func = gzip.open
 
     with func(path, "wb") as fp:

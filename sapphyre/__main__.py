@@ -13,7 +13,6 @@ Post-processing:
 """
 import argparse
 
-
 class CaseInsensitiveArgumentParser(argparse.ArgumentParser):
     def _parse_known_args(self, arg_strings, *args, **kwargs):
         # Iterate through the subparsers to find the command
@@ -23,15 +22,13 @@ class CaseInsensitiveArgumentParser(argparse.ArgumentParser):
             if isinstance(action, argparse._SubParsersAction):
                 functions = action.choices.keys()
                 break
-        
+
         for arg in lower_arg_string:
             for subparser in functions:
                 # Check if the command matches the argument string (case-insensitive)
                 if subparser.lower() == arg:
                     # Replace the argument string with the command (case-sensitive)
-                    arg_strings[
-                        lower_arg_string.index(subparser.lower())
-                    ] = subparser
+                    arg_strings[lower_arg_string.index(subparser.lower())] = subparser
                     # Only replace first and only instance of command
                     return super()._parse_known_args(arg_strings, *args, **kwargs)
 
@@ -239,8 +236,21 @@ def subcmd_outlier(subparsers):
         help="Calculates a Blosum62 distance matrix which are used to remove outlier "
         "sequences above a threshold.",
     )
+    # Globally used args
+    par.add_argument(
+        "-d",
+        "--debug",
+        action="count",
+        help="Log outliers to csv files",
+    )
+    par.add_argument(
+        "-uci",
+        "--uncompress-intermediates",
+        action="store_true",
+        help="Compress intermediate files",
+    )
+    # Outlier main loop
     par.add_argument("INPUT", help="Path to taxa", action="extend", nargs="+")
-    par.add_argument("-o", "--output", default="outlier", help="Output folder")
     par.add_argument(
         "-t",
         "--threshold",
@@ -281,36 +291,149 @@ def subcmd_outlier(subparsers):
         default=20,
         help="Minimum bp for index group after column cull.",
     )
+    # Collapser commands
+    par.add_argument(
+        "-mo",
+        "--merge_overlap",
+        help="Minimum overlap distance for splicing reads",
+        type=int,
+        default=18,
+    )
+    par.add_argument(
+        "-ro",
+        "--read_overlap",
+        help="Minimum overlap percent for reads to be kicked",
+        type=float,
+        default=0.5,
+    )
+    par.add_argument(
+        "-co",
+        "--contig_overlap",
+        help="Minimum overlap percent for contigs to be kicked",
+        type=float,
+        default=0.65,
+    )
+
+    par.add_argument(
+        "-rmp",
+        "--read_matching_percent",
+        help="Required percent for reads matching columns",
+        default=0.8,
+    )
+    par.add_argument(
+        "-krp",
+        "--keep_read_percent",
+        help="Similarity percent to keep read even if it's kicked elsewhere",
+        type=float,
+        default=0.8,
+    )
+    par.add_argument(
+        "-mko",
+        "--minimum_kick_overlap",
+        help="Minimum percent of overlap for a contig to kick a read",
+        type=float,
+        default=0.75,
+    )
+    par.add_argument(
+        "-cmp",
+        "--contig_matching_percent",
+        help="Minimum percent of similar columns required for contigs ",
+        type=float,
+        default=0.8,
+    )
+    par.add_argument(
+        "-sp",
+        "--sub_percent",
+        help="Percentage difference to allow for blosum substitution",
+        type=float,
+        default=0.1,
+    )
+    # Excise commands
+    par.add_argument(
+        "-ct",
+        "--excise_consensus_threshold",
+        default=0.65,
+        type=float,
+        dest="consensus",
+        help="Threshold for selecting a consensus bp",
+    )
+    par.add_argument(
+        "-et",
+        "--excise_placeholder_threshold",
+        default=0.40,
+        type=float,
+        dest="excise",
+        help="Maximum percent of allowable X characters in consensus tail",
+    )
+    par.add_argument(
+        "-nd",
+        "--no_dupes",
+        default=True,
+        action="store_false",
+        dest="dupes",
+        help="Use prepare and reporter dupe counts in consensus generation",
+    )
+    par.add_argument(
+        "-me",
+        "--majority_excise",
+        default=0.35,
+        help="Percentage of loci containg bad regions to move",
+    )
+    par.add_argument(
+        "-mf",
+        "--move_fails",
+        default="datasets/bad",
+        help="Percentage of loci containg bad regions to move",
+    )
+    # par.add_argument("--debug", default=False, action="store_true",
+    #                     help="Log the truncated consensus sequence and the removed tail.")
+    par.add_argument(
+        "--flag",
+        default=False,
+        dest="cut",
+        action="store_false",
+        help="Set excise to detect, but not cut, regions",
+    )
+    par.add_argument(
+        "--cut",
+        default=False,
+        dest="cut",
+        action="store_true",
+        help="Remove any regions flagged by excise.",
+    )
+    # Internal Commands
+    # par.add_argument(
+    #     "-sd", "--sub_directory", default="collapsed", help="Name of input subfolder"
+    # )
+    par.add_argument(
+        "-o", "--output", type=str, default="internal", help="Path to output directory"
+    )
     par.add_argument(
         "-ict",
         "--internal_consensus_threshold",
         type=float,
         default=0.65,
-        help="Consensus threshold for internal summary.",
+        dest="internal_consensus_threshold",
+        help="Minimum ratio for choosing a character in the consensus sequence",
     )
     par.add_argument(
-        "-ikt",
-        "--internal_kick_threshold",
+        "-idt",
+        "--internal_distance_threshold",
         type=float,
         default=0.075,
-        help="Amount of mismatches required to constitute an internal kick.",
+        dest="internal_distance_threshold",
+        help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence.",
     )
-    par.add_argument(
-        "-d",
-        "--debug",
-        action="store_true",
-        default=False,
-        help="Log outliers to csv files",
-    )
+    par.add_argument("--dupes", default=False, action="store_true")
     par.set_defaults(func=outlier, formathelp=par.format_help)
 
 
-def outlier(args):
+def outlier(argsobj):
     from . import outlier
 
-    if not outlier.main(args):
+    if not outlier.main(argsobj):
         print()
-        print(args.formathelp)
+        print(argsobj.formathelp())
 
 
 def subcmd_Merge(subparsers):
@@ -329,14 +452,14 @@ def subcmd_Merge(subparsers):
         "-aa",
         "--aa_input",
         type=str,
-        default="outlier/aa",
+        default="outlier/internal/aa",
         help="Path to directory of AA folder",
     )
     par.add_argument(
         "-nt",
         "--nt_input",
         type=str,
-        default="outlier/nt",
+        default="outlier/internal/nt",
         help="Path to directory of NT folder",
     )
     par.add_argument(
@@ -579,6 +702,8 @@ def flexcull(args):
         args.mismatches,
         args.column_cull,
         args.blosum_mode,
+        args.orthoset,
+        args.orthoset_input,
     )
     if not flexcull.main(flexargs):
         print()
@@ -779,14 +904,14 @@ def subcmd_makeref(sp):
         "--align",
         action="store_true",
         help="Align sequences using align method.",
-        default = False,
+        default=False,
     )
     par.add_argument(
         "-ct",
         "--count",
         action="store_true",
         help="Count taxon in each gene and output to csv file.",
-        default = False,
+        default=False,
     )
     par.add_argument(
         "-cp",
@@ -799,29 +924,29 @@ def subcmd_makeref(sp):
         "-ncg",
         "--non_coding_genes",
         type=str,
-        help="A new line delimited file containg genes that are allowed to contain stop codons.", # TODO elaborate why
-        default = None,
+        help="A new line delimited file containg genes that are allowed to contain stop codons.",  # TODO elaborate why
+        default=None,
     )
     par.add_argument(
         "-k",
         "--kick",
         type=str,
         help="A new line delimited file containing taxon to kick.",
-        default = None,
+        default=None,
     )
     par.add_argument(
         "-d",
         "--diamond",
         action="store_true",
         help="Generate diamond database.",
-        default = False,
+        default=False,
     )
     par.add_argument(
         "-all",
         "--all",
         action="store_true",
         help="Run all necessary steps.",
-        default = False,
+        default=False,
     )
     par.add_argument(
         "-m",
@@ -1014,8 +1139,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "-c",
         "--compress",
-        action="store_true",
-        default=False,
+        action="store_false",
+        default=True,
         help="Output fasta files as compressed files using gzip",
     )
     parser.add_argument(
@@ -1046,6 +1171,66 @@ if __name__ == "__main__":
         default="Ortholog_set_Mecopterida_v4",
         help="Current Orthoset to be used.",
     )
+
+    def internal(argsobj):
+        from . import internal
+
+        if not internal.main(argsobj):
+            print()
+            print(argsobj.formathelp())
+
+    def subcmd_internal(subparser):
+        parser = subparser.add_parser(
+            "internal", help="Filter sequences by distance to the consensus sequence"
+        )
+        parser.add_argument("INPUT", help="Paths of directories.", type=str)
+        # parser.add_argument(
+        #     "-sd", "--sub_directory", default="collapsed", help="Name of input subfolder"
+        # )
+        parser.add_argument(
+            "-uci",
+            "--uncompress-intermediates",
+            default=False,
+            action="store_true",
+            help="Compress intermediate files",
+        )
+        parser.add_argument(
+            "-c",
+            "--compress",
+            # default=False,
+            action="store_false",
+            dest="uncompress_intermediates",
+            help="Compress intermediate files",
+        )
+        # parser.add_argument(
+        #     ""
+        # )
+        parser.add_argument(
+            "-o",
+            "--output",
+            type=str,
+            default="internal",
+            help="Path to output directory",
+        )
+        parser.add_argument(
+            "-ict",
+            "--internal_consensus_threshold",
+            type=float,
+            default=0.65,
+            dest="internal_consensus_threshold",
+            help="Minimum ratio for choosing a character in the consensus sequence",
+        )
+        parser.add_argument(
+            "-idt",
+            "--internal_distance_threshold",
+            type=float,
+            default=0.075,
+            dest="internal_distance_threshold",
+            help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence.",
+        )
+        parser.add_argument("--dupes", default=False, action="store_true")
+        parser.set_defaults(func=internal, formathelp=parser.format_help)
+
     subparsers = parser.add_subparsers()
     # The order in which those functions are called define the order in which
     # the subcommands will be displayed.
@@ -1057,6 +1242,7 @@ if __name__ == "__main__":
     subcmd_pal2nal(subparsers)
     subcmd_flexcull(subparsers)
     subcmd_outlier(subparsers)
+    subcmd_internal(subparsers)
     subcmd_Merge(subparsers)
     subcmd_Combine(subparsers)
     subcmd_download(subparsers)

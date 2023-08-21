@@ -549,14 +549,10 @@ def run_command(args: CmdArgs) -> None:
                         out_file = args.result_file
 
                     if has_singleton_merge and i == 0:
-                        path = os.path.join(os.getcwd(), "Progress", f"{args.gene}.txt")
                         if debug:
-                            path = os.path.join(
-                                os.getcwd(), "Progress", f"{args.gene}.txt"
-                            )
-                            command = f"mafft --anysymbol --jtt 1 --progress {path} --addfragments {file} --thread -1 {prev_file} > {out_file}"
+                            command = f"mafft --anysymbol --quiet --jtt 1 --addfragments {file} --thread -1 {prev_file} > {out_file}"
                         else:
-                            command = f"mafft --anysymbol --jtt 1 --progress {path} --addfragments {file} --thread -1 {prev_file} > {out_file}"
+                            command = f"mafft --anysymbol --quiet --jtt 1 --addfragments {file} --thread -1 {prev_file} > {out_file}"
 
                         os.system(command)
                         if debug:
@@ -598,8 +594,9 @@ def run_command(args: CmdArgs) -> None:
 
     to_write.sort(key=lambda x: get_start(x[1]))
 
-    writeFasta(args.result_file, references + to_write)
-
+    writeFasta(args.result_file, references + to_write, compress=args.compress)
+    if args.compress:
+        os.remove(args.result_file)
     printv(f"Done. Took {keeper.differential():.2f}", args.verbose, 3)  # Debug
 
     return args.gene, cluster_time, align_time, merge_time, keeper.differential()
@@ -615,9 +612,6 @@ def do_folder(folder, args):
         return False
     rmtree(align_path, ignore_errors=True)
     os.mkdir(align_path)
-
-    rmtree("Progress")
-    os.mkdir("Progress")
 
     genes = [
         (gene, os.stat(os.path.join(aa_path, gene)).st_size)

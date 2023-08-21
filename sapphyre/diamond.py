@@ -1,9 +1,8 @@
 import decimal
 import itertools
 import os
-import sys
 from argparse import Namespace
-from collections import Counter, defaultdict, namedtuple
+from collections import Counter, defaultdict
 from math import ceil
 from multiprocessing.pool import Pool
 from shutil import rmtree
@@ -81,32 +80,37 @@ class InternalReturn(Struct, frozen=True):
     kick_count: int
     log: list[str]
     this_kicks: set
-    
+
 
 class MultiArgs(Struct, frozen=True):
     hits: list[Hit]
     debug: bool
+
 
 class MultiReturn(Struct, frozen=True):
     kick_count: int
     log: list[str]
     this_kicks: set
 
+
 class ContainmentArgs(Struct, frozen=True):
     hits: list[Hit]
     target_to_taxon: dict[str, tuple[str, str, int]]
     debug: bool
     gene: str
-    
+
+
 class ContainmentReturn(Struct, frozen=True):
     kicks: set
     kick_count: int
     log: list[str]
     gene: str
-    
+
+
 class ConvertArgs(Struct, frozen=True):
     hits: list[Hit]
     gene: str
+
 
 class ConvertReturn(Struct, frozen=True):
     gene: str
@@ -127,18 +131,17 @@ def get_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
     -------
         int: The number of elements in the overlap between the two ranges.
     """
-    # Calculate the left most position out of each range's end.
-    overlap_end = min(a_end, b_end)
-    # Calculate the right most position out of each range's start.
-    overlap_start = max(a_start, b_start)
-
-    # If the ranges do not overlap, return 0.
-    if overlap_end < overlap_start:
+    overlap_coords = phymmr_tools.get_overlap(
+        a_start,
+        a_end,
+        b_start,
+        b_end,
+        0,
+    )
+    if overlap_coords == None:
         return 0
-
-    # Calculate the number of elements in the overlap.
-    amount = (overlap_end - overlap_start) + 1
-    return amount
+    
+    return (overlap_coords[1] - overlap_coords[0]) + 1
 
 
 def get_score_difference(score_a: float, score_b: float) -> float:
@@ -261,9 +264,7 @@ def multi_filter(this_args: MultiArgs) -> tuple[list, int, list]:
     return MultiReturn(len(this_args.hits) - passes, log, kicks)
 
 
-def internal_filter(
-    this_args: InternalArgs
-) -> tuple[set, list, int]:
+def internal_filter(this_args: InternalArgs) -> tuple[set, list, int]:
     """Filters out overlapping hits who map to the same gene.
 
     Args:
@@ -307,8 +308,8 @@ def internal_filter(
 
                 if this_args.debug:
                     log.append(
-                       "".join(
-        [
+                        "".join(
+                            [
                                 f"{this_args.gene}, {hit_b.uid}, {round(hit_b.score, 2)}, {hit_b.qstart}, ",
                                 f"{hit_b.qend} Internal kicked out by {this_args.gene}, {hit_a.uid}, ",
                                 f"{round(hit_a.score, 2)}, {hit_a.qstart}, {hit_a.qend}, {round(percent, 3)}",
@@ -576,7 +577,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
     target_to_taxon_raw = orthoset_db.get_bytes("getall:targetreference")
     if not target_to_taxon_raw:
-        print("Diamond DB is missing data. Try regenerating your diamond DB using 'Makeref --diamond'.")
+        print(
+            "Diamond DB is missing data. Try regenerating your diamond DB using 'Makeref --diamond'."
+        )
         return False
 
     target_to_taxon = json.decode(
@@ -816,7 +819,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 this_hits = sum(i[1] for i in this_counter if i[1] > 1)
                 this_common = {i[0] for i in this_counter if i[1] > 1}
                 for hit in [i for i in hits if i.node in this_common]:
-                    requires_internal[gene].setdefault(hit.node ,[]).append(hit)
+                    requires_internal[gene].setdefault(hit.node, []).append(hit)
 
                 internal_order.append((gene, this_hits))
 
@@ -839,7 +842,12 @@ def run_process(args: Namespace, input_path: str) -> bool:
         else:
             internal_results = [
                 internal_filter(
-                    InternalArgs(gene, list(requires_internal[gene].values()), args.debug, args.internal_percent)
+                    InternalArgs(
+                        gene,
+                        list(requires_internal[gene].values()),
+                        args.debug,
+                        args.internal_percent,
+                    )
                 )
                 for gene, _ in internal_order
             ]
@@ -888,7 +896,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
                     containment_log.extend(result.log)
 
                 next_output.append(
-                    (result.gene, [i for i in output[result.gene] if i.uid not in result.kicks]),
+                    (
+                        result.gene,
+                        [i for i in output[result.gene] if i.uid not in result.kicks],
+                    ),
                 )
                 present_genes.append(result.gene)
             output = next_output

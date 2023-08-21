@@ -56,7 +56,7 @@ def main(args):
     )
     os.makedirs(path_to_download, exist_ok=True)
     if args.wgs:
-        if 'csv' in csvfile.suffix:
+        if "csv" in csvfile.suffix:
             with open(csvfile, encoding="utf-8") as fp:
                 csv_read = csv.reader(fp, delimiter=",", quotechar='"')
                 arguments = []
@@ -78,8 +78,10 @@ def main(args):
                         if "sra-download.ncbi.nlm.nih.gov" in a["href"]:
                             print(f"Attempting to download: {a.contents[0]}")
 
-                            arguments.append((a["href"], path_to_download, args.verbose))
-        elif 'xls' in csvfile.suffix:
+                            arguments.append(
+                                (a["href"], path_to_download, args.verbose)
+                            )
+        elif "xls" in csvfile.suffix:
             workbook = openpyxl.load_workbook(csvfile)
             sheet = workbook.active
             arguments = []
