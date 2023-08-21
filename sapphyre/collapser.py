@@ -168,11 +168,13 @@ def do_folder(args, input_path):
     os.mkdir(aa_out_path)
 
     nt_db_path = os.path.join(input_path, "rocksdb", "sequences", "nt")
-    nt_db = wrap_rocks.RocksDB(nt_db_path)
-    dbis_assembly = nt_db.get("get:isassembly")
-    is_assembly = False
-    if dbis_assembly and dbis_assembly == "True":
-        is_assembly = True
+    if os.path.exists(nt_db_path):
+        nt_db = wrap_rocks.RocksDB(nt_db_path)
+        dbis_assembly = nt_db.get("get:isassembly")
+        is_assembly = False
+        if dbis_assembly and dbis_assembly == "True":
+            is_assembly = True
+        del nt_db
 
     # Process NT
     genes = [
