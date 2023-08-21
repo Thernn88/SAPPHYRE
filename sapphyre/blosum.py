@@ -585,6 +585,7 @@ def do_folder(folder, args):
         rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
         assembly = rocksdb_db.get("get:isassembly")
         assembly = assembly == "True"
+        del rocksdb_db
     else:
         err = f"cannot find dupe databases for {folder}"
         raise FileNotFoundError(err)
