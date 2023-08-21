@@ -156,9 +156,23 @@ class NODE(Struct):
         return f"CONTIG_{contig_node}|{children_nodes}"
 
 
-def hamming_distance(seq1, seq2):
-    return sum(1 for i in range(len(seq1)) if seq1[i] != seq2[i])
+def average_match(seq_a, consensus, start, end):
+    match = 0
+    total = 0
+    for i in range(start, end):
+        # Uncomment below to internal gaps
+        # if seq_a[i] == "-":
+        #     continue
 
+        total += 1
+
+        if seq_a[i] in consensus[i]:
+            match += 1
+
+    if total == 0:
+        return 0
+
+    return match / nonambigous
 
 def do_folder(args, input_path):
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
@@ -462,6 +476,64 @@ def process_batch(
                         f"{read.header},Kicked By,{contig.contig_header()},{percent},{matching_percent}\n"
                     )
                     kicked_headers.add(read.header)
+
+        ref_alignments = [seq for header, seq in aa_sequences.values() if header.endswith(".")]
+        
+        ref_consensus = {i: {seq[i] for seq in ref_alignments} for i in range(len(ref_alignments[0]))}
+        aa_msa_length = len(list(aa_sequences.values())[0][1])
+        for contig in contigs:
+            if not contig or contig.kick:
+                continue
+
+            aa_start = contig.start // 3
+            aa_end = contig.end // 3
+
+            dashes_start = aa_start * "-"
+            dashes_end = (aa_msa_length - aa_end) * "-"
+
+            aa_contig_sequence = [aa_sequences[contig.get_sequence_at_coord(i*3)][1][i] if i*3 in contig.splices else "" for i in range(aa_start, aa_end)]
+            aa_contig_sequence = dashes_start + "".join(aa_contig_sequence) + dashes_end
+
+            average_matching_cols = average_match(
+                aa_contig_sequence,
+                ref_consensus,
+                aa_start,
+                aa_end
+            )
+
+            if average_matching_cols < args.matching_consensus_percent:
+                consensus_kicks.append(f"{gene},{contig.header},{average_matching_cols},{contig.length}\n")
+                kicked_headers.add(contig.header)
+                kicked_headers.update(contig.children)
+
+        for read in reads:
+            if read.kick:
+                continue
+
+            aa_start = read.start // 3
+            aa_end = read.end // 3
+            aa_sequence = aa_sequences[aa_headers[read.header]][1]
+
+            average_matching_cols = average_match(
+                aa_sequence,
+                ref_consensus,
+                aa_start,
+                aa_end
+            )
+
+            if average_matching_cols < args.matching_consensus_percent:
+                consensus_kicks.append(f"{gene},{read.header},{average_matching_cols},{read.length}\n")
+                kicked_headers.add(read.header)
+
+        if len(kicked_headers) == len(nt_output):
+            kicked_genes.append(gene.split(".")[0])
+            continue
+
+        nt_output_after_kick = sum(1 for i in nt_output if i[0] not in kicked_headers and not i[0].endswith(".")) > 0
+
+        if not nt_output_after_kick:
+            kicked_genes.append(gene.split(".")[0])
+            continue
 
         if args.debug == 2:
             output = og_contigs + reads
