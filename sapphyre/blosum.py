@@ -129,10 +129,7 @@ def find_asm_index_groups(candidates: list) -> dict:
 
     candidate_dict = defaultdict(lst)
     for candidate in candidates:
-        # indices = split_indices(candidate.raw)
         indices = bd.asm_index_split(candidate.raw)
-        # if indices != rs_indices:
-        #     print("asm goof\ngoof\n")
         for index_pair in indices:
             start, stop = index_pair
             header = candidate.id + f"$${start}$${stop}"
