@@ -30,7 +30,7 @@ def split_indices(sequence):
             gap_count += 1
             if gap_count >= 20:
                 if start is not None:
-                    substrings.append((start, i - gap_count))
+                    substrings.append((start, i - gap_count + 1))
                 start = None
         else:
             gap_count = 0
