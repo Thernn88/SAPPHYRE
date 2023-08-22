@@ -67,7 +67,7 @@ def load_dupes(folder):
     return prepare_dupe_counts, reporter_dupe_counts
 
 
-def excise_data_replacement(candidates: list, gene: Path) -> list:
+def excise_data_check(gene: Path) -> list:
     """
     Turn the given path of a collapsed file into an equivalent path in the excise folder.
     If the excise path exists, read it and replace any candidate sequences with the version
@@ -75,7 +75,7 @@ def excise_data_replacement(candidates: list, gene: Path) -> list:
     """
     excise_path = str(gene).replace("/collapsed/", "/excise/")
     if not os.path.exists(excise_path):
-        return candidates
+        return [Record(header, seq) for header, seq in parseFasta(str(gene))]
     replacements = [Record(header, seq) for header, seq in parseFasta(excise_path)]
     return replacements
 
@@ -96,8 +96,8 @@ def aa_internal(
     reporter_dupes,
 ):
     failing = set()
-    raws = [Record(head, seq) for head, seq in parseFasta(gene)]
-    raws = excise_data_replacement(raws, gene)
+    # raws = [Record(head, seq) for head, seq in parseFasta(gene)]
+    raws = excise_data_check(gene)
     candidates, references = [], []
     for record in raws:
         if record.id[-1] != ".":
@@ -116,8 +116,6 @@ def aa_internal(
     else:
         consensus_func = bd.dumb_consensus
         sequences = [rec.seq for rec in candidates]
-    MIN_BP_RATIO = 0.6
-    consensus_bp_ratios = {}
     consensus = consensus_func(sequences, consensus_threshold)
     for i, candidate in enumerate(candidates):
         start, stop = bd.find_index_pair(candidate.seq, "-")
@@ -135,17 +133,12 @@ def mirror_nt(input_path, output_path, failing, gene, compression):
     input_path = Path(input_path, gene)
     if not os.path.exists(input_path):
         return
-    records = [
-        Record(header, seq)
-        for header, seq in parseFasta(input_path)
-        if header not in failing
-    ]
-    records = excise_data_replacement(records, input_path)
+
+    records = excise_data_check(input_path)
+    records = [rec for rec in records if rec.id not in failing]
     if not has_candidates(records):
         return
     writeFasta(str(output_path), [rec.get_pair() for rec in records], compress=compression)
-
-
 def run_internal(
     gene: str,
     nt_input: str,
