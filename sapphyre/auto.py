@@ -83,8 +83,8 @@ def main(args):
             "internal_distance_threshold": 0.075
         },
         "merge": {
-            "aa_input": "outlier/aa",
-            "nt_input": "outlier/nt",
+            "aa_input": "outlier/internal/aa",
+            "nt_input": "outlier/internal/nt",
             "debug": False,
             "ignore_overlap_chunks": False,
             "majority": 0.55,
