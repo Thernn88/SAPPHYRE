@@ -20,30 +20,6 @@ from .utils import parseFasta, printv, write2Line2Fasta
 ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta", ".fa", ".gz", ".fq", ".fastq")
 
 
-def split_indices(sequence):
-    substrings = []
-    start = None
-    gap_count = 0
-
-    for i, char in enumerate(sequence):
-        if char == "-":
-            gap_count += 1
-            if gap_count >= 20:
-                if start is not None:
-                    substrings.append((start, i - gap_count + 1))
-                start = None
-        else:
-            gap_count = 0
-            if start is None:
-                start = i
-
-    # If the last character is a data character, add the final substring
-    if start is not None:
-        substrings.append((start, len(sequence)))
-
-    return substrings
-
-
 class Record(Struct):
     id: str
     raw: str
@@ -153,7 +129,10 @@ def find_asm_index_groups(candidates: list) -> dict:
 
     candidate_dict = defaultdict(lst)
     for candidate in candidates:
-        indices = split_indices(candidate.raw)
+        # indices = split_indices(candidate.raw)
+        indices = bd.asm_index_split(candidate.raw)
+        # if indices != rs_indices:
+        #     print("asm goof\ngoof\n")
         for index_pair in indices:
             start, stop = index_pair
             header = candidate.id + f"$${start}$${stop}"
