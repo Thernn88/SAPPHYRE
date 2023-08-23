@@ -103,8 +103,8 @@ def main(args):
     aa_out_path.mkdir(parents=True, exist_ok=True)
     nt_out_path.mkdir(parents=True, exist_ok=True)
 
-    aa_sequences = aa_out.items()
-    nt_sequences = nt_out.items()
+    aa_sequences = list(aa_out.items())
+    nt_sequences = list(nt_out.items())
 
     if aa_sequences:
 
