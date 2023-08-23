@@ -868,44 +868,44 @@ def run_process(args: Namespace, input_path: str) -> bool:
             args.verbose,
         )
 
-        containment_kicks = 0
-        containment_log = []
-        arguments = []
-        present_genes = []
-        if is_assembly:
-            for gene, hits in output.items():
-                arguments.append(
-                    ContainmentArgs(
-                        hits,
-                        target_to_taxon,
-                        args.debug,
-                        gene,
-                    ),
-                )
-
-            if post_threads > 1:
-                with Pool(post_threads) as pool:
-                    results = pool.map(containments, arguments)
-            else:
-                results = [containments(arg) for arg in arguments]
-
-            next_output = []
-            for result in results:
-                containment_kicks += result.kick_count
-                if args.debug:
-                    containment_log.extend(result.log)
-
-                next_output.append(
-                    (
-                        result.gene,
-                        [i for i in output[result.gene] if i.uid not in result.kicks],
-                    ),
-                )
-                present_genes.append(result.gene)
-            output = next_output
-        else:
-            present_genes = list(output.keys())
-            output = output.items()
+        # containment_kicks = 0
+        # containment_log = []
+        # arguments = []
+        # present_genes = []
+        # if is_assembly:
+        #     for gene, hits in output.items():
+        #         arguments.append(
+        #             ContainmentArgs(
+        #                 hits,
+        #                 target_to_taxon,
+        #                 args.debug,
+        #                 gene,
+        #             ),
+        #         )
+        #
+        #     if post_threads > 1:
+        #         with Pool(post_threads) as pool:
+        #             results = pool.map(containments, arguments)
+        #     else:
+        #         results = [containments(arg) for arg in arguments]
+        #
+        #     next_output = []
+        #     for result in results:
+        #         containment_kicks += result.kick_count
+        #         if args.debug:
+        #             containment_log.extend(result.log)
+        #
+        #         next_output.append(
+        #             (
+        #                 result.gene,
+        #                 [i for i in output[result.gene] if i.uid not in result.kicks],
+        #             ),
+        #         )
+        #         present_genes.append(result.gene)
+        #     output = next_output
+        # else:
+        present_genes = list(output.keys())
+        # output = output.items()
 
         # DOING VARIANT FILTER
         variant_filter = defaultdict(list)
@@ -1015,9 +1015,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
         if global_log:
             with open(os.path.join(input_path, "multi.log"), "w") as fp:
                 fp.write("\n".join(global_log))
-        if containment_log:
-            with open(os.path.join(input_path, "containment.log"), "w") as fp:
-                fp.write("\n".join(containment_log))
+        # if containment_log:
+        #     with open(os.path.join(input_path, "containment.log"), "w") as fp:
+        #         fp.write("\n".join(containment_log))
 
         printv(
             f"{multi_kicks} multi kicks",
@@ -1027,12 +1027,13 @@ def run_process(args: Namespace, input_path: str) -> bool:
             f"{internal_kicks} internal kicks",
             args.verbose,
         )
+        # printv(
+        #     f"{containment_kicks} containment kicks",
+        #     args.verbose,
+        # )
         printv(
-            f"{containment_kicks} containment kicks",
-            args.verbose,
-        )
-        printv(
-            f"Took {time_keeper.lap():.2f}s for {multi_kicks+internal_kicks+containment_kicks} kicks leaving {passes} results. Writing to DB",
+            # f"Took {time_keeper.lap():.2f}s for {multi_kicks+internal_kicks+containment_kicks} kicks leaving {passes} results. Writing to DB",
+            f"Took {time_keeper.lap():.2f}s for {multi_kicks + internal_kicks} kicks leaving {passes} results. Writing to DB",
             args.verbose,
         )
 
