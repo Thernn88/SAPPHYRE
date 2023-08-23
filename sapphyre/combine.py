@@ -1,4 +1,5 @@
 from __future__ import annotations
+from math import ceil
 
 from multiprocessing.pool import Pool
 from pathlib import Path
@@ -22,6 +23,12 @@ def parse_gene(path, already_grabbed_references):
         else:
             this_out.append((header, sequence.replace("-", "")))
     return {path: (this_out, already_grabbed_references)}
+
+
+def write_gene(path, gene_sequences, compress):
+    for gene, sequences in gene_sequences:
+        gene_out = Path(path, gene)
+        writeFasta(gene_out, sequences, compress)
 
 
 def main(args):
@@ -96,13 +103,24 @@ def main(args):
     aa_out_path.mkdir(parents=True, exist_ok=True)
     nt_out_path.mkdir(parents=True, exist_ok=True)
 
-    for gene, aa_sequence in aa_out.items():
-        gene_out = Path(aa_out_path, gene)
-        writeFasta(gene_out, aa_sequence, args.compress)
+    aa_sequences = aa_out.items()
+    nt_sequences = nt_out.items()
 
-    for gene, nt_sequence in nt_out.items():
-        gene_out = Path(nt_out_path, gene)
-        writeFasta(gene_out, nt_sequence, args.compress)
+    if aa_sequences:
+
+        per_thread = ceil(len(aa_sequences) / args.processes)
+
+        aa_arguments = [(aa_out_path, aa_sequences[i:i + per_thread], args.compress) for i in range(0, len(aa_sequences), per_thread)]
+
+        with Pool(args.processes) as pool:
+            pool.starmap(write_gene, aa_arguments)
+        del aa_arguments
+
+        nt_arguments = [(nt_out_path, nt_sequences[i:i + per_thread], args.compress) for i in range(0, len(nt_sequences), per_thread)]
+
+        with Pool(args.processes) as pool:
+            pool.starmap(write_gene, nt_arguments)
+        del nt_arguments
 
     printv(f"Finished took {main_keeper.differential():.2f}s overall.", args.verbose, 0)
     return True
