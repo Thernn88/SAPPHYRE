@@ -559,10 +559,10 @@ def subcmd_align(subparsers):
         help="Output intermediate files for debug",
     )
     par.add_argument(
-        "-expm",
-        "--use_experimental",
-        action="store_false",
-        default=True,
+        "-frag",
+        "--add_fragments",
+        action="store_true",
+        default=False,
         help="Output intermediate files for debug",
     )
     par.set_defaults(func=align, formathelp=par.format_help)
