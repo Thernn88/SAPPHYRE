@@ -13,3 +13,4 @@ orjson>= 3.8.7
 pandas
 pyarrow
 pyfastx
+needletail
