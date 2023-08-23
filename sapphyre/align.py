@@ -48,6 +48,18 @@ AA_FOLDER = "aa"
 ALN_FOLDER = "aln"
 
 
+def get_aln_path(orthoset_dir: str) -> str:
+    """
+    Checks if /trimmed subdirectory exists. If so, returns a path to /trimmed.
+    Otherwise, returns a path to /aln dir.
+    """
+    trimmed = os.path.join(orthoset_dir, "trimmed")
+    if os.path.exists(trimmed):
+        return trimmed
+    else:
+        return os.path.join(orthoset_dir, ALN_FOLDER)
+
+
 def get_start(sequence: str) -> int:
     """Returns the index of the first non-gap character in the sequence.
 
@@ -620,7 +632,7 @@ def do_folder(folder, args):
     ]
     genes.sort(key=lambda x: x[1], reverse=True)
     orthoset_path = os.path.join(args.orthoset_input, args.orthoset)
-    aln_path = os.path.join(orthoset_path, ALN_FOLDER)
+    aln_path = get_aln_path(orthoset_path)
     only_singletons = set()
     for gene, _ in genes:
         for _, seq in parseFasta(
