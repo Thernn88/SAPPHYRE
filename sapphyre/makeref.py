@@ -252,7 +252,7 @@ def aln_function(
 ):
     raw_fa_file = raw_path.joinpath(gene + ".fa")
     aln_file = aln_path.joinpath(gene + ".aln.fa")
-    trimmed_path = trimmed_path.joinpath(gene + ".fa")
+    trimmed_path = trimmed_path.joinpath(gene + ".aln.fa")
     if not aln_file.exists() or overwrite:
         printv(f"Generating: {gene}", verbosity, 2)
         with raw_fa_file.open(mode="w") as fp:
