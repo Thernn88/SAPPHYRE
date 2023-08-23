@@ -67,14 +67,13 @@ def writeFasta(path: str, records: tuple[str, str], compress=False):
     if compress:
         if not path.endswith(".gz"):
             path += ".gz"
-        elif compress == False:
-            path = path.rstrip(".gz")
         func = gzip.open
+    elif path.endswith(".gz"):
+        path = path.rstrip(".gz")
 
     with func(path, "wb") as fp:
-        for header, sequence in records:
-            fp.write(f">{header}\n{sequence}\n".encode())
-
+        data = [f">{header}\n{sequence}\n" for header, sequence in records]
+        fp.write("".join(data).encode())
 
 def write2Line2Fasta(path: str, records: list[str], compress=False):
     func = open
