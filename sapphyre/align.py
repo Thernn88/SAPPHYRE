@@ -381,12 +381,7 @@ def run_command(args: CmdArgs) -> None:
     this_intermediates = os.path.join("intermediates", args.gene)
     if debug and not os.path.exists(this_intermediates):
         os.mkdir(this_intermediates)
-    # if in trimmed folder, file is named "Gene.fa"
-    # else it's in the aln folder, named "Gene.aln.fa"
-    if os.path.basename(args.aln_path) == "trimmed":
-        aln_file = os.path.join(args.aln_path, args.gene + ".fa")
-    else:
-        aln_file = os.path.join(args.aln_path, args.gene + ".aln.fa")
+    aln_file = os.path.join(args.aln_path, args.gene + ".aln.fa")
     to_merge = []
 
     with TemporaryDirectory(dir=temp_dir) as parent_tmpdir, TemporaryDirectory(
