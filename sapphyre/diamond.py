@@ -519,6 +519,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
     THREAD_CAP = 32
     # Amount of overshoot in estimating end
     OVERSHOOT_AMOUNT = 1.75
+    # Minimum headers to try to estimate thread distrubution
+    MINIMUM_HEADERS = 32000
     # Minimum amount of hits to delegate to a process
     MINIMUM_CHUNKSIZE = 50
     # Hard coded values for assembly datasets
@@ -735,26 +737,48 @@ def run_process(args: Namespace, input_path: str) -> bool:
             chunks = ceil(len(headers) / per_thread)
         else:
             chunks = post_threads
-        estimated_end = ceil((len(df) / chunks) * OVERSHOOT_AMOUNT)
+
         arguments = []
-        indices = []
-        for x, i in enumerate(range(0, len(headers), per_thread), 1):
-            start_index = 0 if x == 1 else end_index + 1
+        if len(headers) < MINIMUM_HEADERS:
+            indices = []
+            for x, i in enumerate(range(0, len(headers), per_thread), 1):
+                start_index = 0 if x == 1 else end_index + 1
 
-            if x != chunks:
-                last_header = headers[i + per_thread - 1]
-                end_index = (
-                    np.where(
-                        df[start_index : (start_index + estimated_end)]["header"].values
-                        == last_header,
-                    )[0][-1]
-                    + start_index
-                )
+                if x != chunks:
+                    last_header = headers[i + per_thread - 1]
+                    end_index = (
+                        np.where(
+                            df[start_index:]["header"].values
+                            == last_header,
+                        )[0][-1]
+                        + start_index
+                    )
 
-            else:
-                end_index = len(df) - 1
+                else:
+                    end_index = len(df) - 1
 
-            indices.append((start_index, end_index))
+                indices.append((start_index, end_index))
+        else:
+            estimated_end = ceil((len(df) / chunks) * OVERSHOOT_AMOUNT)
+            
+            indices = []
+            for x, i in enumerate(range(0, len(headers), per_thread), 1):
+                start_index = 0 if x == 1 else end_index + 1
+
+                if x != chunks:
+                    last_header = headers[i + per_thread - 1]
+                    end_index = (
+                        np.where(
+                            df[start_index : (start_index + estimated_end)]["header"].values
+                            == last_header,
+                        )[0][-1]
+                        + start_index
+                    )
+
+                else:
+                    end_index = len(df) - 1
+
+                indices.append((start_index, end_index))
 
         temp_files = [NamedTemporaryFile(dir=gettempdir()) for _ in range(chunks)]
 
@@ -776,7 +800,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
             f"Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Processing data.",
             args.verbose,
         )
-
         if post_threads > 1:
             with Pool(post_threads) as pool:
                 pool.map(process_lines, arguments)
@@ -906,7 +929,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         #     output = next_output
         # else:
         present_genes = list(output.keys())
-        # output = output.items()
+        output = output.items()
 
         # DOING VARIANT FILTER
         variant_filter = defaultdict(list)
