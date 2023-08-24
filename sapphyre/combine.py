@@ -3,6 +3,7 @@ from math import ceil
 
 from multiprocessing.pool import Pool
 from pathlib import Path
+from shutil import rmtree
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
@@ -102,6 +103,9 @@ def main(args):
     nt_out_path = Path(args.output_directory, "nt")
     aa_out_path.mkdir(parents=True, exist_ok=True)
     nt_out_path.mkdir(parents=True, exist_ok=True)
+    # clear output directories to make reconcile safe
+    rmtree(aa_out_path)
+    rmtree(nt_out_path)
 
     aa_sequences = list(aa_out.items())
     nt_sequences = list(nt_out.items())
