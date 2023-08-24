@@ -549,7 +549,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
     num_threads = args.processes
     post_threads = args.processes if args.processes < THREAD_CAP else THREAD_CAP
-
+    if post_threads > 1:
+        pool = Pool(post_threads)
     orthoset_db_path = os.path.join(orthosets_dir, orthoset, "rocksdb")
     diamond_db_path = os.path.join(
         orthosets_dir,
@@ -801,8 +802,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
             args.verbose,
         )
         if post_threads > 1:
-            with Pool(post_threads) as pool:
-                pool.map(process_lines, arguments)
+            # with Pool(post_threads) as pool:
+            pool.map(process_lines, arguments)
         else:
             for arg in arguments:
                 process_lines(arg)
@@ -850,19 +851,19 @@ def run_process(args: Namespace, input_path: str) -> bool:
         internal_order.sort(key=lambda x: x[1], reverse=True)
 
         if post_threads > 1:
-            with Pool(post_threads) as pool:
-                internal_results = pool.map(
-                    internal_filter,
-                    [
-                        InternalArgs(
-                            gene,
-                            list(requires_internal[gene].values()),
-                            args.debug,
-                            args.internal_percent,
-                        )
-                        for gene, _ in internal_order
-                    ],
-                )
+            # with Pool(post_threads) as pool:
+            internal_results = pool.map(
+                internal_filter,
+                [
+                    InternalArgs(
+                        gene,
+                        list(requires_internal[gene].values()),
+                        args.debug,
+                        args.internal_percent,
+                    )
+                    for gene, _ in internal_order
+                ],
+            )
         else:
             internal_results = [
                 internal_filter(
@@ -892,44 +893,44 @@ def run_process(args: Namespace, input_path: str) -> bool:
             args.verbose,
         )
 
-        # containment_kicks = 0
-        # containment_log = []
-        # arguments = []
-        # present_genes = []
-        # if is_assembly:
-        #     for gene, hits in output.items():
-        #         arguments.append(
-        #             ContainmentArgs(
-        #                 hits,
-        #                 target_to_taxon,
-        #                 args.debug,
-        #                 gene,
-        #             ),
-        #         )
-        #
-        #     if post_threads > 1:
-        #         with Pool(post_threads) as pool:
-        #             results = pool.map(containments, arguments)
-        #     else:
-        #         results = [containments(arg) for arg in arguments]
-        #
-        #     next_output = []
-        #     for result in results:
-        #         containment_kicks += result.kick_count
-        #         if args.debug:
-        #             containment_log.extend(result.log)
-        #
-        #         next_output.append(
-        #             (
-        #                 result.gene,
-        #                 [i for i in output[result.gene] if i.uid not in result.kicks],
-        #             ),
-        #         )
-        #         present_genes.append(result.gene)
-        #     output = next_output
-        # else:
-        present_genes = list(output.keys())
-        output = output.items()
+        containment_kicks = 0
+        containment_log = []
+        arguments = []
+        present_genes = []
+        if is_assembly:
+            for gene, hits in output.items():
+                arguments.append(
+                    ContainmentArgs(
+                        hits,
+                        target_to_taxon,
+                        args.debug,
+                        gene,
+                    ),
+                )
+
+            if post_threads > 1:
+                # with Pool(post_threads) as pool:
+                results = pool.map(containments, arguments)
+            else:
+                results = [containments(arg) for arg in arguments]
+
+            next_output = []
+            for result in results:
+                containment_kicks += result.kick_count
+                if args.debug:
+                    containment_log.extend(result.log)
+
+                next_output.append(
+                    (
+                        result.gene,
+                        [i for i in output[result.gene] if i.uid not in result.kicks],
+                    ),
+                )
+                present_genes.append(result.gene)
+            output = next_output
+        else:
+            present_genes = list(output.keys())
+            output = output.items()
 
         # DOING VARIANT FILTER
         variant_filter = defaultdict(list)
@@ -1000,8 +1001,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 )
 
             if post_threads > 1:
-                with Pool(post_threads) as pool:
-                    output = pool.map(convert_and_cull, arguments)
+                # with Pool(post_threads) as pool:
+                output = pool.map(convert_and_cull, arguments)
             else:
                 output = [convert_and_cull(arg) for arg in arguments]
 
