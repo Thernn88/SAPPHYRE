@@ -7,12 +7,13 @@ from itertools import count
 from multiprocessing.pool import Pool
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-
+import xxhash
 import wrap_rocks
 from Bio import SeqIO
 from msgspec import json
-from .utils import printv, writeFasta
+from .utils import printv, writeFasta, parseFasta
 from .timekeeper import TimeKeeper, KeeperMode
+from phymmr_tools import find_index_pair, get_overlap, constrained_distance
 
 
 class Sequence:
@@ -79,6 +80,9 @@ class Sequence_Set:
             data[seq.taxon].add(seq.gene)
 
         return Counter({taxon: len(genes) for taxon, genes in data.items()})
+    
+    def kick_dupes(self, headers):
+        self.sequences = [i for i in self.sequences if i.header not in headers]
 
     def get_taxon_in_set(self) -> list:
         """Returns every taxon contained in the set."""
@@ -234,9 +238,75 @@ def generate_aln(
 
     aligned_sequences_components = pool.starmap(aln_function, arguments)
 
-    for gene, aligned_sequences in aligned_sequences_components:
+    for gene, aligned_sequences, dupe_headers in aligned_sequences_components:
+        set.kick_dupes(dupe_headers)
         set.add_aligned_sequences(gene, aligned_sequences)
 
+
+def do_merge(sequences):
+    merged_indices = set()
+    merge_occured = True
+    while merge_occured:
+        merge_occured = False
+        for i, (header_a, seq_a) in enumerate(sequences):
+            for j, (header_b, seq_b) in enumerate(sequences):
+                if i == j or i in merged_indices or j in merged_indices:
+                    continue
+                if header_a.split(":")[0] != header_b.split(":")[0]:
+                    continue
+
+                start_a, end_a = find_index_pair(seq_a, "-")
+                start_b, end_b = find_index_pair(seq_b, "-")
+                
+
+                overlap_coords = get_overlap(start_a, end_a, start_b, end_b, 0)
+                if overlap_coords is None:
+                    if end_a < start_b:
+                        new_seq = seq_a[:end_a] + seq_b[end_a:]
+                    else:
+                        new_seq = seq_b[:end_b] + seq_a[end_b:]
+
+                    seq_a = new_seq
+
+                    header_a = header_a+"&&"+header_b
+                    merged_indices.add(j)
+                    sequences[i] = (header_a, seq_a)
+                    merge_occured = True
+                else:
+                    kmer_a = seq_a[overlap_coords[0]:overlap_coords[1]]
+                    kmer_b = seq_b[overlap_coords[0]:overlap_coords[1]]
+
+                    if constrained_distance(kmer_a, kmer_b) == 0:
+                        overlap_coord = overlap_coords[0]
+                        if start_b >= start_a and end_b <= end_a:
+                            new_seq = (
+                                seq_a[:overlap_coord]
+                                + seq_b[overlap_coord : end_b]
+                                + seq_a[end_b :]
+                            )
+                        elif start_a >= start_b and end_a <= end_b:
+                            new_seq = (
+                                seq_b[:overlap_coord]
+                                + seq_a[overlap_coord : end_a]
+                                + seq_b[end_a :]
+                            )
+                        elif start_b >= start_a:
+                            new_seq = (
+                                seq_a[:overlap_coord] + seq_b[overlap_coord:]
+                            )
+                        else:
+                            new_seq = (
+                                seq_b[:overlap_coord] + seq_a[overlap_coord:]
+                            )
+                    
+                        seq_a = new_seq
+
+                        header_a = header_a+"&&"+header_b
+                        merged_indices.add(j)
+                        sequences[i] = (header_a, seq_a)
+                        merge_occured = True
+                        
+    return sequences
 
 def aln_function(
     gene,
@@ -268,24 +338,38 @@ def aln_function(
     aligned_result = []
     aligned_dict = {}
     file = aln_file if aln_file.exists() else raw_fa_file  # No alignment required
-    for seq_record in SeqIO.parse(file, "fasta"):
-        header = seq_record.description.split(" ")[0]
-        seq = str(seq_record.seq)
-        if not do_cull:
-            aligned_dict[header] = seq
-            continue
+    for header, seq in parseFasta(file, True):
+        header = header.split(" ")[0]
         aligned_result.append((header, seq))
 
     if do_cull:
         aligned_result = cull(aligned_result, cull_percent)
-        writeFasta(trimmed_path, aligned_result, False)
-        for header, seq in aligned_result:
-            aligned_dict[header] = seq
+    
+    duped_headers = set()
+    seq_hashes = set()
+    for header, seq in aligned_result:
+        seq_hash = xxhash.xxh3_64(seq).hexdigest()
+        if seq_hash in seq_hashes:
+            duped_headers.add(header)
+        else:
+            seq_hashes.add(seq_hash)
 
+
+    if duped_headers:
+        aligned_result = [i for i in aligned_result if i[0] not in duped_headers]
+    aligned_result = do_merge(aligned_result)
+        
+    writeFasta(trimmed_path, aligned_result, False)
+    for header, seq in aligned_result:
+        aligned_dict[header] = seq
+
+    output = []
     for seq in sequences:
-        seq.aa_sequence = aligned_dict[seq.header]
+        if seq.header in aligned_dict:
+            seq.aa_sequence = aligned_dict[seq.header]
+            output.append(seq)
 
-    return gene, sequences
+    return gene, output, duped_headers
 
 
 def make_diamonddb(set: Sequence_Set, overwrite, threads):
