@@ -78,7 +78,7 @@ def kick_empty_columns(
     kicks = set()
     fasta_data = defaultdict(list)
     out = {}
-
+    kick_percent = 1 - kick_percent
     for header, sequence in fasta_content:
         for i, let in enumerate(sequence):
             fasta_data[i].append(let)
