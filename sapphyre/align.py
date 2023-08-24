@@ -604,9 +604,9 @@ def run_command(args: CmdArgs) -> None:
             to_write.append((header, sequence))
 
     to_write.sort(key=lambda x: get_start(x[1]))
+    os.remove(args.result_file)
 
     writeFasta(args.result_file, references + to_write, compress=args.compress)
-
     printv(f"Done. Took {keeper.differential():.2f}", args.verbose, 3)  # Debug
 
     return args.gene, cluster_time, align_time, merge_time, keeper.differential()
