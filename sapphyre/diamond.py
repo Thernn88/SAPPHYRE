@@ -558,6 +558,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     # Legacy db check
     if not os.path.exists(orthoset_db_path) or not os.path.exists(diamond_db_path):
         gen = False
+        print("Could not find orthoset directory or diamond database.")
         if os.path.exists(f"{orthoset}.sqlite"):
             if (
                 input(
