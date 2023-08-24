@@ -845,7 +845,7 @@ def read_and_convert_fasta_files(
     # sort shouldn't affect refs, so they need a seperate list
     aa_intermediate = []
 
-    for aa_header, aa_seq in parseFasta(aa_file):
+    for aa_header, aa_seq in parseFasta(aa_file, True):
         if aa_header[-1] == ".":
             aas.append((aa_header.strip(), aa_seq.strip()))
         else:
