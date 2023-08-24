@@ -348,15 +348,7 @@ def containments(this_args: ContainmentArgs):
                     ):
                         continue
 
-                    overlap_percent = get_overlap(
-                        top_ref_hit.start,
-                        top_ref_hit.end,
-                        ref_hit.start,
-                        ref_hit.end,
-                    ) / min(
-                        (top_ref_hit.end - top_ref_hit.start),
-                        (ref_hit.end - ref_hit.start),
-                    )
+                    overlap_percent = phymmr_tools.get_overlap_percent(top_ref_hit.start,top_ref_hit.end,ref_hit.start,ref_hit.end)
 
                     if overlap_percent > KICK_PERCENT:
                         kicks.add(hit.uid)
