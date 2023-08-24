@@ -1005,7 +1005,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 output = pool.map(convert_and_cull, arguments)
             else:
                 output = [convert_and_cull(arg) for arg in arguments]
-
+        if post_threads > 1:
+            pool.close()
+            pool.terminate()
         passes = 0
         encoder = json.Encoder()
         for result in output:
@@ -1040,9 +1042,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
         if global_log:
             with open(os.path.join(input_path, "multi.log"), "w") as fp:
                 fp.write("\n".join(global_log))
-        # if containment_log:
-        #     with open(os.path.join(input_path, "containment.log"), "w") as fp:
-        #         fp.write("\n".join(containment_log))
+        if containment_log:
+            with open(os.path.join(input_path, "containment.log"), "w") as fp:
+                fp.write("\n".join(containment_log))
 
         printv(
             f"{multi_kicks} multi kicks",
@@ -1052,13 +1054,13 @@ def run_process(args: Namespace, input_path: str) -> bool:
             f"{internal_kicks} internal kicks",
             args.verbose,
         )
-        # printv(
-        #     f"{containment_kicks} containment kicks",
-        #     args.verbose,
-        # )
         printv(
-            # f"Took {time_keeper.lap():.2f}s for {multi_kicks+internal_kicks+containment_kicks} kicks leaving {passes} results. Writing to DB",
-            f"Took {time_keeper.lap():.2f}s for {multi_kicks + internal_kicks} kicks leaving {passes} results. Writing to DB",
+            f"{containment_kicks} containment kicks",
+            args.verbose,
+        )
+        printv(
+            f"Took {time_keeper.lap():.2f}s for {multi_kicks+internal_kicks+containment_kicks} kicks leaving {passes} results. Writing to DB",
+            # f"Took {time_keeper.lap():.2f}s for {multi_kicks + internal_kicks} kicks leaving {passes} results. Writing to DB",
             args.verbose,
         )
 
