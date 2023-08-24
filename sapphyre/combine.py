@@ -1,13 +1,17 @@
 from __future__ import annotations
+import os
 from math import ceil
 
 from multiprocessing.pool import Pool
 from pathlib import Path
-from shutil import rmtree
-
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
 
+
+def delete_all_files(path: str) -> None:
+    fastas = [os.path.join(path, x) for x in os.listdir(path) if ".fa" in x]
+    for fasta in fastas:
+        os.remove(fasta)
 
 def prepend(inputs, directory):
     return [Path(directory, i) for i in inputs]
@@ -104,8 +108,8 @@ def main(args):
     aa_out_path.mkdir(parents=True, exist_ok=True)
     nt_out_path.mkdir(parents=True, exist_ok=True)
     # clear output directories to make reconcile safe
-    rmtree(aa_out_path)
-    rmtree(nt_out_path)
+    delete_all_files(aa_out_path)
+    delete_all_files(nt_out_path)
 
     aa_sequences = list(aa_out.items())
     nt_sequences = list(nt_out.items())
