@@ -341,7 +341,7 @@ def process_batch(
 
         og_contigs = [node for node in nodes if node is not None and node.is_contig]
 
-        if not og_contigs:
+        if not og_contigs and not batch_args.is_assembly:
             kicked_genes.append(gene.split(".")[0])
             continue
 
