@@ -352,7 +352,7 @@ def process_batch(
 
 
                     if overlap_coords:
-                        overlap_amount = overlap_coords[1] - overlap_coord
+                        overlap_amount = overlap_coords[1] - overlap_coords[0]
                         node_kmer = node.sequence[overlap_coords[0] : overlap_coords[1]]
                         other_kmer = node_2.sequence[
                             overlap_coords[0] : overlap_coords[1]
