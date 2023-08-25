@@ -54,6 +54,16 @@ class NODE(Struct):
 
     def get_overlap(self, node_2, min_overlap=0):
         return get_overlap(self.start, self.end, node_2.start, node_2.end, min_overlap)
+    
+    def get_extension(self, node_2, overlap_coord):
+        if node_2.start >= self.start and node_2.end <= self.end:
+            return 0
+        elif self.start >= node_2.start and self.end <= node_2.end:
+            return (overlap_coord - node_2.start) + (node_2.end - self.end)
+        elif node_2.start >= self.start:
+            return node_2.start - overlap_coord
+        else:
+            return overlap_coord - node_2.start
 
     def get_header_index_at_coord(self, position):
         return self.splices[position]
@@ -232,6 +242,33 @@ def do_folder(args, input_path):
     return all_passed
 
 
+def blosum_sub_merge(mat, overlap_coords, overlap_amount, aa_sequence, aa_sequence_2):
+    allow_sub = True
+    BLOSUM_LIMIT = 2
+    blosum_positions = 0
+    for k in range(0, overlap_amount, 3):
+        nt_pos = overlap_coords[0] + k
+        aa_pos = (nt_pos) // 3
+        aa_node_bp = aa_sequence[aa_pos]
+        aa_other_bp = aa_sequence_2[aa_pos]
+
+        if aa_node_bp == aa_other_bp:
+            continue
+
+        subs = mat[aa_node_bp][aa_other_bp]
+        if subs >= 0:
+            allow_sub = True
+            blosum_positions += 1
+            if blosum_positions >= BLOSUM_LIMIT:
+                allow_sub = False
+                break
+        if subs < 0:
+            allow_sub = False
+            break
+    
+    return allow_sub
+
+
 def process_batch(
     batch_args: BatchArgs,
 ):
@@ -287,6 +324,7 @@ def process_batch(
             for i, node in enumerate(nodes):
                 if node is None:
                     continue
+                possible_extensions = []
                 for j, node_2 in enumerate(nodes):
                     if node_2 is None:
                         continue
@@ -301,43 +339,63 @@ def process_batch(
                         ]
 
                         distance = constrained_distance(node_kmer, other_kmer)
-
+                        overlap_coord = overlap_coords[0]
                         if distance == 0:
-                            splice_occured = True
-                            node.extend(node_2, overlap_coords[0])
-                            nodes[j] = None
-                            continue
-                        overlap_amount = overlap_coords[1] - overlap_coords[0]
+                            possible_extensions.append((node.get_extension(node_2, overlap_coord), overlap_coord, j))
+                            # splice_occured = True
+                            # node.extend(node_2, overlap_coords[0])
+                            # nodes[j] = None
+                            # continue
+                        overlap_amount = overlap_coords[1] - overlap_coord
                         diff_percent = distance / overlap_amount
 
                         if (
                             diff_percent <= args.sub_percent
                             and overlap_amount != node_2.length
                         ):
-                            allow_sub = True
-                            for k in range(0, overlap_amount, 3):
-                                nt_pos = overlap_coords[0] + k
-                                aa_pos = (nt_pos) // 3
-                                aa_node_bp = aa_sequences[
-                                    node.get_sequence_at_coord(nt_pos)
-                                ][aa_pos]
-                                aa_other_bp = aa_sequences[
-                                    node_2.get_sequence_at_coord(nt_pos)
-                                ][aa_pos]
-
-                                if aa_node_bp == aa_other_bp:
-                                    continue
-
-                                subs = mat[aa_node_bp][aa_other_bp]
-                                if subs >= 0:
-                                    allow_sub = True
-                                if subs < 0:
-                                    allow_sub = False
+                            allow_sub = blosum_sub_merge(mat, overlap_coords, overlap_amount, aa_sequences[node.header], aa_sequences[node_2.header])
+                            
 
                             if allow_sub:
+                                possible_extensions.append((node.get_extension(node_2, overlap_coord), overlap_coord, j))
+                                # splice_occured = True
+                                # node.extend(node_2, overlap_coords[0])
+                                # nodes[j] = None
+                for x, (_, overlap_coord, j) in enumerate(sorted(possible_extensions, reverse=True, key = lambda x: x[0])):
+                    if x == 0:
+                        splice_occured = True
+                        node.extend(nodes[j], overlap_coord)
+                        nodes[j] = None
+                    else:
+                        node_2 = nodes[j]
+                        if node_2 is None:
+                            continue
+                        #Confirm still overlaps
+                        overlap_coords = node.get_overlap(nodes[j], args.merge_overlap)
+                        if overlap_coords:
+                            #Get distance
+                            node_kmer = node.sequence[overlap_coords[0] : overlap_coords[1]]
+                            other_kmer = node_2.sequence[overlap_coords[0] : overlap_coords[1]]
+
+                            distance = constrained_distance(node_kmer, other_kmer)
+                            if distance == 0:
                                 splice_occured = True
                                 node.extend(node_2, overlap_coords[0])
                                 nodes[j] = None
+                                continue
+                            overlap_amount = overlap_coords[1] - overlap_coords[0]
+                            diff_percent = distance / overlap_amount
+                            if (
+                                diff_percent <= args.sub_percent
+                                and overlap_amount != node_2.length
+                            ):
+                                allow_sub = blosum_sub_merge(mat, overlap_coords, overlap_amount, aa_sequences[node.header], aa_sequences[node_2.header])
+                                if allow_sub:
+                                    splice_occured = True
+                                    node.extend(node_2, overlap_coords[0])
+                                    nodes[j] = None
+                                    continue
+                            
 
         og_contigs = [node for node in nodes if node is not None and node.is_contig]
 
