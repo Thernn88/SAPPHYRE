@@ -350,7 +350,9 @@ def process_batch(
                         continue
                     overlap_coords = node.get_overlap(node_2, args.merge_overlap)
 
+
                     if overlap_coords:
+                        overlap_amount = overlap_coords[1] - overlap_coord
                         node_kmer = node.sequence[overlap_coords[0] : overlap_coords[1]]
                         other_kmer = node_2.sequence[
                             overlap_coords[0] : overlap_coords[1]
@@ -359,12 +361,12 @@ def process_batch(
                         distance = constrained_distance(node_kmer, other_kmer)
                         overlap_coord = overlap_coords[0]
                         if distance == 0:
-                            possible_extensions.append((node.get_extension(node_2, overlap_coord), overlap_coord, j))
+                            possible_extensions.append((overlap_amount, overlap_coord, j))
                             # splice_occured = True
                             # node.extend(node_2, overlap_coords[0])
                             # nodes[j] = None
                             # continue
-                        overlap_amount = overlap_coords[1] - overlap_coord
+                        
                         diff_percent = distance / overlap_amount
 
                         if (
@@ -375,7 +377,7 @@ def process_batch(
                             
 
                             if allow_sub:
-                                possible_extensions.append((node.get_extension(node_2, overlap_coord), overlap_coord, j))
+                                possible_extensions.append((overlap_amount, overlap_coord, j))
                                 # splice_occured = True
                                 # node.extend(node_2, overlap_coords[0])
                                 # nodes[j] = None
