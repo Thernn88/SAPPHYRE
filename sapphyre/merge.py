@@ -152,7 +152,7 @@ def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
     for sequence in taxa_pair:
         if (
             current_region is None
-            or get_overlap(sequence.start, sequence.end, current_region[0], current_region[1], 0) is None
+            or get_overlap(sequence.start, sequence.end, current_region[0], current_region[1], 1) is None
         ):
             if current_group:
                 result.append((current_region, current_group))
@@ -182,7 +182,7 @@ def calculate_split(sequence_a: str, sequence_b: str, comparison_sequence: str) 
     pair_a = find_index_pair(sequence_a, "-")
     pair_b = find_index_pair(sequence_b, "-")
 
-    overlap_start, overlap_end = get_overlap(pair_a[0], pair_a[1], pair_b[0], pair_b[1], 0)
+    overlap_start, overlap_end = get_overlap(pair_a[0], pair_a[1], pair_b[0], pair_b[1], 1)
 
     sequence_a_overlap = list(islice(sequence_a, overlap_start, overlap_end + 1))
     sequence_b_overlap = list(islice(sequence_b, overlap_start, overlap_end + 1))

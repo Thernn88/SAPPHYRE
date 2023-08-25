@@ -259,7 +259,7 @@ def do_merge(sequences):
                 start_b, end_b = find_index_pair(seq_b, "-")
                 
 
-                overlap_coords = get_overlap(start_a, end_a, start_b, end_b, 0)
+                overlap_coords = get_overlap(start_a, end_a, start_b, end_b, 1)
                 if overlap_coords is None:
                     if end_a < start_b:
                         new_seq = seq_a[:end_a] + seq_b[end_a:]
@@ -348,7 +348,8 @@ def aln_function(
     duped_headers = set()
     seq_hashes = set()
     for header, seq in aligned_result:
-        seq_hash = xxhash.xxh3_64(seq).hexdigest()
+        component = header.split(":")[0]
+        seq_hash = xxhash.xxh3_64(component+seq).hexdigest()
         if seq_hash in seq_hashes:
             duped_headers.add(header)
         else:

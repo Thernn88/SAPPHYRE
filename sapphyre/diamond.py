@@ -136,12 +136,12 @@ def get_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
         a_end,
         b_start,
         b_end,
-        0,
+        1,
     )
     if overlap_coords == None:
         return 0
     
-    return (overlap_coords[1] - overlap_coords[0]) + 1
+    return (overlap_coords[1] - overlap_coords[0])
 
 
 def get_score_difference(score_a: float, score_b: float) -> float:

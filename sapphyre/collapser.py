@@ -57,7 +57,7 @@ class NODE(Struct):
     kick: bool
     splices: dict
 
-    def get_overlap(self, node_2, min_overlap=0):
+    def get_overlap(self, node_2, min_overlap=1):
         return get_overlap(self.start, self.end, node_2.start, node_2.end, min_overlap)
     
     def get_extension(self, node_2, overlap_coord):
