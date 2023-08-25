@@ -364,7 +364,7 @@ CmdArgs = namedtuple(
         "aln_path",
         "debug",
         "only_singletons",
-        "add_fragments",
+        "experimental",
     ],
 )
 
@@ -428,12 +428,12 @@ def run_command(args: CmdArgs) -> None:
                 3,
             )  # Debug
 
-            if args.add_fragments:
-                clusters = [[header] for header in data]
-            else:
+            if args.experimental:
                 cluster_children = generate_clusters(data)
 
                 clusters = seperate_into_clusters(cluster_children, parent_tmpdir, data)
+            else:
+                clusters = [[header] for header in data]
 
             cluster_time = keeper.differential()
             printv(
@@ -672,7 +672,7 @@ def do_folder(folder, args):
                     aln_path,
                     args.debug,
                     file in only_singletons,
-                    args.add_fragments,
+                    args.experimental,
                 ),
             ),
         )

@@ -574,11 +574,11 @@ def subcmd_align(subparsers):
         help="Output intermediate files for debug",
     )
     par.add_argument(
-        "-frag",
-        "--add_fragments",
+        "-exp",
+        "--experimental",
         action="store_true",
         default=False,
-        help="Output intermediate files for debug",
+        help="Use experimental align method",
     )
     par.set_defaults(func=align, formathelp=par.format_help)
 
@@ -1041,11 +1041,11 @@ def subcmd_wrap_final(sp):
         help="Enable second run logic",
     )
     par.add_argument(
-        "-frag",
-        "--add_fragments",
+        "-exp",
+        "--experimental",
         action="store_true",
         default=False,
-        help="Output intermediate files for debug",
+        help="Use experimental align method",
     )
     par.add_argument(
         "-d",

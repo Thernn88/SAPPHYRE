@@ -34,7 +34,7 @@ def main(args):
         "align": {
             "debug": False,
             "second_run": False,
-            "add_fragments": True,
+            "experimental": False,
         },
         "pal2nal": {"table": 1},
         "flexcull": {
