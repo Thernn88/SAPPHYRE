@@ -333,8 +333,11 @@ def process_folder(args, input_path):
     aa_folder = taxa_folder.joinpath(AA_FOLDER)
     nt_folder = taxa_folder.joinpath(NT_FOLDER)
 
-    def makent(x):
-        return x + ".nt.fa"
+    def makent(gene, aa_path):
+        name = gene + ".nt.fa"
+        if ".gz" in aa_path:
+            name += ".gz"
+        return name
 
     printv("Grabbing necessary files and directories", args.verbose)
     processed_folder = taxa_folder.joinpath("Processed")
@@ -394,7 +397,7 @@ def process_folder(args, input_path):
     arguments = []
     for aa_file in aa_folder.glob("*.fa"):
         gene = aa_file.name.split(".")[0]
-        nt_file = nt_folder.joinpath(makent(gene))
+        nt_file = nt_folder.joinpath(makent(gene, aa_file))
         this_config = GeneConfig(
             gene,
             args.kick_columns if args.kick_columns <= 1 else args.kick_columns / 100,
