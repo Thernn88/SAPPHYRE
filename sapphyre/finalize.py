@@ -39,7 +39,7 @@ class GeneConfig:
     count_taxa: bool
     generating_names: bool
     no_references: bool
-
+    compress: bool
 
 def kick_taxa(content: list[tuple, tuple], to_kick: set) -> list:
     out = []
@@ -245,8 +245,8 @@ def clean_gene(gene_config: GeneConfig):
         aa_content = taxon_only(aa_content)
         nt_content = taxon_only(nt_content)
 
-    writeFasta(aa_path, aa_content)
-    writeFasta(nt_path, nt_content)
+    writeFasta(aa_path, aa_content, gene_config.compress)
+    writeFasta(nt_path, nt_content, gene_config.compress)
 
     path_to = (aa_path, nt_path)
 
@@ -415,6 +415,7 @@ def process_folder(args, input_path):
             args.count,
             generate_names,
             args.no_references,
+            args.compress,
         )
         arguments.append((this_config,))
 
@@ -477,10 +478,8 @@ def process_folder(args, input_path):
         if args.gene_kick:
             if kick_gene(taxa_local, gene_kick, taxa_global):
                 aa_path, nt_path = path_to
-                if os.path.exists(aa_path):
-                    os.remove(aa_path)  # TODO Can do this better
-                if os.path.exists(nt_path):
-                    os.remove(nt_path)
+                os.remove(aa_path)  # TODO Can do this better
+                os.remove(nt_path)
                 continue
         if args.count:
             taxon_to_taxa.update(gene_taxon_to_taxa)
