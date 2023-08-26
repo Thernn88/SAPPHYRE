@@ -477,8 +477,10 @@ def process_folder(args, input_path):
         if args.gene_kick:
             if kick_gene(taxa_local, gene_kick, taxa_global):
                 aa_path, nt_path = path_to
-                os.remove(aa_path)  # TODO Can do this better
-                os.remove(nt_path)
+                if os.path.exists(aa_path):
+                    os.remove(aa_path)  # TODO Can do this better
+                if os.path.exists(nt_path):
+                    os.remove(nt_path)
                 continue
         if args.count:
             taxon_to_taxa.update(gene_taxon_to_taxa)
