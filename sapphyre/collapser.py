@@ -310,7 +310,7 @@ def process_batch(
         nodes = []
 
   
-
+        # make nodes out of nt_input for processing
         for header, sequence in nt_sequences:
             nt_output.append((header, sequence))
             if header.endswith("."):
@@ -416,13 +416,13 @@ def process_batch(
                                     nodes[j] = None
                                     continue
                             
-
+        #og_contigs is an alias for valid nodes
         og_contigs = [node for node in nodes if node is not None and node.is_contig]
 
         if not og_contigs and not batch_args.is_assembly:
             kicked_genes.append(gene.split(".")[0])
             continue
-
+        #contigs is a shallow copy of og_contigs
         contigs = sorted(og_contigs, key=lambda x: x.length, reverse=True)
 
         reads = [node for node in nodes if node is not None and not node.is_contig]
@@ -433,10 +433,13 @@ def process_batch(
         for (i, contig_a), (j, contig_b) in combinations(enumerate(contigs), 2):
             if contig_a.kick or contig_b.kick:
                 continue
+            # this block can probably just be an overlap percent call
             overlap_coords = contig_a.get_overlap(contig_b)
             if overlap_coords:
                 overlap_amount = overlap_coords[1] - overlap_coords[0]
                 percent = overlap_amount / contig_b.length
+            # this block can probably just be an overlap percent call
+
                 if percent >= args.contig_percent:
                     is_kick, matching_percent = contig_a.is_kick(
                         contig_b,
@@ -458,10 +461,12 @@ def process_batch(
                 kick = False
                 for contig in contigs:
                     overlap_coords = read.get_overlap(contig)
-
                     if overlap_coords:
+                        # this block can probably just be an overlap percent call
                         overlap_amount = overlap_coords[1] - overlap_coords[0]
                         percent = overlap_amount / read.length
+                        # this block can probably just be an overlap percent call
+
                         if percent >= args.read_percent:
                             is_kick, matching_percent = read.is_kick(
                                 contig,
@@ -483,7 +488,7 @@ def process_batch(
                         f"{read.header},Kicked By,{contig.contig_header()},{percent},{matching_percent}\n"
                     )
                     kicked_headers.add(read.header)
-
+        # don't hold the aa_seqs in memory just for this
         ref_alignments = [seq for header, seq in aa_sequences.values() if header.endswith(".")]
         
         ref_consensus = {i: {seq[i] for seq in ref_alignments} for i in range(len(ref_alignments[0]))}
@@ -557,6 +562,7 @@ def process_batch(
                         continue
                     f.write(f">{node.header}{is_kick}\n{node.sequence}\n")
         else:
+            nt_output = [pair for pair in nt_output if pair[0] not in kicked_headers]
             writeFasta(
                 nt_out, nt_output, batch_args.compress
             )
