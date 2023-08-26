@@ -335,7 +335,7 @@ def process_folder(args, input_path):
 
     def makent(gene, aa_path):
         name = gene + ".nt.fa"
-        if ".gz" in aa_path:
+        if ".gz" in str(aa_path):
             name += ".gz"
         return name
 
@@ -395,7 +395,7 @@ def process_folder(args, input_path):
             generate_names = True
 
     arguments = []
-    for aa_file in aa_folder.glob("*.fa"):
+    for aa_file in aa_folder.glob("*.fa*"):
         gene = aa_file.name.split(".")[0]
         nt_file = nt_folder.joinpath(makent(gene, aa_file))
         this_config = GeneConfig(
