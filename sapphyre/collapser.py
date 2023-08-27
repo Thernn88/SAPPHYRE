@@ -7,7 +7,7 @@ import os
 import blosum as bl
 
 from msgspec import Struct
-from phymmr_tools import constrained_distance, find_index_pair, get_overlap, dumb_consensus, blosum62_candidate_to_reference
+from phymmr_tools import constrained_distance, find_index_pair, get_overlap, is_same_kmer
 from .timekeeper import KeeperMode, TimeKeeper
 import wrap_rocks
 from .utils import writeFasta, parseFasta, printv
@@ -57,9 +57,6 @@ class NODE(Struct):
     kick: bool
     splices: dict
 
-    def get_overlap(self, node_2, min_overlap=1):
-        return get_overlap(self.start, self.end, node_2.start, node_2.end, min_overlap)
-    
     def get_extension(self, node_2, overlap_coord):
         if node_2.start >= self.start and node_2.end <= self.end:
             return 0
@@ -290,6 +287,7 @@ def process_batch(
 
     kicks = []
     for gene in batch_args.genes:
+        kicked_headers = set()
         printv(f"Doing: {gene}", args.verbose, 2)
 
         nt_out = os.path.join(batch_args.nt_out_path, gene)
@@ -334,22 +332,40 @@ def process_batch(
                 )
             )
 
+        ref_alignments = [seq for header, seq in aa_sequences.values() if header.endswith(".")]
+        ref_consensus = {i: {seq[i] for seq in ref_alignments} for i in range(len(ref_alignments[0]))}
+        for read in nodes:
+            aa_start = read.start // 3
+            aa_end = read.end // 3
+            aa_sequence = aa_sequences[aa_headers[read.header]][1]
+
+            average_matching_cols = average_match(
+                aa_sequence,
+                ref_consensus,
+                aa_start,
+                aa_end
+            )
+
+            if average_matching_cols < args.matching_consensus_percent:
+                consensus_kicks.append(f"{gene},{read.header},{average_matching_cols},{read.length}\n")
+                kicked_headers.add(read.header)
+                read.kick = True
+
         mat = bl.BLOSUM(62)
         # Rescurive scan
         splice_occured = True
         while splice_occured:
             splice_occured = False
             for i, node in enumerate(nodes):
-                if node is None:
+                if node is None or node.kick:
                     continue
                 possible_extensions = []
                 for j, node_2 in enumerate(nodes):
-                    if node_2 is None:
+                    if node_2 is None or node_2.kick:
                         continue
                     if i == j:
                         continue
-                    overlap_coords = node.get_overlap(node_2, args.merge_overlap)
-
+                    overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, args.merge_overlap)
 
                     if overlap_coords:
                         overlap_amount = overlap_coords[1] - overlap_coords[0]
@@ -358,29 +374,21 @@ def process_batch(
                             overlap_coords[0] : overlap_coords[1]
                         ]
 
-                        distance = constrained_distance(node_kmer, other_kmer)
-                        overlap_coord = overlap_coords[0]
-                        if distance == 0:
-                            possible_extensions.append((overlap_amount, overlap_coord, j))
-                            # splice_occured = True
-                            # node.extend(node_2, overlap_coords[0])
-                            # nodes[j] = None
-                            # continue
                         
-                        diff_percent = distance / overlap_amount
+                        overlap_coord = overlap_coords[0]
+                        if is_same_kmer(node_kmer, other_kmer):
+                            possible_extensions.append((overlap_amount, overlap_coord, j))
+                            continue
 
-                        if (
-                            diff_percent <= args.sub_percent
-                            and overlap_amount != node_2.length
-                        ):
-                            allow_sub = blosum_sub_merge(mat, overlap_coords, overlap_amount, aa_sequences[aa_headers[node.header]][1], aa_sequences[aa_headers[node_2.header]][1])
-                            
+                        if overlap_amount == node_2.length:
+                            continue
 
-                            if allow_sub:
-                                possible_extensions.append((overlap_amount, overlap_coord, j))
-                                # splice_occured = True
-                                # node.extend(node_2, overlap_coords[0])
-                                # nodes[j] = None
+                        allow_sub = blosum_sub_merge(mat, overlap_coords, overlap_amount, aa_sequences[aa_headers[node.header]][1], aa_sequences[aa_headers[node_2.header]][1])
+                        
+
+                        if allow_sub:
+                            possible_extensions.append((overlap_amount, overlap_coord, j))
+
                 for x, (_, overlap_coord, j) in enumerate(sorted(possible_extensions, reverse=True, key = lambda x: x[0])):
                     if x == 0:
                         splice_occured = True
@@ -391,30 +399,28 @@ def process_batch(
                         if node_2 is None:
                             continue
                         #Confirm still overlaps
-                        overlap_coords = node.get_overlap(nodes[j], args.merge_overlap)
+                        overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, args.merge_overlap)
                         if overlap_coords:
                             #Get distance
                             node_kmer = node.sequence[overlap_coords[0] : overlap_coords[1]]
                             other_kmer = node_2.sequence[overlap_coords[0] : overlap_coords[1]]
 
-                            distance = constrained_distance(node_kmer, other_kmer)
-                            if distance == 0:
+                            if is_same_kmer(node_kmer, other_kmer):
                                 splice_occured = True
                                 node.extend(node_2, overlap_coords[0])
                                 nodes[j] = None
                                 continue
                             overlap_amount = overlap_coords[1] - overlap_coords[0]
-                            diff_percent = distance / overlap_amount
-                            if (
-                                diff_percent <= args.sub_percent
-                                and overlap_amount != node_2.length
-                            ):
-                                allow_sub = blosum_sub_merge(mat, overlap_coords, overlap_amount, aa_sequences[aa_headers[node.header]][1], aa_sequences[aa_headers[node_2.header]][1])
-                                if allow_sub:
-                                    splice_occured = True
-                                    node.extend(node_2, overlap_coords[0])
-                                    nodes[j] = None
-                                    continue
+
+                            if overlap_amount == node_2.length:
+                                continue
+
+                            allow_sub = blosum_sub_merge(mat, overlap_coords, overlap_amount, aa_sequences[aa_headers[node.header]][1], aa_sequences[aa_headers[node_2.header]][1])
+                            if allow_sub:
+                                splice_occured = True
+                                node.extend(node_2, overlap_coords[0])
+                                nodes[j] = None
+                                continue
                             
         #og_contigs is an alias for valid nodes
         og_contigs = [node for node in nodes if node is not None and node.is_contig]
@@ -428,13 +434,12 @@ def process_batch(
         reads = [node for node in nodes if node is not None and not node.is_contig]
         kicks.append(f"Kicks for {gene}\n")
         kicks.append("Header B,,Header A,Overlap Percent,Matching Percent\n")
-        kicked_headers = set()
 
         for (i, contig_a), (j, contig_b) in combinations(enumerate(contigs), 2):
             if contig_a.kick or contig_b.kick:
                 continue
             # this block can probably just be an overlap percent call
-            overlap_coords = contig_a.get_overlap(contig_b)
+            overlap_coords = get_overlap(contig_a.start, contig_a.end, contig_b.start, contig_b.end, 1)
             if overlap_coords:
                 overlap_amount = overlap_coords[1] - overlap_coords[0]
                 percent = overlap_amount / contig_b.length
@@ -460,7 +465,7 @@ def process_batch(
                 keep = False
                 kick = False
                 for contig in contigs:
-                    overlap_coords = read.get_overlap(contig)
+                    overlap_coords = get_overlap(contig.start, contig.end, read.start, read.end, 1)
                     if overlap_coords:
                         # this block can probably just be an overlap percent call
                         overlap_amount = overlap_coords[1] - overlap_coords[0]
@@ -488,55 +493,6 @@ def process_batch(
                         f"{read.header},Kicked By,{contig.contig_header()},{percent},{matching_percent}\n"
                     )
                     kicked_headers.add(read.header)
-        # don't hold the aa_seqs in memory just for this
-        ref_alignments = [seq for header, seq in aa_sequences.values() if header.endswith(".")]
-        
-        ref_consensus = {i: {seq[i] for seq in ref_alignments} for i in range(len(ref_alignments[0]))}
-        aa_msa_length = len(list(aa_sequences.values())[0][1])
-        for contig in contigs:
-            if not contig or contig.kick:
-                continue
-
-            aa_start = contig.start // 3
-            aa_end = contig.end // 3
-
-            dashes_start = aa_start * "-"
-            dashes_end = (aa_msa_length - aa_end) * "-"
-
-            aa_contig_sequence = [aa_sequences[contig.get_sequence_at_coord(i*3)][1][i] if i*3 in contig.splices else "" for i in range(aa_start, aa_end)]
-            aa_contig_sequence = dashes_start + "".join(aa_contig_sequence) + dashes_end
-
-            average_matching_cols = average_match(
-                aa_contig_sequence,
-                ref_consensus,
-                aa_start,
-                aa_end
-            )
-
-            if average_matching_cols < args.matching_consensus_percent:
-                consensus_kicks.append(f"{gene},{contig.header},{average_matching_cols},{contig.length}\n")
-                kicked_headers.add(contig.header)
-                kicked_headers.update(contig.children)
-
-        for read in reads:
-            if read.kick:
-                continue
-
-            aa_start = read.start // 3
-            aa_end = read.end // 3
-            aa_sequence = aa_sequences[aa_headers[read.header]][1]
-
-            average_matching_cols = average_match(
-                aa_sequence,
-                ref_consensus,
-                aa_start,
-                aa_end
-            )
-
-            if average_matching_cols < args.matching_consensus_percent:
-                consensus_kicks.append(f"{gene},{read.header},{average_matching_cols},{read.length}\n")
-                kicked_headers.add(read.header)
-
         nt_output_after_kick = sum(1 for i in nt_output if i[0] not in kicked_headers and not i[0].endswith(".")) > 0
 
         if not nt_output_after_kick:
