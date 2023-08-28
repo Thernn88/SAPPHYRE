@@ -387,8 +387,8 @@ def process_batch(
                     overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, args.merge_overlap)
                     if overlap_coords:
                         #Get distance
-                        node_kmer = node.sequence[overlap_coords[0] : overlap_coords[1]]
-                        other_kmer = node_2.sequence[overlap_coords[0] : overlap_coords[1]]
+                        node_kmer = aa_sequences[aa_headers[node.header]][1][overlap_coords[0]//3 : overlap_coords[1]//3]
+                        other_kmer = aa_sequences[aa_headers[node_2.header]][1][overlap_coords[0]//3 : overlap_coords[1]//3]
 
                         if is_same_kmer(node_kmer, other_kmer):
                             splice_occured = True
