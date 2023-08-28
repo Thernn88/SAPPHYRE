@@ -1,4 +1,4 @@
-from collections import Counter
+from collections import Counter, defaultdict
 from itertools import combinations
 from math import ceil
 from multiprocessing import Pool
@@ -354,6 +354,7 @@ def process_batch(
 
         # Rescurive scan
         splice_occured = True
+        failed = defaultdict(dict)
         while splice_occured:
             splice_occured = False
             for i, node in enumerate(nodes):
@@ -365,6 +366,8 @@ def process_batch(
                         continue
                     if i == j:
                         continue
+                    if failed[i].get(j, False):
+                        continue
 
                     overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, args.merge_overlap)
 
@@ -374,6 +377,9 @@ def process_batch(
                         possible_extensions.append((overlap_amount, overlap_coord, j))
 
                 for _, overlap_coord, j in sorted(possible_extensions, reverse=True, key = lambda x: x[0]):
+                    if failed[i].get(j, False):
+                        continue
+
                     node_2 = nodes[j]
                     if node_2 is None:
                         continue
@@ -388,6 +394,9 @@ def process_batch(
                             splice_occured = True
                             node.extend(node_2, overlap_coords[0])
                             nodes[j] = None
+                            continue
+
+                        failed[i][j] = True
                             
         #og_contigs is an alias for valid nodes
         og_contigs = [node for node in nodes if node is not None and node.is_contig]
