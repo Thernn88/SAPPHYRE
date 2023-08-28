@@ -134,8 +134,16 @@ def stopcodon(aa_content: list, nt_content: list) -> tuple:
 
 
 def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict) -> tuple:
-    new_aa_content, new_nt_content = [], []
-    for (aa_header, aa_line), (nt_header, nt_line) in zip(aa_content, nt_content):
+    new_aa_content = []
+    new_nt_content = []
+    aa_candidates = []
+    for header, seq in aa_content:
+        if header.endswith("."):
+            new_aa_content.append((header, seq))
+        else:
+            aa_candidates.append((header, seq))
+    for (aa_header, aa_line), (nt_header, nt_line) in zip(aa_candidates, nt_content):
+    # for (aa_header, aa_line), (nt_header, nt_line) in zip(aa_content, nt_content):
         if not aa_header.endswith("."):
             if aa_header != nt_header:
                 print("Warning RENAME: Nucleotide order doesn't match Amino Acid order")
