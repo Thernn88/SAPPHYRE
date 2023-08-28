@@ -1,3 +1,4 @@
+from collections import Counter
 from itertools import combinations
 from math import ceil
 from multiprocessing import Pool
@@ -351,7 +352,6 @@ def process_batch(
                 kicked_headers.add(read.header)
                 read.kick = True
 
-        mat = bl.BLOSUM(62)
         # Rescurive scan
         splice_occured = True
         while splice_occured:
@@ -365,62 +365,29 @@ def process_batch(
                         continue
                     if i == j:
                         continue
+
                     overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, args.merge_overlap)
 
                     if overlap_coords:
                         overlap_amount = overlap_coords[1] - overlap_coords[0]
-                        node_kmer = node.sequence[overlap_coords[0] : overlap_coords[1]]
-                        other_kmer = node_2.sequence[
-                            overlap_coords[0] : overlap_coords[1]
-                        ]
-
-                        
                         overlap_coord = overlap_coords[0]
+                        possible_extensions.append((overlap_amount, overlap_coord, j))
+
+                for _, overlap_coord, j in sorted(possible_extensions, reverse=True, key = lambda x: x[0]):
+                    node_2 = nodes[j]
+                    if node_2 is None:
+                        continue
+                    #Confirm still overlaps
+                    overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, args.merge_overlap)
+                    if overlap_coords:
+                        #Get distance
+                        node_kmer = node.sequence[overlap_coords[0] : overlap_coords[1]]
+                        other_kmer = node_2.sequence[overlap_coords[0] : overlap_coords[1]]
+
                         if is_same_kmer(node_kmer, other_kmer):
-                            possible_extensions.append((overlap_amount, overlap_coord, j))
-                            continue
-
-                        if overlap_amount == node_2.length:
-                            continue
-
-                        allow_sub = blosum_sub_merge(mat, overlap_coords, overlap_amount, aa_sequences[aa_headers[node.header]][1], aa_sequences[aa_headers[node_2.header]][1])
-                        
-
-                        if allow_sub:
-                            possible_extensions.append((overlap_amount, overlap_coord, j))
-
-                for x, (_, overlap_coord, j) in enumerate(sorted(possible_extensions, reverse=True, key = lambda x: x[0])):
-                    if x == 0:
-                        splice_occured = True
-                        node.extend(nodes[j], overlap_coord)
-                        nodes[j] = None
-                    else:
-                        node_2 = nodes[j]
-                        if node_2 is None:
-                            continue
-                        #Confirm still overlaps
-                        overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, args.merge_overlap)
-                        if overlap_coords:
-                            #Get distance
-                            node_kmer = node.sequence[overlap_coords[0] : overlap_coords[1]]
-                            other_kmer = node_2.sequence[overlap_coords[0] : overlap_coords[1]]
-
-                            if is_same_kmer(node_kmer, other_kmer):
-                                splice_occured = True
-                                node.extend(node_2, overlap_coords[0])
-                                nodes[j] = None
-                                continue
-                            overlap_amount = overlap_coords[1] - overlap_coords[0]
-
-                            if overlap_amount == node_2.length:
-                                continue
-
-                            allow_sub = blosum_sub_merge(mat, overlap_coords, overlap_amount, aa_sequences[aa_headers[node.header]][1], aa_sequences[aa_headers[node_2.header]][1])
-                            if allow_sub:
-                                splice_occured = True
-                                node.extend(node_2, overlap_coords[0])
-                                nodes[j] = None
-                                continue
+                            splice_occured = True
+                            node.extend(node_2, overlap_coords[0])
+                            nodes[j] = None
                             
         #og_contigs is an alias for valid nodes
         og_contigs = [node for node in nodes if node is not None and node.is_contig]
