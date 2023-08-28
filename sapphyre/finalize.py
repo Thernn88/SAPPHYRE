@@ -1,4 +1,5 @@
 from collections import defaultdict
+from glob import glob
 import json
 from math import ceil
 import os
@@ -478,8 +479,12 @@ def process_folder(args, input_path):
         if args.gene_kick:
             if kick_gene(taxa_local, gene_kick, taxa_global):
                 aa_path, nt_path = path_to
-                os.remove(aa_path)  # TODO Can do this better
-                os.remove(nt_path)
+                aa_glob = aa_path.replace(".gz", "") + "*"
+                nt_glob = nt_path.replace(".gz", "") + "*"
+                for fasta in glob(aa_glob):
+                    os.remove(fasta)
+                for fasta in glob(nt_glob):
+                    os.remove(fasta)
                 continue
         if args.count:
             taxon_to_taxa.update(gene_taxon_to_taxa)
