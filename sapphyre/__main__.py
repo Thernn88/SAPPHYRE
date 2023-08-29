@@ -297,7 +297,7 @@ def subcmd_outlier(subparsers):
         "--merge_overlap",
         help="Minimum overlap distance for splicing reads",
         type=int,
-        default=18,
+        default=6,
     )
     par.add_argument(
         "-ro",
@@ -360,7 +360,7 @@ def subcmd_outlier(subparsers):
         "--matching_consensus_percent",
         help="Minimum percent of similar columns required for consensus ",
         type=float,
-        default=0.7,
+        default=0.65,
     )
     
     # Excise commands
