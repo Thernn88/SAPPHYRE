@@ -30,8 +30,6 @@ class CollapserArgs(Struct):
 
     verbose: int
     debug: int
-
-    consensus_percent: float
     matching_consensus_percent: float
 
 
@@ -44,7 +42,6 @@ class BatchArgs(Struct):
     aa_out_path: str
     compress: bool
     is_assembly: bool
-    consensus_percent: float
     matching_consensus_percent: float
 
 class NODE(Struct):
@@ -210,7 +207,6 @@ def do_folder(args, input_path):
             aa_out_path,
             compress,
             is_assembly,
-            args.consensus_percent,
             args.matching_consensus_percent,
         )
         for i in range(0, len(genes), per_thread)
@@ -530,7 +526,6 @@ def main(args):
         sub_percent=args.sub_percent,
         verbose=args.verbose,
         debug=args.debug,
-        consensus_percent = args.consensus_percent,
         matching_consensus_percent = args.matching_consensus_percent,
     )
 
