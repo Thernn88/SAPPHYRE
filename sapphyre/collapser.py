@@ -149,14 +149,11 @@ def average_match(seq_a, consensus, start, end):
     match = 0
     total = 0
     for i in range(start, end):
-        # Uncomment below to internal gaps
-        # if seq_a[i] == "-":
-        #     continue
+        if i in consensus:
+            total += 1
 
-        total += 1
-
-        if seq_a[i] in consensus[i]:
-            match += 1
+            if seq_a[i] in consensus[i]:
+                match += 1
 
     if total == 0:
         return 0
@@ -334,7 +331,7 @@ def process_batch(
             )
 
         ref_alignments = [seq for header, seq in aa_sequences.values() if header.endswith(".")]
-        ref_consensus = {i: {seq[i] for seq in ref_alignments} for i in range(len(ref_alignments[0]))}
+        ref_consensus = {i: {seq[i] for seq in ref_alignments if seq[i] != "-"} for i in range(len(ref_alignments[0]))}
         for read in nodes:
             aa_start = read.start // 3
             aa_end = read.end // 3
