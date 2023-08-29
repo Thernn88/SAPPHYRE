@@ -133,7 +133,7 @@ def subcmd_diamond(subparsers):
         "-tr",
         "--top-ref",
         type=float,
-        default=0.1,
+        default=0.025,
         help="Dynamically adjusts %% of hits a reference is less than our top 5 and still a good ref.",
     )
     par.add_argument(

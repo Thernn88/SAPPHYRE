@@ -20,7 +20,7 @@ def main(args):
             "sensitivity": "very",
             "evalue": 6,
             "top": 10,
-            "top_ref": 0.1,
+            "top_ref": 0.025,
             "internal_percent": 0.3,
         },
         "reporter": {
