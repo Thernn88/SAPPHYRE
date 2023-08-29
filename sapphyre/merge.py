@@ -620,22 +620,22 @@ def do_protein(
                         node, frame = header.split("|")[-2:]
                     gene_out.append((f"{node}|{frame}|{count}", sequence))
 
-    if protein == "nt" and gene_out:  # Remove empty columns
-        to_keep = set()
-        for i in range(len(gene_out[-1][1])):
-            keep_this = False
-            for record in gene_out:  # Every second element will be a sequence
-                if record[1][i] != "-":
-                    keep_this = True
-                    break
-            if keep_this:
-                to_keep.add(i)
+    # if protein == "nt" and gene_out:  # Remove empty columns
+    #     to_keep = set()
+    #     for i in range(len(gene_out[-1][1])):
+    #         keep_this = False
+    #         for record in gene_out:  # Every second element will be a sequence
+    #             if record[1][i] != "-":
+    #                 keep_this = True
+    #                 break
+    #         if keep_this:
+    #             to_keep.add(i)
 
-        for i, record in enumerate(gene_out):
-            gene_out[i] = (
-                record[0],
-                "".join([let for i, let in enumerate(record[1]) if i in to_keep]),
-            )
+    #     for i, record in enumerate(gene_out):
+    #         gene_out[i] = (
+    #             record[0],
+    #             "".join([let for i, let in enumerate(record[1]) if i in to_keep]),
+    #         )
 
     output_path = os.path.join(output_dir, f"{protein}_merged", gene.rstrip(".gz"))
 
@@ -697,7 +697,6 @@ def do_gene(
             nt_data.sort(key=lambda x: x[0].split("|")[2])
         writeFasta(aa_path, aa_data, compress)
         writeFasta(nt_path, nt_data, compress)
-
 
 def run_command(arg_tuple: tuple) -> None:
     """Calls the do_gene() function parallel in each thread."""
