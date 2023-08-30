@@ -53,7 +53,6 @@ class NODE(Struct):
     children: list
     is_contig: bool
     kick: bool
-    splices: dict
 
     def get_extension(self, node_2, overlap_coord):
         if node_2.start >= self.start and node_2.end <= self.end:
@@ -65,13 +64,6 @@ class NODE(Struct):
         else:
             return overlap_coord - node_2.start
 
-    def get_header_index_at_coord(self, position):
-        return self.splices[position]
-
-
-    def get_sequence_at_coord(self, position):
-        return self.splices[position]
-
     def extend(self, node_2, overlap_coord):
         if node_2.start >= self.start and node_2.end <= self.end:
             self.sequence = (
@@ -79,10 +71,6 @@ class NODE(Struct):
                 + node_2.sequence[overlap_coord : node_2.end]
                 + self.sequence[node_2.end :]
             )
-            for i in range(overlap_coord, node_2.end):
-                self.splices[i] = (
-                    node_2.get_sequence_at_coord(i)
-                )
 
         elif self.start >= node_2.start and self.end <= node_2.end:
             self.sequence = (
@@ -90,14 +78,6 @@ class NODE(Struct):
                 + self.sequence[overlap_coord : self.end]
                 + node_2.sequence[self.end :]
             )
-            for i in range(node_2.start, overlap_coord):
-                self.splices[i] = (
-                    node_2.get_sequence_at_coord(i)
-                )
-            for i in range(self.end, node_2.end):
-                self.splices[i] = (
-                    node_2.get_sequence_at_coord(i)
-                )
 
             self.start = node_2.start
             self.end = node_2.end
@@ -106,20 +86,14 @@ class NODE(Struct):
             self.sequence = (
                 self.sequence[:overlap_coord] + node_2.sequence[overlap_coord:]
             )
-            for i in range(overlap_coord, node_2.end):
-                self.splices[i] = (
-                    node_2.get_sequence_at_coord(i)
-                )
+
             self.end = node_2.end
 
         else:
             self.sequence = (
                 node_2.sequence[:overlap_coord] + self.sequence[overlap_coord:]
             )
-            for i in range(node_2.start, overlap_coord):
-                self.splices[i] = (
-                    node_2.get_sequence_at_coord(i)
-                )
+
             self.start = node_2.start
         self.length = self.end - self.start
 
@@ -273,7 +247,6 @@ def blosum_sub_merge(mat, overlap_coords, overlap_amount, aa_sequence, aa_sequen
     
     return allow_sub
 
-
 def process_batch(
     batch_args: BatchArgs,
 ):
@@ -293,21 +266,16 @@ def process_batch(
         nt_in = os.path.join(batch_args.nt_input_path, gene)
         aa_in = os.path.join(batch_args.aa_input_path, gene.replace(".nt.", ".aa."))
 
-        nt_sequences = parseFasta(nt_in)
-        aa_sequences = {}
-        aa_headers = {}
-        for i, (header, sequence) in enumerate(parseFasta(aa_in)):
-            aa_sequences[i] = (header, sequence)
-            aa_headers[header] = i
+        aa_sequences = parseFasta(aa_in)
         
-        nt_output = []
+        aa_output = []
 
         nodes = []
 
-  
+
         # make nodes out of nt_input for processing
-        for header, sequence in nt_sequences:
-            nt_output.append((header, sequence))
+        for header, sequence in aa_sequences:
+            aa_output.append((header, sequence))
             if header.endswith("."):
                 continue
 
@@ -325,22 +293,17 @@ def process_batch(
                     children=[],
                     is_contig=node_is_contig,
                     kick=False,
-                    splices={i: aa_headers[header] for i in range(start, end)},
                 )
             )
 
-        ref_alignments = [seq for header, seq in aa_sequences.values() if header.endswith(".")]
+        ref_alignments = [seq for header, seq in aa_output if header.endswith(".")]
         ref_consensus = {i: {seq[i] for seq in ref_alignments} for i in range(len(ref_alignments[0]))}
         for read in nodes:
-            aa_start = read.start // 3
-            aa_end = read.end // 3
-            aa_sequence = aa_sequences[aa_headers[read.header]][1]
-
             average_matching_cols = average_match(
-                aa_sequence,
+                read.sequence,
                 ref_consensus,
-                aa_start,
-                aa_end
+                read.start,
+                read.end
             )
 
             if average_matching_cols < args.matching_consensus_percent:
@@ -371,7 +334,6 @@ def process_batch(
                         overlap_amount = overlap_coords[1] - overlap_coords[0]
                         overlap_coord = overlap_coords[0]
                         possible_extensions.append((overlap_amount, overlap_coord, j))
-
                 for _, overlap_coord, j in sorted(possible_extensions, reverse=True, key = lambda x: x[0]):
                     if failed[i].get(j, False):
                         continue
@@ -383,9 +345,8 @@ def process_batch(
                     overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, args.merge_overlap)
                     if overlap_coords:
                         #Get distance
-                        node_kmer = aa_sequences[aa_headers[node.header]][1][overlap_coords[0]//3 : overlap_coords[1]//3]
-                        other_kmer = aa_sequences[aa_headers[node_2.header]][1][overlap_coords[0]//3 : overlap_coords[1]//3]
-
+                        node_kmer = node.sequence[overlap_coords[0] : overlap_coords[1]]
+                        other_kmer = node_2.sequence[overlap_coords[0] : overlap_coords[1]]
                         if is_same_kmer(node_kmer, other_kmer):
                             splice_occured = True
                             node.extend(node_2, overlap_coords[0])
@@ -465,17 +426,17 @@ def process_batch(
                         f"{read.header},Kicked By,{contig.contig_header()},{percent},{matching_percent}\n"
                     )
                     kicked_headers.add(read.header)
-        nt_output_after_kick = sum(1 for i in nt_output if i[0] not in kicked_headers and not i[0].endswith(".")) > 0
+        aa_output_after_kick = sum(1 for i in aa_output if i[0] not in kicked_headers and not i[0].endswith(".")) > 0
 
-        if not nt_output_after_kick:
+        if not aa_output_after_kick:
             kicked_genes.append(gene.split(".")[0])
             continue
 
         if args.debug == 2:
             output = og_contigs + reads
             output.sort(key=lambda x: x.start)
-            with open(nt_out, "w") as f:
-                for header, sequence in nt_output:
+            with open(aa_out, "w") as f:
+                for header, sequence in aa_output:
                     if header.endswith("."):
                         f.write(f">{header}\n{sequence}\n")
 
@@ -485,22 +446,19 @@ def process_batch(
                     is_kick = (
                         "_KICKED" if node.kick or node.header in kicked_headers else ""
                     )
-                    if node.is_contig:
-                        f.write(f">{node.contig_header()}{is_kick}\n{node.sequence}\n")
-                        continue
-                    f.write(f">{node.header}{is_kick}\n{node.sequence}\n")
+                    f.write(f">{node.contig_header()}{is_kick}\n{node.sequence}\n")
         else:
-            nt_output = [pair for pair in nt_output if pair[0] not in kicked_headers]
+            aa_output = [pair for pair in aa_output if pair[0] not in kicked_headers]
             writeFasta(
-                nt_out, nt_output, batch_args.compress
+                aa_out, aa_output, batch_args.compress
             )
 
-        aa_sequences = [
+        nt_sequences = [
             (header, sequence)
-            for header, sequence in aa_sequences.values()
+            for header, sequence in parseFasta(nt_in)
             if header not in kicked_headers
         ]
-        writeFasta(aa_out, aa_sequences, batch_args.compress)
+        writeFasta(nt_out, nt_sequences, batch_args.compress)
 
         count = len(kicked_headers)
         kicks.append(f"Total Kicks: {count}\n")
