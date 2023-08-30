@@ -259,9 +259,11 @@ def clean_gene(gene_config: GeneConfig):
     if gene_config.rename and not gene_config.generating_names:
         aa_content = taxon_only(aa_content)
         nt_content = taxon_only(nt_content)
+    
+    if nt_content:
 
-    writeFasta(aa_path, aa_content, gene_config.compress)
-    writeFasta(nt_path, nt_content, gene_config.compress)
+        writeFasta(aa_path, aa_content, gene_config.compress)
+        writeFasta(nt_path, nt_content, gene_config.compress)
 
     path_to = (aa_path, nt_path)
 
