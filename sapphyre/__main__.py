@@ -353,7 +353,7 @@ def subcmd_outlier(subparsers):
         "--matching_consensus_percent",
         help="Minimum percent of similar columns required for consensus ",
         type=float,
-        default=0.65,
+        default=0.7,
     )
     
     # Excise commands

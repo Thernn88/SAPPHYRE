@@ -73,7 +73,7 @@ def main(args):
             "contig_matching_percent": 0.8,
             "sub_percent": 0.1,
             "consensus": 0.65,
-            "matching_consensus_percent":0.65,
+            "matching_consensus_percent":0.7,
             "excise": 0.4,
             "dupes": True,
             "majority_excise": 0.35,
