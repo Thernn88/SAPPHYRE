@@ -301,13 +301,32 @@ def process_batch(
                 ref_consensus,
                 read.start,
                 read.end,
-                gene,
             )
 
             if average_matching_cols < args.matching_consensus_percent:
-                consensus_kicks.append(f"{gene},{read.header},{average_matching_cols},{read.length}\n")
+                if args.debug:
+                    consensus_kicks.append(f"{gene},{read.header},{average_matching_cols},{read.length}\n")
                 kicked_headers.add(read.header)
                 read.kick = True
+
+        del ref_alignments
+        del ref_consensus
+
+        read_alignments = [seq for header, seq in aa_output if not header.endswith(".")]
+        read_consensus = {i: {seq[i] for seq in read_alignments if seq[i] != "-"} for i in range(len(read_alignments[0]))}
+
+        total_cols = 0
+        data_cols = 0
+
+        for i, letters in read_consensus.items():
+            total_cols += 1
+            if letters:
+                data_cols += 1
+
+        coverage = data_cols / total_cols
+
+        del read_alignments
+        del read_consensus
 
         # Rescurive scan
         splice_occured = True
@@ -353,18 +372,17 @@ def process_batch(
 
                         failed[i][j] = True
                             
-        #og_contigs is an alias for valid nodes
-        og_contigs = [node for node in nodes if node is not None and node.is_contig]
+        valid_contigs = [node for node in nodes if node is not None and node.is_contig]
 
-        if not og_contigs and not batch_args.is_assembly:
+        if not valid_contigs and not batch_args.is_assembly and coverage < 0.5:
             kicked_genes.append(gene.split(".")[0])
             continue
-        #contigs is a shallow copy of og_contigs
-        contigs = sorted(og_contigs, key=lambda x: x.length, reverse=True)
+        #contigs is a shallow copy of valid_contigs
+        contigs = sorted(valid_contigs, key=lambda x: x.length, reverse=True)
 
         reads = [node for node in nodes if node is not None and not node.is_contig]
-        kicks.append(f"Kicks for {gene}\n")
-        kicks.append("Header B,,Header A,Overlap Percent,Matching Percent\n")
+        if args.debug:
+            kicks.append(f"Kicks for {gene}\nCoverage: {coverage:.2f}\nHeader B,,Header A,Overlap Percent,Matching Percent\n")
 
         for (i, contig_a), (j, contig_b) in combinations(enumerate(contigs), 2):
             if contig_a.kick or contig_b.kick:
@@ -385,9 +403,10 @@ def process_batch(
                     )
                     if is_kick:
                         contig_b.kick = True
-                        kicks.append(
-                            f"{contig_b.contig_header()},Contig Kicked By,{contig_a.contig_header()},{percent},{matching_percent}\n"
-                        )
+                        if args.debug:
+                            kicks.append(
+                                f"{contig_b.contig_header()},Contig Kicked By,{contig_a.contig_header()},{percent},{matching_percent}\n"
+                            )
                         kicked_headers.add(contig_b.header)
                         kicked_headers.update(contig_b.children)
         contigs = [contig for contig in contigs if not contig.kick]
@@ -420,9 +439,10 @@ def process_batch(
 
                 if kick and not keep:
                     read.kick = True
-                    kicks.append(
-                        f"{read.header},Kicked By,{contig.contig_header()},{percent},{matching_percent}\n"
-                    )
+                    if args.debug:
+                        kicks.append(
+                            f"{read.header},Kicked By,{contig.contig_header()},{percent},{matching_percent}\n"
+                        )
                     kicked_headers.add(read.header)
         aa_output_after_kick = sum(1 for i in aa_output if i[0] not in kicked_headers and not i[0].endswith(".")) > 0
 
@@ -431,7 +451,7 @@ def process_batch(
             continue
 
         if args.debug == 2:
-            output = og_contigs + reads
+            output = valid_contigs + reads
             output.sort(key=lambda x: x.start)
             with open(aa_out, "w") as f:
                 for header, sequence in aa_output:
@@ -459,7 +479,8 @@ def process_batch(
         writeFasta(nt_out, nt_sequences, batch_args.compress)
 
         count = len(kicked_headers)
-        kicks.append(f"Total Kicks: {count}\n")
+        if args.debug:
+            kicks.append(f"Total Kicks: {count}\n")
         total += count
 
     if args.debug:
