@@ -120,7 +120,7 @@ def average_match(seq_a, consensus, start, end, gene):
     match = 0
     total = 0
     for i in range(start, end):
-        if i in consensus:
+        if consensus[i]:
             total += 1
 
             if seq_a[i] in consensus[i]:
@@ -305,7 +305,7 @@ def process_batch(
                 read.end,
                 gene,
             )
-
+            break
             if average_matching_cols < args.matching_consensus_percent:
                 consensus_kicks.append(f"{gene},{read.header},{average_matching_cols},{read.length}\n")
                 kicked_headers.add(read.header)
