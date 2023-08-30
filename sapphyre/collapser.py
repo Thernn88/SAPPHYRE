@@ -116,7 +116,7 @@ class NODE(Struct):
         return f"CONTIG_{contig_node}|{children_nodes}"
 
 
-def average_match(seq_a, consensus, start, end, gene):
+def average_match(seq_a, consensus, start, end):
     match = 0
     total = 0
     for i in range(start, end):
@@ -125,8 +125,6 @@ def average_match(seq_a, consensus, start, end, gene):
 
             if seq_a[i] in consensus[i]:
                 match += 1
-        else:
-            print(f"Skipped gaps for gene: {gene}")
 
     if total == 0:
         return 0
@@ -305,7 +303,7 @@ def process_batch(
                 read.end,
                 gene,
             )
-            break
+
             if average_matching_cols < args.matching_consensus_percent:
                 consensus_kicks.append(f"{gene},{read.header},{average_matching_cols},{read.length}\n")
                 kicked_headers.add(read.header)
