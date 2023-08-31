@@ -118,13 +118,13 @@ def glob_for_fasta_and_save_for_runs(
 
 
 class SeqDeduplicator:
-    def __init__(self, db: Any, minimum_sequence_length: int, verbose: int) -> None:
+    def __init__(self, db: Any, minimum_sequence_length: int, verbose: int, overlap_length) -> None:
         self.minimum_sequence_length = minimum_sequence_length
         self.verbose = verbose
         self.nt_db = db
         self.lines = []
         self.this_assembly = False
-
+        self.overlap_length = overlap_length
     def __call__(
         self,
         fa_file_path: str,
@@ -185,7 +185,7 @@ class SeqDeduplicator:
                     self.this_assembly = True
 
                 if len(seq) > CHOMP_CUTOFF:
-                    for i in range(0, len(seq), CHOMP_LEN):
+                    for i in range(0, len(seq), CHOMP_LEN-self.overlap_length):
                         header = f"NODE_{this_index}"
                         self.lines.append(f">{header}\n{seq[i:i+CHOMP_LEN]}\n")
                         next(this_index)
@@ -207,6 +207,7 @@ class DatabasePreparer:
         dedup_time: list[int],
         trim_times: TimeKeeper,
         chunk_size: int,
+        overlap_length: int,
     ) -> None:
         self.fto = formatted_taxa_out
         self.comp = components
@@ -224,6 +225,7 @@ class DatabasePreparer:
         self.this_index = IndexIter()
         self.dedup_time = dedup_time
         self.chunk_size = chunk_size
+        self.overlap_length = overlap_length
 
     def init_db(
         self,
@@ -257,6 +259,7 @@ class DatabasePreparer:
             self.nt_db,
             self.minimum_sequence_length,
             self.verbose,
+            self.overlap_length
         )
         for fa_file_path in self.comp:
             deduper(
@@ -344,6 +347,7 @@ def map_taxa_runs(
     dedup_time: list[int],
     trim_times: TimeKeeper,
     chunk_size,
+    overlap_size,
 ):
     formatted_taxa_out, components = tuple_in
 
@@ -358,6 +362,7 @@ def map_taxa_runs(
         dedup_time,
         trim_times,
         chunk_size,
+        overlap_size
     )(
         secondary_directory,
     )
@@ -404,6 +409,7 @@ def main(args):
             dedup_time,
             trim_times,
             args.chunk_size,
+            args.overlap_length
         )
         for tuple_in in taxa_runs.items()
     ]

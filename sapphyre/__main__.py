@@ -71,6 +71,13 @@ def subcmd_prepare(subparsers):
         action="store_true",
         help="Writes the prepared input fasta into the output taxa directory.",
     )
+    par.add_argument(
+        "-ol",
+        "--overlap_length",
+        type=int,
+        default=0,
+        help="Amount of overlap between chomped segments"
+    )
     par.set_defaults(func=prepare, formathelp=par.format_help)
 
 
