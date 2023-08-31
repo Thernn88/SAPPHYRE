@@ -388,7 +388,7 @@ def process_batch(
 
         reads = [node for node in nodes if node is not None and not node.is_contig]
         if args.debug:
-            kicks.append(f"Kicks for {gene}\nCoverage: {coverage:.2f}\nHeader B,,Header A,Overlap Percent,Matching Percent\n")
+            kicks.append(f"Kicks for {gene}\nHeader B,,Header A,Overlap Percent,Matching Percent\n")
 
         for (i, contig_a), (j, contig_b) in combinations(enumerate(contigs), 2):
             if contig_a.kick or contig_b.kick:
@@ -417,39 +417,52 @@ def process_batch(
                         kicked_headers.update(contig_b.children)
         contigs = [contig for contig in contigs if not contig.kick]
         if contigs:
-            for read in reads:
-                keep = False
-                kick = False
-                for contig in contigs:
-                    overlap_coords = get_overlap(contig.start, contig.end, read.start, read.end, 1)
-                    if overlap_coords:
-                        # this block can probably just be an overlap percent call
-                        overlap_amount = overlap_coords[1] - overlap_coords[0]
-                        percent = overlap_amount / read.length
-                        # this block can probably just be an overlap percent call
+            nodes = contigs + reads
+        else:
+            nodes = reads
 
-                        if percent >= args.read_percent:
-                            is_kick, matching_percent = read.is_kick(
-                                contig,
-                                overlap_coords,
-                                args.required_read_percent,
-                                overlap_amount,
-                            )
+        nodes.sort(key = lambda x: x.length, reverse=True)
 
-                            if is_kick:
-                                kick = True
+        for i, node_kick in enumerate(nodes):
+            kick = False
+            keep = False
+            for j, node_2 in enumerate(nodes):
+                if i == j:
+                    continue
+                if node_kick.length > node_2.length:
+                    continue
+                if node_2.kick:
+                    continue
 
-                            if matching_percent >= args.keep_read_percent:
-                                keep = True
-                                break
+                overlap_coords = get_overlap(node_2.start, node_2.end, node_kick.start, node_kick.end, 1)
+                if overlap_coords:
+                    # this block can probably just be an overlap percent call
+                    overlap_amount = overlap_coords[1] - overlap_coords[0]
+                    percent = overlap_amount / node_kick.length
+                    # this block can probably just be an overlap percent call
 
-                if kick and not keep:
-                    read.kick = True
-                    if args.debug:
-                        kicks.append(
-                            f"{read.header},Kicked By,{contig.contig_header()},{percent},{matching_percent}\n"
+                    if percent >= args.read_percent:
+                        is_kick, matching_percent = node_kick.is_kick(
+                            node_2,
+                            overlap_coords,
+                            args.required_read_percent,
+                            overlap_amount,
                         )
-                    kicked_headers.add(read.header)
+
+                        if is_kick:
+                            kick = True
+
+                        if matching_percent >= args.keep_read_percent:
+                            keep = True
+                            break
+            if kick and not keep:
+                node_kick.kick = True
+                if args.debug:
+                    kicks.append(
+                        f"{node_kick.contig_header()},Kicked By,{node_2.contig_header()},{percent},{matching_percent}\n"
+                    )
+                kicked_headers.add(node_kick.header)
+
         aa_output_after_kick = sum(1 for i in aa_output if i[0] not in kicked_headers and not i[0].endswith(".")) > 0
 
         if not aa_output_after_kick:
