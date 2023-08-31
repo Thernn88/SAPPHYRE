@@ -334,10 +334,11 @@ def containments(this_args: ContainmentArgs):
         for top_ref_hit in top_hit.refs:
             top_hit_reference = top_ref_hit.ref
 
-            for hit in this_args.hits[i + 1 :]:
+            for hit in this_args.hits[i + 1:]:
                 if hit.uid in kicks:
                     continue
-
+                if top_hit.node == hit.node:
+                    continue
                 for ref_hit in hit.refs:
                     if this_args.target_to_taxon[ref_hit.query][1] != top_hit_reference:
                         continue
