@@ -312,25 +312,10 @@ def process_batch(
         del ref_alignments
         del ref_consensus
 
-        read_alignments = [seq for header, seq in aa_output if not header.endswith(".")]
-        read_consensus = {i: {seq[i] for seq in read_alignments if seq[i] != "-"} for i in range(len(read_alignments[0]))}
-
-        total_cols = 0
-        data_cols = 0
-
-        for i, letters in read_consensus.items():
-            total_cols += 1
-            if letters:
-                data_cols += 1
-
-        coverage = data_cols / total_cols
-
-        del read_alignments
-        del read_consensus
-
         # Rescurive scan
         splice_occured = True
         failed = defaultdict(dict)
+        merges_occured = False
         while splice_occured:
             splice_occured = False
             for i, node in enumerate(nodes):
@@ -367,6 +352,7 @@ def process_batch(
                         if is_same_kmer(node_kmer, other_kmer):
                             splice_occured = True
                             node.extend(node_2, overlap_coords[0])
+                            merges_occured = True
                             nodes[j] = None
                             continue
 
@@ -374,9 +360,29 @@ def process_batch(
                             
         valid_contigs = [node for node in nodes if node is not None and node.is_contig]
 
-        if not valid_contigs and not batch_args.is_assembly and coverage < 0.5:
-            kicked_genes.append(gene.split(".")[0])
-            continue
+        if not merges_occured and not batch_args.is_assembly:
+            read_alignments = [seq for header, seq in aa_output if not header.endswith(".")]
+            read_consensus = {i: {seq[i] for seq in read_alignments if seq[i] != "-"} for i in range(len(read_alignments[0]))}
+
+            total_cols = 0
+            data_cols = 0
+
+            for i, letters in read_consensus.items():
+                total_cols += 1
+                if letters:
+                    data_cols += 1
+
+            coverage = data_cols / total_cols
+
+            del read_alignments
+            del read_consensus
+
+            if coverage < 0.5:
+                kicked_genes.append(f"Coverage: {coverage} no contigs: {gene.split('.')[0]}")
+                continue
+
+
+ 
         #contigs is a shallow copy of valid_contigs
         contigs = sorted(valid_contigs, key=lambda x: x.length, reverse=True)
 
@@ -447,7 +453,7 @@ def process_batch(
         aa_output_after_kick = sum(1 for i in aa_output if i[0] not in kicked_headers and not i[0].endswith(".")) > 0
 
         if not aa_output_after_kick:
-            kicked_genes.append(gene.split(".")[0])
+            kicked_genes.append(f"No valid sequences after kick: {gene.split('.')[0]}")
             continue
 
         if args.debug == 2:
