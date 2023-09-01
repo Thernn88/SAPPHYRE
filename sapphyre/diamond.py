@@ -92,21 +92,6 @@ class MultiReturn(Struct, frozen=True):
     log: list[str]
     this_kicks: set
 
-
-class ContainmentArgs(Struct, frozen=True):
-    hits: list[Hit]
-    target_to_taxon: dict[str, tuple[str, str, int]]
-    debug: bool
-    gene: str
-
-
-class ContainmentReturn(Struct, frozen=True):
-    kicks: set
-    kick_count: int
-    log: list[str]
-    gene: str
-
-
 class ConvertArgs(Struct, frozen=True):
     hits: list[Hit]
     gene: str
@@ -318,58 +303,6 @@ def internal_filter(this_args: InternalArgs) -> tuple[set, list, int]:
                     )
 
     return InternalReturn(this_args.gene, next(kicks), log, this_kicks)
-
-
-def containments(this_args: ContainmentArgs):
-    PARALOG_SCORE_DIFF = 0.1
-    KICK_PERCENT = 0.8
-    this_args.hits.sort(key=lambda x: x.score, reverse=True)
-
-    log = []
-    kicks = set()
-
-    for i, top_hit in enumerate(this_args.hits):
-        if top_hit.uid in kicks:
-            continue
-        for top_ref_hit in top_hit.refs:
-            top_hit_reference = top_ref_hit.ref
-
-            for hit in this_args.hits[i + 1:]:
-                if hit.uid in kicks:
-                    continue
-                if top_hit.node == hit.node:
-                    continue
-                for ref_hit in hit.refs:
-                    if this_args.target_to_taxon[ref_hit.query][1] != top_hit_reference:
-                        continue
-
-                    if (
-                        get_score_difference(top_hit.score, hit.score)
-                        < PARALOG_SCORE_DIFF
-                    ):
-                        continue
-
-                    overlap_percent = phymmr_tools.get_overlap_percent(top_ref_hit.start,top_ref_hit.end,ref_hit.start,ref_hit.end)
-
-                    if overlap_percent > KICK_PERCENT:
-                        kicks.add(hit.uid)
-                        if this_args.debug:
-                            log.append(
-                                hit.gene
-                                + " "
-                                + hit.node
-                                + "|"
-                                + str(hit.frame)
-                                + " kicked out by "
-                                + top_hit.node
-                                + "|"
-                                + str(top_hit.frame)
-                                + f" overlap: {overlap_percent:.2f}",
-                            )
-                        break
-
-    return ContainmentReturn(kicks, len(kicks), log, this_args.gene)
-
 
 def convert_and_cull(this_args: ConvertArgs) -> ConvertReturn:
     output = []
@@ -879,51 +812,16 @@ def run_process(args: Namespace, input_path: str) -> bool:
             output[gene] = [i for i in output[gene] if i.uid not in result.this_kicks]
 
         next_step = (
-            "Writing to db" if not is_assembly else "Doing Assembly Containments"
+            "Writing to db"
         )
         printv(
             f"Filtering done. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. {next_step}",
             args.verbose,
         )
-
-        containment_kicks = 0
-        containment_log = []
         arguments = []
         present_genes = []
-        if is_assembly:
-            for gene, hits in output.items():
-                arguments.append(
-                    ContainmentArgs(
-                        hits,
-                        target_to_taxon,
-                        args.debug,
-                        gene,
-                    ),
-                )
-
-            if post_threads > 1:
-                # with Pool(post_threads) as pool:
-                results = pool.map(containments, arguments)
-            else:
-                results = [containments(arg) for arg in arguments]
-
-            next_output = []
-            for result in results:
-                containment_kicks += result.kick_count
-                if args.debug:
-                    containment_log.extend(result.log)
-
-                next_output.append(
-                    (
-                        result.gene,
-                        [i for i in output[result.gene] if i.uid not in result.kicks],
-                    ),
-                )
-                present_genes.append(result.gene)
-            output = next_output
-        else:
-            present_genes = list(output.keys())
-            output = output.items()
+        present_genes = list(output.keys())
+        output = output.items()
 
         # DOING VARIANT FILTER
         variant_filter = defaultdict(list)
@@ -1035,10 +933,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
         if global_log:
             with open(os.path.join(input_path, "multi.log"), "w") as fp:
                 fp.write("\n".join(global_log))
-        if containment_log:
-            with open(os.path.join(input_path, "containment.log"), "w") as fp:
-                fp.write("\n".join(containment_log))
-
         printv(
             f"{multi_kicks} multi kicks",
             args.verbose,
@@ -1048,11 +942,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             args.verbose,
         )
         printv(
-            f"{containment_kicks} containment kicks",
-            args.verbose,
-        )
-        printv(
-            f"Took {time_keeper.lap():.2f}s for {multi_kicks+internal_kicks+containment_kicks} kicks leaving {passes} results. Writing to DB",
+            f"Took {time_keeper.lap():.2f}s for {multi_kicks+internal_kicks} kicks leaving {passes} results. Writing to DB",
             # f"Took {time_keeper.lap():.2f}s for {multi_kicks + internal_kicks} kicks leaving {passes} results. Writing to DB",
             args.verbose,
         )
