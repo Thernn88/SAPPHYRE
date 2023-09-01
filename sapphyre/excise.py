@@ -112,8 +112,6 @@ def find_coverage_regions(consensus: str, start: int, stop: int, ambiguous="?") 
 def check_bad_regions(
     consensus: str, limit: float, initial_window=16, offset=0, rig=False
 ) -> list:
-    # if start is None and stop is None:
-    # else:
     if not rig:
         first, last = 0, len(consensus)
     else:
@@ -136,11 +134,11 @@ def check_bad_regions(
             r += 1
             continue
         if begin is not None:
-            a, b = first_last_X(consensus[begin:last])
+            a, b = first_last_X(consensus[begin:r+1])
             a, b = a + begin + offset, b + begin + offset
             if b not in output:
                 output[b] = (a, b)
-        l = r
+        l = l + initial_window - num_x
         r = l + initial_window
         begin = None
         num_x = consensus[l:r].count("X")
@@ -245,14 +243,7 @@ def log_excised_consensus(
     else:
         consensus_seq = bd.dumb_consensus(sequences, consensus_threshold)
     consensus_seq = bd.convert_consensus(sequences, consensus_seq)
-    # if verbose:
-    #     print(f"{gene}\n{consensus_seq}\n")
-    # old_bad_regions = check_bad_regions(consensus_seq, excise_threshold, rig=True)
     bad_regions = check_covered_bad_regions(consensus_seq, excise_threshold)
-    # if old_bad_regions and not bad_regions:
-    #     bad_regions = check_covered_bad_regions(
-    #         consensus_seq, excise_threshold, test=True
-    #     )
     if bad_regions:
         if len(bad_regions) == 1:
             a, b = bad_regions[0]
