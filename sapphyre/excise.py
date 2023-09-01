@@ -138,7 +138,7 @@ def check_bad_regions(
             a, b = a + begin + offset, b + begin + offset
             if b not in output:
                 output[b] = (a, b)
-        l = l + initial_window - num_x
+        l = r
         r = l + initial_window
         begin = None
         num_x = consensus[l:r].count("X")
