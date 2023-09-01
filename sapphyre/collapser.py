@@ -293,24 +293,25 @@ def process_batch(
                 )
             )
 
-        ref_alignments = [seq for header, seq in aa_output if header.endswith(".")]
-        ref_consensus = {i: {seq[i] for seq in ref_alignments if seq[i] != "-"} for i in range(len(ref_alignments[0]))}
-        for read in nodes:
-            average_matching_cols = average_match(
-                read.sequence,
-                ref_consensus,
-                read.start,
-                read.end,
-            )
+        if not batch_args.is_assembly:
+            ref_alignments = [seq for header, seq in aa_output if header.endswith(".")]
+            ref_consensus = {i: {seq[i] for seq in ref_alignments if seq[i] != "-"} for i in range(len(ref_alignments[0]))}
+            for read in nodes:
+                average_matching_cols = average_match(
+                    read.sequence,
+                    ref_consensus,
+                    read.start,
+                    read.end,
+                )
 
-            if average_matching_cols < args.matching_consensus_percent:
-                if args.debug:
-                    consensus_kicks.append(f"{gene},{read.header},{average_matching_cols},{read.length}\n")
-                kicked_headers.add(read.header)
-                read.kick = True
+                if average_matching_cols < args.matching_consensus_percent:
+                    if args.debug:
+                        consensus_kicks.append(f"{gene},{read.header},{average_matching_cols},{read.length}\n")
+                    kicked_headers.add(read.header)
+                    read.kick = True
 
-        del ref_alignments
-        del ref_consensus
+            del ref_alignments
+            del ref_consensus
 
         # Rescurive scan
         splice_occured = True
