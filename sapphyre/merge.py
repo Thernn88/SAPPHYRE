@@ -513,7 +513,7 @@ def do_protein(
                         start, end = start_ends[header]
 
                         # If sequence has data at this position
-                        if start <= i <= end:
+                        if start <= i < end:
                             total_characters += count
                             this_char = sequence[i]
 
