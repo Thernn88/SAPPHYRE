@@ -229,7 +229,7 @@ def get_toprefs(rocks_nt_db: RocksDB) -> list[str]:
     Returns:
         list: List of top references
     """
-    return rocks_nt_db.get("getall:valid_refs").split(",")
+    return rocks_nt_db.get("getall:valid_refs").split(","), rocks_nt_db.get("get:isassembly") == "True"
 
 
 def translate_cdna(cdna_seq):
@@ -320,6 +320,7 @@ def print_unmerged_sequences(
     dupe_debug_fp: TextIO,
     verbose: int,
     mat: dict,
+    is_assembly: bool,
 ) -> tuple[dict[str, list], list[tuple[str, str]], list[tuple[str, str]]]:
     """Returns a list of unique trimmed sequences for a given gene with formatted headers.
 
@@ -373,22 +374,23 @@ def print_unmerged_sequences(
         aa_seq = translate_cdna(nt_seq)
 
         # Trim to match reference
-        r_start, r_end = hit.get_bp_trim(
-            aa_seq, core_aa_seqs, trim_matches, is_positive_match, debug_fp, header, mat
-        )
-        if r_start is None or r_end is None:
-            printv(f"WARNING: Trim kicked: {hit.node}|{hit.frame}", verbose, 2)
-            continue
+        if not is_assembly:
+            r_start, r_end = hit.get_bp_trim(
+                aa_seq, core_aa_seqs, trim_matches, is_positive_match, debug_fp, header, mat
+            )
+            if r_start is None or r_end is None:
+                printv(f"WARNING: Trim kicked: {hit.node}|{hit.frame}", verbose, 2)
+                continue
 
-        if r_end == 0:
-            nt_seq = nt_seq[(r_start * 3) :]
-            aa_seq = aa_seq[r_start:]
-        else:
-            nt_seq = nt_seq[(r_start * 3) : -(r_end * 3)]
-            aa_seq = aa_seq[r_start:-r_end]
+            if r_end == 0:
+                nt_seq = nt_seq[(r_start * 3) :]
+                aa_seq = aa_seq[r_start:]
+            else:
+                nt_seq = nt_seq[(r_start * 3) : -(r_end * 3)]
+                aa_seq = aa_seq[r_start:-r_end]
 
-        if debug_fp:
-            debug_fp.write(f">{header}\n{aa_seq}\n")
+            if debug_fp:
+                debug_fp.write(f">{header}\n{aa_seq}\n")
 
         # Check if new seq is over bp minimum
         data_after = len(aa_seq)
@@ -486,6 +488,7 @@ OutputArgs = namedtuple(
         "blosum_mode",
         "minimum_bp",
         "debug",
+        "is_assembly",
     ],
 )
 
@@ -552,6 +555,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         debug_dupes,
         oargs.verbose,
         mat,
+        oargs.is_assembly,
     )
     if debug_alignments:
         debug_alignments.close()
@@ -646,7 +650,7 @@ def do_taxa(path: str, taxa_id: str, args: Namespace):
     )
 
     target_taxon = get_gene_variants(rocky.get_rock("rocks_hits_db"))
-    top_refs = get_toprefs(rocky.get_rock("rocks_nt_db"))
+    top_refs, is_assembly = get_toprefs(rocky.get_rock("rocks_nt_db"))
 
     printv(
         f"Got reference data. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Trimming hits to alignment coords.",
@@ -675,6 +679,7 @@ def do_taxa(path: str, taxa_id: str, args: Namespace):
                     args.blosum_mode,
                     args.minimum_bp,
                     args.debug,
+                    is_assembly
                 ),
             ),
         )
