@@ -306,8 +306,6 @@ def generate_tmp_aln(
     aln_file: str,
     targets: dict[str, str],
     tmp: NamedTemporaryFile,
-    debug: float,
-    this_intermediates: str,
 ) -> None:
     """Grabs target reference sequences and removes empty columns from the alignment.
 
@@ -324,31 +322,9 @@ def generate_tmp_aln(
     sequences = []
     for header, sequence in parseFasta(aln_file, True):
         if header in targets:
-            sequences.append((targets[header], sequence))
+            sequences.append((targets[header], sequence.replace("-","")))
 
-    empty_columns = None
-    for header, sequence in sequences:
-        if empty_columns is None:
-            empty_columns = [True] * len(sequence)
-
-        for col, let in enumerate(sequence):
-            if let != "-":
-                empty_columns[col] = False
-
-    to_write = []
-    for header, sequence in sequences:
-        to_write.append(
-            (
-                header,
-                "".join(
-                    [let for col, let in enumerate(sequence) if not empty_columns[col]],
-                ),
-            ),
-        )
-
-    writeFasta(tmp.name, to_write)
-    if debug:
-        writeFasta(os.path.join(this_intermediates, "references.fa"), to_write)
+    writeFasta(tmp.name, sequences)
     tmp.flush()
 
 
@@ -545,9 +521,45 @@ def run_command(args: CmdArgs) -> None:
                 3,
             )  # Debug
             with NamedTemporaryFile(dir=parent_tmpdir, mode="w+") as tmp_aln:
-                generate_tmp_aln(aln_file, targets, tmp_aln, debug, this_intermediates)
+                generate_tmp_aln(aln_file, targets, tmp_aln)
 
-                prev_file = tmp_aln.name
+                new_aln = os.path.join(parent_tmpdir, "NewAlign.aln.fa")
+
+                # -v- Clustalo
+                os.system(
+                    f"clustalo -i '{tmp_aln.name}' -o '{new_aln}'  --full --iter=3 --full-iter --force",
+                )  # --verbose
+
+                # -v- Mafft-linsi
+                # os.system(f"mafft-linsi --thread 1 '{tmp_aln.name}' > '{new_aln}'")
+
+
+                sequences = list(parseFasta(new_aln, True))
+
+                empty_columns = None
+                for header, sequence in sequences:
+                    if empty_columns is None:
+                        empty_columns = [True] * len(sequence)
+
+                    for col, let in enumerate(sequence):
+                        if let != "-":
+                            empty_columns[col] = False
+
+                to_write = []
+                for header, sequence in sequences:
+                    to_write.append(
+                        (
+                            header,
+                            "".join(
+                                [let for col, let in enumerate(sequence) if not empty_columns[col]],
+                            ),
+                        ),
+                    )
+                writeFasta(new_aln, to_write)
+                if debug:
+                    writeFasta(os.path.join(this_intermediates, "references.fa"), to_write)
+
+                prev_file = new_aln
 
                 for i, file in enumerate(aligned_ingredients):
                     printv(
