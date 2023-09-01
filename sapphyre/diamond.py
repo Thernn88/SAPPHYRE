@@ -451,7 +451,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     MINIMUM_CHUNKSIZE = 50
     # Hard coded values for assembly datasets
     ASSEMBLY_EVALUE = 5
-    ASSEMBLY_MIN_ORF = 30
+    ASSEMBLY_MIN_ORF = 20
     # Default min orf value
     NORMAL_MIN_ORF = 20
 
