@@ -451,6 +451,9 @@ def process_batch(
                         )
 
                         if is_kick:
+                            kick_percent = percent
+                            kick_matching_percent = matching_percent
+                            kick_parent = node_2.contig_header()
                             kick = True
 
                         if matching_percent >= args.keep_read_percent:
@@ -460,9 +463,11 @@ def process_batch(
                 node_kick.kick = True
                 if args.debug:
                     kicks.append(
-                        f"{node_kick.contig_header()},Kicked By,{node_2.contig_header()},{percent},{matching_percent}\n"
+                        f"{node_kick.contig_header()},Kicked By,{kick_parent},{kick_percent},{kick_matching_percent}\n"
                     )
                 kicked_headers.add(node_kick.header)
+                if node_kick.is_contig:
+                    kicked_headers.update(node_kick.children)
 
         aa_output_after_kick = sum(1 for i in aa_output if i[0] not in kicked_headers and not i[0].endswith(".")) > 0
 
