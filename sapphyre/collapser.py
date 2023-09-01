@@ -378,7 +378,7 @@ def process_batch(
             del read_alignments
             del read_consensus
 
-            if coverage < 0.5:
+            if coverage < 0.1:
                 kicked_genes.append(f"Coverage: {coverage} no contigs: {gene.split('.')[0]}")
                 continue
 
