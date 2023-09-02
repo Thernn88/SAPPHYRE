@@ -533,6 +533,7 @@ def run_command(args: CmdArgs) -> None:
                     ),
                     to_merge,
                 )
+        final_sequences = []
         if aligned_ingredients or has_singleton_merge:
             aligned_ingredients = [
                 i[0] for i in sorted(aligned_ingredients, key=lambda x: x[1])
@@ -557,7 +558,7 @@ def run_command(args: CmdArgs) -> None:
                     )
                     out_file = os.path.join(parent_tmpdir, f"part_{i}.fa")
                     if len(aligned_ingredients) - 1 == i:
-                        out_file = args.result_file
+                        out_file = os.path.join(parent_tmpdir, os.path.basename(args.result_file))
 
                     if has_singleton_merge and i == 0:
                         if debug:
@@ -584,6 +585,9 @@ def run_command(args: CmdArgs) -> None:
                             parseFasta(out_file, True),
                         )
 
+                    if len(aligned_ingredients) - 1 == i:
+                        final_sequences = list(parseFasta(out_file, True))
+
                     prev_file = out_file
 
     merge_time = keeper.differential() - align_time - cluster_time
@@ -592,7 +596,7 @@ def run_command(args: CmdArgs) -> None:
     to_write = []
     references = []
     inserted = 0
-    for header, sequence in parseFasta(args.result_file, True):
+    for header, sequence in final_sequences:
         if header.endswith("."):
             references.append((header, sequence))
         else:
@@ -604,7 +608,7 @@ def run_command(args: CmdArgs) -> None:
             to_write.append((header, sequence))
 
     to_write.sort(key=lambda x: get_start(x[1]))
-    os.remove(args.result_file)
+
 
     writeFasta(args.result_file, references + to_write, compress=args.compress)
     printv(f"Done. Took {keeper.differential():.2f}", args.verbose, 3)  # Debug
