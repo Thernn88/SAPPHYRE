@@ -246,16 +246,21 @@ def blosum_sub_merge(mat, overlap_coords, overlap_amount, aa_sequence, aa_sequen
 
 
 def get_score(seq, start, end, consensus_dict):
+    total = 0
     score = 0
     for i in range(start, end):
         let = seq[i]
+        if consensus_dict[i] == set():
+            continue
+
         if let == "-":
             continue
 
         if seq[i] in consensus_dict[i]:
             score += 1
+        total += 1
 
-    percent = score / (end - start)
+    percent = score / total
     return percent
 
 
