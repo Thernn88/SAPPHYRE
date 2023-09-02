@@ -244,6 +244,21 @@ def blosum_sub_merge(mat, overlap_coords, overlap_amount, aa_sequence, aa_sequen
     
     return allow_sub
 
+
+def get_score(seq, start, end, consensus_dict):
+    score = 0
+    for i in range(start, end):
+        let = seq[i]
+        if let == "-":
+            continue
+
+        if seq[i] in consensus_dict[i]:
+            score += 1
+
+    percent = score / (end - start)
+    return percent
+
+
 def process_batch(
     batch_args: BatchArgs,
 ):
@@ -293,9 +308,11 @@ def process_batch(
                 )
             )
 
+        ref_alignments = [seq for header, seq in aa_output if header.endswith(".")]
+        ref_consensus = {i: {seq[i] for seq in ref_alignments if seq[i] != "-"} for i in range(len(ref_alignments[0]))}
+        del ref_alignments
+
         if not batch_args.is_assembly:
-            ref_alignments = [seq for header, seq in aa_output if header.endswith(".")]
-            ref_consensus = {i: {seq[i] for seq in ref_alignments if seq[i] != "-"} for i in range(len(ref_alignments[0]))}
             for read in nodes:
                 average_matching_cols = average_match(
                     read.sequence,
@@ -309,9 +326,6 @@ def process_batch(
                         consensus_kicks.append(f"{gene},{read.header},{average_matching_cols},{read.length}\n")
                     kicked_headers.add(read.header)
                     read.kick = True
-
-            del ref_alignments
-            del ref_consensus
 
         # Rescurive scan
         splice_occured = True
@@ -386,88 +400,124 @@ def process_batch(
  
         #contigs is a shallow copy of valid_contigs
         contigs = sorted(valid_contigs, key=lambda x: x.length, reverse=True)
-
-        reads = [node for node in nodes if node is not None and not node.is_contig]
         if args.debug:
-            kicks.append(f"Kicks for {gene}\nHeader B,,Header A,Overlap Percent,Matching Percent\n")
-
-        for (i, contig_a), (j, contig_b) in combinations(enumerate(contigs), 2):
-            if contig_a.kick or contig_b.kick:
-                continue
-            # this block can probably just be an overlap percent call
-            overlap_coords = get_overlap(contig_a.start, contig_a.end, contig_b.start, contig_b.end, 1)
-            if overlap_coords:
-                overlap_amount = overlap_coords[1] - overlap_coords[0]
-                percent = overlap_amount / contig_b.length
-            # this block can probably just be an overlap percent call
-
-                if percent >= args.contig_percent:
-                    is_kick, matching_percent = contig_a.is_kick(
-                        contig_b,
-                        overlap_coords,
-                        args.required_contig_percent,
-                        overlap_amount,
-                    )
-                    if is_kick:
-                        contig_b.kick = True
-                        if args.debug:
-                            kicks.append(
-                                f"{contig_b.contig_header()},Contig Kicked By,{contig_a.contig_header()},{percent},{matching_percent}\n"
-                            )
-                        kicked_headers.add(contig_b.header)
-                        kicked_headers.update(contig_b.children)
-        contigs = [contig for contig in contigs if not contig.kick]
-        if contigs:
-            nodes = contigs + reads
-        else:
-            nodes = reads
-
-        nodes.sort(key = lambda x: x.length, reverse=True)
-
-        for i, node_kick in enumerate(nodes):
-            kick = False
-            keep = False
-            for j, node_2 in enumerate(nodes):
-                if i == j:
-                    continue
-                if node_kick.length > node_2.length:
-                    continue
-                if node_2.kick:
+            kicks.append(f"Kicks for {gene}\nHeader B,,Header A,Overlap Percent,Score A, Score B\n")
+        if batch_args.is_assembly:
+            reads = []
+            for (i, contig_a), (j, contig_b) in combinations(enumerate(contigs), 2):
+                if contig_a.kick or contig_b.kick:
                     continue
 
-                overlap_coords = get_overlap(node_2.start, node_2.end, node_kick.start, node_kick.end, 1)
+                overlap_coords = get_overlap(contig_a.start, contig_a.end, contig_b.start, contig_b.end, 1)
                 if overlap_coords:
                     # this block can probably just be an overlap percent call
                     overlap_amount = overlap_coords[1] - overlap_coords[0]
-                    percent = overlap_amount / node_kick.length
+                    percent = overlap_amount / min(contig_a.length, contig_b.length)
                     # this block can probably just be an overlap percent call
 
                     if percent >= args.read_percent:
-                        is_kick, matching_percent = node_kick.is_kick(
-                            node_2,
+
+                        contig_a_score = get_score(contig_a.sequence, contig_a.start, contig_a.end, ref_consensus)
+                        contig_b_score = get_score(contig_b.sequence, contig_b.start, contig_b.end, ref_consensus)
+
+                        if contig_a_score > contig_b_score:
+                            contig_b.kick = True
+                            kicked_headers.add(contig_b.header)
+                            kicked_headers.update(contig_b.children)
+                            if args.debug:
+                                kicks.append(
+                                    f"{contig_b.contig_header()},Contig Kicked By,{contig_a.contig_header()},{percent},{contig_a_score},{contig_b_score}\n"
+                                )
+                        elif contig_b_score > contig_a_score:
+                            contig_a.kick = True
+                            kicked_headers.add(contig_a.header)
+                            kicked_headers.update(contig_a.children)
+                            if args.debug:
+                                kicks.append(
+                                    f"{contig_a.contig_header()},Contig Kicked By,{contig_b.contig_header()},{percent},{contig_a_score},{contig_b_score}\n"
+                                )
+        else:
+            reads = [node for node in nodes if node is not None and not node.is_contig]
+
+            for (i, contig_a), (j, contig_b) in combinations(enumerate(contigs), 2):
+                if contig_a.kick or contig_b.kick:
+                    continue
+                # this block can probably just be an overlap percent call
+                overlap_coords = get_overlap(contig_a.start, contig_a.end, contig_b.start, contig_b.end, 1)
+                if overlap_coords:
+                    overlap_amount = overlap_coords[1] - overlap_coords[0]
+                    percent = overlap_amount / contig_b.length
+                # this block can probably just be an overlap percent call
+
+                    if percent >= args.contig_percent:
+                        is_kick, matching_percent = contig_a.is_kick(
+                            contig_b,
                             overlap_coords,
-                            args.required_read_percent,
+                            args.required_contig_percent,
                             overlap_amount,
                         )
-
                         if is_kick:
-                            kick_percent = percent
-                            kick_matching_percent = matching_percent
-                            kick_parent = node_2.contig_header()
-                            kick = True
+                            contig_b.kick = True
+                            if args.debug:
+                                kicks.append(
+                                    f"{contig_b.contig_header()},Contig Kicked By,{contig_a.contig_header()},{percent},{matching_percent}\n"
+                                )
+                            kicked_headers.add(contig_b.header)
+                            kicked_headers.update(contig_b.children)
+            contigs = [contig for contig in contigs if not contig.kick]
 
-                        if matching_percent >= args.keep_read_percent:
-                            keep = True
-                            break
-            if kick and not keep:
-                node_kick.kick = True
-                if args.debug:
-                    kicks.append(
-                        f"{node_kick.contig_header()},Kicked By,{kick_parent},{kick_percent},{kick_matching_percent}\n"
-                    )
-                kicked_headers.add(node_kick.header)
-                if node_kick.is_contig:
-                    kicked_headers.update(node_kick.children)
+        
+            if contigs:
+                nodes = contigs + reads
+            else:
+                nodes = reads
+
+            nodes.sort(key = lambda x: x.length, reverse=True)
+
+            for i, node_kick in enumerate(nodes):
+                kick = False
+                keep = False
+                for j, node_2 in enumerate(nodes):
+                    if i == j:
+                        continue
+                    if node_kick.length > node_2.length:
+                        continue
+                    if node_2.kick:
+                        continue
+
+                    overlap_coords = get_overlap(node_2.start, node_2.end, node_kick.start, node_kick.end, 1)
+                    if overlap_coords:
+                        # this block can probably just be an overlap percent call
+                        overlap_amount = overlap_coords[1] - overlap_coords[0]
+                        percent = overlap_amount / node_kick.length
+                        # this block can probably just be an overlap percent call
+
+                        if percent >= args.read_percent:
+                            is_kick, matching_percent = node_kick.is_kick(
+                                node_2,
+                                overlap_coords,
+                                args.required_read_percent,
+                                overlap_amount,
+                            )
+
+                            if is_kick:
+                                kick_percent = percent
+                                kick_matching_percent = matching_percent
+                                kick_parent = node_2.contig_header()
+                                kick = True
+
+                            if matching_percent >= args.keep_read_percent:
+                                keep = True
+                                break
+                if kick and not keep:
+                    node_kick.kick = True
+                    if args.debug:
+                        kicks.append(
+                            f"{node_kick.contig_header()},Kicked By,{kick_parent},{kick_percent},{kick_matching_percent}\n"
+                        )
+                    kicked_headers.add(node_kick.header)
+                    if node_kick.is_contig:
+                        kicked_headers.update(node_kick.children)
 
         aa_output_after_kick = sum(1 for i in aa_output if i[0] not in kicked_headers and not i[0].endswith(".")) > 0
 
