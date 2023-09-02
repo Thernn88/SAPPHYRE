@@ -52,11 +52,11 @@ def main(argsobj):
         if not internal.main(this_args):
             print()
             print(argsobj.format)
-    if to_move:
-        printv("Moving Pre-flagged Folders.", argsobj.verbose)
+    # if to_move:
+    #     printv("Moving Pre-flagged Folders.", argsobj.verbose)
 
-        excise.move_flagged(to_move, this_args.processes)
-        printv(f"Took {timer.differential():.2f} seconds overall.", argsobj.verbose)
+    #     excise.move_flagged(to_move, this_args.processes)
+    #     printv(f"Took {timer.differential():.2f} seconds overall.", argsobj.verbose)
 
     return True
 
