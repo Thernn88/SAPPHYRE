@@ -120,7 +120,7 @@ def average_match(seq_a, consensus, start, end):
     match = 0
     total = 0
     for i in range(start, end):
-        if consensus[i]:
+        if consensus[i] != set() and seq_a[i] != "-":
             total += 1
 
             if seq_a[i] in consensus[i]:
