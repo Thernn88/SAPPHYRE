@@ -944,17 +944,21 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
         reference_gap_col = {i for i, x in post_gap_present_threshold.items() if not x}
 
-        aa_out, gap_pass_through, trim_log, kicks = trim_large_gaps(
-            aa_out,
-            reference_gap_col,
-            fargs.amt_matches,
-            fargs.mismatches,
-            post_all_dashes_by_index,
-            post_character_at_each_pos,
-            post_gap_present_threshold,
-            fargs.bp,
-            fargs.debug,
-        )
+        gap_pass_through = {}
+        trim_log = []
+        kicks = []
+
+        # aa_out, gap_pass_through, trim_log, kicks = trim_large_gaps(
+        #     aa_out,
+        #     reference_gap_col,
+        #     fargs.amt_matches,
+        #     fargs.mismatches,
+        #     post_all_dashes_by_index,
+        #     post_character_at_each_pos,
+        #     post_gap_present_threshold,
+        #     fargs.bp,
+        #     fargs.debug,
+        # )
 
         if fargs.debug:
             log.extend(trim_log)
