@@ -31,6 +31,7 @@ class CollapserArgs(Struct):
     verbose: int
     debug: int
     matching_consensus_percent: float
+    gross_diference_percent: float
 
 
 class BatchArgs(Struct):
@@ -43,6 +44,7 @@ class BatchArgs(Struct):
     compress: bool
     is_assembly: bool
     matching_consensus_percent: float
+    gross_diference_percent: float
 
 class NODE(Struct):
     header: str
@@ -179,6 +181,7 @@ def do_folder(args, input_path):
             compress,
             is_assembly,
             args.matching_consensus_percent,
+            args.gross_diference_percent,
         )
         for i in range(0, len(genes), per_thread)
     ]
@@ -405,9 +408,10 @@ def process_batch(
  
         #contigs is a shallow copy of valid_contigs
         contigs = sorted(valid_contigs, key=lambda x: x.length, reverse=True)
-        if args.debug:
-            kicks.append(f"Kicks for {gene}\nHeader B,,Header A,Overlap Percent,Score A, Score B\n")
+        
         if batch_args.is_assembly:
+            if args.debug:
+                kicks.append(f"Kicks for {gene}\nHeader B,,Header A,Overlap Percent,Score A, Score B\n")
             reads = []
             for (i, contig_a), (j, contig_b) in combinations(enumerate(contigs), 2):
                 if contig_a.kick or contig_b.kick:
@@ -442,6 +446,8 @@ def process_batch(
                                     f"{contig_a.contig_header()},Contig Kicked By,{contig_b.contig_header()},{percent},{contig_a_score},{contig_b_score}\n"
                                 )
         else:
+            if args.debug:
+                kicks.append(f"Kicks for {gene}\nHeader B,,Header A,Overlap Percent,Matching Percent,Length Ratio\n")
             reads = [node for node in nodes if node is not None and not node.is_contig]
 
             for (i, contig_a), (j, contig_b) in combinations(enumerate(contigs), 2):
@@ -461,11 +467,18 @@ def process_batch(
                             args.required_contig_percent,
                             overlap_amount,
                         )
+
+                        #length percent
+                        length_percent = min(contig_a.length, contig_b.length) / max(contig_a.length, contig_b.length)
+                        
+                        if not is_kick and length_percent <= 0.1 and matching_percent < batch_args.gross_diference_percent:
+                            is_kick = True
+                            
                         if is_kick:
                             contig_b.kick = True
                             if args.debug:
                                 kicks.append(
-                                    f"{contig_b.contig_header()},Contig Kicked By,{contig_a.contig_header()},{percent},{matching_percent}\n"
+                                    f"{contig_b.contig_header()},Contig Kicked By,{contig_a.contig_header()},{percent},{matching_percent},{length_percent}\n"
                                 )
                             kicked_headers.add(contig_b.header)
                             kicked_headers.update(contig_b.children)
@@ -584,6 +597,7 @@ def main(args):
         verbose=args.verbose,
         debug=args.debug,
         matching_consensus_percent = args.matching_consensus_percent,
+        gross_diference_percent = args.gross_diference_percent,
     )
 
     return do_folder(this_args, args.INPUT)
