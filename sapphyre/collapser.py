@@ -321,20 +321,21 @@ def process_batch(
         ref_consensus = {i: {seq[i] for seq in ref_alignments if seq[i] != "-"} for i in range(len(ref_alignments[0]))}
         del ref_alignments
 
-        if not batch_args.is_assembly:
-            for read in nodes:
-                average_matching_cols = average_match(
-                    read.sequence,
-                    ref_consensus,
-                    read.start,
-                    read.end,
-                )
+        match_percent = args.matching_consensus_percent if batch_args.is_assembly else 0.6
 
-                if average_matching_cols < args.matching_consensus_percent:
-                    if args.debug:
-                        consensus_kicks.append(f"{gene},{read.header},{average_matching_cols},{read.length}\n")
-                    kicked_headers.add(read.header)
-                    read.kick = True
+        for read in nodes:
+            average_matching_cols = average_match(
+                read.sequence,
+                ref_consensus,
+                read.start,
+                read.end,
+            )
+
+            if average_matching_cols < match_percent:
+                if args.debug:
+                    consensus_kicks.append(f"{gene},{read.header},{average_matching_cols},{read.length}\n")
+                kicked_headers.add(read.header)
+                read.kick = True
 
         # Rescurive scan
         splice_occured = True
