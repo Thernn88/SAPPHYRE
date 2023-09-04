@@ -313,8 +313,9 @@ def process_batch(
                 )
             )
 
+        loci_length = len(ref_alignments[0])
         ref_alignments = [seq for header, seq in aa_output if header.endswith(".")]
-        ref_consensus = {i: {seq[i] for seq in ref_alignments if seq[i] != "-"} for i in range(len(ref_alignments[0]))}
+        ref_consensus = {i: {seq[i] for seq in ref_alignments if seq[i] != "-"} for i in range(loci_length)}
         del ref_alignments
 
         if not batch_args.is_assembly:
@@ -409,7 +410,15 @@ def process_batch(
             kicks.append(f"Kicks for {gene}\nHeader B,,Header A,Overlap Percent,Score A, Score B\n")
         if batch_args.is_assembly:
             reads = []
-            for (i, contig_a), (j, contig_b) in combinations(enumerate(contigs), 2):
+            large_coverage_contigs = []
+            smaller_contigs = []
+            for contig in contigs:
+                if contig.length / loci_length >= 0.5:
+                    large_coverage_contigs.append(contig)
+                else:
+                    smaller_contigs.append(contig)
+
+            for (i, contig_a), (j, contig_b) in combinations(enumerate(large_coverage_contigs), 2):
                 if contig_a.kick or contig_b.kick:
                     continue
 
@@ -441,6 +450,27 @@ def process_batch(
                                 kicks.append(
                                     f"{contig_a.contig_header()},Contig Kicked By,{contig_b.contig_header()},{percent},{contig_a_score},{contig_b_score}\n"
                                 )
+
+            for i, larger_contig in enumerate(large_coverage_contigs):
+                if larger_contig.kick:
+                    continue
+                for j, smaller_contig in enumerate(smaller_contigs):
+                    overlap_amount = overlap_coords[1] - overlap_coords[0]
+                    percent = overlap_amount / min(contig_a.length, contig_b.length)
+                    # this block can probably just be an overlap percent call
+
+                    if percent >= args.read_percent:
+                        small_kmer = smaller_contig.sequence[overlap_coords[0] : overlap_coords[1]]
+                        large_kmer = larger_contig.sequence[overlap_coords[0] : overlap_coords[1]]
+                        if not is_same_kmer(small_kmer, large_kmer):
+                            smaller_contig.kick = True
+                            kicked_headers.add(smaller_contig.header)
+                            kicked_headers.update(smaller_contig.children)
+                            if args.debug:
+                                kicks.append(
+                                    f"{smaller_contig.contig_header()},Contig Kicked By,{larger_contig.contig_header()},{percent}\n"
+                                )            
+            
         else:
             reads = [node for node in nodes if node is not None and not node.is_contig]
 
