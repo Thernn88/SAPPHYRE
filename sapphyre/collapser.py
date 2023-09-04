@@ -313,8 +313,8 @@ def process_batch(
                 )
             )
 
-        loci_length = len(ref_alignments[0])
         ref_alignments = [seq for header, seq in aa_output if header.endswith(".")]
+        loci_length = len(ref_alignments[0])
         ref_consensus = {i: {seq[i] for seq in ref_alignments if seq[i] != "-"} for i in range(loci_length)}
         del ref_alignments
 
