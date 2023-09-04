@@ -417,7 +417,7 @@ def process_batch(
         #contigs is a shallow copy of valid_contigs
         contigs = sorted(valid_contigs, key=lambda x: x.length, reverse=True)
         
-        if batch_args.is_assembly:
+        if False: #batch_args.is_assembly:
             if args.debug:
                 kicks.append(f"Kicks for {gene}\nHeader B,,Header A,Overlap Percent,Score A, Score B\n")
             reads = []
@@ -480,7 +480,7 @@ def process_batch(
                         #length percent
                         length_percent = min(contig_a.length, contig_b.length) / max(contig_a.length, contig_b.length)
                         
-                        if not is_kick and length_percent <= 0.1 and matching_percent < batch_args.gross_diference_percent:
+                        if not is_kick and length_percent <= 0.15 and matching_percent < batch_args.gross_diference_percent:
                             is_kick = True
                             
                         if is_kick:
