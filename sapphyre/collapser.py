@@ -49,6 +49,7 @@ class NODE(Struct):
     sequence: str
     start: int
     end: int
+    internal_gaps: int
     length: int
     children: list
     is_contig: bool
@@ -298,6 +299,8 @@ def process_batch(
 
             start,end = find_index_pair(sequence, "-")
 
+            internal_gaps=  sequence[start:end].count("-")
+
             node_is_contig = batch_args.is_assembly or "&&" in header
 
             nodes.append(
@@ -307,6 +310,7 @@ def process_batch(
                     start=start,
                     end=end,
                     length=(end - start),
+                    internal_gaps=internal_gaps,
                     children=[],
                     is_contig=node_is_contig,
                     kick=False,
@@ -417,7 +421,8 @@ def process_batch(
                 if overlap_coords:
                     # this block can probably just be an overlap percent call
                     overlap_amount = overlap_coords[1] - overlap_coords[0]
-                    percent = overlap_amount / min(contig_a.length, contig_b.length)
+                    smaller = min(contig_a, contig_b, key=lambda x: x.length)
+                    percent = overlap_amount / (smaller.length - smaller.internal_gaps)
                     # this block can probably just be an overlap percent call
 
                     if percent >= args.read_percent:
@@ -451,7 +456,7 @@ def process_batch(
                 overlap_coords = get_overlap(contig_a.start, contig_a.end, contig_b.start, contig_b.end, 1)
                 if overlap_coords:
                     overlap_amount = overlap_coords[1] - overlap_coords[0]
-                    percent = overlap_amount / contig_b.length
+                    percent = overlap_amount / (contig_b.length - contig_b.internal_gaps)
                 # this block can probably just be an overlap percent call
 
                     if percent >= args.contig_percent:
@@ -494,7 +499,7 @@ def process_batch(
                     if overlap_coords:
                         # this block can probably just be an overlap percent call
                         overlap_amount = overlap_coords[1] - overlap_coords[0]
-                        percent = overlap_amount / node_kick.length
+                        percent = overlap_amount / (node_kick.length - node_kick.internal_gaps)
                         # this block can probably just be an overlap percent call
 
                         if percent >= args.read_percent:
