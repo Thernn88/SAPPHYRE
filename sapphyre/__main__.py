@@ -307,13 +307,6 @@ def subcmd_outlier(subparsers):
         default=6,
     )
     par.add_argument(
-        "-gdp",
-        "--gross_diference_percent",
-        help="Similarity percent required if reads have gross difference",
-        type=float,
-        default=0.90,
-    )
-    par.add_argument(
         "-ro",
         "--read_overlap",
         help="Minimum overlap percent for reads to be kicked",
