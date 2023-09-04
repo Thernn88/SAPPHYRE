@@ -456,7 +456,7 @@ def process_batch(
                     continue
                 for j, smaller_contig in enumerate(smaller_contigs):
                     overlap_amount = overlap_coords[1] - overlap_coords[0]
-                    percent = overlap_amount / min(contig_a.length, contig_b.length)
+                    percent = overlap_amount / smaller_contig.length
                     # this block can probably just be an overlap percent call
 
                     if percent >= args.read_percent:
