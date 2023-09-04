@@ -455,21 +455,23 @@ def process_batch(
                 if larger_contig.kick:
                     continue
                 for j, smaller_contig in enumerate(smaller_contigs):
-                    overlap_amount = overlap_coords[1] - overlap_coords[0]
-                    percent = overlap_amount / smaller_contig.length
-                    # this block can probably just be an overlap percent call
+                    overlap_coords = get_overlap(larger_contig.start, larger_contig.end, smaller_contig.start, smaller_contig.end, 1)
+                    if overlap_coords:
+                        overlap_amount = overlap_coords[1] - overlap_coords[0]
+                        percent = overlap_amount / smaller_contig.length
+                        # this block can probably just be an overlap percent call
 
-                    if percent >= args.read_percent:
-                        small_kmer = smaller_contig.sequence[overlap_coords[0] : overlap_coords[1]]
-                        large_kmer = larger_contig.sequence[overlap_coords[0] : overlap_coords[1]]
-                        if not is_same_kmer(small_kmer, large_kmer):
-                            smaller_contig.kick = True
-                            kicked_headers.add(smaller_contig.header)
-                            kicked_headers.update(smaller_contig.children)
-                            if args.debug:
-                                kicks.append(
-                                    f"{smaller_contig.contig_header()},Contig Kicked By,{larger_contig.contig_header()},{percent}\n"
-                                )            
+                        if percent >= args.read_percent:
+                            small_kmer = smaller_contig.sequence[overlap_coords[0] : overlap_coords[1]]
+                            large_kmer = larger_contig.sequence[overlap_coords[0] : overlap_coords[1]]
+                            if not is_same_kmer(small_kmer, large_kmer):
+                                smaller_contig.kick = True
+                                kicked_headers.add(smaller_contig.header)
+                                kicked_headers.update(smaller_contig.children)
+                                if args.debug:
+                                    kicks.append(
+                                        f"{smaller_contig.contig_header()},Contig Kicked By,{larger_contig.contig_header()},{percent}\n"
+                                    )            
             
         else:
             reads = [node for node in nodes if node is not None and not node.is_contig]
