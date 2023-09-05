@@ -121,11 +121,13 @@ def average_match(seq_a, consensus, start, end):
     match = 0
     total = 0
     for i in range(start, end):
-        if consensus[i] != set() and seq_a[i] != "-":
-            total += 1
+        if consensus[i].count("-") / len(consensus[i]) > 0.5:
+            continue
 
-            if seq_a[i] in consensus[i]:
-                match += 1
+        total += 1
+
+        if seq_a[i] in consensus[i]:
+            match += 1
 
     if total == 0:
         return 0
@@ -318,7 +320,7 @@ def process_batch(
             )
 
         ref_alignments = [seq for header, seq in aa_output if header.endswith(".")]
-        ref_consensus = {i: {seq[i] for seq in ref_alignments if seq[i] != "-"} for i in range(len(ref_alignments[0]))}
+        ref_consensus = {i: [seq[i] for seq in ref_alignments] for i in range(len(ref_alignments[0]))}
         del ref_alignments
 
         match_percent = args.matching_consensus_percent if batch_args.is_assembly else 0.6
@@ -591,7 +593,6 @@ def main(args):
         debug=args.debug,
         matching_consensus_percent = args.matching_consensus_percent,
     )
-
     return do_folder(this_args, args.INPUT)
 
 
