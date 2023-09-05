@@ -387,26 +387,27 @@ def process_batch(
                             
         valid_contigs = [node for node in nodes if node is not None and node.is_contig]
 
-        if not merges_occured and not batch_args.is_assembly:
-            read_alignments = [seq for header, seq in aa_output if not header.endswith(".")]
-            read_consensus = {i: {seq[i] for seq in read_alignments if seq[i] != "-"} for i in range(len(read_alignments[0]))}
+        read_alignments = [seq for header, seq in aa_output if not header.endswith(".")]
+        read_consensus = {i: {seq[i] for seq in read_alignments if seq[i] != "-"} for i in range(len(read_alignments[0]))}
 
-            total_cols = 0
-            data_cols = 0
+        total_cols = 0
+        data_cols = 0
 
-            for i, letters in read_consensus.items():
-                total_cols += 1
-                if letters:
-                    data_cols += 1
+        for i, letters in read_consensus.items():
+            total_cols += 1
+            if letters:
+                data_cols += 1
 
-            coverage = data_cols / total_cols
+        coverage = data_cols / total_cols
 
-            del read_alignments
-            del read_consensus
+        del read_alignments
+        del read_consensus
 
-            if coverage < 0.1:
-                kicked_genes.append(f"Coverage: {coverage} no contigs: {gene.split('.')[0]}")
-                continue
+        req_coverage = 0.3 if batch_args.is_assembly else 0.1
+
+        if coverage < req_coverage:
+            kicked_genes.append(f"Coverage: {coverage} no contigs: {gene.split('.')[0]}")
+            continue
 
 
  
