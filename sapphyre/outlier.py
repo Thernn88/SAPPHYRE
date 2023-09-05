@@ -7,6 +7,8 @@ from .utils import printv
 def main(argsobj):
     timer = TimeKeeper(KeeperMode.DIRECT)
     to_move = []
+    if argsobj.debug > 1:
+        printv("Debug Mode Enabled, Skipping final Excise and Internals.", argsobj.verbose, 0)
     for folder in argsobj.INPUT:
         if not os.path.exists(folder):
             printv(
@@ -41,6 +43,9 @@ def main(argsobj):
             print()
             print(argsobj.formathelp())
             return
+
+        if argsobj.debug > 1:
+            continue
 
         printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
         module_return_tuple = excise.main(this_args, True)
