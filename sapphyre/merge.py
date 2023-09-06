@@ -560,12 +560,12 @@ def do_protein(
                             start_ends[header] = find_index_pair(sequence, "-")
                         start, end = start_ends[header]
 
-                        if start <= i <= end:
+                        if start <= i < end:
                             this_char = sequence[i : i + 3]
                             total_characters += count
 
                             candidate_characters.extend([this_char] * count)
-
+                            
                     if total_characters >= minimum_mr_amount:
                         # Translate all NT triplets into AA
                         translated_characters = [
@@ -735,7 +735,7 @@ def do_folder(folder: Path, args):
 
     target_genes = []
     for item in Path(aa_input).iterdir():
-        if item.suffix in [".fa", ".gz", ".fq", ".fastq", ".fasta"]:
+        if item.suffix in [".fa", ".gz", ".fq", ".fastq", ".fasta"] and "67400at33392" in str(item):
             target_genes.append(item.name)
 
     target_genes.sort(key=lambda x: Path(aa_input, x).stat().st_size, reverse=True)
