@@ -735,7 +735,7 @@ def do_folder(folder: Path, args):
 
     target_genes = []
     for item in Path(aa_input).iterdir():
-        if item.suffix in [".fa", ".gz", ".fq", ".fastq", ".fasta"] and "67400at33392" in str(item):
+        if item.suffix in [".fa", ".gz", ".fq", ".fastq", ".fasta"]:
             target_genes.append(item.name)
 
     target_genes.sort(key=lambda x: Path(aa_input, x).stat().st_size, reverse=True)
