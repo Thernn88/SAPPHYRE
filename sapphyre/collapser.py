@@ -413,9 +413,9 @@ def process_batch(
  
         #contigs is a shallow copy of valid_contigs
         contigs = sorted(valid_contigs, key=lambda x: x.length, reverse=True)
+        if args.debug:
+            kicks.append(f"Kicks for {gene}\nHeader B,,Header A,Overlap Percent,Score A, Score B\n")
         if batch_args.is_assembly:
-            if args.debug:
-                kicks.append(f"Kicks for {gene}\nHeader B,Length B,,Header A,Length A,Overlap Percent,Score A, Score B\n")
             reads = []
             for (i, contig_a), (j, contig_b) in combinations(enumerate(contigs), 2):
                 if contig_a.kick or contig_b.kick:
@@ -440,7 +440,7 @@ def process_batch(
                             kicked_headers.update(contig_b.children)
                             if args.debug:
                                 kicks.append(
-                                    f"{contig_b.contig_header()},{contig_b.length},Contig Kicked By,{contig_a.contig_header()},{contig_a.length},{percent},{contig_a_score},{contig_b_score}\n"
+                                    f"{contig_b.contig_header()},Contig Kicked By,{contig_a.contig_header()},{percent},{contig_a_score},{contig_b_score}\n"
                                 )
                         elif contig_b_score > contig_a_score:
                             contig_a.kick = True
@@ -448,11 +448,9 @@ def process_batch(
                             kicked_headers.update(contig_a.children)
                             if args.debug:
                                 kicks.append(
-                                    f"{contig_a.contig_header()},{contig_a.length},Contig Kicked By,{contig_b.contig_header()},{contig_b.length},{percent},{contig_a_score},{contig_b_score}\n"
+                                    f"{contig_a.contig_header()},Contig Kicked By,{contig_b.contig_header()},{percent},{contig_a_score},{contig_b_score}\n"
                                 )
         else:
-            if args.debug:
-                kicks.append(f"Kicks for {gene}\nHeader B,Length B,,Header A,Length A,Overlap Percent,Matching Percent\n")
             reads = [node for node in nodes if node is not None and not node.is_contig]
 
             for (i, contig_a), (j, contig_b) in combinations(enumerate(contigs), 2):
@@ -476,7 +474,7 @@ def process_batch(
                             contig_b.kick = True
                             if args.debug:
                                 kicks.append(
-                                    f"{contig_b.contig_header()},{contig_b.length},Contig Kicked By,{contig_a.contig_header()},{contig_a.length},{percent},{matching_percent}\n"
+                                    f"{contig_b.contig_header()},Contig Kicked By,{contig_a.contig_header()},{percent},{matching_percent}\n"
                                 )
                             kicked_headers.add(contig_b.header)
                             kicked_headers.update(contig_b.children)
