@@ -28,16 +28,17 @@ def main(argsobj):
             print(argsobj.formathelp())
             return
 
-        printv("Checking for severe contamination.", argsobj.verbose)
-        module_return_tuple = excise.main(this_args, False)
-        if not module_return_tuple:
-            print()
-            print(argsobj.formathelp())
+        if not argsobj.no_excise:
+            printv("Checking for severe contamination.", argsobj.verbose)
+            module_return_tuple = excise.main(this_args, False)
+            if not module_return_tuple:
+                print()
+                print(argsobj.formathelp())
 
-        is_flagged = module_return_tuple[1]
-        if is_flagged:
-            bad_folder = os.path.join(this_args.move_fails, os.path.basename(folder))
-            to_move.append((folder, bad_folder))
+            is_flagged = module_return_tuple[1]
+            if is_flagged:
+                bad_folder = os.path.join(this_args.move_fails, os.path.basename(folder))
+                to_move.append((folder, bad_folder))
 
         printv("Simple Assembly To Ensure Consistency.", argsobj.verbose)
         if not collapser.main(this_args):
@@ -48,11 +49,12 @@ def main(argsobj):
         if debug > 1:
             continue
 
-        printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
-        module_return_tuple = excise.main(this_args, True)
-        if not module_return_tuple:
-            print()
-            print(argsobj.formathelp())
+        if not argsobj.no_excise:
+            printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
+            module_return_tuple = excise.main(this_args, True)
+            if not module_return_tuple:
+                print()
+                print(argsobj.formathelp())
 
         printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
         if not internal.main(this_args):

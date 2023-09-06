@@ -372,6 +372,12 @@ def subcmd_outlier(subparsers):
     
     # Excise commands
     par.add_argument(
+        "--no_excise",
+        action="store_true",
+        default="False",
+        help="Disable excise runs"
+    )
+    par.add_argument(
         "-ct",
         "--excise_consensus_threshold",
         default=0.65,
