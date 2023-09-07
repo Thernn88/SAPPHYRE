@@ -1074,6 +1074,13 @@ def subcmd_wrap_final(sp):
         help="Enable debug. When enabled displays each component of merged headers.",
     )
     par.add_argument(
+        "-sm",
+        "--special_merge",
+        action="store_true",
+        help="Enable special merge.",
+        default=False,
+    )
+    par.add_argument(
         "-io",
         "--ignore_overlap_chunks",
         action="store_false",
