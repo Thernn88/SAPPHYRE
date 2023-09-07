@@ -796,6 +796,7 @@ def do_folder(folder: Path, args):
                     args.majority_count,
                     args.verbose,
                     args.ignore_overlap_chunks,
+                    args.special_merge,
                     args.compress,
                 ),
             )
