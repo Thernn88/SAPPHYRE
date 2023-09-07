@@ -152,7 +152,7 @@ def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
     for sequence in taxa_pair:
         if (
             current_region is None
-            or get_overlap(sequence.start, sequence.end, current_region[0], current_region[1], 1) is None
+            or get_overlap(sequence.start, sequence.end, current_region[0], current_region[1], 0) is None
         ):
             if current_group:
                 result.append((current_region, current_group))
