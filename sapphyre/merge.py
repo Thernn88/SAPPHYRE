@@ -236,6 +236,30 @@ class Sequence(Struct, frozen=True):
             return self.header.split("|")[-1]
         return self.header.split("|")[-2]
 
+def non_overlap_chunks(sequence_list: list) -> list[Sequence]:
+    current_region = None
+    current_group = []
+
+    result = []
+
+    for sequence in sequence_list:
+        if current_region is None or get_overlap(sequence.start, sequence.end, current_region[0], current_region[1], 1) is not None:
+
+            if current_group:
+                result.append((current_region, current_group))
+
+            current_region = (sequence.start, sequence.end)
+            current_group = [sequence]
+        else:
+            current_group.append(sequence)
+            current_region = expand_region(
+                current_region, (sequence.start, sequence.end)
+            )
+
+    if current_group:
+        result.append((current_region, current_group))
+
+    return result
 
 def do_protein(
     protein: Literal["aa", "nt"],
@@ -249,6 +273,7 @@ def do_protein(
     majority,
     minimum_mr_amount,
     ignore_overlap_chunks,
+    special_merge,
     debug=None,
 ):
     references, candidates = parse_fasta(path)
@@ -285,9 +310,10 @@ def do_protein(
     for sequences_to_merge in taxa_groups.values():
         # Sort by start position
         sequences_to_merge.sort(key=lambda x: x.start)
-
         # Disperse sequences into clusters of overlap
-        if ignore_overlap_chunks:
+        if special_merge:
+            overlap_groups = non_overlap_chunks(sequences_to_merge)
+        elif ignore_overlap_chunks:
             overlap_groups = [
                 (grab_merge_start_end(sequences_to_merge), sequences_to_merge)
             ]
@@ -655,6 +681,7 @@ def do_gene(
     minimum_mr_amount,
     verbosity,
     ignore_overlap_chunks,
+    special_merge,
     compress,
 ) -> None:
     """Merge main loop. Opens fasta file, parses sequences and merges based on taxa."""
@@ -673,6 +700,7 @@ def do_gene(
         majority,
         minimum_mr_amount,
         ignore_overlap_chunks,
+        special_merge,
         debug=debug,
     )
 
@@ -688,6 +716,7 @@ def do_gene(
         majority,
         minimum_mr_amount,
         ignore_overlap_chunks,
+        special_merge,
         debug=debug,
     )
 
@@ -797,6 +826,7 @@ def do_folder(folder: Path, args):
                 args.majority_count,
                 args.verbose,
                 args.ignore_overlap_chunks,
+                args.special_merge,
                 args.compress,
             )
     printv(f"Done! Took {folder_time.differential():.2f}s", args.verbose)
