@@ -374,7 +374,7 @@ def subcmd_outlier(subparsers):
     par.add_argument(
         "--no_excise",
         action="store_true",
-        default="False",
+        default=False,
         help="Disable excise runs"
     )
     par.add_argument(

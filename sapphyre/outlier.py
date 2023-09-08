@@ -8,7 +8,6 @@ def main(argsobj):
     timer = TimeKeeper(KeeperMode.DIRECT)
     to_move = []
     debug = 0 if argsobj.debug is None else argsobj.debug
-    do_excise = False if argsobj.no_excise is False else True
     if debug > 1:
         printv("Debug Mode Enabled, Skipping final Excise and Internals.", argsobj.verbose, 0)
     for folder in argsobj.INPUT:
@@ -29,7 +28,7 @@ def main(argsobj):
             print(argsobj.formathelp())
             return
 
-        if do_excise:
+        if not argsobj.no_excise:
             printv("Checking for severe contamination.", argsobj.verbose)
             module_return_tuple = excise.main(this_args, False)
             if not module_return_tuple:
@@ -50,7 +49,7 @@ def main(argsobj):
         if debug > 1:
             continue
 
-        if do_excise:
+        if not argsobj.no_excise:
             printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
             module_return_tuple = excise.main(this_args, True)
             if not module_return_tuple:
