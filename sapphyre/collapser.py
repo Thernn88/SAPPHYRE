@@ -46,23 +46,6 @@ class BatchArgs(Struct):
     matching_consensus_percent: float
     gross_diference_percent: float
 
-def ref_average_match(seq, ref_consensus, start, end):
-    total = 0
-    match = 0
-    for i in range(start, end):
-        if seq[i] == "-":
-            continue
-
-        total += 1
-
-        if seq[i] in ref_consensus[i]:
-            match += 1
-
-    if total == 0:
-        return 0
-
-    return match / total
-
 class NODE(Struct):
     header: str
     sequence: str
@@ -84,62 +67,42 @@ class NODE(Struct):
         else:
             return overlap_coord - node_2.start
 
-    def extend(self, node_2, overlap_coord, ref_consensus, match_percent = 0.85):
-        new_start = self.start
-        new_end = self.end
+    def extend(self, node_2, overlap_coord):
         if node_2.start >= self.start and node_2.end <= self.end:
-            new_sequence = (
+            self.sequence = (
                 self.sequence[:overlap_coord]
                 + node_2.sequence[overlap_coord : node_2.end]
                 + self.sequence[node_2.end :]
             )
 
-            if ref_average_match(new_sequence, ref_consensus, new_start, new_end) < match_percent:
-                return False
-
         elif self.start >= node_2.start and self.end <= node_2.end:
-            new_sequence = (
+            self.sequence = (
                 node_2.sequence[:overlap_coord]
                 + self.sequence[overlap_coord : self.end]
                 + node_2.sequence[self.end :]
             )
 
-            new_start = node_2.start
-            new_end = node_2.end
-
-            if ref_average_match(new_sequence, ref_consensus, new_start, new_end) < match_percent:
-                return False
+            self.start = node_2.start
+            self.end = node_2.end
 
         elif node_2.start >= self.start:
-            new_sequence = (
+            self.sequence = (
                 self.sequence[:overlap_coord] + node_2.sequence[overlap_coord:]
             )
 
-            new_end = node_2.end
-
-            if ref_average_match(new_sequence, ref_consensus, new_start, new_end) < match_percent:
-                return False
+            self.end = node_2.end
 
         else:
-            new_sequence = (
+            self.sequence = (
                 node_2.sequence[:overlap_coord] + self.sequence[overlap_coord:]
             )
 
-            new_start = node_2.start
-
-            if ref_average_match(new_sequence, ref_consensus, new_start, new_end) < match_percent:
-                return False
-            
-        self.start = new_start
-        self.end = new_end
+            self.start = node_2.start
         self.length = self.end - self.start
-        self.sequence = new_sequence
 
         self.children.append(node_2.header)
         self.children.extend(node_2.children)
         self.is_contig = True
-
-        return True
 
     def is_kick(self, node_2, overlap_coords, kick_percent, overlap_amount):
         kmer_current = self.sequence[overlap_coords[0] : overlap_coords[1]]
@@ -194,11 +157,10 @@ def do_folder(args, input_path):
     os.mkdir(aa_out_path)
 
     nt_db_path = os.path.join(input_path, "rocksdb", "sequences", "nt")
-    is_assembly = False
     if os.path.exists(nt_db_path):
         nt_db = wrap_rocks.RocksDB(nt_db_path)
         dbis_assembly = nt_db.get("get:isassembly")
-        
+        is_assembly = False
         if dbis_assembly and dbis_assembly == "True":
             is_assembly = True
         del nt_db
@@ -374,7 +336,7 @@ def process_batch(
 
         match_percent = args.matching_consensus_percent if batch_args.is_assembly else 0.6
 
-        for read in nodes:   
+        for read in nodes:
             average_matching_cols = average_match(
                 read.sequence,
                 ref_consensus,
@@ -391,6 +353,7 @@ def process_batch(
         # Rescurive scan
         splice_occured = True
         failed = defaultdict(dict)
+        merges_occured = False
         while splice_occured:
             splice_occured = False
             for i, node in enumerate(nodes):
@@ -411,7 +374,6 @@ def process_batch(
                         overlap_amount = overlap_coords[1] - overlap_coords[0]
                         overlap_coord = overlap_coords[0]
                         possible_extensions.append((overlap_amount, overlap_coord, j))
-
                 for _, overlap_coord, j in sorted(possible_extensions, reverse=True, key = lambda x: x[0]):
                     if failed[i].get(j, False):
                         continue
@@ -426,10 +388,11 @@ def process_batch(
                         node_kmer = node.sequence[overlap_coords[0] : overlap_coords[1]]
                         other_kmer = node_2.sequence[overlap_coords[0] : overlap_coords[1]]
                         if is_same_kmer(node_kmer, other_kmer):
-                            if node.extend(node_2, overlap_coords[0], ref_consensus):
-                                splice_occured = True
-                                nodes[j] = None
-                                continue
+                            splice_occured = True
+                            node.extend(node_2, overlap_coords[0])
+                            merges_occured = True
+                            nodes[j] = None
+                            continue
 
                         failed[i][j] = True
                             
