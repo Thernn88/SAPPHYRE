@@ -119,11 +119,11 @@ class NODE(Struct):
         return f"CONTIG_{contig_node}|{children_nodes}"
 
 
-def average_match(seq_a, consensus, start, end):
+def average_match(seq_a, consensus, is_ref_gap, start, end):
     match = 0
     total = 0
     for i in range(start, end):
-        if consensus[i].count("-") / len(consensus[i]) > 0.5:
+        if is_ref_gap.get(i, False):
             continue
 
         total += 1
@@ -331,6 +331,11 @@ def process_batch(
             start, end = find_index_pair(seq, "-")
             for i in range(start, end):
                 ref_consensus[i].append(seq[i])
+
+        is_ref_gap = {}
+        for i, letters in ref_consensus.items():
+            if letters.count("-") / len(letters) > 0.5:
+                is_ref_gap[i] = True
                 
         del ref_alignments
 
@@ -340,6 +345,7 @@ def process_batch(
             average_matching_cols = average_match(
                 read.sequence,
                 ref_consensus,
+                is_ref_gap,
                 read.start,
                 read.end,
             )
@@ -350,18 +356,20 @@ def process_batch(
                 kicked_headers.add(read.header)
                 read.kick = True
 
+        valid_nodes = [node for node in nodes if not node.kick]
+
         # Rescurive scan
         splice_occured = True
         failed = defaultdict(dict)
-        merges_occured = False
+        
         while splice_occured:
             splice_occured = False
-            for i, node in enumerate(nodes):
-                if node is None or node.kick:
+            for i, node in enumerate(valid_nodes):
+                if node is None:
                     continue
                 possible_extensions = []
-                for j, node_2 in enumerate(nodes):
-                    if node_2 is None or node_2.kick:
+                for j, node_2 in enumerate(valid_nodes):
+                    if node_2 is None:
                         continue
                     if i == j:
                         continue
@@ -374,6 +382,7 @@ def process_batch(
                         overlap_amount = overlap_coords[1] - overlap_coords[0]
                         overlap_coord = overlap_coords[0]
                         possible_extensions.append((overlap_amount, overlap_coord, j))
+
                 for _, overlap_coord, j in sorted(possible_extensions, reverse=True, key = lambda x: x[0]):
                     if failed[i].get(j, False):
                         continue
@@ -390,7 +399,6 @@ def process_batch(
                         if is_same_kmer(node_kmer, other_kmer):
                             splice_occured = True
                             node.extend(node_2, overlap_coords[0])
-                            merges_occured = True
                             nodes[j] = None
                             continue
 
@@ -399,7 +407,7 @@ def process_batch(
         valid_contigs = [node for node in nodes if node is not None and node.is_contig]
 
         read_alignments = [seq for header, seq in aa_output if not header.endswith(".")]
-        read_consensus = {i: {seq[i] for seq in read_alignments if seq[i] != "-"} for i in range(len(read_alignments[0]))}
+        read_consensus = {i: {1 for seq in read_alignments if seq[i] != "-"} for i in range(len(read_alignments[0]))}
 
         total_cols = 0
         data_cols = 0
