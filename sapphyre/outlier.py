@@ -38,6 +38,11 @@ def main(argsobj):
                 bad_folder = os.path.join(this_args.move_fails, os.path.basename(folder))
                 to_move.append((folder, bad_folder))
 
+        printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
+        if not internal.main(this_args):
+            print()
+            print(argsobj.format)
+
         printv("Simple Assembly To Ensure Consistency.", argsobj.verbose)
         if not collapser.main(this_args):
             print()
@@ -53,11 +58,6 @@ def main(argsobj):
             if not module_return_tuple:
                 print()
                 print(argsobj.formathelp())
-
-        printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
-        if not internal.main(this_args):
-            print()
-            print(argsobj.format)
     # if to_move:
     #     printv("Moving Pre-flagged Folders.", argsobj.verbose)
 
