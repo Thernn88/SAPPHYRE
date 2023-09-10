@@ -335,13 +335,6 @@ def subcmd_outlier(subparsers):
         default=0.8,
     )
     par.add_argument(
-        "-krp",
-        "--keep_read_percent",
-        help="Similarity percent to keep read even if it's kicked elsewhere",
-        type=float,
-        default=0.8,
-    )
-    par.add_argument(
         "-mko",
         "--minimum_kick_overlap",
         help="Minimum percent of overlap for a contig to kick a read",

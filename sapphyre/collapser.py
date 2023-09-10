@@ -24,7 +24,6 @@ class CollapserArgs(Struct):
 
     required_read_percent: float
     required_contig_percent: float
-    keep_read_percent: float
 
     sub_percent: float
 
@@ -541,10 +540,8 @@ def process_batch(
                                 kick_parent = node_2.contig_header()
                                 kick = True
 
-                            if matching_percent >= args.keep_read_percent:
-                                keep = True
-                                break
-                if kick and not keep:
+                           
+                if kick:
                     node_kick.kick = True
                     if args.debug:
                         kicks.append(
@@ -609,7 +606,6 @@ def main(args):
         contig_percent=args.contig_overlap,
         required_read_percent=args.read_matching_percent,
         required_contig_percent=args.contig_matching_percent,
-        keep_read_percent=args.keep_read_percent,
         sub_percent=args.sub_percent,
         verbose=args.verbose,
         debug=args.debug,
