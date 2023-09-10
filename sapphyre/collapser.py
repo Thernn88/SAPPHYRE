@@ -123,7 +123,7 @@ def average_match(seq_a, consensus, is_ref_gap, start, end):
     match = 0
     total = 0
     for i in range(start, end):
-        if is_ref_gap[i]:
+        if is_ref_gap.get(i, False):
             continue
 
         total += 1
@@ -332,7 +332,7 @@ def process_batch(
             for i in range(start, end):
                 ref_consensus[i].append(seq[i])
 
-        is_ref_gap = {i: False for i in range(len(ref_alignments[0]))}
+        is_ref_gap = {}
         for i, letters in ref_consensus.items():
             if letters.count("-") / len(letters) > 0.5:
                 is_ref_gap[i] = True
