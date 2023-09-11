@@ -4,7 +4,6 @@ from math import ceil
 from multiprocessing import Pool
 from shutil import rmtree
 import os
-from time import time
 
 from msgspec import Struct
 from phymmr_tools import constrained_distance, find_index_pair, get_overlap, is_same_kmer
@@ -190,16 +189,6 @@ def do_folder(args, input_path):
             results = pool.map(process_batch, batched_arguments)
 
     all_passed = all(i[0] for i in results)
-
-    gene_times = []
-    for i in results:
-        gene_times.extend(i[5])
-
-    gene_times.sort(key= lambda x: x[0],reverse=True)
-
-    with open(os.path.join(collapsed_path, "gene_times.txt"), "w") as fp:
-        for time, gene in gene_times:
-            fp.write(f"{gene},{time}\n")
     
 
     if args.debug:
@@ -254,9 +243,7 @@ def process_batch(
     total = 0
 
     kicks = []
-    gene_times = []
     for gene in batch_args.genes:
-        gene_start = time()
         kicked_headers = set()
         printv(f"Doing: {gene}", args.verbose, 2)
 
@@ -467,12 +454,10 @@ def process_batch(
             kicks.append(f"Total Kicks: {count}\n")
         total += count
 
-        gene_times.append((time() - gene_start, gene))
-
     if args.debug:
-        return True, kicks, total, kicked_genes, consensus_kicks, gene_times
+        return True, kicks, total, kicked_genes, consensus_kicks
 
-    return True, [], 0, kicked_genes, consensus_kicks, gene_times
+    return True, [], 0, kicked_genes, consensus_kicks
 
 
 def main(args):
