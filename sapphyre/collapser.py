@@ -286,14 +286,12 @@ def process_batch(
                 )
             )
 
-        ref_alignments = [seq for header, seq in aa_output if header.endswith(".")]
-        ref_consensus = {i: [] for i in range(len(ref_alignments[0]))}
-        for seq in ref_alignments:
-            start, end = find_index_pair(seq, "-")
-            for i in range(start, end):
-                ref_consensus[i].append(seq[i])
-                
-        del ref_alignments
+        ref_consensus = defaultdict(list)
+        for header, seq in aa_output:
+            if header.endswith("."):
+                start, end = find_index_pair(seq, "-")
+                for i in range(start, end):
+                    ref_consensus[i].append(seq[i])
 
         match_percent = args.matching_consensus_percent if batch_args.is_assembly else 0.6
 
