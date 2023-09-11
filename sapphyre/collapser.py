@@ -156,7 +156,7 @@ def do_folder(args, input_path):
     os.mkdir(aa_out_path)
 
     nt_db_path = os.path.join(input_path, "rocksdb", "sequences", "nt")
-    is_assembly = False
+    is_assembly = True
     if os.path.exists(nt_db_path):
         nt_db = wrap_rocks.RocksDB(nt_db_path)
         dbis_assembly = nt_db.get("get:isassembly")
@@ -351,13 +351,13 @@ def process_batch(
                 read.kick = True
 
         # Rescurive scan
-        splice_occured = True
-        while splice_occured:
-            splice_occured = False
-            for i, node in enumerate(nodes):
-                if node is None or node.kick:
-                    continue
-                possible_extensions = []
+        for i, node in enumerate(nodes):
+            if node is None or node.kick:
+                continue
+            possible_extensions = []
+            splice_occured = True
+            while splice_occured:
+                splice_occured = False
                 for j, node_2 in enumerate(nodes):
                     if node_2 is None or node_2.kick:
                         continue
