@@ -5,8 +5,6 @@ from multiprocessing import Pool
 from shutil import rmtree
 import os
 
-import blosum as bl
-
 from msgspec import Struct
 from phymmr_tools import constrained_distance, find_index_pair, get_overlap, is_same_kmer
 from .timekeeper import KeeperMode, TimeKeeper
@@ -24,8 +22,6 @@ class CollapserArgs(Struct):
 
     required_read_percent: float
     required_contig_percent: float
-
-    sub_percent: float
 
     verbose: int
     debug: int
@@ -225,33 +221,6 @@ def do_folder(args, input_path):
     printv(f"Done! Took {time_keeper.differential():.2f} seconds", args.verbose, 1)
 
     return all_passed
-
-
-def blosum_sub_merge(mat, overlap_coords, overlap_amount, aa_sequence, aa_sequence_2):
-    allow_sub = True
-    BLOSUM_LIMIT = 2
-    blosum_positions = 0
-    for k in range(0, overlap_amount, 3):
-        nt_pos = overlap_coords[0] + k
-        aa_pos = (nt_pos) // 3
-        aa_node_bp = aa_sequence[aa_pos]
-        aa_other_bp = aa_sequence_2[aa_pos]
-
-        if aa_node_bp == aa_other_bp:
-            continue
-
-        subs = mat[aa_node_bp][aa_other_bp]
-        if subs >= 0:
-            allow_sub = True
-            blosum_positions += 1
-            if blosum_positions >= BLOSUM_LIMIT:
-                allow_sub = False
-                break
-        if subs < 0:
-            allow_sub = False
-            break
-    
-    return allow_sub
 
 
 def get_score(seq, start, end, consensus_dict):
@@ -598,7 +567,6 @@ def main(args):
         contig_percent=args.contig_overlap,
         required_read_percent=args.read_matching_percent,
         required_contig_percent=args.contig_matching_percent,
-        sub_percent=args.sub_percent,
         verbose=args.verbose,
         debug=args.debug,
         matching_consensus_percent = args.matching_consensus_percent,
