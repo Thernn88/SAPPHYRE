@@ -314,38 +314,16 @@ def subcmd_outlier(subparsers):
         default=0.90,
     )
     par.add_argument(
-        "-ro",
-        "--read_overlap",
-        help="Minimum overlap percent for reads to be kicked",
+        "-ko",
+        "--kick_overlap",
+        help="Minimum overlap percent to check for a possible kick",
         type=float,
         default=0.5,
     )
     par.add_argument(
-        "-co",
-        "--contig_overlap",
-        help="Minimum overlap percent for contigs to be kicked",
-        type=float,
-        default=0.65,
-    )
-
-    par.add_argument(
-        "-rmp",
-        "--read_matching_percent",
-        help="Required percent for reads matching columns",
-        default=0.8,
-    )
-    par.add_argument(
-        "-mko",
-        "--minimum_kick_overlap",
-        help="Minimum percent of overlap for a contig to kick a read",
-        type=float,
-        default=0.75,
-    )
-    par.add_argument(
-        "-cmp",
-        "--contig_matching_percent",
-        help="Minimum percent of similar columns required for contigs ",
-        type=float,
+        "-mp",
+        "--matching_percent",
+        help="Minimum percent for matching columns in kick check",
         default=0.8,
     )
     par.add_argument(

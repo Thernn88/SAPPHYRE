@@ -17,17 +17,13 @@ class CollapserArgs(Struct):
     processes: int
 
     merge_overlap: int
-    read_percent: float
-    contig_percent: float
-
-    required_read_percent: float
-    required_contig_percent: float
+    matching_percent: float
+    overlap_percent: float
 
     verbose: int
     debug: int
     matching_consensus_percent: float
     gross_diference_percent: float
-
 
 class BatchArgs(Struct):
     args: CollapserArgs
@@ -38,8 +34,6 @@ class BatchArgs(Struct):
     aa_out_path: str
     compress: bool
     is_assembly: bool
-    matching_consensus_percent: float
-    gross_diference_percent: float
 
 class NODE(Struct):
     header: str
@@ -182,8 +176,6 @@ def do_folder(args, input_path):
             aa_out_path,
             compress,
             is_assembly,
-            args.matching_consensus_percent,
-            args.gross_diference_percent,
         )
         for i in range(0, len(genes), per_thread)
     ]
@@ -355,8 +347,6 @@ def process_batch(
                             node.extend(node_2, overlap_coords[0])
                             nodes[j] = None
                             continue
-                            
-        valid_contigs = [node for node in nodes if node is not None and node.is_contig]
 
         read_alignments = [seq for header, seq in aa_output if not header.endswith(".")]
         read_consensus = {i: {seq[i] for seq in read_alignments if seq[i] != "-"} for i in range(len(read_alignments[0]))}
@@ -380,137 +370,53 @@ def process_batch(
             kicked_genes.append(f"Coverage: {coverage} no contigs: {gene.split('.')[0]}")
             continue
 
+        if args.debug:
+            kicks.append(f"Kicks for {gene}\nHeader B,,Header A,Overlap Percent,Matching Percent,Length Ratio\n")
+        nodes = [node for node in nodes if node is not None]
 
- 
-        #contigs is a shallow copy of valid_contigs
-        contigs = sorted(valid_contigs, key=lambda x: x.length, reverse=True)
-        
-        if False: #batch_args.is_assembly:
-            if args.debug:
-                kicks.append(f"Kicks for {gene}\nHeader B,,Header A,Overlap Percent,Score A, Score B\n")
-            reads = []
-            for (i, contig_a), (j, contig_b) in combinations(enumerate(contigs), 2):
-                if contig_a.kick or contig_b.kick:
+        nodes.sort(key = lambda x: x.length, reverse=True)
+
+        for i, node_kick in enumerate(nodes):
+            for j, node_2 in enumerate(nodes):
+                if i == j:
+                    continue
+                if node_2.length < node_kick.length:
+                    continue
+                if node_2.kick or node_kick.kick:
                     continue
 
-                overlap_coords = get_overlap(contig_a.start, contig_a.end, contig_b.start, contig_b.end, 1)
+                overlap_coords = get_overlap(node_2.start, node_2.end, node_kick.start, node_kick.end, 1)
                 if overlap_coords:
                     # this block can probably just be an overlap percent call
                     overlap_amount = overlap_coords[1] - overlap_coords[0]
-                    smaller = min(contig_a, contig_b, key=lambda x: x.length)
-                    percent = overlap_amount / (smaller.length - smaller.internal_gaps)
+                    percent = overlap_amount / (node_kick.length - node_kick.internal_gaps)
                     # this block can probably just be an overlap percent call
 
-                    if percent >= args.read_percent:
-
-                        contig_a_score = get_score(contig_a.sequence, contig_a.start, contig_a.end, ref_consensus)
-                        contig_b_score = get_score(contig_b.sequence, contig_b.start, contig_b.end, ref_consensus)
-
-                        if contig_a_score > contig_b_score:
-                            contig_b.kick = True
-                            kicked_headers.add(contig_b.header)
-                            kicked_headers.update(contig_b.children)
-                            if args.debug:
-                                kicks.append(
-                                    f"{contig_b.contig_header()},Contig Kicked By,{contig_a.contig_header()},{percent},{contig_a_score},{contig_b_score}\n"
-                                )
-                        elif contig_b_score > contig_a_score:
-                            contig_a.kick = True
-                            kicked_headers.add(contig_a.header)
-                            kicked_headers.update(contig_a.children)
-                            if args.debug:
-                                kicks.append(
-                                    f"{contig_a.contig_header()},Contig Kicked By,{contig_b.contig_header()},{percent},{contig_a_score},{contig_b_score}\n"
-                                )
-        else:
-            if args.debug:
-                kicks.append(f"Kicks for {gene}\nHeader B,,Header A,Overlap Percent,Matching Percent,Length Ratio\n")
-            reads = [node for node in nodes if node is not None and not node.is_contig]
-
-            for (i, contig_a), (j, contig_b) in combinations(enumerate(contigs), 2):
-                if contig_a.kick or contig_b.kick:
-                    continue
-                # this block can probably just be an overlap percent call
-                overlap_coords = get_overlap(contig_a.start, contig_a.end, contig_b.start, contig_b.end, 1)
-                if overlap_coords:
-                    overlap_amount = overlap_coords[1] - overlap_coords[0]
-                    percent = overlap_amount / (contig_b.length - contig_b.internal_gaps)
-                # this block can probably just be an overlap percent call
-
-                    if percent >= args.contig_percent:
-                        is_kick, matching_percent = contig_a.is_kick(
-                            contig_b,
+                    if percent >= args.overlap_percent:
+                        is_kick, matching_percent = node_kick.is_kick(
+                            node_2,
                             overlap_coords,
-                            args.required_contig_percent,
+                            args.matching_percent,
                             overlap_amount,
                         )
 
-                        #length percent
-                        length_percent = min(contig_a.length, contig_b.length) / max(contig_a.length, contig_b.length)
-                        
-                        if not is_kick and length_percent <= 0.15 and matching_percent < batch_args.gross_diference_percent:
-                            is_kick = True
-                            
+                        length_percent = ""
+                        if not is_kick and node_kick.is_contig and node_2.is_contig:
+                            length_percent = min(node_kick.length, node_2.length) / max(node_kick.length, node_2.length)
+                    
+                            if not is_kick and length_percent <= 0.15 and matching_percent < args.gross_diference_percent:
+                                is_kick = True
+
                         if is_kick:
-                            contig_b.kick = True
+                            node_kick.kick = True
                             if args.debug:
                                 kicks.append(
-                                    f"{contig_b.contig_header()},Contig Kicked By,{contig_a.contig_header()},{percent},{matching_percent},{length_percent}\n"
+                                    f"{node_kick.contig_header()},Kicked By,{node_2.contig_header()},{percent},{matching_percent},{length_percent}\n"
                                 )
-                            kicked_headers.add(contig_b.header)
-                            kicked_headers.update(contig_b.children)
-            contigs = [contig for contig in contigs if not contig.kick]
-
-        
-            if contigs:
-                nodes = contigs + reads
-            else:
-                nodes = reads
-
-            nodes.sort(key = lambda x: x.length, reverse=True)
-
-            for i, node_kick in enumerate(nodes):
-                kick = False
-                keep = False
-                for j, node_2 in enumerate(nodes):
-                    if i == j:
-                        continue
-                    if node_kick.length > node_2.length:
-                        continue
-                    if node_2.kick:
-                        continue
-
-                    overlap_coords = get_overlap(node_2.start, node_2.end, node_kick.start, node_kick.end, 1)
-                    if overlap_coords:
-                        # this block can probably just be an overlap percent call
-                        overlap_amount = overlap_coords[1] - overlap_coords[0]
-                        percent = overlap_amount / (node_kick.length - node_kick.internal_gaps)
-                        # this block can probably just be an overlap percent call
-
-                        if percent >= args.read_percent:
-                            is_kick, matching_percent = node_kick.is_kick(
-                                node_2,
-                                overlap_coords,
-                                args.required_read_percent,
-                                overlap_amount,
-                            )
-
-                            if is_kick:
-                                kick_percent = percent
-                                kick_matching_percent = matching_percent
-                                kick_parent = node_2.contig_header()
-                                kick = True
-
-                           
-                if kick:
-                    node_kick.kick = True
-                    if args.debug:
-                        kicks.append(
-                            f"{node_kick.contig_header()},Kicked By,{kick_parent},{kick_percent},{kick_matching_percent}\n"
-                        )
-                    kicked_headers.add(node_kick.header)
-                    if node_kick.is_contig:
-                        kicked_headers.update(node_kick.children)
+                            kicked_headers.add(node_kick.header)
+                            if node_kick.is_contig:
+                                kicked_headers.update(node_kick.children)
+                            break
 
         aa_output_after_kick = sum(1 for i in aa_output if i[0] not in kicked_headers and not i[0].endswith(".")) > 0
 
@@ -519,14 +425,13 @@ def process_batch(
             continue
 
         if args.debug == 2:
-            output = valid_contigs + reads
-            output.sort(key=lambda x: x.start)
+            nodes.sort(key=lambda x: x.start)
             with open(aa_out, "w") as f:
                 for header, sequence in aa_output:
                     if header.endswith("."):
                         f.write(f">{header}\n{sequence}\n")
 
-                for node in output:
+                for node in nodes:
                     if node is None:
                         continue
                     is_kick = (
@@ -563,10 +468,8 @@ def main(args):
         uncompress_intermediates=args.uncompress_intermediates,
         processes=args.processes,
         merge_overlap=args.merge_overlap,
-        read_percent=args.read_overlap,
-        contig_percent=args.contig_overlap,
-        required_read_percent=args.read_matching_percent,
-        required_contig_percent=args.contig_matching_percent,
+        overlap_percent=args.kick_overlap,
+        matching_percent=args.matching_percent,
         verbose=args.verbose,
         debug=args.debug,
         matching_consensus_percent = args.matching_consensus_percent,
