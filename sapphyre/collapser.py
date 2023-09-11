@@ -351,8 +351,6 @@ def process_batch(
 
         # Rescurive scan
         splice_occured = True
-        failed = defaultdict(dict)
-        merges_occured = False
         while splice_occured:
             splice_occured = False
             for i, node in enumerate(nodes):
@@ -364,8 +362,6 @@ def process_batch(
                         continue
                     if i == j:
                         continue
-                    if failed[i].get(j, False):
-                        continue
 
                     overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, args.merge_overlap)
 
@@ -374,8 +370,6 @@ def process_batch(
                         overlap_coord = overlap_coords[0]
                         possible_extensions.append((overlap_amount, overlap_coord, j))
                 for _, overlap_coord, j in sorted(possible_extensions, reverse=True, key = lambda x: x[0]):
-                    if failed[i].get(j, False):
-                        continue
 
                     node_2 = nodes[j]
                     if node_2 is None:
@@ -389,11 +383,8 @@ def process_batch(
                         if is_same_kmer(node_kmer, other_kmer):
                             splice_occured = True
                             node.extend(node_2, overlap_coords[0])
-                            merges_occured = True
                             nodes[j] = None
                             continue
-
-                        failed[i][j] = True
                             
         valid_contigs = [node for node in nodes if node is not None and node.is_contig]
 
