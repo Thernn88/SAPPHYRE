@@ -311,15 +311,11 @@ def process_batch(
 
         # Rescurive scan
         for i, node in enumerate(nodes):
-            if node is None or node.kick:
-                continue
-            possible_extensions = []
             splice_occured = True
             while splice_occured:
+                possible_extensions = []
                 splice_occured = False
                 for j, node_2 in enumerate(nodes):
-                    if node_2 is None or node_2.kick:
-                        continue
                     if i == j:
                         continue
 
@@ -338,13 +334,17 @@ def process_batch(
                     overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, args.merge_overlap)
                     if overlap_coords:
                         #Get distance
-                        node_kmer = node.sequence[overlap_coords[0] : overlap_coords[1]]
-                        other_kmer = node_2.sequence[overlap_coords[0] : overlap_coords[1]]
-                        if is_same_kmer(node_kmer, other_kmer):
-                            splice_occured = True
-                            node.extend(node_2, overlap_coords[0])
-                            nodes[j] = None
-                            continue
+                        for i in range(overlap_coords[0], overlap_coords[1]):
+                            if node.sequence[i] != node_2.sequence[i]:
+                                break
+                        # node_kmer = node.sequence[overlap_coords[0] : overlap_coords[1]]
+                        # other_kmer = node_2.sequence[overlap_coords[0] : overlap_coords[1]]
+                        # if is_same_kmer(node_kmer, other_kmer):
+                        splice_occured = True
+                        node.extend(node_2, overlap_coords[0])
+                        nodes[j] = None
+                            # continue
+                nodes = [node for node in nodes if node is not None]
 
         read_alignments = [seq for header, seq in aa_output if not header.endswith(".")]
         read_consensus = {i: {seq[i] for seq in read_alignments if seq[i] != "-"} for i in range(len(read_alignments[0]))}
@@ -370,8 +370,6 @@ def process_batch(
 
         if args.debug:
             kicks.append(f"Kicks for {gene}\nHeader B,,Header A,Overlap Percent,Matching Percent,Length Ratio\n")
-        nodes = [node for node in nodes if node is not None]
-
         nodes.sort(key = lambda x: x.length, reverse=True)
 
         for i, node_kick in enumerate(nodes):
@@ -379,8 +377,6 @@ def process_batch(
                 if i == j:
                     continue
                 if node_2.length < node_kick.length:
-                    continue
-                if node_2.kick or node_kick.kick:
                     continue
 
                 overlap_coords = get_overlap(node_2.start, node_2.end, node_kick.start, node_kick.end, 1)
@@ -415,6 +411,7 @@ def process_batch(
                             if node_kick.is_contig:
                                 kicked_headers.update(node_kick.children)
                             break
+            nodes = [node for node in nodes if not node.kick]
 
         aa_output_after_kick = sum(1 for i in aa_output if i[0] not in kicked_headers and not i[0].endswith(".")) > 0
 
