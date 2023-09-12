@@ -344,9 +344,15 @@ def process_batch(
                     overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, args.merge_overlap)
                     if overlap_coords:
                         #Get distance
+                        fail = False
                         for i in range(overlap_coords[0], overlap_coords[1]):
                             if node.sequence[i] != node_2.sequence[i]:
+                                fail = True
                                 break
+
+                        if fail:
+                            continue
+
                         # node_kmer = node.sequence[overlap_coords[0] : overlap_coords[1]]
                         # other_kmer = node_2.sequence[overlap_coords[0] : overlap_coords[1]]
                         # if is_same_kmer(node_kmer, other_kmer):
@@ -354,10 +360,9 @@ def process_batch(
                         node.extend(node_2, overlap_coords[0])
                         nodes[j] = None
                             # continue
-                nodes = [node for node in nodes if node is not None]
         read_alignments = [seq for header, seq in aa_output if not header.endswith(".")]
         read_consensus = {i: {seq[i] for seq in read_alignments if seq[i] != "-"} for i in range(len(read_alignments[0]))}
-
+        nodes = [node for node in nodes if node is not None]
         total_cols = 0
         data_cols = 0
 
