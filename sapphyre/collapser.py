@@ -344,25 +344,23 @@ def process_batch(
                     overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, args.merge_overlap)
                     if overlap_coords:
                         #Get distance
+
+                        
                         fail = False
-                        for i in range(overlap_coords[0], overlap_coords[1]):
-                            if node.sequence[i] != node_2.sequence[i]:
+                        for x in range(overlap_coords[0], overlap_coords[1]):
+                            if node.sequence[x] != node_2.sequence[x]:
                                 fail = True
                                 break
 
-                        if fail:
-                            continue
+                        if not fail:
+                            splice_occured = True
+                            node.extend(node_2, overlap_coords[0])
+                            nodes[j] = None
+        nodes = [node for node in nodes if node is not None]
 
-                        # node_kmer = node.sequence[overlap_coords[0] : overlap_coords[1]]
-                        # other_kmer = node_2.sequence[overlap_coords[0] : overlap_coords[1]]
-                        # if is_same_kmer(node_kmer, other_kmer):
-                        splice_occured = True
-                        node.extend(node_2, overlap_coords[0])
-                        nodes[j] = None
-                            # continue
         read_alignments = [seq for header, seq in aa_output if not header.endswith(".")]
         read_consensus = {i: {seq[i] for seq in read_alignments if seq[i] != "-"} for i in range(len(read_alignments[0]))}
-        nodes = [node for node in nodes if node is not None]
+        
         total_cols = 0
         data_cols = 0
 
@@ -386,13 +384,13 @@ def process_batch(
             kicks.append(f"Kicks for {gene}\nHeader B,,Header A,Overlap Percent,Matching Percent,Length Ratio\n")
         nodes.sort(key = lambda x: x.length, reverse=True)
 
-        for i, node_kick in enumerate(nodes):
+        for i, node_kick in enumerate(node for node in nodes if not node.kick):
             for j, node_2 in enumerate(node for node in nodes if not node.kick):
                 if i == j:
                     continue
                 if node_2.length < node_kick.length:
                     continue
-
+                
                 overlap_coords = get_overlap(node_2.start, node_2.end, node_kick.start, node_kick.end, 1)
                 if overlap_coords:
                     # this block can probably just be an overlap percent call
