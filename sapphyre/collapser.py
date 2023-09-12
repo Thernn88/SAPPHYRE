@@ -189,10 +189,15 @@ def do_folder(args, input_path):
             results = pool.map(process_batch, batched_arguments)
 
     all_passed = all(i[0] for i in results)
+
+    total_kicks = sum(i[2] for i in results if i[2] != 0)
+    total_sequences = sum(i[5] for i in results)
+
+    printv(f"Kicked {total_kicks} sequences and wrote {total_sequences} sequences", args.verbose, 1)
     
 
     if args.debug:
-        total_kicks = sum(i[2] for i in results if i[2] != 0)
+        
         kicked_genes = "\n".join(["\n".join(i[3]) for i in results])
         kicked_consensus = "".join(["".join(i[4]) for i in results])
 
@@ -241,6 +246,7 @@ def process_batch(
     kicked_genes = []
     consensus_kicks = []
     total = 0
+    passed_total = 0
 
     kicks = []
     for gene in batch_args.genes:
@@ -311,11 +317,15 @@ def process_batch(
 
         # Rescurive scan
         for i, node in enumerate(nodes):
+            if node is None or node.kick:
+                continue
             splice_occured = True
             while splice_occured:
                 possible_extensions = []
                 splice_occured = False
                 for j, node_2 in enumerate(nodes):
+                    if node_2 is None or node_2.kick:
+                        continue
                     if i == j:
                         continue
 
@@ -345,7 +355,6 @@ def process_batch(
                         nodes[j] = None
                             # continue
                 nodes = [node for node in nodes if node is not None]
-
         read_alignments = [seq for header, seq in aa_output if not header.endswith(".")]
         read_consensus = {i: {seq[i] for seq in read_alignments if seq[i] != "-"} for i in range(len(read_alignments[0]))}
 
@@ -373,7 +382,7 @@ def process_batch(
         nodes.sort(key = lambda x: x.length, reverse=True)
 
         for i, node_kick in enumerate(nodes):
-            for j, node_2 in enumerate(nodes):
+            for j, node_2 in enumerate(node for node in nodes if not node.kick):
                 if i == j:
                     continue
                 if node_2.length < node_kick.length:
@@ -411,14 +420,13 @@ def process_batch(
                             if node_kick.is_contig:
                                 kicked_headers.update(node_kick.children)
                             break
-            nodes = [node for node in nodes if not node.kick]
 
-        aa_output_after_kick = sum(1 for i in aa_output if i[0] not in kicked_headers and not i[0].endswith(".")) > 0
+        aa_output_after_kick = sum(1 for i in aa_output if i[0] not in kicked_headers and not i[0].endswith("."))
 
         if not aa_output_after_kick:
             kicked_genes.append(f"No valid sequences after kick: {gene.split('.')[0]}")
             continue
-
+        
         if args.debug == 2:
             nodes.sort(key=lambda x: x.start)
             with open(aa_out, "w") as f:
@@ -449,12 +457,13 @@ def process_batch(
         count = len(kicked_headers)
         if args.debug:
             kicks.append(f"Total Kicks: {count}\n")
+        passed_total += aa_output_after_kick
         total += count
 
     if args.debug:
-        return True, kicks, total, kicked_genes, consensus_kicks
+        return True, kicks, total, kicked_genes, consensus_kicks, passed_total
 
-    return True, [], 0, kicked_genes, consensus_kicks
+    return True, [], total, kicked_genes, consensus_kicks, passed_total
 
 
 def main(args):
