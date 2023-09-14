@@ -192,13 +192,12 @@ def do_folder(args, input_path):
 
     total_kicks = sum(i[2] for i in results if i[2] != 0)
     total_sequences = sum(i[5] for i in results)
-
-    printv(f"Kicked {total_kicks} sequences and wrote {total_sequences} sequences", args.verbose, 1)
     
 
     if args.debug:
         
         kicked_genes = "\n".join(["\n".join(i[3]) for i in results])
+        genes_kicked_count = len(kicked_genes.split("\n"))
         kicked_consensus = "".join(["".join(i[4]) for i in results])
 
         with open(os.path.join(collapsed_path, "kicked_genes.txt"), "w") as fp:
@@ -212,6 +211,11 @@ def do_folder(args, input_path):
             for data in results:
                 kick_list = data[1]
                 fp.write("".join(kick_list))
+    else:
+        genes_kicked_count = sum(len(i[3]) for i in results)
+
+    printv(f"Kicked {genes_kicked_count} gene(s)", args.verbose, 1)
+    printv(f"Kicked {total_kicks} sequences and wrote {total_sequences} sequences", args.verbose, 1)
 
                 
 
@@ -292,12 +296,16 @@ def process_batch(
                 )
             )
 
+        ref_average_data_length = []
         ref_consensus = defaultdict(list)
         for header, seq in aa_output:
             if header.endswith("."):
                 start, end = find_index_pair(seq, "-")
                 for i in range(start, end):
                     ref_consensus[i].append(seq[i])
+                ref_average_data_length.append(len(seq) - seq.count("-"))
+
+        ref_average_data_length = sum(ref_average_data_length) / len(ref_average_data_length)
 
         match_percent = args.matching_consensus_percent if batch_args.is_assembly else 0.6
 
@@ -359,26 +367,22 @@ def process_batch(
         nodes = [node for node in nodes if node is not None]
 
         read_alignments = [seq for header, seq in aa_output if not header.endswith(".")]
-        read_consensus = {i: {seq[i] for seq in read_alignments if seq[i] != "-"} for i in range(len(read_alignments[0]))}
-        
-        total_cols = 0
         data_cols = 0
 
-        for i, letters in read_consensus.items():
-            total_cols += 1
-            if letters:
-                data_cols += 1
+        for i in range(len(read_alignments[0])):
+            if any(seq[i] == "-" for seq in read_alignments):
+                continue
+            data_cols += 1
 
-        coverage = data_cols / total_cols
+        coverage = data_cols / ref_average_data_length
 
-        del read_alignments
-        del read_consensus
-
+        
         req_coverage = 0.3 if batch_args.is_assembly else 0.1
-
         if coverage < req_coverage:
-            kicked_genes.append(f"Coverage: {coverage} no contigs: {gene.split('.')[0]}")
+            total += len(read_alignments)
+            kicked_genes.append(f"Failed due to Coverage: {coverage}, Ref average columns: {ref_average_data_length}, Data columns: {data_cols}")
             continue
+        del read_alignments
 
         if args.debug:
             kicks.append(f"Kicks for {gene}\nHeader B,,Header A,Overlap Percent,Matching Percent,Length Ratio\n")
