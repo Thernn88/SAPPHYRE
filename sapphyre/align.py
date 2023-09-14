@@ -483,7 +483,8 @@ def run_command(args: CmdArgs) -> None:
                     3,
                 )  # Debug
 
-                this_clus_align = f"{args.gene}_cluster_{cluster_i}_length_{len(cluster)}_index_aligned"
+                # this_clus_align = f"{args.gene}_cluster_{cluster_i}_length_{len(cluster)}_index_aligned"
+                this_clus_align = f"cluster_{cluster_i}"
                 aligned_cluster = os.path.join(aligned_files_tmp, this_clus_align)
 
                 raw_cluster = os.path.join(
