@@ -434,7 +434,7 @@ def print_unmerged_sequences(
                         if aa_seq in already_mapped_sequence:
                             if dupe_debug_fp:
                                 dupe_debug_fp.write(
-                                    f"{header}\n{aa_seq}\nis an aa dupe of\n{mapped_to}\n\n",
+                                    f"{header}\n{aa_seq}\nis an aa dupe of\n{already_mapped_header}\n\n",
                                 )
                             continue
 
