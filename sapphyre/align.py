@@ -428,7 +428,7 @@ def run_command(args: CmdArgs) -> None:
                 3,
             )  # Debug
 
-            if args.experimental:
+            if args.experimental and not only_singletons:
                 cluster_children = generate_clusters(data)
 
                 clusters = seperate_into_clusters(cluster_children, parent_tmpdir, data)
@@ -464,8 +464,7 @@ def run_command(args: CmdArgs) -> None:
                 cluster_length = len(cluster)
 
                 if (
-                    only_singletons
-                    or cluster_length == 1
+                    cluster_length == 1
                     or cluster_length < SINGLETON_THRESHOLD
                     and singleton_allowed
                 ):
