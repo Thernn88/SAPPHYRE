@@ -9,7 +9,7 @@ from shutil import rmtree
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 import xxhash
-
+from phymmr_tools import find_index_pair
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import gettempdir, parseFasta, printv, writeFasta
 
@@ -364,7 +364,6 @@ CmdArgs = namedtuple(
         "aln_path",
         "debug",
         "only_singletons",
-        "experimental",
     ],
 )
 
@@ -428,7 +427,7 @@ def run_command(args: CmdArgs) -> None:
                 3,
             )  # Debug
 
-            if args.experimental and not only_singletons:
+            if not only_singletons:
                 cluster_children = generate_clusters(data)
 
                 clusters = seperate_into_clusters(cluster_children, parent_tmpdir, data)
@@ -455,26 +454,11 @@ def run_command(args: CmdArgs) -> None:
                 if 1 < len(cluster) < SINGLETON_THRESHOLD:
                     under_threshold += 1
 
-            singleton_allowed = under_threshold >= SINGLETONS_REQUIRED
-
             cluster_i = 0
             for cluster in clusters:
                 cluster_i += 1
                 cluster_seqs = [(header, data[header]) for header in cluster]
-                cluster_length = len(cluster)
-
-                if (
-                    cluster_length == 1
-                    or cluster_length < SINGLETON_THRESHOLD
-                    and singleton_allowed
-                ):
-                    printv(
-                        f"Storing singleton cluster {cluster_i}. Elapsed time: {keeper.differential():.2f}",
-                        args.verbose,
-                        3,
-                    )  # Debug
-                    to_merge.extend(cluster_seqs)
-                    continue
+                cluster_length = len(cluster_seqs)
 
                 printv(
                     f"Aligning cluster {cluster_i}. Elapsed time: {keeper.differential():.2f}",
@@ -490,6 +474,11 @@ def run_command(args: CmdArgs) -> None:
                     raw_files_tmp,
                     f"{args.gene}_cluster{cluster_i}",
                 )
+                if (cluster_length == 1):
+                    writeFasta(aligned_cluster, cluster_seqs)
+                    aligned_ingredients.append((aligned_cluster, len(cluster_seqs)))
+                    continue
+                    
                 writeFasta(raw_cluster, cluster_seqs)
                 if debug:
                     writeFasta(
@@ -516,79 +505,132 @@ def run_command(args: CmdArgs) -> None:
                     )
 
                 aligned_ingredients.append((aligned_cluster, len(aligned_sequences)))
-
         align_time = keeper.differential() - cluster_time
-        has_singleton_merge = len(to_merge) > 0
-        if has_singleton_merge:
-            merged_singleton_final = os.path.join(
-                aligned_files_tmp,
-                f"{args.gene}_cluster_merged_singletons",
-            )
-            writeFasta(merged_singleton_final, to_merge)
-            if args.debug:
-                writeFasta(
-                    os.path.join(
-                        this_intermediates,
-                        f"{args.gene}_cluster_merged_singletons",
-                    ),
-                    to_merge,
-                )
-        final_sequences = []
-        if aligned_ingredients or has_singleton_merge:
+
+        if aligned_ingredients:
             aligned_ingredients = [
-                i[0] for i in sorted(aligned_ingredients, key=lambda x: x[1])
+                i for i in sorted(aligned_ingredients, key=lambda x: x[1])
             ]
-            if has_singleton_merge:
-                aligned_ingredients.insert(0, merged_singleton_final)
             printv(
                 f"Merging Alignments. Elapsed time: {keeper.differential():.2f}",
                 args.verbose,
                 3,
             )  # Debug
-            with NamedTemporaryFile(dir=parent_tmpdir, mode="w+") as tmp_aln:
+            with NamedTemporaryFile(dir=parent_tmpdir, mode="w+", prefix="References_") as tmp_aln:
                 generate_tmp_aln(aln_file, targets, tmp_aln, debug, this_intermediates)
 
-                prev_file = tmp_aln.name
-
-                for i, file in enumerate(aligned_ingredients):
+                for i, (file, seq_count) in enumerate(aligned_ingredients):
                     printv(
-                        f"Merging alignment {i+1} of {len(aligned_ingredients)}.",
+                        f"Creating reference subalignment {i+1} of {len(aligned_ingredients)}.",
                         args.verbose,
                         3,
                     )
                     out_file = os.path.join(parent_tmpdir, f"part_{i}.fa")
-                    if len(aligned_ingredients) - 1 == i:
-                        out_file = os.path.join(parent_tmpdir, os.path.basename(args.result_file))
 
-                    if has_singleton_merge and i == 0:
-                        if debug:
-                            command = f"mafft --anysymbol --quiet --jtt 1 --addfragments {file} --thread -1 {prev_file} > {out_file}"
-                        else:
-                            command = f"mafft --anysymbol --quiet --jtt 1 --addfragments {file} --thread -1 {prev_file} > {out_file}"
-
-                        os.system(command)
-                        if debug:
-                            printv(command, args.verbose, 3)
+                    if seq_count >= 1:
+                        is_profile = "--is-profile"
                     else:
-                        os.system(
-                            f"clustalo --p1 {prev_file} --p2 {file} -o {out_file} --threads=1 --full --is-profile --force",
+                        is_profile = ""
+
+                    os.system(
+                        f"clustalo --p1 {tmp_aln.name} --p2 {file} -o {out_file} --threads=1 --full {is_profile} --force",
+                    )
+
+                    if debug:
+                        printv(
+                            f"clustalo --p1 {tmp_aln.name} --p2 {file} -o {out_file} --threads=1 --full {is_profile} --force",
+                            args.verbose,
+                            3,
                         )
-                        if debug:
-                            printv(
-                                f"clustalo --p1 {prev_file} --p2 {file} -o {out_file} --threads=1  --full --is-profile --force",
-                                args.verbose,
-                                3,
-                            )
                     if debug:
                         writeFasta(
                             os.path.join(this_intermediates, f"part_{i}.fa"),
                             parseFasta(out_file, True),
                         )
 
-                    if len(aligned_ingredients) - 1 == i:
-                        final_sequences = list(parseFasta(out_file, True))
+                data = []
 
-                    prev_file = out_file
+                already_has_insertion_coords = {}
+                alignment_insertion_coords = []
+                subalignments = {}
+                insertion_coords_global = set()
+
+                for item in os.listdir(parent_tmpdir):
+                    if item.startswith("References_"):
+                        refs = list(parseFasta(os.path.join(parent_tmpdir, item), True))
+                        continue
+
+                    if not item.startswith("part_"):
+                        continue
+
+                    references = []
+                    this_seqs = []
+                    for header, seq in parseFasta(os.path.join(parent_tmpdir, item), True):
+                        if header.endswith("."):
+                            references.append(seq)
+                            continue
+
+                        this_seqs.append((header, list(seq)))
+                    
+                    data_coords = set()
+                    for seq in references:
+                        for i, char in enumerate(seq):
+                            if i in data_coords:
+                                continue
+                            if char != "-":
+                                data_coords.add(i)
+
+                    insertion_coords = set(range(len(seq))) - data_coords
+                    
+                    insertion_after_overlap_filter = [i for i in insertion_coords if i not in insertion_coords_global]
+
+                    if insertion_after_overlap_filter:
+                        alignment_insertion_coords.append(insertion_after_overlap_filter)
+                        insertion_coords_global.update(insertion_coords)
+
+                    already_has_insertion_coords[item] = insertion_coords
+                    subalignments[item] = this_seqs
+
+                alignment_insertion_coords.sort(key=lambda x: x[0])
+
+                final_refs = []
+                for header,seq in refs:
+                    seq = list(seq)
+                    adj = 0
+                    for x, coords in enumerate(alignment_insertion_coords):
+                        if x != 0:
+                            adj += len(alignment_insertion_coords[x-1])
+                        
+                        gap_start = min(coords)
+                        gap_end = max(coords)
+
+                        seq.insert(gap_start+adj, "-"*(gap_end-gap_start+1))
+                    
+                    final_refs.append((header, "".join(seq)))
+
+                for item, seqs in subalignments.items():
+                    this_msa_insertions = already_has_insertion_coords[item]
+                    adj = 0
+                    for x, coords in enumerate(alignment_insertion_coords):
+                        if x != 0:
+                            adj += len(alignment_insertion_coords[x-1])
+
+                        for coord in coords:
+                            if coord in this_msa_insertions:
+                                continue
+
+                            for _, seq in seqs:
+                                seq.insert(coord+adj, "-")
+
+                    subalignments[item] = [(i[0], "".join(i[1])) for i in seqs]
+
+                sequences = []
+                for group in subalignments.values():
+                    sequences.extend(group)
+
+                sequences.sort(key=lambda x: find_index_pair(x[1], "-")[0])
+
+                final_sequences = final_refs+sequences
 
     merge_time = keeper.differential() - align_time - cluster_time
 
@@ -676,7 +718,6 @@ def do_folder(folder, args):
                     aln_path,
                     args.debug,
                     file in only_singletons,
-                    args.experimental,
                 ),
             ),
         )
