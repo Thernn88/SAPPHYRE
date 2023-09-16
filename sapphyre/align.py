@@ -407,6 +407,8 @@ def run_command(args: CmdArgs) -> None:
             writeFasta(aligned_file, sequences)
             if args.debug:
                 writeFasta(os.path.join(this_intermediates, aligned_file), sequences)
+                unaligned_path = os.path.join(this_intermediates, f"unaligned_cluster_singleton")
+                writeFasta(unaligned_path, sequences)
             aligned_ingredients.append((aligned_file, len(sequences)))
         else:
             printv(
@@ -418,7 +420,11 @@ def run_command(args: CmdArgs) -> None:
             cluster_children = generate_clusters(data)
             clusters = seperate_into_clusters(cluster_children, parent_tmpdir, data)
             cluster_time = keeper.differential()
-            
+            if debug:
+                for i, cluster in enumerate(clusters):
+                    unaligned_path = os.path.join(this_intermediates, f"unaligned_cluster_{i}")
+                    test_output = [(header, data[header]) for header in cluster]
+                    writeFasta(unaligned_path, test_output)
             printv(
                 f"Found {seq_count} sequences over {len(clusters)} clusters. Elapsed time: {keeper.differential():.2f}",
                 args.verbose,
