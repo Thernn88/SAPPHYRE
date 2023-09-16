@@ -17,13 +17,6 @@ KMER_LEN = 15
 KMER_PERCENT = 0.15
 SUBCLUSTER_AT = 1000
 CLUSTER_EVERY = 500  # Aim for x seqs per cluster
-SAFEGUARD_BP = 15000
-SINGLETON_THRESHOLD = 5
-UPPER_SINGLETON_TRESHOLD = 20000
-SINGLETONS_REQUIRED = (
-    50  # Amount of singleton clusters required to continue checking threshold
-)
-
 
 def find_kmers(fasta: dict) -> dict[str, set]:
     """Returns the kmers of length KMER_LEN for each sequence in the fasta dict.
@@ -363,7 +356,6 @@ CmdArgs = namedtuple(
         "compress",
         "aln_path",
         "debug",
-        "only_singletons",
     ],
 )
 
@@ -400,10 +392,6 @@ def run_command(args: CmdArgs) -> None:
             trimmed_header_to_full,
         ) = process_genefile(args.gene_file)
 
-        only_singletons = args.only_singletons
-        if len(data) > UPPER_SINGLETON_TRESHOLD:
-            only_singletons = True
-
         cluster_time = 0
         align_time = 0
         merge_time = 0
@@ -427,14 +415,10 @@ def run_command(args: CmdArgs) -> None:
                 3,
             )  # Debug
 
-            if not only_singletons:
-                cluster_children = generate_clusters(data)
-
-                clusters = seperate_into_clusters(cluster_children, parent_tmpdir, data)
-            else:
-                clusters = [[header] for header in data]
-
+            cluster_children = generate_clusters(data)
+            clusters = seperate_into_clusters(cluster_children, parent_tmpdir, data)
             cluster_time = keeper.differential()
+            
             printv(
                 f"Found {seq_count} sequences over {len(clusters)} clusters. Elapsed time: {keeper.differential():.2f}",
                 args.verbose,
@@ -448,11 +432,6 @@ def run_command(args: CmdArgs) -> None:
 
             items = os.listdir(raw_files_tmp)
             items.sort(key=lambda x: int(x.split("_cluster")[-1]))
-
-            under_threshold = 0
-            for cluster in clusters:
-                if 1 < len(cluster) < SINGLETON_THRESHOLD:
-                    under_threshold += 1
 
             cluster_i = 0
             for cluster in clusters:
@@ -677,15 +656,6 @@ def do_folder(folder, args):
     genes.sort(key=lambda x: x[1], reverse=True)
     orthoset_path = os.path.join(args.orthoset_input, args.orthoset)
     aln_path = get_aln_path(orthoset_path)
-    only_singletons = set()
-    for gene, _ in genes:
-        for _, seq in parseFasta(
-            os.path.join(aln_path, gene.split(".")[0] + ".aln.fa"),
-            True,
-        ):
-            if len(seq) >= SAFEGUARD_BP:
-                printv(f"{gene} will be using Singletons only", args.verbose, 3)
-                only_singletons.add(gene)
     if not os.path.exists(orthoset_path):
         printv("ERROR: Orthoset path not found.", args.verbose, 0)
         return False
@@ -717,7 +687,6 @@ def do_folder(folder, args):
                     args.compress,
                     aln_path,
                     args.debug,
-                    file in only_singletons,
                 ),
             ),
         )
