@@ -589,7 +589,7 @@ def run_command(args: CmdArgs) -> None:
                         gap_start = min(coords)
                         gap_end = max(coords)
 
-                        seq.insert(gap_start+adj, "-"*(gap_end-gap_start+1))
+                        seq.insert(gap_start+adj, "-"*(gap_end-gap_start))
                     
                     final_refs.append((header, "".join(seq)))
 
