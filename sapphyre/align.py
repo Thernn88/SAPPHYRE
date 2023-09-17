@@ -586,10 +586,8 @@ def run_command(args: CmdArgs) -> None:
                         if x != 0:
                             adj += len(alignment_insertion_coords[x-1])
                         
-                        gap_start = min(coords)
-                        gap_end = max(coords)
-
-                        seq.insert(gap_start+adj, "-"*(gap_end-gap_start))
+                        for gap in coords:
+                            seq.insert(gap+adj, "-")
                     
                     final_refs.append((header, "".join(seq)))
 
