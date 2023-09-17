@@ -370,9 +370,9 @@ def process_batch(
         data_cols = 0
 
         for i in range(len(read_alignments[0])):
-            if any(seq[i] == "-" for seq in read_alignments):
-                continue
-            data_cols += 1
+            if any(seq[i] != "-" for seq in read_alignments):
+                data_cols += 1
+            
 
         coverage = data_cols / ref_average_data_length
 
