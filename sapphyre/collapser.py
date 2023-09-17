@@ -380,7 +380,7 @@ def process_batch(
         req_coverage = 0.3 if batch_args.is_assembly else 0.1
         if coverage < req_coverage:
             total += len(read_alignments)
-            kicked_genes.append(f"Failed due to Coverage: {coverage}, Ref average columns: {ref_average_data_length}, Data columns: {data_cols}")
+            kicked_genes.append(f"{gene} -> failed due to Coverage: {coverage}, Ref average columns: {ref_average_data_length}, Data columns: {data_cols}")
             continue
         del read_alignments
 
