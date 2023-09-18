@@ -108,7 +108,6 @@ def main(args):
     global_args = vars(args)
     global_args.pop("config")
     global_args.pop("start")
-    print(global_args)
 
     scripts = list(config.keys())
     if start_script.lower() not in scripts:
@@ -142,7 +141,9 @@ def main(args):
             if not prepare.main(this_args):
                 print("Error in Prepare.")
             from . import diamond
-
+        elif script == "diamond":
+            from . import diamond
+            
             if not diamond.main(this_args):
                 print("Error in Diamond.")
         elif script == "reporter":
