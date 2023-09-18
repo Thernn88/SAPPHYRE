@@ -59,13 +59,10 @@ def main(args):
             "ref_min_percent": 0.33,
             "index_group_min_bp": 20,
             "merge_overlap": 18,
-            "read_overlap": 0.5,
-            "contig_overlap": 0.65,
-            "read_matching_percent": 0.8,
-            "keep_read_percent": 0.8,
-            "minimum_kick_overlap": 0.75,
-            "contig_matching_percent": 0.8,
+            "kick_overlap": 0.5,
+            "matching_percent": 0.8,
             "sub_percent": 0.1,
+            "gross_diference_percent": 0.9,
             "consensus": 0.65,
             "matching_consensus_percent": 0.65,
             "dupes": True,
@@ -87,6 +84,7 @@ def main(args):
             "ignore_overlap_chunks": False,
             "majority": 0.55,
             "majority_count": 4,
+            "special_merge": False,
         },
     }
 
@@ -143,7 +141,7 @@ def main(args):
             from . import diamond
         elif script == "diamond":
             from . import diamond
-            
+
             if not diamond.main(this_args):
                 print("Error in Diamond.")
         elif script == "reporter":
