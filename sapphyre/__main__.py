@@ -430,8 +430,6 @@ def subcmd_outlier(subparsers):
 def outlier(argsobj):
     from . import outlier
 
-    print(vars(argsobj))
-
     if not outlier.main(argsobj):
         print()
         print(argsobj.formathelp())
