@@ -50,13 +50,7 @@ def main(args):
             "debug": False,
         },
         "outlier": {
-            "compress": True,
-            "verbose": 1,
-            "processes": 32,
-            "orthoset_input": "orthosets",
-            "orthoset": "Ortholog_set_Mecopterida_v4",
-            "evalue": 6,
-            "debug": None,
+            "debug": 0,
             "uncompress_intermediates": False,
             "threshold": 100,
             "no_references": False,
@@ -73,15 +67,18 @@ def main(args):
             "contig_matching_percent": 0.8,
             "sub_percent": 0.1,
             "consensus": 0.65,
-            "matching_consensus_percent":0.65,
-            "excise": 0.4,
+            "matching_consensus_percent": 0.65,
             "dupes": True,
             "majority_excise": 0.35,
             "move_fails": "datasets/bad",
             "cut": False,
             "output": "internal",
             "internal_consensus_threshold": 0.65,
-            "internal_distance_threshold": 0.075
+            "internal_distance_threshold": 0.075,
+            "no_excise": False,
+            "excise": 0.40,
+            "no_dupes": True,
+            "flag": False,
         },
         "merge": {
             "aa_input": "outlier/internal/aa",
@@ -111,6 +108,7 @@ def main(args):
     global_args = vars(args)
     global_args.pop("config")
     global_args.pop("start")
+    print(global_args)
 
     scripts = list(config.keys())
     if start_script.lower() not in scripts:
@@ -143,7 +141,6 @@ def main(args):
 
             if not prepare.main(this_args):
                 print("Error in Prepare.")
-        elif script == "diamond":
             from . import diamond
 
             if not diamond.main(this_args):

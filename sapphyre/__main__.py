@@ -122,7 +122,7 @@ def subcmd_diamond(subparsers):
         default="very",
         help="Diamond sensitivty.",
     )
-    parser.add_argument(
+    par.add_argument(
         "-e",
         "--evalue",
         type=int,
@@ -429,6 +429,8 @@ def subcmd_outlier(subparsers):
 
 def outlier(argsobj):
     from . import outlier
+
+    print(vars(argsobj))
 
     if not outlier.main(argsobj):
         print()
