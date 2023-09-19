@@ -298,7 +298,8 @@ def seperate_into_clusters(
 def generate_tmp_aln(
     aln_file: str,
     targets: dict[str, str],
-    tmp: NamedTemporaryFile,
+    dest: NamedTemporaryFile,
+    parent_tmpdir: str,
     debug: float,
     this_intermediates: str,
 ) -> None:
@@ -314,36 +315,28 @@ def generate_tmp_aln(
     Returns:
         None
     """
-    sequences = []
-    for header, sequence in parseFasta(aln_file, True):
-        if header in targets:
-            sequences.append((targets[header], sequence))
+    with NamedTemporaryFile(dir=parent_tmpdir, mode="w+", prefix="References_") as tmp_prealign:
+        sequences = []
+        for header, sequence in parseFasta(aln_file, True):
+            if header in targets:
+                sequences.append((targets[header], sequence))
 
-    empty_columns = None
-    for header, sequence in sequences:
-        if empty_columns is None:
-            empty_columns = [True] * len(sequence)
-
-        for col, let in enumerate(sequence):
-            if let != "-":
-                empty_columns[col] = False
-
-    to_write = []
-    for header, sequence in sequences:
-        to_write.append(
-            (
-                header,
-                "".join(
-                    [let for col, let in enumerate(sequence) if not empty_columns[col]],
+        to_write = []
+        for header, sequence in sequences:
+            to_write.append(
+                (
+                    header,
+                    sequence.replace("-",""),
                 ),
-            ),
-        )
+            )
 
-    writeFasta(tmp.name, to_write)
+        writeFasta(tmp_prealign.name, to_write)
+        tmp_prealign.flush()
+
+        os.system(f"mafft-linsi --quiet --thread 1 --anysymbol '{tmp_prealign.name}' > '{dest.name}'")
+
     if debug:
-        writeFasta(os.path.join(this_intermediates, "references.fa"), to_write)
-    tmp.flush()
-
+        writeFasta(os.path.join(this_intermediates, "references.fa"), parseFasta(dest.name, True))
 
 CmdArgs = namedtuple(
     "CmdArgs",
@@ -502,7 +495,7 @@ def run_command(args: CmdArgs) -> None:
                 3,
             )  # Debug
             with NamedTemporaryFile(dir=parent_tmpdir, mode="w+", prefix="References_") as tmp_aln:
-                generate_tmp_aln(aln_file, targets, tmp_aln, debug, this_intermediates)
+                generate_tmp_aln(aln_file, targets, tmp_aln, parent_tmpdir, debug, this_intermediates)
 
                 for i, (file, seq_count) in enumerate(aligned_ingredients):
                     printv(
