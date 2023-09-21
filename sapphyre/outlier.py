@@ -1,11 +1,9 @@
 import argparse
-from . import blosum, collapser, excise, internal
 import os
-from .timekeeper import TimeKeeper, KeeperMode
+from . import blosum, collapser, excise, internal
 from .utils import printv
 
 def main(argsobj):
-    timer = TimeKeeper(KeeperMode.DIRECT)
     to_move = []
     debug = 0 if argsobj.debug is None else argsobj.debug
     if debug > 1:

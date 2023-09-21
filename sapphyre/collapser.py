@@ -1,14 +1,13 @@
-from collections import Counter, defaultdict
-from itertools import combinations
+from collections import defaultdict
 from math import ceil
 from multiprocessing import Pool
 from shutil import rmtree
 import os
 
 from msgspec import Struct
-from phymmr_tools import constrained_distance, find_index_pair, get_overlap, is_same_kmer
-from .timekeeper import KeeperMode, TimeKeeper
+from phymmr_tools import constrained_distance, find_index_pair, get_overlap
 import wrap_rocks
+from .timekeeper import KeeperMode, TimeKeeper
 from .utils import writeFasta, parseFasta, printv
 
 class CollapserArgs(Struct):

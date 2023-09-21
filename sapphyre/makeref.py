@@ -11,9 +11,10 @@ import xxhash
 import wrap_rocks
 from Bio import SeqIO
 from msgspec import json
+from phymmr_tools import find_index_pair, get_overlap, constrained_distance
 from .utils import printv, writeFasta, parseFasta
 from .timekeeper import TimeKeeper, KeeperMode
-from phymmr_tools import find_index_pair, get_overlap, constrained_distance
+
 
 
 class Sequence:
