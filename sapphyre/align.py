@@ -111,28 +111,6 @@ def process_genefile(
     return len(data), data, targets, reinsertions, trimmed_header_to_full
 
 
-def delete_empty_cols(records: list[tuple[str, str]]) -> list[tuple[str, str]]:
-    """Deletes columns that are empty in all sequences.
-
-    Args:
-    ----
-        records (list[tuple[str, str]]): A list of tuples of header, sequence
-    Returns:
-        list[tuple[str, str]]: A list of tuples of header, sequence with removed columns
-    """
-    cols_to_keep = set()
-    output = []
-    for _, sequence in records:
-        for x, let in enumerate(sequence):
-            if x not in cols_to_keep and let != "-":
-                cols_to_keep.add(x)
-    for header, sequence in records:
-        sequence = [let for x, let in enumerate(sequence) if x in cols_to_keep]
-        output.append((header, "".join(sequence)))
-
-    return output
-
-
 def compare_cluster(
     cluster_a: list[str],
     cluster_b: list[str],
@@ -302,6 +280,7 @@ def generate_tmp_aln(
     parent_tmpdir: str,
     debug: float,
     this_intermediates: str,
+    align_method: str,
 ) -> None:
     """Grabs target reference sequences and removes empty columns from the alignment.
 
@@ -321,19 +300,46 @@ def generate_tmp_aln(
             if header in targets:
                 sequences.append((targets[header], sequence))
 
-        to_write = []
-        for header, sequence in sequences:
-            to_write.append(
-                (
-                    header,
-                    sequence.replace("-",""),
-                ),
-            )
+        if align_method in {"base", "frags"}:
+            empty_columns = None
+            for header, sequence in sequences:
+                if empty_columns is None:
+                    empty_columns = [True] * len(sequence)
 
-        writeFasta(tmp_prealign.name, to_write)
-        tmp_prealign.flush()
+                for col, let in enumerate(sequence):
+                    if let != "-":
+                        empty_columns[col] = False
 
-        os.system(f"mafft-linsi --quiet --thread 1 --anysymbol '{tmp_prealign.name}' > '{dest.name}'")
+            to_write = []
+            for header, sequence in sequences:
+                to_write.append(
+                    (
+                        header,
+                        "".join(
+                            [let for col, let in enumerate(sequence) if not empty_columns[col]],
+                        ),
+                    ),
+                )
+        else:
+            to_write = []
+            for header, sequence in sequences:
+                to_write.append(
+                    (
+                        header,
+                        sequence.replace("-",""),
+                    ),
+                )
+
+        if len(to_write) <= 1 or align_method in {"base", "frags"}:
+            writeFasta(dest.name, to_write)
+        else:
+            writeFasta(tmp_prealign.name, to_write)
+            tmp_prealign.flush()
+
+            if align_method == "mafft":
+                os.system(f"mafft-linsi --quiet --thread 1 --anysymbol '{tmp_prealign.name}' > '{dest.name}'")
+            elif align_method == "clustal":
+                os.system(f"clustalo -i '{tmp_prealign.name}' -o '{dest.name}' --thread=1 --full --force")
 
     if debug:
         writeFasta(os.path.join(this_intermediates, "references.fa"), parseFasta(dest.name, True))
@@ -349,6 +355,7 @@ CmdArgs = namedtuple(
         "compress",
         "aln_path",
         "debug",
+        "align_method",
     ],
 )
 
@@ -366,7 +373,6 @@ def run_command(args: CmdArgs) -> None:
     if debug and not os.path.exists(this_intermediates):
         os.mkdir(this_intermediates)
     aln_file = os.path.join(args.aln_path, args.gene + ".aln.fa")
-    to_merge = []
 
     with TemporaryDirectory(dir=temp_dir) as parent_tmpdir, TemporaryDirectory(
         dir=parent_tmpdir,
@@ -403,6 +409,13 @@ def run_command(args: CmdArgs) -> None:
                 unaligned_path = os.path.join(this_intermediates, f"unaligned_cluster_singleton")
                 writeFasta(unaligned_path, sequences)
             aligned_ingredients.append((aligned_file, len(sequences)))
+        elif args.align_method == "frags":
+            aligned_file = os.path.join(aligned_files_tmp, f"{args.gene}_sequences")
+
+            sequences = list(data.items())
+            writeFasta(aligned_file, sequences)
+            
+            aligned_ingredients = [(aligned_file, len(sequences))]
         else:
             printv(
                 f"Generating Cluster. Elapsed time: {keeper.differential():.2f}",
@@ -495,7 +508,7 @@ def run_command(args: CmdArgs) -> None:
                 3,
             )  # Debug
             with NamedTemporaryFile(dir=parent_tmpdir, mode="w+", prefix="References_") as tmp_aln:
-                generate_tmp_aln(aln_file, targets, tmp_aln, parent_tmpdir, debug, this_intermediates)
+                generate_tmp_aln(aln_file, targets, tmp_aln, parent_tmpdir, debug, this_intermediates, args.align_method)
 
                 for i, (file, seq_count) in enumerate(aligned_ingredients):
                     printv(
@@ -503,6 +516,15 @@ def run_command(args: CmdArgs) -> None:
                         args.verbose,
                         3,
                     )
+                    if args.align_method == "frags":
+                        out_file = os.path.join(parent_tmpdir, f"aligned.fa")
+                        command = f"mafft --anysymbol --quiet --jtt 1 --addfragments {file} --thread 1 {tmp_aln.name} > {out_file}"
+                        
+                        os.system(command)
+
+                        final_sequences = list(parseFasta(out_file, True))
+                        continue
+
                     out_file = os.path.join(parent_tmpdir, f"part_{i}.fa")
 
                     if seq_count >= 1:
@@ -526,87 +548,88 @@ def run_command(args: CmdArgs) -> None:
                             parseFasta(out_file, True),
                         )
 
-                data = []
+                if args.align_method != "frags":
+                    data = []
 
-                already_has_insertion_coords = {}
-                alignment_insertion_coords = []
-                subalignments = {}
-                insertion_coords_global = set()
+                    already_has_insertion_coords = {}
+                    alignment_insertion_coords = []
+                    subalignments = {}
+                    insertion_coords_global = set()
 
-                for item in os.listdir(parent_tmpdir):
-                    if item.startswith("References_"):
-                        refs = list(parseFasta(os.path.join(parent_tmpdir, item), True))
-                        continue
-
-                    if not item.startswith("part_"):
-                        continue
-
-                    references = []
-                    this_seqs = []
-                    for header, seq in parseFasta(os.path.join(parent_tmpdir, item), True):
-                        if header.endswith("."):
-                            references.append(seq)
+                    for item in os.listdir(parent_tmpdir):
+                        if item.startswith("References_"):
+                            refs = list(parseFasta(os.path.join(parent_tmpdir, item), True))
                             continue
 
-                        this_seqs.append((header, list(seq)))
-                    
-                    data_coords = set()
-                    for seq in references:
-                        for i, char in enumerate(seq):
-                            if i in data_coords:
+                        if not item.startswith("part_"):
+                            continue
+
+                        references = []
+                        this_seqs = []
+                        for header, seq in parseFasta(os.path.join(parent_tmpdir, item), True):
+                            if header.endswith("."):
+                                references.append(seq)
                                 continue
-                            if char != "-":
-                                data_coords.add(i)
 
-                    insertion_coords = set(range(len(seq))) - data_coords
-                    
-                    insertion_after_overlap_filter = [i for i in insertion_coords if i not in insertion_coords_global]
-
-                    if insertion_after_overlap_filter:
-                        alignment_insertion_coords.append(insertion_after_overlap_filter)
-                        insertion_coords_global.update(insertion_coords)
-
-                    already_has_insertion_coords[item] = insertion_coords
-                    subalignments[item] = this_seqs
-
-                alignment_insertion_coords.sort(key=lambda x: x[0])
-
-                final_refs = []
-                for header,seq in refs:
-                    seq = list(seq)
-                    adj = 0
-                    for x, coords in enumerate(alignment_insertion_coords):
-                        if x != 0:
-                            adj += len(alignment_insertion_coords[x-1])
+                            this_seqs.append((header, list(seq)))
                         
-                        for gap in coords:
-                            seq.insert(gap+adj, "-")
-                    
-                    final_refs.append((header, "".join(seq)))
+                        data_coords = set()
+                        for seq in references:
+                            for i, char in enumerate(seq):
+                                if i in data_coords:
+                                    continue
+                                if char != "-":
+                                    data_coords.add(i)
 
-                for item, seqs in subalignments.items():
-                    this_msa_insertions = already_has_insertion_coords[item]
-                    adj = 0
-                    for x, coords in enumerate(alignment_insertion_coords):
-                        if x != 0:
-                            adj += len(alignment_insertion_coords[x-1])
+                        insertion_coords = set(range(len(seq))) - data_coords
+                        
+                        insertion_after_overlap_filter = [i for i in insertion_coords if i not in insertion_coords_global]
 
-                        for coord in coords:
-                            if coord in this_msa_insertions:
-                                continue
+                        if insertion_after_overlap_filter:
+                            alignment_insertion_coords.append(insertion_after_overlap_filter)
+                            insertion_coords_global.update(insertion_coords)
 
-                            for _, seq in seqs:
-                                seq.insert(coord+adj, "-")
+                        already_has_insertion_coords[item] = insertion_coords
+                        subalignments[item] = this_seqs
 
-                    subalignments[item] = [(i[0], "".join(i[1])) for i in seqs]
+                    alignment_insertion_coords.sort(key=lambda x: x[0])
 
-                sequences = []
-                for group in subalignments.values():
-                    sequences.extend(group)
+                    final_refs = []
+                    for header,seq in refs:
+                        seq = list(seq)
+                        adj = 0
+                        for x, coords in enumerate(alignment_insertion_coords):
+                            if x != 0:
+                                adj += len(alignment_insertion_coords[x-1])
+                            
+                            for gap in coords:
+                                seq.insert(gap+adj, "-")
+                        
+                        final_refs.append((header, "".join(seq)))
 
-                sequences.sort(key=lambda x: find_index_pair(x[1], "-")[0])
+                    for item, seqs in subalignments.items():
+                        this_msa_insertions = already_has_insertion_coords[item]
+                        adj = 0
+                        for x, coords in enumerate(alignment_insertion_coords):
+                            if x != 0:
+                                adj += len(alignment_insertion_coords[x-1])
 
-                final_sequences = final_refs+sequences
+                            for coord in coords:
+                                if coord in this_msa_insertions:
+                                    continue
+
+                                for _, seq in seqs:
+                                    seq.insert(coord+adj, "-")
+
+                        subalignments[item] = [(i[0], "".join(i[1])) for i in seqs]
+
+                    sequences = []
+                    for group in subalignments.values():
+                        sequences.extend(group)
+
+                    sequences.sort(key=lambda x: find_index_pair(x[1], "-")[0])
+
+                    final_sequences = final_refs+sequences
 
     merge_time = keeper.differential() - align_time - cluster_time
 
@@ -684,6 +707,7 @@ def do_folder(folder, args):
                     args.compress,
                     aln_path,
                     args.debug,
+                    args.align_method.lower(),
                 ),
             ),
         )
