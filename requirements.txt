@@ -1,16 +1,16 @@
+phymmr_tools>=0.5.5
+wrap_rocks>=0.3.7
 biopython>=1.79
 numpy>=1.23.3
-tqdm>=4.64.1
-wrap_rocks>=0.3.6
-xxhash>=3.0.0
-phymmr_tools>=0.4.0
+blosum==2.0.2
 pro2codon>=1.2.4
-requests>=2.28
-beautifulsoup4
-blosum==1.2.2
-parasail>= 1.3.4
-orjson>= 3.8.7
-pandas
-pyarrow
-pyfastx
-needletail
+pyfastx>=2.0.1
+needletail>=0.5.0
+pandas>=2.1.1
+msgspec>=0.18.2
+parasail>=1.3.4
+xxhash>=3.3.0
+pyarrow>=13.0.0
+openpyxl>=3.1.2
+requests>=2.31.0
+beautifulsoup4>=4.12.2
