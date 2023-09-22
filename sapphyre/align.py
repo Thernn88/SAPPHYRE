@@ -736,6 +736,11 @@ def main(args):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
+
+    if path.exists("intermediates"):
+        rmtree("intermediates")
+    mkdir("intermediates")
+
     for folder in args.INPUT:
         success = do_folder(folder, args)
         if not success:

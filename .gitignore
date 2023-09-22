@@ -3,7 +3,8 @@ aa/
 nt/
 trimmed/
 taxa/
-orthosets
+orthosets/
+intermediates/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
