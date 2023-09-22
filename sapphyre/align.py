@@ -463,7 +463,7 @@ def run_command(args: CmdArgs) -> None:
                 )
                 if (cluster_length == 1):
                     writeFasta(aligned_cluster, cluster_seqs)
-                    aligned_ingredients.append((aligned_cluster, len(cluster_seqs)))
+                    aligned_ingredients.append((aligned_cluster, len(cluster_seqs), cluster_i))
                     if debug:
                         writeFasta(
                             path.join(
@@ -499,7 +499,7 @@ def run_command(args: CmdArgs) -> None:
                         aligned_sequences,
                     )
 
-                aligned_ingredients.append((aligned_cluster, len(aligned_sequences)))
+                aligned_ingredients.append((aligned_cluster, len(aligned_sequences), cluster_i))
         align_time = keeper.differential() - cluster_time
 
         if aligned_ingredients:
@@ -514,7 +514,7 @@ def run_command(args: CmdArgs) -> None:
             with NamedTemporaryFile(dir=parent_tmpdir, mode="w+", prefix="References_") as tmp_aln:
                 generate_tmp_aln(aln_file, targets, tmp_aln, parent_tmpdir, debug, this_intermediates, args.align_method)
 
-                for i, (file, seq_count) in enumerate(aligned_ingredients):
+                for i, (file, seq_count, cluster_i) in enumerate(aligned_ingredients):
                     printv(
                         f"Creating reference subalignment {i+1} of {len(aligned_ingredients)}.",
                         args.verbose,
@@ -548,7 +548,7 @@ def run_command(args: CmdArgs) -> None:
                         )
                     if debug:
                         writeFasta(
-                            path.join(this_intermediates, f"reference_subalignment_{i}.fa"),
+                            path.join(this_intermediates, f"reference_subalignment_{cluster_i}.fa"),
                             parseFasta(out_file, True),
                         )
 
