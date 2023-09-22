@@ -443,9 +443,7 @@ def run_command(args: CmdArgs) -> None:
             items = listdir(raw_files_tmp)
             items.sort(key=lambda x: int(x.split("_cluster")[-1]))
 
-            cluster_i = 0
-            for cluster in clusters:
-                cluster_i += 1
+            for cluster_i, cluster in enumerate(clusters):
                 cluster_seqs = [(header, data[header]) for header in cluster]
                 cluster_length = len(cluster_seqs)
 
@@ -456,7 +454,7 @@ def run_command(args: CmdArgs) -> None:
                 )  # Debug
 
                 # this_clus_align = f"{args.gene}_cluster_{cluster_i}_length_{len(cluster)}_index_aligned"
-                this_clus_align = f"cluster_{cluster_i}"
+                this_clus_align = f"aligned_cluster_{cluster_i}"
                 aligned_cluster = path.join(aligned_files_tmp, this_clus_align)
 
                 raw_cluster = path.join(
@@ -466,6 +464,14 @@ def run_command(args: CmdArgs) -> None:
                 if (cluster_length == 1):
                     writeFasta(aligned_cluster, cluster_seqs)
                     aligned_ingredients.append((aligned_cluster, len(cluster_seqs)))
+                    if debug:
+                        writeFasta(
+                            path.join(
+                                this_intermediates,
+                                this_clus_align,
+                            ),
+                            cluster_seqs,
+                        )
                     continue
                     
                 writeFasta(raw_cluster, cluster_seqs)
@@ -488,7 +494,7 @@ def run_command(args: CmdArgs) -> None:
                     writeFasta(
                         path.join(
                             this_intermediates,
-                            path.split(aligned_cluster)[-1],
+                            this_clus_align,
                         ),
                         aligned_sequences,
                     )
@@ -542,7 +548,7 @@ def run_command(args: CmdArgs) -> None:
                         )
                     if debug:
                         writeFasta(
-                            path.join(this_intermediates, f"part_{i}.fa"),
+                            path.join(this_intermediates, f"reference_subalignment_{i}.fa"),
                             parseFasta(out_file, True),
                         )
 
