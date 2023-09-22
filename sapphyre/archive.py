@@ -31,7 +31,10 @@ def process_folder(args, superfolder_path):
         directories_to_archive = [
             "align",
             "nt_aligned",
-            "outlier",
+            "blosum",
+            "collapsed"
+            "excise",
+            "internal",
             "trimmed",
             "aa_merged",
             "nt_merged",
