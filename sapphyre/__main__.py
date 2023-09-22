@@ -587,11 +587,11 @@ def align_args(par):
         help="Output intermediate files for debug",
     )
     par.add_argument(
-        "-exp",
-        "--experimental",
-        action="store_true",
-        default=False,
-        help="Use experimental align method",
+        "-alm",
+        "--align_method",
+        choices=["clustal", "mafft", "base", "frags"],
+        default="mafft",
+        help="What alignment method to use.",
     )
 
 
