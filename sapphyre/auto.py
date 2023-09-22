@@ -4,88 +4,28 @@ import os
 from glob import glob
 from .timekeeper import KeeperMode, TimeKeeper
 
+from .__main__ import prepare_args, diamond_args, reporter_args, align_args, pal2nal_args, flexcull_args, outlier_args, merge_args
+
+def get_args(arg_function):
+    parser = argparse.ArgumentParser()
+    arg_function(parser)
+    variables = {}
+    for action in parser._actions:
+        if action.dest != "help":
+            variables[action.dest] = action.default
+
+    return variables
 
 def main(args):
     default_config = {
-        "prepare": {
-            "clear_database": True,
-            "minimum_sequence_length": 90,
-            "chunk_size": 500000,
-            "keep_prepared": False,
-        },
-        "diamond": {
-            "overwrite": False,
-            "debug": False,
-            "strict_search_mode": True,
-            "sensitivity": "very",
-            "evalue": 6,
-            "top": 10,
-            "top_ref": 0.025,
-            "internal_percent": 0.3,
-        },
-        "reporter": {
-            "minimum_bp": 20,
-            "matches": 7,
-            "gene_list_file": None,
-            "blosum_mode": "strict",
-            "debug": False,
-            "clear_output": True,
-        },
-        "align": {
-            "debug": False,
-            "second_run": False,
-            "experimental": False,
-        },
-        "pal2nal": {"table": 1},
-        "flexcull": {
-            "output": "trimmed",
-            "amino_acid": "align",
-            "nucleotide": "nt_aligned",
-            "blosum_strictness": "exact",
-            "mismatches": 1,
-            "matches": 5,
-            "column_cull": 0.1,
-            "gap_threshold": 0.5,
-            "base_pair": 20,
-            "debug": False,
-        },
-        "outlier": {
-            "debug": 0,
-            "uncompress_intermediates": False,
-            "threshold": 100,
-            "no_references": False,
-            "col_cull_percent": 0.33,
-            "ref_gap_percent": 0.5,
-            "ref_min_percent": 0.33,
-            "index_group_min_bp": 20,
-            "merge_overlap": 18,
-            "kick_overlap": 0.5,
-            "matching_percent": 0.8,
-            "sub_percent": 0.1,
-            "gross_diference_percent": 0.9,
-            "consensus": 0.65,
-            "matching_consensus_percent": 0.65,
-            "dupes": True,
-            "majority_excise": 0.35,
-            "move_fails": "datasets/bad",
-            "cut": False,
-            "output": "internal",
-            "internal_consensus_threshold": 0.65,
-            "internal_distance_threshold": 0.075,
-            "no_excise": False,
-            "excise": 0.40,
-            "no_dupes": True,
-            "flag": False,
-        },
-        "merge": {
-            "aa_input": "outlier/internal/aa",
-            "nt_input": "outlier/internal/nt",
-            "debug": False,
-            "ignore_overlap_chunks": False,
-            "majority": 0.55,
-            "majority_count": 4,
-            "special_merge": False,
-        },
+        "prepare": get_args(prepare_args),
+        "diamond": get_args(diamond_args),
+        "reporter": get_args(reporter_args),
+        "align": get_args(align_args),
+        "pal2nal": get_args(pal2nal_args),
+        "flexcull": get_args(flexcull_args),
+        "outlier": get_args(outlier_args),
+        "merge": get_args(merge_args),
     }
 
     config = default_config

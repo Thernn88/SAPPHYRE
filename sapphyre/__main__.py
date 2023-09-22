@@ -45,6 +45,11 @@ def subcmd_prepare(subparsers):
         "Unique AA translation stored with duplicate counts stored for later use.",
     )
     par.add_argument("INPUT", help="Path to directory of Input folder", action="store")
+    prepare_args(par)
+    par.set_defaults(func=prepare, formathelp=par.format_help)
+
+
+def prepare_args(par):
     par.add_argument(
         "-clear",
         "--clear_database",
@@ -78,7 +83,6 @@ def subcmd_prepare(subparsers):
         default=0,
         help="Amount of overlap between chomped segments"
     )
-    par.set_defaults(func=prepare, formathelp=par.format_help)
 
 
 def prepare(args):
@@ -100,6 +104,11 @@ def subcmd_diamond(subparsers):
         action="extend",
         nargs="+",
     )
+    diamond_args(par)
+    par.set_defaults(func=diamond, formathelp=par.format_help)
+
+
+def diamond_args(par):
     par.add_argument(
         "-ovw",
         "--overwrite",
@@ -150,7 +159,6 @@ def subcmd_diamond(subparsers):
         default=0.3,
         help="Percentage of overlap required to constitute an internal overlap kick.",
     )
-    par.set_defaults(func=diamond, formathelp=par.format_help)
 
 
 def diamond(args):
@@ -172,6 +180,11 @@ def subcmd_reporter(subparsers):
         action="extend",
         nargs="+",
     )
+    reporter_args(par)
+    par.set_defaults(func=reporter, formathelp=par.format_help)
+
+
+def reporter_args(par):
     par.add_argument(
         "-bp",
         "--minimum_bp",
@@ -213,7 +226,6 @@ def subcmd_reporter(subparsers):
         default=True,
         help="Clear output folder before running.",
     )
-    par.set_defaults(func=reporter, formathelp=par.format_help)
 
 
 def reporter(args):
@@ -243,6 +255,11 @@ def subcmd_outlier(subparsers):
         help="Calculates a Blosum62 distance matrix which are used to remove outlier "
         "sequences above a threshold.",
     )
+    par.add_argument("INPUT", help="Path to taxa", action="extend", nargs="+")
+    outlier_args(par)
+    par.set_defaults(func=outlier, formathelp=par.format_help)
+
+def outlier_args(par):
     # Globally used args
     par.add_argument(
         "-d",
@@ -257,7 +274,6 @@ def subcmd_outlier(subparsers):
         help="Compress intermediate files",
     )
     # Outlier main loop
-    par.add_argument("INPUT", help="Path to taxa", action="extend", nargs="+")
     par.add_argument(
         "-t",
         "--threshold",
@@ -424,8 +440,6 @@ def subcmd_outlier(subparsers):
         help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence.",
     )
     par.add_argument("--dupes", default=False, action="store_true")
-    par.set_defaults(func=outlier, formathelp=par.format_help)
-
 
 def outlier(argsobj):
     from . import outlier
@@ -447,6 +461,11 @@ def subcmd_Merge(subparsers):
         action="extend",
         nargs="+",
     )
+    merge_args(par)
+    par.set_defaults(func=Merge, formathelp=par.format_help)
+
+
+def merge_args(par):
     par.add_argument(
         "-aa",
         "--aa_input",
@@ -495,8 +514,6 @@ def subcmd_Merge(subparsers):
         default=4,
         help="Percentage for majority ruling.",
     )
-    par.set_defaults(func=Merge, formathelp=par.format_help)
-
 
 def Merge(args):
     from . import merge
@@ -550,6 +567,11 @@ def subcmd_align(subparsers):
         action="extend",
         nargs="+",
     )
+    align_args(par)
+    par.set_defaults(func=align, formathelp=par.format_help)
+
+
+def align_args(par):
     par.add_argument(
         "-sr",
         "--second_run",
@@ -571,7 +593,6 @@ def subcmd_align(subparsers):
         default=False,
         help="Use experimental align method",
     )
-    par.set_defaults(func=align, formathelp=par.format_help)
 
 
 def align(args):
@@ -594,8 +615,11 @@ def subcmd_pal2nal(subparsers):
         action="extend",
         nargs="+",
     )
-    par.add_argument("-t", "--table", type=int, default=1, help="Table ID.")
+    pal2nal_args(par)
     par.set_defaults(func=pal2nal, formathelp=par.format_help)
+
+def pal2nal_args(par):
+    par.add_argument("-t", "--table", type=int, default=1, help="Table ID.")
 
 
 def pal2nal(args):
@@ -618,6 +642,11 @@ def subcmd_flexcull(subparsers):
         action="extend",
         nargs="+",
     )
+    flexcull_args(par)
+    par.set_defaults(func=flexcull, formathelp=par.format_help)
+
+
+def flexcull_args(par):
     par.add_argument(
         "-o",
         "--output",
@@ -687,7 +716,6 @@ def subcmd_flexcull(subparsers):
         action="store_true",
         help="Enable debug. When enabled Output log of culls.",
     )
-    par.set_defaults(func=flexcull, formathelp=par.format_help)
 
 
 def flexcull(args):
