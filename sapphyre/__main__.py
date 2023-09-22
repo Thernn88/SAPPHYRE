@@ -206,8 +206,8 @@ def reporter_args(par):
         help="Path to a txt file containing target genes for processing. Processes all genes in the input folder if not specified.",
     )
     par.add_argument(
-        "-bm",
-        "--blosum_mode",
+        "-bs",
+        "--blosum_strictness",
         choices=["exact", "strict", "lax"],
         default="strict",
         help="Trim distance mode.",
@@ -240,7 +240,7 @@ def reporter(args):
         args.orthoset,
         args.compress,
         args.matches,
-        args.blosum_mode,
+        args.blosum_strictness,
         args.minimum_bp,
         args.gene_list_file,
         args.clear_output,
@@ -383,9 +383,8 @@ def outlier_args(par):
     par.add_argument(
         "-nd",
         "--no_dupes",
-        default=True,
-        action="store_false",
-        dest="dupes",
+        default=False,
+        action="store_true",
         help="Use prepare and reporter dupe counts in consensus generation",
     )
     par.add_argument(
@@ -439,8 +438,6 @@ def outlier_args(par):
         dest="internal_distance_threshold",
         help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence.",
     )
-    par.add_argument("--dupes", default=False, action="store_true")
-
 def outlier(argsobj):
     from . import outlier
 
@@ -669,8 +666,8 @@ def flexcull_args(par):
         help="NT Folder Name.",
     )  #
     par.add_argument(
-        "-bm",
-        "--blosum_mode",
+        "-bs",
+        "--blosum_strictness",
         choices=["exact", "strict", "lax"],
         default="exact",
         help="Blosum strictness setting.",
@@ -735,7 +732,7 @@ def flexcull(args):
         args.gap_threshold,
         args.mismatches,
         args.column_cull,
-        args.blosum_mode,
+        args.blosum_strictness,
         args.orthoset,
         args.orthoset_input,
     )
@@ -1229,6 +1226,13 @@ if __name__ == "__main__":
         #     "-sd", "--sub_directory", default="collapsed", help="Name of input subfolder"
         # )
         parser.add_argument(
+            "-nd",
+            "--no_dupes",
+            default=False,
+            action="store_true",
+            help="Use prepare and reporter dupe counts in consensus generation",
+        )
+        parser.add_argument(
             "-uci",
             "--uncompress-intermediates",
             default=False,
@@ -1269,7 +1273,6 @@ if __name__ == "__main__":
             dest="internal_distance_threshold",
             help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence.",
         )
-        parser.add_argument("--dupes", default=False, action="store_true")
         parser.set_defaults(func=internal, formathelp=parser.format_help)
 
     subparsers = parser.add_subparsers()

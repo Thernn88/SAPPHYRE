@@ -1,22 +1,17 @@
 from __future__ import annotations
 
-import os
-import subprocess
+from os import path, mkdir, system, listdir, stat
+from subprocess import DEVNULL, run
 from collections import defaultdict, namedtuple
 from math import ceil
 from multiprocessing.pool import Pool
 from shutil import rmtree
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 
-import xxhash
+from xxhash import xxh3_64
 from phymmr_tools import find_index_pair
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import gettempdir, parseFasta, printv, writeFasta
-
-KMER_LEN = 15
-KMER_PERCENT = 0.15
-SUBCLUSTER_AT = 1000
-CLUSTER_EVERY = 500  # Aim for x seqs per cluster
 
 def find_kmers(fasta: dict) -> dict[str, set]:
     """Returns the kmers of length KMER_LEN for each sequence in the fasta dict.
@@ -27,6 +22,7 @@ def find_kmers(fasta: dict) -> dict[str, set]:
     Returns:
         dict[str, set]: A dictionary of header -> set of kmers
     """
+    KMER_LEN = 15
     kmers = defaultdict(set)
     for header, sequence in fasta.items():
         for i in range(0, len(sequence) - KMER_LEN):
@@ -36,21 +32,19 @@ def find_kmers(fasta: dict) -> dict[str, set]:
     return kmers
 
 
-ALIGN_FOLDER = "align"
-AA_FOLDER = "aa"
-ALN_FOLDER = "aln"
-TRIMMED_FOLDER = "trimmed"
-
 def get_aln_path(orthoset_dir: str) -> str:
     """
     Checks if /trimmed subdirectory exists. If so, returns a path to /trimmed.
     Otherwise, returns a path to /aln dir.
     """
-    trimmed = os.path.join(orthoset_dir, TRIMMED_FOLDER)
-    if os.path.exists(trimmed):
+    ALN_FOLDER = "aln"
+    TRIMMED_FOLDER = "trimmed"
+
+    trimmed = path.join(orthoset_dir, TRIMMED_FOLDER)
+    if path.exists(trimmed):
         return trimmed
     else:
-        return os.path.join(orthoset_dir, ALN_FOLDER)
+        return path.join(orthoset_dir, ALN_FOLDER)
 
 
 def get_start(sequence: str) -> int:
@@ -69,7 +63,7 @@ def get_start(sequence: str) -> int:
 
 
 def process_genefile(
-    path: str,
+    gene_path: str,
 ) -> tuple[int, dict[str, str], dict[str, str], dict[str, list[str]], dict[str, str]]:
     """Returns the number of sequences, the sequences, the targets, the reinsertions and the
     trimmed header to full header.
@@ -92,9 +86,9 @@ def process_genefile(
 
     seq_to_first_header = {}
     trimmed_header_to_full = {}
-    for header, sequence in parseFasta(path):
+    for header, sequence in parseFasta(gene_path):
         if not header.endswith("."):
-            seq_hash = xxhash.xxh3_64(sequence).hexdigest()
+            seq_hash = xxh3_64(sequence).hexdigest()
             trimmed_header_to_full[header[:127]] = header
             if seq_hash not in seq_to_first_header:
                 seq_to_first_header[seq_hash] = header
@@ -151,6 +145,8 @@ def generate_clusters(data: dict[str, str]) -> list[list[str]]:
     Returns:
         list[list[str]]: A list of each clusters' headers
     """
+    KMER_PERCENT = 0.15
+    
     cluster_children = {header: [header] for header in data}
     kmers = find_kmers(data)
     gene_headers = list(kmers.keys())
@@ -235,6 +231,8 @@ def seperate_into_clusters(
     Returns:
         list[list[str]]: A list of each clusters' headers
     """
+    SUBCLUSTER_AT = 1000
+    CLUSTER_EVERY = 500  # Aim for x seqs per cluster
     clusters = []
     for this_cluster in cluster_children:
         if this_cluster is not None:
@@ -250,10 +248,10 @@ def seperate_into_clusters(
                         [(header, data[header]) for header in this_cluster],
                     )
                     with NamedTemporaryFile("r", dir=gettempdir()) as this_out:
-                        subprocess.run(
+                        run(
                             f"SigClust/SigClust -k 8 -c {clusters_to_create} {this_tmp.name} > {this_out.name}",
-                            stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL,
+                            stdout=DEVNULL,
+                            stderr=DEVNULL,
                             check=True,
                             shell=True,
                         )
@@ -337,12 +335,12 @@ def generate_tmp_aln(
             tmp_prealign.flush()
 
             if align_method == "mafft":
-                os.system(f"mafft-linsi --quiet --thread 1 --anysymbol '{tmp_prealign.name}' > '{dest.name}'")
+                system(f"mafft-linsi --quiet --thread 1 --anysymbol '{tmp_prealign.name}' > '{dest.name}'")
             elif align_method == "clustal":
-                os.system(f"clustalo -i '{tmp_prealign.name}' -o '{dest.name}' --thread=1 --full --force")
+                system(f"clustalo -i '{tmp_prealign.name}' -o '{dest.name}' --thread=1 --full --force")
 
     if debug:
-        writeFasta(os.path.join(this_intermediates, "references.fa"), parseFasta(dest.name, True))
+        writeFasta(path.join(this_intermediates, "references.fa"), parseFasta(dest.name, True))
 
 CmdArgs = namedtuple(
     "CmdArgs",
@@ -369,10 +367,10 @@ def run_command(args: CmdArgs) -> None:
 
     aligned_ingredients = []
 
-    this_intermediates = os.path.join("intermediates", args.gene)
-    if debug and not os.path.exists(this_intermediates):
-        os.mkdir(this_intermediates)
-    aln_file = os.path.join(args.aln_path, args.gene + ".aln.fa")
+    this_intermediates = path.join("intermediates", args.gene)
+    if debug and not path.exists(this_intermediates):
+        mkdir(this_intermediates)
+    aln_file = path.join(args.aln_path, args.gene + ".aln.fa")
 
     with TemporaryDirectory(dir=temp_dir) as parent_tmpdir, TemporaryDirectory(
         dir=parent_tmpdir,
@@ -401,16 +399,16 @@ def run_command(args: CmdArgs) -> None:
                 args.verbose,
                 3,
             )  # Debug
-            aligned_file = os.path.join(aligned_files_tmp, f"{args.gene}_cluster_1_0")
+            aligned_file = path.join(aligned_files_tmp, f"{args.gene}_cluster_1_0")
             sequences = list(data.items())
             writeFasta(aligned_file, sequences)
             if args.debug:
-                writeFasta(os.path.join(this_intermediates, aligned_file), sequences)
-                unaligned_path = os.path.join(this_intermediates, f"unaligned_cluster_singleton")
+                writeFasta(path.join(this_intermediates, aligned_file), sequences)
+                unaligned_path = path.join(this_intermediates, f"unaligned_cluster_singleton")
                 writeFasta(unaligned_path, sequences)
             aligned_ingredients.append((aligned_file, len(sequences)))
         elif args.align_method == "frags":
-            aligned_file = os.path.join(aligned_files_tmp, f"{args.gene}_sequences")
+            aligned_file = path.join(aligned_files_tmp, f"{args.gene}_sequences")
 
             sequences = list(data.items())
             writeFasta(aligned_file, sequences)
@@ -428,7 +426,7 @@ def run_command(args: CmdArgs) -> None:
             cluster_time = keeper.differential()
             if debug:
                 for i, cluster in enumerate(clusters):
-                    unaligned_path = os.path.join(this_intermediates, f"unaligned_cluster_{i}")
+                    unaligned_path = path.join(this_intermediates, f"unaligned_cluster_{i}")
                     test_output = [(header, data[header]) for header in cluster]
                     writeFasta(unaligned_path, test_output)
             printv(
@@ -442,7 +440,7 @@ def run_command(args: CmdArgs) -> None:
                 3,
             )  # Debug
 
-            items = os.listdir(raw_files_tmp)
+            items = listdir(raw_files_tmp)
             items.sort(key=lambda x: int(x.split("_cluster")[-1]))
 
             cluster_i = 0
@@ -459,9 +457,9 @@ def run_command(args: CmdArgs) -> None:
 
                 # this_clus_align = f"{args.gene}_cluster_{cluster_i}_length_{len(cluster)}_index_aligned"
                 this_clus_align = f"cluster_{cluster_i}"
-                aligned_cluster = os.path.join(aligned_files_tmp, this_clus_align)
+                aligned_cluster = path.join(aligned_files_tmp, this_clus_align)
 
-                raw_cluster = os.path.join(
+                raw_cluster = path.join(
                     raw_files_tmp,
                     f"{args.gene}_cluster{cluster_i}",
                 )
@@ -473,7 +471,7 @@ def run_command(args: CmdArgs) -> None:
                 writeFasta(raw_cluster, cluster_seqs)
                 if debug:
                     writeFasta(
-                        os.path.join(this_intermediates, this_clus_align),
+                        path.join(this_intermediates, this_clus_align),
                         cluster_seqs,
                     )
 
@@ -481,16 +479,16 @@ def run_command(args: CmdArgs) -> None:
                     in_file=raw_cluster,
                     out_file=aligned_cluster,
                 )
-                os.system(command)
+                system(command)
 
                 aligned_sequences = list(parseFasta(aligned_cluster, True))
 
                 if debug:
                     printv(command, args.verbose, 3)
                     writeFasta(
-                        os.path.join(
+                        path.join(
                             this_intermediates,
-                            os.path.split(aligned_cluster)[-1],
+                            path.split(aligned_cluster)[-1],
                         ),
                         aligned_sequences,
                     )
@@ -517,22 +515,22 @@ def run_command(args: CmdArgs) -> None:
                         3,
                     )
                     if args.align_method == "frags":
-                        out_file = os.path.join(parent_tmpdir, f"aligned.fa")
+                        out_file = path.join(parent_tmpdir, f"aligned.fa")
                         command = f"mafft --anysymbol --quiet --jtt 1 --addfragments {file} --thread 1 {tmp_aln.name} > {out_file}"
                         
-                        os.system(command)
+                        system(command)
 
                         final_sequences = list(parseFasta(out_file, True))
                         continue
 
-                    out_file = os.path.join(parent_tmpdir, f"part_{i}.fa")
+                    out_file = path.join(parent_tmpdir, f"part_{i}.fa")
 
                     if seq_count >= 1:
                         is_profile = "--is-profile"
                     else:
                         is_profile = ""
 
-                    os.system(
+                    system(
                         f"clustalo --p1 {tmp_aln.name} --p2 {file} -o {out_file} --threads=1 --full {is_profile} --force",
                     )
 
@@ -544,7 +542,7 @@ def run_command(args: CmdArgs) -> None:
                         )
                     if debug:
                         writeFasta(
-                            os.path.join(this_intermediates, f"part_{i}.fa"),
+                            path.join(this_intermediates, f"part_{i}.fa"),
                             parseFasta(out_file, True),
                         )
 
@@ -556,9 +554,9 @@ def run_command(args: CmdArgs) -> None:
                     subalignments = {}
                     insertion_coords_global = set()
 
-                    for item in os.listdir(parent_tmpdir):
+                    for item in listdir(parent_tmpdir):
                         if item.startswith("References_"):
-                            refs = list(parseFasta(os.path.join(parent_tmpdir, item), True))
+                            refs = list(parseFasta(path.join(parent_tmpdir, item), True))
                             continue
 
                         if not item.startswith("part_"):
@@ -566,7 +564,7 @@ def run_command(args: CmdArgs) -> None:
 
                         references = []
                         this_seqs = []
-                        for header, seq in parseFasta(os.path.join(parent_tmpdir, item), True):
+                        for header, seq in parseFasta(path.join(parent_tmpdir, item), True):
                             if header.endswith("."):
                                 references.append(seq)
                                 continue
@@ -650,7 +648,6 @@ def run_command(args: CmdArgs) -> None:
 
     to_write.sort(key=lambda x: get_start(x[1]))
 
-
     writeFasta(args.result_file, references + to_write, compress=args.compress)
     printv(f"Done. Took {keeper.differential():.2f}", args.verbose, 3)  # Debug
 
@@ -658,28 +655,31 @@ def run_command(args: CmdArgs) -> None:
 
 
 def do_folder(folder, args):
-    printv(f"Processing: {os.path.basename(folder)}", args.verbose, 0)
+    ALIGN_FOLDER = "align"
+    AA_FOLDER = "aa"
+
+    printv(f"Processing: {path.basename(folder)}", args.verbose, 0)
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
-    align_path = os.path.join(folder, ALIGN_FOLDER)
-    aa_path = os.path.join(folder, AA_FOLDER)
-    if not os.path.exists(aa_path):
+    align_path = path.join(folder, ALIGN_FOLDER)
+    aa_path = path.join(folder, AA_FOLDER)
+    if not path.exists(aa_path):
         printv(f"ERROR: Can't find aa ({aa_path}) folder. Abort", args.verbose, 0)
         return False
     rmtree(align_path, ignore_errors=True)
-    os.mkdir(align_path)
+    mkdir(align_path)
 
     genes = [
-        (gene, os.stat(os.path.join(aa_path, gene)).st_size)
-        for gene in os.listdir(aa_path)
+        (gene, stat(path.join(aa_path, gene)).st_size)
+        for gene in listdir(aa_path)
         if gene.split(".")[-1] in ["fa", "gz", "fq", "fastq", "fasta"]
     ]
     genes.sort(key=lambda x: x[1], reverse=True)
-    orthoset_path = os.path.join(args.orthoset_input, args.orthoset)
+    orthoset_path = path.join(args.orthoset_input, args.orthoset)
     aln_path = get_aln_path(orthoset_path)
-    if not os.path.exists(orthoset_path):
+    if not path.exists(orthoset_path):
         printv("ERROR: Orthoset path not found.", args.verbose, 0)
         return False
-    if not os.path.exists(aln_path):
+    if not path.exists(aln_path):
         printv("ERROR: Aln folder not found.", args.verbose, 0)
         return False
 
@@ -688,14 +688,14 @@ def do_folder(folder, args):
         command += " --full-iter --iter=1"
 
     intermediates = "intermediates"
-    if not os.path.exists(intermediates):
-        os.mkdir(intermediates)
+    if not path.exists(intermediates):
+        mkdir(intermediates)
 
     func_args = []
     for file, _ in genes:
         gene = file.split(".")[0]
-        gene_file = os.path.join(aa_path, file)
-        result_file = os.path.join(align_path, file.rstrip(".gz"))
+        gene_file = path.join(aa_path, file)
+        result_file = path.join(align_path, file.rstrip(".gz"))
         func_args.append(
             (
                 CmdArgs(
@@ -726,7 +726,7 @@ def do_folder(folder, args):
 
 
 def main(args):
-    if not all(os.path.exists(i) for i in args.INPUT):
+    if not all(path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
     time_keeper = TimeKeeper(KeeperMode.DIRECT)

@@ -1,7 +1,7 @@
 """Outlier Check."""
 from __future__ import annotations
-import sys
-import os
+from sys import exit
+from os import mkdir, path
 
 from collections import defaultdict
 from itertools import combinations
@@ -9,24 +9,21 @@ from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import rmtree
 
-import phymmr_tools as bd
-import wrap_rocks
-import numpy as np
+from phymmr_tools import find_index_pair, asm_index_split, blosum62_candidate_to_reference, blosum62_distance, delete_empty_columns
+from wrap_rocks import RocksDB
+from numpy import float16, isnan, nanpercentile, nanmean
 from msgspec import Struct
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, write2Line2Fasta
 
-ALLOWED_EXTENSIONS = (".fa", ".fas", ".fasta", ".fa", ".gz", ".fq", ".fastq")
-
-
 class Record(Struct):
     id: str
     raw: str
     sequence: str = None
-    upper_bound: np.float16 = None
-    iqr: np.float16 = None
-    mean_distance: np.float16 = None
+    upper_bound: float16 = None
+    iqr: float16 = None
+    mean_distance: float16 = None
     grade: str = None
 
     def __str__(self) -> str:
@@ -51,13 +48,13 @@ def nan_check(iterable) -> bool:
     """Checks elements in iterable for numeric values.
     Returns True if numeric value is found. Otherwise returns False.
     """
-    return any(not np.isnan(element) for element in iterable)
+    return any(not isnan(element) for element in iterable)
 
 
-def folder_check(path: Path, debug: bool) -> None:
+def folder_check(taxa_path: Path, debug: bool) -> None:
     """Create subfolders 'aa' and 'nt' to given path."""
-    aa_folder = Path(path, "aa")
-    nt_folder = Path(path, "nt")
+    aa_folder = Path(taxa_path, "aa")
+    nt_folder = Path(taxa_path, "nt")
 
     rmtree(aa_folder, ignore_errors=True)
     rmtree(nt_folder, ignore_errors=True)
@@ -66,11 +63,11 @@ def folder_check(path: Path, debug: bool) -> None:
     nt_folder.mkdir(parents=True, exist_ok=True)
 
     if debug:
-        logs_folder = Path(path, "logs")
+        logs_folder = Path(taxa_path, "logs")
         logs_folder.mkdir(parents=True, exist_ok=True)
 
 
-def split_sequences(path: str) -> tuple:
+def split_sequences(gene_path: str) -> tuple:
     """Reads over a fasta record in the given list and returns a tuple of two smaller lists.
     The first returned list is the reference sequences found, the second returned list
     is the candidate sequences found.
@@ -80,7 +77,7 @@ def split_sequences(path: str) -> tuple:
     end_of_references = False
     ref_check = set()
     try:
-        for header, sequence in parseFasta(path):
+        for header, sequence in parseFasta(gene_path):
             header = ">" + header
 
             if end_of_references is False:
@@ -95,12 +92,12 @@ def split_sequences(path: str) -> tuple:
 
             if end_of_references is True:
                 candidates.append(Record(header, sequence))
-    except ValueError:
-        print(f"Error in file: {path}, Problem with {header}")
-        sys.exit(1)
-    except TypeError:
-        print(f"Wrong IO type: {path}")
-        sys.exit(1)
+    except ValueError as e:
+        print(f"Error in file: {path}, Problem with {header},\n{e}")
+        exit(1)
+    except TypeError as e:
+        print(f"Wrong IO type: {path},\n{e}")
+        exit(1)
     return references, candidates, ref_check
 
 
@@ -117,7 +114,7 @@ def find_index_groups(candidates: list) -> dict:
 
     candidate_dict = defaultdict(lst)
     for candidate in candidates:
-        start, stop = bd.find_index_pair(candidate.raw, "-")
+        start, stop = find_index_pair(candidate.raw, "-")
         candidate.sequence = candidate.raw[start:stop]
         candidate_dict[(start, stop)].append(candidate)
     return candidate_dict
@@ -129,7 +126,7 @@ def find_asm_index_groups(candidates: list) -> dict:
 
     candidate_dict = defaultdict(lst)
     for candidate in candidates:
-        indices = bd.asm_index_split(candidate.raw)
+        indices = asm_index_split(candidate.raw)
         for index_pair in indices:
             start, stop = index_pair
             header = candidate.id + f"$${start}$${stop}"
@@ -180,7 +177,7 @@ def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
     result = []
     for ref in refs:
         result.append(
-            bd.blosum62_candidate_to_reference(candidate.sequence, ref.sequence)
+            blosum62_candidate_to_reference(candidate.sequence, ref.sequence)
         )
     result.append(0.0)
     return result
@@ -274,7 +271,7 @@ def compare_means(
             has_ref_distances = False
         else:
             ref_distances = [
-                bd.blosum62_distance(ref1.sequence, ref2.sequence)
+                blosum62_distance(ref1.sequence, ref2.sequence)
                 for ref1, ref2 in combinations(ref_alignments, 2)
                 if not is_same_variant(ref1.id, ref2.id)
             ]
@@ -282,7 +279,7 @@ def compare_means(
         if has_ref_distances:
             # First quartile (Q1)
             try:
-                Q1 = np.nanpercentile(ref_distances, 25, method="midpoint")
+                Q1 = nanpercentile(ref_distances, 25, method="midpoint")
             except IndexError:
                 Q1 = 0.0
                 print(
@@ -295,7 +292,7 @@ def compare_means(
                 )
             # Third quartile (Q3)
             try:
-                Q3 = np.nanpercentile(ref_distances, 75, method="midpoint")
+                Q3 = nanpercentile(ref_distances, 75, method="midpoint")
             except IndexError:
                 Q3 = 0.0
                 print(
@@ -320,7 +317,7 @@ def compare_means(
                     candidate,
                     ref_alignments,
                 )
-                candidate.mean_distance = np.nanmean(candidate_distances)
+                candidate.mean_distance = nanmean(candidate_distances)
                 candidate.iqr = IQR
                 candidate.upper_bound = upper_bound
                 if candidate.mean_distance <= upper_bound:
@@ -418,14 +415,6 @@ def original_order_sort(original: list, candidate_records: list) -> list:
     return [x for x in output if x]
 
 
-def get_dupe_count(cand: Record, prep_dupes, report_dupes) -> int:
-    node = cand.id.split("|")[3]
-    dupes = prep_dupes.get(node, 1) + sum(
-        prep_dupes.get(node, 1) for node in report_dupes.get(node, [])
-    )
-    return dupes
-
-
 def make_asm_exclusions(passing: list, failing: list) -> set:
     """Makes to_be_excluded set for assembly files.
 
@@ -459,13 +448,13 @@ def main_process(
     keep_refs = not args_references
 
     file_input = args_input
-    filename = os.path.basename(file_input)
+    filename = path.basename(file_input)
 
     printv(f"Doing: {filename}", verbose, 2)
 
     threshold = args_threshold / 100
-    aa_output = os.path.join(args_output, "aa")
-    aa_output = os.path.join(aa_output, filename.rstrip(".gz"))
+    aa_output = path.join(args_output, "aa")
+    aa_output = path.join(aa_output, filename.rstrip(".gz"))
     reference_records, candidate_records, ref_check = split_sequences(file_input)
     original_order = [candidate.id for candidate in candidate_records]
     if not assembly:
@@ -493,7 +482,7 @@ def main_process(
         for ref in reference_records:
             regulars.append(ref.id)
             regulars.append(ref.raw)
-    # reference_records = [ref for ref in reference_records if bd.has_data(ref.raw)]
+    # reference_records = [ref for ref in reference_records if has_data(ref.raw)]
     raw_regulars, passing, failing = compare_means(
         reference_records,
         regulars,
@@ -513,7 +502,7 @@ def main_process(
     for candidate in passing:
         raw_regulars.extend([candidate.id, candidate.raw])
     # regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
-    regulars, allowed_columns = bd.delete_empty_columns(raw_regulars)
+    regulars, allowed_columns = delete_empty_columns(raw_regulars)
     if assembly:
         to_be_excluded = make_asm_exclusions(passing, failing)
     else:
@@ -529,10 +518,10 @@ def main_process(
     # if valid candidates found, do nt output
     if passing:
         nt_file = filename.replace(".aa.", ".nt.")
-        nt_input_path = os.path.join(nt_input, nt_file)
-        if not os.path.exists(nt_output_path):
-            os.mkdir(nt_output_path)
-        nt_output_path = os.path.join(nt_output_path, nt_file.rstrip(".gz"))
+        nt_input_path = path.join(nt_input, nt_file)
+        if not path.exists(nt_output_path):
+            mkdir(nt_output_path)
+        nt_output_path = path.join(nt_output_path, nt_file.rstrip(".gz"))
         lines = []
         for header, sequence in parseFasta(nt_input_path):
             lines.append(">" + header)
@@ -548,6 +537,8 @@ def main_process(
 
 
 def do_folder(folder, args):
+    ALLOWED_EXTENSIONS = {".fa", ".fas", ".fasta", ".fa", ".gz", ".fq", ".fastq"}
+
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     wanted_aa_path = Path(folder, "trimmed", "aa")
     if wanted_aa_path.exists():
@@ -558,7 +549,7 @@ def do_folder(folder, args):
         nt_input = Path(folder, "nt_aligned")
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
     if rocks_db_path.exists():
-        rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
+        rocksdb_db = RocksDB(str(rocks_db_path))
         assembly = rocksdb_db.get("get:isassembly")
         assembly = assembly == "True"
         del rocksdb_db
@@ -580,7 +571,7 @@ def do_folder(folder, args):
         if ".aa" in gene.suffixes and gene.suffix in ALLOWED_EXTENSIONS
     ]
     output_path = Path(folder, "outlier", "blosum")
-    nt_output_path = os.path.join(output_path, "nt")
+    nt_output_path = path.join(output_path, "nt")
     folder_check(output_path, args.debug)
 
     compress = not args.uncompress_intermediates or args.compress
@@ -636,8 +627,8 @@ def do_folder(folder, args):
                 ),
             )
     if args.debug:
-        log_folder_path = os.path.join(output_path, "logs")
-        global_csv_path = os.path.join(log_folder_path, "outliers_global.csv")
+        log_folder_path = path.join(output_path, "logs")
+        global_csv_path = path.join(log_folder_path, "outliers_global.csv")
         with open(global_csv_path, "w", encoding="UTF-8") as global_csv:
             global_csv.write("Gene,Header,Mean_Dist,Ref_Mean,IQR\n")
 

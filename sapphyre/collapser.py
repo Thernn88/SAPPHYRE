@@ -2,11 +2,11 @@ from collections import defaultdict
 from math import ceil
 from multiprocessing import Pool
 from shutil import rmtree
-import os
+from os import path, mkdir, listdir
 
 from msgspec import Struct
 from phymmr_tools import constrained_distance, find_index_pair, get_overlap
-import wrap_rocks
+from wrap_rocks import RocksDB
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import writeFasta, parseFasta, printv
 
@@ -129,25 +129,25 @@ def average_match(seq_a, consensus, start, end):
 
 def do_folder(args, input_path):
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
-    nt_input_path = os.path.join(input_path, "outlier", "blosum", "nt")
-    aa_input_path = os.path.join(input_path, "outlier", "blosum", "aa")
+    nt_input_path = path.join(input_path, "outlier", "blosum", "nt")
+    aa_input_path = path.join(input_path, "outlier", "blosum", "aa")
 
-    collapsed_path = os.path.join(input_path, "outlier", "collapsed")
-    nt_out_path = os.path.join(collapsed_path, "nt")
-    aa_out_path = os.path.join(collapsed_path, "aa")
+    collapsed_path = path.join(input_path, "outlier", "collapsed")
+    nt_out_path = path.join(collapsed_path, "nt")
+    aa_out_path = path.join(collapsed_path, "aa")
 
     # Reset folders
-    if os.path.exists(collapsed_path):
+    if path.exists(collapsed_path):
         rmtree(collapsed_path)
 
-    os.mkdir(collapsed_path)
-    os.mkdir(nt_out_path)
-    os.mkdir(aa_out_path)
+    mkdir(collapsed_path)
+    mkdir(nt_out_path)
+    mkdir(aa_out_path)
 
-    nt_db_path = os.path.join(input_path, "rocksdb", "sequences", "nt")
+    nt_db_path = path.join(input_path, "rocksdb", "sequences", "nt")
     is_assembly = False
-    if os.path.exists(nt_db_path):
-        nt_db = wrap_rocks.RocksDB(nt_db_path)
+    if path.exists(nt_db_path):
+        nt_db = RocksDB(nt_db_path)
         dbis_assembly = nt_db.get("get:isassembly")
         
         if dbis_assembly and dbis_assembly == "True":
@@ -157,7 +157,7 @@ def do_folder(args, input_path):
     # Process NT
     genes = [
         gene
-        for gene in os.listdir(nt_input_path)
+        for gene in listdir(nt_input_path)
         if gene.split(".")[-1] in ["fa", "gz", "fq", "fastq", "fasta"]
     ]
 
@@ -199,13 +199,13 @@ def do_folder(args, input_path):
         genes_kicked_count = len(kicked_genes.split("\n"))
         kicked_consensus = "".join(["".join(i[4]) for i in results])
 
-        with open(os.path.join(collapsed_path, "kicked_genes.txt"), "w") as fp:
+        with open(path.join(collapsed_path, "kicked_genes.txt"), "w") as fp:
             fp.write(kicked_genes)
 
-        with open(os.path.join(collapsed_path, "kicked_consensus.txt"), "w") as fp:
+        with open(path.join(collapsed_path, "kicked_consensus.txt"), "w") as fp:
             fp.write(kicked_consensus)
 
-        with open(os.path.join(collapsed_path, "kicks.txt"), "w") as fp:
+        with open(path.join(collapsed_path, "kicks.txt"), "w") as fp:
             fp.write(f"Total Kicks: {total_kicks}\n")
             for data in results:
                 kick_list = data[1]
@@ -256,11 +256,11 @@ def process_batch(
         kicked_headers = set()
         printv(f"Doing: {gene}", args.verbose, 2)
 
-        nt_out = os.path.join(batch_args.nt_out_path, gene)
-        aa_out = os.path.join(batch_args.aa_out_path, gene.replace(".nt.", ".aa."))
+        nt_out = path.join(batch_args.nt_out_path, gene)
+        aa_out = path.join(batch_args.aa_out_path, gene.replace(".nt.", ".aa."))
 
-        nt_in = os.path.join(batch_args.nt_input_path, gene)
-        aa_in = os.path.join(batch_args.aa_input_path, gene.replace(".nt.", ".aa."))
+        nt_in = path.join(batch_args.nt_input_path, gene)
+        aa_in = path.join(batch_args.aa_input_path, gene.replace(".nt.", ".aa."))
 
         aa_sequences = parseFasta(aa_in)
         

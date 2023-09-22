@@ -6,95 +6,20 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from itertools import islice
 
-import os
+from os import makedirs, mkdir, path
 from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import rmtree
 from typing import Literal
 from phymmr_tools import score_splits, get_overlap, find_index_pair
-import numpy as np
+from numpy import uint8
 
-import wrap_rocks
+from wrap_rocks import RocksDB
 from Bio.Seq import Seq
 from msgspec import Struct, json
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
-
-TMP_PATH = None
-if os.path.exists("/run/shm"):
-    TMP_PATH = "/run/shm"
-elif os.path.exists("/dev/shm"):
-    TMP_PATH = "/dev/shm"
-
-DNA_CODONS = {
-    "GCT": "A",
-    "GCC": "A",
-    "GCA": "A",
-    "GCG": "A",
-    "TGT": "C",
-    "TGC": "C",
-    "GAT": "D",
-    "GAC": "D",
-    "GAA": "E",
-    "GAG": "E",
-    "TTT": "F",
-    "TTC": "F",
-    "GGT": "G",
-    "GGC": "G",
-    "GGA": "G",
-    "GGG": "G",
-    "CAT": "H",
-    "CAC": "H",
-    "ATA": "I",
-    "ATT": "I",
-    "ATC": "I",
-    "AAA": "K",
-    "AAG": "K",
-    "TTA": "L",
-    "TTG": "L",
-    "CTT": "L",
-    "CTC": "L",
-    "CTA": "L",
-    "CTG": "L",
-    "ATG": "M",
-    "AAT": "N",
-    "AAC": "N",
-    "CCT": "P",
-    "CCC": "P",
-    "CCA": "P",
-    "CCG": "P",
-    "CAA": "Q",
-    "CAG": "Q",
-    "CGT": "R",
-    "CGC": "R",
-    "CGA": "R",
-    "CGG": "R",
-    "AGA": "R",
-    "AGG": "R",
-    "TCT": "S",
-    "TCC": "S",
-    "TCA": "S",
-    "TCG": "S",
-    "AGT": "S",
-    "AGC": "S",
-    "ACT": "T",
-    "ACC": "T",
-    "ACA": "T",
-    "ACG": "T",
-    "GTT": "V",
-    "GTC": "V",
-    "GTA": "V",
-    "GTG": "V",
-    "TGG": "W",
-    "TAT": "Y",
-    "TAC": "Y",
-    "TAA": "*",
-    "TAG": "*",
-    "TGA": "*",
-    "---": "---",
-}
-
 
 def make_nt_name(x):
     return str(x).replace(".aa.", ".nt.")
@@ -111,13 +36,13 @@ def make_seq_dict(sequences: list) -> dict:
     return seq_dict, cursor_dict
 
 
-def parse_fasta(path: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+def parse_fasta(gene_path: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """Returns references from raw fasta text input."""
     references: list[tuple[str, str]] = []
     candidates: list[tuple[str, str]] = []
     end_of_references = False
     try:
-        for header, sequence in parseFasta(path):
+        for header, sequence in parseFasta(gene_path):
             if end_of_references is False:
                 # the reference header identifier is present in the header
                 if header[-1] == ".":
@@ -128,7 +53,7 @@ def parse_fasta(path: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]
             if end_of_references is True:
                 candidates.append((header, sequence))
     except ValueError as e:
-        print(f"Fatal error in {os.path.basename(path)}: {e}")
+        print(f"Fatal error in {path.basename(gene_path)}: {e}")
 
     return references, candidates
 
@@ -201,17 +126,23 @@ def calculate_split(sequence_a: str, sequence_b: str, comparison_sequence: str) 
 
 def directory_check(target_output_path) -> str:
     """Creates necessary directories for merge output."""
-    aa_merged_path = os.path.join(target_output_path, "aa_merged")
-    nt_merged_path = os.path.join(target_output_path, "nt_merged")
+    tmp_path = None
+    if path.exists("/run/shm"):
+        tmp_path = "/run/shm"
+    elif path.exists("/dev/shm"):
+        tmp_path = "/dev/shm"
+        
+    aa_merged_path = path.join(target_output_path, "aa_merged")
+    nt_merged_path = path.join(target_output_path, "nt_merged")
     rmtree(aa_merged_path, ignore_errors=True)
     rmtree(nt_merged_path, ignore_errors=True)
-    os.mkdir(aa_merged_path)
-    os.mkdir(nt_merged_path)
-    if not TMP_PATH:
-        tmp_path = os.path.join(target_output_path, "tmp")
-        os.makedirs(tmp_path, exist_ok=True)
-        return tmp_path
-    return TMP_PATH
+    mkdir(aa_merged_path)
+    mkdir(nt_merged_path)
+    if not tmp_path:
+        tmp_path = path.join(target_output_path, "tmp")
+        makedirs(tmp_path, exist_ok=True)
+
+    return tmp_path
 
 
 def grab_merge_start_end(taxa_pair: list) -> list[tuple]:
@@ -225,8 +156,8 @@ def grab_merge_start_end(taxa_pair: list) -> list[tuple]:
 class Sequence(Struct, frozen=True):
     """Sequence object for merge."""
 
-    start: np.uint8
-    end: np.uint8
+    start: uint8
+    end: uint8
     header: str
     sequence: str
     is_old_header: bool
@@ -263,7 +194,7 @@ def non_overlap_chunks(sequence_list: list) -> list[Sequence]:
 
 def do_protein(
     protein: Literal["aa", "nt"],
-    path,
+    gene_path,
     output_dir: Path,
     prep_dupe_counts,
     rep_dupe_counts,
@@ -274,9 +205,10 @@ def do_protein(
     minimum_mr_amount,
     ignore_overlap_chunks,
     special_merge,
+    DNA_CODONS,
     debug=None,
 ):
-    references, candidates = parse_fasta(path)
+    references, candidates = parse_fasta(gene_path)
 
     gene_out = []
 
@@ -663,7 +595,7 @@ def do_protein(
     #             "".join([let for i, let in enumerate(record[1]) if i in to_keep]),
     #         )
 
-    output_path = os.path.join(output_dir, f"{protein}_merged", gene.rstrip(".gz"))
+    output_path = path.join(output_dir, f"{protein}_merged", gene.rstrip(".gz"))
 
     return output_path, gene_out
 
@@ -688,6 +620,74 @@ def do_gene(
     already_calculated_splits = {}
     printv(f"Doing: {gene}", verbosity, 2)
 
+    DNA_CODONS = {
+        "GCT": "A",
+        "GCC": "A",
+        "GCA": "A",
+        "GCG": "A",
+        "TGT": "C",
+        "TGC": "C",
+        "GAT": "D",
+        "GAC": "D",
+        "GAA": "E",
+        "GAG": "E",
+        "TTT": "F",
+        "TTC": "F",
+        "GGT": "G",
+        "GGC": "G",
+        "GGA": "G",
+        "GGG": "G",
+        "CAT": "H",
+        "CAC": "H",
+        "ATA": "I",
+        "ATT": "I",
+        "ATC": "I",
+        "AAA": "K",
+        "AAG": "K",
+        "TTA": "L",
+        "TTG": "L",
+        "CTT": "L",
+        "CTC": "L",
+        "CTA": "L",
+        "CTG": "L",
+        "ATG": "M",
+        "AAT": "N",
+        "AAC": "N",
+        "CCT": "P",
+        "CCC": "P",
+        "CCA": "P",
+        "CCG": "P",
+        "CAA": "Q",
+        "CAG": "Q",
+        "CGT": "R",
+        "CGC": "R",
+        "CGA": "R",
+        "CGG": "R",
+        "AGA": "R",
+        "AGG": "R",
+        "TCT": "S",
+        "TCC": "S",
+        "TCA": "S",
+        "TCG": "S",
+        "AGT": "S",
+        "AGC": "S",
+        "ACT": "T",
+        "ACC": "T",
+        "ACA": "T",
+        "ACG": "T",
+        "GTT": "V",
+        "GTC": "V",
+        "GTA": "V",
+        "GTG": "V",
+        "TGG": "W",
+        "TAT": "Y",
+        "TAC": "Y",
+        "TAA": "*",
+        "TAG": "*",
+        "TGA": "*",
+        "---": "---",
+    }
+
     aa_path, aa_data = do_protein(
         "aa",
         aa_path,
@@ -701,6 +701,7 @@ def do_gene(
         minimum_mr_amount,
         ignore_overlap_chunks,
         special_merge,
+        DNA_CODONS,
         debug=debug,
     )
 
@@ -717,6 +718,7 @@ def do_gene(
         minimum_mr_amount,
         ignore_overlap_chunks,
         special_merge,
+        DNA_CODONS,
         debug=debug,
     )
 
@@ -735,12 +737,12 @@ def run_command(arg_tuple: tuple) -> None:
 def do_folder(folder: Path, args):
     folder_time = TimeKeeper(KeeperMode.DIRECT)
 
-    printv(f"Processing: {os.path.basename(folder)}", args.verbose, 0)
+    printv(f"Processing: {path.basename(folder)}", args.verbose, 0)
     input_path = Path(folder)
     aa_input = Path(input_path, args.aa_input)
     nt_input = Path(input_path, args.nt_input)
 
-    if not os.path.exists(aa_input):
+    if not path.exists(aa_input):
         print(aa_input)
         printv(f"WARNING: Can't find aa folder for taxa, {folder}", args.verbose, 0)
         return
@@ -749,7 +751,7 @@ def do_folder(folder: Path, args):
     dupe_tmp_file = Path(tmp_dir, "DupeSeqs.tmp")
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
     if rocks_db_path.exists():
-        rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
+        rocksdb_db = RocksDB(str(rocks_db_path))
         prepare_dupe_counts = json.decode(
             rocksdb_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]]
         )
@@ -812,8 +814,8 @@ def do_folder(folder: Path, args):
                 target_gene.split(".")[0],
                 {},
             )
-            target_aa_path = os.path.join(aa_input, target_gene)
-            target_nt_path = os.path.join(nt_input, make_nt_name(target_gene))
+            target_aa_path = path.join(aa_input, target_gene)
+            target_nt_path = path.join(nt_input, make_nt_name(target_gene))
             do_gene(
                 target_gene,
                 folder,
@@ -832,13 +834,13 @@ def do_folder(folder: Path, args):
             )
     printv(f"Done! Took {folder_time.differential():.2f}s", args.verbose)
 
-    if os.path.exists(dupe_tmp_file):
-        os.remove(dupe_tmp_file)
+    if path.exists(dupe_tmp_file):
+        remove(dupe_tmp_file)
 
 
 def main(args):
     global_time = TimeKeeper(KeeperMode.DIRECT)
-    if not all(os.path.exists(i) for i in args.INPUT):
+    if not all(path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
     for folder in args.INPUT:

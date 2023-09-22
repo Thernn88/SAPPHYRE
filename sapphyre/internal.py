@@ -1,12 +1,12 @@
-import os
+from os import path
 from multiprocessing.pool import Pool
 from shutil import rmtree
 
 from pathlib import Path
 from msgspec import Struct, json
 
-import phymmr_tools as bd
-import wrap_rocks
+from phymmr_tools import constrained_distance, dumb_consensus, dumb_consensus_dupe, find_index_pair
+from wrap_rocks import RocksDB
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
 
@@ -23,10 +23,10 @@ class Record(Struct):
     def get_pair(self):
         return (self.id, self.seq)
 
-def folder_check(path: Path, debug: bool) -> None:
+def folder_check(taxa_path: Path, debug: bool) -> None:
     """Create subfolders 'aa' and 'nt' to given path."""
-    aa_folder = Path(path, "aa")
-    nt_folder = Path(path, "nt")
+    aa_folder = Path(taxa_path, "aa")
+    nt_folder = Path(taxa_path, "nt")
 
     rmtree(aa_folder, ignore_errors=True)
     rmtree(nt_folder, ignore_errors=True)
@@ -35,7 +35,7 @@ def folder_check(path: Path, debug: bool) -> None:
     nt_folder.mkdir(parents=True, exist_ok=True)
 
     if debug:
-        logs_folder = Path(path, "logs")
+        logs_folder = Path(taxa_path, "logs")
         logs_folder.mkdir(parents=True, exist_ok=True)
 
 
@@ -54,7 +54,7 @@ def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_co
 def load_dupes(folder):
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
     if rocks_db_path.exists():
-        rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
+        rocksdb_db = RocksDB(str(rocks_db_path))
         prepare_dupe_counts = json.decode(
             rocksdb_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]]
         )
@@ -74,7 +74,7 @@ def excise_data_check(gene: Path) -> list:
     from the excise file.
     """
     excise_path = str(gene).replace("/collapsed/", "/excise/")
-    if not os.path.exists(excise_path):
+    if not path.exists(excise_path):
         return [Record(header, seq) for header, seq in parseFasta(str(gene))]
     replacements = [Record(header, seq) for header, seq in parseFasta(excise_path)]
     return replacements
@@ -91,7 +91,7 @@ def aa_internal(
     gene: str,
     consensus_threshold,
     distance_threshold,
-    dupes,
+    no_dupes,
     prepare_dupes,
     reporter_dupes,
 ):
@@ -110,16 +110,17 @@ def aa_internal(
     # candidates = excise_data_replacement(candidates, gene)
     if not candidates:
         return [], {}, references
-    if dupes:
-        consensus_func = bd.dumb_consensus_dupe
-        sequences = bundle_seqs_and_dupes(candidates, prepare_dupes, reporter_dupes)
-    else:
-        consensus_func = bd.dumb_consensus
+    if no_dupes:
+        consensus_func = dumb_consensus
         sequences = [rec.seq for rec in candidates]
+    else:
+        consensus_func = dumb_consensus_dupe
+        sequences = bundle_seqs_and_dupes(candidates, prepare_dupes, reporter_dupes)
+        
     consensus = consensus_func(sequences, consensus_threshold)
     for i, candidate in enumerate(candidates):
-        start, stop = bd.find_index_pair(candidate.seq, "-")
-        distance = bd.constrained_distance(consensus, candidate.seq) / (stop-start)
+        start, stop = find_index_pair(candidate.seq, "-")
+        distance = constrained_distance(consensus, candidate.seq) / (stop-start)
         if distance >= distance_threshold:
             # failing[candidate[0]] = candidate[1]
             failing.add(candidate.id)
@@ -131,7 +132,7 @@ def aa_internal(
 def mirror_nt(input_path, output_path, failing, gene, compression):
     output_path = Path(output_path, gene)
     input_path = Path(input_path, gene)
-    if not os.path.exists(input_path):
+    if not path.exists(input_path):
         return
 
     records = excise_data_check(input_path)
@@ -185,7 +186,7 @@ def main(args):
         folder = args.INPUT
         aa_input = Path(folder, "outlier", "collapsed", "aa")
         nt_input = Path(folder, "outlier", "collapsed", "nt")
-        if args.dupes:
+        if not args.no_dupes:
             prepare_dupe_counts, reporter_dupe_counts = load_dupes(folder)
         file_inputs = [
             gene
@@ -194,14 +195,14 @@ def main(args):
         ]
 
         output_path = Path(folder, "outlier", "internal")
-        nt_output_path = os.path.join(output_path, "nt")
+        nt_output_path = path.join(output_path, "nt")
         folder_check(output_path, False)
         file_inputs.sort(key=lambda x: x.stat().st_size, reverse=True)
         arguments = []
 
         for gene in file_inputs:
             gene_raw = gene.stem.split(".")[0]
-            if args.dupes:
+            if not args.no_dupes:
                 prepare_dupes = prepare_dupe_counts.get(gene_raw, {})
                 reporter_dupes = reporter_dupe_counts.get(gene_raw, {})
             else:
@@ -214,7 +215,7 @@ def main(args):
                     nt_output_path,
                     args.internal_consensus_threshold,
                     args.internal_distance_threshold,
-                    args.dupes,
+                    args.no_dupes,
                     prepare_dupes,
                     reporter_dupes,
                     args.uncompress_intermediates

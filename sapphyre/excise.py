@@ -1,9 +1,9 @@
 from multiprocessing import Pool
-import os
+from os import path, mkdir, listdir
 from shutil import move, rmtree
 from pathlib import Path
-import phymmr_tools as bd
-import wrap_rocks
+from phymmr_tools import dumb_consensus, convert_consensus, find_index_pair, dumb_consensus_dupe
+from wrap_rocks import RocksDB
 
 from msgspec import json
 from .utils import parseFasta, writeFasta, printv
@@ -69,7 +69,7 @@ def first_last_X(string: str) -> tuple:
 def sensitive_check_bad_regions(consensus: str, limit: float, window=16) -> list:
     # window = initial_window
     # total = window
-    first, last = bd.find_index_pair(consensus, "X")
+    first, last = find_index_pair(consensus, "X")
     if first is None or last is None:
         return []
     begin = None
@@ -115,7 +115,7 @@ def check_bad_regions(
     if not rig:
         first, last = 0, len(consensus)
     else:
-        first, last = bd.find_index_pair(consensus, "X")
+        first, last = find_index_pair(consensus, "X")
     if first is None or last is None:
         return []
     l, r = first, first + initial_window
@@ -157,7 +157,7 @@ def check_covered_bad_regions(
     """
     Creates a list of covered indices, then checks those slices for bad regions
     """
-    start, stop = bd.find_index_pair(consensus, "X")
+    start, stop = find_index_pair(consensus, "X")
     bad_regions = []
     covered_indices = find_coverage_regions(consensus, start, stop, ambiguous=ambiguous)
     for begin, end in covered_indices:
@@ -189,7 +189,7 @@ def make_duped_consensus(
 ) -> str:
     seqs = [(header, seq) for header, seq in raw_sequences if header[-1] != "."]
     bundled_seqs = bundle_seqs_and_dupes(seqs, prepare_dupes, reporter_dupes)
-    return bd.dumb_consensus_dupe(bundled_seqs, threshold)
+    return dumb_consensus_dupe(bundled_seqs, threshold)
 
 
 def log_excised_consensus(
@@ -241,8 +241,8 @@ def log_excised_consensus(
             raw_sequences, prepare_dupes, reporter_dupes, consensus_threshold
         )
     else:
-        consensus_seq = bd.dumb_consensus(sequences, consensus_threshold)
-    consensus_seq = bd.convert_consensus(sequences, consensus_seq)
+        consensus_seq = dumb_consensus(sequences, consensus_threshold)
+    consensus_seq = convert_consensus(sequences, consensus_seq)
     bad_regions = check_covered_bad_regions(consensus_seq, excise_threshold)
     if bad_regions:
         if len(bad_regions) == 1:
@@ -305,7 +305,7 @@ def log_excised_consensus(
 
 
 def load_dupes(rocks_db_path: Path):
-    rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
+    rocksdb_db = RocksDB(str(rocks_db_path))
     prepare_dupe_counts = json.decode(
         rocksdb_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]]
     )
@@ -366,27 +366,27 @@ def main(args, override_cut=None):
     output_aa_folder = output_folder.joinpath("aa")
     output_nt_folder = output_folder.joinpath("nt")
 
-    if os.path.exists(output_folder):
+    if path.exists(output_folder):
         rmtree(output_folder)
-    os.mkdir(str(output_folder))
-    os.mkdir(str(output_aa_folder))
-    os.mkdir(str(output_nt_folder))
+    mkdir(str(output_folder))
+    mkdir(str(output_aa_folder))
+    mkdir(str(output_nt_folder))
 
     aa_input = input_folder.joinpath("aa")
 
     rocksdb_path = Path(folder, "rocksdb", "sequences", "nt")
 
-    if args.dupes:
+    if args.no_dupes:
+        prepare_dupes, reporter_dupes = {}, {}
+    else:
         if not rocksdb_path.exists():
             err = f"cannot find rocksdb for {folder}"
             raise FileNotFoundError(err)
         prepare_dupes, reporter_dupes = load_dupes(rocksdb_path)
-    else:
-        prepare_dupes, reporter_dupes = {}, {}
 
     compress = not args.uncompress_intermediates or args.compress
 
-    genes = [fasta for fasta in os.listdir(aa_input) if ".fa" in fasta]
+    genes = [fasta for fasta in listdir(aa_input) if ".fa" in fasta]
     log_path = Path(output_folder, "excise_indices.tsv")
     if args.processes > 1:
         arguments = [

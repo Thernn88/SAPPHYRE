@@ -4,7 +4,7 @@ PyLint 9.81/10
 """
 from __future__ import annotations
 
-import os
+from os import path, listdir, makedirs
 from collections import Counter, namedtuple
 from multiprocessing.pool import Pool
 from shutil import rmtree
@@ -14,9 +14,9 @@ from phymmr_tools import (
     join_triplets_with_exclusions,
     find_index_pair,
 )
-import wrap_rocks
+from wrap_rocks import RocksDB
 
-import blosum as bl
+from blosum import BLOSUM
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
@@ -131,12 +131,12 @@ def folder_check(output_target_path: str) -> None:
     Returns:
         None
     """
-    output_aa_path = os.path.join(output_target_path, "aa")
-    output_nt_path = os.path.join(output_target_path, "nt")
+    output_aa_path = path.join(output_target_path, "aa")
+    output_nt_path = path.join(output_target_path, "nt")
     rmtree(output_aa_path, ignore_errors=True)
     rmtree(output_nt_path, ignore_errors=True)
-    os.makedirs(output_aa_path, exist_ok=True)
-    os.makedirs(output_nt_path, exist_ok=True)
+    makedirs(output_aa_path, exist_ok=True)
+    makedirs(output_nt_path, exist_ok=True)
 
 
 def make_nt(aa_file_name: str) -> str:
@@ -800,7 +800,7 @@ def align_to_aa_order(nt_out, aa_content):
 
 def do_gene(fargs: FlexcullArgs) -> None:
     """FlexCull main function. Culls input aa and nt using specified amount of matches."""
-    gene_path = os.path.join(fargs.aa_input, fargs.aa_file)
+    gene_path = path.join(fargs.aa_input, fargs.aa_file)
     this_gene = fargs.aa_file.split(".")[0]
 
     printv(f"Doing: {this_gene}", fargs.verbosity, 2)
@@ -821,7 +821,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
     follow_through = {}
     offset = fargs.amt_matches - 1
 
-    aa_out_path = os.path.join(fargs.output, "aa", fargs.aa_file.rstrip(".gz"))
+    aa_out_path = path.join(fargs.output, "aa", fargs.aa_file.rstrip(".gz"))
     aa_out = references.copy()
     this_seqs = []
 
@@ -966,11 +966,11 @@ def do_gene(fargs: FlexcullArgs) -> None:
             writeFasta(aa_out_path, aa_out, fargs.compress)
 
             nt_file_name = make_nt(fargs.aa_file)
-            gene_path = os.path.join(fargs.nt_input, nt_file_name)
+            gene_path = path.join(fargs.nt_input, nt_file_name)
 
             references, candidates = parse_fasta(gene_path)
 
-            nt_out_path = os.path.join(fargs.output, "nt", nt_file_name.rstrip(".gz"))
+            nt_out_path = path.join(fargs.output, "nt", nt_file_name.rstrip(".gz"))
             nt_out = references.copy()
             for header, sequence in candidates:
                 gene = header.split("|")[0]
@@ -1029,18 +1029,18 @@ def do_gene(fargs: FlexcullArgs) -> None:
 def do_folder(folder, args: MainArgs, non_coding_gene: set):
     folder_time = TimeKeeper(KeeperMode.DIRECT)
     printv(f"Processing: {folder}", args.verbose, 0)
-    aa_path = os.path.join(folder, args.amino_acid)
-    nt_path = os.path.join(folder, args.nucleotide)
-    output_path = os.path.join(folder, args.output)
-    if not os.path.exists(aa_path) or not os.path.exists(nt_path):
+    aa_path = path.join(folder, args.amino_acid)
+    nt_path = path.join(folder, args.nucleotide)
+    output_path = path.join(folder, args.output)
+    if not path.exists(aa_path) or not path.exists(nt_path):
         printv(
             f"WARNING: Can't find aa ({aa_path}) and nt ({nt_path}) folders. Abort",
             args.verbose,
         )
         return
 
-    nt_db_path = os.path.join(folder, "rocksdb", "sequences", "nt")
-    nt_db = wrap_rocks.RocksDB(nt_db_path)
+    nt_db_path = path.join(folder, "rocksdb", "sequences", "nt")
+    nt_db = RocksDB(nt_db_path)
     dbis_assembly = nt_db.get("get:isassembly")
     is_assembly = False
     if dbis_assembly and dbis_assembly == "True":
@@ -1049,11 +1049,11 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
     folder_check(output_path)
     file_inputs = [
         input_gene
-        for input_gene in os.listdir(aa_path)
+        for input_gene in listdir(aa_path)
         if input_gene.split(".")[-1] in {"fa", "gz", "fq", "fastq", "fasta"}
     ]
     file_inputs.sort(
-        key=lambda x: os.path.getsize(os.path.join(aa_path, x)),
+        key=lambda x: path.getsize(path.join(aa_path, x)),
         reverse=True,
     )
 
@@ -1065,7 +1065,7 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
         else 999999
     )
 
-    mat = bl.BLOSUM(62)
+    mat = BLOSUM(62)
     filtered_mat = {
         key: {
             sub_key: value
@@ -1137,7 +1137,7 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
             0,
             "Gene,Header,Cull To Start,Cull To End,Data Length,Data Removed\n",
         )
-        log_out = os.path.join(output_path, "Culls.csv")
+        log_out = path.join(output_path, "Culls.csv")
         with open(log_out, "w") as fp:
             fp.writelines(log_global)
 
@@ -1146,13 +1146,13 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
 
 def main(args):
     global_time = TimeKeeper(KeeperMode.DIRECT)
-    if not all(os.path.exists(i) for i in args.INPUT):
+    if not all(path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
     orthoset = args.orthoset
     orthosets_dir = args.orthoset_input
-    orthoset_db_path = os.path.join(orthosets_dir, orthoset, "rocksdb")
-    orthoset_db = wrap_rocks.RocksDB(orthoset_db_path)
+    orthoset_db_path = path.join(orthosets_dir, orthoset, "rocksdb")
+    orthoset_db = RocksDB(orthoset_db_path)
     orthoset_non_coding_genes = orthoset_db.get("get:nc_genes")
     orthoset_non_coding_genes = (
         set(orthoset_non_coding_genes.split(","))

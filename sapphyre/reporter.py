@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import os
-import shutil
+from os import makedirs, path
+from shutil import rmtree
 from argparse import Namespace
 from collections import Counter, defaultdict, namedtuple
 from multiprocessing.pool import Pool
 from typing import TextIO
 
-import blosum as bl
-import parasail as ps
-import xxhash
+from blosum import BLOSUM
+from parasail import profile_create_16, blosum62, nw_trace_scan_profile_16
+from xxhash import xxh3_64
 from Bio.Seq import Seq
 from msgspec import json
 from wrap_rocks import RocksDB
@@ -18,11 +18,6 @@ from . import rocky
 from .diamond import ReporterHit
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import printv, writeFasta
-
-MISMATCH_AMOUNT = 1
-EXACT_MATCH_AMOUNT = 4
-GAP_PENALTY = 2
-EXTEND_PENALTY = 1
 
 MainArgs = namedtuple(
     "MainArgs",
@@ -35,7 +30,7 @@ MainArgs = namedtuple(
         "orthoset",
         "compress",
         "matches",
-        "blosum_mode",
+        "blosum_strictness",
         "minimum_bp",
         "gene_list_file",
         "clear_output",
@@ -54,6 +49,7 @@ class Hit(ReporterHit, frozen=True):
         debug_fp: TextIO,
         header: str,
         mat: dict,
+        exact_match_amount: int,
     ) -> tuple[int, int]:
         """Get the bp to trim from each end so that the alignment matches for 'matches' bp.
 
@@ -76,12 +72,16 @@ class Hit(ReporterHit, frozen=True):
         -------
             tuple[int, int]: The number of bp to trim from the start and end of the sequence.
         """
+        MISMATCH_AMOUNT = 1
+        GAP_PENALTY = 2
+        EXTEND_PENALTY = 1
+        
         # Create the distance function based on the current mode
         reg_starts = []
         reg_ends = []
 
         # Create blosum pairwise aligner profile
-        profile = ps.profile_create_16(this_aa, ps.blosum62)
+        profile = profile_create_16(this_aa, blosum62)
 
         if debug_fp:
             debug_fp.write(f">{header}\n{this_aa}\n")
@@ -93,7 +93,7 @@ class Hit(ReporterHit, frozen=True):
             ref_seq = ref_seq[ref.start - 1 : ref.end]
 
             # Pairwise align the reference and query
-            result = ps.nw_trace_scan_profile_16(
+            result = nw_trace_scan_profile_16(
                 profile,
                 ref_seq,
                 GAP_PENALTY,
@@ -132,7 +132,7 @@ class Hit(ReporterHit, frozen=True):
                             this_pass = False
                             break
 
-                if this_pass and l_exact_matches >= EXACT_MATCH_AMOUNT:
+                if this_pass and l_exact_matches >= exact_match_amount:
                     reg_starts.append(i - skip_l)
                     break
 
@@ -164,7 +164,7 @@ class Hit(ReporterHit, frozen=True):
                             this_pass = False
                             break
 
-                if this_pass and r_exact_matches >= EXACT_MATCH_AMOUNT:
+                if this_pass and r_exact_matches >= exact_match_amount:
                     reg_ends.append(this_aa_len - i - (1 + skip_r))
                     break
         if debug_fp:
@@ -272,8 +272,6 @@ def print_core_sequences(
     core_sequences,
     target_taxon,
     top_refs,
-    header_seperator="|",
-    identifier=".",
 ):
     """Returns a filtered list of headers and sequences for the core sequences.
 
@@ -296,12 +294,11 @@ def print_core_sequences(
 
         header = (
             gene
-            + header_seperator
+            + "|"
             + taxon
-            + header_seperator
+            + "|"
             + taxa_id
-            + header_seperator
-            + identifier
+            + "|."
         )
         result.append((header, seq))
 
@@ -321,6 +318,7 @@ def print_unmerged_sequences(
     verbose: int,
     mat: dict,
     is_assembly: bool,
+    exact_match_amount: int
 ) -> tuple[dict[str, list], list[tuple[str, str]], list[tuple[str, str]]]:
     """Returns a list of unique trimmed sequences for a given gene with formatted headers.
 
@@ -334,7 +332,7 @@ def print_unmerged_sequences(
         taxa_id (str): Taxa ID
         core_aa_seqs (list): List of core AA sequences
         trim_matches (int): Number of matches to trim
-        blosum_mode (str): Blosum mode
+        blosum_strictness (str): Blosum mode
         minimum_bp (int): Minimum number of bp after trim
         debug_fp (TextIO): Debug file pointer
     Returns:
@@ -350,8 +348,6 @@ def print_unmerged_sequences(
     seq_mapped_already = {}
     exact_hit_mapped_already = set()
     dupes = defaultdict(list)
-    header_seperator = "|"
-
     for hit in hits:
         base_header = hit.node
         reference_frame = str(hit.frame)
@@ -359,13 +355,13 @@ def print_unmerged_sequences(
         # Format header to gene|taxa_name|taxa_id|sequence_id|frame
         header = (
             gene
-            + header_seperator
+            + "|"
             + hit.query
-            + header_seperator
+            + "|"
             + taxa_id
-            + header_seperator
+            + "|"
             + base_header
-            + header_seperator
+            + "|"
             + reference_frame
         )
 
@@ -376,7 +372,7 @@ def print_unmerged_sequences(
         # Trim to match reference
         if not is_assembly:
             r_start, r_end = hit.get_bp_trim(
-                aa_seq, core_aa_seqs, trim_matches, is_positive_match, debug_fp, header, mat
+                aa_seq, core_aa_seqs, trim_matches, is_positive_match, debug_fp, header, mat, exact_match_amount
             )
             if r_start is None or r_end is None:
                 printv(f"WARNING: Trim kicked: {hit.node}|{hit.frame}", verbose, 2)
@@ -397,8 +393,8 @@ def print_unmerged_sequences(
 
         if data_after >= minimum_bp:
             # Hash the NT sequence and the AA sequence + base header
-            unique_hit = xxhash.xxh3_64(base_header + aa_seq).hexdigest()
-            nt_seq_hash = xxhash.xxh3_64(nt_seq).hexdigest()
+            unique_hit = xxh3_64(base_header + aa_seq).hexdigest()
+            nt_seq_hash = xxh3_64(nt_seq).hexdigest()
             # Filter and save NT dupes
             if nt_seq_hash in seq_mapped_already:
                 mapped_to = seq_mapped_already[nt_seq_hash]
@@ -443,14 +439,14 @@ def print_unmerged_sequences(
                         old_header = base_header
                         header = (
                             gene
-                            + header_seperator
+                            + "|"
                             + hit.query
-                            + header_seperator
+                            + "|"
                             + taxa_id
-                            + header_seperator
+                            + "|"
                             + base_header
                             + f"_{header_mapped_x_times[old_header]}"
-                            + header_seperator
+                            + "|"
                             + reference_frame
                         )
 
@@ -485,7 +481,8 @@ OutputArgs = namedtuple(
         "target_taxon",
         "top_refs",
         "matches",
-        "blosum_mode",
+        "blosum_strictness",
+        "EXACT_MATCH_AMOUNT",
         "minimum_bp",
         "debug",
         "is_assembly",
@@ -513,27 +510,27 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     )
 
     core_seq_aa_dict = {target: seq for _, target, seq in core_sequences}
-    this_aa_path = os.path.join(oargs.aa_out_path, oargs.gene + ".aa.fa")
+    this_aa_path = path.join(oargs.aa_out_path, oargs.gene + ".aa.fa")
     debug_alignments = None
     debug_dupes = None
     if oargs.debug:
-        os.makedirs(f"align_debug/{oargs.gene}", exist_ok=True)  # DEBUG
+        makedirs(f"align_debug/{oargs.gene}", exist_ok=True)  # DEBUG
         debug_alignments = open(
             f"align_debug/{oargs.gene}/{oargs.taxa_id}.alignments",
             "w",
         )  # DEBUG
         debug_alignments.write(
-            f"GAP_PENALTY: {GAP_PENALTY}\nEXTEND_PENALTY: {EXTEND_PENALTY}\n",
+            f"GAP_PENALTY: 2\nEXTEND_PENALTY: 1\n",
         )  # DEBUG
         debug_dupes = open(f"align_debug/{oargs.gene}/{oargs.taxa_id}.dupes", "w")
 
-    mat = bl.BLOSUM(62)
-    if oargs.blosum_mode == "exact":
+    mat = BLOSUM(62)
+    if oargs.blosum_strictness == "exact":
 
         def dist(bp_a, bp_b, _):
             return bp_a == bp_b and bp_a != "-" and bp_b != "-"
 
-    elif oargs.blosum_mode == "strict":
+    elif oargs.blosum_strictness == "strict":
 
         def dist(bp_a, bp_b, mat):
             return mat[bp_a][bp_b] > 0.0 and bp_a != "-" and bp_b != "-"
@@ -556,6 +553,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.verbose,
         mat,
         oargs.is_assembly,
+        oargs.EXACT_MATCH_AMOUNT
     )
     if debug_alignments:
         debug_alignments.close()
@@ -569,7 +567,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         )
         writeFasta(this_aa_path, aa_core_sequences + aa_output, oargs.compress)
 
-        this_nt_path = os.path.join(oargs.nt_out_path, oargs.gene + ".nt.fa")
+        this_nt_path = path.join(oargs.nt_out_path, oargs.gene + ".nt.fa")
 
         nt_core_sequences = print_core_sequences(
             oargs.gene,
@@ -587,7 +585,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     return oargs.gene, this_gene_dupes, len(aa_output)
 
 
-def do_taxa(path: str, taxa_id: str, args: Namespace):
+def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: int):
     """Main function for processing a given taxa.
 
     Args:
@@ -595,6 +593,7 @@ def do_taxa(path: str, taxa_id: str, args: Namespace):
         path (str): Path to the taxa directory
         taxa_id (str): Taxa ID
         args (Namespace): Reporter arguments
+        EXACT_MATCH_AMOUNT (int): Number of exact matches to look for
     Returns:
         bool: True if the taxa was processed successfully, False otherwise
     """
@@ -605,13 +604,13 @@ def do_taxa(path: str, taxa_id: str, args: Namespace):
     if not isinstance(num_threads, int) or num_threads < 1:
         num_threads = 1
 
-    if os.path.exists("/run/shm"):
+    if path.exists("/run/shm"):
         tmp_path = "/run/shm"
-    elif os.path.exists("/dev/shm"):
+    elif path.exists("/dev/shm"):
         tmp_path = "/dev/shm"
     else:
-        tmp_path = os.path.join(path, "tmp")
-        os.makedirs(tmp_path, exist_ok=True)
+        tmp_path = taxa_path.join(taxa_path, "tmp")
+        makedirs(tmp_path, exist_ok=True)
 
     if args.gene_list_file:
         with open(args.gene_list_file) as fp:
@@ -622,17 +621,17 @@ def do_taxa(path: str, taxa_id: str, args: Namespace):
     aa_out = "aa"
     nt_out = "nt"
 
-    aa_out_path = os.path.join(path, aa_out)
-    nt_out_path = os.path.join(path, nt_out)
+    aa_out_path = path.join(taxa_path, aa_out)
+    nt_out_path = path.join(taxa_path, nt_out)
 
     if args.clear_output:
-        if os.path.exists(aa_out_path):
-            shutil.rmtree(aa_out_path)
-        if os.path.exists(nt_out_path):
-            shutil.rmtree(nt_out_path)
+        if path.exists(aa_out_path):
+            rmtree(aa_out_path)
+        if path.exists(nt_out_path):
+            rmtree(nt_out_path)
 
-    os.makedirs(aa_out_path, exist_ok=True)
-    os.makedirs(nt_out_path, exist_ok=True)
+    makedirs(aa_out_path, exist_ok=True)
+    makedirs(nt_out_path, exist_ok=True)
 
     printv(
         f"Initialized databases. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing reciprocal diamond hits.",
@@ -676,7 +675,8 @@ def do_taxa(path: str, taxa_id: str, args: Namespace):
                     set(target_taxon.get(gene, [])),
                     top_refs,
                     args.matches,
-                    args.blosum_mode,
+                    args.blosum_strictness,
+                    EXACT_MATCH_AMOUNT,
                     args.minimum_bp,
                     args.debug,
                     is_assembly
@@ -684,7 +684,7 @@ def do_taxa(path: str, taxa_id: str, args: Namespace):
             ),
         )
     if args.debug:
-        os.makedirs("align_debug", exist_ok=True)
+        makedirs("align_debug", exist_ok=True)
     # this sorting the list so that the ones with the most hits are first
     if num_threads > 1:
         if num_threads > 1:
@@ -715,14 +715,15 @@ def do_taxa(path: str, taxa_id: str, args: Namespace):
 
 def main(args):
     global_time = TimeKeeper(KeeperMode.DIRECT)
-    if not all(os.path.exists(i) for i in args.INPUT):
+    if not all(path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exist.", args.verbose, 0)
         return False
     rocky.create_pointer(
         "rocks_orthoset_db",
-        os.path.join(args.orthoset_input, args.orthoset, "rocksdb"),
+        path.join(args.orthoset_input, args.orthoset, "rocksdb"),
     )
     result = []
+    EXACT_MATCH_AMOUNT = 4
     if args.matches < EXACT_MATCH_AMOUNT:
         printv(
             f"ERROR: Impossible match paramaters. {EXACT_MATCH_AMOUNT} exact matches required whereas only {args.matches} matches are checked.",
@@ -736,17 +737,18 @@ def main(args):
         )
         return False
     for input_path in args.INPUT:
-        rocks_db_path = os.path.join(input_path, "rocksdb")
+        rocks_db_path = path.join(input_path, "rocksdb")
         rocky.create_pointer(
             "rocks_nt_db",
-            os.path.join(rocks_db_path, "sequences", "nt"),
+            path.join(rocks_db_path, "sequences", "nt"),
         )
-        rocky.create_pointer("rocks_hits_db", os.path.join(rocks_db_path, "hits"))
+        rocky.create_pointer("rocks_hits_db", path.join(rocks_db_path, "hits"))
         result.append(
             do_taxa(
-                path=input_path,
-                taxa_id=os.path.basename(input_path).split(".")[0],
-                args=args,
+                input_path,
+                path.basename(input_path).split(".")[0],
+                args,
+                EXACT_MATCH_AMOUNT,
             ),
         )
         rocky.close_pointer("rocks_nt_db")
