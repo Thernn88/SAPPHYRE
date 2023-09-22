@@ -334,7 +334,7 @@ def outlier_args(par):
         "--kick_overlap",
         help="Minimum overlap percent to check for a possible kick",
         type=float,
-        default=0.5,
+        default=0.35,
     )
     par.add_argument(
         "-mp",
