@@ -249,7 +249,7 @@ def seperate_into_clusters(
                     )
                     with NamedTemporaryFile("r", dir=gettempdir()) as this_out:
                         run(
-                            f"SigClust/SigClust -k 8 -c {clusters_to_create} {this_tmp.name} > {this_out.name}",
+                            f"sigclust/SigClust -k 8 -c {clusters_to_create} {this_tmp.name} > {this_out.name}",
                             stdout=DEVNULL,
                             stderr=DEVNULL,
                             check=True,
