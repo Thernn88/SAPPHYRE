@@ -406,14 +406,22 @@ def run_command(args: CmdArgs) -> None:
                 writeFasta(path.join(this_intermediates, aligned_file), sequences)
                 unaligned_path = path.join(this_intermediates, f"unaligned_cluster_singleton")
                 writeFasta(unaligned_path, sequences)
-            aligned_ingredients.append((aligned_file, len(sequences)))
+            aligned_ingredients.append((aligned_file, len(sequences), 0))
         elif args.align_method == "frags":
             aligned_file = path.join(aligned_files_tmp, f"{args.gene}_sequences")
 
             sequences = list(data.items())
+
+            if debug:
+                writeFasta(
+                    path.join(this_intermediates, f"{args.gene}_sequences"),
+                    sequences,
+                )
+
+            
             writeFasta(aligned_file, sequences)
             
-            aligned_ingredients = [(aligned_file, len(sequences))]
+            aligned_ingredients = [(aligned_file, len(sequences), 0)]
         else:
             printv(
                 f"Generating Cluster. Elapsed time: {keeper.differential():.2f}",
