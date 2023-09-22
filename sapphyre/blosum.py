@@ -653,10 +653,10 @@ def do_folder(folder, args):
 
 
 def main(args):
-    if isinstance(args.INPUT) == list:
+    if isinstance(args.INPUT, list):
         for folder in args.INPUT:
             do_folder(Path(folder), args)
-    elif isinstance(args.INPUT == str):
+    elif isinstance(args.INPUT, str):
         do_folder(Path(args.INPUT), args)
     return True
 
