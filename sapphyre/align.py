@@ -22,7 +22,7 @@ def find_kmers(fasta: dict) -> dict[str, set]:
     Returns:
         dict[str, set]: A dictionary of header -> set of kmers
     """
-    KMER_LEN = 15
+    KMER_LEN = 18
     kmers = defaultdict(set)
     for header, sequence in fasta.items():
         for i in range(0, len(sequence) - KMER_LEN):
@@ -147,7 +147,7 @@ def generate_clusters(data: dict[str, str]) -> list[list[str]]:
     Returns:
         list[list[str]]: A list of each clusters' headers
     """
-    KMER_PERCENT = 0.15
+    KMER_PERCENT = 0.30
     
     cluster_children = {header: [header] for header in data}
     kmers = find_kmers(data)
@@ -694,6 +694,7 @@ def do_folder(folder, args):
         return False
 
     command = "clustalo -i {in_file} -o {out_file} --threads=1 --full"
+    #command = "mafft --quiet --thread 1 {in_file} > {out_file}"
     if args.second_run:
         command += " --full-iter --iter=1"
 
