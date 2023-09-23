@@ -359,6 +359,9 @@ def aln_function(
 
     if duped_headers:
         aligned_result = [i for i in aligned_result if i[0] not in duped_headers]
+
+    aligned_result = [i for in aligned_result if len(i[1]) != i[1].count("-")]
+
     aligned_result = do_merge(aligned_result)
         
     writeFasta(trimmed_path, aligned_result, False)
