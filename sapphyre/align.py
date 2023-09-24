@@ -29,8 +29,6 @@ def find_kmers(fasta: dict) -> dict[str, set]:
             kmer = sequence[i : i + KMER_LEN]
             if "*" not in kmer and "-" not in kmer:
                 kmers[header].add(kmer)
-
-    
     return kmers
 
 
@@ -151,62 +149,68 @@ def generate_clusters(data: dict[str, str]) -> list[list[str]]:
     
     cluster_children = {header: [header] for header in data}
     kmers = find_kmers(data)
+    gene_headers = list(kmers.keys())
 
-    largest_kmer_headers = sorted(kmers, key=lambda x: len(kmers[x]), reverse=True)
-    header_len = len(largest_kmer_headers)
+    # Add a dictionary to store child sets for each primary set
+    child_sets = {header: set() for header in data}
 
-    processed_headers = set()
     for iteration in range(2):
+        processed_headers = set()
         merge_occured = True
         while merge_occured:
             merge_occured = False
-            for i, master_header in enumerate(largest_kmer_headers):  # reverse iteration
-                if master_header in processed_headers:
-                    continue
+            for i in range(len(gene_headers) - 1, -1, -1):  # reverse iteration
+                master_header = gene_headers[i]
+                master = kmers[master_header]
+                if master:
+                    for candidate_header in gene_headers[:i]:
+                        if candidate_header in processed_headers:
+                            continue
 
-                for j in range(header_len):
-                    if i == j:
-                        continue
+                        candidate = kmers[candidate_header]
+                        if candidate:
+                            # Check similarity against both parent set and child sets
+                            matched = False
+                            for header_to_check in [
+                                master_header,
+                                *list(child_sets[master_header]),
+                            ]:
+                                set_to_check = kmers[header_to_check]
+                                if set_to_check is None:
+                                    continue
 
-                    candidate_header = largest_kmer_headers[j]
-                    if candidate_header in processed_headers:
-                        continue
+                                similar = set_to_check.intersection(candidate)
 
-                    # Check similarity against both parent set and child sets
-                    matched = False
-                    for master_header_to_check in cluster_children[master_header]:
-                        for candidate_header_to_check in cluster_children[candidate_header]:
+                                if len(similar) != 0:
+                                    if (
+                                        len(similar)
+                                        / min(len(set_to_check), len(candidate))
+                                        >= KMER_PERCENT
+                                    ):
+                                        if (
+                                            iteration == 0
+                                            or iteration == 1
+                                            and len(cluster_children[master_header])
+                                            != 1
+                                        ):
+                                            # Add the candidate set as a child set of the primary set
+                                            child_sets[master_header].add(
+                                                candidate_header,
+                                            )
+                                            cluster_children[master_header].extend(
+                                                cluster_children[candidate_header],
+                                            )
 
-                            master_set = kmers[master_header_to_check]
-                            candidate_set = kmers[candidate_header_to_check]
+                                            # Remove candidate
+                                            cluster_children[candidate_header] = None
+                                            kmers[candidate_header] = None
+                                            processed_headers.add(candidate_header)
 
-                            similar = master_set.intersection(candidate_set)
+                                            matched = True
+                                            break
 
-                            if len(similar) == 0:
-                                continue
-
-                            if (
-                                len(similar)
-                                / min(len(master_set), len(candidate_set))
-                                < KMER_PERCENT
-                            ):
-                                continue
-
-                            if (
-                                iteration == 0
-                                or (iteration == 1
-                                and len(cluster_children[master_header])
-                                != 1)
-                            ):
-                                cluster_children[master_header].extend(cluster_children[candidate_header])
-                                cluster_children[candidate_header] = None
-                                processed_headers.add(candidate_header)
-                                matched = True
-                                break
-
-                        if matched:
-                            merge_occured = True
-                            break
+                            if matched:
+                                merge_occured = True
 
     return cluster_children.values()
 
