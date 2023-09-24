@@ -533,7 +533,7 @@ def run_command(args: CmdArgs) -> None:
                         final_sequences = list(parseFasta(out_file, True))
                         continue
 
-                    out_file = path.join(parent_tmpdir, f"part_{i}.fa")
+                    out_file = path.join(parent_tmpdir, f"part_{cluster_i}.fa")
 
                     if seq_count >= 1:
                         is_profile = "--is-profile"
@@ -559,7 +559,6 @@ def run_command(args: CmdArgs) -> None:
                 if args.align_method != "frags":
                     data = []
 
-                    already_has_insertion_coords = {}
                     alignment_insertion_coords = []
                     subalignments = {}
                     insertion_coords_global = set()
@@ -590,15 +589,14 @@ def run_command(args: CmdArgs) -> None:
                                     data_coords.add(i)
 
                         insertion_coords = set(range(len(seq))) - data_coords
-                        
-                        insertion_after_overlap_filter = [i for i in insertion_coords if i not in insertion_coords_global]
 
+                        insertion_after_overlap_filter = sorted([i for i in insertion_coords if i not in insertion_coords_global])
+                        
                         if insertion_after_overlap_filter:
                             alignment_insertion_coords.append(insertion_after_overlap_filter)
                             insertion_coords_global.update(insertion_coords)
 
-                        already_has_insertion_coords[item] = insertion_coords
-                        subalignments[item] = this_seqs
+                        subalignments[item] = this_seqs, insertion_coords
 
                     alignment_insertion_coords.sort(key=lambda x: x[0])
 
@@ -615,8 +613,7 @@ def run_command(args: CmdArgs) -> None:
                         
                         final_refs.append((header, "".join(seq)))
 
-                    for item, seqs in subalignments.items():
-                        this_msa_insertions = already_has_insertion_coords[item]
+                    for item, (seqs, this_msa_insertions) in subalignments.items():
                         adj = 0
                         for x, coords in enumerate(alignment_insertion_coords):
                             if x != 0:
@@ -650,6 +647,8 @@ def run_command(args: CmdArgs) -> None:
             references.append((header, sequence))
         else:
             header = trimmed_header_to_full[header[:127]]
+            # if not "NODE_15784382" in header:
+            #     continue
             if header in reinsertions:
                 for insertion_header in reinsertions[header]:
                     inserted += 1
