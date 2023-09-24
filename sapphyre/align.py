@@ -697,8 +697,10 @@ def do_folder(folder, args):
         return False
 
     command = "clustalo -i {in_file} -o {out_file} --threads=1 --full"
-    if args.second_run:
-        command += " --full-iter --iter=1"
+    #command = "mafft --thread 1 --quiet --anysymbol {in_file}>{out_file}"
+    #command = "./famsa -t 1 {in_file} {out_file}"
+    #if args.second_run:
+        #command += " --full-iter --iter=1"
 
     intermediates = "intermediates"
     if not path.exists(intermediates):
