@@ -106,25 +106,6 @@ class NODE(Struct):
         children_nodes = "|".join([i.split("|")[3] for i in self.children])
         return f"CONTIG_{contig_node}|{children_nodes}"
 
-from collections import Counter
-
-def calculate_consensus(group, nodes):
-    sequence_lists = [list(nodes[j].sequence[overlap_coord[0]:overlap_coord[1]])
-                      for _, overlap_coord, j in group
-                      if nodes[j] and isinstance(overlap_coord, (list, tuple)) and len(overlap_coord) == 2]
-    
-    if not sequence_lists: return None
-    
-    consensus_sequence = ''.join(Counter(col).most_common(1)[0][0] for col in zip(*sequence_lists))
-    return consensus_sequence
-
-
-def compare_sequences(sequence, consensus_sequence, overlap_coords):
-    if not sequence or not consensus_sequence: return float('inf')  # Infinite difference if one is missing
-    
-    difference_score = sum(1 for a, b in zip(sequence[overlap_coords[0]:overlap_coords[1]], consensus_sequence) if a != b)
-    return difference_score
-
 
 def average_match(seq_a, consensus, start, end):
     match = 0
@@ -345,48 +326,44 @@ def process_batch(
         for i, node in enumerate(nodes):
             if node is None or node.kick:
                 continue
-            
-            splice_occurred = True
-            while splice_occurred:
-                splice_occurred = False
+            splice_occured = True
+            while splice_occured:
                 possible_extensions = []
-                
+                splice_occured = False
                 for j, node_2 in enumerate(nodes):
-                    if i == j or node_2 is None or node_2.kick:
+                    if node_2 is None or node_2.kick:
                         continue
+                    if i == j:
+                        continue
+
                     overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, args.merge_overlap)
+
                     if overlap_coords:
-                        possible_extensions.append((overlap_coords[1] - overlap_coords[0], overlap_coords[0], j))
-                        
-                if not possible_extensions:
-                    continue
-                
-                possible_extensions.sort(key=lambda x: x[0], reverse=True)
-                
-                # Handle tied extensions with consensus sequence if any tie exists
-                max_overlap = possible_extensions[0][0]
-                tied_extensions = [ext for ext in possible_extensions if ext[0] == max_overlap]
-                
-                if len(tied_extensions) > 1:
-                    consensus_sequence = calculate_consensus(tied_extensions, nodes)
-                    # Sort by minimum difference to consensus_sequence
-                    tied_extensions.sort(key=lambda ext: compare_sequences(nodes[ext[2]].sequence, consensus_sequence, ext[1]))
-                
-                for _, overlap_coord, j in tied_extensions:
+                        overlap_amount = overlap_coords[1] - overlap_coords[0]
+                        overlap_coord = overlap_coords[0]
+                        possible_extensions.append((overlap_amount, overlap_coord, j))
+                for _, overlap_coord, j in sorted(possible_extensions, reverse=True, key = lambda x: x[0]):
+
                     node_2 = nodes[j]
                     if node_2 is None:
                         continue
+                    #Confirm still overlaps
                     overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, args.merge_overlap)
                     if overlap_coords:
-                        fail = any(node.sequence[x] != node_2.sequence[x] for x in range(overlap_coords[0], overlap_coords[1]))
+                        #Get distance
+
+                        
+                        fail = False
+                        for x in range(overlap_coords[0], overlap_coords[1]):
+                            if node.sequence[x] != node_2.sequence[x]:
+                                fail = True
+                                break
+
                         if not fail:
-                            splice_occurred = True
+                            splice_occured = True
                             node.extend(node_2, overlap_coords[0])
                             nodes[j] = None
-                            break  # Break out of the loop on a successful splice
-                
         nodes = [node for node in nodes if node is not None]
-
 
         read_alignments = [seq for header, seq in aa_output if not header.endswith(".")]
         data_cols = 0
