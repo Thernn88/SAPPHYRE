@@ -45,25 +45,13 @@ class NODE(Struct):
     children_indices: list[int]
     is_contig: bool
     kick: bool
-    original_start: int
-    original_end: int
-    original_sequence: str
 
     def save(self, seen_before):
-        return self.header, self.sequence, self.start, self.end, self.children, self.children_indices, self.is_contig, seen_before
+        return self.header, self.sequence, self.start, self.end, self.children, self.is_contig, seen_before
     
     def revert_to(self, save):
-        self.header, self.sequence, self.start, self.end, self.children, self.children_indices, self.is_contig, seen_before = save
+        self.header, self.sequence, self.start, self.end, self.children, self.is_contig, seen_before = save
         return seen_before
-
-    def reset(self):
-        self.children = []
-        self.children_indices = []
-        self.is_contig = False
-        self.kick = False
-        self.start = self.original_start
-        self.end = self.original_end
-        self.sequence = self.original_sequence
 
     def extend(self, node_2, overlap_coord, j):
         if node_2.start >= self.start and node_2.end <= self.end:
@@ -305,9 +293,6 @@ def process_batch(
                     children_indices=[],
                     is_contig=node_is_contig,
                     kick=False,
-                    original_start=start,
-                    original_end=end,
-                    original_sequence=sequence,
                 )
             )
 
@@ -339,91 +324,61 @@ def process_batch(
                 read.kick = True
 
         # Rescurive scan
-        BACKTRACKS_ALLOWED = 20
-        backtracks = BACKTRACKS_ALLOWED
-
         
-        for mode in ["biggest", "fastest"]:
-            this_recursion_best_path = 0
-            best_contigs = []
-            for i, node in enumerate(nodes):
-                if node is None or node.kick:
-                    continue
-                splice_occured = True
+        for i, node in enumerate(nodes):
+            if node is None or node.kick:
+                continue
+            splice_occured = True
 
-                save_points = []
-                tried_previously = set()
-                best_path_score = -1
-                best_path = None
+            save_points = []
+            tried_previously = set()
+            best_path_score = -1
+            best_path = None
 
-                while splice_occured:
-                    possible_extensions = []
-                    splice_occured = False
-                    for j, node_2 in enumerate(nodes):
-                        if node_2 is None or node_2.kick or j in tried_previously:
-                            continue
-                        if i == j:
-                            continue
+            while splice_occured:
+                possible_extensions = []
+                splice_occured = False
+                for j, node_2 in enumerate(nodes):
+                    if node_2 is None or node_2.kick or j in tried_previously:
+                        continue
+                    if i == j:
+                        continue
 
-                        overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, args.merge_overlap)
+                    overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, args.merge_overlap)
 
-                        if overlap_coords:
-                            overlap_amount = overlap_coords[1] - overlap_coords[0]
-                            overlap_coord = overlap_coords[0]
+                    if overlap_coords:
+                        overlap_amount = overlap_coords[1] - overlap_coords[0]
+                        overlap_coord = overlap_coords[0]
 
-                            fail = False
-                            for x in range(overlap_coords[0], overlap_coords[1]):
-                                if node.sequence[x] != node_2.sequence[x]:
-                                    fail = True
+                        fail = False
+                        for x in range(overlap_coords[0], overlap_coords[1]):
+                            if node.sequence[x] != node_2.sequence[x]:
+                                fail = True
 
-                            if not fail:
-                                possible_extensions.append((overlap_amount, overlap_coord, j))
+                        if not fail:
+                            possible_extensions.append((overlap_amount, overlap_coord, j))
 
-                    if possible_extensions:
-                        for _, overlap_coord, j in sorted(possible_extensions, key = lambda x: x[0]):
-                            tried_previously.add(j)
-                            save_points.append(node.save(tried_previously))
-                            splice_occured = True
-                            node.extend(nodes[j], overlap_coord, j)
-                            
-                            break
-                    else:
-                        data_len = len(node.sequence) - node.sequence.count("-")
-                        if data_len > best_path_score:
-                            best_path_score = data_len
-                            best_path = node.save(tried_previously)
-
-                        if save_points:
-                            tried_previously = node.revert_to(save_points.pop())
-
-                if best_path is not None:
-                    if mode == "fastest":
-                        node.revert_to(best_path)
-                        for j in node.children_indices:
-                            nodes[j] = None
-                    else:
-                        node.reset()
-                        if best_path_score > this_recursion_best_path:
-                            this_recursion_best_path = best_path_score
-                            backtracks = BACKTRACKS_ALLOWED
-                        else:
-                            backtracks -= 1
-                            if backtracks == 0:
-                                break
-                            continue
-
-                        best_contigs.append((best_path_score, best_path, i))
+                if possible_extensions:
+                    for _, overlap_coord, j in sorted(possible_extensions, key = lambda x: x[0]):
+                        tried_previously.add(j)
+                        save_points.append(node.save(tried_previously))
+                        splice_occured = True
+                        node.extend(nodes[j], overlap_coord, j)
+                        
+                        break
                 else:
-                    node.reset()
+                    data_len = len(node.sequence) - node.sequence.count("-")
+                    if data_len > best_path_score:
+                        best_path_score = data_len
+                        best_path = node.save(tried_previously)
 
-            if mode == "biggest":
-                if best_contigs:
-                    _, best_path, node_i = max(best_contigs, key=lambda x: x[0])
-                    nodes[node_i].revert_to(best_path)
-                    for j in nodes[node_i].children_indices:
-                        nodes[j] = None
-                else:
-                    break
+                    if save_points:
+                        tried_previously = node.revert_to(save_points.pop())
+
+            if best_path is not None:
+                node.revert_to(best_path)
+            for j in node.children_indices:
+                nodes[j] = None
 
         nodes = [node for node in nodes if node is not None]
 
