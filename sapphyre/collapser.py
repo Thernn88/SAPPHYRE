@@ -129,8 +129,8 @@ def average_match(seq_a, consensus, start, end):
 
 def do_folder(args, input_path):
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
-    nt_input_path = os.path.join(input_path, "outlier", "internal", "nt")
-    aa_input_path = os.path.join(input_path, "outlier", "internal", "aa")
+    nt_input_path = path.join(input_path, "outlier", "blosum", "nt")
+    aa_input_path = path.join(input_path, "outlier", "blosum", "aa")
 
     collapsed_path = path.join(input_path, "outlier", "collapsed")
     nt_out_path = path.join(collapsed_path, "nt")

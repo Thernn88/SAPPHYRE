@@ -467,14 +467,14 @@ def merge_args(par):
         "-aa",
         "--aa_input",
         type=str,
-        default="outlier/collapsed/aa",
+        default="outlier/internal/aa",
         help="Path to directory of AA folder",
     )
     par.add_argument(
         "-nt",
         "--nt_input",
         type=str,
-        default="outlier/collapsed/nt",
+        default="outlier/internal/nt",
         help="Path to directory of NT folder",
     )
     par.add_argument(

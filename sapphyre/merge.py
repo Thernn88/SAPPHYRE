@@ -782,17 +782,8 @@ def do_folder(folder: Path, args):
                 target_gene.split(".")[0],
                 {},
             )
-            if os.path.exists(os.path.join(str(aa_input).replace("/collapsed/", "/excise/"), target_gene)):
-                target_aa_path = Path(
-                    str(aa_input).replace("/collapsed/", "/excise/"), target_gene
-                )
-                target_nt_path = Path(
-                    str(nt_input).replace("/collapsed/", "/excise/"),
-                    make_nt_name(target_gene),
-                )
-            else:
-                target_aa_path = Path(aa_input, target_gene)
-                target_nt_path = Path(nt_input, make_nt_name(target_gene))
+            target_aa_path = Path(aa_input, target_gene)
+            target_nt_path = Path(nt_input, make_nt_name(target_gene))
             arguments.append(
                 (
                     target_gene,

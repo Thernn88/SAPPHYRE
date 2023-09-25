@@ -66,6 +66,20 @@ def load_dupes(folder):
         raise FileNotFoundError(err)
     return prepare_dupe_counts, reporter_dupe_counts
 
+
+def excise_data_check(gene: Path) -> list:
+    """
+    Turn the given path of a collapsed file into an equivalent path in the excise folder.
+    If the excise path exists, read it and replace any candidate sequences with the version
+    from the excise file.
+    """
+    excise_path = str(gene).replace("/collapsed/", "/excise/")
+    if not path.exists(excise_path):
+        return [Record(header, seq) for header, seq in parseFasta(str(gene))]
+    replacements = [Record(header, seq) for header, seq in parseFasta(excise_path)]
+    return replacements
+
+
 def has_candidates(records: list) -> bool:
     for rec in records:
         if rec.id[-1] != ".":
@@ -82,8 +96,8 @@ def aa_internal(
     reporter_dupes,
 ):
     failing = set()
-    raws = [Record(head, seq) for head, seq in parseFasta(gene)]
-    # raws = excise_data_check(gene)
+    # raws = [Record(head, seq) for head, seq in parseFasta(gene)]
+    raws = excise_data_check(gene)
     candidates, references = [], []
     for record in raws:
         if record.id[-1] != ".":
@@ -121,7 +135,7 @@ def mirror_nt(input_path, output_path, failing, gene, compression):
     if not path.exists(input_path):
         return
 
-    records = [Record(head, seq) for head, seq in parseFasta(input_path)]
+    records = excise_data_check(input_path)
     records = [rec for rec in records if rec.id not in failing]
     if not has_candidates(records):
         return
@@ -170,9 +184,9 @@ def main(args):
 
     with Pool(args.processes) as pool:
         folder = args.INPUT
-        aa_input = Path(folder, "outlier", "blosum", "aa")
-        nt_input = Path(folder, "outlier", "blosum", "nt")
-        if args.dupes:
+        aa_input = Path(folder, "outlier", "collapsed", "aa")
+        nt_input = Path(folder, "outlier", "collapsed", "nt")
+        if not args.no_dupes:
             prepare_dupe_counts, reporter_dupe_counts = load_dupes(folder)
         file_inputs = [
             gene
