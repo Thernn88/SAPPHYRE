@@ -335,7 +335,7 @@ def generate_tmp_aln(
             tmp_prealign.flush()
 
             if align_method == "mafft":
-                system(f"mafft-linsi --quiet --thread 1 --anysymbol '{tmp_prealign.name}' > '{dest.name}'")
+                system(f"mafft --localpair --quiet --thread 1 --anysymbol '{tmp_prealign.name}' > '{dest.name}'")
             elif align_method == "clustal":
                 system(f"clustalo -i '{tmp_prealign.name}' -o '{dest.name}' --thread=1 --full --force")
 
