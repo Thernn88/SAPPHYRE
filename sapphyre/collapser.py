@@ -41,21 +41,19 @@ class NODE(Struct):
     end: int
     internal_gaps: int
     length: int
-    children: list
+    children: list[str]
+    children_indices: list[int]
     is_contig: bool
     kick: bool
 
-    def get_extension(self, node_2, overlap_coord):
-        if node_2.start >= self.start and node_2.end <= self.end:
-            return 0
-        elif self.start >= node_2.start and self.end <= node_2.end:
-            return (overlap_coord - node_2.start) + (node_2.end - self.end)
-        elif node_2.start >= self.start:
-            return node_2.start - overlap_coord
-        else:
-            return overlap_coord - node_2.start
+    def save(self, seen_before):
+        return self.header, self.sequence, self.start, self.end, self.children, self.is_contig, seen_before
+    
+    def revert_to(self, save):
+        self.header, self.sequence, self.start, self.end, self.children, self.is_contig, seen_before = save
+        return seen_before
 
-    def extend(self, node_2, overlap_coord):
+    def extend(self, node_2, overlap_coord, j):
         if node_2.start >= self.start and node_2.end <= self.end:
             self.sequence = (
                 self.sequence[:overlap_coord]
@@ -89,7 +87,9 @@ class NODE(Struct):
         self.length = self.end - self.start
 
         self.children.append(node_2.header)
+        self.children_indices.append(j)
         self.children.extend(node_2.children)
+        self.children_indices.extend(node_2.children_indices)
         self.is_contig = True
 
     def is_kick(self, node_2, overlap_coords, kick_percent, overlap_amount):
@@ -290,6 +290,7 @@ def process_batch(
                     length=(end - start),
                     internal_gaps=internal_gaps,
                     children=[],
+                    children_indices=[],
                     is_contig=node_is_contig,
                     kick=False,
                 )
@@ -323,15 +324,22 @@ def process_batch(
                 read.kick = True
 
         # Rescurive scan
+        
         for i, node in enumerate(nodes):
             if node is None or node.kick:
                 continue
             splice_occured = True
+
+            save_points = []
+            tried_previously = set()
+            best_path_score = -1
+            best_path = None
+
             while splice_occured:
                 possible_extensions = []
                 splice_occured = False
                 for j, node_2 in enumerate(nodes):
-                    if node_2 is None or node_2.kick:
+                    if node_2 is None or node_2.kick or j in tried_previously:
                         continue
                     if i == j:
                         continue
@@ -341,28 +349,37 @@ def process_batch(
                     if overlap_coords:
                         overlap_amount = overlap_coords[1] - overlap_coords[0]
                         overlap_coord = overlap_coords[0]
-                        possible_extensions.append((overlap_amount, overlap_coord, j))
-                for _, overlap_coord, j in sorted(possible_extensions, reverse=True, key = lambda x: x[0]):
 
-                    node_2 = nodes[j]
-                    if node_2 is None:
-                        continue
-                    #Confirm still overlaps
-                    overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, args.merge_overlap)
-                    if overlap_coords:
-                        #Get distance
-
-                        
                         fail = False
                         for x in range(overlap_coords[0], overlap_coords[1]):
                             if node.sequence[x] != node_2.sequence[x]:
                                 fail = True
-                                break
 
                         if not fail:
-                            splice_occured = True
-                            node.extend(node_2, overlap_coords[0])
-                            nodes[j] = None
+                            possible_extensions.append((overlap_amount, overlap_coord, j))
+
+                if possible_extensions:
+                    for _, overlap_coord, j in sorted(possible_extensions, key = lambda x: x[0]):
+                        tried_previously.add(j)
+                        save_points.append(node.save(tried_previously))
+                        splice_occured = True
+                        node.extend(nodes[j], overlap_coord, j)
+                        
+                        break
+                else:
+                    data_len = len(node.sequence) - node.sequence.count("-")
+                    if data_len > best_path_score:
+                        best_path_score = data_len
+                        best_path = node.save(tried_previously)
+
+                    if save_points:
+                        tried_previously = node.revert_to(save_points.pop())
+
+            if best_path is not None:
+                node.revert_to(best_path)
+            for j in node.children_indices:
+                nodes[j] = None
+
         nodes = [node for node in nodes if node is not None]
 
         read_alignments = [seq for header, seq in aa_output if not header.endswith(".")]
@@ -439,7 +456,7 @@ def process_batch(
                 for header, sequence in aa_output:
                     if header.endswith("."):
                         f.write(f">{header}\n{sequence}\n")
-
+                print(max(len(node.sequence) - node.sequence.count("-") for node in nodes))
                 for node in nodes:
                     if node is None:
                         continue
