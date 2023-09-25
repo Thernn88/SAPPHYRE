@@ -1097,6 +1097,13 @@ def subcmd_wrap_final(sp):
         default=4,
         help="Sites required for majority ruling.",
     )
+    par.add_argument(
+        "-alm",
+        "--align_method",
+        choices=["clustal", "mafft", "base", "frags"],
+        default="clustal",
+        help="What alignment method to use.",
+    )
     par.set_defaults(func=wrap_final, formathelp=par.format_help)
 
 
