@@ -342,7 +342,7 @@ def process_batch(
                         overlap_amount = overlap_coords[1] - overlap_coords[0]
                         overlap_coord = overlap_coords[0]
                         possible_extensions.append((overlap_amount, overlap_coord, j))
-                for _, overlap_coord, j in sorted(possible_extensions, reverse=True, key = lambda x: x[0]):
+                for _, overlap_coord, j in sorted(possible_extensions, reverse=False, key = lambda x: x[0]):
 
                     node_2 = nodes[j]
                     if node_2 is None:
