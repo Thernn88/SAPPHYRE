@@ -194,13 +194,9 @@ def get_diamondhits(
     present_genes = rocks_hits_db.get("getall:presentgenes").split(",")
     genes_to_process = list_of_wanted_genes or present_genes
 
-    decoder = json.Decoder(list[Hit])
-
-    gene_based_results = defaultdict(list)
+    gene_based_results = []
     for gene in genes_to_process:
-        gene_based_results[gene] = decoder.decode(
-            rocks_hits_db.get_bytes(f"gethits:{gene}"),
-        )
+        gene_based_results.append((gene,rocks_hits_db.get_bytes(f"gethits:{gene}")))
 
     return gene_based_results
 
@@ -539,9 +535,12 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
 
         def dist(bp_a, bp_b, mat):
             return mat[bp_a][bp_b] >= 0.0 and bp_a != "-" and bp_b != "-"
+        
+
+    this_hits = json.decode(oargs.list_of_hits, type = list[Hit])
 
     this_gene_dupes, aa_output, nt_output = print_unmerged_sequences(
-        oargs.list_of_hits,
+        this_hits,
         oargs.gene,
         oargs.taxa_id,
         core_seq_aa_dict,
@@ -657,16 +656,12 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     )
 
     arguments: list[OutputArgs | None] = []
-    for gene in sorted(
-        transcripts_mapped_to,
-        key=lambda k: len(transcripts_mapped_to[k]),
-        reverse=True,
-    ):
+    for gene, transcript_hits in transcripts_mapped_to:
         arguments.append(
             (
                 OutputArgs(
                     gene,
-                    transcripts_mapped_to[gene],
+                    transcript_hits,
                     aa_out_path,
                     taxa_id,
                     nt_out_path,
@@ -687,9 +682,8 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
         makedirs("align_debug", exist_ok=True)
     # this sorting the list so that the ones with the most hits are first
     if num_threads > 1:
-        if num_threads > 1:
-            with Pool(num_threads) as pool:
-                recovered = pool.starmap(trim_and_write, arguments, chunksize=1)
+        with Pool(num_threads) as pool:
+            recovered = pool.starmap(trim_and_write, arguments, chunksize=1)
 
     else:
         recovered = [trim_and_write(i[0]) for i in arguments]
