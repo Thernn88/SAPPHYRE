@@ -1,6 +1,6 @@
-import decimal
-import itertools
-import os
+from decimal import Decimal
+from itertools import count, combinations
+from os import makedirs, path, stat, system
 from argparse import Namespace
 from collections import Counter, defaultdict
 from math import ceil
@@ -9,18 +9,14 @@ from shutil import rmtree
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from time import time
 from typing import Union
-import phymmr_tools
-import numpy as np
-import pandas as pd
-import wrap_rocks
+from numpy import int8, uint16, float32, float64, where
+from phymmr_tools import bio_revcomp, get_overlap
+from pandas import DataFrame, read_csv
+from wrap_rocks import RocksDB
 from msgspec import Struct, json
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import gettempdir, printv
-
-# call the phymmr_tools.Hit class using an unpacked list of values found in the row input.
-# def create_hit(row) -> Hit:
-
 
 class ReferenceHit(Struct, frozen=True):
     query: str
@@ -59,7 +55,7 @@ class ReporterHit(Struct):
 
 class ProcessingArgs(Struct, frozen=True):
     i: int
-    grouped_data: pd.DataFrame
+    grouped_data: DataFrame
     target_to_taxon: dict[str, tuple[str, str, int]]
     debug: bool
     result_fp: str
@@ -102,7 +98,7 @@ class ConvertReturn(Struct, frozen=True):
     hits: list[ReporterHit]
 
 
-def get_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
+def get_overlap_amount(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
     """Get the overlap between two ranges.
 
     Args:
@@ -116,7 +112,7 @@ def get_overlap(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
     -------
         int: The number of elements in the overlap between the two ranges.
     """
-    overlap_coords = phymmr_tools.get_overlap(
+    overlap_coords = get_overlap(
         a_start,
         a_end,
         b_start,
@@ -183,7 +179,7 @@ def multi_filter(this_args: MultiArgs) -> tuple[list, int, list]:
         distance = master.qend - master.qstart
 
         # Get the amount and percentage overlap between the master and candidate
-        amount_of_overlap = get_overlap(
+        amount_of_overlap = get_overlap_amount(
             master.qstart,
             master.qend,
             candidate.qstart,
@@ -263,16 +259,16 @@ def internal_filter(this_args: InternalArgs) -> tuple[set, list, int]:
             the log of kicked hits, and the number of hits kicked.
     """
     log = []
-    kicks = itertools.count()
+    kicks = count()
     this_kicks = set()
 
     for header_hits in this_args.this_hits:
-        for hit_a, hit_b in itertools.combinations(header_hits, 2):
+        for hit_a, hit_b in combinations(header_hits, 2):
             if hit_a.uid in this_kicks or hit_b.uid in this_kicks:
                 continue
 
             # Calculate overlap percent over the internal overlap's length
-            overlap_amount = get_overlap(
+            overlap_amount = get_overlap_amount(
                 hit_a.qstart,
                 hit_a.qend,
                 hit_b.qstart,
@@ -429,6 +425,21 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
         result_file.write(json.encode(result))
 
 
+def get_head_to_seq(nt_db, recipe):
+    head_to_seq = {}
+    for i in recipe:
+        lines = nt_db.get_bytes(f"ntbatch:{i}").decode().split("\n")
+        head_to_seq.update(
+            {
+                lines[i][1:]: lines[i + 1]
+                for i in range(0, len(lines), 2)
+                if lines[i] != ""
+            },
+        )
+    
+    return head_to_seq
+
+
 def run_process(args: Namespace, input_path: str) -> bool:
     """Run the main process on the input path.
 
@@ -464,31 +475,31 @@ def run_process(args: Namespace, input_path: str) -> bool:
     sensitivity = args.sensitivity
     top_amount = args.top
 
-    taxa = os.path.basename(input_path)
+    taxa = path.basename(input_path)
     printv(f"Processing: {taxa}", args.verbose, 0)
     printv("Grabbing reference data from Orthoset DB.", args.verbose)
     # make dirs
-    diamond_path = os.path.join(input_path, "diamond")
-    if args.overwrite and os.path.exists(diamond_path):
+    diamond_path = path.join(input_path, "diamond")
+    if args.overwrite and path.exists(diamond_path):
         rmtree(diamond_path)
-    os.makedirs(diamond_path, exist_ok=True)
+    makedirs(diamond_path, exist_ok=True)
 
     num_threads = args.processes
     post_threads = args.processes if args.processes < THREAD_CAP else THREAD_CAP
     if post_threads > 1:
         pool = Pool(post_threads)
-    orthoset_db_path = os.path.join(orthosets_dir, orthoset, "rocksdb")
-    diamond_db_path = os.path.join(
+    orthoset_db_path = path.join(orthosets_dir, orthoset, "rocksdb")
+    diamond_db_path = path.join(
         orthosets_dir,
         orthoset,
         "diamond",
         orthoset + ".dmnd",
     )
     # Legacy db check
-    if not os.path.exists(orthoset_db_path) or not os.path.exists(diamond_db_path):
+    if not path.exists(orthoset_db_path) or not path.exists(diamond_db_path):
         gen = False
         print("Could not find orthoset directory or diamond database.")
-        if os.path.exists(f"{orthoset}.sqlite"):
+        if path.exists(f"{orthoset}.sqlite"):
             if (
                 input(
                     f"Could not find orthoset DB at {orthoset_db_path}.\nDetected legacy orthoset: {orthoset}.sqlite\nWould you like to generate new Orthoset DB? Y/N: ",
@@ -496,14 +507,14 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 == "y"
             ):
                 print("Attempting to generate DB")
-                os.system(
+                system(
                     f"python3 -m sapphyre -p {num_threads} Makeref {orthoset}.sqlite -s {orthoset} -all",
                 )
                 gen = True
         if not gen:
             print("Aborting")
             return False
-    orthoset_db = wrap_rocks.RocksDB(orthoset_db_path)
+    orthoset_db = RocksDB(orthoset_db_path)
 
     target_to_taxon_raw = orthoset_db.get_bytes("getall:targetreference")
     if not target_to_taxon_raw:
@@ -522,9 +533,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
     printv("Done! Grabbing NT sequences.", args.verbose)
 
-    nt_db_path = os.path.join(input_path, "rocksdb", "sequences", "nt")
+    nt_db_path = path.join(input_path, "rocksdb", "sequences", "nt")
 
-    nt_db = wrap_rocks.RocksDB(nt_db_path)
+    nt_db = RocksDB(nt_db_path)
 
     # Check if sequence is assembly
     dbis_assembly = nt_db.get("get:isassembly")
@@ -536,7 +547,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         evalue = ASSEMBLY_EVALUE
         min_orf = ASSEMBLY_MIN_ORF
 
-    precision = decimal.Decimal("5") * decimal.Decimal("0.1") ** decimal.Decimal(
+    precision = Decimal("5") * Decimal("0.1") ** Decimal(
         evalue,
     )
 
@@ -550,23 +561,22 @@ def run_process(args: Namespace, input_path: str) -> bool:
         raise ValueError(
             msg,
         )
-    out = [nt_db.get_bytes(f"ntbatch:{i}") for i in recipe]
-
     dupe_counts = json.decode(nt_db.get_bytes("getall:dupes"), type=dict[str, int])
 
-    out_path = os.path.join(diamond_path, f"{sensitivity}")
+    out_path = path.join(diamond_path, f"{sensitivity}")
     extension_found = False
     for extension in [".tsv", ".tsv.tar.gz", ".gz", ".tsv.gz"]:
-        if os.path.exists(out_path + extension):
+        if path.exists(out_path + extension):
             out_path += extension
             extension_found = True
             break
 
-    if not os.path.exists(out_path) or os.stat(out_path).st_size == 0:
+    if not path.exists(out_path) or stat(out_path).st_size == 0:
         with TemporaryDirectory(dir=gettempdir()) as dir, NamedTemporaryFile(
             dir=dir,
         ) as input_file:
-            input_file.write(b"".join(out))
+            for i in recipe:
+                input_file.write(nt_db.get_bytes(f"ntbatch:{i}"))
             input_file.flush()
 
             quiet = "--quiet" if args.verbose == 0 else ""
@@ -578,7 +588,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             time_keeper.lap()  # Reset timer
             if not extension_found:
                 out_path += ".tsv"
-            os.system(
+            system(
                 f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {precision} --compress 1 --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --min-orf {min_orf} --max-hsps 0 -p {num_threads}",
             )
             out_path += ".gz"
@@ -594,18 +604,18 @@ def run_process(args: Namespace, input_path: str) -> bool:
             args.verbose,
         )
 
-    db = wrap_rocks.RocksDB(os.path.join(input_path, "rocksdb", "hits"))
+    db = RocksDB(path.join(input_path, "rocksdb", "hits"))
     output = defaultdict(list)
     multi_kicks = 0
 
     global_log = []
     dupe_divy_headers = defaultdict(set)
 
-    if os.stat(out_path).st_size == 0:
+    if stat(out_path).st_size == 0:
         printv("Diamond returned zero hits.", args.verbose, 0)
         return True
 
-    df = pd.read_csv(
+    df = read_csv(
         out_path,
         engine="pyarrow",
         delimiter="\t",
@@ -624,13 +634,13 @@ def run_process(args: Namespace, input_path: str) -> bool:
         dtype={
             "header": str,
             "target": str,
-            "frame": np.int8,
-            "evalue": np.float64,
-            "score": np.float32,
-            "qstart": np.uint16,
-            "qend": np.uint16,
-            "sstart": np.uint16,
-            "send": np.uint16,
+            "frame": int8,
+            "evalue": float64,
+            "score": float32,
+            "qstart": uint16,
+            "qend": uint16,
+            "sstart": uint16,
+            "send": uint16,
         },
     )
 
@@ -674,7 +684,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 if x != chunks:
                     last_header = headers[i + per_thread - 1]
                     end_index = (
-                        np.where(
+                        where(
                             df[start_index:]["header"].values
                             == last_header,
                         )[0][-1]
@@ -695,7 +705,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 if x != chunks:
                     last_header = headers[i + per_thread - 1]
                     end_index = (
-                        np.where(
+                        where(
                             df[start_index : (start_index + estimated_end)]["header"].values
                             == last_header,
                         )[0][-1]
@@ -869,17 +879,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         del variant_filter
         nt_db.put("getall:valid_refs", ",".join(list(top_refs)))
 
-        head_to_seq = {}
-        for content in out:
-            lines = content.decode().split("\n")
-            head_to_seq.update(
-                {
-                    lines[i][1:]: lines[i + 1]
-                    for i in range(0, len(lines), 2)
-                    if lines[i] != ""
-                },
-            )
-        del out
+        head_to_seq = get_head_to_seq(nt_db, recipe)
 
         if is_assembly:
             arguments = []
@@ -922,7 +922,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                     )
                 hit.seq = head_to_seq[hit.node][hit.qstart - 1 : hit.qend]
                 if hit.frame < 0:
-                    hit.seq = phymmr_tools.bio_revcomp(hit.seq)
+                    hit.seq = bio_revcomp(hit.seq)
                 out.append(hit)
                 dupe_divy_headers[gene].add(hit.node)
 
@@ -931,7 +931,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         del head_to_seq
         if global_log:
-            with open(os.path.join(input_path, "multi.log"), "w") as fp:
+            with open(path.join(input_path, "multi.log"), "w") as fp:
                 fp.write("\n".join(global_log))
         printv(
             f"{multi_kicks} multi kicks",
@@ -970,7 +970,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
 def main(args):
     global_time = TimeKeeper(KeeperMode.DIRECT)
-    if not all(os.path.exists(i) for i in args.INPUT):
+    if not all(path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exists.", args.verbose, 0)
         return False
     results = []
