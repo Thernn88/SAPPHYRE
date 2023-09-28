@@ -5,7 +5,7 @@ from shutil import rmtree
 from os import path, mkdir, listdir
 
 from msgspec import Struct
-from phymmr_tools import constrained_distance, find_index_pair, get_overlap
+from phymmr_tools import constrained_distance, find_index_pair, get_overlap, is_same_kmer
 from wrap_rocks import RocksDB
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import writeFasta, parseFasta, printv
@@ -335,7 +335,6 @@ def process_batch(
 
         nodes = [node for node in nodes if not node.kick]
 
-        read_alignments = [node.sequence for node in nodes]
         read_consensus = defaultdict(list)
         for node in nodes:
             for i in range(node.start, node.end):
@@ -344,9 +343,12 @@ def process_batch(
         msa_length = len(nodes)
         nodes.sort(key=lambda x: get_msa_score(x, read_consensus, msa_length), reverse=True)
             
+        active_indices = [i for i, node in enumerate(nodes)]
         # Rescurive scan
         
-        for i, node in enumerate(nodes):
+        while active_indices:
+            i = active_indices.pop(0)
+            node = nodes[i]
             if node is None:
                 continue
             splice_occured = True
@@ -360,24 +362,20 @@ def process_batch(
             while splice_occured:
                 possible_extensions = []
                 splice_occured = False
-                for j, node_2 in enumerate(nodes):
-                    if node_2 is None or j in tried_previously:
+                for j in active_indices:
+                    node_2 = nodes[j]
+                    if j in tried_previously:
                         continue
                     if i == j:
                         continue
-
+                    if node_2 is None:
+                        continue
                     overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, args.merge_overlap)
 
                     if overlap_coords:
-                        overlap_amount = overlap_coords[1] - overlap_coords[0]
-                        overlap_coord = overlap_coords[0]
-
-                        fail = False
-                        for x in range(overlap_coords[0], overlap_coords[1]):
-                            if node.sequence[x] != node_2.sequence[x]:
-                                fail = True
-
-                        if not fail:
+                        if is_same_kmer(node.sequence[overlap_coords[0]: overlap_coords[1]], node_2.sequence[overlap_coords[0]: overlap_coords[1]]):
+                            overlap_amount = overlap_coords[1] - overlap_coords[0]
+                            overlap_coord = overlap_coords[0]
                             possible_extensions.append((overlap_amount, overlap_coord, j))
 
                 if possible_extensions:
@@ -402,11 +400,13 @@ def process_batch(
                 node.revert_to(best_path)
             for j in node.children_indices:
                 nodes[j] = None
+                active_indices.remove(j)
 
         nodes = [node for node in nodes if node is not None]
 
         
         data_cols = 0
+        read_alignments = [node.sequence for node in nodes]
 
         for i in range(len(read_alignments[0])):
             if any(seq[i] != "-" for seq in read_alignments):
