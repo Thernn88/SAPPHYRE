@@ -47,10 +47,10 @@ class NODE(Struct):
     kick: bool
 
     def save(self, seen_before):
-        return self.header, self.sequence, self.start, self.end, self.children, self.is_contig, seen_before
+        return self.header, self.sequence, self.start, self.end, self.children, self.children_indices, self.is_contig, seen_before
     
     def revert_to(self, save):
-        self.header, self.sequence, self.start, self.end, self.children, self.is_contig, seen_before = save
+        self.header, self.sequence, self.start, self.end, self.children, self.children_indices, self.is_contig, seen_before = save
         return seen_before
 
     def extend(self, node_2, overlap_coord, j):
@@ -105,6 +105,16 @@ class NODE(Struct):
         contig_node = self.header.split("|")[3]
         children_nodes = "|".join([i.split("|")[3] for i in self.children])
         return f"CONTIG_{contig_node}|{children_nodes}"
+
+def get_msa_score(node, consensus, msa_length):
+    score = 0
+    for i in range(node.start, node.end):
+        score += consensus[i].count(node.sequence[i])
+
+    score /= msa_length
+    score /= node.end - node.start
+
+    return score
 
 
 def average_match(seq_a, consensus, start, end):
@@ -323,10 +333,21 @@ def process_batch(
                 kicked_headers.add(read.header)
                 read.kick = True
 
+        nodes = [node for node in nodes if not node.kick]
+
+        read_alignments = [node.sequence for node in nodes]
+        read_consensus = defaultdict(list)
+        for node in nodes:
+            for i in range(node.start, node.end):
+                read_consensus[i].append(node.sequence[i])
+
+        msa_length = len(nodes)
+        nodes.sort(key=lambda x: get_msa_score(x, read_consensus, msa_length), reverse=True)
+            
         # Rescurive scan
         
         for i, node in enumerate(nodes):
-            if node is None or node.kick:
+            if node is None:
                 continue
             splice_occured = True
 
@@ -335,11 +356,12 @@ def process_batch(
             best_path_score = -1
             best_path = None
 
+
             while splice_occured:
                 possible_extensions = []
                 splice_occured = False
                 for j, node_2 in enumerate(nodes):
-                    if node_2 is None or node_2.kick or j in tried_previously:
+                    if node_2 is None or j in tried_previously:
                         continue
                     if i == j:
                         continue
@@ -373,6 +395,7 @@ def process_batch(
                         best_path = node.save(tried_previously)
 
                     if save_points:
+                        splice_occured = True
                         tried_previously = node.revert_to(save_points.pop())
 
             if best_path is not None:
@@ -382,7 +405,7 @@ def process_batch(
 
         nodes = [node for node in nodes if node is not None]
 
-        read_alignments = [seq for header, seq in aa_output if not header.endswith(".")]
+        
         data_cols = 0
 
         for i in range(len(read_alignments[0])):
