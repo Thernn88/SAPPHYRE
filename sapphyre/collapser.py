@@ -404,16 +404,22 @@ def process_batch(
 
         nodes = [node for node in nodes if node is not None]
 
-        
-        data_cols = 0
-        read_alignments = [node.sequence for node in nodes]
+        if not nodes:
+            coverage = 0
+        else:
 
-        for i in range(len(read_alignments[0])):
-            if any(seq[i] != "-" for seq in read_alignments):
-                data_cols += 1
+        
+            data_cols = 0
+            read_alignments = [node.sequence for node in nodes]
+
+            for i in range(len(read_alignments[0])):
+                if any(seq[i] != "-" for seq in read_alignments):
+                    data_cols += 1
             
 
-        coverage = data_cols / ref_average_data_length
+            coverage = data_cols / ref_average_data_length
+            del read_alignments
+            
 
         
         req_coverage = 0.3 if batch_args.is_assembly else 0.1
@@ -421,7 +427,6 @@ def process_batch(
             total += len(read_alignments)
             kicked_genes.append(f"{gene} -> failed due to Coverage: {coverage}, Ref average columns: {ref_average_data_length}, Data columns: {data_cols}")
             continue
-        del read_alignments
 
         if args.debug:
             kicks.append(f"Kicks for {gene}\nHeader B,,Header A,Overlap Percent,Matching Percent,Length Ratio\n")
