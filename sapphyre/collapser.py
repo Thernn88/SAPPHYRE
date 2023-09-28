@@ -280,10 +280,12 @@ def process_batch(
 
 
         # make nodes out of nt_input for processing
+        read_count = 0
         for header, sequence in aa_sequences:
             aa_output.append((header, sequence))
             if header.endswith("."):
                 continue
+            read_count += 1
 
             start,end = find_index_pair(sequence, "-")
 
@@ -424,7 +426,7 @@ def process_batch(
         
         req_coverage = 0.3 if batch_args.is_assembly else 0.1
         if coverage < req_coverage:
-            total += len(read_alignments)
+            total += read_count
             kicked_genes.append(f"{gene} -> failed due to Coverage: {coverage}, Ref average columns: {ref_average_data_length}, Data columns: {data_cols}")
             continue
 
