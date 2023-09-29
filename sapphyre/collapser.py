@@ -435,7 +435,7 @@ def process_batch(
         
         if args.debug == 2:
             nodes.sort(key=lambda x: x.start)
-            with open(aa_out, "w") as f:
+            with open(aa_out.strip(".gz"), "w") as f:
                 for header, sequence in aa_output:
                     if header.endswith("."):
                         f.write(f">{header}\n{sequence}\n")
