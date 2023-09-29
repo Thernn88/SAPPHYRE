@@ -39,7 +39,6 @@ class NODE(Struct):
     sequence: str
     start: int
     end: int
-    internal_gaps: int
     length: int
     children: list[str]
     children_indices: list[int]
@@ -47,10 +46,10 @@ class NODE(Struct):
     kick: bool
 
     def save(self, seen_before):
-        return self.header, self.sequence, self.start, self.end, self.children, self.children_indices, self.is_contig, seen_before
+        return self.header, self.sequence, self.start, self.end, self.children, self.children_indices, seen_before
     
     def revert_to(self, save):
-        self.header, self.sequence, self.start, self.end, self.children, self.children_indices, self.is_contig, seen_before = save
+        self.header, self.sequence, self.start, self.end, self.children, self.children_indices, seen_before = save
         return seen_before
 
     def extend(self, node_2, overlap_coord, j):
@@ -84,13 +83,11 @@ class NODE(Struct):
             )
 
             self.start = node_2.start
-        self.length = self.end - self.start
 
         self.children.append(node_2.header)
         self.children_indices.append(j)
         self.children.extend(node_2.children)
         self.children_indices.extend(node_2.children_indices)
-        self.is_contig = True
 
     def is_kick(self, node_2, overlap_coords, kick_percent, overlap_amount):
         kmer_current = self.sequence[overlap_coords[0] : overlap_coords[1]]
@@ -289,7 +286,6 @@ def process_batch(
 
             start,end = find_index_pair(sequence, "-")
 
-            internal_gaps=  sequence[start:end].count("-")
 
             node_is_contig = batch_args.is_assembly or "&&" in header
 
@@ -300,7 +296,6 @@ def process_batch(
                     start=start,
                     end=end,
                     length=(end - start),
-                    internal_gaps=internal_gaps,
                     children=[],
                     children_indices=[],
                     is_contig=node_is_contig,
@@ -336,6 +331,11 @@ def process_batch(
                 read.kick = True
 
         nodes = [node for node in nodes if not node.kick]
+
+        if not nodes:
+            total += read_count
+            kicked_genes.append(f"{gene} -> failed due to all sequences being kicked by consensus.")
+            continue
 
         read_consensus = defaultdict(list)
         for node in nodes:
@@ -400,27 +400,25 @@ def process_batch(
 
             if best_path is not None:
                 node.revert_to(best_path)
+                node.is_contig = len(node.children) > 0
+                node.length = node.end - node.start
+                
             for j in node.children_indices:
                 nodes[j] = None
                 active_indices.remove(j)
 
         nodes = [node for node in nodes if node is not None]
 
-        if not nodes:
-            coverage = 0
-        else:
+        data_cols = 0
+        read_alignments = [node.sequence for node in nodes]
 
+        for i in range(len(read_alignments[0])):
+            if any(seq[i] != "-" for seq in read_alignments):
+                data_cols += 1
         
-            data_cols = 0
-            read_alignments = [node.sequence for node in nodes]
 
-            for i in range(len(read_alignments[0])):
-                if any(seq[i] != "-" for seq in read_alignments):
-                    data_cols += 1
-            
-
-            coverage = data_cols / ref_average_data_length
-            del read_alignments
+        coverage = data_cols / ref_average_data_length
+        del read_alignments
             
 
         
@@ -445,7 +443,7 @@ def process_batch(
                 if overlap_coords:
                     # this block can probably just be an overlap percent call
                     overlap_amount = overlap_coords[1] - overlap_coords[0]
-                    percent = overlap_amount / (node_kick.length - node_kick.internal_gaps)
+                    percent = overlap_amount / (len(node_kick.sequence) - node_kick.sequence.count("-"))
                     # this block can probably just be an overlap percent call
 
                     if percent >= args.overlap_percent:
@@ -482,11 +480,11 @@ def process_batch(
         
         if args.debug == 2:
             nodes.sort(key=lambda x: x.start)
-            with open(aa_out, "w") as f:
+            with open(aa_out.strip('.gz'), "w") as f:
                 for header, sequence in aa_output:
                     if header.endswith("."):
                         f.write(f">{header}\n{sequence}\n")
-                print(max(len(node.sequence) - node.sequence.count("-") for node in nodes))
+                # print(max(len(node.sequence) - node.sequence.count("-") for node in nodes))
                 for node in nodes:
                     if node is None:
                         continue
