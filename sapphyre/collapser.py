@@ -314,7 +314,7 @@ def process_batch(
 
         ref_average_data_length = sum(ref_average_data_length) / len(ref_average_data_length)
 
-        match_percent = args.matching_consensus_percent if batch_args.is_assembly else 0.6
+        match_percent = args.matching_consensus_percent
 
         for read in nodes:
             average_matching_cols = average_match(
