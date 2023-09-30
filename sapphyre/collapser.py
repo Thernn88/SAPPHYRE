@@ -534,7 +534,7 @@ def main(args):
         overlap_percent=args.kick_overlap,
         matching_percent=args.matching_percent,
         verbose=args.verbose,
-        debug=args.debug,
+        debug=debug,
         matching_consensus_percent = args.matching_consensus_percent,
         gross_diference_percent = args.gross_diference_percent,
     )
