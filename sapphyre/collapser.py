@@ -251,6 +251,7 @@ def get_score(seq, start, end, consensus_dict):
 def process_batch(
     batch_args: BatchArgs,
 ):
+    debug = args.debug if args.debug is not None else 0
     args = batch_args.args
     kicked_genes = []
     consensus_kicks = []
@@ -324,7 +325,7 @@ def process_batch(
             )
 
             if average_matching_cols < match_percent:
-                if args.debug:
+                if debug:
                     consensus_kicks.append(f"{gene},{read.header},{average_matching_cols},{read.length}\n")
                 kicked_headers.add(read.header)
                 read.kick = True
@@ -425,7 +426,7 @@ def process_batch(
             kicked_genes.append(f"{gene} -> failed due to Coverage: {coverage}, Ref average columns: {ref_average_data_length}, Data columns: {data_cols}")
             continue
 
-        if args.debug:
+        if debug:
             kicks.append(f"Kicks for {gene}\nHeader B,,Header A,Overlap Percent,Matching Percent,Length Ratio\n")
         nodes.sort(key = lambda x: x.length, reverse=True)
 
@@ -460,7 +461,7 @@ def process_batch(
 
                         if is_kick:
                             node_kick.kick = True
-                            if args.debug:
+                            if debug:
                                 kicks.append(
                                     f"{node_kick.contig_header()},Kicked By,{node_2.contig_header()},{percent},{matching_percent},{length_percent}\n"
                                 )
@@ -475,7 +476,7 @@ def process_batch(
             kicked_genes.append(f"No valid sequences after kick: {gene.split('.')[0]}")
             continue
         
-        if args.debug >= 2:
+        if debug >= 2:
             nodes.sort(key=lambda x: x.start)
             with open(aa_out.strip('.gz'), "w") as f:
                 head_to_seq = {}
@@ -493,7 +494,7 @@ def process_batch(
                     )
                     f.write(f">{node.contig_header()}{is_kick}\n{node.sequence}\n")
                     children = []
-                    if args.debug == 3:
+                    if debug == 3:
                         for header in node.children:
                             children.append((header, head_to_seq[header]))
                         children.sort(key=lambda x: find_index_pair(x[1], "-")[0])
@@ -513,12 +514,12 @@ def process_batch(
         writeFasta(nt_out, nt_sequences, batch_args.compress)
 
         count = len(kicked_headers)
-        if args.debug:
+        if debug:
             kicks.append(f"Total Kicks: {count}\n")
         passed_total += aa_output_after_kick
         total += count
 
-    if args.debug:
+    if debug:
         return True, kicks, total, kicked_genes, consensus_kicks, passed_total
 
     return True, [], total, kicked_genes, consensus_kicks, passed_total
@@ -533,7 +534,7 @@ def main(args):
         overlap_percent=args.kick_overlap,
         matching_percent=args.matching_percent,
         verbose=args.verbose,
-        debug=args.debug,
+        debug=debug,
         matching_consensus_percent = args.matching_consensus_percent,
         gross_diference_percent = args.gross_diference_percent,
     )
