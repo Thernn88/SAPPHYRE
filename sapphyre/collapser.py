@@ -251,8 +251,9 @@ def get_score(seq, start, end, consensus_dict):
 def process_batch(
     batch_args: BatchArgs,
 ):
-    debug = args.debug if args.debug is not None else 0
     args = batch_args.args
+    debug = args.debug if args.debug is not None else 0
+    
     kicked_genes = []
     consensus_kicks = []
     total = 0
@@ -534,7 +535,7 @@ def main(args):
         overlap_percent=args.kick_overlap,
         matching_percent=args.matching_percent,
         verbose=args.verbose,
-        debug=debug,
+        debug=args.debug,
         matching_consensus_percent = args.matching_consensus_percent,
         gross_diference_percent = args.gross_diference_percent,
     )
