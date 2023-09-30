@@ -361,13 +361,10 @@ def process_batch(
 
 
             while splice_occured:
-                possible_extensions = []
                 splice_occured = False
                 for j in active_indices:
                     node_2 = nodes[j]
                     if j in tried_previously:
-                        continue
-                    if i == j:
                         continue
                     if node_2 is None:
                         continue
@@ -377,17 +374,13 @@ def process_batch(
                         if is_same_kmer(node.sequence[overlap_coords[0]: overlap_coords[1]], node_2.sequence[overlap_coords[0]: overlap_coords[1]]):
                             overlap_amount = overlap_coords[1] - overlap_coords[0]
                             overlap_coord = overlap_coords[0]
-                            possible_extensions.append((overlap_amount, overlap_coord, j))
+                            tried_previously.add(j)
+                            save_points.append(node.save(tried_previously))
+                            splice_occured = True
+                            node.extend(nodes[j], overlap_coord, j)
+                            break
 
-                if possible_extensions:
-                    for _, overlap_coord, j in sorted(possible_extensions, key = lambda x: x[0]):
-                        tried_previously.add(j)
-                        save_points.append(node.save(tried_previously))
-                        splice_occured = True
-                        node.extend(nodes[j], overlap_coord, j)
-                        
-                        break
-                else:
+                if not splice_occured:
                     data_len = len(node.sequence) - node.sequence.count("-")
                     if data_len > best_path_score:
                         best_path_score = data_len
