@@ -46,10 +46,10 @@ class NODE(Struct):
     kick: bool
 
     def save(self, seen_before):
-        return self.header, self.sequence, self.start, self.end, self.children, self.children_indices, seen_before
+        return self.sequence, self.start, self.end, self.children.copy(), self.children_indices.copy(), seen_before
     
     def revert_to(self, save):
-        self.header, self.sequence, self.start, self.end, self.children, self.children_indices, seen_before = save
+        self.sequence, self.start, self.end, self.children, self.children_indices, seen_before = save
         return seen_before
 
     def extend(self, node_2, overlap_coord, j):
