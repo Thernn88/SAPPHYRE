@@ -2,8 +2,10 @@ import argparse
 import os
 from . import blosum, collapser, excise, internal
 from .utils import printv
+from .timekeeper import KeeperMode, TimeKeeper
 
 def main(argsobj):
+    total = TimeKeeper(KeeperMode.DIRECT)
     to_move = []
     debug = 0 if argsobj.debug is None else argsobj.debug
     if debug > 1:
@@ -63,7 +65,7 @@ def main(argsobj):
 
     #     excise.move_flagged(to_move, this_args.processes)
     #     printv(f"Took {timer.differential():.2f} seconds overall.", argsobj.verbose)
-
+    print(f"Total time: {total.differential():.2f} seconds.")
     return True
 
 if __name__ == "__main__":
