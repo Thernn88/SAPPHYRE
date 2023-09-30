@@ -475,12 +475,15 @@ def process_batch(
             kicked_genes.append(f"No valid sequences after kick: {gene.split('.')[0]}")
             continue
         
-        if args.debug == 2:
+        if args.debug >= 2:
             nodes.sort(key=lambda x: x.start)
             with open(aa_out.strip('.gz'), "w") as f:
+                head_to_seq = {}
                 for header, sequence in aa_output:
                     if header.endswith("."):
                         f.write(f">{header}\n{sequence}\n")
+                    else:
+                        head_to_seq[header] = sequence
                 # print(max(len(node.sequence) - node.sequence.count("-") for node in nodes))
                 for node in nodes:
                     if node is None:
@@ -489,6 +492,13 @@ def process_batch(
                         "_KICKED" if node.kick or node.header in kicked_headers else ""
                     )
                     f.write(f">{node.contig_header()}{is_kick}\n{node.sequence}\n")
+                    children = []
+                    if args.debug == 3:
+                        for header in node.children:
+                            children.append((header, head_to_seq[header]))
+                        children.sort(key=lambda x: find_index_pair(x[1], "-")[0])
+                        for head, seq in children:
+                            f.write(f">{head}\n{seq}\n")
         else:
             aa_output = [pair for pair in aa_output if pair[0] not in kicked_headers]
             writeFasta(
