@@ -103,13 +103,12 @@ class NODE(Struct):
         children_nodes = "|".join([i.split("|")[3] for i in self.children])
         return f"CONTIG_{contig_node}|{children_nodes}"
 
-def get_msa_score(node, consensus, msa_length):
+def get_msa_score(node, consensus):
     score = 0
     for i in range(node.start, node.end):
-        score += consensus[i].count(node.sequence[i])
+        score += (consensus[i].count(node.sequence[i]) / len(consensus[i])) ** 2
 
-    score /= msa_length
-    score /= node.end - node.start
+    score /= node.length
 
     return score
 
@@ -342,10 +341,8 @@ def process_batch(
             for i in range(node.start, node.end):
                 read_consensus[i].append(node.sequence[i])
 
-        msa_length = len(nodes)
-        nodes.sort(key=lambda x: get_msa_score(x, read_consensus, msa_length), reverse=True)
-            
-        active_indices = [i for i, node in enumerate(nodes)]
+        nodes.sort(key=lambda x: get_msa_score(x, read_consensus), reverse=True)
+        active_indices = [i for i in range(len(nodes))]
         # Rescurive scan
         
         while active_indices:
