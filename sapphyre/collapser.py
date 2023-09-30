@@ -117,6 +117,7 @@ def average_match(seq_a, consensus, start, end):
         total += 1
 
         if seq_a[i] == "-":
+            match -= 1
             continue
 
         if seq_a[i] in consensus[i]:
@@ -221,26 +222,6 @@ def do_folder(args, input_path):
     printv(f"Done! Took {time_keeper.differential():.2f} seconds", args.verbose, 1)
 
     return all_passed
-
-
-def get_score(seq, start, end, consensus_dict):
-    total = 0
-    score = 0
-    for i in range(start, end):
-        let = seq[i]
-        if consensus_dict[i] == set():
-            continue
-
-        if let == "-":
-            continue
-
-        if seq[i] in consensus_dict[i]:
-            score += 1
-        total += 1
-
-    percent = score / total
-    return percent
-
 
 def process_batch(
     batch_args: BatchArgs,
