@@ -41,8 +41,9 @@ def parse_fasta(gene_path: str) -> tuple[list[tuple[str, str]], list[tuple[str, 
     references: list[tuple[str, str]] = []
     candidates: list[tuple[str, str]] = []
     end_of_references = False
+    real_gene_path = gene_path if path.exists(gene_path) else str(gene_path).replace("/excise/", "/collapsed/")
     try:
-        for header, sequence in parseFasta(gene_path):
+        for header, sequence in parseFasta(real_gene_path):
             if end_of_references is False:
                 # the reference header identifier is present in the header
                 if header[-1] == ".":
@@ -765,11 +766,11 @@ def do_folder(folder: Path, args):
         ref_stats = []
 
     target_genes = []
-    for item in Path(aa_input).iterdir():
+    for item in Path(str(aa_input).replace("/excise/", "/collapsed/")).iterdir():
         if item.suffix in [".fa", ".gz", ".fq", ".fastq", ".fasta"]:
             target_genes.append(item.name)
 
-    target_genes.sort(key=lambda x: Path(aa_input, x).stat().st_size, reverse=True)
+    # target_genes.sort(key=lambda x: Path(aa_input, x).stat().st_size, reverse=True)
 
     if args.processes > 1:
         arguments = []
