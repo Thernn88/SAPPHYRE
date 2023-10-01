@@ -640,16 +640,17 @@ def do_folder(folder, args):
                         global_csv.write(line)
 
     printv(f"Done! Took {time_keeper.differential():.2f} seconds", args.verbose)
-    return True
+    return True, assembly
 
 
 def main(args):
+    is_assembly = None
+    success = False
     if isinstance(args.INPUT, list):
-        for folder in args.INPUT:
-            do_folder(Path(folder), args)
+        success = all([do_folder(Path(folder), args)[0] for folder in args.INPUT])
     elif isinstance(args.INPUT, str):
-        do_folder(Path(args.INPUT), args)
-    return True
+        success, is_assembly = do_folder(Path(args.INPUT), args)
+    return success, is_assembly
 
 
 if __name__ == "__main__":

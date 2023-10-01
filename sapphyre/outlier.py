@@ -2,8 +2,10 @@ import argparse
 import os
 from . import blosum, collapser, excise, internal
 from .utils import printv
+from .timekeeper import TimeKeeper, KeeperMode
 
 def main(argsobj):
+    timer = TimeKeeper(KeeperMode.DIRECT)
     to_move = []
     debug = 0 if argsobj.debug is None else argsobj.debug
     if debug > 1:
@@ -17,11 +19,13 @@ def main(argsobj):
 
         printv(f"Processing: {folder}", argsobj.verbose)
         printv("Blosum62 Outlier Removal.", argsobj.verbose)
+        is_assembly = False
         this_args = vars(argsobj)
         this_args["INPUT"] = folder
         this_args = argparse.Namespace(**this_args)
 
-        if not blosum.main(this_args):
+        blosum_passed, is_assembly = blosum.main(this_args)
+        if not blosum_passed:
             print()
             print(argsobj.formathelp())
             return        
@@ -38,10 +42,11 @@ def main(argsobj):
                 bad_folder = os.path.join(this_args.move_fails, os.path.basename(folder))
                 to_move.append((folder, bad_folder))
 
-        printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
-        if not internal.main(this_args):
-            print()
-            print(argsobj.format)
+        if not is_assembly:
+            printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
+            if not internal.main(this_args, False):
+                print()
+                print(argsobj.format)
 
         printv("Simple Assembly To Ensure Consistency.", argsobj.verbose)
         if not collapser.main(this_args):
@@ -58,11 +63,17 @@ def main(argsobj):
             if not module_return_tuple:
                 print()
                 print(argsobj.formathelp())
+
+        if is_assembly:
+            printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
+            if not internal.main(this_args, True):
+                print()
+                print(argsobj.format)
     # if to_move:
     #     printv("Moving Pre-flagged Folders.", argsobj.verbose)
 
     #     excise.move_flagged(to_move, this_args.processes)
-    #     printv(f"Took {timer.differential():.2f} seconds overall.", argsobj.verbose)
+    printv(f"Took {timer.differential():.2f} seconds overall.", argsobj.verbose)
 
     return True
 

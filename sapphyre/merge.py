@@ -6,7 +6,7 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from itertools import islice
 
-from os import makedirs, mkdir, path
+from os import makedirs, mkdir, path, remove
 from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import rmtree
@@ -751,6 +751,7 @@ def do_folder(folder: Path, args):
     tmp_dir = directory_check(folder)
     dupe_tmp_file = Path(tmp_dir, "DupeSeqs.tmp")
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
+    is_assembly = False
     if rocks_db_path.exists():
         rocksdb_db = RocksDB(str(rocks_db_path))
         prepare_dupe_counts = json.decode(
@@ -759,14 +760,24 @@ def do_folder(folder: Path, args):
         reporter_dupe_counts = json.decode(
             rocksdb_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]]
         )
+        
+        dbis_assembly = rocksdb_db.get("get:isassembly")
+        
+        if dbis_assembly and dbis_assembly == "True":
+            is_assembly = True
         ref_stats = rocksdb_db.get("getall:valid_refs").split(",")
     else:
         prepare_dupe_counts = {}
         reporter_dupe_counts = {}
         ref_stats = []
 
+    if is_assembly:
+        from_path = "/internal/"
+    else:
+        from_path = "/collapsed/"
+
     target_genes = []
-    for item in Path(str(aa_input).replace("/excise/", "/collapsed/")).iterdir():
+    for item in Path(str(aa_input).replace("/excise/", from_path)).iterdir():
         if item.suffix in [".fa", ".gz", ".fq", ".fastq", ".fasta"]:
             target_genes.append(item.name)
 

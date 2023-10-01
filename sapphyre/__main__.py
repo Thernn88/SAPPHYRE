@@ -402,16 +402,8 @@ def outlier_args(par):
     # par.add_argument("--debug", default=False, action="store_true",
     #                     help="Log the truncated consensus sequence and the removed tail.")
     par.add_argument(
-        "--flag",
-        default=False,
-        dest="cut",
-        action="store_false",
-        help="Set excise to detect, but not cut, regions",
-    )
-    par.add_argument(
         "--cut",
         default=False,
-        dest="cut",
         action="store_true",
         help="Remove any regions flagged by excise.",
     )

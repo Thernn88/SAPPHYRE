@@ -67,6 +67,22 @@ def load_dupes(folder):
     return prepare_dupe_counts, reporter_dupe_counts
 
 
+def get_data_path(gene: Path) -> list:
+    """
+    Turn the given path of a collapsed file into an equivalent path in the excise folder.
+    If the excise path exists, read it and replace any candidate sequences with the version
+    from the excise file.
+    """
+    if "collapsed" in str(gene):
+        excise_path = str(gene).replace("/collapsed/", "/excise/")
+        if path.exists(excise_path):
+            return [Record(header, seq) for header, seq in parseFasta(excise_path)]
+
+
+
+    return [Record(header, seq) for header, seq in parseFasta(str(gene))]
+
+
 def has_candidates(records: list) -> bool:
     for rec in records:
         if rec.id[-1] != ".":
@@ -83,7 +99,8 @@ def aa_internal(
     reporter_dupes,
 ):
     failing = set()
-    raws = [Record(head, seq) for head, seq in parseFasta(gene)]
+    # raws = [Record(head, seq) for head, seq in parseFasta(gene)]
+    raws = get_data_path(gene)
     candidates, references = [], []
     for record in raws:
         if record.id[-1] != ".":
@@ -121,7 +138,7 @@ def mirror_nt(input_path, output_path, failing, gene, compression):
     if not path.exists(input_path):
         return
 
-    records = [Record(head, seq) for head, seq in parseFasta(input_path)]
+    records = get_data_path(input_path)
     records = [rec for rec in records if rec.id not in failing]
     if not has_candidates(records):
         return
@@ -154,7 +171,7 @@ def run_internal(
     mirror_nt(nt_input, nt_output_path, failing, aa_output.name.replace(".aa.", ".nt."), compression)
 
 
-def main(args):
+def main(args, after_collapser):
     timer = TimeKeeper(KeeperMode.DIRECT)
     if (
         args.internal_consensus_threshold > 100
@@ -170,8 +187,12 @@ def main(args):
 
     with Pool(args.processes) as pool:
         folder = args.INPUT
-        aa_input = Path(folder, "outlier", "blosum", "aa")
-        nt_input = Path(folder, "outlier", "blosum", "nt")
+        if after_collapser:
+            aa_input = Path(folder, "outlier", "collapsed", "aa")
+            nt_input = Path(folder, "outlier", "collapsed", "nt")
+        else:
+            aa_input = Path(folder, "outlier", "blosum", "aa")
+            nt_input = Path(folder, "outlier", "blosum", "nt")
         if not args.no_dupes:
             prepare_dupe_counts, reporter_dupe_counts = load_dupes(folder)
         file_inputs = [
