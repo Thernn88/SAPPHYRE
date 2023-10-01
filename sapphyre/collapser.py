@@ -251,10 +251,13 @@ def process_batch(
 
 
         # make nodes out of nt_input for processing
+        aa_count = 0
         for header, sequence in aa_sequences:
             aa_output.append((header, sequence))
             if header.endswith("."):
                 continue
+
+            aa_count += 1
 
             start,end = find_index_pair(sequence, "-")
 
@@ -303,6 +306,13 @@ def process_batch(
                 kicked_headers.add(read.header)
                 read.kick = True
 
+        read_alignments = [node.sequence for node in nodes if not node.kick]
+
+        if not read_alignments:
+            total += aa_count
+            kicked_genes.append(f"No valid sequences after consensus: {gene.split('.')[0]}")
+            continue
+
         # Rescurive scan
         for i, node in enumerate(nodes):
             if node is None or node.kick:
@@ -346,7 +356,6 @@ def process_batch(
                             nodes[j] = None
         nodes = [node for node in nodes if node is not None]
 
-        read_alignments = [seq for header, seq in aa_output if not header.endswith(".")]
         data_cols = 0
 
         for i in range(len(read_alignments[0])):
