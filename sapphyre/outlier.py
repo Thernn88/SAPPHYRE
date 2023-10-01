@@ -7,7 +7,7 @@ def main(argsobj):
     to_move = []
     debug = 0 if argsobj.debug is None else argsobj.debug
     if debug > 1:
-        printv("Debug Mode Enabled, Skipping final Excise and Internals.", argsobj.verbose, 0)
+        printv("Debug Mode Enabled, Skipping final Excise.", argsobj.verbose, 0)
     for folder in argsobj.INPUT:
         if not os.path.exists(folder):
             printv(
@@ -24,7 +24,7 @@ def main(argsobj):
         if not blosum.main(this_args):
             print()
             print(argsobj.formathelp())
-            return
+            return        
 
         if not argsobj.no_excise:
             printv("Checking for severe contamination.", argsobj.verbose)
@@ -37,6 +37,11 @@ def main(argsobj):
             if is_flagged:
                 bad_folder = os.path.join(this_args.move_fails, os.path.basename(folder))
                 to_move.append((folder, bad_folder))
+
+        printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
+        if not internal.main(this_args):
+            print()
+            print(argsobj.format)
 
         printv("Simple Assembly To Ensure Consistency.", argsobj.verbose)
         if not collapser.main(this_args):
@@ -53,11 +58,6 @@ def main(argsobj):
             if not module_return_tuple:
                 print()
                 print(argsobj.formathelp())
-
-        printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
-        if not internal.main(this_args):
-            print()
-            print(argsobj.format)
     # if to_move:
     #     printv("Moving Pre-flagged Folders.", argsobj.verbose)
 
