@@ -1,11 +1,12 @@
 from collections import defaultdict
+from itertools import combinations
 from math import ceil
 from multiprocessing import Pool
 from shutil import rmtree
 from os import path, mkdir, listdir
 
 from msgspec import Struct
-from phymmr_tools import constrained_distance, find_index_pair, get_overlap
+from phymmr_tools import constrained_distance, find_index_pair, get_overlap, is_same_kmer
 from wrap_rocks import RocksDB
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import writeFasta, parseFasta, printv
@@ -223,6 +224,141 @@ def do_folder(args, input_path):
 
     return all_passed
 
+
+def kick_read_consensus(aa_output, match_percent, nodes, kicked_headers, consensus_kicks, debug, gene):
+    ref_average_data_length = []
+    ref_consensus = defaultdict(list)
+    for header, seq in aa_output:
+        if header.endswith("."):
+            start, end = find_index_pair(seq, "-")
+            for i in range(start, end):
+                ref_consensus[i].append(seq[i])
+            ref_average_data_length.append(len(seq) - seq.count("-"))
+
+    ref_average_data_length = sum(ref_average_data_length) / len(ref_average_data_length)
+
+    for read in nodes:
+        average_matching_cols = average_match(
+            read.sequence,
+            ref_consensus,
+            read.start,
+            read.end,
+        )
+
+        if average_matching_cols < match_percent:
+            if debug:
+                consensus_kicks.append(f"{gene},{read.header},{average_matching_cols},{read.length}\n")
+            kicked_headers.add(read.header)
+            read.kick = True
+
+    nodes = list(filter(lambda x: not x.kick, nodes))
+
+    return ref_average_data_length, nodes
+
+def merge_overlapping_reads(nodes, minimum_overlap):
+    # Rescurive scan
+    for i, node in enumerate(nodes):
+        if node is None or node.kick:
+            continue
+        splice_occured = True
+        while splice_occured:
+            possible_extensions = []
+            splice_occured = False
+            for j, node_2 in enumerate(nodes):
+                if node_2 is None or node_2.kick:
+                    continue
+                if i == j:
+                    continue
+
+                overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, minimum_overlap)
+
+                if overlap_coords:
+                    overlap_amount = overlap_coords[1] - overlap_coords[0]
+                    overlap_coord = overlap_coords[0]
+                    possible_extensions.append((overlap_amount, overlap_coord, j))
+            for _, overlap_coord, j in sorted(possible_extensions, reverse=False, key = lambda x: x[0]):
+
+                node_2 = nodes[j]
+                if node_2 is None:
+                    continue
+                #Confirm still overlaps
+                overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, minimum_overlap)
+                if overlap_coords:
+                    #Get distance
+
+                    
+                    fail = False
+                    for x in range(overlap_coords[0], overlap_coords[1]):
+                        if node.sequence[x] != node_2.sequence[x]:
+                            fail = True
+                            break
+
+                    if not fail:
+                        splice_occured = True
+                        node.extend(node_2, overlap_coords[0])
+                        nodes[j] = None
+
+    return list(filter(lambda x: x is not None, nodes))
+
+
+def get_coverage(nodes, ref_average_data_length):
+    read_alignments = [node.sequence for node in nodes]
+    data_cols = 0
+
+    for i in range(len(read_alignments[0])):
+        if any(seq[i] != "-" for seq in read_alignments):
+            data_cols += 1
+        
+
+    return data_cols / ref_average_data_length
+
+
+def kick_overlapping_reads(nodes, min_overlap_percent, required_matching_percent, gross_difference_percent, debug):
+    kicked_headers = set()
+    kicks = []
+    for i, node_kick in enumerate(node for node in nodes if not node.kick):
+        for j, node_2 in enumerate(node for node in nodes if not node.kick):
+            if i == j:
+                continue
+            if node_2.length < node_kick.length:
+                continue
+            
+            overlap_coords = get_overlap(node_2.start, node_2.end, node_kick.start, node_kick.end, 1)
+            if overlap_coords:
+                # this block can probably just be an overlap percent call
+                overlap_amount = overlap_coords[1] - overlap_coords[0]
+                percent = overlap_amount / (node_kick.length - node_kick.internal_gaps)
+                # this block can probably just be an overlap percent call
+
+                if percent >= min_overlap_percent:
+                    is_kick, matching_percent = node_kick.is_kick(
+                        node_2,
+                        overlap_coords,
+                        required_matching_percent,
+                        overlap_amount,
+                    )
+
+                    length_percent = ""
+                    if not is_kick and node_kick.is_contig and node_2.is_contig:
+                        length_percent = min(node_kick.length, node_2.length) / max(node_kick.length, node_2.length)
+                
+                        if not is_kick and length_percent <= 0.15 and matching_percent < gross_difference_percent:
+                            is_kick = True
+
+                    if is_kick:
+                        node_kick.kick = True
+                        if debug:
+                            kicks.append(
+                                f"{node_kick.contig_header()},Kicked By,{node_2.contig_header()},{percent},{matching_percent},{length_percent}\n"
+                            )
+                        kicked_headers.add(node_kick.header)
+                        if node_kick.is_contig:
+                            kicked_headers.update(node_kick.children)
+                        break
+
+    return kicked_headers, kicks
+
+
 def process_batch(
     batch_args: BatchArgs,
 ):
@@ -279,143 +415,36 @@ def process_batch(
                 )
             )
 
-        ref_average_data_length = []
-        ref_consensus = defaultdict(list)
-        for header, seq in aa_output:
-            if header.endswith("."):
-                start, end = find_index_pair(seq, "-")
-                for i in range(start, end):
-                    ref_consensus[i].append(seq[i])
-                ref_average_data_length.append(len(seq) - seq.count("-"))
+        ref_average_data_length, nodes = kick_read_consensus(aa_output, args.matching_consensus_percent, nodes, kicked_headers, consensus_kicks, args.debug, gene)
 
-        ref_average_data_length = sum(ref_average_data_length) / len(ref_average_data_length)
-
-        match_percent = args.matching_consensus_percent if not batch_args.is_assembly else 0.6
-
-        for read in nodes:
-            average_matching_cols = average_match(
-                read.sequence,
-                ref_consensus,
-                read.start,
-                read.end,
-            )
-
-            if average_matching_cols < match_percent:
-                if args.debug:
-                    consensus_kicks.append(f"{gene},{read.header},{average_matching_cols},{read.length}\n")
-                kicked_headers.add(read.header)
-                read.kick = True
-
-        read_alignments = [node.sequence for node in nodes if not node.kick]
-
-        if not read_alignments:
+        if not nodes:
             total += aa_count
             kicked_genes.append(f"No valid sequences after consensus: {gene.split('.')[0]}")
             continue
 
-        # Rescurive scan
-        for i, node in enumerate(nodes):
-            if node is None or node.kick:
-                continue
-            splice_occured = True
-            while splice_occured:
-                possible_extensions = []
-                splice_occured = False
-                for j, node_2 in enumerate(nodes):
-                    if node_2 is None or node_2.kick:
-                        continue
-                    if i == j:
-                        continue
-
-                    overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, args.merge_overlap)
-
-                    if overlap_coords:
-                        overlap_amount = overlap_coords[1] - overlap_coords[0]
-                        overlap_coord = overlap_coords[0]
-                        possible_extensions.append((overlap_amount, overlap_coord, j))
-                for _, overlap_coord, j in sorted(possible_extensions, reverse=False, key = lambda x: x[0]):
-
-                    node_2 = nodes[j]
-                    if node_2 is None:
-                        continue
-                    #Confirm still overlaps
-                    overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, args.merge_overlap)
-                    if overlap_coords:
-                        #Get distance
-
-                        
-                        fail = False
-                        for x in range(overlap_coords[0], overlap_coords[1]):
-                            if node.sequence[x] != node_2.sequence[x]:
-                                fail = True
-                                break
-
-                        if not fail:
-                            splice_occured = True
-                            node.extend(node_2, overlap_coords[0])
-                            nodes[j] = None
-        nodes = [node for node in nodes if node is not None]
-
-        data_cols = 0
-
-        for i in range(len(read_alignments[0])):
-            if any(seq[i] != "-" for seq in read_alignments):
-                data_cols += 1
-            
-
-        coverage = data_cols / ref_average_data_length
-
+        printv("Merging Overlapping Reads", args.verbose, 3)
+        nodes = merge_overlapping_reads(nodes, args.merge_overlap)
+                            
+        printv("Calculating Coverage", args.verbose, 3)
+        coverage = get_coverage(nodes, ref_average_data_length)
         
         req_coverage = 0.3 if batch_args.is_assembly else 0.1
         if coverage < req_coverage:
-            total += len(read_alignments)
-            kicked_genes.append(f"{gene} -> failed due to Coverage: {coverage}, Ref average columns: {ref_average_data_length}, Data columns: {data_cols}")
+            total += aa_count
+            kicked_genes.append(f"{gene} -> failed due to Coverage: {coverage}")
             continue
-        del read_alignments
 
         if args.debug:
             kicks.append(f"Kicks for {gene}\nHeader B,,Header A,Overlap Percent,Matching Percent,Length Ratio\n")
         nodes.sort(key = lambda x: x.length, reverse=True)
 
-        for i, node_kick in enumerate(node for node in nodes if not node.kick):
-            for j, node_2 in enumerate(node for node in nodes if not node.kick):
-                if i == j:
-                    continue
-                if node_2.length < node_kick.length:
-                    continue
-                
-                overlap_coords = get_overlap(node_2.start, node_2.end, node_kick.start, node_kick.end, 1)
-                if overlap_coords:
-                    # this block can probably just be an overlap percent call
-                    overlap_amount = overlap_coords[1] - overlap_coords[0]
-                    percent = overlap_amount / (node_kick.length - node_kick.internal_gaps)
-                    # this block can probably just be an overlap percent call
+        printv("Kicking Overlapping Reads", args.verbose, 3)
+        this_kicks, this_debug = kick_overlapping_reads(nodes, args.overlap_percent, args.matching_percent, args.gross_diference_percent, args.debug)
 
-                    if percent >= args.overlap_percent:
-                        is_kick, matching_percent = node_kick.is_kick(
-                            node_2,
-                            overlap_coords,
-                            args.matching_percent,
-                            overlap_amount,
-                        )
+        if args.debug:
+            kicks.extend(this_debug)
 
-                        length_percent = ""
-                        if not is_kick and node_kick.is_contig and node_2.is_contig:
-                            length_percent = min(node_kick.length, node_2.length) / max(node_kick.length, node_2.length)
-                    
-                            if not is_kick and length_percent <= 0.15 and matching_percent < args.gross_diference_percent:
-                                is_kick = True
-
-                        if is_kick:
-                            node_kick.kick = True
-                            if args.debug:
-                                kicks.append(
-                                    f"{node_kick.contig_header()},Kicked By,{node_2.contig_header()},{percent},{matching_percent},{length_percent}\n"
-                                )
-                            kicked_headers.add(node_kick.header)
-                            if node_kick.is_contig:
-                                kicked_headers.update(node_kick.children)
-                            break
+        kicked_headers.update(this_kicks)
 
         aa_output_after_kick = sum(1 for i in aa_output if i[0] not in kicked_headers and not i[0].endswith("."))
 
