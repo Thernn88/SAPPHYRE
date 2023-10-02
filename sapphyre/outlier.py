@@ -24,11 +24,11 @@ def main(argsobj):
         this_args["INPUT"] = folder
         this_args = argparse.Namespace(**this_args)
 
-        # blosum_passed, is_assembly = blosum.main(this_args)
-        # if not blosum_passed:
-        #     print()
-        #     print(argsobj.formathelp())
-        #     return        
+        blosum_passed, is_assembly = blosum.main(this_args)
+        if not blosum_passed:
+            print()
+            print(argsobj.formathelp())
+            return        
 
         if not argsobj.no_excise:
             printv("Checking for severe contamination.", argsobj.verbose)
