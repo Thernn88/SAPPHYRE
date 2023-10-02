@@ -310,7 +310,7 @@ def log_excised_consensus(
 
             for region in bad_regions:
                 region_start, region_end = region
-                region_candidates = [cand for cand in candidates if region_end < cand[3] or (region_start >= cand[3] and region_end <= cand[4]) or region_start > cand[4]]
+                region_candidates = [cand for cand in candidates if region_end < cand[3] or (region_start <= cand[4] and region_end >= cand[3]) or region_start < cand[4]]
 
                 highest_score_candidate = max(region_candidates, key=lambda x: x[2])
                 high_header, high_sequence, high_score, high_start, high_end = highest_score_candidate
