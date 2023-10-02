@@ -191,8 +191,8 @@ def main(args, after_collapser):
             aa_input = Path(folder, "outlier", "collapsed", "aa")
             nt_input = Path(folder, "outlier", "collapsed", "nt")
         else:
-            aa_input = Path(folder, "outlier", "blosum", "aa")
-            nt_input = Path(folder, "outlier", "blosum", "nt")
+            aa_input = Path(folder, "outlier", "mismatch", "aa")
+            nt_input = Path(folder, "outlier", "mismatch", "nt")
         if not args.no_dupes:
             prepare_dupe_counts, reporter_dupe_counts = load_dupes(folder)
         file_inputs = [

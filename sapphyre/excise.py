@@ -420,7 +420,13 @@ def main(args, override_cut=None):
         sub_dir = "blosum"
 
     input_folder = Path(folder, "outlier", sub_dir)
-    output_folder = Path(folder, "outlier", "excise")
+
+    if cut:
+        out = "excise"
+    else:
+        out = "mismatch"
+
+    output_folder = Path(folder, "outlier", out)
 
     output_aa_folder = output_folder.joinpath("aa")
     output_nt_folder = output_folder.joinpath("nt")

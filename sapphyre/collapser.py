@@ -131,8 +131,6 @@ def average_match(seq_a, consensus, start, end):
 
 def do_folder(args, input_path):
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
-    nt_input_path = path.join(input_path, "outlier", "internal", "nt")
-    aa_input_path = path.join(input_path, "outlier", "internal", "aa")
 
     collapsed_path = path.join(input_path, "outlier", "collapsed")
     nt_out_path = path.join(collapsed_path, "nt")
@@ -155,6 +153,13 @@ def do_folder(args, input_path):
         if dbis_assembly and dbis_assembly == "True":
             is_assembly = True
         del nt_db
+
+    if is_assembly:
+        nt_input_path = path.join(input_path, "outlier", "mismatch", "nt")
+        aa_input_path = path.join(input_path, "outlier", "mismatch", "aa")
+    else:
+        nt_input_path = path.join(input_path, "outlier", "internal", "nt")
+        aa_input_path = path.join(input_path, "outlier", "internal", "aa")
 
     # Process NT
     genes = [
