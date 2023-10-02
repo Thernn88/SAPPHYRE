@@ -48,6 +48,7 @@ class ReporterHit(Struct):
     qend: int
     gene: str
     query: str
+    score: float
     uid: int
     refs: list[ReferenceHit]
     seq: str = None
@@ -311,6 +312,7 @@ def convert_and_cull(this_args: ConvertArgs) -> ConvertReturn:
                 hit.qend,
                 hit.gene,
                 hit.ref,
+                hit.score,
                 hit.uid,
                 hit.refs,
             ),
@@ -917,6 +919,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                         hit.qend,
                         hit.gene,
                         hit.ref,
+                        hit.score,
                         hit.uid,
                         hit.refs,
                     )

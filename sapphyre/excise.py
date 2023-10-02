@@ -2,7 +2,7 @@ from multiprocessing import Pool
 from os import path, mkdir, listdir
 from shutil import move, rmtree
 from pathlib import Path
-from phymmr_tools import dumb_consensus, convert_consensus, find_index_pair, dumb_consensus_dupe
+from phymmr_tools import dumb_consensus, convert_consensus, find_index_pair, dumb_consensus_dupe, get_overlap, is_same_kmer
 from wrap_rocks import RocksDB
 
 from msgspec import json
@@ -199,6 +199,7 @@ def log_excised_consensus(
     compress_intermediates: bool,
     consensus_threshold,
     excise_threshold,
+    hit_scores: dict,
     prepare_dupes: dict,
     reporter_dupes: dict,
     debug,
@@ -244,6 +245,8 @@ def log_excised_consensus(
         consensus_seq = dumb_consensus(sequences, consensus_threshold)
     consensus_seq = convert_consensus(sequences, consensus_seq)
     bad_regions = check_covered_bad_regions(consensus_seq, excise_threshold)
+    kicked_headers = set()
+    score_kicks = []
     if bad_regions:
         if len(bad_regions) == 1:
             a, b = bad_regions[0]
@@ -261,12 +264,10 @@ def log_excised_consensus(
                     if debug
                     else f"{gene}\t{a}:{b}\n"
                 )
-
         if cut:
             positions_to_cull = [i for a, b in bad_regions for i in range(a, b)]
 
             aa_output = []
-            aa_kicks = set()
             for header, sequence in raw_sequences:
                 if header[-1] == ".":
                     aa_output.append((header, sequence))
@@ -277,7 +278,7 @@ def log_excised_consensus(
 
                 sequence = "".join(sequence)
                 if not min_aa_check(sequence, 20):
-                    aa_kicks.add(header)
+                    kicked_headers.add(header)
                     continue
                 aa_output.append((header, sequence))
             writeFasta(str(aa_out), aa_output, compress_intermediates)
@@ -288,7 +289,7 @@ def log_excised_consensus(
                     nt_output.append((header, sequence))
                     continue
 
-                if header in aa_kicks:
+                if header in kicked_headers:
                     continue
 
                 sequence = list(sequence)
@@ -297,15 +298,71 @@ def log_excised_consensus(
                 sequence = "".join(sequence)
                 nt_output.append((header, sequence))
             writeFasta(str(nt_out), nt_output, compress_intermediates)
+        else:
+            aa_output = []
+            candidates = []
+            for header, sequence in raw_sequences:
+                if header[-1] == ".":
+                    continue
+                start, end = find_index_pair(sequence, "-")
+                score = hit_scores.get(header.split("|")[3])
+                candidates.append((header, sequence, score, start, end))
+
+            for region in bad_regions:
+                region_start, region_end = region
+                region_candidates = [cand for cand in candidates if region_end < cand[3] or (region_start >= cand[3] and region_end <= cand[4]) or region_start > cand[4]]
+
+                highest_score_candidate = max(region_candidates, key=lambda x: x[2])
+                high_header, high_sequence, high_score, high_start, high_end = highest_score_candidate
+
+                within_top = {i for i, cand in enumerate(region_candidates) if abs(cand[2] - high_score) <= 0.1 * high_score}
+                for i, cand in enumerate(region_candidates):
+                    if i in within_top:
+                        continue
+
+                    header, sequence, score, start, end = cand
+
+                    overlap_coords = get_overlap(start, end, high_start, high_end, 3)
+
+                    if overlap_coords is None:
+                        continue
+
+                    high_kmer = high_sequence[overlap_coords[0] : overlap_coords[1]]
+                    kmer = sequence[overlap_coords[0] : overlap_coords[1]]
+
+                    score_kicks.append(f"{gene},{high_header},{high_score},kicked,{header},{score},{high_kmer},{kmer}")
+
+                    if is_same_kmer(high_kmer, kmer):
+                        continue
+
+                    candidates[i] = None
+                    kicked_headers.add(header)
+                
+                candidates = [cand for cand in candidates if cand is not None]
+
+            aa_output = [(header, sequence) for header, sequence in raw_sequences if header not in kicked_headers]
+
+            writeFasta(str(aa_out), aa_output, compress_intermediates)
+
+            nt_output = []
+            for header, sequence in parseFasta(str(nt_in)):
+                if header[-1] == ".":
+                    nt_output.append((header, sequence))
+                    continue
+
+                if header in kicked_headers:
+                    continue
+
+                nt_output.append((header, sequence))
+            writeFasta(str(nt_out), nt_output, compress_intermediates)
     else:
         if debug:
             log_output += f"{gene}\tN/A\t{consensus_seq}\n"
 
-    return log_output, bad_regions != []
+    return log_output, bad_regions != [], len(kicked_headers), score_kicks
 
 
-def load_dupes(rocks_db_path: Path):
-    rocksdb_db = RocksDB(str(rocks_db_path))
+def load_dupes(rocksdb_db):
     prepare_dupe_counts = json.decode(
         rocksdb_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]]
     )
@@ -313,6 +370,8 @@ def load_dupes(rocks_db_path: Path):
         rocksdb_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]]
     )
     return prepare_dupe_counts, reporter_dupe_counts
+
+
 
 
 ### USED BY __main__
@@ -375,19 +434,23 @@ def main(args, override_cut=None):
     aa_input = input_folder.joinpath("aa")
 
     rocksdb_path = Path(folder, "rocksdb", "sequences", "nt")
+    if not rocksdb_path.exists():
+        err = f"cannot find rocksdb for {folder}"
+        raise FileNotFoundError(err)
+    rocksdb_db = RocksDB(str(rocksdb_path))
 
     if args.no_dupes:
         prepare_dupes, reporter_dupes = {}, {}
     else:
-        if not rocksdb_path.exists():
-            err = f"cannot find rocksdb for {folder}"
-            raise FileNotFoundError(err)
-        prepare_dupes, reporter_dupes = load_dupes(rocksdb_path)
+        prepare_dupes, reporter_dupes = load_dupes(rocksdb_db)
+
+    gene_scores = json.decode(rocksdb_db.get("getall:diamond_scores"), type=dict[str, dict[str, float]])
 
     compress = not args.uncompress_intermediates or args.compress
 
     genes = [fasta for fasta in listdir(aa_input) if ".fa" in fasta]
     log_path = Path(output_folder, "excise_indices.tsv")
+    kicks_path = Path(output_folder, "kicks.txt")
     if args.processes > 1:
         arguments = [
             (
@@ -397,6 +460,7 @@ def main(args, override_cut=None):
                 compress,
                 args.consensus,
                 args.excise,
+                gene_scores.get(gene.split(".")[0], {}),
                 prepare_dupes.get(gene.split(".")[0], {}),
                 reporter_dupes.get(gene.split(".")[0], {}),
                 args.debug,
@@ -417,6 +481,7 @@ def main(args, override_cut=None):
                     compress,
                     args.consensus,
                     args.excise,
+                    gene_scores.get(gene.split(".")[0], {}),
                     prepare_dupes.get(gene.split(".")[0], {}),
                     reporter_dupes.get(gene.split(".")[0], {}),
                     args.debug,
@@ -425,15 +490,20 @@ def main(args, override_cut=None):
             )
 
     log_output = [x[0] for x in results]
+    kicks_output = ["\n".join(x[3]) for x in results if x[3]]
     loci_containing_bad_regions = len([x[1] for x in results if x[1]])
+    kicked_sequences = sum(x[2] for x in results if x[1])
     printv(
-        f"{input_folder}: {loci_containing_bad_regions} bad loci found", args.verbose
+        f"{input_folder}: {loci_containing_bad_regions} bad loci found. Kicked {kicked_sequences} sequences", args.verbose
     )
 
     if args.debug:
         with open(log_path, "w") as f:
             f.write("Gene\tCut-Indices\n")
             f.write("".join(log_output))
+        with open(kicks_path, "w") as f:
+            f.write("Gene,Highest header,Highest score,,Kicked header, Kicked score, High Score Kmer, kicked Seq Kmer\n")
+            f.write("\n".join(kicks_output))
 
     printv(f"Done! Took {timer.differential():.2f} seconds", args.verbose)
     return True, loci_containing_bad_regions / len(genes) >= args.majority_excise

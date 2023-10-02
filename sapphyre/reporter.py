@@ -344,6 +344,7 @@ def print_unmerged_sequences(
     seq_mapped_already = {}
     exact_hit_mapped_already = set()
     dupes = defaultdict(list)
+    gene_scores = {}
     for hit in hits:
         base_header = hit.node
         reference_frame = str(hit.frame)
@@ -383,6 +384,7 @@ def print_unmerged_sequences(
 
             if debug_fp:
                 debug_fp.write(f">{header}\n{aa_seq}\n")
+                
 
         # Check if new seq is over bp minimum
         data_after = len(aa_seq)
@@ -433,6 +435,7 @@ def print_unmerged_sequences(
                     if base_header in header_mapped_x_times:
                         # Make header unique
                         old_header = base_header
+                        base_header = base_header + f"_{header_mapped_x_times[old_header]}"
                         header = (
                             gene
                             + "|"
@@ -441,14 +444,15 @@ def print_unmerged_sequences(
                             + taxa_id
                             + "|"
                             + base_header
-                            + f"_{header_mapped_x_times[old_header]}"
                             + "|"
                             + reference_frame
                         )
 
-                        header_mapped_x_times[base_header] += 1
+                        header_mapped_x_times[old_header] += 1
                 else:
                     base_header_mapped_already[base_header] = header, aa_seq
+
+                gene_scores[base_header] = hit.score
 
                 header_maps_to_where[header] = len(
                     aa_result,
@@ -461,7 +465,7 @@ def print_unmerged_sequences(
                 header_mapped_x_times.setdefault(base_header, 1)
                 exact_hit_mapped_already.add(unique_hit)
 
-    return dupes, aa_result, nt_result
+    return dupes, aa_result, nt_result, gene_scores
 
 
 OutputArgs = namedtuple(
@@ -539,7 +543,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
 
     this_hits = json.decode(oargs.list_of_hits, type = list[Hit])
 
-    this_gene_dupes, aa_output, nt_output = print_unmerged_sequences(
+    this_gene_dupes, aa_output, nt_output, gene_scores = print_unmerged_sequences(
         this_hits,
         oargs.gene,
         oargs.taxa_id,
@@ -581,7 +585,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.verbose,
         2,
     )
-    return oargs.gene, this_gene_dupes, len(aa_output)
+    return oargs.gene, this_gene_dupes, gene_scores, len(aa_output)
 
 
 def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: int):
@@ -690,13 +694,19 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
 
     final_count = 0
     this_gene_based_dupes = {}
+    this_gene_based_scores = {}
 
-    for gene, dupes, amount in recovered:
+    for gene, dupes, gene_scores, amount in recovered:
         final_count += amount
         this_gene_based_dupes[gene] = dupes
+        this_gene_based_scores[gene] = gene_scores
 
     key = "getall:reporter_dupes"
     data = json.encode(this_gene_based_dupes)
+    rocky.get_rock("rocks_nt_db").put_bytes(key, data)
+
+    key = "getall:diamond_scores"
+    data = json.encode(this_gene_based_scores)
     rocky.get_rock("rocks_nt_db").put_bytes(key, data)
 
     printv(
