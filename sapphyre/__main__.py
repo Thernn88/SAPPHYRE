@@ -367,7 +367,7 @@ def outlier_args(par):
     par.add_argument(
         "-ct",
         "--excise_consensus_threshold",
-        default=0.65,
+        default=0.75,
         type=float,
         dest="consensus",
         help="Threshold for selecting a consensus bp",
@@ -375,7 +375,7 @@ def outlier_args(par):
     par.add_argument(
         "-et",
         "--excise_placeholder_threshold",
-        default=0.40,
+        default=0.30,
         type=float,
         dest="excise",
         help="Maximum percent of allowable X characters in consensus tail",
@@ -390,7 +390,7 @@ def outlier_args(par):
     par.add_argument(
         "-me",
         "--majority_excise",
-        default=0.35,
+        default=0.45,
         help="Percentage of loci containg bad regions to move",
     )
     par.add_argument(
