@@ -308,7 +308,7 @@ def log_excised_consensus(
 
             for region in bad_regions:
                 region_start, region_end = region
-                region_candidates = [cand for cand in candidates if cand is not None and region_start <= cand[4] and region_end >= cand[3]]
+                region_candidates = [cand for cand in candidates if cand is not None and get_overlap(cand[3], cand[4], region_start, region_end, 6) is not None]
 
                 if len(region_candidates) <= 1:
                     continue
@@ -322,7 +322,7 @@ def log_excised_consensus(
 
                     header, sequence, score, start, end = cand
 
-                    overlap_coords = get_overlap(start, end, high_start, high_end, 3)
+                    overlap_coords = get_overlap(start, end, high_start, high_end, 6)
 
                     if overlap_coords is None:
                         continue
