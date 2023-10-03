@@ -35,7 +35,7 @@ def main(argsobj):
 
         if not argsobj.no_excise:
             printv("Checking for severe contamination.", argsobj.verbose)
-            from_folder = "clean"
+            # from_folder = "clean"
             module_return_tuple = excise.main(this_args, False)
             if not module_return_tuple:
                 print()
@@ -46,7 +46,7 @@ def main(argsobj):
                 bad_folder = os.path.join(this_args.move_fails, os.path.basename(folder))
                 to_move.append((folder, bad_folder))
 
-        if not is_assembly:
+        if False:# not is_assembly:
             printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
             if not internal.main(this_args, False, from_folder):
                 print()
@@ -71,7 +71,7 @@ def main(argsobj):
                 print(argsobj.formathelp())
             from_folder = "excise"
 
-        if is_assembly:
+        if True:#is_assembly:
             printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
             if not internal.main(this_args, True, from_folder):
                 print()

@@ -296,7 +296,7 @@ def log_excised_consensus(
                 sequence = "".join(sequence)
                 nt_output.append((header, sequence))
             writeFasta(str(nt_out), nt_output, compress_intermediates)
-        else:
+        elif False:
             aa_output = []
             candidates = []
             for header, sequence in raw_sequences:
