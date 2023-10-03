@@ -1,6 +1,6 @@
 from multiprocessing import Pool
 from os import path, mkdir, listdir
-from shutil import move, rmtree
+from shutil import move
 from pathlib import Path
 from phymmr_tools import dumb_consensus, convert_consensus, find_index_pair, dumb_consensus_dupe, get_overlap, is_same_kmer
 from wrap_rocks import RocksDB
@@ -227,7 +227,7 @@ def log_excised_consensus(
     The second field in the log file is the cut-index in regular slice notation. It starts at the index of the
     first removed character, inclusive. The end is the length of the string, which is exclusive.
     """
-    log_output = ""
+    log_output = []
 
     aa_in = input_path.joinpath("aa", gene)
     aa_out = output_path.joinpath("aa", gene)
@@ -251,19 +251,17 @@ def log_excised_consensus(
         if len(bad_regions) == 1:
             a, b = bad_regions[0]
             if b - a != len(consensus_seq):
-                log_output += (
-                    f"{gene}\t{a}:{b}\t{consensus_seq}\n"
-                    if debug
-                    else f"{gene}\t{a}:{b}\n"
-                )
+                if debug:
+                    log_output.append(f"{gene},{a}:{b},{consensus_seq}\n")
+                else:
+                    log_output.append(f"{gene},{a}:{b}\n")
         else:
             for region in bad_regions:
                 a, b = region
-                log_output += (
-                    f"{gene}\t{a}:{b}\t{consensus_seq}\n"
-                    if debug
-                    else f"{gene}\t{a}:{b}\n"
-                )
+                if debug:
+                    log_output.append(f"{gene},{a}:{b},{consensus_seq}\n")
+                else:
+                    log_output.append(f"{gene},{a}:{b}\n")
         if cut:
             positions_to_cull = [i for a, b in bad_regions for i in range(a, b)]
 
@@ -329,10 +327,10 @@ def log_excised_consensus(
                     high_kmer = high_sequence[overlap_coords[0] : overlap_coords[1]]
                     kmer = sequence[overlap_coords[0] : overlap_coords[1]]
 
-                    score_kicks.append(f"{gene},{high_header},{high_score},kicked,{header},{score},{high_kmer},{kmer}")
-
                     if is_same_kmer(high_kmer, kmer):
                         continue
+
+                    score_kicks.append(f"{gene},{high_header},{high_score},kicked,{header},{score},{high_kmer},{kmer}")
 
                     candidates[i] = None
                     kicked_headers.add(header)
@@ -355,8 +353,10 @@ def log_excised_consensus(
                 nt_output.append((header, sequence))
             writeFasta(str(nt_out), nt_output, compress_intermediates)
     else:
+        writeFasta(str(aa_out), raw_sequences, compress_intermediates)
+        writeFasta(str(nt_out), parseFasta(str(nt_in)), compress_intermediates)
         if debug:
-            log_output += f"{gene}\tN/A\t{consensus_seq}\n"
+            log_output += f"{gene},N/A,{consensus_seq}\n"
 
     return log_output, bad_regions != [], len(kicked_headers), score_kicks
 
@@ -423,15 +423,13 @@ def main(args, override_cut=None):
     if cut:
         out = "excise"
     else:
-        out = "mismatch"
+        out = "clean"
 
     output_folder = Path(folder, "outlier", out)
 
     output_aa_folder = output_folder.joinpath("aa")
     output_nt_folder = output_folder.joinpath("nt")
 
-    if path.exists(output_folder):
-        rmtree(output_folder)
     mkdir(str(output_folder))
     mkdir(str(output_aa_folder))
     mkdir(str(output_nt_folder))
@@ -454,8 +452,8 @@ def main(args, override_cut=None):
     compress = not args.uncompress_intermediates or args.compress
 
     genes = [fasta for fasta in listdir(aa_input) if ".fa" in fasta]
-    log_path = Path(output_folder, "excise_indices.tsv")
-    kicks_path = Path(output_folder, "kicks.txt")
+    log_path = Path(output_folder, "excise_indices.csv")
+    kicks_path = Path(output_folder, "kicks.csv")
     if args.processes > 1:
         arguments = [
             (
@@ -494,7 +492,7 @@ def main(args, override_cut=None):
                 )
             )
 
-    log_output = [x[0] for x in results]
+    log_output = ["\n".join(x[0]) for x in results]
     kicks_output = ["\n".join(x[3]) for x in results if x[3]]
     loci_containing_bad_regions = len([x[1] for x in results if x[1]])
     kicked_sequences = sum(x[2] for x in results if x[1])
@@ -504,7 +502,7 @@ def main(args, override_cut=None):
 
     if args.debug:
         with open(log_path, "w") as f:
-            f.write("Gene\tCut-Indices\n")
+            f.write("Gene,Cut-Indices,Consensus Sequence\n")
             f.write("".join(log_output))
         with open(kicks_path, "w") as f:
             f.write("Gene,Highest header,Highest score,,Kicked header, Kicked score, High Score Kmer, kicked Seq Kmer\n")
