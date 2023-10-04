@@ -739,14 +739,6 @@ def do_folder(folder: Path, args):
     folder_time = TimeKeeper(KeeperMode.DIRECT)
 
     printv(f"Processing: {path.basename(folder)}", args.verbose, 0)
-    input_path = Path(folder)
-    aa_input = Path(input_path, args.aa_input)
-    nt_input = Path(input_path, args.nt_input)
-
-    if not path.exists(aa_input):
-        print(aa_input)
-        printv(f"WARNING: Can't find aa folder for taxa, {folder}", args.verbose, 0)
-        return
 
     tmp_dir = directory_check(folder)
     dupe_tmp_file = Path(tmp_dir, "DupeSeqs.tmp")
@@ -772,12 +764,20 @@ def do_folder(folder: Path, args):
         ref_stats = []
 
     if is_assembly:
-        from_path = "/internal/"
+        input_path = Path(folder.replace("/excise/", "/internal/"))
     else:
-        from_path = "/collapsed/"
+        input_path = Path(folder)
+
+    aa_input = Path(input_path, args.aa_input)
+    nt_input = Path(input_path, args.nt_input)
+
+    if not path.exists(aa_input):
+        print(aa_input)
+        printv(f"WARNING: Can't find aa folder for taxa, {folder}", args.verbose, 0)
+        return
 
     target_genes = []
-    for item in Path(str(aa_input).replace("/excise/", from_path)).iterdir():
+    for item in aa_input.iterdir():
         if item.suffix in [".fa", ".gz", ".fq", ".fastq", ".fasta"]:
             target_genes.append(item.name)
 

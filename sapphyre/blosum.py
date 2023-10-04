@@ -7,7 +7,6 @@ from collections import defaultdict
 from itertools import combinations
 from multiprocessing.pool import Pool
 from pathlib import Path
-from shutil import rmtree
 
 from phymmr_tools import find_index_pair, asm_index_split, blosum62_candidate_to_reference, blosum62_distance, delete_empty_columns
 from wrap_rocks import RocksDB
@@ -55,9 +54,6 @@ def folder_check(taxa_path: Path, debug: bool) -> None:
     """Create subfolders 'aa' and 'nt' to given path."""
     aa_folder = Path(taxa_path, "aa")
     nt_folder = Path(taxa_path, "nt")
-
-    rmtree(aa_folder, ignore_errors=True)
-    rmtree(nt_folder, ignore_errors=True)
 
     aa_folder.mkdir(parents=True, exist_ok=True)
     nt_folder.mkdir(parents=True, exist_ok=True)

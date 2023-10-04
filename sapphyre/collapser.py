@@ -2,7 +2,6 @@ from collections import defaultdict
 from itertools import combinations
 from math import ceil
 from multiprocessing import Pool
-from shutil import rmtree
 from os import path, mkdir, listdir
 
 from msgspec import Struct
@@ -24,6 +23,8 @@ class CollapserArgs(Struct):
     debug: int
     matching_consensus_percent: float
     gross_diference_percent: float
+
+    from_folder: str
 
 class BatchArgs(Struct):
     args: CollapserArgs
@@ -131,16 +132,10 @@ def average_match(seq_a, consensus, start, end):
 
 def do_folder(args, input_path):
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
-    nt_input_path = path.join(input_path, "outlier", "internal", "nt")
-    aa_input_path = path.join(input_path, "outlier", "internal", "aa")
 
     collapsed_path = path.join(input_path, "outlier", "collapsed")
     nt_out_path = path.join(collapsed_path, "nt")
     aa_out_path = path.join(collapsed_path, "aa")
-
-    # Reset folders
-    if path.exists(collapsed_path):
-        rmtree(collapsed_path)
 
     mkdir(collapsed_path)
     mkdir(nt_out_path)
@@ -155,6 +150,9 @@ def do_folder(args, input_path):
         if dbis_assembly and dbis_assembly == "True":
             is_assembly = True
         del nt_db
+
+    nt_input_path = path.join(input_path, "outlier", args.from_folder, "nt")
+    aa_input_path = path.join(input_path, "outlier", args.from_folder, "aa")
 
     # Process NT
     genes = [
@@ -491,7 +489,7 @@ def process_batch(
     return True, [], total, kicked_genes, consensus_kicks, passed_total
 
 
-def main(args):
+def main(args, from_folder):
     this_args = CollapserArgs(
         compress=args.compress,
         uncompress_intermediates=args.uncompress_intermediates,
@@ -503,6 +501,7 @@ def main(args):
         debug=args.debug,
         matching_consensus_percent = args.matching_consensus_percent,
         gross_diference_percent = args.gross_diference_percent,
+        from_folder = from_folder,
     )
     return do_folder(this_args, args.INPUT)
 

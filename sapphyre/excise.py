@@ -1,8 +1,8 @@
 from multiprocessing import Pool
 from os import path, mkdir, listdir
-from shutil import move, rmtree
+from shutil import move
 from pathlib import Path
-from phymmr_tools import dumb_consensus, convert_consensus, find_index_pair, dumb_consensus_dupe
+from phymmr_tools import dumb_consensus, convert_consensus, find_index_pair, dumb_consensus_dupe, get_overlap, is_same_kmer
 from wrap_rocks import RocksDB
 
 from msgspec import json
@@ -226,7 +226,7 @@ def log_excised_consensus(
     The second field in the log file is the cut-index in regular slice notation. It starts at the index of the
     first removed character, inclusive. The end is the length of the string, which is exclusive.
     """
-    log_output = ""
+    log_output = []
 
     aa_in = input_path.joinpath("aa", gene)
     aa_out = output_path.joinpath("aa", gene)
@@ -244,29 +244,26 @@ def log_excised_consensus(
         consensus_seq = dumb_consensus(sequences, consensus_threshold)
     consensus_seq = convert_consensus(sequences, consensus_seq)
     bad_regions = check_covered_bad_regions(consensus_seq, excise_threshold)
-    if bad_regions:
-        if len(bad_regions) == 1:
-            a, b = bad_regions[0]
-            if b - a != len(consensus_seq):
-                log_output += (
-                    f"{gene}\t{a}:{b}\t{consensus_seq}\n"
-                    if debug
-                    else f"{gene}\t{a}:{b}\n"
-                )
-        else:
-            for region in bad_regions:
-                a, b = region
-                log_output += (
-                    f"{gene}\t{a}:{b}\t{consensus_seq}\n"
-                    if debug
-                    else f"{gene}\t{a}:{b}\n"
-                )
-
-        if cut:
+    kicked_headers = set()
+    if cut:
+        if bad_regions:
+            if len(bad_regions) == 1:
+                a, b = bad_regions[0]
+                if b - a != len(consensus_seq):
+                    if debug:
+                        log_output.append(f"{gene},{a}:{b},{consensus_seq}\n")
+                    else:
+                        log_output.append(f"{gene},{a}:{b}\n")
+            else:
+                for region in bad_regions:
+                    a, b = region
+                    if debug:
+                        log_output.append(f"{gene},{a}:{b},{consensus_seq}\n")
+                    else:
+                        log_output.append(f"{gene},{a}:{b}\n")
             positions_to_cull = [i for a, b in bad_regions for i in range(a, b)]
 
             aa_output = []
-            aa_kicks = set()
             for header, sequence in raw_sequences:
                 if header[-1] == ".":
                     aa_output.append((header, sequence))
@@ -277,7 +274,7 @@ def log_excised_consensus(
 
                 sequence = "".join(sequence)
                 if not min_aa_check(sequence, 20):
-                    aa_kicks.add(header)
+                    kicked_headers.add(header)
                     continue
                 aa_output.append((header, sequence))
             writeFasta(str(aa_out), aa_output, compress_intermediates)
@@ -288,7 +285,7 @@ def log_excised_consensus(
                     nt_output.append((header, sequence))
                     continue
 
-                if header in aa_kicks:
+                if header in kicked_headers:
                     continue
 
                 sequence = list(sequence)
@@ -297,11 +294,13 @@ def log_excised_consensus(
                 sequence = "".join(sequence)
                 nt_output.append((header, sequence))
             writeFasta(str(nt_out), nt_output, compress_intermediates)
-    else:
-        if debug:
-            log_output += f"{gene}\tN/A\t{consensus_seq}\n"
+        else:
+            writeFasta(str(aa_out), raw_sequences, compress_intermediates)
+            writeFasta(str(nt_out), parseFasta(str(nt_in)), compress_intermediates)
+            if debug:
+                log_output += f"{gene},N/A,{consensus_seq}\n"
 
-    return log_output, bad_regions != []
+    return log_output, bad_regions != [], len(kicked_headers)
 
 
 def load_dupes(rocks_db_path: Path):
@@ -332,7 +331,7 @@ def move_flagged(to_move, processes):
 ###
 
 
-def main(args, override_cut=None):
+def main(args, override_cut, sub_dir):
     timer = TimeKeeper(KeeperMode.DIRECT)
     if not (0 < args.consensus < 1.0):
         if 0 < args.consensus <= 100:
@@ -355,27 +354,20 @@ def main(args, override_cut=None):
     else:
         cut = override_cut
 
-    if cut:
-        sub_dir = "collapsed"
-    else:
-        sub_dir = "blosum"
-
     input_folder = Path(folder, "outlier", sub_dir)
     output_folder = Path(folder, "outlier", "excise")
 
     output_aa_folder = output_folder.joinpath("aa")
     output_nt_folder = output_folder.joinpath("nt")
 
-    if path.exists(output_folder):
-        rmtree(output_folder)
-    mkdir(str(output_folder))
-    mkdir(str(output_aa_folder))
-    mkdir(str(output_nt_folder))
+    if not path.exists(output_folder):
+        mkdir(str(output_folder))
+        mkdir(str(output_aa_folder))
+        mkdir(str(output_nt_folder))
 
     aa_input = input_folder.joinpath("aa")
 
     rocksdb_path = Path(folder, "rocksdb", "sequences", "nt")
-
     if args.no_dupes:
         prepare_dupes, reporter_dupes = {}, {}
     else:
@@ -387,7 +379,7 @@ def main(args, override_cut=None):
     compress = not args.uncompress_intermediates or args.compress
 
     genes = [fasta for fasta in listdir(aa_input) if ".fa" in fasta]
-    log_path = Path(output_folder, "excise_indices.tsv")
+    log_path = Path(output_folder, "excise_indices.csv")
     if args.processes > 1:
         arguments = [
             (
@@ -424,15 +416,16 @@ def main(args, override_cut=None):
                 )
             )
 
-    log_output = [x[0] for x in results]
+    log_output = ["\n".join(x[0]) for x in results]
     loci_containing_bad_regions = len([x[1] for x in results if x[1]])
+    kicked_sequences = sum(x[2] for x in results if x[1])
     printv(
-        f"{input_folder}: {loci_containing_bad_regions} bad loci found", args.verbose
+        f"{input_folder}: {loci_containing_bad_regions} bad loci found. Kicked {kicked_sequences} sequences", args.verbose
     )
 
     if args.debug:
         with open(log_path, "w") as f:
-            f.write("Gene\tCut-Indices\n")
+            f.write("Gene,Cut-Indices,Consensus Sequence\n")
             f.write("".join(log_output))
 
     printv(f"Done! Took {timer.differential():.2f} seconds", args.verbose)

@@ -1,5 +1,6 @@
 import argparse
 import os
+from shutil import rmtree
 from . import blosum, collapser, excise, internal
 from .utils import printv
 from .timekeeper import TimeKeeper, KeeperMode
@@ -18,6 +19,7 @@ def main(argsobj):
             return
 
         printv(f"Processing: {folder}", argsobj.verbose)
+        rmtree(os.path.join(folder, "outlier"), ignore_errors=True)
         printv("Blosum62 Outlier Removal.", argsobj.verbose)
         is_assembly = False
         this_args = vars(argsobj)
@@ -28,11 +30,12 @@ def main(argsobj):
         if not blosum_passed:
             print()
             print(argsobj.formathelp())
-            return        
+            return  
+        from_folder = "blosum"      
 
         if not argsobj.no_excise:
             printv("Checking for severe contamination.", argsobj.verbose)
-            module_return_tuple = excise.main(this_args, False)
+            module_return_tuple = excise.main(this_args, False, from_folder)
             if not module_return_tuple:
                 print()
                 print(argsobj.formathelp())
@@ -44,29 +47,32 @@ def main(argsobj):
 
         if not is_assembly:
             printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
-            if not internal.main(this_args, False):
+            if not internal.main(this_args, False, from_folder):
                 print()
                 print(argsobj.format)
+            from_folder = "internal"
 
         printv("Simple Assembly To Ensure Consistency.", argsobj.verbose)
-        if not collapser.main(this_args):
+        if not collapser.main(this_args, from_folder):
             print()
             print(argsobj.formathelp())
             return
+        from_folder = "collapsed"
 
         if debug > 1:
             continue
 
         if not argsobj.no_excise:
             printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
-            module_return_tuple = excise.main(this_args, True)
+            module_return_tuple = excise.main(this_args, True, from_folder)
             if not module_return_tuple:
                 print()
                 print(argsobj.formathelp())
+            from_folder = "excise"
 
         if is_assembly:
             printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
-            if not internal.main(this_args, True):
+            if not internal.main(this_args, True, from_folder):
                 print()
                 print(argsobj.format)
     # if to_move:

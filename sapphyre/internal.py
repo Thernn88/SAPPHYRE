@@ -1,6 +1,5 @@
 from os import path
 from multiprocessing.pool import Pool
-from shutil import rmtree
 
 from pathlib import Path
 from msgspec import Struct, json
@@ -27,9 +26,6 @@ def folder_check(taxa_path: Path, debug: bool) -> None:
     """Create subfolders 'aa' and 'nt' to given path."""
     aa_folder = Path(taxa_path, "aa")
     nt_folder = Path(taxa_path, "nt")
-
-    rmtree(aa_folder, ignore_errors=True)
-    rmtree(nt_folder, ignore_errors=True)
 
     aa_folder.mkdir(parents=True, exist_ok=True)
     nt_folder.mkdir(parents=True, exist_ok=True)
@@ -171,7 +167,7 @@ def run_internal(
     mirror_nt(nt_input, nt_output_path, failing, aa_output.name.replace(".aa.", ".nt."), compression)
 
 
-def main(args, after_collapser):
+def main(args, after_collapser, from_folder):
     timer = TimeKeeper(KeeperMode.DIRECT)
     if (
         args.internal_consensus_threshold > 100
@@ -191,8 +187,8 @@ def main(args, after_collapser):
             aa_input = Path(folder, "outlier", "collapsed", "aa")
             nt_input = Path(folder, "outlier", "collapsed", "nt")
         else:
-            aa_input = Path(folder, "outlier", "blosum", "aa")
-            nt_input = Path(folder, "outlier", "blosum", "nt")
+            aa_input = Path(folder, "outlier", from_folder, "aa")
+            nt_input = Path(folder, "outlier", from_folder, "nt")
         if not args.no_dupes:
             prepare_dupe_counts, reporter_dupe_counts = load_dupes(folder)
         file_inputs = [
