@@ -310,31 +310,42 @@ OutputArgs = namedtuple(
 
 def exonerate_queries(
         hits: list[Hit],
+        hit_indices: list[int],
         core_sequence: tuple[str, str],
         tmp_path: str,
     ):
-    head_to_coords = {}
+    head_to_coords = defaultdict(list)
     with TemporaryDirectory(dir=tmp_path) as tmp_dir:
         with NamedTemporaryFile(dir=tmp_dir, suffix="_query.fa") as tmp_query, NamedTemporaryFile(dir=tmp_dir, suffix="_target.fa") as tmp_target, NamedTemporaryFile(dir=tmp_dir, suffix="_output.fa") as tmp_output:
             tmp_query.write(f">{core_sequence[0]}\n{core_sequence[1]}\n".encode())
             tmp_query.flush()
 
-            target = ""
-            for hit in hits:
-                target += f">{hit.node}_{hit.frame}\n{hit.aa_seq}\n"
+            for i in hit_indices:
+                hit = hits[i]
+                tmp_target.write(f">{hit.node}_{hit.frame}\n{hit.aa_seq}\n".encode())
 
-            tmp_target.write(target.encode())
             tmp_target.flush()
 
             system(f'exonerate --score 20 --ryo "%ti > %tab %tae\n" --subopt 0 --geneticcode 1 --model affine:local --querytype protein --targettype protein --verbose 0 --showvulgar no --showalignment no --query {tmp_query.name} --target {tmp_target.name} > {tmp_output.name}')
-        
+    
             for line in tmp_output.read().decode().split("\n"):
                 if line.strip():
-                    head_to_coords[line.split(" > ")[0]] = tuple(map(int, line.split(" > ")[1].split(" ")))
+                    head_to_coords[line.split(" > ")[0]].append(tuple(map(int, line.split(" > ")[1].split(" "))))
 
-            for hit in hits:
-                hit.aa_start, hit.aa_end = head_to_coords.get(f"{hit.node}_{hit.frame}", (None, None))
+            for i in hit_indices:
+                hit = hits[i]
+                results = head_to_coords[f"{hit.node}_{hit.frame}"]
+                if results:
+                    for result in results:
+                        if hit.aa_start is None:
+                            hit.aa_start, hit.aa_end = result
+                            continue
 
+                        result_length = result[1] - result[0]
+                        if hit.aa_end - hit.aa_start < result_length:
+                            hit.aa_start, hit.aa_end = result
+
+                        
 def exonerate_and_trim(oargs: OutputArgs) -> tuple[str, dict, int]:
     """Trims, dedupes and writes the output for a given gene.
 
@@ -357,10 +368,6 @@ def exonerate_and_trim(oargs: OutputArgs) -> tuple[str, dict, int]:
     core_seq_dict = defaultdict(list)
 
     for _, taxa_id, seq in core_sequences:
-        # DEBUG
-        if taxa_id in core_seq_dict:
-            print("NOT GONNA WORK")
-        ##
         core_seq_dict[taxa_id] = (taxa_id, seq)
 
     this_aa_path = path.join(oargs.aa_out_path, oargs.gene + ".aa.fa")
@@ -371,11 +378,12 @@ def exonerate_and_trim(oargs: OutputArgs) -> tuple[str, dict, int]:
         hit.aa_seq = translate_cdna(hit.seq)
 
     candidate_seq_dict = defaultdict(list)
-    for hit in this_hits:
-        candidate_seq_dict[hit.refs[0].query].append(hit)
+    for i, hit in enumerate(this_hits):
+        for ref in hit.refs:
+            candidate_seq_dict[ref.query].append(i)
 
-    for query, hits in candidate_seq_dict.items():
-        exonerate_queries(hits, core_seq_dict.get(query), oargs.tmp_path)
+    for query, hit_indices in candidate_seq_dict.items():
+        exonerate_queries(this_hits, hit_indices, core_seq_dict.get(query), oargs.tmp_path)
 
     this_hits = [hit for hit in this_hits if hit.aa_start is not None and hit.aa_end is not None]
 
@@ -389,6 +397,7 @@ def exonerate_and_trim(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.taxa_id,
         oargs.minimum_bp,
     )
+
     if aa_output:
         aa_core_sequences = print_core_sequences(
             oargs.gene,
