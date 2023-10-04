@@ -38,6 +38,7 @@ class Hit(ReporterHit):
     aa_seq: str = None
     aa_start: int = None
     aa_end: int = None
+    score: int = None
 
 def get_diamondhits(
     rocks_hits_db: RocksDB,
@@ -319,31 +320,43 @@ def exonerate_queries(
         with NamedTemporaryFile(dir=tmp_dir, suffix="_query.fa") as tmp_query, NamedTemporaryFile(dir=tmp_dir, suffix="_target.fa") as tmp_target, NamedTemporaryFile(dir=tmp_dir, suffix="_output.fa") as tmp_output:
             tmp_query.write(f">{core_sequence[0]}\n{core_sequence[1]}\n".encode())
             tmp_query.flush()
-
+            
             for i in hit_indices:
                 hit = hits[i]
                 tmp_target.write(f">{hit.node}_{hit.frame}\n{hit.aa_seq}\n".encode())
 
             tmp_target.flush()
 
-            system(f'exonerate --score 20 --ryo "%ti > %tab %tae\n" --subopt 0 --geneticcode 1 --model affine:local --querytype protein --targettype protein --verbose 0 --showvulgar no --showalignment no --query {tmp_query.name} --target {tmp_target.name} > {tmp_output.name}')
-    
+            system(f'exonerate --score 20 --ryo "%ti > %tab %tae > %s \n" --subopt 0 --geneticcode 1 --model affine:local --querytype protein --targettype protein --verbose 0 --showvulgar no --showalignment no --query {tmp_query.name} --target {tmp_target.name} > {tmp_output.name}')
+
+            # Processing the output
             for line in tmp_output.read().decode().split("\n"):
                 if line.strip():
-                    head_to_coords[line.split(" > ")[0]].append(tuple(map(int, line.split(" > ")[1].split(" "))))
+                    parts = line.split(" > ")
+                    header = parts[0]
+                    coords = tuple(map(int, parts[1].split(" ")))
+                    score = int(parts[2])  # assuming the score is a floating point number
+                    head_to_coords[header].append({"coords": coords, "score": score})
 
+            # Processing hits
             for i in hit_indices:
                 hit = hits[i]
                 results = head_to_coords[f"{hit.node}_{hit.frame}"]
                 if results:
                     for result in results:
+                        coords, score = result["coords"], result["score"]
+                        
+                        # If hit hasn't been processed yet, set the result
                         if hit.aa_start is None:
-                            hit.aa_start, hit.aa_end = result
+                            hit.aa_start, hit.aa_end = coords
+                            hit.score = score
                             continue
+                        
+                        # If the score is greater for the current result, update the hit
+                        if score > hit.score:  # Default to 0 if hit not in hit_scores yet
+                            hit.aa_start, hit.aa_end = coords
+                            hit.score = score
 
-                        result_length = result[1] - result[0]
-                        if hit.aa_end - hit.aa_start < result_length:
-                            hit.aa_start, hit.aa_end = result
 
                         
 def exonerate_and_trim(oargs: OutputArgs) -> tuple[str, dict, int]:
