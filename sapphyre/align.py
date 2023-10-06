@@ -145,72 +145,20 @@ def generate_clusters(data: dict[str, str]) -> list[list[str]]:
     Returns:
         list[list[str]]: A list of each clusters' headers
     """
-    KMER_PERCENT = 0.15
-    
-    cluster_children = {header: [header] for header in data}
-    kmers = find_kmers(data)
-    gene_headers = list(kmers.keys())
 
-    # Add a dictionary to store child sets for each primary set
-    child_sets = {header: set() for header in data}
+    with NamedTemporaryFile(dir=gettempdir(), mode="w+", suffix=".fa") as tmp_in, NamedTemporaryFile(dir=gettempdir(), mode ="w+", suffix=".txt") as tmp_result:
+        writeFasta(tmp_in.name, data.items())
+        tmp_in.flush()
 
-    for iteration in range(2):
-        processed_headers = set()
-        merge_occured = True
-        while merge_occured:
-            merge_occured = False
-            for i in range(len(gene_headers) - 1, -1, -1):  # reverse iteration
-                master_header = gene_headers[i]
-                master = kmers[master_header]
-                if master:
-                    for candidate_header in gene_headers[:i]:
-                        if candidate_header in processed_headers:
-                            continue
 
-                        candidate = kmers[candidate_header]
-                        if candidate:
-                            # Check similarity against both parent set and child sets
-                            matched = False
-                            for header_to_check in [
-                                master_header,
-                                *list(child_sets[master_header]),
-                            ]:
-                                set_to_check = kmers[header_to_check]
-                                if set_to_check is None:
-                                    continue
+        system(f"./diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 75 --member-cover 50 --quiet")
 
-                                similar = set_to_check.intersection(candidate)
+        cluster_children = defaultdict(list)
 
-                                if len(similar) != 0:
-                                    if (
-                                        len(similar)
-                                        / min(len(set_to_check), len(candidate))
-                                        >= KMER_PERCENT
-                                    ):
-                                        if (
-                                            iteration == 0
-                                            or iteration == 1
-                                            and len(cluster_children[master_header])
-                                            != 1
-                                        ):
-                                            # Add the candidate set as a child set of the primary set
-                                            child_sets[master_header].add(
-                                                candidate_header,
-                                            )
-                                            cluster_children[master_header].extend(
-                                                cluster_children[candidate_header],
-                                            )
-
-                                            # Remove candidate
-                                            cluster_children[candidate_header] = None
-                                            kmers[candidate_header] = None
-                                            processed_headers.add(candidate_header)
-
-                                            matched = True
-                                            break
-
-                            if matched:
-                                merge_occured = True
+        for line in tmp_result.read().split("\n"):
+            if line.strip():
+                master, child = line.split("\t")
+                cluster_children[master].append(child)
 
     return cluster_children.values()
 
