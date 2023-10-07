@@ -151,7 +151,7 @@ def generate_clusters(data: dict[str, str]) -> list[list[str]]:
         tmp_in.flush()
 
 
-        system(f"./diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 75 --member-cover 50 --quiet")
+        system(f"diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 95 --member-cover 75 --threads 4 --quiet")
 
         cluster_children = defaultdict(list)
 
@@ -285,7 +285,7 @@ def generate_tmp_aln(
             if align_method == "mafft":
                 system(f"mafft --localpair --quiet --thread 1 --anysymbol '{tmp_prealign.name}' > '{dest.name}'")
             elif align_method == "clustal":
-                system(f"clustalo -i '{tmp_prealign.name}' -o '{dest.name}' --thread=1 --full --force")
+                system(f"clustalo -i '{tmp_prealign.name}' -o '{dest.name}' --threads=1 --full --force")
 
     if debug:
         writeFasta(path.join(this_intermediates, "references.fa"), parseFasta(dest.name, True))
@@ -494,11 +494,13 @@ def run_command(args: CmdArgs) -> None:
 
                     system(
                         f"clustalo --p1 {tmp_aln.name} --p2 {file} -o {out_file} --threads=1 --full {is_profile} --force",
+                        #f"./famsa -refine_mode off -t 1 {tmp_aln.name} {file} {out_file}",
                     )
 
                     if debug:
                         printv(
                             f"clustalo --p1 {tmp_aln.name} --p2 {file} -o {out_file} --threads=1 --full {is_profile} --force",
+                            #f"./famsa -refine_mode off -t 1 {tmp_aln.name} {file} {out_file}",
                             args.verbose,
                             3,
                         )
