@@ -5,6 +5,7 @@ trimmed/
 taxa/
 orthosets/
 intermediates/
+align_debug/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

@@ -93,6 +93,9 @@ class Hit(ReporterHit, frozen=True):
                 EXTEND_PENALTY,
             )
 
+            if debug_fp:
+                debug_fp.write(f"Alignment: {ref.query} > {header}\n{result.traceback.query}\n{result.traceback.ref}\nAlignment score: {result.score}\n")
+
             # print(result.start_query)
             if result.score > best_score:
                 best_score = result.score
@@ -283,6 +286,8 @@ def print_unmerged_sequences(
         nt_seq = hit.seq
         aa_seq = translate_cdna(nt_seq)
 
+        before = hash(aa_seq)
+
         # Trim to match reference
         if not is_assembly:
             r_start, r_end = hit.get_bp_trim(
@@ -296,8 +301,11 @@ def print_unmerged_sequences(
             aa_seq = aa_seq[r_start: r_end]
 
             if debug_fp:
-                debug_fp.write(f">{header}\n{aa_seq}\n")
-
+                
+                if before != hash(aa_seq):
+                    debug_fp.write(f">{header}_final_trimmed\n{aa_seq}\n\n")
+                else:
+                    debug_fp.write(f">{header}_final\n{aa_seq}\n\n")
         # Check if new seq is over bp minimum
         data_after = len(aa_seq)
 
@@ -427,7 +435,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
             "w",
         )  # DEBUG
         debug_alignments.write(
-            f"GAP_PENALTY: 2\nEXTEND_PENALTY: 1\n",
+            f"GAP_PENALTY: 2\nEXTEND_PENALTY: 1\n\n",
         )  # DEBUG
         debug_dupes = open(f"align_debug/{oargs.gene}/{oargs.taxa_id}.dupes", "w")
 
