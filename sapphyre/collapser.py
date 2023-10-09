@@ -109,26 +109,31 @@ class NODE(Struct):
         return f"CONTIG_{contig_node}|{children_nodes}"
 
 
-def average_match(seq_a, consensus, start, end):
-    match = 0
-    total = 0
-    for i in range(start, end):
-        if consensus[i].count("-") / len(consensus[i]) > 0.5:
+def rolling_matching_window_kick(seq_a, consensus, start, end, ref_gap_cols, match_percent, window_length=15, step=1):
+    
+    for window_start in range(start, end - window_length, step):
+        match = 0
+        total = 0
+        for i in range(window_start, window_start+window_length):
+            if i in ref_gap_cols:
+                continue
+
+            total += 1
+
+            if seq_a[i] == "-":
+                match -= 1
+                continue
+
+            if seq_a[i] in consensus[i]:
+                match += 1
+
+        if total == 0:
             continue
 
-        total += 1
+        if match / total < match_percent:
+            return True, (window_start, window_start+window_length), match / total
 
-        if seq_a[i] == "-":
-            match -= 1
-            continue
-
-        if seq_a[i] in consensus[i]:
-            match += 1
-
-    if total == 0:
-        return 0
-
-    return match / total
+    return False, None, None
 
 def do_folder(args, input_path):
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
@@ -233,19 +238,28 @@ def kick_read_consensus(aa_output, match_percent, nodes, kicked_headers, consens
                 ref_consensus[i].append(seq[i])
             ref_average_data_length.append(len(seq) - seq.count("-"))
 
+    ref_gap_cols = set()
+    for i, lets in ref_consensus.items():
+        if lets.count("-") / len(lets) > 0.5:
+            ref_gap_cols.add(i)
+        ref_consensus[i] = set(lets)
+
+
     ref_average_data_length = sum(ref_average_data_length) / len(ref_average_data_length)
 
     for read in nodes:
-        average_matching_cols = average_match(
+        is_kick, kick_region, kick_percent = rolling_matching_window_kick(
             read.sequence,
             ref_consensus,
             read.start,
             read.end,
+            ref_gap_cols,
+            match_percent
         )
 
-        if average_matching_cols < match_percent:
+        if is_kick:
             if debug:
-                consensus_kicks.append(f"{gene},{read.header},{average_matching_cols},{read.length}\n")
+                consensus_kicks.append(f"{gene},{read.header},{read.length},{kick_region[0]}:{kick_region[1]},{kick_percent:.2f}\n")
             kicked_headers.add(read.header)
             read.kick = True
 
