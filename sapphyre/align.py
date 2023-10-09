@@ -151,7 +151,7 @@ def generate_clusters(data: dict[str, str]) -> list[list[str]]:
         tmp_in.flush()
 
 
-        system(f"./diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 75 --member-cover 50 --quiet")
+        system(f"./diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 95 --member-cover 75 --threads 1 --quiet")
 
         cluster_children = defaultdict(list)
 
