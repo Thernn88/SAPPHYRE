@@ -206,13 +206,6 @@ def reporter_args(par):
         help="Path to a txt file containing target genes for processing. Processes all genes in the input folder if not specified.",
     )
     par.add_argument(
-        "-bs",
-        "--blosum_strictness",
-        choices=["exact", "strict", "lax"],
-        default="strict",
-        help="Trim distance mode.",
-    )
-    par.add_argument(
         "-d",
         "--debug",
         action="store_true",
@@ -240,7 +233,6 @@ def reporter(args):
         args.orthoset,
         args.compress,
         args.matches,
-        args.blosum_strictness,
         args.minimum_bp,
         args.gene_list_file,
         args.clear_output,
