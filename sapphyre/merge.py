@@ -213,6 +213,8 @@ def do_protein(
 
     gene_out = []
 
+    last_components = {}
+
     def get_ref(header: str) -> str:
         return header.split("|")[1]
 
@@ -312,6 +314,12 @@ def do_protein(
                 else:  # If only single component aka no merge occurs don't change header
                     final_header = base_header
 
+            if protein == "aa":
+                final_component_node = this_sequences[-1].header.split("|")[3]
+                frame = this_sequences[-1].header.split("|")[4]
+                start = this_sequences[-1].start
+                last_components[final_header] = (final_component_node, frame, start)
+ 
             # The overlap region is the first and last index of data
             data_start, data_end = overlap_region
 
@@ -598,7 +606,7 @@ def do_protein(
 
     output_path = path.join(output_dir, f"{protein}_merged", gene.rstrip(".gz"))
 
-    return output_path, gene_out
+    return output_path, gene_out, last_components
 
 
 def do_gene(
@@ -689,7 +697,7 @@ def do_gene(
         "---": "---",
     }
 
-    aa_path, aa_data = do_protein(
+    aa_path, aa_data, last_components = do_protein(
         "aa",
         aa_path,
         output_dir,
@@ -706,7 +714,7 @@ def do_gene(
         debug=debug,
     )
 
-    nt_path, nt_data = do_protein(
+    nt_path, nt_data, _ = do_protein(
         "nt",
         nt_path,
         output_dir,
@@ -730,10 +738,7 @@ def do_gene(
         writeFasta(aa_path, aa_data, compress)
         writeFasta(nt_path, nt_data, compress)
 
-def run_command(arg_tuple: tuple) -> None:
-    """Calls the do_gene() function parallel in each thread."""
-    do_gene(*arg_tuple)
-
+    return gene, last_components
 
 def do_folder(folder: Path, args):
     folder_time = TimeKeeper(KeeperMode.DIRECT)
@@ -744,6 +749,7 @@ def do_folder(folder: Path, args):
     dupe_tmp_file = Path(tmp_dir, "DupeSeqs.tmp")
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
     is_assembly = False
+    rocksdb_db = None
     if rocks_db_path.exists():
         rocksdb_db = RocksDB(str(rocks_db_path))
         prepare_dupe_counts = json.decode(
@@ -815,8 +821,9 @@ def do_folder(folder: Path, args):
                 ),
             )
         with Pool(args.processes) as pool:
-            pool.map(run_command, arguments, chunksize=1)
+            last_component_data = pool.starmap(do_gene, arguments, chunksize=1)
     else:
+        last_component_data = []
         for target_gene in target_genes:
             prep_dupes_in_this_gene = prepare_dupe_counts.get(
                 target_gene.split(".")[0],
@@ -828,7 +835,7 @@ def do_folder(folder: Path, args):
             )
             target_aa_path = path.join(aa_input, target_gene)
             target_nt_path = path.join(nt_input, make_nt_name(target_gene))
-            do_gene(
+            last_component_data.append(do_gene(
                 target_gene,
                 folder,
                 target_aa_path,
@@ -843,12 +850,21 @@ def do_folder(folder: Path, args):
                 args.ignore_overlap_chunks,
                 args.special_merge,
                 args.compress,
-            )
+            ))
     printv(f"Done! Took {folder_time.differential():.2f}s", args.verbose)
 
     if path.exists(dupe_tmp_file):
         remove(dupe_tmp_file)
 
+    hits_db_path = Path(folder, "rocksdb", "hits")
+    if hits_db_path.exists():
+        hits_db = RocksDB(str(hits_db_path))
+        encoder = json.Encoder()
+
+        for gene, last_components in last_component_data:
+            encoded_components = encoder.encode(last_components)
+
+            hits_db.put_bytes(f"get_last:{gene.split('.')[0]}", encoded_components)
 
 def main(args):
     global_time = TimeKeeper(KeeperMode.DIRECT)
