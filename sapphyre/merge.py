@@ -763,10 +763,7 @@ def do_folder(folder: Path, args):
         reporter_dupe_counts = {}
         ref_stats = []
 
-    if is_assembly:
-        input_path = Path(folder.replace("/excise/", "/internal/"))
-    else:
-        input_path = Path(folder)
+    input_path = Path(folder)
 
     aa_input = Path(input_path, args.aa_input)
     nt_input = Path(input_path, args.nt_input)
