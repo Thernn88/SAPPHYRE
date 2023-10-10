@@ -150,8 +150,10 @@ def generate_clusters(data: dict[str, str]) -> list[list[str]]:
         writeFasta(tmp_in.name, data.items())
         tmp_in.flush()
 
-
-        system(f"./diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 90 --member-cover 70 --threads 1 --quiet")
+        #if args.second_run:
+            #system(f"./diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 90 --member-cover 65 --threads 1 --quiet")
+        #else:
+        system(f"./diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 90 --member-cover 65 --threads 1 --quiet")
 
         cluster_children = defaultdict(list)
 
