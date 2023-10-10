@@ -443,11 +443,16 @@ def process_batch(
 
         ref_average_data_length, nodes = kick_read_consensus(aa_output, args.matching_consensus_percent, nodes, kicked_headers, consensus_kicks, args.debug, gene)
 
+        if not nodes:
+            total += aa_count
+            kicked_genes.append(f"No valid sequences after consensus: {gene.split('.')[0]}")
+            continue
+
         nodes = kick_rolling_consensus(nodes, kicked_headers, consensus_kicks, args.debug, gene)
 
         if not nodes:
             total += aa_count
-            kicked_genes.append(f"No valid sequences after consensus: {gene.split('.')[0]}")
+            kicked_genes.append(f"No valid sequences after rolling candidate consensus: {gene.split('.')[0]}")
             continue
 
         printv("Merging Overlapping Reads", args.verbose, 3)
