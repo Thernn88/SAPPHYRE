@@ -5,7 +5,7 @@ from multiprocessing import Pool
 from os import path, mkdir, listdir
 
 from msgspec import Struct
-from phymmr_tools import constrained_distance, find_index_pair, get_overlap, is_same_kmer
+from phymmr_tools import constrained_distance, find_index_pair, get_overlap, is_same_kmer, dumb_consensus
 from wrap_rocks import RocksDB
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import writeFasta, parseFasta, printv
@@ -108,6 +108,15 @@ class NODE(Struct):
         children_nodes = "|".join([i.split("|")[3] for i in self.children])
         return f"CONTIG_{contig_node}|{children_nodes}"
 
+
+def rolling_window_consensus(seq, candidate_consensus, start, end, window_size, min_match, step):
+    for i in range(start, end-window_size, step):
+        window = seq[i : i + window_size]
+        matching = window_size - constrained_distance(window, candidate_consensus[i: i + window_size])
+        if matching / window_size < min_match:
+            return True, i, matching / window_size
+        
+    return False, None, None
 
 def average_match(seq_a, consensus, start, end):
     match = 0
@@ -357,6 +366,25 @@ def kick_overlapping_reads(nodes, min_overlap_percent, required_matching_percent
     return kicked_headers, kicks
 
 
+def kick_rolling_consensus(nodes, kicked_headers, consensus_kicks, debug, gene):
+    CONSENSUS_PERCENT = 0.5
+    WINDOW_SIZE = 15
+    WINDOW_MATCHING_PERCENT = 0.8
+    STEP = 1
+    cand_consensus = dumb_consensus([node.sequence for node in nodes], CONSENSUS_PERCENT)
+
+    for node in nodes:
+        is_kick, window_start, matching_percent = rolling_window_consensus(node.sequence, cand_consensus, node.start, node.end, WINDOW_SIZE, WINDOW_MATCHING_PERCENT, STEP)
+        if is_kick:
+            if debug:
+                consensus_kicks.append(f"{gene},{node.header},{window_start},{window_start+WINDOW_SIZE},{node.sequence[window_start: window_start+15]},{matching_percent}\n")
+            kicked_headers.add(node.header)
+            node.kick = True
+
+    nodes = list(filter(lambda x: not x.kick, nodes))
+    return nodes
+        
+
 def process_batch(
     batch_args: BatchArgs,
 ):
@@ -414,6 +442,8 @@ def process_batch(
             )
 
         ref_average_data_length, nodes = kick_read_consensus(aa_output, args.matching_consensus_percent, nodes, kicked_headers, consensus_kicks, args.debug, gene)
+
+        nodes = kick_rolling_consensus(nodes, kicked_headers, consensus_kicks, args.debug, gene)
 
         if not nodes:
             total += aa_count
