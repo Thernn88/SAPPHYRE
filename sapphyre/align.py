@@ -246,7 +246,8 @@ def generate_tmp_aln(
         sequences = []
         for header, sequence in parseFasta(aln_file, True):
             if header in targets:
-                sequences.append((targets[header], sequence))
+                if len(sequence) != sequence.count("-"):
+                    sequences.append((targets[header], sequence))
 
         if align_method in {"base", "frags"}:
             empty_columns = None
