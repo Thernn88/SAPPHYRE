@@ -153,9 +153,9 @@ class Sequence_Set:
         for seq in from_sequence_list:
             aaseq = seq.raw_seq() if self.has_aligned else seq.aa_sequence
             diamond_data.append(f">{seq.header}\n{aaseq}\n")
-            target_to_taxon[seq.header] = seq.gene, seq.taxon, len(seq.aa_sequence)
+            target_to_taxon[seq.header] = seq.gene, seq.taxon, len(aaseq)
 
-            taxon_to_sequences.setdefault(seq.gene, {})[seq.taxon] = seq.aa_sequence
+            taxon_to_sequences.setdefault(seq.gene, {})[seq.taxon] = aaseq
 
         return "".join(diamond_data), target_to_taxon, taxon_to_sequences
 
@@ -360,7 +360,7 @@ def aln_function(
     if duped_headers:
         aligned_result = [i for i in aligned_result if i[0] not in duped_headers]
 
-    aligned_result = [i for in aligned_result if len(i[1]) != i[1].count("-")]
+    aligned_result = [i for i in aligned_result if len(i[1]) != i[1].count("-")]
 
     aligned_result = do_merge(aligned_result)
         
