@@ -109,14 +109,26 @@ class NODE(Struct):
         return f"CONTIG_{contig_node}|{children_nodes}"
 
 
-def rolling_window_consensus(seq, candidate_consensus, start, end, window_size, min_match, step):
+def rolling_window_consensus(seq, candidate_consensus, reference_consensus, start, end, window_size, min_match, step):
     for i in range(start, end-window_size, step):
         window = seq[i : i + window_size]
-        matching = window_size - constrained_distance(window, candidate_consensus[i: i + window_size])
+        cand_window = candidate_consensus[i : i + window_size]
+        ambig_percent = cand_window.count("X") / len(cand_window)
+
+        if ambig_percent > 0.7:
+            continue
+
+        if ambig_percent > 0.2:
+            ref_window = reference_consensus[i : i + window_size]
+            matching = sum(1 for x, y in zip(window, ref_window) if x == y or y == "X")
+            
+        else:
+            matching = window_size - constrained_distance(window, cand_window)
+
         if matching / window_size < min_match:
-            return True, i, matching / window_size
+            return True, i, matching / window_size, cand_window.count("X") / len(cand_window)
         
-    return False, None, None
+    return False, None, None, None
 
 def average_match(seq_a, consensus, start, end):
     match = 0
@@ -235,12 +247,14 @@ def do_folder(args, input_path):
 def kick_read_consensus(aa_output, match_percent, nodes, kicked_headers, consensus_kicks, debug, gene):
     ref_average_data_length = []
     ref_consensus = defaultdict(list)
-    for header, seq in aa_output:
-        if header.endswith("."):
-            start, end = find_index_pair(seq, "-")
-            for i in range(start, end):
-                ref_consensus[i].append(seq[i])
-            ref_average_data_length.append(len(seq) - seq.count("-"))
+    reference_seqs = [seq for header, seq in aa_output if header.endswith(".")]
+    ref_consensus_seq = dumb_consensus(reference_seqs, 0.5)
+    for seq in reference_seqs:
+        start, end = find_index_pair(seq, "-")
+        for i in range(start, end):
+            ref_consensus[i].append(seq[i])
+
+        ref_average_data_length.append(len(seq) - seq.count("-"))
 
     ref_average_data_length = sum(ref_average_data_length) / len(ref_average_data_length)
 
@@ -260,7 +274,7 @@ def kick_read_consensus(aa_output, match_percent, nodes, kicked_headers, consens
 
     nodes = list(filter(lambda x: not x.kick, nodes))
 
-    return ref_average_data_length, nodes
+    return ref_average_data_length, nodes, ref_consensus_seq
 
 def merge_overlapping_reads(nodes, minimum_overlap):
     # Rescurive scan
@@ -366,18 +380,18 @@ def kick_overlapping_reads(nodes, min_overlap_percent, required_matching_percent
     return kicked_headers, kicks
 
 
-def kick_rolling_consensus(nodes, kicked_headers, consensus_kicks, debug, gene):
+def kick_rolling_consensus(nodes, ref_consensus_seq, kicked_headers, consensus_kicks, debug, gene):
     CONSENSUS_PERCENT = 0.5
-    WINDOW_SIZE = 15
-    WINDOW_MATCHING_PERCENT = 0.8
+    WINDOW_SIZE = 14
+    WINDOW_MATCHING_PERCENT = 0.7
     STEP = 1
     cand_consensus = dumb_consensus([node.sequence for node in nodes], CONSENSUS_PERCENT)
 
     for node in nodes:
-        is_kick, window_start, matching_percent = rolling_window_consensus(node.sequence, cand_consensus, node.start, node.end, WINDOW_SIZE, WINDOW_MATCHING_PERCENT, STEP)
+        is_kick, window_start, matching_percent, ambig_percent = rolling_window_consensus(node.sequence, cand_consensus, ref_consensus_seq, node.start, node.end, WINDOW_SIZE, WINDOW_MATCHING_PERCENT, STEP)
         if is_kick:
             if debug:
-                consensus_kicks.append(f"{gene},{node.header},{window_start},{window_start+WINDOW_SIZE},{node.sequence[window_start: window_start+15]},{matching_percent}\n")
+                consensus_kicks.append(f"{gene},{node.header},{window_start}:{window_start+WINDOW_SIZE}\nCand: {node.sequence[window_start: window_start+WINDOW_SIZE]}\nCons: {cand_consensus[window_start: window_start+WINDOW_SIZE]}\nRefc: {ref_consensus_seq[window_start: window_start+WINDOW_SIZE]}\nMatch: {matching_percent},Ambig: {ambig_percent}\n")
             kicked_headers.add(node.header)
             node.kick = True
 
@@ -441,14 +455,14 @@ def process_batch(
                 )
             )
 
-        ref_average_data_length, nodes = kick_read_consensus(aa_output, args.matching_consensus_percent, nodes, kicked_headers, consensus_kicks, args.debug, gene)
+        ref_average_data_length, nodes, ref_consensus_seq = kick_read_consensus(aa_output, args.matching_consensus_percent, nodes, kicked_headers, consensus_kicks, args.debug, gene)
 
         if not nodes:
             total += aa_count
             kicked_genes.append(f"No valid sequences after consensus: {gene.split('.')[0]}")
             continue
 
-        nodes = kick_rolling_consensus(nodes, kicked_headers, consensus_kicks, args.debug, gene)
+        nodes = kick_rolling_consensus(nodes, ref_consensus_seq, kicked_headers, consensus_kicks, args.debug, gene)
 
         if not nodes:
             total += aa_count
