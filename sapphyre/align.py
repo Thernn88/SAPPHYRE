@@ -134,7 +134,7 @@ def compare_cluster(
     return sum(average_identity) / len(average_identity)
 
 
-def generate_clusters(data: dict[str, str]) -> list[list[str]]:
+def generate_clusters(data: dict[str, str], second_run) -> list[list[str]]:
     """Generates clusters from a dictionary of header -> sequence.
 
     Clusters are based on the average identity of kmers between sequences.
@@ -150,10 +150,10 @@ def generate_clusters(data: dict[str, str]) -> list[list[str]]:
         writeFasta(tmp_in.name, data.items())
         tmp_in.flush()
 
-        #if args.second_run:
-            #system(f"./diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 90 --member-cover 65 --threads 1 --quiet")
-        #else:
-        system(f"./diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 90 --member-cover 70 --threads 1 --quiet")
+        if second_run:
+            system(f"./diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 90 --member-cover 65 --threads 1 --quiet")
+        else:
+            system(f"./diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 90 --member-cover 65 --threads 1 --quiet")
 
         cluster_children = defaultdict(list)
 
@@ -304,6 +304,7 @@ CmdArgs = namedtuple(
         "aln_path",
         "debug",
         "align_method",
+        "second_run",
     ],
 )
 
@@ -395,7 +396,7 @@ def run_command(args: CmdArgs) -> None:
                 3,
             )  # Debug
 
-            cluster_children = generate_clusters(data)
+            cluster_children = generate_clusters(data, args.second_run)
             clusters = seperate_into_clusters(cluster_children, parent_tmpdir, data)
             cluster_time = keeper.differential()
             if debug:
@@ -678,6 +679,7 @@ def do_folder(folder, args):
                     aln_path,
                     args.debug,
                     args.align_method.lower(),
+                    args.second_run,
                 ),
             ),
         )
