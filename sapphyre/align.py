@@ -307,18 +307,17 @@ CmdArgs = namedtuple(
     ],
 )
 
-def insert_gaps(input_string, positions, skip_positions=set()):
+def insert_gaps(input_string, positions, existing_gaps = {}):
     input_string = list(input_string)
     gap_offset = 0
 
-
     for coord in positions:
-        if coord in skip_positions:
+        if existing_gaps.get(coord, 0) > 0:
+            gap_offset += 1
+            existing_gaps[coord] -= 1
             continue
 
-        pos = coord+gap_offset
-
-        input_string.insert(pos, "-")
+        input_string.insert(coord+gap_offset, "-")
         gap_offset += 1
 
     return ''.join(input_string)
@@ -556,9 +555,9 @@ def run_command(args: CmdArgs) -> None:
                             if all(seq[i] == '-' for seq in references):
                                 insertion_coords.append(i - len(insertion_coords))
 
-                        this_counter = Counter(insertion_coords)
+                        this_counter = Counter(insertion_coords).items()
 
-                        for key, value in this_counter.items():
+                        for key, value in this_counter:
                             if global_insertions.get(key, 0) < value:
                                 global_insertions[key] = value
 
@@ -582,15 +581,11 @@ def run_command(args: CmdArgs) -> None:
                     for item, (seqs, this_msa_insertions) in subalignments.items():
                         # break
                         out_seqs = []
-                        this_alignment_coords = []
-                        for key, value in global_insertions.items():
-                            this_alignment_coords.extend([key] * (value - this_msa_insertions.get(key, 0)))
-
-                        this_alignment_coords.sort()
 
                         for header, seq in seqs:
                             if alignment_insertion_coords:
-                                seq = insert_gaps(seq, this_alignment_coords)
+                                existing_gaps = {k: v for k,v in this_msa_insertions if v > 0}
+                                seq = insert_gaps(seq, alignment_insertion_coords, existing_gaps)
                             out_seqs.append((header, seq))
 
                         subalignments[item] = out_seqs
