@@ -2,14 +2,14 @@ from __future__ import annotations
 
 from os import path, mkdir, system, listdir, stat
 from subprocess import DEVNULL, run
-from collections import defaultdict, namedtuple
+from collections import Counter, defaultdict, namedtuple
 from math import ceil
 from multiprocessing.pool import Pool
 from shutil import rmtree
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 from xxhash import xxh3_64
-from phymmr_tools import find_index_pair
+from phymmr_tools import find_index_pair, delete_empty_columns
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import gettempdir, parseFasta, printv, writeFasta
 
@@ -145,72 +145,22 @@ def generate_clusters(data: dict[str, str]) -> list[list[str]]:
     Returns:
         list[list[str]]: A list of each clusters' headers
     """
-    KMER_PERCENT = 0.15
-    
-    cluster_children = {header: [header] for header in data}
-    kmers = find_kmers(data)
-    gene_headers = list(kmers.keys())
 
-    # Add a dictionary to store child sets for each primary set
-    child_sets = {header: set() for header in data}
+    with NamedTemporaryFile(dir=gettempdir(), mode="w+", suffix=".fa") as tmp_in, NamedTemporaryFile(dir=gettempdir(), mode ="w+", suffix=".txt") as tmp_result:
+        writeFasta(tmp_in.name, data.items())
+        tmp_in.flush()
 
-    for iteration in range(2):
-        processed_headers = set()
-        merge_occured = True
-        while merge_occured:
-            merge_occured = False
-            for i in range(len(gene_headers) - 1, -1, -1):  # reverse iteration
-                master_header = gene_headers[i]
-                master = kmers[master_header]
-                if master:
-                    for candidate_header in gene_headers[:i]:
-                        if candidate_header in processed_headers:
-                            continue
+        #if args.second_run:
+            #system(f"./diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 90 --member-cover 65 --threads 1 --quiet")
+        #else:
+        system(f"./diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 90 --member-cover 70 --threads 1 --quiet")
 
-                        candidate = kmers[candidate_header]
-                        if candidate:
-                            # Check similarity against both parent set and child sets
-                            matched = False
-                            for header_to_check in [
-                                master_header,
-                                *list(child_sets[master_header]),
-                            ]:
-                                set_to_check = kmers[header_to_check]
-                                if set_to_check is None:
-                                    continue
+        cluster_children = defaultdict(list)
 
-                                similar = set_to_check.intersection(candidate)
-
-                                if len(similar) != 0:
-                                    if (
-                                        len(similar)
-                                        / min(len(set_to_check), len(candidate))
-                                        >= KMER_PERCENT
-                                    ):
-                                        if (
-                                            iteration == 0
-                                            or iteration == 1
-                                            and len(cluster_children[master_header])
-                                            != 1
-                                        ):
-                                            # Add the candidate set as a child set of the primary set
-                                            child_sets[master_header].add(
-                                                candidate_header,
-                                            )
-                                            cluster_children[master_header].extend(
-                                                cluster_children[candidate_header],
-                                            )
-
-                                            # Remove candidate
-                                            cluster_children[candidate_header] = None
-                                            kmers[candidate_header] = None
-                                            processed_headers.add(candidate_header)
-
-                                            matched = True
-                                            break
-
-                            if matched:
-                                merge_occured = True
+        for line in tmp_result.read().split("\n"):
+            if line.strip():
+                master, child = line.split("\t")
+                cluster_children[master].append(child)
 
     return cluster_children.values()
 
@@ -356,6 +306,22 @@ CmdArgs = namedtuple(
         "align_method",
     ],
 )
+
+def insert_gaps(input_string, positions, existing_gaps = {}):
+    input_string = list(input_string)
+    gap_offset = 0
+
+    for coord in positions:
+        if existing_gaps.get(coord, 0) > 0:
+            gap_offset += 1
+            existing_gaps[coord] -= 1
+            continue
+
+        input_string.insert(coord+gap_offset, "-")
+        gap_offset += 1
+
+    return ''.join(input_string)
+
 
 
 def run_command(args: CmdArgs) -> None:
@@ -563,9 +529,9 @@ def run_command(args: CmdArgs) -> None:
                 if args.align_method != "frags":
                     data = []
 
-                    alignment_insertion_coords = []
                     subalignments = {}
-                    insertion_coords_global = set()
+
+                    global_insertions = Counter()
 
                     for item in listdir(parent_tmpdir):
                         if item.startswith("References_"):
@@ -582,55 +548,47 @@ def run_command(args: CmdArgs) -> None:
                                 references.append(seq)
                                 continue
 
-                            this_seqs.append((header, list(seq)))
-                        
-                        data_coords = set()
-                        for seq in references:
-                            for i, char in enumerate(seq):
-                                if i in data_coords:
-                                    continue
-                                if char != "-":
-                                    data_coords.add(i)
+                            this_seqs.append((header, seq))
 
-                        insertion_coords = set(range(len(seq))) - data_coords
+                        insertion_coords = []
+                        for i in range(len(references[0])):
+                            if all(seq[i] == '-' for seq in references):
+                                insertion_coords.append(i - len(insertion_coords))
 
-                        insertion_after_overlap_filter = sorted([i for i in insertion_coords if i not in insertion_coords_global])
-                        
-                        if insertion_after_overlap_filter:
-                            alignment_insertion_coords.append(insertion_after_overlap_filter)
-                            insertion_coords_global.update(insertion_coords)
+                        this_counter = Counter(insertion_coords).items()
 
-                        subalignments[item] = this_seqs, insertion_coords
+                        for key, value in this_counter:
+                            if global_insertions.get(key, 0) < value:
+                                global_insertions[key] = value
 
-                    alignment_insertion_coords.sort(key=lambda x: x[0])
+                        subalignments[item] = this_seqs, this_counter
+
 
                     final_refs = []
+
+                    alignment_insertion_coords = []
+                    for key, value in global_insertions.items():
+                        alignment_insertion_coords.extend([key]*value)
+
+                    alignment_insertion_coords.sort()
                     for header,seq in refs:
-                        seq = list(seq)
-                        adj = 0
-                        for x, coords in enumerate(alignment_insertion_coords):
-                            if x != 0:
-                                adj += len(alignment_insertion_coords[x-1])
-                            
-                            for gap in coords:
-                                seq.insert(gap+adj, "-")
+                        if alignment_insertion_coords:
+                            seq = insert_gaps(seq, alignment_insertion_coords)
                         
-                        final_refs.append((header, "".join(seq)))
+                        # break
+                        final_refs.append((header, seq))
 
                     for item, (seqs, this_msa_insertions) in subalignments.items():
-                        adj = 0
-                        for x, coords in enumerate(alignment_insertion_coords):
-                            if x != 0:
-                                adj += len(alignment_insertion_coords[x-1])
+                        # break
+                        out_seqs = []
 
-                            for coord in coords:
-                                if coord in this_msa_insertions:
-                                    continue
+                        for header, seq in seqs:
+                            if alignment_insertion_coords:
+                                existing_gaps = {k: v for k,v in this_msa_insertions if v > 0}
+                                seq = insert_gaps(seq, alignment_insertion_coords, existing_gaps)
+                            out_seqs.append((header, seq))
 
-                                for _, seq in seqs:
-                                    seq.insert(coord+adj, "-")
-
-                        subalignments[item] = [(i[0], "".join(i[1])) for i in seqs]
+                        subalignments[item] = out_seqs
 
                     sequences = []
                     for group in subalignments.values():
@@ -651,17 +609,14 @@ def run_command(args: CmdArgs) -> None:
             references.append((header, sequence))
         else:
             header = trimmed_header_to_full[header[:127]]
-            # if not "NODE_15784382" in header:
-            #     continue
             if header in reinsertions:
                 for insertion_header in reinsertions[header]:
                     inserted += 1
                     to_write.append((insertion_header, sequence))
             to_write.append((header, sequence))
-
     to_write.sort(key=lambda x: get_start(x[1]))
 
-    writeFasta(args.result_file, references + to_write, compress=args.compress)
+    writeFasta(args.result_file, references+to_write, compress=args.compress)
     printv(f"Done. Took {keeper.differential():.2f}", args.verbose, 3)  # Debug
 
     return args.gene, cluster_time, align_time, merge_time, keeper.differential()
