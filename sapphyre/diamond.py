@@ -382,9 +382,9 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
 
             target_to_hits[target].append(this_hit)
 
-
-        for this_hit in target_to_hits[max(pool_scores, key=pool_scores.get)]:
-            frame_to_hits[this_hit.frame].append(this_hit)
+        if pool_scores:
+            for this_hit in target_to_hits[max(pool_scores, key=pool_scores.get)]:
+                frame_to_hits[this_hit.frame].append(this_hit)
 
         for hits in frame_to_hits.values():
             hits.sort(key=lambda x: x.score, reverse=True)
