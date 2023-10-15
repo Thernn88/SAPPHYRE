@@ -337,6 +337,9 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
 
     for _, header_df in pargs.grouped_data.groupby("header"):
         frame_to_hits = defaultdict(list)
+        target_to_hits = defaultdict(list)
+        pool_scores = {}
+
         hits = []
         for row in header_df.values:
             target = row[1]
@@ -372,6 +375,15 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                 refs,
             )
 
+            if target not in pool_scores:
+                pool_scores[target] = this_hit.score
+            else:
+                pool_scores[target] += this_hit.score
+
+            target_to_hits[target].append(this_hit)
+
+
+        for this_hit in target_to_hits[max(pool_scores, key=pool_scores.get)]:
             frame_to_hits[this_hit.frame].append(this_hit)
 
         for hits in frame_to_hits.values():
