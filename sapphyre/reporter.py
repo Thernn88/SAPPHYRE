@@ -720,7 +720,7 @@ def main(args):
         path.join(args.orthoset_input, args.orthoset, "rocksdb"),
     )
     result = []
-    EXACT_MATCH_AMOUNT = 4
+    EXACT_MATCH_AMOUNT = 2
     if args.matches < EXACT_MATCH_AMOUNT:
         printv(
             f"ERROR: Impossible match paramaters. {EXACT_MATCH_AMOUNT} exact matches required whereas only {args.matches} matches are checked.",

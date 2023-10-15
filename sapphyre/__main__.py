@@ -196,7 +196,7 @@ def reporter_args(par):
         "-m",
         "--matches",
         type=int,
-        default=7,
+        default=5,
         help="Amount of matches for dynamic pairwise aligned edge trim.",
     )
     par.add_argument(
