@@ -7,7 +7,6 @@ from collections import Counter, defaultdict, namedtuple
 from multiprocessing.pool import Pool
 from typing import TextIO
 
-from phymmr_tools import find_index_pair
 from blosum import BLOSUM
 from parasail import profile_create_16, blosum62, nw_trace_scan_profile_16
 from xxhash import xxh3_64
@@ -31,6 +30,7 @@ MainArgs = namedtuple(
         "orthoset",
         "compress",
         "matches",
+        "blosum_strictness",
         "minimum_bp",
         "gene_list_file",
         "clear_output",
@@ -44,8 +44,12 @@ class Hit(ReporterHit, frozen=True):
         self,
         this_aa: str,
         references: dict[str, str],
+        matches: int,
+        is_positive_match: callable,
         debug_fp: TextIO,
         header: str,
+        mat: dict,
+        exact_match_amount: int,
     ) -> tuple[int, int]:
         """Get the bp to trim from each end so that the alignment matches for 'matches' bp.
 
@@ -68,18 +72,19 @@ class Hit(ReporterHit, frozen=True):
         -------
             tuple[int, int]: The number of bp to trim from the start and end of the sequence.
         """
+        MISMATCH_AMOUNT = 1
         GAP_PENALTY = 2
         EXTEND_PENALTY = 1
-
+        
         # Create blosum pairwise aligner profile
         profile = profile_create_16(this_aa, blosum62)
 
         if debug_fp:
             debug_fp.write(f">{header}\n{this_aa}\n")
 
-        best_score = -1
-        best_coords = (None, None)
         # For each reference sequence
+        best_alignment = None
+        best_alignment_score = 0
         for number, ref in enumerate(self.refs):
             # Trim to candidate alignment coords
             ref_seq = references[ref.query]
@@ -93,16 +98,87 @@ class Hit(ReporterHit, frozen=True):
                 EXTEND_PENALTY,
             )
 
-            if debug_fp:
-                debug_fp.write(f"Alignment: {ref.query} > {header}\n{result.traceback.query}\n{result.traceback.ref}\nAlignment score: {result.score}\n")
+            # Get the aligned sequences
+            this_aa, ref_seq = result.traceback.query, result.traceback.ref
+            if result.score > best_alignment_score:
+                best_alignment = (this_aa, ref_seq)
+                best_alignment_score = result.score
 
-            # print(result.start_query)
-            if result.score > best_score:
-                best_score = result.score
-                best_coords = find_index_pair(result.traceback.query, "-")
+            this_aa_len = len(this_aa)
+            if debug_fp:
+                debug_fp.write(f">ref_{number} = {result.score}\n{ref_seq}\n")  # DEBUG
+
+        if debug_fp:
+            debug_fp.write("\n")
+
+        if best_alignment:
+            reg_start = None
+            reg_end = None
+            # Find which start position matches for 'matches' bases
+            skip_l = 0
+            for i, let in enumerate(this_aa):
+                this_pass = True
+                if let == "-":
+                    skip_l += 1
+                    continue
+
+                l_mismatch = MISMATCH_AMOUNT
+                l_exact_matches = 0
+                for j in range(0, matches):
+                    if (i + j) > (this_aa_len - 1):
+                        this_pass = False
+                        break
+                    if this_aa[i + j] == ref_seq[i + j]:
+                        l_exact_matches += 1
+
+                    if not is_positive_match(ref_seq[i + j], this_aa[i + j], mat):
+                        if j == 0 or this_aa[i + j] == "*":
+                            this_pass = False
+                            break
+                        l_mismatch -= 1
+                        if l_mismatch < 0:
+                            this_pass = False
+                            break
+
+                if this_pass and l_exact_matches >= exact_match_amount:
+                    reg_start = (i - skip_l)
+                    break
+
+            # Find which end position matches for 'matches' bases
+            skip_r = 0
+            for i in range(this_aa_len - 1, -1, -1):
+                this_pass = True
+                if this_aa[i] == "-":
+                    skip_r += 1
+                    continue
+
+                r_mismatch = MISMATCH_AMOUNT
+                r_exact_matches = 0
+                for j in range(0, matches):
+                    if i - j < 0:
+                        this_pass = False
+                        break
+
+                    if this_aa[i - j] == ref_seq[i - j]:
+                        r_exact_matches += 1
+
+                    if not is_positive_match(ref_seq[i - j], this_aa[i - j], mat):
+                        if j == 0 or this_aa[i - j] == "*":
+                            this_pass = False
+                            break
+
+                        r_mismatch -= 1
+                        if r_mismatch < 0:
+                            this_pass = False
+                            break
+
+                if this_pass and r_exact_matches >= exact_match_amount:
+                    reg_end = (this_aa_len - i - (1 + skip_r))
+                    break
+            return reg_start, reg_end
 
         # If no trims were found, return None
-        return best_coords
+        return None, None
 
 
 def get_diamondhits(
@@ -233,11 +309,15 @@ def print_unmerged_sequences(
     gene: str,
     taxa_id: str,
     core_aa_seqs: list,
+    trim_matches: int,
+    is_positive_match: callable,
     minimum_bp: int,
     debug_fp: TextIO,
     dupe_debug_fp: TextIO,
     verbose: int,
+    mat: dict,
     is_assembly: bool,
+    exact_match_amount: int
 ) -> tuple[dict[str, list], list[tuple[str, str]], list[tuple[str, str]]]:
     """Returns a list of unique trimmed sequences for a given gene with formatted headers.
 
@@ -250,6 +330,8 @@ def print_unmerged_sequences(
         gene (str): Gene name
         taxa_id (str): Taxa ID
         core_aa_seqs (list): List of core AA sequences
+        trim_matches (int): Number of matches to trim
+        blosum_strictness (str): Blosum mode
         minimum_bp (int): Minimum number of bp after trim
         debug_fp (TextIO): Debug file pointer
     Returns:
@@ -286,26 +368,25 @@ def print_unmerged_sequences(
         nt_seq = hit.seq
         aa_seq = translate_cdna(nt_seq)
 
-        before = hash(aa_seq)
-
         # Trim to match reference
         if not is_assembly:
             r_start, r_end = hit.get_bp_trim(
-                aa_seq, core_aa_seqs, debug_fp, header
+                aa_seq, core_aa_seqs, trim_matches, is_positive_match, debug_fp, header, mat, exact_match_amount
             )
             if r_start is None or r_end is None:
                 printv(f"WARNING: Trim kicked: {hit.node}|{hit.frame}", verbose, 2)
                 continue
 
-            nt_seq = nt_seq[(r_start * 3) : (r_end * 3)]
-            aa_seq = aa_seq[r_start: r_end]
+            if r_end == 0:
+                nt_seq = nt_seq[(r_start * 3) :]
+                aa_seq = aa_seq[r_start:]
+            else:
+                nt_seq = nt_seq[(r_start * 3) : -(r_end * 3)]
+                aa_seq = aa_seq[r_start:-r_end]
 
             if debug_fp:
-                
-                if before != hash(aa_seq):
-                    debug_fp.write(f">{header}_final_trimmed\n{aa_seq}\n\n")
-                else:
-                    debug_fp.write(f">{header}_final\n{aa_seq}\n\n")
+                debug_fp.write(f">{header}\n{aa_seq}\n\n")
+
         # Check if new seq is over bp minimum
         data_after = len(aa_seq)
 
@@ -398,6 +479,9 @@ OutputArgs = namedtuple(
         "compress",
         "target_taxon",
         "top_refs",
+        "matches",
+        "blosum_strictness",
+        "EXACT_MATCH_AMOUNT",
         "minimum_bp",
         "debug",
         "is_assembly",
@@ -435,9 +519,26 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
             "w",
         )  # DEBUG
         debug_alignments.write(
-            f"GAP_PENALTY: 2\nEXTEND_PENALTY: 1\n\n",
+            f"GAP_PENALTY: 2\nEXTEND_PENALTY: 1\n",
         )  # DEBUG
         debug_dupes = open(f"align_debug/{oargs.gene}/{oargs.taxa_id}.dupes", "w")
+
+    mat = BLOSUM(62)
+    if oargs.blosum_strictness == "exact":
+
+        def dist(bp_a, bp_b, _):
+            return bp_a == bp_b and bp_a != "-" and bp_b != "-"
+
+    elif oargs.blosum_strictness == "strict":
+
+        def dist(bp_a, bp_b, mat):
+            return mat[bp_a][bp_b] > 0.0 and bp_a != "-" and bp_b != "-"
+
+    else:
+
+        def dist(bp_a, bp_b, mat):
+            return mat[bp_a][bp_b] >= 0.0 and bp_a != "-" and bp_b != "-"
+        
 
     this_hits = json.decode(oargs.list_of_hits, type = list[Hit])
 
@@ -446,11 +547,15 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.gene,
         oargs.taxa_id,
         core_seq_aa_dict,
+        oargs.matches,
+        dist,
         oargs.minimum_bp,
         debug_alignments,
         debug_dupes,
         oargs.verbose,
+        mat,
         oargs.is_assembly,
+        oargs.EXACT_MATCH_AMOUNT
     )
     if debug_alignments:
         debug_alignments.close()
@@ -567,6 +672,9 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
                     args.compress,
                     set(target_taxon.get(gene, [])),
                     top_refs,
+                    args.matches,
+                    args.blosum_strictness,
+                    EXACT_MATCH_AMOUNT,
                     args.minimum_bp,
                     args.debug,
                     is_assembly
