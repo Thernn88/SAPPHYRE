@@ -4,26 +4,30 @@
 	
 	Externals
 	Mafft 7.489+ https://mafft.cbrc.jp/alignment/software/ sudo apt install mafft
-	Exonerate 2.4.0+ sudo apt install Exonerate
 	Diamond 2.1.6+ - https://github.com/bbuchfink/diamond 
 	SQLite3 - sudo apt install sqlite3 (Will be removed later.)
 	sra-toolkit - sudo apt install sra-toolkit
 	clustalo - sudo apt install clustalo
 	
-	Python - 3.8+ (Recommended 3.11)
+	Python - 3.9+ (Recommended 3.11)
 		Python Modules
+			phymmr_tools>=0.5.10
+			wrap_rocks>=0.3.7
 			biopython>=1.79
-            numpy>=1.23.3
-            tqdm>=4.64.1
-            wrap_rocks>=0.3.3
-            xxhash>=3.0.0
-            phymmr_tools>=0.4.0
-            pro2codon>=1.2.4
-            requests>=2.28
-            beautifulsoup4
-            blosum==2.0.0
-            parasail>= 1.3.4
-            orjson
+			numpy>=1.23.3
+			blosum==2.0.2
+			pro2codon>=1.2.4
+			pyfastx>=2.0.1
+			needletail>=0.5.0
+			pandas>=2.1.1
+			msgspec>=0.18.2
+			parasail>=1.3.4
+			xxhash>=3.3.0
+			pyarrow>=13.0.0
+			openpyxl>=3.1.2
+			requests>=2.31.0
+			beautifulsoup4>=4.12.2
+			tqdm>=4.66.1
 			
 ## Usage
 
