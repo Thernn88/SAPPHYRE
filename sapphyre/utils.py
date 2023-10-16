@@ -48,8 +48,8 @@ def parseFasta(
             str(path),
             uppercase=True,
         )
-        for header, seq in fa:
-            yield header, seq
+        for tup in fa:
+            yield tup[0], tup[1]
     elif str(path).rsplit(".", maxsplit=1)[-1] in {"fastq", "fq", "gz"}:
         fa = parse_fastx_file(str(path))
         for entry in fa:  # Deinterleave
