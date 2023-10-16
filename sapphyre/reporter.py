@@ -723,16 +723,17 @@ def main(args):
     EXACT_MATCH_AMOUNT = 2
     if args.matches < EXACT_MATCH_AMOUNT:
         printv(
-            f"ERROR: Impossible match paramaters. {EXACT_MATCH_AMOUNT} exact matches required whereas only {args.matches} matches are checked.",
+            f"WARNING: Impossible match paramaters. {EXACT_MATCH_AMOUNT} exact matches required whereas only {args.matches} matches are checked.",
             args.verbose,
             0,
         )
         printv(
-            f"Please increase the number of matches to at least {EXACT_MATCH_AMOUNT} or change the minimum amount of exact matches.\n",
+            f"Setting exact matches to {args.matches}.\n",
             args.verbose,
             0,
         )
-        return False
+        EXACT_MATCH_AMOUNT = args.matches
+        
     for input_path in args.INPUT:
         rocks_db_path = path.join(input_path, "rocksdb")
         rocky.create_pointer(
