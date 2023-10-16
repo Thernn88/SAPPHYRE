@@ -106,7 +106,7 @@ class Hit(ReporterHit, frozen=True):
 
             this_aa_len = len(this_aa)
             if debug_fp:
-                debug_fp.write(f">ref_{number} = {result.score}\n{ref_seq}\n")  # DEBUG
+                debug_fp.write(f">ref_{number} = {result.score}\n{ref_seq}\n>aln\n{this_aa}\n")  # DEBUG
 
         if debug_fp:
             debug_fp.write("\n")
@@ -733,7 +733,6 @@ def main(args):
             0,
         )
         EXACT_MATCH_AMOUNT = args.matches
-        
     for input_path in args.INPUT:
         rocks_db_path = path.join(input_path, "rocksdb")
         rocky.create_pointer(
