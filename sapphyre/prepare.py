@@ -65,10 +65,9 @@ def truncate_taxa(taxa: str, extension=None) -> str:
     if m:
         tail_length = m.end() - m.start() - len(extension)
         result = result[0:-tail_length]
-        result.replace("_001","")
     if extension:
         result += extension
-
+    result = result.replace("_001.",".")
     return result
 
 
