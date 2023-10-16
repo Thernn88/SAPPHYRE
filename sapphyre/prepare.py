@@ -275,19 +275,20 @@ class DatabasePreparer:
 
         self.fa_file_out = deduper.lines
         this_is_assembly = deduper.this_assembly
-
-        with NamedTemporaryFile(dir=gettempdir(), mode="w") as fp:
-            prior = len(self.fa_file_out)
-            fp.writelines(self.fa_file_out)
-            os.system(f"entropy/entropy 0.7 {fp.name} {self.prepared_file_destination}")
-
+        prior = len(self.fa_file_out)
+        # with NamedTemporaryFile(dir=gettempdir(), mode="w") as fp:
+        #     prior = len(self.fa_file_out)
+        #     fp.writelines(self.fa_file_out)
+        #     os.system(f"entropy/entropy 0.7 {fp.name} {self.prepared_file_destination}")
+        passing = phymmr_tools.entropy_filter(self.fa_file_out, 0.7)
         recipe = []
         recipe_index = IndexIter()
         final = IndexIter()
 
         current_count = IndexIter()
         current_batch = []
-        for header, seq in parseFasta(self.prepared_file_destination):
+        # for header, seq in parseFasta(self.prepared_file_destination):
+        for header, seq in passing:
             next(final)
             current_batch.append(f">{header}\n{seq}\n")
             next(current_count)
@@ -306,8 +307,8 @@ class DatabasePreparer:
 
             self.nt_db.put(f"ntbatch:{recipe_index.x}", "".join(current_batch))
 
-        if not self.keep_prepared:
-            os.remove(self.prepared_file_destination)
+        # if not self.keep_prepared:
+        #     os.remove(self.prepared_file_destination)
 
         recipe_data = ",".join(recipe)
         self.nt_db.put("getall:batches", recipe_data)
