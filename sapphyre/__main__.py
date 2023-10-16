@@ -1159,8 +1159,72 @@ def auto(args):
         print()
         print(args.formathelp())
 
+def internal(argsobj):
+    from . import internal
 
-if __name__ == "__main__":
+    if not internal.main(argsobj):
+        print()
+        print(argsobj.formathelp())
+
+def subcmd_internal(subparser):
+    parser = subparser.add_parser(
+        "internal", help="Filter sequences by distance to the consensus sequence"
+    )
+    parser.add_argument("INPUT", help="Paths of directories.", type=str)
+    # parser.add_argument(
+    #     "-sd", "--sub_directory", default="collapsed", help="Name of input subfolder"
+    # )
+    parser.add_argument(
+        "-nd",
+        "--no_dupes",
+        default=False,
+        action="store_true",
+        help="Use prepare and reporter dupe counts in consensus generation",
+    )
+    parser.add_argument(
+        "-uci",
+        "--uncompress-intermediates",
+        default=False,
+        action="store_true",
+        help="Compress intermediate files",
+    )
+    parser.add_argument(
+        "-c",
+        "--compress",
+        # default=False,
+        action="store_false",
+        dest="uncompress_intermediates",
+        help="Compress intermediate files",
+    )
+    # parser.add_argument(
+    #     ""
+    # )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default="internal",
+        help="Path to output directory",
+    )
+    parser.add_argument(
+        "-ict",
+        "--internal_consensus_threshold",
+        type=float,
+        default=0.65,
+        dest="internal_consensus_threshold",
+        help="Minimum ratio for choosing a character in the consensus sequence",
+    )
+    parser.add_argument(
+        "-idt",
+        "--internal_distance_threshold",
+        type=float,
+        default=0.075,
+        dest="internal_distance_threshold",
+        help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence.",
+    )
+    parser.set_defaults(func=internal, formathelp=parser.format_help)
+
+def main():
     parser = CaseInsensitiveArgumentParser(
         prog="sapphyre",
         # TODO write me
@@ -1209,71 +1273,6 @@ if __name__ == "__main__":
         help="Current Orthoset to be used.",
     )
 
-    def internal(argsobj):
-        from . import internal
-
-        if not internal.main(argsobj):
-            print()
-            print(argsobj.formathelp())
-
-    def subcmd_internal(subparser):
-        parser = subparser.add_parser(
-            "internal", help="Filter sequences by distance to the consensus sequence"
-        )
-        parser.add_argument("INPUT", help="Paths of directories.", type=str)
-        # parser.add_argument(
-        #     "-sd", "--sub_directory", default="collapsed", help="Name of input subfolder"
-        # )
-        parser.add_argument(
-            "-nd",
-            "--no_dupes",
-            default=False,
-            action="store_true",
-            help="Use prepare and reporter dupe counts in consensus generation",
-        )
-        parser.add_argument(
-            "-uci",
-            "--uncompress-intermediates",
-            default=False,
-            action="store_true",
-            help="Compress intermediate files",
-        )
-        parser.add_argument(
-            "-c",
-            "--compress",
-            # default=False,
-            action="store_false",
-            dest="uncompress_intermediates",
-            help="Compress intermediate files",
-        )
-        # parser.add_argument(
-        #     ""
-        # )
-        parser.add_argument(
-            "-o",
-            "--output",
-            type=str,
-            default="internal",
-            help="Path to output directory",
-        )
-        parser.add_argument(
-            "-ict",
-            "--internal_consensus_threshold",
-            type=float,
-            default=0.65,
-            dest="internal_consensus_threshold",
-            help="Minimum ratio for choosing a character in the consensus sequence",
-        )
-        parser.add_argument(
-            "-idt",
-            "--internal_distance_threshold",
-            type=float,
-            default=0.075,
-            dest="internal_distance_threshold",
-            help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence.",
-        )
-        parser.set_defaults(func=internal, formathelp=parser.format_help)
-
     subparsers = parser.add_subparsers()
     # The order in which those functions are called define the order in which
     # the subcommands will be displayed.
@@ -1308,3 +1307,7 @@ if __name__ == "__main__":
         parser.print_help()
         parser.exit()
     args.func(args)
+
+
+if __name__ == "__main__":
+    main()
