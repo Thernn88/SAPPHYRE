@@ -65,7 +65,7 @@ def truncate_taxa(taxa: str, extension=None) -> str:
     if m:
         tail_length = m.end() - m.start() - len(extension)
         result = result[0:-tail_length]
-
+        result.replace("_001","")
     if extension:
         result += extension
 
@@ -276,10 +276,6 @@ class DatabasePreparer:
         self.fa_file_out = deduper.lines
         this_is_assembly = deduper.this_assembly
         prior = len(self.fa_file_out)
-        # with NamedTemporaryFile(dir=gettempdir(), mode="w") as fp:
-        #     prior = len(self.fa_file_out)
-        #     fp.writelines(self.fa_file_out)
-        #     os.system(f"entropy/entropy 0.7 {fp.name} {self.prepared_file_destination}")
         passing = phymmr_tools.entropy_filter(self.fa_file_out, 0.7)
         recipe = []
         recipe_index = IndexIter()
@@ -287,7 +283,6 @@ class DatabasePreparer:
 
         current_count = IndexIter()
         current_batch = []
-        # for header, seq in parseFasta(self.prepared_file_destination):
         for header, seq in passing:
             next(final)
             current_batch.append(f">{header}\n{seq}\n")
@@ -306,9 +301,6 @@ class DatabasePreparer:
             recipe.append(str(recipe_index.x))
 
             self.nt_db.put(f"ntbatch:{recipe_index.x}", "".join(current_batch))
-
-        # if not self.keep_prepared:
-        #     os.remove(self.prepared_file_destination)
 
         recipe_data = ",".join(recipe)
         self.nt_db.put("getall:batches", recipe_data)
