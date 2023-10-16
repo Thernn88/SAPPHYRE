@@ -59,7 +59,7 @@ def truncate_taxa(taxa: str, extension=None) -> str:
     Returns the string + suffix to check for name matches.
     """
     # search for _# and _R#, where # is digits
-    result = taxa
+    result = taxa.replace("_001","")
     m = re.search(r"(_\d.fa)|(_R\d.fa)|(_part\d.fa)", result + extension)
 
     if m:
@@ -67,7 +67,7 @@ def truncate_taxa(taxa: str, extension=None) -> str:
         result = result[0:-tail_length]
     if extension:
         result += extension
-    result = result.replace("_001.",".")
+    # result = result.replace("_001.",".")
     return result
 
 
@@ -107,7 +107,6 @@ def glob_for_fasta_and_save_for_runs(
 
         if file_is_file and file_suffix_allowed:
             taxa = f.stem.split(".")[0]
-
             formatted_taxa = truncate_taxa(taxa, extension=".fa")
 
             taxa_runs.setdefault(formatted_taxa, [])
