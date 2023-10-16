@@ -579,7 +579,7 @@ def align_args(par):
         "-alm",
         "--align_method",
         choices=["clustal", "mafft", "base", "frags"],
-        default="clustal",
+        default="base",
         help="What alignment method to use.",
     )
 
