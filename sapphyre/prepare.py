@@ -283,7 +283,7 @@ class DatabasePreparer:
         current_batch = []
         for header, seq in passing:
             next(final)
-            current_batch.append(f">{header}\n{seq}\n")
+            current_batch.append(f"{header}\n{seq}\n")
             next(current_count)
 
             if current_count.x > self.chunk_size:
@@ -307,7 +307,7 @@ class DatabasePreparer:
 
         sequence_count = str(self.this_index)
         self.printv(
-            f"Inserted {sequence_count} sequences. Found {next(self.dupes)} duplicates. Entropy removed {prior-final.x}.",
+            f"Inserted {sequence_count} sequences. Found {next(self.dupes)} duplicates. Entropy removed {prior + 1 - final.x}.",
             self.verbose,
         )
 
