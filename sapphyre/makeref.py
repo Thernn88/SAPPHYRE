@@ -406,8 +406,9 @@ def generate_subset(file_paths, taxon_to_kick: set):
     subset = Sequence_Set("subset")
     index = count()
     for file in file_paths:
+        
         for i, seq_record in enumerate(SeqIO.parse(file, "fasta")):
-
+            do_weirdness = False
             if i == 0:
                 seq = str(seq_record.seq)
                 letters = sorted(list(set(seq)))
@@ -420,15 +421,28 @@ def generate_subset(file_paths, taxon_to_kick: set):
             elif " |" in seq_record.description:
                 header = seq_record.description.split(" ")[0]
                 data = {"pub_og_id": header.split("_")[0], "organism_name": "hymenoptera"}
+            else:
+                header = seq_record.description.split(" ")[0]
+                do_weirdness = True
+
+
             if is_nt:
                 seq = str(seq_record.seq.translate())
             else:
                 seq = str(seq_record.seq)
-            taxon = data["organism_name"].replace(" ", "_")
-            if taxon.lower() not in taxon_to_kick and data["organism_name"].lower() not in taxon_to_kick:
-                gene = data["pub_og_id"]
 
-                subset.add_sequence(Sequence(header, seq, "", taxon, gene, next(index)))
+            if do_weirdness:
+                taxon = "Apis_mellifera"
+                if taxon.lower() not in taxon_to_kick and taxon.lower() not in taxon_to_kick:
+                    for i in range(0, len(seq), 100):
+                        subset.add_sequence(Sequence(header, seq[i:i+1000], "", taxon, f"{i+1}to{i+1000}", next(index)))
+
+            else:
+                taxon = data["organism_name"].replace(" ", "_")
+                if taxon.lower() not in taxon_to_kick and data["organism_name"].lower() not in taxon_to_kick:
+                    gene = data["pub_og_id"]
+
+                    subset.add_sequence(Sequence(header, seq, "", taxon, gene, next(index)))
 
     return subset
 
