@@ -407,8 +407,12 @@ def generate_subset(file_paths, taxon_to_kick: set):
     index = count()
     for file in file_paths:
         for seq_record in SeqIO.parse(file, "fasta"):
-            header, data = seq_record.description.split(" ", 1)
-            data = json.decode(data)
+            if "{" in seq_record.description:
+                header, data = seq_record.description.split(" ", 1)
+                data = json.decode(data)
+            elif " |" in seq_record.description:
+                header = seq_record.description.split(" ")[0]
+                data = {"pub_og_id": header.split("_")[0], "organism_name": "hymenoptera"}
             seq = str(seq_record.seq)
             taxon = data["organism_name"].replace(" ", "_")
             if taxon.lower() not in taxon_to_kick and data["organism_name"].lower() not in taxon_to_kick:
@@ -487,11 +491,16 @@ def main(args):
     set_path = SETS_DIR.joinpath(set_name)
     set_path.mkdir(exist_ok=True)
 
-    if input_file.split(".")[-1] == "fa":
+    if input_file.split(".")[-1] in {"fa", "fasta", "fq"}:
         printv("Input Detected: Single fasta", verbosity)
         for seq_record in SeqIO.parse(input_file, "fasta"):
-            header, data = seq_record.description.split(" ", 1)
-            data = json.decode(data)
+            if "{" in seq_record.description:
+                header, data = seq_record.description.split(" ", 1)
+                data = json.decode(data)
+            elif " |" in seq_record.description:
+                header = seq_record.description.split(" ")[0]
+                data = {"pub_og_id": header.split("_")[0], "organism_name": "hymenoptera"}
+
             seq = str(seq_record.seq)
             taxon = data["organism_name"].replace(" ", "_")
             if taxon.lower() not in kick and data["organism_name"].lower() not in kick:
