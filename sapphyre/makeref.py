@@ -406,14 +406,24 @@ def generate_subset(file_paths, taxon_to_kick: set):
     subset = Sequence_Set("subset")
     index = count()
     for file in file_paths:
-        for seq_record in SeqIO.parse(file, "fasta"):
+        for i, seq_record in enumerate(SeqIO.parse(file, "fasta")):
+
+            if i == 0:
+                seq = str(seq_record.seq)
+                letters = sorted(list(set(seq)))
+
+                is_nt = True if letters == ["A", "C", "G", "T"] and len(seq) % 3 == 0 else False
+
             if "{" in seq_record.description:
                 header, data = seq_record.description.split(" ", 1)
                 data = json.decode(data)
             elif " |" in seq_record.description:
                 header = seq_record.description.split(" ")[0]
                 data = {"pub_og_id": header.split("_")[0], "organism_name": "hymenoptera"}
-            seq = str(seq_record.seq)
+            if is_nt:
+                seq = str(seq_record.seq.translate())
+            else:
+                seq = str(seq_record.seq)
             taxon = data["organism_name"].replace(" ", "_")
             if taxon.lower() not in taxon_to_kick and data["organism_name"].lower() not in taxon_to_kick:
                 gene = data["pub_og_id"]
@@ -493,22 +503,7 @@ def main(args):
 
     if input_file.split(".")[-1] in {"fa", "fasta", "fq"}:
         printv("Input Detected: Single fasta", verbosity)
-        for seq_record in SeqIO.parse(input_file, "fasta"):
-            if "{" in seq_record.description:
-                header, data = seq_record.description.split(" ", 1)
-                data = json.decode(data)
-            elif " |" in seq_record.description:
-                header = seq_record.description.split(" ")[0]
-                data = {"pub_og_id": header.split("_")[0], "organism_name": "hymenoptera"}
-
-            seq = str(seq_record.seq)
-            taxon = data["organism_name"].replace(" ", "_")
-            if taxon.lower() not in kick and data["organism_name"].lower() not in kick:
-                gene = data["pub_og_id"]
-
-                this_set.add_sequence(
-                    Sequence(header, seq, "", taxon, gene, next(index))
-                )
+        this_set.absorb(generate_subset([input_file], kick))
     elif input_file.split(".")[-1] in {
         "sql",
         "sqlite",
