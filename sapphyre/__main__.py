@@ -712,6 +712,13 @@ def flexcull_args(par):
         action="store_true",
         help="Enable debug. When enabled Output log of culls.",
     )
+    par.add_argument(
+        "-kc",
+        "--keep_codons",
+        action="store_true",
+        default=False,
+        help="Disables stop codon inner cull.",
+    )
 
 
 def flexcull(args):
@@ -734,6 +741,7 @@ def flexcull(args):
         args.blosum_strictness,
         args.orthoset,
         args.orthoset_input,
+        args.keep_codons,
     )
     if not flexcull.main(flexargs):
         print()

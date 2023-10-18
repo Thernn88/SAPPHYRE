@@ -40,6 +40,7 @@ MainArgs = namedtuple(
         "blosum_strictness",
         "orthoset",
         "orthoset_input",
+        "keep_codons",
     ],
 )
 
@@ -61,6 +62,7 @@ FlexcullArgs = namedtuple(
         "filtered_mat",
         "is_assembly",
         "is_ncg",  # non coding gene
+        "keep_codons",
     ],
 )
 
@@ -854,7 +856,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
             out_line += ["-"] * characters_till_end
 
             positions_to_trim = set()
-            if not fargs.is_ncg:
+            if not fargs.is_ncg and not fargs.keep_codons:
                 out_line, positions_to_trim = cull_codons(
                     out_line,
                     cull_start,
@@ -1096,6 +1098,7 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
                         filtered_mat,
                         is_assembly,
                         input_gene in non_coding_gene,
+                        args.keep_codons,
                     ),
                 ),
             )
@@ -1121,6 +1124,7 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
                     filtered_mat,
                     is_assembly,
                     input_gene in non_coding_gene,
+                    args.keep_codons,
                 ),
             )
             for input_gene in file_inputs
