@@ -475,7 +475,7 @@ def process_batch(
         printv("Calculating Coverage", args.verbose, 3)
         coverage = get_coverage(nodes, ref_average_data_length)
         
-        req_coverage = 0.3 if batch_args.is_assembly else 0.1
+        req_coverage = 0.3 if batch_args.is_assembly else 0.01
         if coverage < req_coverage:
             total += aa_count
             kicked_genes.append(f"{gene} -> failed due to Coverage: {coverage}")
