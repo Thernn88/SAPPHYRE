@@ -83,6 +83,13 @@ def prepare_args(par):
         default=0,
         help="Amount of overlap between chomped segments"
     )
+    par.add_argument(
+        "-nr",
+        "--no_rename",
+        action="store_true",
+        default=False,
+        help="Don't rename headers to NODE_#.",
+    )
 
 
 def prepare(args):

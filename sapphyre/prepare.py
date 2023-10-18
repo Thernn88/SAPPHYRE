@@ -116,13 +116,14 @@ def glob_for_fasta_and_save_for_runs(
 
 
 class SeqDeduplicator:
-    def __init__(self, db: Any, minimum_sequence_length: int, verbose: int, overlap_length) -> None:
+    def __init__(self, db: Any, minimum_sequence_length: int, verbose: int, overlap_length, rename) -> None:
         self.minimum_sequence_length = minimum_sequence_length
         self.verbose = verbose
         self.nt_db = db
         self.lines = []
         self.this_assembly = False
         self.overlap_length = overlap_length
+        self.rename = rename
     def __call__(
         self,
         fa_file_path: str,
@@ -144,8 +145,17 @@ class SeqDeduplicator:
                 continue
             parent_seq = parent_seq.upper()
 
-            for seq in N_trim(parent_seq, self.minimum_sequence_length, trim_times):
-                header = f"NODE_{this_index}"
+            n_sequences = N_trim(parent_seq, self.minimum_sequence_length, trim_times)
+            if not self.rename:
+                n_sequences = list(n_sequences)
+
+            individual_index = IndexIter()
+
+            for seq in n_sequences:
+                if self.rename:
+                    header = f"NODE_{this_index}"
+                else:
+                    header = header.split(" ")[0]
                 seq_hash = xxhash.xxh3_64(seq).hexdigest()
 
                 # Check for dupe, if so save how many times that sequence occured
@@ -184,11 +194,20 @@ class SeqDeduplicator:
 
                 if len(seq) > CHOMP_CUTOFF:
                     for i in range(0, len(seq), CHOMP_LEN-self.overlap_length):
-                        header = f"NODE_{this_index}"
-                        self.lines.append(f">{header}\n{seq[i:i+CHOMP_LEN]}\n")
+                        if self.rename:
+                            this_header = f"NODE_{this_index}"
+                        else:
+                            this_header = f"{header}_{individual_index}"
+                            next(individual_index)
+                        self.lines.append(f">{this_header}\n{seq[i:i+CHOMP_LEN]}\n")
                         next(this_index)
                 else:
-                    self.lines.append(f">{header}\n{seq}\n")
+                    this_header = header
+                    if not self.rename and len(n_sequences) > 1:
+                        this_header = f"{header}_{individual_index}"
+                        next(individual_index)
+                        
+                    self.lines.append(f">{this_header}\n{seq}\n")
                     next(this_index)
 
 
@@ -206,6 +225,7 @@ class DatabasePreparer:
         trim_times: TimeKeeper,
         chunk_size: int,
         overlap_length: int,
+        rename: bool,
     ) -> None:
         self.fto = formatted_taxa_out
         self.comp = components
@@ -224,6 +244,7 @@ class DatabasePreparer:
         self.dedup_time = dedup_time
         self.chunk_size = chunk_size
         self.overlap_length = overlap_length
+        self.rename = rename
 
     def init_db(
         self,
@@ -257,7 +278,8 @@ class DatabasePreparer:
             self.nt_db,
             self.minimum_sequence_length,
             self.verbose,
-            self.overlap_length
+            self.overlap_length,
+            self.rename
         )
         for fa_file_path in self.comp:
             deduper(
@@ -281,9 +303,16 @@ class DatabasePreparer:
 
         current_count = IndexIter()
         current_batch = []
+        prepared_file = None
+        if self.keep_prepared:
+            prepared_file = self.prepared_file_destination.open("w")
         for header, seq in passing:
             next(final)
             current_batch.append(f"{header}\n{seq}\n")
+
+            if prepared_file:
+                prepared_file.write(f"{header}\n{seq}\n")
+
             next(current_count)
 
             if current_count.x > self.chunk_size:
@@ -299,6 +328,9 @@ class DatabasePreparer:
             recipe.append(str(recipe_index.x))
 
             self.nt_db.put(f"ntbatch:{recipe_index.x}", "".join(current_batch))
+
+        if prepared_file:
+            prepared_file.close()
 
         recipe_data = ",".join(recipe)
         self.nt_db.put("getall:batches", recipe_data)
@@ -339,6 +371,7 @@ def map_taxa_runs(
     trim_times: TimeKeeper,
     chunk_size,
     overlap_size,
+    rename,
 ):
     formatted_taxa_out, components = tuple_in
 
@@ -353,7 +386,8 @@ def map_taxa_runs(
         dedup_time,
         trim_times,
         chunk_size,
-        overlap_size
+        overlap_size,
+        rename
     )(
         secondary_directory,
     )
@@ -400,7 +434,8 @@ def main(args):
             dedup_time,
             trim_times,
             args.chunk_size,
-            args.overlap_length
+            args.overlap_length,
+            not args.no_rename,
         )
         for tuple_in in taxa_runs.items()
     ]
