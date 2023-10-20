@@ -402,6 +402,10 @@ def make_diamonddb(set: Sequence_Set, overwrite, threads):
 SETS_DIR = None
 
 
+def count_codon(string):
+    return string,count("*")
+
+
 def generate_subset(file_paths, taxon_to_kick: set):
     subset = Sequence_Set("subset")
     index = count()
@@ -421,7 +425,10 @@ def generate_subset(file_paths, taxon_to_kick: set):
                 header = seq_record.description.split(" ")[0]
                 data = {"pub_og_id": header.split("_")[0], "organism_name": "hymenoptera"}
             if is_nt:
-                seq = str(seq_record.seq.translate())
+                seq1 = str(seq_record.seq.translate())
+                seq2 = str(seq_record.seq[1:].translate())
+                seq3 = str(seq_record.seq[2:].translate())
+                seq = min([seq1, seq2, seq3], key=lambda x: x.count("*"))
             else:
                 seq = str(seq_record.seq)
             taxon = data["organism_name"].replace(" ", "_")
