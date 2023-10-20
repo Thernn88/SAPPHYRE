@@ -326,20 +326,15 @@ def aln_function(
     trimmed_path = trimmed_path.joinpath(gene + ".aln.fa")
     if not aln_file.exists() or overwrite:
         printv(f"Generating: {gene}", verbosity, 2)
-        if len(sequences) == 1:
-            with raw_fa_file.open(mode="w") as fp, aln_file.open(mode="w") as fp2:
-                fp.write(sequences[0].seq_with_regen_data())
-                fp2.write(sequences[0].seq_with_regen_data())
-        else:
-            with raw_fa_file.open(mode="w") as fp:
-                fp.write("".join([i.seq_with_regen_data() for i in sequences]))
+        with raw_fa_file.open(mode="w") as fp:
+            fp.write("".join([i.seq_with_regen_data() for i in sequences]))
 
-            if align_method == "clustal":
-                os.system(
-                    f"clustalo -i '{raw_fa_file}' -o '{aln_file}'  --full --iter=5 --threads=1 --full-iter --force",
-                )  # --verbose
-            else:
-                os.system(f"mafft-linsi --thread 1 '{raw_fa_file}' > '{aln_file}'")
+        if align_method == "clustal":
+            os.system(
+                f"clustalo -i '{raw_fa_file}' -o '{aln_file}'  --full --iter=5 --threads=1 --full-iter --force",
+            )  # --verbose
+        else:
+            os.system(f"mafft-linsi --thread 1 '{raw_fa_file}' > '{aln_file}'")
 
     aligned_result = []
     aligned_dict = {}
@@ -426,9 +421,6 @@ def generate_subset(file_paths, taxon_to_kick: set):
             if "{" in seq_record.description:
                 header, data = seq_record.description.split(" ", 1)
                 data = json.decode(data)
-            elif " [" in seq_record.description:
-                header = seq_record.description.split(" ")[0]
-                data = {"pub_og_id": header.split(".")[0], "organism_name": seq_record.description.split("[")[1].split("]")[0]}
             elif " |" in seq_record.description:
                 header = seq_record.description.split(" ")[0]
                 data = {"pub_og_id": header.split("_")[0], "organism_name": "hymenoptera"}
