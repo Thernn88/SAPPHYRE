@@ -1,4 +1,5 @@
 from __future__ import annotations
+from collections import defaultdict
 import os
 from math import ceil
 
@@ -17,17 +18,23 @@ def prepend(inputs, directory):
     return [Path(directory, i) for i in inputs]
 
 
-def parse_gene(path, already_grabbed_references):
+def parse_gene(path):
     this_out = []
+    this_refs = {}
+    already_grabbed_references = set()
+    present_taxon = set()
+    taxon_to_target = defaultdict(list)
     for header, sequence in parseFasta(str(path)):
         if header.endswith("."):
             fields = header.split("|")
             if fields[2] not in already_grabbed_references:
-                this_out.append((header, sequence.replace("-", "")))
+                taxon_to_target[fields[1]].append(fields[2])
                 already_grabbed_references.add(fields[2])
+                this_refs[fields[2]] = header, sequence.replace("-", "")
         else:
+            present_taxon.add(header.split("|")[1])
             this_out.append((header, sequence.replace("-", "")))
-    return {path: (this_out, already_grabbed_references)}
+    return {path: (this_out, present_taxon, taxon_to_target, this_refs)}
 
 
 def write_gene(path, gene_sequences, compress):
@@ -45,8 +52,8 @@ def main(args):
 
     aa_out = {}
     nt_out = {}
-    grabbed_aa_references = {}
-    grabbed_nt_references = {}
+    grabbed_aa_references = defaultdict(set)
+    grabbed_nt_references = defaultdict(set)
 
     with Pool(args.processes) as pool:
         for item in inputs:
@@ -64,44 +71,55 @@ def main(args):
 
                 arguments = []
                 for aa_gene in aa_path.iterdir():
-                    if aa_gene.name not in aa_out:
-                        grabbed_aa_references[aa_gene.name] = set()
-
                     arguments.append(
                         (
                             aa_gene,
-                            grabbed_aa_references[aa_gene.name],
                         ),
                     )
 
                 aa_result = pool.starmap(parse_gene, arguments, chunksize=8)
 
-                for result in aa_result:
-                    for path, out in result.items():
-                        out, already_grabbed = out
+                for result in aa_result:#this_out, present_taxon, taxon_to_target, this_refs
+                    for path, out_tuple in result.items():
+                        out_candidates, present_taxons, taxon_to_target, ref_sequences = out_tuple
                         path = path.name
-                        aa_out.setdefault(path, []).extend(out)
-                        grabbed_aa_references[path] = already_grabbed
+                        already_grabbed = grabbed_aa_references[path]
+                        references = []
+                        for taxon in present_taxons:
+                            for target in taxon_to_target[taxon]:
+                                if target not in already_grabbed:
+                                    references.append(ref_sequences[target])
+                                    already_grabbed.add(target)
+
+                        aa_out.setdefault(path, []).extend(references)
+                        aa_out.setdefault(path, []).extend(out_candidates)
+                        grabbed_aa_references[path].update(already_grabbed)
 
                 arguments = []
                 for nt_gene in nt_path.iterdir():
-                    if nt_gene.name not in nt_out:
-                        grabbed_nt_references[nt_gene.name] = set()
                     arguments.append(
                         (
                             nt_gene,
-                            grabbed_nt_references[nt_gene.name],
                         ),
                     )
 
                 nt_result = pool.starmap(parse_gene, arguments, chunksize=8)
 
-                for result in nt_result:
-                    for path, out in result.items():
-                        out, already_grabbed = out
+                for result in nt_result:#this_out, present_taxon, taxon_to_target, this_refs
+                    for path, out_tuple in result.items():
+                        out_candidates, present_taxons, taxon_to_target, ref_sequences = out_tuple
                         path = path.name
-                        nt_out.setdefault(path, []).extend(out)
-                        grabbed_nt_references[path] = already_grabbed
+                        already_grabbed = grabbed_nt_references[path]
+                        references = []
+                        for taxon in present_taxons:
+                            for target in taxon_to_target[taxon]:
+                                if target not in already_grabbed:
+                                    references.append(ref_sequences[target])
+                                    already_grabbed.add(target)
+
+                        nt_out.setdefault(path, []).extend(references)
+                        nt_out.setdefault(path, []).extend(out_candidates)
+                        grabbed_nt_references[path].update(already_grabbed)
 
     aa_out_path = Path(args.output_directory, "aa")
     nt_out_path = Path(args.output_directory, "nt")
