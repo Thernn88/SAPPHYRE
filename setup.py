@@ -14,7 +14,7 @@ setup(name='sapphyre',
         ],
     },
     install_requires=[
-        "phymmr_tools>=0.5.10",
+        "phymmr_tools>=0.5.11",
         "wrap_rocks>=0.3.7",
         "biopython>=1.79",
         "numpy>=1.23.3",
