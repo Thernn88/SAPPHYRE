@@ -426,7 +426,7 @@ def generate_subset(file_paths, taxon_to_kick: set):
                 data = {"pub_og_id": header.split("_")[0], "organism_name": "hymenoptera"}
             elif " " not in seq_record.description:
                 fields = seq_record.description.split("_")
-                header = "_".join(fields[1:3])
+                header = "_".join(fields[1:])
                 data = {"pub_og_id": fields[0], "organism_name": "_".join(fields[4:])}
             if is_nt:
                 seq1 = str(seq_record.seq.translate())
