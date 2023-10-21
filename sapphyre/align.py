@@ -403,7 +403,10 @@ def run_command(args: CmdArgs) -> None:
                 3,
             )  # Debug
 
-            cluster_children = generate_clusters(data, args.second_run)
+            if len(data) < 5:
+                cluster_children = [[i] for i in data]
+            else:
+                cluster_children = generate_clusters(data, args.second_run)
             clusters = seperate_into_clusters(cluster_children, parent_tmpdir, data)
             cluster_time = keeper.differential()
             if debug:
