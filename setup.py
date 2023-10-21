@@ -1,14 +1,14 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(name='sapphyre',
-      version='0.1',
-      description='An assembly-less solution for processing high-throughput sequencing reads for phylogenetics',
-      url='https://github.com/Thernn88/SAPPHYRE',
-      author='Sapphyre TEAM',
-      license='GPL3',
-      py_modules=['sapphyre'],
-      zip_safe=False,
-      entry_points={
+    version='0.1',
+    description='An assembly-less solution for processing high-throughput sequencing reads for phylogenetics',
+    url='https://github.com/Thernn88/SAPPHYRE',
+    author='Sapphyre TEAM',
+    license='GPL3',
+    packages=find_packages(where="."),
+    zip_safe=False,
+    entry_points={
         'console_scripts': [
             'sapphyre = sapphyre.__main__:main',
         ],
