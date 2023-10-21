@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import Counter, defaultdict
 from glob import glob
 import json
 from math import ceil
@@ -242,9 +242,27 @@ def clean_gene(gene_config: GeneConfig):
     taxon_count = {}
     gene_taxon_to_taxa = {}
 
+    column_stats = {}
+    candidate_count = 0 
+
     if gene_config.gene in gene_config.target or not gene_config.sort:
         if gene_config.count_taxa or gene_config.generating_names:
             taxon_count, gene_taxon_to_taxa = taxon_present(aa_content)
+
+
+        col_dict = defaultdict(list)
+        for header, sequence in aa_content:
+            if not header.endswith("."):
+                candidate_count += 1
+            
+            for i, char in enumerate(sequence):
+                col_dict[i].append(char.replace("X", "-"))
+        
+        for col, chars in col_dict.items():
+            this_most_common = Counter(chars).most_common()
+            most_common_inclusive = this_most_common[0][1]
+            most_common_AA_count =  this_most_common[0][1] if this_most_common[0][0] == "-" else this_most_common[1][1]
+            column_stats[col] = len(chars), len(chars)-chars.count("-"), most_common_inclusive, most_common_AA_count            
 
         aa_target_content.extend(aa_content)
         nt_target_content.extend(nt_content)
@@ -277,6 +295,8 @@ def clean_gene(gene_config: GeneConfig):
         taxon_count,
         gene_taxon_to_taxa,
         path_to,
+        column_stats,
+        candidate_count
     )
 
 
@@ -444,10 +464,13 @@ def process_folder(args, input_path):
 
     taxa_global = set()
     to_scrape = set()
-    for _, taxa_local, _, _, _, gene_taxon_to_taxa, _ in to_write:
+    max_candidate_count = 0
+    for _, taxa_local, _, _, _, gene_taxon_to_taxa, _, _, candidate_count in to_write:
         taxa_global.update(taxa_local)
         if generate_names:
             to_scrape.update(gene_taxon_to_taxa.values())
+
+        max_candidate_count = max(max_candidate_count, candidate_count)
 
     if generate_names:
         printv("Attempting to scrape names.csv", args.verbose)
@@ -483,6 +506,13 @@ def process_folder(args, input_path):
     if args.position != {1, 2, 3}:
         positions = [i for i in range(3) if str(i+1) not in set(str(args.position))]
 
+    total_lax =  0
+    total_strict= 0
+    total_inform = 0
+    total_inform_lax = 0
+    column_stats_res = []
+    MISMATCHES = 2
+
     for (
         gene,
         taxa_local,
@@ -491,7 +521,34 @@ def process_folder(args, input_path):
         taxon_count,
         gene_taxon_to_taxa,
         path_to,
+        column_stats,
+        _,
     ) in to_write:
+        
+        this_lax = 0
+        this_strict = 0
+        this_inform = 0
+        this_inform_lax = 0
+        for (total, non_gap, most_common_inclusive, most_common_AA_count) in column_stats.values():
+            if non_gap >= max_candidate_count:
+                this_strict += 1
+                if most_common_inclusive < max_candidate_count - MISMATCHES:
+                    this_inform += 1
+                                                        
+            if non_gap != 0:
+                if non_gap >= 4:
+                    if most_common_AA_count < non_gap - MISMATCHES:
+                        this_inform_lax += 1
+                                                        
+                this_lax += 1
+
+        total_lax += this_lax
+        total_strict += this_strict
+        total_inform += this_inform
+        total_inform_lax += this_inform_lax
+            
+        column_stats_res.append((this_strict,f"{gene},{str(this_lax)},{str(this_strict)},{str(this_inform)},{str(this_inform_lax)}"))
+        
         if args.gene_kick:
             if kick_gene(taxa_local, gene_kick, taxa_global):
                 aa_path, nt_path = path_to
@@ -575,6 +632,16 @@ def process_folder(args, input_path):
                     fp.write(f"CHARSET {gene} = {start}-{end} ;\n")
 
                 fp.write("end;\n")
+
+    column_stats_res.sort(key = lambda x: x[0], reverse = True)
+    column_stats_res = ["Gene,Lax Count,Strict Count,Informative Count,Lax Informative Count"] + [i[1] for i in column_stats_res]
+
+    column_stats_res.append(f"Total,{str(total_lax)},{str(total_strict)},{str(total_inform)},{str(total_inform_lax)}")
+   
+    with open(str(processed_folder.joinpath("ColumnStats.csv")), "w") as fwcsv:
+        fwcsv.write("\n".join(column_stats_res))  
+
+            
     if args.count:
         out = ["Taxa,Taxon,Present,Total AA"]
 
