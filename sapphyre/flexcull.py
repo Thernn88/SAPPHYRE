@@ -8,12 +8,17 @@ from os import path, listdir, makedirs
 from collections import Counter, namedtuple
 from multiprocessing.pool import Pool
 from shutil import rmtree
+from .diamond import ReporterHit as Hit
 from phymmr_tools import (
     join_by_tripled_index,
     join_with_exclusions,
     join_triplets_with_exclusions,
     find_index_pair,
 )
+from Bio.Seq import Seq
+from parasail import profile_create_16, blosum62, nw_trace_scan_profile_16
+from . import rocky
+from msgspec import json
 from wrap_rocks import RocksDB
 
 from blosum import BLOSUM
@@ -827,8 +832,17 @@ def do_gene(fargs: FlexcullArgs) -> None:
     aa_out = references.copy()
     this_seqs = []
 
-    for header, sequence in candidates:
-        sequence = list(sequence)
+    db = rocky.get_rock("db")
+    this_db_entry = json.decode(db.get(f"gethits:{this_gene}"), type = list[Hit])
+    this_db_sequences = {}
+
+    for entry in this_db_entry:
+        this_db_sequences.setdefault(entry.node, {})[str(entry.frame)] = entry.seq
+
+    extensions = 0
+
+    for header, raw_sequence in candidates:
+        sequence = list(raw_sequence)
 
         gene = header.split("|")[0]
 
@@ -848,6 +862,46 @@ def do_gene(fargs: FlexcullArgs) -> None:
             character_at_each_pos,
             gap_present_threshold,
         )
+
+        if True:
+            if (cull_start, cull_end) == find_index_pair(raw_sequence, "-"):
+                fields = header.split("|")
+                node = fields[3]
+                if node.count("_") > 1:
+                    node = "NODE_"+node.split("_")[1]
+                frame = fields[4]
+                this_aa = str(Seq(this_db_sequences[node][frame]).translate())
+                profile = profile_create_16(this_aa, blosum62)
+                result = nw_trace_scan_profile_16(
+                    profile,
+                    raw_sequence[cull_start: cull_end],
+                    2,
+                    0,
+                )
+                start_offset = 0
+                for i, let in enumerate(result.traceback.ref):
+                    if let == "-":
+                        start_offset += 1
+                    else:
+                        break
+
+                aligned_aa = ("-" * (cull_start - start_offset)) + result.traceback.query
+                
+                #Bad alignment check
+                raw_start, raw_end = find_index_pair(raw_sequence, "-")
+
+                if aligned_aa[raw_start: raw_end] != raw_sequence[raw_start: raw_end]:
+                    #BLOW UP
+                    pass
+                else:
+                    for i in range(cull_end, len(aligned_aa)):
+
+                        if aligned_aa[i] not in character_at_each_pos[i]:
+                            break
+                        else:
+                            sequence[i] = aligned_aa[i]
+                            cull_end += 1
+                            extensions += 1
 
         if not kick:  # If also passed Cull End Calc. Finish
             out_line = ["-"] * cull_start + sequence[cull_start:cull_end]
@@ -1025,7 +1079,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
             writeFasta(nt_out_path, out_nt, fargs.compress)
 
-    return log
+    return log, extensions
 
 
 def do_folder(folder, args: MainArgs, non_coding_gene: set):
@@ -1047,6 +1101,13 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
     is_assembly = False
     if dbis_assembly and dbis_assembly == "True":
         is_assembly = True
+
+
+    hits_db_path = path.join(folder, "rocksdb", "hits")
+    rocky.create_pointer(
+        "db",
+        hits_db_path,
+    )
 
     folder_check(output_path)
     file_inputs = [
@@ -1130,10 +1191,12 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
             for input_gene in file_inputs
         ]
 
+    total_extensions = sum([i[1] for i in log_components])
+
     if args.debug:
         log_global = []
 
-        for component in log_components:
+        for component, _ in log_components:
             log_global.extend(component)
 
         log_global.sort()
@@ -1144,8 +1207,10 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
         log_out = path.join(output_path, "Culls.csv")
         with open(log_out, "w") as fp:
             fp.writelines(log_global)
+    
+    rocky.close_pointer("db")
 
-    printv(f"Done! Took {folder_time.differential():.2f}s", args.verbose)
+    printv(f"Done! Took {folder_time.differential():.2f}s. Extended a total of {total_extensions} bp", args.verbose)
 
 
 def main(args):
