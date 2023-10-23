@@ -9,7 +9,7 @@ from shutil import rmtree
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 from xxhash import xxh3_64
-from phymmr_tools import find_index_pair, delete_empty_columns, sigclust
+from phymmr_tools import find_index_pair, delete_empty_columns
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import gettempdir, parseFasta, printv, writeFasta
 
@@ -188,40 +188,34 @@ def seperate_into_clusters(
         if this_cluster is not None:
             if len(this_cluster) > SUBCLUSTER_AT:
                 clusters_to_create = ceil(len(this_cluster) / CLUSTER_EVERY)
-                records = [(header, data[header]) for header in this_cluster]
-                # sigclust( fasta_tuples, -k arg, -c arg) -> list[list[fasta_tuples]]
-                # produces c clusters and outputs them in a list
-                sub_clusters = sigclust(records, 8, clusters_to_create)
-                clusters.extend(sub_clusters)
-                continue
-                # with NamedTemporaryFile(
-                #     mode="w+",
-                #     dir=parent_tmpdir,
-                #     suffix=".fa",
-                # ) as this_tmp:
-                #     writeFasta(
-                #         this_tmp.name,
-                #         [(header, data[header]) for header in this_cluster],
-                #     )
-                #     with NamedTemporaryFile("r", dir=gettempdir()) as this_out:
-                #         run(
-                #             f"sigclust/SigClust -k 8 -c {clusters_to_create} {this_tmp.name} > {this_out.name}",
-                #             stdout=DEVNULL,
-                #             stderr=DEVNULL,
-                #             check=True,
-                #             shell=True,
-                #         )
-                #         sig_out = this_out.read()
-                #     sub_clusters = defaultdict(list)
-                #     for line in sig_out.split("\n"):
-                #         line = line.strip()
-                #         if line:
-                #             seq_index, clust_index = line.strip().split(",")
-                #             sub_clusters[clust_index].append(
-                #                 this_cluster[int(seq_index)],
-                #             )
-                #     clusters.extend(list(sub_clusters.values()))
-                #     continue
+                with NamedTemporaryFile(
+                    mode="w+",
+                    dir=parent_tmpdir,
+                    suffix=".fa",
+                ) as this_tmp:
+                    writeFasta(
+                        this_tmp.name,
+                        [(header, data[header]) for header in this_cluster],
+                    )
+                    with NamedTemporaryFile("r", dir=gettempdir()) as this_out:
+                        run(
+                            f"sigclust/SigClust -k 8 -c {clusters_to_create} {this_tmp.name} > {this_out.name}",
+                            stdout=DEVNULL,
+                            stderr=DEVNULL,
+                            check=True,
+                            shell=True,
+                        )
+                        sig_out = this_out.read()
+                    sub_clusters = defaultdict(list)
+                    for line in sig_out.split("\n"):
+                        line = line.strip()
+                        if line:
+                            seq_index, clust_index = line.strip().split(",")
+                            sub_clusters[clust_index].append(
+                                this_cluster[int(seq_index)],
+                            )
+                    clusters.extend(list(sub_clusters.values()))
+                    continue
             clusters.append(this_cluster)
 
     return clusters
