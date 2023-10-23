@@ -644,8 +644,10 @@ def do_folder(folder, args):
     if not path.exists(aa_path):
         printv(f"ERROR: Can't find aa ({aa_path}) folder. Abort", args.verbose, 0)
         return False
-    rmtree(align_path, ignore_errors=True)
-    mkdir(align_path)
+    if args.overwrite:
+        rmtree(align_path, ignore_errors=True)
+    if not path.exists(align_path):
+        mkdir(align_path)
 
     genes = [
         (gene, stat(path.join(aa_path, gene)).st_size)
@@ -677,22 +679,23 @@ def do_folder(folder, args):
         gene = file.split(".")[0]
         gene_file = path.join(aa_path, file)
         result_file = path.join(align_path, file.rstrip(".gz"))
-        func_args.append(
-            (
-                CmdArgs(
-                    command,
-                    gene_file,
-                    result_file,
-                    gene,
-                    args.verbose,
-                    args.compress,
-                    aln_path,
-                    args.debug,
-                    args.align_method.lower(),
-                    args.second_run,
+        if not path.exists(result_file) or stat(result_file).st_size == 0:
+            func_args.append(
+                (
+                    CmdArgs(
+                        command,
+                        gene_file,
+                        result_file,
+                        gene,
+                        args.verbose,
+                        args.compress,
+                        aln_path,
+                        args.debug,
+                        args.align_method.lower(),
+                        args.second_run,
+                    ),
                 ),
-            ),
-        )
+            )
 
     if args.processes > 1:
         with Pool(args.processes) as pool:

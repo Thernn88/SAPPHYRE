@@ -569,6 +569,12 @@ def subcmd_align(subparsers):
 
 def align_args(par):
     par.add_argument(
+        "-ovw",
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing files.",
+    )
+    par.add_argument(
         "-sr",
         "--second_run",
         action="store_true",
