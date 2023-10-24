@@ -672,8 +672,14 @@ def do_folder(folder, args):
     for file, _ in genes:
         gene = file.split(".")[0]
         gene_file = path.join(aa_path, file)
-        result_file = path.join(align_path, file.rstrip(".gz"))
-        if not path.exists(result_file) or stat(result_file).st_size == 0:
+        compress_result_file = path.join(align_path, file)
+        result_file = compress_result_file.rstrip(".gz")
+
+        exst_file = result_file if path.exists(result_file) else None
+        if not exst_file:
+            exst_file = compress_result_file if path.exists(compress_result_file) else None
+        
+        if not exst_file or stat(exst_file).st_size == 0:
             func_args.append(
                 (
                     CmdArgs(
