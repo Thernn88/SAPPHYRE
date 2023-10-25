@@ -1117,6 +1117,12 @@ def subcmd_wrap_final(sp):
         default="clustal",
         help="What alignment method to use.",
     )
+    par.add_argument(
+        "-ovw",
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing files.",
+    )
     par.set_defaults(func=wrap_final, formathelp=par.format_help)
 
 
