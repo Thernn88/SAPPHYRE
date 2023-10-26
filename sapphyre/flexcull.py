@@ -1230,7 +1230,7 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
     
     rocky.close_pointer("db")
 
-    printv(f"Done! Took {folder_time.differential():.2f}s. Extended a total of {total_extensions} bp", args.verbose)
+    printv(f"Done! Took {folder_time.differential():.2f}s. Extended a total of {total_extensions} AA", args.verbose)
 
 
 def main(args):
