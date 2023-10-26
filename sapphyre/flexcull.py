@@ -910,7 +910,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                             break
                         else:
                             sequence[i] = aligned_aa[i]
-                            nt_extension_align[header][i] = nt_seq[i - start - gap_offset]
+                            nt_extension_align[header][i * 3] = nt_seq[i - start - gap_offset]
                             cull_end += 1
                             extensions += 1
 
@@ -1050,12 +1050,20 @@ def do_gene(fargs: FlexcullArgs) -> None:
                     out_line = ("-" * cull_start_adjusted) + sequence[
                         cull_start_adjusted:cull_end_adjusted
                     ]
-
                     characters_till_end = len(sequence) - len(out_line)
                     out_line += (
                         "-" * characters_till_end
                     )  # Add dashes till reached input distance
 
+                    this_extensions = nt_extension_align.get(header, {})
+                    out_seq = []
+                    for i in range(0, len(out_line), 3):
+                        if i in this_extensions:
+                            out_seq.append(this_extensions[i])
+                        else:
+                            out_seq.append(out_line[i : i + 3])
+
+                    out_line = "".join(out_seq)
                     # out_line = [
                     #     out_line[i : i + 3]
                     #     if i not in positions_to_trim and i not in this_column_cull
@@ -1072,15 +1080,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
             for header, sequence in nt_out:
                 gap_cull = gap_pass_through.get(header, None)
                 out_seq = []
-                this_extensions = nt_extension_align.get(header, {})
-                for x, i in enumerate(range(0, len(sequence), 3)):
-                    if gap_cull and i in gap_cull:
-                        out_seq.append("---")
-                    else:
-                        if i in this_extensions:
-                            out_seq.append(this_extensions[i])
-                        else:
-                            out_seq.append(sequence[i : i + 3])
+                
                 if gap_cull:
                     out_nt.append(
                         (
@@ -1095,7 +1095,6 @@ def do_gene(fargs: FlexcullArgs) -> None:
                     )
                 else:
                     out_nt.append((header, sequence))
-
             out_nt = align_to_aa_order(out_nt, aa_out)
 
             writeFasta(nt_out_path, out_nt, fargs.compress)
