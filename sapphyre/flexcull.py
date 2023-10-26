@@ -840,6 +840,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
         this_db_sequences.setdefault(entry.node, {})[str(entry.frame)] = entry.seq
 
     extensions = 0
+    nt_extension_align = {}
 
     for header, raw_sequence in candidates:
         sequence = list(raw_sequence)
@@ -870,7 +871,10 @@ def do_gene(fargs: FlexcullArgs) -> None:
                 if node.count("_") > 1:
                     node = "NODE_"+node.split("_")[1]
                 frame = fields[4]
-                this_aa = str(Seq(this_db_sequences[node][frame]).translate())
+                nt_seq = this_db_sequences[node][frame]
+                
+                this_aa = str(Seq(nt_seq).translate())
+                nt_seq = [nt_seq[i:i+3] for i in range(0, len(nt_seq), 3)]
                 profile = profile_create_16(this_aa, blosum62)
                 result = nw_trace_scan_profile_16(
                     profile,
@@ -885,21 +889,28 @@ def do_gene(fargs: FlexcullArgs) -> None:
                     else:
                         break
 
-                aligned_aa = ("-" * (cull_start - start_offset)) + result.traceback.query
+                start = (cull_start - start_offset)
+                aligned_aa = ("-" * start) + result.traceback.query
                 
                 #Bad alignment check
                 raw_start, raw_end = find_index_pair(raw_sequence, "-")
+                gap_offset = aligned_aa[start : cull_end].count("-")
 
                 if aligned_aa[raw_start: raw_end] != raw_sequence[raw_start: raw_end]:
                     #BLOW UP
                     pass
                 else:
+                    nt_extension_align[header] = {}
                     for i in range(cull_end, len(aligned_aa)):
+                        if aligned_aa[i] == "-":
+                            gap_offset += 1
+                            continue
 
-                        if aligned_aa[i] not in character_at_each_pos[i]:
+                        elif aligned_aa[i] not in character_at_each_pos[i]:
                             break
                         else:
                             sequence[i] = aligned_aa[i]
+                            nt_extension_align[header][i] = nt_seq[i - start - gap_offset]
                             cull_end += 1
                             extensions += 1
 
@@ -1060,6 +1071,16 @@ def do_gene(fargs: FlexcullArgs) -> None:
             out_nt = []
             for header, sequence in nt_out:
                 gap_cull = gap_pass_through.get(header, None)
+                out_seq = []
+                this_extensions = nt_extension_align.get(header, {})
+                for x, i in enumerate(range(0, len(sequence), 3)):
+                    if gap_cull and i in gap_cull:
+                        out_seq.append("---")
+                    else:
+                        if i in this_extensions:
+                            out_seq.append(this_extensions[i])
+                        else:
+                            out_seq.append(sequence[i : i + 3])
                 if gap_cull:
                     out_nt.append(
                         (
