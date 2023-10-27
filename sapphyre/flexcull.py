@@ -902,10 +902,13 @@ def do_gene(fargs: FlexcullArgs) -> None:
                 else:
                     nt_extension_align[header] = {}
                     for i in range(cull_end, len(aligned_aa)):
+                        if i >= len(raw_sequence):
+                            break
+
                         if aligned_aa[i] == "-":
                             gap_offset += 1
                             continue
-
+                    
                         elif aligned_aa[i] not in character_at_each_pos[i]:
                             break
                         else:
