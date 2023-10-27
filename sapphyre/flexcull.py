@@ -992,7 +992,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
         # remove empty columns from refs and candidates
         aa_out, aa_positions_to_keep = delete_empty_columns(aa_out + this_seqs, False)
         if len(aa_out) == len(references):
-            return log  # Only refs
+            return log, 0  # Only refs
 
         # Recalcuate position based tables
         post_references = [i for i in aa_out if i[0].endswith(".")]
