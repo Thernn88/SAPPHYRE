@@ -18,9 +18,10 @@ from .timekeeper import TimeKeeper, KeeperMode
 
 
 class Sequence:
-    __slots__ = ("header", "aa_sequence", "nt_sequence", "taxon", "gene", "id")
+    __slots__ = ("raw_head", "header", "aa_sequence", "nt_sequence", "taxon", "gene", "id")
 
-    def __init__(self, header, aa_sequence, nt_sequence, taxon, gene, id) -> None:
+    def __init__(self, raw_head, header, aa_sequence, nt_sequence, taxon, gene, id) -> None:
+        self.raw_head = raw_head
         self.header = header
         self.aa_sequence = aa_sequence
         self.nt_sequence = nt_sequence
@@ -35,6 +36,10 @@ class Sequence:
         return self.header, self.aa_sequence
 
     def seq_with_regen_data(self):
+        if self.raw_head:
+            return self.raw_head
+        #Try to generate orthodb alike header
+        
         return (
             f">{self.header}"
             + ' {"organism_name": "'
@@ -414,7 +419,7 @@ def generate_subset(file_paths, taxon_to_kick: set):
             if taxon.lower() not in taxon_to_kick and data["organism_name"].lower() not in taxon_to_kick:
                 gene = data["pub_og_id"]
 
-                subset.add_sequence(Sequence(header, seq, "", taxon, gene, next(index)))
+                subset.add_sequence(Sequence(seq_record.description, header, seq, "", taxon, gene, next(index)))
 
     return subset
 
@@ -498,7 +503,7 @@ def main(args):
                 gene = data["pub_og_id"]
 
                 this_set.add_sequence(
-                    Sequence(header, seq, "", taxon, gene, next(index))
+                    Sequence(seq_record.description, header, seq, "", taxon, gene, next(index))
                 )
     elif input_file.split(".")[-1] in {
         "sql",
@@ -544,7 +549,7 @@ def main(args):
             if taxon not in kick:
                 if nt_id in nt_data:
                     nt_seq = nt_data[nt_id]
-                this_set.add_sequence(Sequence(header, aa_seq, nt_seq, taxon, gene, id))
+                this_set.add_sequence(Sequence(None, header, aa_seq, nt_seq, taxon, gene, id))
     else:
         printv("Input Detected: Folder containing Fasta", verbosity)
         file_paths = []
