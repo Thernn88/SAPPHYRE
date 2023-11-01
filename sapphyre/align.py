@@ -255,7 +255,7 @@ def generate_tmp_aln(
                 if len(sequence) != sequence.count("-"):
                     sequences.append((targets[header], sequence))
 
-        if align_method in {"base", "frags"}:
+        if align_method == "base":
             empty_columns = None
             for header, sequence in sequences:
                 if empty_columns is None:
@@ -285,16 +285,16 @@ def generate_tmp_aln(
                     ),
                 )
 
-        if len(to_write) <= 1 or align_method in {"base", "frags"}:
+        if len(to_write) <= 1 or align_method == "base":
             writeFasta(dest.name, to_write)
         else:
             writeFasta(tmp_prealign.name, to_write)
             tmp_prealign.flush()
 
-            if align_method == "mafft":
-                system(f"mafft --localpair --quiet --thread 1 --anysymbol '{tmp_prealign.name}' > '{dest.name}'")
-            elif align_method == "clustal":
+            if align_method == "clustal":
                 system(f"clustalo -i '{tmp_prealign.name}' -o '{dest.name}' --thread=1 --full --force")
+            else:
+                system(f"mafft --localpair --quiet --thread 1 --anysymbol '{tmp_prealign.name}' > '{dest.name}'")
 
     if debug:
         writeFasta(path.join(this_intermediates, "references.fa"), parseFasta(dest.name, True))
