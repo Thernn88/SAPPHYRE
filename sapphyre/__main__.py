@@ -285,7 +285,7 @@ def outlier_args(par):
         "-t",
         "--threshold",
         type=int,
-        default=100,
+        default=50,
         help="Greater than reference mean to be counted as an outlier. Default is 2x.",
     )
     par.add_argument(

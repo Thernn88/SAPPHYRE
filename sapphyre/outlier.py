@@ -45,13 +45,6 @@ def main(argsobj):
                 bad_folder = os.path.join(this_args.move_fails, os.path.basename(folder))
                 to_move.append((folder, bad_folder))
 
-        if not is_assembly:
-            printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
-            if not internal.main(this_args, False, from_folder):
-                print()
-                print(argsobj.format)
-            from_folder = "internal"
-
         printv("Simple Assembly To Ensure Consistency.", argsobj.verbose)
         if not collapser.main(this_args, from_folder):
             print()
@@ -70,11 +63,10 @@ def main(argsobj):
                 print(argsobj.formathelp())
             from_folder = "excise"
 
-        if is_assembly:
-            printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
-            if not internal.main(this_args, True, from_folder):
-                print()
-                print(argsobj.format)
+        printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
+        if not internal.main(this_args, True, from_folder):
+            print()
+            print(argsobj.format)
     # if to_move:
     #     printv("Moving Pre-flagged Folders.", argsobj.verbose)
 
