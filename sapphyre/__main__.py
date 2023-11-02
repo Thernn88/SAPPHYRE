@@ -426,14 +426,8 @@ def outlier_args(par):
         "--internal_consensus_threshold",
         type=float,
         default=0.65,
+        dest="internal_consensus_threshold",
         help="Minimum ratio for choosing a character in the consensus sequence",
-    )
-    par.add_argument(
-        "-ifc",
-        "--internal_flex_consensus",
-        type=float,
-        default=0.5,
-        help="Minimum identity for flex consensus in internals",
     )
     par.add_argument(
         "-idt",
