@@ -1,3 +1,4 @@
+from collections import defaultdict
 from os import path
 from multiprocessing.pool import Pool
 
@@ -87,7 +88,7 @@ def has_candidates(records: list) -> bool:
 
 
 def aa_internal(
-    gene: str,
+    candidates,
     consensus_threshold,
     distance_threshold,
     no_dupes,
@@ -96,19 +97,13 @@ def aa_internal(
 ):
     failing = set()
     # raws = [Record(head, seq) for head, seq in parseFasta(gene)]
-    raws = get_data_path(gene)
-    candidates, references = [], []
-    for record in raws:
-        if record.id[-1] != ".":
-            candidates.append(record)
-        else:
-            references.append(record)
+    
     # if not candidates:  # if no candidates are found, report to user
     #     print(f"{gene}: No Candidate Sequences found in file. Returning.")
         # return [], {}, []
     # candidates = excise_data_replacement(candidates, gene)
     if not candidates:
-        return [], {}, references
+        return [], {}
     if no_dupes:
         consensus_func = dumb_consensus
         sequences = [rec.seq for rec in candidates]
@@ -125,7 +120,7 @@ def aa_internal(
             failing.add(candidate.id)
             candidates[i] = None
     candidates = [cand for cand in candidates if cand is not None]
-    return candidates, failing, references
+    return candidates, failing
 
 
 def mirror_nt(input_path, output_path, failing, gene, compression):
@@ -139,21 +134,74 @@ def mirror_nt(input_path, output_path, failing, gene, compression):
     if not has_candidates(records):
         return
     writeFasta(str(output_path), [rec.get_pair() for rec in records], compress=compression)
+
+def get_records(gene):
+    raws = get_data_path(gene)
+    candidates, references = [], []
+    for record in raws:
+        if record.id[-1] != ".":
+            candidates.append(record)
+        else:
+            references.append(record)
+
+    return candidates, references
+
+def get_flex_consensus(references):
+    consensus = defaultdict(set)
+    for ref in references:
+        start, end = find_index_pair(ref.seq, "-")
+        for i in range(start, end):
+            consensus[i].add(ref.seq[i])
+    
+    return consensus
+
+
+def get_identity(candidate, consensus):
+    start, end = find_index_pair(candidate.seq, "-")
+    identity = 0
+    for i in range(start, end):
+        if candidate.seq[i] in consensus[i]:
+            identity += 1
+    return identity / (end-start)
+
+
+def kick_consensus(consensus_percent, candidates, consensus):
+    log = []
+    for i, candidate in enumerate(candidates):
+        identity = get_identity(candidate, consensus)
+        if identity < consensus_percent:
+            log.append(f"{candidate.id} kicked for low identity: {identity:.2f}")
+            candidates[i] = None
+    candidates = [cand for cand in candidates if cand is not None]
+    return candidates, log
+
+
 def run_internal(
     gene: str,
     nt_input: str,
     output_path,
     nt_output_path,
     consensus_threshold,
+    read_matching_consensus,
     distance_threshold,
     dupes,
     prepare_dupes,
     reporter_dupes,
-    decompress
+    decompress,
+    after_collapser,
 ):
     compression = not decompress
-    passing, failing, references = aa_internal(
-        gene,
+
+    candidates, references = get_records(gene)
+
+    log = []
+    if not after_collapser:
+        references_flex_consensus = get_flex_consensus(references)
+
+        candidates, log = kick_consensus(read_matching_consensus, candidates, references_flex_consensus)
+    
+    passing, failing = aa_internal(
+        candidates,
         consensus_threshold,
         distance_threshold,
         dupes,
@@ -161,11 +209,12 @@ def run_internal(
         reporter_dupes,
     )
     if not passing:  # if no eligible candidates, don't create the output file
-        return
+        return []
     aa_output = Path(output_path, "aa", gene.name)
     writeFasta(str(aa_output), [rec.get_pair() for rec in references + passing], compress=compression)
     mirror_nt(nt_input, nt_output_path, failing, aa_output.name.replace(".aa.", ".nt."), compression)
 
+    return log
 
 def main(args, after_collapser, from_folder):
     timer = TimeKeeper(KeeperMode.DIRECT)
@@ -217,14 +266,22 @@ def main(args, after_collapser, from_folder):
                     output_path,
                     nt_output_path,
                     args.internal_consensus_threshold,
+                    args.internal_flex_consensus,
                     args.internal_distance_threshold,
                     args.no_dupes,
                     prepare_dupes,
                     reporter_dupes,
-                    args.uncompress_intermediates
+                    args.uncompress_intermediates,
+                    after_collapser,
                 ),
             )
-        pool.starmap(run_internal, arguments, chunksize=1)
+        logs = pool.starmap(run_internal, arguments, chunksize=1)
+    if args.debug:
+        internal_consensus_dest = Path(folder, "outlier", "internal", "consensus.txt")
+        with open(internal_consensus_dest, "w") as fp:
+            for log in logs:
+                if log:
+                    fp.write("\n".join(log)+"\n")
     printv(f"Done! Took {timer.differential():.2f}s", args.verbose)
     return True
 
