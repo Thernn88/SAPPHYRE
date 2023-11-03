@@ -4,8 +4,8 @@ from math import ceil
 from multiprocessing import Pool
 from os import path, mkdir, listdir
 
-from msgspec import Struct, json
-from phymmr_tools import constrained_distance, find_index_pair, get_overlap, is_same_kmer, dumb_consensus, dumb_consensus_dupe
+from msgspec import Struct
+from phymmr_tools import constrained_distance, find_index_pair, get_overlap, is_same_kmer, dumb_consensus
 from wrap_rocks import RocksDB
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import writeFasta, parseFasta, printv
@@ -25,13 +25,10 @@ class CollapserArgs(Struct):
     gross_diference_percent: float
 
     from_folder: str
-    no_dupes: bool
 
 class BatchArgs(Struct):
     args: CollapserArgs
     genes: list
-    gene_prepare_dupe_counts: dict
-    gene_reporter_dupe_counts: dict
     nt_input_path: str
     nt_out_path: str
     aa_input_path: str
@@ -167,22 +164,12 @@ def do_folder(args, input_path):
 
     nt_db_path = path.join(input_path, "rocksdb", "sequences", "nt")
     is_assembly = False
-    prepare_dupe_counts, reporter_dupe_counts = {}, {}
     if path.exists(nt_db_path):
         nt_db = RocksDB(nt_db_path)
         dbis_assembly = nt_db.get("get:isassembly")
         
         if dbis_assembly and dbis_assembly == "True":
             is_assembly = True
-
-        if not args.no_dupes:
-            prepare_dupe_counts = json.decode(
-                nt_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]]
-            )
-            reporter_dupe_counts = json.decode(
-                nt_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]]
-            )
-
         del nt_db
 
     nt_input_path = path.join(input_path, "outlier", args.from_folder, "nt")
@@ -199,24 +186,19 @@ def do_folder(args, input_path):
 
     compress = not args.uncompress_intermediates or args.compress
 
-    batched_arguments = []
-
-    for i in range(0, len(genes), per_thread):
-        bgenes = genes[i : i + per_thread]
-        batched_arguments.append(BatchArgs(
-                args,
-                bgenes,
-                {gene: prepare_dupe_counts.get(gene.split('.')[0], {}) for gene in bgenes},
-                {gene: reporter_dupe_counts.get(gene.split('.')[0], {}) for gene in bgenes},
-                nt_input_path,
-                nt_out_path,
-                aa_input_path,
-                aa_out_path,
-                compress,
-                is_assembly,
-            )
+    batched_arguments = [
+        BatchArgs(
+            args,
+            genes[i : i + per_thread],
+            nt_input_path,
+            nt_out_path,
+            aa_input_path,
+            aa_out_path,
+            compress,
+            is_assembly,
         )
-        
+        for i in range(0, len(genes), per_thread)
+    ]
 
     if args.processes <= 1:
         results = []
@@ -262,29 +244,12 @@ def do_folder(args, input_path):
     return all_passed
 
 
-def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_counts):
-    output = []
-    for header, sequence in sequences:
-        node = header.split("|")[3]
-        dupes = prepare_dupe_counts.get(node, 1) + sum(
-            prepare_dupe_counts.get(node, 1)
-            for node in reporter_dupe_counts.get(node, [])
-        )
-        output.append((sequence, dupes))
-    return output
-
-
-def kick_read_consensus(aa_output, prepare_dupes, reporter_dupes, match_percent, nodes, kicked_headers, consensus_kicks, debug, gene):
+def kick_read_consensus(aa_output, match_percent, nodes, kicked_headers, consensus_kicks, debug, gene):
     ref_average_data_length = []
     ref_consensus = defaultdict(list)
-    reference_seqs = [(header, seq) for header, seq in aa_output if header.endswith(".")]
-    if prepare_dupes and reporter_dupes:
-        bundled_seqs = bundle_seqs_and_dupes(reference_seqs, prepare_dupes, reporter_dupes)
-        ref_consensus_seq = dumb_consensus_dupe(bundled_seqs, 0.5)
-    else:
-        ref_consensus_seq = dumb_consensus([seq for _, seq in reference_seqs], 0.5)
-
-    for _, seq in reference_seqs:
+    reference_seqs = [seq for header, seq in aa_output if header.endswith(".")]
+    ref_consensus_seq = dumb_consensus(reference_seqs, 0.5)
+    for seq in reference_seqs:
         start, end = find_index_pair(seq, "-")
         for i in range(start, end):
             ref_consensus[i].append(seq[i])
@@ -454,9 +419,6 @@ def process_batch(
         nt_in = path.join(batch_args.nt_input_path, gene)
         aa_in = path.join(batch_args.aa_input_path, gene.replace(".nt.", ".aa."))
 
-        prepare_dupe_counts = batch_args.gene_prepare_dupe_counts[gene]
-        reporter_dupe_counts = batch_args.gene_reporter_dupe_counts[gene]
-
         aa_sequences = parseFasta(aa_in)
         
         aa_output = []
@@ -493,17 +455,7 @@ def process_batch(
                 )
             )
 
-        ref_average_data_length, nodes, ref_consensus_seq = kick_read_consensus(
-                aa_output,
-                prepare_dupe_counts,
-                reporter_dupe_counts,
-                args.matching_consensus_percent,
-                nodes,
-                kicked_headers,
-                consensus_kicks,
-                args.debug,
-                gene
-            )
+        ref_average_data_length, nodes, ref_consensus_seq = kick_read_consensus(aa_output, args.matching_consensus_percent, nodes, kicked_headers, consensus_kicks, args.debug, gene)
 
         if not nodes:
             total += aa_count
@@ -599,7 +551,6 @@ def main(args, from_folder):
         matching_consensus_percent = args.matching_consensus_percent,
         gross_diference_percent = args.gross_diference_percent,
         from_folder = from_folder,
-        no_dupes = args.no_dupes,
     )
     return do_folder(this_args, args.INPUT)
 
