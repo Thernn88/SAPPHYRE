@@ -42,6 +42,8 @@ def parse_fasta(gene_path: str) -> tuple[list[tuple[str, str]], list[tuple[str, 
     candidates: list[tuple[str, str]] = []
     end_of_references = False
     real_gene_path = gene_path if path.exists(gene_path) else str(gene_path).replace("/excise/", "/collapsed/")
+    if not path.exists(real_gene_path):
+        real_gene_path = str(gene_path).replace("/excise/", "/blosum/")
     try:
         for header, sequence in parseFasta(real_gene_path):
             if end_of_references is False:

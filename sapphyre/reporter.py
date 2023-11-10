@@ -34,6 +34,7 @@ MainArgs = namedtuple(
         "minimum_bp",
         "gene_list_file",
         "clear_output",
+        "gene_family_mapping",
     ],
 )
 
@@ -317,7 +318,8 @@ def print_unmerged_sequences(
     verbose: int,
     mat: dict,
     is_assembly: bool,
-    exact_match_amount: int
+    exact_match_amount: int,
+    gfm_mode: bool,
 ) -> tuple[dict[str, list], list[tuple[str, str]], list[tuple[str, str]]]:
     """Returns a list of unique trimmed sequences for a given gene with formatted headers.
 
@@ -369,7 +371,7 @@ def print_unmerged_sequences(
         aa_seq = translate_cdna(nt_seq)
 
         # Trim to match reference
-        if not is_assembly:
+        if not is_assembly and not gfm_mode:
             r_start, r_end = hit.get_bp_trim(
                 aa_seq, core_aa_seqs, trim_matches, is_positive_match, debug_fp, header, mat, exact_match_amount
             )
@@ -485,6 +487,7 @@ OutputArgs = namedtuple(
         "minimum_bp",
         "debug",
         "is_assembly",
+        "gfm_mode",
     ],
 )
 
@@ -555,7 +558,8 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.verbose,
         mat,
         oargs.is_assembly,
-        oargs.EXACT_MATCH_AMOUNT
+        oargs.EXACT_MATCH_AMOUNT,
+        oargs.gfm_mode,
     )
     if debug_alignments:
         debug_alignments.close()
@@ -677,7 +681,8 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
                     EXACT_MATCH_AMOUNT,
                     args.minimum_bp,
                     args.debug,
-                    is_assembly
+                    is_assembly,
+                    args.gene_family_mapping,
                 ),
             ),
         )

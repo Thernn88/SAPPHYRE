@@ -31,7 +31,10 @@ def main(argsobj):
             print()
             print(argsobj.formathelp())
             return  
-        from_folder = "blosum"      
+        from_folder = "blosum"    
+
+        if argsobj.gene_family_mapping:
+            return True  
 
         if not argsobj.no_excise:
             printv("Checking for severe contamination.", argsobj.verbose)

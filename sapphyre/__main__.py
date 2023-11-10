@@ -251,6 +251,7 @@ def reporter(args):
         args.minimum_bp,
         args.gene_list_file,
         args.clear_output,
+        args.gene_family_mapping,
     )
     if not reporter.main(mainargs):
         print(args.formathelp())
@@ -1270,6 +1271,13 @@ def main():
         action="store_false",
         default=True,
         help="Output fasta files as compressed files using gzip",
+    )
+    parser.add_argument(
+        "-gfm",
+        "--gene_family_mapping",
+        action="store_true",
+        default=False,
+        help="Handle pipeline data in Gene Family Mapping mode",
     )
     parser.add_argument(
         "-v",

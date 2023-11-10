@@ -686,10 +686,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
     min_count = min(most_common[0:5], key=lambda x: x[1])[1]
     target_count = min_count - (min_count * args.top_ref)
     for taxa, count in most_common:
-        if count >= target_count:
+        if args.gene_family_mapping or count >= target_count:
             top_refs.add(taxa)
             top_targets.update(taxon_to_targets[taxa])
-        if count >= min_count:
+        if args.gene_family_mapping or count >= min_count:
             pairwise_refs.add(taxa)
     target_has_hit = set(df["target"].unique())
     df = df[(df["target"].isin(top_targets))]
