@@ -36,8 +36,6 @@ class Sequence:
         return self.header, self.aa_sequence
 
     def seq_with_regen_data(self):
-        if self.raw_head:
-            return self.raw_head
         #Try to generate orthodb alike header
         
         return (
@@ -416,9 +414,8 @@ def generate_subset(file_paths, taxon_to_kick: set):
         for seq_record in SeqIO.parse(file, "fasta"):
             header = seq_record.description
             seq = str(seq_record.seq)
-
             pot_taxon = header.lower()[:4]
-            if "agla" in pot_taxon or "dpon" in pot_taxon or "apla" in pot_taxon:
+            if "{" not in header and ("agla" in pot_taxon or "dpon" in pot_taxon or "apla" in pot_taxon):
                 diff_case = True
 
             if diff_case:
