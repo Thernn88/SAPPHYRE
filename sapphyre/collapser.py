@@ -104,7 +104,7 @@ class NODE(Struct):
         return matching_percent < kick_percent, matching_percent
 
     def contig_header(self):
-        contig_node = self.header.split("|")[3]
+        contig_node = self.header.split("|")[-2]
         children_nodes = "|".join([i.split("|")[3] for i in self.children])
         return f"CONTIG_{contig_node}|{children_nodes}"
 

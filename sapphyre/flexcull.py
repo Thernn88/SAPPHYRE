@@ -867,10 +867,10 @@ def do_gene(fargs: FlexcullArgs) -> None:
         if True:
             if (cull_start, cull_end) == find_index_pair(raw_sequence, "-"):
                 fields = header.split("|")
-                node = fields[3]
+                node = fields[-2]
                 if node.count("_") > 1:
                     node = "NODE_"+node.split("_")[1]
-                frame = fields[4]
+                frame = fields[-1]
                 nt_seq = this_db_sequences[node][frame]
                 
                 this_aa = str(Seq(nt_seq).translate())

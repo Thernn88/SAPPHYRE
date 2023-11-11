@@ -38,7 +38,7 @@ def folder_check(taxa_path: Path, debug: bool) -> None:
 def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_counts):
     output = []
     for rec in sequences:
-        node = rec.id.split("|")[3]
+        node = rec.id.split("|")[-2]
         dupes = prepare_dupe_counts.get(node, 1) + sum(
             prepare_dupe_counts.get(node, 1)
             for node in reporter_dupe_counts.get(node, [])

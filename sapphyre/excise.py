@@ -175,7 +175,7 @@ def check_covered_bad_regions(
 def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_counts):
     output = []
     for header, seq in sequences:
-        node = header.split("|")[3]
+        node = header.split("|")[-2]
         dupes = prepare_dupe_counts.get(node, 1) + sum(
             prepare_dupe_counts.get(node, 1)
             for node in reporter_dupe_counts.get(node, [])

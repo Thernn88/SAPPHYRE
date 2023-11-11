@@ -354,17 +354,30 @@ def print_unmerged_sequences(
         reference_frame = str(hit.frame)
 
         # Format header to gene|taxa_name|taxa_id|sequence_id|frame
-        header = (
-            gene
-            + "|"
-            + hit.query
-            + "|"
-            + taxa_id
-            + "|"
-            + base_header
-            + "|"
-            + reference_frame
-        )
+        # unless in gfm then remove the taxa name
+
+        if gfm_mode:
+            header = (
+                gene
+                + "|"
+                + taxa_id
+                + "|"
+                + base_header
+                + "|"
+                + reference_frame
+            )
+        else:
+            header = (
+                gene
+                + "|"
+                + hit.query
+                + "|"
+                + taxa_id
+                + "|"
+                + base_header
+                + "|"
+                + reference_frame
+            )
 
         # Translate to AA
         nt_seq = hit.seq
@@ -438,18 +451,30 @@ def print_unmerged_sequences(
                     if base_header in header_mapped_x_times:
                         # Make header unique
                         old_header = base_header
-                        header = (
-                            gene
-                            + "|"
-                            + hit.query
-                            + "|"
-                            + taxa_id
-                            + "|"
-                            + base_header
-                            + f"_{header_mapped_x_times[old_header]}"
-                            + "|"
-                            + reference_frame
-                        )
+                        if gfm_mode:
+                            header = (
+                                gene
+                                + "|"
+                                + taxa_id
+                                + "|"
+                                + base_header
+                                + f"_{header_mapped_x_times[old_header]}"
+                                + "|"
+                                + reference_frame
+                            )
+                        else:
+                            header = (
+                                gene
+                                + "|"
+                                + hit.query
+                                + "|"
+                                + taxa_id
+                                + "|"
+                                + base_header
+                                + f"_{header_mapped_x_times[old_header]}"
+                                + "|"
+                                + reference_frame
+                            )
 
                         header_mapped_x_times[base_header] += 1
                 else:

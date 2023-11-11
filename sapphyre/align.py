@@ -62,6 +62,11 @@ def get_start(sequence: str) -> int:
     return -1
 
 
+def get_node_index(header: str):
+    node = int(header.split("|")[2].split("_")[0])
+    return node
+
+
 def process_genefile(
     gene_path: str,
 ) -> tuple[int, dict[str, str], dict[str, str], dict[str, list[str]], dict[str, str]]:
@@ -312,6 +317,7 @@ CmdArgs = namedtuple(
         "debug",
         "align_method",
         "second_run",
+        "gfm_mode",
     ],
 )
 
@@ -625,7 +631,11 @@ def run_command(args: CmdArgs) -> None:
                     inserted += 1
                     to_write.append((insertion_header, sequence))
             to_write.append((header, sequence))
-    to_write.sort(key=lambda x: get_start(x[1]))
+
+    if args.gfm_mode:
+        to_write.sort(key=lambda x: get_node_index(x[0]))
+    else:
+        to_write.sort(key=lambda x: get_start(x[1]))
 
     writeFasta(args.result_file, references+to_write, compress=args.compress)
     printv(f"Done. Took {keeper.differential():.2f}", args.verbose, 3)  # Debug
@@ -699,6 +709,7 @@ def do_folder(folder, args):
                         args.debug,
                         args.align_method.lower(),
                         args.second_run,
+                        args.gene_family_mapping,
                     ),
                 ),
             )
