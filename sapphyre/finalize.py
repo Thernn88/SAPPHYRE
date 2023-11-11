@@ -261,7 +261,10 @@ def clean_gene(gene_config: GeneConfig):
         for col, chars in col_dict.items():
             this_most_common = Counter(chars).most_common()
             most_common_inclusive = this_most_common[0][1]
-            most_common_AA_count =  this_most_common[0][1] if this_most_common[0][0] == "-" else this_most_common[1][1]
+            if this_most_common[0][0] == "-" and len(this_most_common) == 1:
+                most_common_AA_count = 0
+            else:
+                most_common_AA_count =  this_most_common[0][1] if this_most_common[0][0] == "-" else this_most_common[1][1]
             column_stats[col] = len(chars), len(chars)-chars.count("-"), most_common_inclusive, most_common_AA_count            
 
         aa_target_content.extend(aa_content)
