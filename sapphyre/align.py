@@ -63,7 +63,7 @@ def get_start(sequence: str) -> int:
 
 
 def get_node_index(header: str):
-    node = int(header.split("|")[2].split("_")[0])
+    node = int(header.split("|")[2].split("_")[1])
     return node
 
 
