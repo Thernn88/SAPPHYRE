@@ -20,6 +20,7 @@ def return_aligned_paths(
     specified_dna_table: dict,
     verbose: bool,
     compress: bool,
+    gfm_mode: bool,
 ) -> Generator[Path, Any, Any]:
     for path_nt, path_aa in zip(glob_paths_taxa, glob_paths_genes):
         if not path_nt.is_file() or not path_aa.is_file():
@@ -38,6 +39,7 @@ def return_aligned_paths(
             specified_dna_table,
             verbose,
             compress,
+            gfm_mode,
         )
 
 
@@ -46,6 +48,7 @@ def prepare_taxa_and_genes(
     specified_dna_table,
     verbose,
     compress,
+    gfm_mode,
 ) -> tuple[Generator[tuple[Path, Path, Path], Any, Any], int]:
     input_path = Path(input)
 
@@ -80,6 +83,7 @@ def prepare_taxa_and_genes(
         specified_dna_table,
         verbose,
         compress,
+        gfm_mode,
     )
 
     return out_generator, len(glob_aa)
@@ -99,10 +103,16 @@ def find_end(sequence: str, gap_character="-") -> int:
     return -1
 
 
+def get_node_index(header: str):
+    node = int(header.split("|")[2].split("_")[1])
+    return node
+
+
 def read_and_convert_fasta_files(
     aa_file: str,
     nt_file: str,
     verbose: bool,
+    gfm_mode: bool,
 ) -> dict[str, tuple[list[tuple[str, str]], list[tuple[str, str]]]]:
     aas = []
     nts = {}
@@ -123,7 +133,10 @@ def read_and_convert_fasta_files(
         else:
             aa_intermediate.append((aa_header.strip(), aa_seq.strip()))
     # sort aa candidates by first and last data bp
-    aa_intermediate.sort(key=lambda x: (find_start(x[1]), find_end(x[1])))
+    if gfm_mode:
+        aa_intermediate.sort(key=lambda x: get_node_index(x[0]))
+    else:
+        aa_intermediate.sort(key=lambda x: (find_start(x[1]), find_end(x[1])))
     # add candidates to references
     aas.extend(aa_intermediate)
 
@@ -162,10 +175,11 @@ def worker(
     specified_dna_table: dict,
     verbose: bool,
     compress: bool,
+    gfm_mode: bool,
 ) -> bool:
     gene = ospath.basename(aa_file).split(".")[0]
     printv(f"Doing: {gene}", verbose, 2)
-    seqs = read_and_convert_fasta_files(aa_file, nt_file, verbose)
+    seqs = read_and_convert_fasta_files(aa_file, nt_file, verbose, gfm_mode)
 
     if seqs is False:
         return False
@@ -931,6 +945,7 @@ def main(args):
             specified_dna_table,
             args.verbose,
             args.compress,
+            args.gene_family_mapping,
         )
 
         success = run_batch_threaded(num_threads=args.processes, ls=this_taxa_jobs)
