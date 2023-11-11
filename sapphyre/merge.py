@@ -195,6 +195,43 @@ def non_overlap_chunks(sequence_list: list) -> list[Sequence]:
 
     return result
 
+
+def get_node_index(header):
+    return int(header.split("|")[-2].split("_")[1])
+
+
+def gfm_disperse(sequence_list: list) -> list[tuple]:
+    MAX_DISTANCE = 4
+
+    current_index = None
+
+    groups = []
+    group = []
+
+    for sequence in sequence_list:
+        if current_index is None or get_node_index(sequence.header) - current_index > MAX_DISTANCE:
+            if group:
+                groups.append(group)
+
+            current_index = get_node_index(sequence.header)
+            group = []
+        
+        else:
+            group.append(sequence)
+
+    out_groups = []
+    for group in groups:
+        group_start = min(seq.start for seq in group)
+        group_end = max(seq.end for seq in group)
+        group_region = (group_start, group_end)
+        group.sort(key=lambda x: x.start)
+
+        out_groups.append((group_region, group))
+
+    return out_groups
+        
+
+
 def do_protein(
     protein: Literal["aa", "nt"],
     gene_path,
@@ -209,6 +246,7 @@ def do_protein(
     ignore_overlap_chunks,
     special_merge,
     DNA_CODONS,
+    gfm_mode: bool,
     debug=None,
 ):
     references, candidates = parse_fasta(gene_path)
@@ -223,7 +261,10 @@ def do_protein(
     for header, sequence in references:
         gene_out.append((header, sequence))
         if protein == "aa":
-            taxon = header.split("|")[1]
+            if gfm_mode:
+                taxon = header.split("|")[2] # use taxa id
+            else:
+                taxon = header.split("|")[1]
             comparison_sequences[taxon] = sequence
 
     # Grab all the candidate sequences and sort into taxa id based groups
@@ -233,20 +274,27 @@ def do_protein(
         return header.split("|")[2]
 
     is_old_header = True
-    if len(candidates[0][0].split("|")[-1]) <= 2:
+    if len(candidates[0][0].split("|")[-1]) <= 3:
         is_old_header = False
 
     for header, sequence in candidates:
         start, end = find_index_pair(sequence, "-")
         this_object = Sequence(start, end, header, sequence, is_old_header)
-        taxa = get_taxa(header)
+        if gfm_mode:
+            taxa = ""
+        else:
+            taxa = get_taxa(header)
         taxa_groups.setdefault(taxa, []).append(this_object)
 
     for sequences_to_merge in taxa_groups.values():
-        # Sort by start position
-        sequences_to_merge.sort(key=lambda x: x.start)
+        if not gfm_mode:
+            # Sort by start position
+            sequences_to_merge.sort(key=lambda x: x.start)
         # Disperse sequences into clusters of overlap
-        if special_merge:
+        if gfm_mode:
+            # overlap_groups = non_overlap_chunks(sequences_to_merge)
+            overlap_groups = gfm_disperse(sequences_to_merge)
+        elif special_merge:
             overlap_groups = non_overlap_chunks(sequences_to_merge)
         elif ignore_overlap_chunks:
             overlap_groups = [
@@ -259,10 +307,13 @@ def do_protein(
             # Use the header of the sequence that starts first as the base
             base_header = this_sequences[0].header
 
-            try:
-                this_gene, _, this_taxa_id, node, frame = base_header.split("|")
-            except ValueError:
-                this_gene, _, this_taxa_id, node = base_header.split("|")
+            if gfm_mode:
+                this_gene, this_taxa_id, node, frame = base_header.split("|")
+            else:
+                try:
+                    this_gene, _, this_taxa_id, node, frame = base_header.split("|")
+                except ValueError:
+                    this_gene, _, this_taxa_id, node = base_header.split("|")
 
             # Create a list of each header and sequence that is present in this overlap region
             consists_of = []
@@ -350,7 +401,7 @@ def do_protein(
                             taxons_of_split = [
                                 get_ref(header)
                                 for header in headers_at_current_point
-                                if get_ref(header) in comparison_sequences
+                                # if get_ref(header) in comparison_sequences
                             ]
 
                         comparison_taxa = None
@@ -618,6 +669,7 @@ def do_gene(
     ignore_overlap_chunks,
     special_merge,
     compress,
+    gfm_mode,
 ) -> None:
     """Merge main loop. Opens fasta file, parses sequences and merges based on taxa."""
     already_calculated_splits = {}
@@ -705,6 +757,7 @@ def do_gene(
         ignore_overlap_chunks,
         special_merge,
         DNA_CODONS,
+        gfm_mode,
         debug=debug,
     )
 
@@ -722,6 +775,7 @@ def do_gene(
         ignore_overlap_chunks,
         special_merge,
         DNA_CODONS,
+        gfm_mode,
         debug=debug,
     )
 
@@ -765,13 +819,15 @@ def do_folder(folder: Path, args):
         reporter_dupe_counts = {}
         ref_stats = []
 
-    if is_assembly:
-        input_path = Path(str(folder).replace("/excise/", "/internal/"))
+    if args.gene_family_mapping:
+        input_path = Path(str(folder),"outlier","blosum")
+    elif is_assembly:
+        input_path = Path(str(folder),"outlier","internal")
     else:
-        input_path = folder
+        input_path = Path(str(folder),"outlier","excise")
 
-    aa_input = Path(input_path, args.aa_input)
-    nt_input = Path(input_path, args.nt_input)
+    aa_input = Path(input_path, "aa")
+    nt_input = Path(input_path, "nt")
 
     if not path.exists(aa_input):
         print(aa_input)
@@ -814,6 +870,7 @@ def do_folder(folder: Path, args):
                     args.ignore_overlap_chunks,
                     args.special_merge,
                     args.compress,
+                    args.gene_family_mapping,
                 ),
             )
         with Pool(args.processes) as pool:
@@ -845,6 +902,7 @@ def do_folder(folder: Path, args):
                 args.ignore_overlap_chunks,
                 args.special_merge,
                 args.compress,
+                args.gene_family_mapping,
             )
     printv(f"Done! Took {folder_time.differential():.2f}s", args.verbose)
 
