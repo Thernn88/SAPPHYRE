@@ -241,13 +241,14 @@ def clean_gene(gene_config: GeneConfig):
     nt_target_content = []
     taxon_count = {}
     gene_taxon_to_taxa = {}
+    gene_taxa_present = {}
 
     column_stats = {}
     candidate_count = 0 
 
     if gene_config.gene in gene_config.target or not gene_config.sort:
         if gene_config.count_taxa or gene_config.generating_names:
-            taxon_count, gene_taxon_to_taxa = taxon_present(aa_content)
+            taxon_count, gene_taxon_to_taxa, gene_taxa_present = taxon_present(aa_content)
 
 
         col_dict = defaultdict(list)
@@ -302,7 +303,8 @@ def clean_gene(gene_config: GeneConfig):
         gene_taxon_to_taxa,
         path_to,
         column_stats,
-        candidate_count
+        candidate_count,
+        gene_taxa_present
     )
 
 
@@ -317,17 +319,19 @@ def get_taxa_local(aa_content: list) -> set:
 def taxon_present(aa_content: list) -> dict:
     taxonc_present = defaultdict({"p": 0, "bp": 0}.copy)
     gene_taxon_to_taxa = {}
+    taxa_present = set()
     for header, sequence in aa_content:
         taxa = header.split("|")[2]
         taxon = header.split("|")[1]
 
         if not header.endswith("."):
             gene_taxon_to_taxa[taxon] = taxa
+            taxa_present.add(taxa)
 
         taxonc_present[taxon]["p"] += 1
         taxonc_present[taxon]["bp"] += len(sequence) - sequence.count("-")
 
-    return taxonc_present, gene_taxon_to_taxa
+    return taxonc_present, gene_taxon_to_taxa, taxa_present
 
 
 def scrape_taxa(taxas):
@@ -471,10 +475,10 @@ def process_folder(args, input_path):
     taxa_global = set()
     to_scrape = set()
     max_candidate_count = 0
-    for _, taxa_local, _, _, _, gene_taxon_to_taxa, _, _, candidate_count in to_write:
+    for _, taxa_local, _, _, _, _, _, _, candidate_count, taxa_present in to_write:
         taxa_global.update(taxa_local)
         if generate_names:
-            to_scrape.update(gene_taxon_to_taxa.values())
+            to_scrape.update(taxa_present)
 
         max_candidate_count = max(max_candidate_count, candidate_count)
 
@@ -529,8 +533,8 @@ def process_folder(args, input_path):
         path_to,
         column_stats,
         _,
+        _,
     ) in to_write:
-        
         this_lax = 0
         this_strict = 0
         this_inform = 0
