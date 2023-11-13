@@ -792,10 +792,10 @@ def subcmd_finalize(subparsers):
     )
     par.add_argument(
         "-k",
-        "--kick_file",
+        "--kick",
         type=str,
-        default="TaxaKick.txt",
-        help="Percent",
+        default=None,
+        help="Kicks taxa listed in line seperated file.",
     )
     par.add_argument(
         "-t",
@@ -836,12 +836,6 @@ def subcmd_finalize(subparsers):
         "--count",
         action="store_true",
         help="Count taxa in each gene and output to csv file.",
-    )
-    par.add_argument(
-        "-kt",
-        "--kick_taxa",
-        action="store_true",
-        help="Kick taxa present in kick file provided.",
     )
     par.add_argument(
         "-p",

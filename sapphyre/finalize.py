@@ -410,8 +410,8 @@ def process_folder(args, input_path):
         dir.mkdir(exist_ok=True)
 
     to_kick = set()
-    if args.kick_taxa and args.kick_file:
-        with open(taxa_folder.joinpath(args.kick_file), encoding="utf-8-sig") as fp:
+    if args.kick:
+        with open(taxa_folder.joinpath(args.kick), encoding="utf-8-sig") as fp:
             for line in fp:
                 to_kick.add(line.strip())
 
