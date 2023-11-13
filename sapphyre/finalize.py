@@ -539,7 +539,7 @@ def process_folder(args, input_path):
         this_strict = 0
         this_inform = 0
         this_inform_lax = 0
-        for (total, non_gap, most_common_inclusive, most_common_AA_count) in column_stats.values():
+        for (_, non_gap, most_common_inclusive, most_common_AA_count) in column_stats.values():
             if non_gap >= max_candidate_count:
                 this_strict += 1
                 if most_common_inclusive < max_candidate_count - MISMATCHES:
