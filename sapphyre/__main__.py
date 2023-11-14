@@ -158,7 +158,7 @@ def diamond_args(par):
         "--top-ref",
         type=float,
         default=0.025,
-        help="Dynamically adjusts %% of hits a reference is less than our top 5 and still a good ref.",
+        help="Extends the top 5 refs to include any ref with a count within this percentage of the top refs.",
     )
     par.add_argument(
         "-ip",
@@ -366,9 +366,9 @@ def outlier_args(par):
         default=0.65,
     )
     par.add_argument(
-        "--no_excise", 
-        action="store_true", 
-        default=False, 
+        "--no_excise",
+        action="store_true",
+        default=False,
         help="Disable excise runs",
     )
     par.add_argument(
