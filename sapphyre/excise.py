@@ -2,7 +2,14 @@ from multiprocessing import Pool
 from os import path, mkdir, listdir
 from shutil import move
 from pathlib import Path
-from phymmr_tools import dumb_consensus, convert_consensus, find_index_pair, dumb_consensus_dupe, get_overlap, is_same_kmer
+from phymmr_tools import (
+    dumb_consensus,
+    convert_consensus,
+    find_index_pair,
+    dumb_consensus_dupe,
+    get_overlap,
+    is_same_kmer,
+)
 from wrap_rocks import RocksDB
 
 from msgspec import json
@@ -134,7 +141,7 @@ def check_bad_regions(
             r += 1
             continue
         if begin is not None:
-            a, b = first_last_X(consensus[begin:r+1])
+            a, b = first_last_X(consensus[begin : r + 1])
             a, b = a + begin + offset, b + begin + offset
             if b not in output:
                 output[b] = (a, b)
@@ -420,7 +427,8 @@ def main(args, override_cut, sub_dir):
     loci_containing_bad_regions = len([x[1] for x in results if x[1]])
     kicked_sequences = sum(x[2] for x in results if x[1])
     printv(
-        f"{input_folder}: {loci_containing_bad_regions} bad loci found. Kicked {kicked_sequences} sequences", args.verbose
+        f"{input_folder}: {loci_containing_bad_regions} bad loci found. Kicked {kicked_sequences} sequences",
+        args.verbose,
     )
 
     if args.debug:

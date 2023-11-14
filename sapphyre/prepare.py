@@ -41,6 +41,7 @@ ASSEMBLY_LEN = 750
 CHOMP_LEN = 750
 CHOMP_CUTOFF = 10000
 
+
 class IndexIter:
     def __init__(self) -> None:
         self.counter = count(1)
@@ -59,7 +60,7 @@ def truncate_taxa(taxa: str, extension=None) -> str:
     Returns the string + suffix to check for name matches.
     """
     # search for _# and _R#, where # is digits
-    result = taxa.replace("_001","")
+    result = taxa.replace("_001", "")
     m = re.search(r"(_\d.fa)|(_R\d.fa)|(_part\d.fa)", result + extension)
 
     if m:
@@ -116,7 +117,14 @@ def glob_for_fasta_and_save_for_runs(
 
 
 class SeqDeduplicator:
-    def __init__(self, db: Any, minimum_sequence_length: int, verbose: int, overlap_length, rename) -> None:
+    def __init__(
+        self,
+        db: Any,
+        minimum_sequence_length: int,
+        verbose: int,
+        overlap_length,
+        rename,
+    ) -> None:
         self.minimum_sequence_length = minimum_sequence_length
         self.verbose = verbose
         self.nt_db = db
@@ -124,6 +132,7 @@ class SeqDeduplicator:
         self.this_assembly = False
         self.overlap_length = overlap_length
         self.rename = rename
+
     def __call__(
         self,
         fa_file_path: str,
@@ -193,7 +202,7 @@ class SeqDeduplicator:
                     self.this_assembly = True
 
                 if len(seq) > CHOMP_CUTOFF:
-                    for i in range(0, len(seq), CHOMP_LEN-self.overlap_length):
+                    for i in range(0, len(seq), CHOMP_LEN - self.overlap_length):
                         if self.rename:
                             this_header = f"NODE_{this_index}"
                         else:
@@ -206,7 +215,7 @@ class SeqDeduplicator:
                     if not self.rename and len(n_sequences) > 1:
                         this_header = f"{header}_{individual_index}"
                         next(individual_index)
-                        
+
                     self.lines.append(f">{this_header}\n{seq}\n")
                     next(this_index)
 
@@ -279,7 +288,7 @@ class DatabasePreparer:
             self.minimum_sequence_length,
             self.verbose,
             self.overlap_length,
-            self.rename
+            self.rename,
         )
         for fa_file_path in self.comp:
             deduper(
@@ -387,7 +396,7 @@ def map_taxa_runs(
         trim_times,
         chunk_size,
         overlap_size,
-        rename
+        rename,
     )(
         secondary_directory,
     )

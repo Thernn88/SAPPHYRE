@@ -16,11 +16,20 @@ from .utils import printv, writeFasta, parseFasta
 from .timekeeper import TimeKeeper, KeeperMode
 
 
-
 class Sequence:
-    __slots__ = ("raw_head", "header", "aa_sequence", "nt_sequence", "taxon", "gene", "id")
+    __slots__ = (
+        "raw_head",
+        "header",
+        "aa_sequence",
+        "nt_sequence",
+        "taxon",
+        "gene",
+        "id",
+    )
 
-    def __init__(self, raw_head, header, aa_sequence, nt_sequence, taxon, gene, id) -> None:
+    def __init__(
+        self, raw_head, header, aa_sequence, nt_sequence, taxon, gene, id
+    ) -> None:
         self.raw_head = raw_head
         self.header = header
         self.aa_sequence = aa_sequence
@@ -38,8 +47,8 @@ class Sequence:
     def seq_with_regen_data(self):
         if self.raw_head:
             return self.raw_head
-        #Try to generate orthodb alike header
-        
+        # Try to generate orthodb alike header
+
         return (
             f">{self.header}"
             + ' {"organism_name": "'
@@ -86,7 +95,7 @@ class Sequence_Set:
             data[seq.taxon].add(seq.gene)
 
         return Counter({taxon: len(genes) for taxon, genes in data.items()})
-    
+
     def kick_dupes(self, headers):
         self.sequences = [i for i in self.sequences if i.header not in headers]
 
@@ -154,7 +163,11 @@ class Sequence_Set:
         target_to_taxon = {}
         taxon_to_sequences = {}
 
-        from_sequence_list = [item for sublist in self.aligned_sequences.values() for item in sublist] if self.has_aligned else self.sequences
+        from_sequence_list = (
+            [item for sublist in self.aligned_sequences.values() for item in sublist]
+            if self.has_aligned
+            else self.sequences
+        )
         for seq in from_sequence_list:
             aaseq = seq.raw_seq() if self.has_aligned else seq.aa_sequence
             diamond_data.append(f">{seq.header}\n{aaseq}\n")
@@ -182,18 +195,12 @@ def cull(sequences, percent):
 
     for i in range(msa_length):
         cull_start = i
-        if (
-            sum(1 for seq in sequences if seq[1][i] != "-") / len(sequences)
-            >= percent
-        ):
+        if sum(1 for seq in sequences if seq[1][i] != "-") / len(sequences) >= percent:
             break
 
     for i in range(msa_length - 1, 0, -1):
         cull_end = i
-        if (
-            sum(1 for seq in sequences if seq[1][i] != "-") / len(sequences)
-            >= percent
-        ):
+        if sum(1 for seq in sequences if seq[1][i] != "-") / len(sequences) >= percent:
             break
 
     sequences = [(seq[0], seq[1][cull_start : cull_end + 1]) for seq in sequences]
@@ -263,7 +270,6 @@ def do_merge(sequences):
 
                 start_a, end_a = find_index_pair(seq_a, "-")
                 start_b, end_b = find_index_pair(seq_b, "-")
-                
 
                 overlap_coords = get_overlap(start_a, end_a, start_b, end_b, 1)
                 if overlap_coords is None:
@@ -274,45 +280,42 @@ def do_merge(sequences):
 
                     seq_a = new_seq
 
-                    header_a = header_a+"&&"+header_b
+                    header_a = header_a + "&&" + header_b
                     merged_indices.add(j)
                     sequences[i] = (header_a, seq_a)
                     merge_occured = True
                 else:
-                    kmer_a = seq_a[overlap_coords[0]:overlap_coords[1]]
-                    kmer_b = seq_b[overlap_coords[0]:overlap_coords[1]]
+                    kmer_a = seq_a[overlap_coords[0] : overlap_coords[1]]
+                    kmer_b = seq_b[overlap_coords[0] : overlap_coords[1]]
 
                     if constrained_distance(kmer_a, kmer_b) == 0:
                         overlap_coord = overlap_coords[0]
                         if start_b >= start_a and end_b <= end_a:
                             new_seq = (
                                 seq_a[:overlap_coord]
-                                + seq_b[overlap_coord : end_b]
-                                + seq_a[end_b :]
+                                + seq_b[overlap_coord:end_b]
+                                + seq_a[end_b:]
                             )
                         elif start_a >= start_b and end_a <= end_b:
                             new_seq = (
                                 seq_b[:overlap_coord]
-                                + seq_a[overlap_coord : end_a]
-                                + seq_b[end_a :]
+                                + seq_a[overlap_coord:end_a]
+                                + seq_b[end_a:]
                             )
                         elif start_b >= start_a:
-                            new_seq = (
-                                seq_a[:overlap_coord] + seq_b[overlap_coord:]
-                            )
+                            new_seq = seq_a[:overlap_coord] + seq_b[overlap_coord:]
                         else:
-                            new_seq = (
-                                seq_b[:overlap_coord] + seq_a[overlap_coord:]
-                            )
-                    
+                            new_seq = seq_b[:overlap_coord] + seq_a[overlap_coord:]
+
                         seq_a = new_seq
 
-                        header_a = header_a+"&&"+header_b
+                        header_a = header_a + "&&" + header_b
                         merged_indices.add(j)
                         sequences[i] = (header_a, seq_a)
                         merge_occured = True
-                        
+
     return sequences
+
 
 def aln_function(
     gene,
@@ -350,17 +353,16 @@ def aln_function(
 
     if do_cull:
         aligned_result = cull(aligned_result, cull_percent)
-    
+
     duped_headers = set()
     seq_hashes = set()
     for header, seq in aligned_result:
         component = header.split(":")[0]
-        seq_hash = xxhash.xxh3_64(component+seq).hexdigest()
+        seq_hash = xxhash.xxh3_64(component + seq).hexdigest()
         if seq_hash in seq_hashes:
             duped_headers.add(header)
         else:
             seq_hashes.add(seq_hash)
-
 
     if duped_headers:
         aligned_result = [i for i in aligned_result if i[0] not in duped_headers]
@@ -368,7 +370,7 @@ def aln_function(
     aligned_result = [i for i in aligned_result if len(i[1]) != i[1].count("-")]
 
     aligned_result = do_merge(aligned_result)
-        
+
     writeFasta(trimmed_path, aligned_result, False)
     for header, seq in aligned_result:
         aligned_dict[header] = seq
@@ -416,10 +418,23 @@ def generate_subset(file_paths, taxon_to_kick: set):
             data = json.decode(data)
             seq = str(seq_record.seq)
             taxon = data["organism_name"].replace(" ", "_")
-            if taxon.lower() not in taxon_to_kick and data["organism_name"].lower() not in taxon_to_kick:
+            if (
+                taxon.lower() not in taxon_to_kick
+                and data["organism_name"].lower() not in taxon_to_kick
+            ):
                 gene = data["pub_og_id"]
 
-                subset.add_sequence(Sequence(seq_record.description, header, seq, "", taxon, gene, next(index)))
+                subset.add_sequence(
+                    Sequence(
+                        seq_record.description,
+                        header,
+                        seq,
+                        "",
+                        taxon,
+                        gene,
+                        next(index),
+                    )
+                )
 
     return subset
 
@@ -503,7 +518,15 @@ def main(args):
                 gene = data["pub_og_id"]
 
                 this_set.add_sequence(
-                    Sequence(seq_record.description, header, seq, "", taxon, gene, next(index))
+                    Sequence(
+                        seq_record.description,
+                        header,
+                        seq,
+                        "",
+                        taxon,
+                        gene,
+                        next(index),
+                    )
                 )
     elif input_file.split(".")[-1] in {
         "sql",
@@ -549,7 +572,9 @@ def main(args):
             if taxon not in kick:
                 if nt_id in nt_data:
                     nt_seq = nt_data[nt_id]
-                this_set.add_sequence(Sequence(None, header, aa_seq, nt_seq, taxon, gene, id))
+                this_set.add_sequence(
+                    Sequence(None, header, aa_seq, nt_seq, taxon, gene, id)
+                )
     else:
         printv("Input Detected: Folder containing Fasta", verbosity)
         file_paths = []

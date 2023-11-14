@@ -18,6 +18,7 @@ from msgspec import Struct, json
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import gettempdir, printv
 
+
 class ReferenceHit(Struct, frozen=True):
     query: str
     ref: Union[str, None]
@@ -88,6 +89,7 @@ class MultiReturn(Struct, frozen=True):
     log: list[str]
     this_kicks: set
 
+
 class ConvertArgs(Struct, frozen=True):
     hits: list[Hit]
     gene: str
@@ -121,8 +123,8 @@ def get_overlap_amount(a_start: int, a_end: int, b_start: int, b_end: int) -> in
     )
     if overlap_coords == None:
         return 0
-    
-    return (overlap_coords[1] - overlap_coords[0])
+
+    return overlap_coords[1] - overlap_coords[0]
 
 
 def get_score_difference(score_a: float, score_b: float) -> float:
@@ -300,6 +302,7 @@ def internal_filter(this_args: InternalArgs) -> tuple[set, list, int]:
 
     return InternalReturn(this_args.gene, next(kicks), log, this_kicks)
 
+
 def convert_and_cull(this_args: ConvertArgs) -> ConvertReturn:
     output = []
     for hit in this_args.hits:
@@ -360,7 +363,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             refs = [ReferenceHit(target, ref, sstart, send)]
 
             this_hit = Hit(
-                row[0].lstrip(">"), # # # BANDAID # # #
+                row[0].lstrip(">"),  # # # BANDAID # # #
                 target,
                 row[2],
                 row[3],
@@ -453,7 +456,7 @@ def get_head_to_seq(nt_db, recipe):
                 if lines[i] != ""
             },
         )
-    
+
     return head_to_seq
 
 
@@ -712,9 +715,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
                     last_header = headers[i + per_thread - 1]
                     end_index = (
                         where(
-                            df[start_index:]["header"].values
-                            == last_header,
-                        )[0][-1]
+                            df[start_index:]["header"].values == last_header,
+                        )[
+                            0
+                        ][-1]
                         + start_index
                     )
 
@@ -724,7 +728,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 indices.append((start_index, end_index))
         else:
             estimated_end = ceil((len(df) / chunks) * OVERSHOOT_AMOUNT)
-            
+
             indices = []
             for x, i in enumerate(range(0, len(headers), per_thread), 1):
                 start_index = 0 if x == 1 else end_index + 1
@@ -733,7 +737,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
                     last_header = headers[i + per_thread - 1]
                     end_index = (
                         where(
-                            df[start_index : (start_index + estimated_end)]["header"].values
+                            df[start_index : (start_index + estimated_end)][
+                                "header"
+                            ].values
                             == last_header,
                         )[0][-1]
                         + start_index
@@ -848,9 +854,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
             output[gene] = [i for i in output[gene] if i.uid not in result.this_kicks]
 
-        next_step = (
-            "Writing to db"
-        )
+        next_step = "Writing to db"
         printv(
             f"Filtering done. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. {next_step}",
             args.verbose,

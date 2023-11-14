@@ -680,7 +680,7 @@ def trim_large_gaps(
             non_ref_gap_dash_count = 0
             raw_dash_count = 0
             out_line = list(sequence)
-            for j, let in enumerate(out_line[seq_start : seq_end], seq_start):
+            for j, let in enumerate(out_line[seq_start:seq_end], seq_start):
                 if let == "-":
                     if j not in reference_gap_col:
                         non_ref_gap_dash_count += 1
@@ -798,7 +798,7 @@ def trim_large_gaps(
 
 
 def align_to_aa_order(nt_out, aa_content):
-    headers = [header for header, _ in aa_content if not header.endswith('.')]
+    headers = [header for header, _ in aa_content if not header.endswith(".")]
 
     nt_out = dict(nt_out)
     for header in headers:
@@ -833,7 +833,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
     this_seqs = []
 
     db = rocky.get_rock("db")
-    this_db_entry = json.decode(db.get(f"gethits:{this_gene}"), type = list[Hit])
+    this_db_entry = json.decode(db.get(f"gethits:{this_gene}"), type=list[Hit])
     this_db_sequences = {}
 
     for entry in this_db_entry:
@@ -869,16 +869,16 @@ def do_gene(fargs: FlexcullArgs) -> None:
                 fields = header.split("|")
                 node = fields[3]
                 if node.count("_") > 1:
-                    node = "NODE_"+node.split("_")[1]
+                    node = "NODE_" + node.split("_")[1]
                 frame = fields[4]
                 nt_seq = this_db_sequences[node][frame]
-                
+
                 this_aa = str(Seq(nt_seq).translate())
-                nt_seq = [nt_seq[i:i+3] for i in range(0, len(nt_seq), 3)]
+                nt_seq = [nt_seq[i : i + 3] for i in range(0, len(nt_seq), 3)]
                 profile = profile_create_16(this_aa, blosum62)
                 result = nw_trace_scan_profile_16(
                     profile,
-                    raw_sequence[cull_start: cull_end],
+                    raw_sequence[cull_start:cull_end],
                     2,
                     0,
                 )
@@ -889,15 +889,15 @@ def do_gene(fargs: FlexcullArgs) -> None:
                     else:
                         break
 
-                start = (cull_start - start_offset)
+                start = cull_start - start_offset
                 aligned_aa = ("-" * start) + result.traceback.query
-                
-                #Bad alignment check
-                raw_start, raw_end = find_index_pair(raw_sequence, "-")
-                gap_offset = aligned_aa[start : cull_end].count("-")
 
-                if aligned_aa[raw_start: raw_end] != raw_sequence[raw_start: raw_end]:
-                    #BLOW UP
+                # Bad alignment check
+                raw_start, raw_end = find_index_pair(raw_sequence, "-")
+                gap_offset = aligned_aa[start:cull_end].count("-")
+
+                if aligned_aa[raw_start:raw_end] != raw_sequence[raw_start:raw_end]:
+                    # BLOW UP
                     pass
                 else:
                     nt_extension_align[header] = {}
@@ -908,12 +908,14 @@ def do_gene(fargs: FlexcullArgs) -> None:
                         if aligned_aa[i] == "-":
                             gap_offset += 1
                             continue
-                    
+
                         elif aligned_aa[i] not in character_at_each_pos[i]:
                             break
                         else:
                             sequence[i] = aligned_aa[i]
-                            nt_extension_align[header][i * 3] = nt_seq[i - start - gap_offset]
+                            nt_extension_align[header][i * 3] = nt_seq[
+                                i - start - gap_offset
+                            ]
                             cull_end += 1
                             extensions += 1
 
@@ -1067,13 +1069,6 @@ def do_gene(fargs: FlexcullArgs) -> None:
                             out_seq.append(out_line[i : i + 3])
 
                     out_line = "".join(out_seq)
-                    # out_line = [
-                    #     out_line[i : i + 3]
-                    #     if i not in positions_to_trim and i not in this_column_cull
-                    #     else "---"
-                    #     for i in range(0, len(out_line), 3)
-                    # ]
-                    # out_line = "".join(out_line)
                     out_line = join_triplets_with_exclusions(
                         out_line, positions_to_trim, this_column_cull
                     )
@@ -1083,7 +1078,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
             for header, sequence in nt_out:
                 gap_cull = gap_pass_through.get(header, None)
                 out_seq = []
-                
+
                 if gap_cull:
                     out_nt.append(
                         (
@@ -1124,7 +1119,6 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
     is_assembly = False
     if dbis_assembly and dbis_assembly == "True":
         is_assembly = True
-
 
     hits_db_path = path.join(folder, "rocksdb", "hits")
     rocky.create_pointer(
@@ -1230,10 +1224,13 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
         log_out = path.join(output_path, "Culls.csv")
         with open(log_out, "w") as fp:
             fp.writelines(log_global)
-    
+
     rocky.close_pointer("db")
 
-    printv(f"Done! Took {folder_time.differential():.2f}s. Extended a total of {total_extensions} AA", args.verbose)
+    printv(
+        f"Done! Took {folder_time.differential():.2f}s. Extended a total of {total_extensions} AA",
+        args.verbose,
+    )
 
 
 def main(args):

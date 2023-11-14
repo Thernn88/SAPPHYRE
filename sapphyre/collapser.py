@@ -5,10 +5,17 @@ from multiprocessing import Pool
 from os import path, mkdir, listdir
 
 from msgspec import Struct
-from phymmr_tools import constrained_distance, find_index_pair, get_overlap, is_same_kmer, dumb_consensus
+from phymmr_tools import (
+    constrained_distance,
+    find_index_pair,
+    get_overlap,
+    is_same_kmer,
+    dumb_consensus,
+)
 from wrap_rocks import RocksDB
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import writeFasta, parseFasta, printv
+
 
 class CollapserArgs(Struct):
     compress: bool
@@ -26,6 +33,7 @@ class CollapserArgs(Struct):
 
     from_folder: str
 
+
 class BatchArgs(Struct):
     args: CollapserArgs
     genes: list
@@ -35,6 +43,7 @@ class BatchArgs(Struct):
     aa_out_path: str
     compress: bool
     is_assembly: bool
+
 
 class NODE(Struct):
     header: str
@@ -109,8 +118,17 @@ class NODE(Struct):
         return f"CONTIG_{contig_node}|{children_nodes}"
 
 
-def rolling_window_consensus(seq, candidate_consensus, reference_consensus, start, end, window_size, min_match, step):
-    for i in range(start, end-window_size, step):
+def rolling_window_consensus(
+    seq,
+    candidate_consensus,
+    reference_consensus,
+    start,
+    end,
+    window_size,
+    min_match,
+    step,
+):
+    for i in range(start, end - window_size, step):
         window = seq[i : i + window_size]
         cand_window = candidate_consensus[i : i + window_size]
         ambig_percent = cand_window.count("X") / len(cand_window)
@@ -121,14 +139,20 @@ def rolling_window_consensus(seq, candidate_consensus, reference_consensus, star
         if ambig_percent > 0.2:
             ref_window = reference_consensus[i : i + window_size]
             matching = sum(1 for x, y in zip(window, ref_window) if x == y or y == "X")
-            
+
         else:
             matching = window_size - constrained_distance(window, cand_window)
 
         if matching / window_size < min_match:
-            return True, i, matching / window_size, cand_window.count("X") / len(cand_window)
-        
+            return (
+                True,
+                i,
+                matching / window_size,
+                cand_window.count("X") / len(cand_window),
+            )
+
     return False, None, None, None
+
 
 def average_match(seq_a, consensus, start, end):
     match = 0
@@ -151,6 +175,7 @@ def average_match(seq_a, consensus, start, end):
 
     return match / total
 
+
 def do_folder(args, input_path):
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
 
@@ -167,7 +192,7 @@ def do_folder(args, input_path):
     if path.exists(nt_db_path):
         nt_db = RocksDB(nt_db_path)
         dbis_assembly = nt_db.get("get:isassembly")
-        
+
         if dbis_assembly and dbis_assembly == "True":
             is_assembly = True
         del nt_db
@@ -212,10 +237,8 @@ def do_folder(args, input_path):
 
     total_kicks = sum(i[2] for i in results if i[2] != 0)
     total_sequences = sum(i[5] for i in results)
-    
 
     if args.debug:
-        
         kicked_genes = "\n".join(["\n".join(i[3]) for i in results])
         genes_kicked_count = len(kicked_genes.split("\n"))
         kicked_consensus = "".join(["".join(i[4]) for i in results])
@@ -235,16 +258,20 @@ def do_folder(args, input_path):
         genes_kicked_count = sum(len(i[3]) for i in results)
 
     printv(f"Kicked {genes_kicked_count} gene(s)", args.verbose, 1)
-    printv(f"Kicked {total_kicks} sequences and wrote {total_sequences} sequences", args.verbose, 1)
-
-                
+    printv(
+        f"Kicked {total_kicks} sequences and wrote {total_sequences} sequences",
+        args.verbose,
+        1,
+    )
 
     printv(f"Done! Took {time_keeper.differential():.2f} seconds", args.verbose, 1)
 
     return all_passed
 
 
-def kick_read_consensus(aa_output, match_percent, nodes, kicked_headers, consensus_kicks, debug, gene):
+def kick_read_consensus(
+    aa_output, match_percent, nodes, kicked_headers, consensus_kicks, debug, gene
+):
     ref_average_data_length = []
     ref_consensus = defaultdict(list)
     reference_seqs = [seq for header, seq in aa_output if header.endswith(".")]
@@ -256,7 +283,9 @@ def kick_read_consensus(aa_output, match_percent, nodes, kicked_headers, consens
 
         ref_average_data_length.append(len(seq) - seq.count("-"))
 
-    ref_average_data_length = sum(ref_average_data_length) / len(ref_average_data_length)
+    ref_average_data_length = sum(ref_average_data_length) / len(
+        ref_average_data_length
+    )
 
     for read in nodes:
         average_matching_cols = average_match(
@@ -268,13 +297,16 @@ def kick_read_consensus(aa_output, match_percent, nodes, kicked_headers, consens
 
         if average_matching_cols < match_percent:
             if debug:
-                consensus_kicks.append(f"{gene},{read.header},{average_matching_cols},{read.length}\n")
+                consensus_kicks.append(
+                    f"{gene},{read.header},{average_matching_cols},{read.length}\n"
+                )
             kicked_headers.add(read.header)
             read.kick = True
 
     nodes = list(filter(lambda x: not x.kick, nodes))
 
     return ref_average_data_length, nodes, ref_consensus_seq
+
 
 def merge_overlapping_reads(nodes, minimum_overlap):
     # Rescurive scan
@@ -291,23 +323,27 @@ def merge_overlapping_reads(nodes, minimum_overlap):
                 if i == j:
                     continue
 
-                overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, minimum_overlap)
+                overlap_coords = get_overlap(
+                    node.start, node.end, node_2.start, node_2.end, minimum_overlap
+                )
 
                 if overlap_coords:
                     overlap_amount = overlap_coords[1] - overlap_coords[0]
                     overlap_coord = overlap_coords[0]
                     possible_extensions.append((overlap_amount, overlap_coord, j))
-            for _, overlap_coord, j in sorted(possible_extensions, reverse=False, key = lambda x: x[0]):
-
+            for _, overlap_coord, j in sorted(
+                possible_extensions, reverse=False, key=lambda x: x[0]
+            ):
                 node_2 = nodes[j]
                 if node_2 is None:
                     continue
-                #Confirm still overlaps
-                overlap_coords = get_overlap(node.start, node.end, node_2.start, node_2.end, minimum_overlap)
+                # Confirm still overlaps
+                overlap_coords = get_overlap(
+                    node.start, node.end, node_2.start, node_2.end, minimum_overlap
+                )
                 if overlap_coords:
-                    #Get distance
+                    # Get distance
 
-                    
                     fail = False
                     for x in range(overlap_coords[0], overlap_coords[1]):
                         if node.sequence[x] != node_2.sequence[x]:
@@ -329,12 +365,17 @@ def get_coverage(nodes, ref_average_data_length):
     for i in range(len(read_alignments[0])):
         if any(seq[i] != "-" for seq in read_alignments):
             data_cols += 1
-        
 
     return data_cols / ref_average_data_length
 
 
-def kick_overlapping_reads(nodes, min_overlap_percent, required_matching_percent, gross_difference_percent, debug):
+def kick_overlapping_reads(
+    nodes,
+    min_overlap_percent,
+    required_matching_percent,
+    gross_difference_percent,
+    debug,
+):
     kicked_headers = set()
     kicks = []
     for i, node_kick in enumerate(node for node in nodes if not node.kick):
@@ -343,8 +384,10 @@ def kick_overlapping_reads(nodes, min_overlap_percent, required_matching_percent
                 continue
             if node_2.length < node_kick.length:
                 continue
-            
-            overlap_coords = get_overlap(node_2.start, node_2.end, node_kick.start, node_kick.end, 1)
+
+            overlap_coords = get_overlap(
+                node_2.start, node_2.end, node_kick.start, node_kick.end, 1
+            )
             if overlap_coords:
                 # this block can probably just be an overlap percent call
                 overlap_amount = overlap_coords[1] - overlap_coords[0]
@@ -361,9 +404,15 @@ def kick_overlapping_reads(nodes, min_overlap_percent, required_matching_percent
 
                     length_percent = ""
                     if not is_kick and node_kick.is_contig and node_2.is_contig:
-                        length_percent = min(node_kick.length, node_2.length) / max(node_kick.length, node_2.length)
-                
-                        if not is_kick and length_percent <= 0.15 and matching_percent < gross_difference_percent:
+                        length_percent = min(node_kick.length, node_2.length) / max(
+                            node_kick.length, node_2.length
+                        )
+
+                        if (
+                            not is_kick
+                            and length_percent <= 0.15
+                            and matching_percent < gross_difference_percent
+                        ):
                             is_kick = True
 
                     if is_kick:
@@ -380,24 +429,44 @@ def kick_overlapping_reads(nodes, min_overlap_percent, required_matching_percent
     return kicked_headers, kicks
 
 
-def kick_rolling_consensus(nodes, ref_consensus_seq, kicked_headers, consensus_kicks, debug, gene):
+def kick_rolling_consensus(
+    nodes, ref_consensus_seq, kicked_headers, consensus_kicks, debug, gene
+):
     CONSENSUS_PERCENT = 0.5
     WINDOW_SIZE = 14
     WINDOW_MATCHING_PERCENT = 0.7
     STEP = 1
-    cand_consensus = dumb_consensus([node.sequence for node in nodes], CONSENSUS_PERCENT)
+    cand_consensus = dumb_consensus(
+        [node.sequence for node in nodes], CONSENSUS_PERCENT
+    )
 
     for node in nodes:
-        is_kick, window_start, matching_percent, ambig_percent = rolling_window_consensus(node.sequence, cand_consensus, ref_consensus_seq, node.start, node.end, WINDOW_SIZE, WINDOW_MATCHING_PERCENT, STEP)
+        (
+            is_kick,
+            window_start,
+            matching_percent,
+            ambig_percent,
+        ) = rolling_window_consensus(
+            node.sequence,
+            cand_consensus,
+            ref_consensus_seq,
+            node.start,
+            node.end,
+            WINDOW_SIZE,
+            WINDOW_MATCHING_PERCENT,
+            STEP,
+        )
         if is_kick:
             if debug:
-                consensus_kicks.append(f"{gene},{node.header},{window_start}:{window_start+WINDOW_SIZE}\nCand: {node.sequence[window_start: window_start+WINDOW_SIZE]}\nCons: {cand_consensus[window_start: window_start+WINDOW_SIZE]}\nRefc: {ref_consensus_seq[window_start: window_start+WINDOW_SIZE]}\nMatch: {matching_percent},Ambig: {ambig_percent}\n")
+                consensus_kicks.append(
+                    f"{gene},{node.header},{window_start}:{window_start+WINDOW_SIZE}\nCand: {node.sequence[window_start: window_start+WINDOW_SIZE]}\nCons: {cand_consensus[window_start: window_start+WINDOW_SIZE]}\nRefc: {ref_consensus_seq[window_start: window_start+WINDOW_SIZE]}\nMatch: {matching_percent},Ambig: {ambig_percent}\n"
+                )
             kicked_headers.add(node.header)
             node.kick = True
 
     nodes = list(filter(lambda x: not x.kick, nodes))
     return nodes
-        
+
 
 def process_batch(
     batch_args: BatchArgs,
@@ -420,11 +489,10 @@ def process_batch(
         aa_in = path.join(batch_args.aa_input_path, gene.replace(".nt.", ".aa."))
 
         aa_sequences = parseFasta(aa_in)
-        
+
         aa_output = []
 
         nodes = []
-
 
         # make nodes out of nt_input for processing
         aa_count = 0
@@ -435,9 +503,9 @@ def process_batch(
 
             aa_count += 1
 
-            start,end = find_index_pair(sequence, "-")
+            start, end = find_index_pair(sequence, "-")
 
-            internal_gaps=  sequence[start:end].count("-")
+            internal_gaps = sequence[start:end].count("-")
 
             node_is_contig = batch_args.is_assembly or "&&" in header
 
@@ -455,26 +523,40 @@ def process_batch(
                 )
             )
 
-        ref_average_data_length, nodes, ref_consensus_seq = kick_read_consensus(aa_output, args.matching_consensus_percent, nodes, kicked_headers, consensus_kicks, args.debug, gene)
+        ref_average_data_length, nodes, ref_consensus_seq = kick_read_consensus(
+            aa_output,
+            args.matching_consensus_percent,
+            nodes,
+            kicked_headers,
+            consensus_kicks,
+            args.debug,
+            gene,
+        )
 
         if not nodes:
             total += aa_count
-            kicked_genes.append(f"No valid sequences after consensus: {gene.split('.')[0]}")
+            kicked_genes.append(
+                f"No valid sequences after consensus: {gene.split('.')[0]}"
+            )
             continue
 
-        nodes = kick_rolling_consensus(nodes, ref_consensus_seq, kicked_headers, consensus_kicks, args.debug, gene)
+        nodes = kick_rolling_consensus(
+            nodes, ref_consensus_seq, kicked_headers, consensus_kicks, args.debug, gene
+        )
 
         if not nodes:
             total += aa_count
-            kicked_genes.append(f"No valid sequences after rolling candidate consensus: {gene.split('.')[0]}")
+            kicked_genes.append(
+                f"No valid sequences after rolling candidate consensus: {gene.split('.')[0]}"
+            )
             continue
 
         printv("Merging Overlapping Reads", args.verbose, 3)
         nodes = merge_overlapping_reads(nodes, args.merge_overlap)
-                            
+
         printv("Calculating Coverage", args.verbose, 3)
         coverage = get_coverage(nodes, ref_average_data_length)
-        
+
         req_coverage = 0.3 if batch_args.is_assembly else 0.01
         if coverage < req_coverage:
             total += aa_count
@@ -482,23 +564,35 @@ def process_batch(
             continue
 
         if args.debug:
-            kicks.append(f"Kicks for {gene}\nHeader B,,Header A,Overlap Percent,Matching Percent,Length Ratio\n")
-        nodes.sort(key = lambda x: x.length, reverse=True)
+            kicks.append(
+                f"Kicks for {gene}\nHeader B,,Header A,Overlap Percent,Matching Percent,Length Ratio\n"
+            )
+        nodes.sort(key=lambda x: x.length, reverse=True)
 
         printv("Kicking Overlapping Reads", args.verbose, 3)
-        this_kicks, this_debug = kick_overlapping_reads(nodes, args.overlap_percent, args.matching_percent, args.gross_diference_percent, args.debug)
+        this_kicks, this_debug = kick_overlapping_reads(
+            nodes,
+            args.overlap_percent,
+            args.matching_percent,
+            args.gross_diference_percent,
+            args.debug,
+        )
 
         if args.debug:
             kicks.extend(this_debug)
 
         kicked_headers.update(this_kicks)
 
-        aa_output_after_kick = sum(1 for i in aa_output if i[0] not in kicked_headers and not i[0].endswith("."))
+        aa_output_after_kick = sum(
+            1
+            for i in aa_output
+            if i[0] not in kicked_headers and not i[0].endswith(".")
+        )
 
         if not aa_output_after_kick:
             kicked_genes.append(f"No valid sequences after kick: {gene.split('.')[0]}")
             continue
-        
+
         if args.debug == 2:
             nodes.sort(key=lambda x: x.start)
             with open(aa_out.strip(".gz"), "w") as f:
@@ -515,9 +609,7 @@ def process_batch(
                     f.write(f">{node.contig_header()}{is_kick}\n{node.sequence}\n")
         else:
             aa_output = [pair for pair in aa_output if pair[0] not in kicked_headers]
-            writeFasta(
-                aa_out, aa_output, batch_args.compress
-            )
+            writeFasta(aa_out, aa_output, batch_args.compress)
 
         nt_sequences = [
             (header, sequence)
@@ -548,9 +640,9 @@ def main(args, from_folder):
         matching_percent=args.matching_percent,
         verbose=args.verbose,
         debug=args.debug,
-        matching_consensus_percent = args.matching_consensus_percent,
-        gross_diference_percent = args.gross_diference_percent,
-        from_folder = from_folder,
+        matching_consensus_percent=args.matching_consensus_percent,
+        gross_diference_percent=args.gross_diference_percent,
+        from_folder=from_folder,
     )
     return do_folder(this_args, args.INPUT)
 

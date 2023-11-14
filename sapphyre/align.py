@@ -13,6 +13,7 @@ from phymmr_tools import find_index_pair, delete_empty_columns, sigclust
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import gettempdir, parseFasta, printv, writeFasta
 
+
 def find_kmers(fasta: dict) -> dict[str, set]:
     """Returns the kmers of length KMER_LEN for each sequence in the fasta dict.
 
@@ -146,14 +147,22 @@ def generate_clusters(data: dict[str, str], second_run) -> list[list[str]]:
         list[list[str]]: A list of each clusters' headers
     """
 
-    with NamedTemporaryFile(dir=gettempdir(), mode="w+", suffix=".fa") as tmp_in, NamedTemporaryFile(dir=gettempdir(), mode ="w+", suffix=".txt") as tmp_result:
+    with NamedTemporaryFile(
+        dir=gettempdir(), mode="w+", suffix=".fa"
+    ) as tmp_in, NamedTemporaryFile(
+        dir=gettempdir(), mode="w+", suffix=".txt"
+    ) as tmp_result:
         writeFasta(tmp_in.name, data.items())
         tmp_in.flush()
 
         if second_run:
-            system(f"diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 85 --member-cover 65 --threads 1 --ignore-warnings --quiet")
+            system(
+                f"diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 85 --member-cover 65 --threads 1 --ignore-warnings --quiet"
+            )
         else:
-            system(f"diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 85 --member-cover 70 --threads 1 --ignore-warnings --quiet")
+            system(
+                f"diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 85 --member-cover 70 --threads 1 --ignore-warnings --quiet"
+            )
 
         cluster_children = defaultdict(list)
 
@@ -189,39 +198,10 @@ def seperate_into_clusters(
             if len(this_cluster) > SUBCLUSTER_AT:
                 clusters_to_create = ceil(len(this_cluster) / CLUSTER_EVERY)
                 records = [(header, data[header]) for header in this_cluster]
-                # sigclust( fasta_tuples, -k arg, -c arg) -> list[list[fasta_tuples]]
-                # produces c clusters and outputs them in a list
                 sub_clusters = sigclust(records, 8, clusters_to_create)
                 clusters.extend(sub_clusters)
                 continue
-                # with NamedTemporaryFile(
-                #     mode="w+",
-                #     dir=parent_tmpdir,
-                #     suffix=".fa",
-                # ) as this_tmp:
-                #     writeFasta(
-                #         this_tmp.name,
-                #         [(header, data[header]) for header in this_cluster],
-                #     )
-                #     with NamedTemporaryFile("r", dir=gettempdir()) as this_out:
-                #         run(
-                #             f"sigclust/SigClust -k 8 -c {clusters_to_create} {this_tmp.name} > {this_out.name}",
-                #             stdout=DEVNULL,
-                #             stderr=DEVNULL,
-                #             check=True,
-                #             shell=True,
-                #         )
-                #         sig_out = this_out.read()
-                #     sub_clusters = defaultdict(list)
-                #     for line in sig_out.split("\n"):
-                #         line = line.strip()
-                #         if line:
-                #             seq_index, clust_index = line.strip().split(",")
-                #             sub_clusters[clust_index].append(
-                #                 this_cluster[int(seq_index)],
-                #             )
-                #     clusters.extend(list(sub_clusters.values()))
-                #     continue
+
             clusters.append(this_cluster)
 
     return clusters
@@ -248,7 +228,9 @@ def generate_tmp_aln(
     Returns:
         None
     """
-    with NamedTemporaryFile(dir=parent_tmpdir, mode="w+", prefix="References_") as tmp_prealign:
+    with NamedTemporaryFile(
+        dir=parent_tmpdir, mode="w+", prefix="References_"
+    ) as tmp_prealign:
         sequences = []
         for header, sequence in parseFasta(aln_file, True):
             if header in targets:
@@ -271,7 +253,11 @@ def generate_tmp_aln(
                     (
                         header,
                         "".join(
-                            [let for col, let in enumerate(sequence) if not empty_columns[col]],
+                            [
+                                let
+                                for col, let in enumerate(sequence)
+                                if not empty_columns[col]
+                            ],
                         ),
                     ),
                 )
@@ -281,7 +267,7 @@ def generate_tmp_aln(
                 to_write.append(
                     (
                         header,
-                        sequence.replace("-",""),
+                        sequence.replace("-", ""),
                     ),
                 )
 
@@ -292,12 +278,19 @@ def generate_tmp_aln(
             tmp_prealign.flush()
 
             if align_method == "clustal":
-                system(f"clustalo -i '{tmp_prealign.name}' -o '{dest.name}' --thread=1 --full --force")
+                system(
+                    f"clustalo -i '{tmp_prealign.name}' -o '{dest.name}' --thread=1 --full --force"
+                )
             else:
-                system(f"mafft --localpair --quiet --thread 1 --anysymbol '{tmp_prealign.name}' > '{dest.name}'")
+                system(
+                    f"mafft --localpair --quiet --thread 1 --anysymbol '{tmp_prealign.name}' > '{dest.name}'"
+                )
 
     if debug:
-        writeFasta(path.join(this_intermediates, "references.fa"), parseFasta(dest.name, True))
+        writeFasta(
+            path.join(this_intermediates, "references.fa"), parseFasta(dest.name, True)
+        )
+
 
 CmdArgs = namedtuple(
     "CmdArgs",
@@ -315,7 +308,8 @@ CmdArgs = namedtuple(
     ],
 )
 
-def insert_gaps(input_string, positions, existing_gaps = {}):
+
+def insert_gaps(input_string, positions, existing_gaps={}):
     input_string = list(input_string)
     gap_offset = 0
 
@@ -325,11 +319,10 @@ def insert_gaps(input_string, positions, existing_gaps = {}):
             existing_gaps[coord] -= 1
             continue
 
-        input_string.insert(coord+gap_offset, "-")
+        input_string.insert(coord + gap_offset, "-")
         gap_offset += 1
 
-    return ''.join(input_string)
-
+    return "".join(input_string)
 
 
 def run_command(args: CmdArgs) -> None:
@@ -378,7 +371,9 @@ def run_command(args: CmdArgs) -> None:
             writeFasta(aligned_file, sequences)
             if args.debug:
                 writeFasta(path.join(this_intermediates, aligned_file), sequences)
-                unaligned_path = path.join(this_intermediates, f"unaligned_cluster_singleton")
+                unaligned_path = path.join(
+                    this_intermediates, f"unaligned_cluster_singleton"
+                )
                 writeFasta(unaligned_path, sequences)
             aligned_ingredients.append((aligned_file, len(sequences), 0))
         elif args.align_method == "frags":
@@ -392,9 +387,8 @@ def run_command(args: CmdArgs) -> None:
                     sequences,
                 )
 
-            
             writeFasta(aligned_file, sequences)
-            
+
             aligned_ingredients = [(aligned_file, len(sequences), 0)]
         else:
             printv(
@@ -411,7 +405,9 @@ def run_command(args: CmdArgs) -> None:
             cluster_time = keeper.differential()
             if debug:
                 for i, cluster in enumerate(clusters):
-                    unaligned_path = path.join(this_intermediates, f"unaligned_cluster_{i}")
+                    unaligned_path = path.join(
+                        this_intermediates, f"unaligned_cluster_{i}"
+                    )
                     test_output = [(header, data[header]) for header in cluster]
                     writeFasta(unaligned_path, test_output)
             printv(
@@ -446,9 +442,11 @@ def run_command(args: CmdArgs) -> None:
                     raw_files_tmp,
                     f"{args.gene}_cluster{cluster_i}",
                 )
-                if (cluster_length == 1):
+                if cluster_length == 1:
                     writeFasta(aligned_cluster, cluster_seqs)
-                    aligned_ingredients.append((aligned_cluster, len(cluster_seqs), cluster_i))
+                    aligned_ingredients.append(
+                        (aligned_cluster, len(cluster_seqs), cluster_i)
+                    )
                     if debug:
                         writeFasta(
                             path.join(
@@ -458,7 +456,7 @@ def run_command(args: CmdArgs) -> None:
                             cluster_seqs,
                         )
                     continue
-                    
+
                 writeFasta(raw_cluster, cluster_seqs)
                 if debug:
                     writeFasta(
@@ -484,7 +482,9 @@ def run_command(args: CmdArgs) -> None:
                         aligned_sequences,
                     )
 
-                aligned_ingredients.append((aligned_cluster, len(aligned_sequences), cluster_i))
+                aligned_ingredients.append(
+                    (aligned_cluster, len(aligned_sequences), cluster_i)
+                )
         align_time = keeper.differential() - cluster_time
 
         if aligned_ingredients:
@@ -496,8 +496,18 @@ def run_command(args: CmdArgs) -> None:
                 args.verbose,
                 3,
             )  # Debug
-            with NamedTemporaryFile(dir=parent_tmpdir, mode="w+", prefix="References_") as tmp_aln:
-                generate_tmp_aln(aln_file, targets, tmp_aln, parent_tmpdir, debug, this_intermediates, args.align_method)
+            with NamedTemporaryFile(
+                dir=parent_tmpdir, mode="w+", prefix="References_"
+            ) as tmp_aln:
+                generate_tmp_aln(
+                    aln_file,
+                    targets,
+                    tmp_aln,
+                    parent_tmpdir,
+                    debug,
+                    this_intermediates,
+                    args.align_method,
+                )
 
                 for i, (file, seq_count, cluster_i) in enumerate(aligned_ingredients):
                     printv(
@@ -508,7 +518,7 @@ def run_command(args: CmdArgs) -> None:
                     if args.align_method == "frags":
                         out_file = path.join(parent_tmpdir, f"aligned.fa")
                         command = f"mafft --anysymbol --quiet --jtt 1 --addfragments {file} --thread 1 {tmp_aln.name} > {out_file}"
-                        
+
                         system(command)
 
                         final_sequences = list(parseFasta(out_file, True))
@@ -533,7 +543,10 @@ def run_command(args: CmdArgs) -> None:
                         )
                     if debug:
                         writeFasta(
-                            path.join(this_intermediates, f"reference_subalignment_{cluster_i}.fa"),
+                            path.join(
+                                this_intermediates,
+                                f"reference_subalignment_{cluster_i}.fa",
+                            ),
                             parseFasta(out_file, True),
                         )
 
@@ -546,7 +559,9 @@ def run_command(args: CmdArgs) -> None:
 
                     for item in listdir(parent_tmpdir):
                         if item.startswith("References_"):
-                            refs = list(parseFasta(path.join(parent_tmpdir, item), True))
+                            refs = list(
+                                parseFasta(path.join(parent_tmpdir, item), True)
+                            )
                             continue
 
                         if not item.startswith("part_"):
@@ -554,7 +569,9 @@ def run_command(args: CmdArgs) -> None:
 
                         references = []
                         this_seqs = []
-                        for header, seq in parseFasta(path.join(parent_tmpdir, item), True):
+                        for header, seq in parseFasta(
+                            path.join(parent_tmpdir, item), True
+                        ):
                             if header.endswith("."):
                                 references.append(seq)
                                 continue
@@ -563,7 +580,7 @@ def run_command(args: CmdArgs) -> None:
 
                         insertion_coords = []
                         for i in range(len(references[0])):
-                            if all(seq[i] == '-' for seq in references):
+                            if all(seq[i] == "-" for seq in references):
                                 insertion_coords.append(i - len(insertion_coords))
 
                         this_counter = Counter(insertion_coords).items()
@@ -574,18 +591,17 @@ def run_command(args: CmdArgs) -> None:
 
                         subalignments[item] = this_seqs, this_counter
 
-
                     final_refs = []
 
                     alignment_insertion_coords = []
                     for key, value in global_insertions.items():
-                        alignment_insertion_coords.extend([key]*value)
+                        alignment_insertion_coords.extend([key] * value)
 
                     alignment_insertion_coords.sort()
-                    for header,seq in refs:
+                    for header, seq in refs:
                         if alignment_insertion_coords:
                             seq = insert_gaps(seq, alignment_insertion_coords)
-                        
+
                         # break
                         final_refs.append((header, seq))
 
@@ -595,8 +611,12 @@ def run_command(args: CmdArgs) -> None:
 
                         for header, seq in seqs:
                             if alignment_insertion_coords:
-                                existing_gaps = {k: v for k,v in this_msa_insertions if v > 0}
-                                seq = insert_gaps(seq, alignment_insertion_coords, existing_gaps)
+                                existing_gaps = {
+                                    k: v for k, v in this_msa_insertions if v > 0
+                                }
+                                seq = insert_gaps(
+                                    seq, alignment_insertion_coords, existing_gaps
+                                )
                             out_seqs.append((header, seq))
 
                         subalignments[item] = out_seqs
@@ -607,7 +627,7 @@ def run_command(args: CmdArgs) -> None:
 
                     sequences.sort(key=lambda x: find_index_pair(x[1], "-")[0])
 
-                    final_sequences = final_refs+sequences
+                    final_sequences = final_refs + sequences
 
     merge_time = keeper.differential() - align_time - cluster_time
 
@@ -627,7 +647,7 @@ def run_command(args: CmdArgs) -> None:
             to_write.append((header, sequence))
     to_write.sort(key=lambda x: get_start(x[1]))
 
-    writeFasta(args.result_file, references+to_write, compress=args.compress)
+    writeFasta(args.result_file, references + to_write, compress=args.compress)
     printv(f"Done. Took {keeper.differential():.2f}", args.verbose, 3)  # Debug
 
     return args.gene, cluster_time, align_time, merge_time, keeper.differential()
@@ -665,10 +685,6 @@ def do_folder(folder, args):
         return False
 
     command = "clustalo -i {in_file} -o {out_file} --threads=1 --full"
-    #command = "mafft --thread 1 --quiet --anysymbol {in_file}>{out_file}"
-    #command = "./famsa -t 1 {in_file} {out_file}"
-    #if args.second_run:
-        #command += " --full-iter --iter=1"
 
     intermediates = "intermediates"
     if not path.exists(intermediates):
@@ -683,8 +699,10 @@ def do_folder(folder, args):
 
         exst_file = result_file if path.exists(result_file) else None
         if not exst_file:
-            exst_file = compress_result_file if path.exists(compress_result_file) else None
-        
+            exst_file = (
+                compress_result_file if path.exists(compress_result_file) else None
+            )
+
         if not exst_file or stat(exst_file).st_size == 0:
             func_args.append(
                 (
@@ -708,9 +726,6 @@ def do_folder(folder, args):
             pool.starmap(run_command, func_args, chunksize=1)
     else:
         [run_command(arg[0]) for arg in func_args]
-
-    # if args.debug:
-    # with open("mafft_times.csv", "w") as fp:
 
     printv(f"Done! Took {time_keeper.differential():.2f}s overall", args.verbose, 0)
     return True

@@ -4,7 +4,12 @@ from multiprocessing.pool import Pool
 from pathlib import Path
 from msgspec import Struct, json
 
-from phymmr_tools import constrained_distance, dumb_consensus, dumb_consensus_dupe, find_index_pair
+from phymmr_tools import (
+    constrained_distance,
+    dumb_consensus,
+    dumb_consensus_dupe,
+    find_index_pair,
+)
 from wrap_rocks import RocksDB
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
@@ -21,6 +26,7 @@ class Record(Struct):
 
     def get_pair(self):
         return (self.id, self.seq)
+
 
 def folder_check(taxa_path: Path, debug: bool) -> None:
     """Create subfolders 'aa' and 'nt' to given path."""
@@ -74,8 +80,6 @@ def get_data_path(gene: Path) -> list:
         if path.exists(excise_path):
             return [Record(header, seq) for header, seq in parseFasta(excise_path)]
 
-
-
     return [Record(header, seq) for header, seq in parseFasta(str(gene))]
 
 
@@ -95,7 +99,7 @@ def aa_internal(
     reporter_dupes,
 ):
     failing = set()
-    # raws = [Record(head, seq) for head, seq in parseFasta(gene)]
+
     raws = get_data_path(gene)
     candidates, references = [], []
     for record in raws:
@@ -103,10 +107,7 @@ def aa_internal(
             candidates.append(record)
         else:
             references.append(record)
-    # if not candidates:  # if no candidates are found, report to user
-    #     print(f"{gene}: No Candidate Sequences found in file. Returning.")
-        # return [], {}, []
-    # candidates = excise_data_replacement(candidates, gene)
+
     if not candidates:
         return [], {}, references
     if no_dupes:
@@ -115,13 +116,12 @@ def aa_internal(
     else:
         consensus_func = dumb_consensus_dupe
         sequences = bundle_seqs_and_dupes(candidates, prepare_dupes, reporter_dupes)
-        
+
     consensus = consensus_func(sequences, consensus_threshold)
     for i, candidate in enumerate(candidates):
         start, stop = find_index_pair(candidate.seq, "-")
-        distance = constrained_distance(consensus, candidate.seq) / (stop-start)
+        distance = constrained_distance(consensus, candidate.seq) / (stop - start)
         if distance >= distance_threshold:
-            # failing[candidate[0]] = candidate[1]
             failing.add(candidate.id)
             candidates[i] = None
     candidates = [cand for cand in candidates if cand is not None]
@@ -138,7 +138,11 @@ def mirror_nt(input_path, output_path, failing, gene, compression):
     records = [rec for rec in records if rec.id not in failing]
     if not has_candidates(records):
         return
-    writeFasta(str(output_path), [rec.get_pair() for rec in records], compress=compression)
+    writeFasta(
+        str(output_path), [rec.get_pair() for rec in records], compress=compression
+    )
+
+
 def run_internal(
     gene: str,
     nt_input: str,
@@ -149,7 +153,7 @@ def run_internal(
     dupes,
     prepare_dupes,
     reporter_dupes,
-    decompress
+    decompress,
 ):
     compression = not decompress
     passing, failing, references = aa_internal(
@@ -163,8 +167,18 @@ def run_internal(
     if not passing:  # if no eligible candidates, don't create the output file
         return
     aa_output = Path(output_path, "aa", gene.name)
-    writeFasta(str(aa_output), [rec.get_pair() for rec in references + passing], compress=compression)
-    mirror_nt(nt_input, nt_output_path, failing, aa_output.name.replace(".aa.", ".nt."), compression)
+    writeFasta(
+        str(aa_output),
+        [rec.get_pair() for rec in references + passing],
+        compress=compression,
+    )
+    mirror_nt(
+        nt_input,
+        nt_output_path,
+        failing,
+        aa_output.name.replace(".aa.", ".nt."),
+        compression,
+    )
 
 
 def main(args, after_collapser, from_folder):
@@ -221,7 +235,7 @@ def main(args, after_collapser, from_folder):
                     args.no_dupes,
                     prepare_dupes,
                     reporter_dupes,
-                    args.uncompress_intermediates
+                    args.uncompress_intermediates,
                 ),
             )
         pool.starmap(run_internal, arguments, chunksize=1)

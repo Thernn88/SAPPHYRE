@@ -8,6 +8,7 @@ from threading import Thread
 import pyfastx
 from needletail import parse_fastx_file
 
+
 class ConcurrentLogger(Thread):
     def __init__(self, inq: Queue) -> None:
         super().__init__(daemon=True)
@@ -80,6 +81,7 @@ def writeFasta(path: str, records: tuple[str, str], compress=False):
     with func(path, "wb") as fp:
         data = [f">{header}\n{sequence}\n" for header, sequence in records]
         fp.write("".join(data).encode())
+
 
 def write2Line2Fasta(path: str, records: list[str], compress=False):
     func = open

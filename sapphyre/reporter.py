@@ -75,7 +75,7 @@ class Hit(ReporterHit, frozen=True):
         MISMATCH_AMOUNT = 1
         GAP_PENALTY = 2
         EXTEND_PENALTY = 1
-        
+
         # Create blosum pairwise aligner profile
         profile = profile_create_16(this_aa, blosum62)
 
@@ -106,7 +106,9 @@ class Hit(ReporterHit, frozen=True):
 
             this_aa_len = len(this_aa)
             if debug_fp:
-                debug_fp.write(f">ref_{number} = {result.score}\n{ref_seq}\n>aln\n{this_aa}\n")  # DEBUG
+                debug_fp.write(
+                    f">ref_{number} = {result.score}\n{ref_seq}\n>aln\n{this_aa}\n"
+                ) 
 
         if debug_fp:
             debug_fp.write("\n")
@@ -141,7 +143,7 @@ class Hit(ReporterHit, frozen=True):
                             break
 
                 if this_pass and l_exact_matches >= exact_match_amount:
-                    reg_start = (i - skip_l)
+                    reg_start = i - skip_l
                     break
 
             # Find which end position matches for 'matches' bases
@@ -173,7 +175,7 @@ class Hit(ReporterHit, frozen=True):
                             break
 
                 if this_pass and r_exact_matches >= exact_match_amount:
-                    reg_end = (this_aa_len - i - (1 + skip_r))
+                    reg_end = this_aa_len - i - (1 + skip_r)
                     break
             return reg_start, reg_end
 
@@ -199,7 +201,7 @@ def get_diamondhits(
 
     gene_based_results = []
     for gene in genes_to_process:
-        gene_based_results.append((gene,rocks_hits_db.get_bytes(f"gethits:{gene}")))
+        gene_based_results.append((gene, rocks_hits_db.get_bytes(f"gethits:{gene}")))
 
     return gene_based_results
 
@@ -228,7 +230,10 @@ def get_toprefs(rocks_nt_db: RocksDB) -> list[str]:
     Returns:
         list: List of top references
     """
-    return rocks_nt_db.get("getall:valid_refs").split(","), rocks_nt_db.get("get:isassembly") == "True"
+    return (
+        rocks_nt_db.get("getall:valid_refs").split(","),
+        rocks_nt_db.get("get:isassembly") == "True",
+    )
 
 
 def translate_cdna(cdna_seq):
@@ -291,14 +296,7 @@ def print_core_sequences(
             if taxon not in top_refs:
                 continue
 
-        header = (
-            gene
-            + "|"
-            + taxon
-            + "|"
-            + taxa_id
-            + "|."
-        )
+        header = gene + "|" + taxon + "|" + taxa_id + "|."
         result.append((header, seq))
 
     return result
@@ -317,7 +315,7 @@ def print_unmerged_sequences(
     verbose: int,
     mat: dict,
     is_assembly: bool,
-    exact_match_amount: int
+    exact_match_amount: int,
 ) -> tuple[dict[str, list], list[tuple[str, str]], list[tuple[str, str]]]:
     """Returns a list of unique trimmed sequences for a given gene with formatted headers.
 
@@ -371,7 +369,14 @@ def print_unmerged_sequences(
         # Trim to match reference
         if not is_assembly:
             r_start, r_end = hit.get_bp_trim(
-                aa_seq, core_aa_seqs, trim_matches, is_positive_match, debug_fp, header, mat, exact_match_amount
+                aa_seq,
+                core_aa_seqs,
+                trim_matches,
+                is_positive_match,
+                debug_fp,
+                header,
+                mat,
+                exact_match_amount,
             )
             if r_start is None or r_end is None:
                 printv(f"WARNING: Trim kicked: {hit.node}|{hit.frame}", verbose, 2)
@@ -513,14 +518,14 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     debug_alignments = None
     debug_dupes = None
     if oargs.debug:
-        makedirs(f"align_debug/{oargs.gene}", exist_ok=True)  # DEBUG
+        makedirs(f"align_debug/{oargs.gene}", exist_ok=True) 
         debug_alignments = open(
             f"align_debug/{oargs.gene}/{oargs.taxa_id}.alignments",
             "w",
-        )  # DEBUG
+        ) 
         debug_alignments.write(
             f"GAP_PENALTY: 2\nEXTEND_PENALTY: 1\n",
-        )  # DEBUG
+        ) 
         debug_dupes = open(f"align_debug/{oargs.gene}/{oargs.taxa_id}.dupes", "w")
 
     mat = BLOSUM(62)
@@ -538,9 +543,8 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
 
         def dist(bp_a, bp_b, mat):
             return mat[bp_a][bp_b] >= 0.0 and bp_a != "-" and bp_b != "-"
-        
 
-    this_hits = json.decode(oargs.list_of_hits, type = list[Hit])
+    this_hits = json.decode(oargs.list_of_hits, type=list[Hit])
 
     this_gene_dupes, aa_output, nt_output = print_unmerged_sequences(
         this_hits,
@@ -555,7 +559,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.verbose,
         mat,
         oargs.is_assembly,
-        oargs.EXACT_MATCH_AMOUNT
+        oargs.EXACT_MATCH_AMOUNT,
     )
     if debug_alignments:
         debug_alignments.close()
@@ -677,7 +681,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
                     EXACT_MATCH_AMOUNT,
                     args.minimum_bp,
                     args.debug,
-                    is_assembly
+                    is_assembly,
                 ),
             ),
         )

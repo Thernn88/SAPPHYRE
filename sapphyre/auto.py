@@ -4,7 +4,17 @@ import os
 from glob import glob
 from .timekeeper import KeeperMode, TimeKeeper
 
-from .__main__ import prepare_args, diamond_args, reporter_args, align_args, pal2nal_args, flexcull_args, outlier_args, merge_args
+from .__main__ import (
+    prepare_args,
+    diamond_args,
+    reporter_args,
+    align_args,
+    pal2nal_args,
+    flexcull_args,
+    outlier_args,
+    merge_args,
+)
+
 
 def get_args(arg_function):
     parser = argparse.ArgumentParser()
@@ -15,6 +25,7 @@ def get_args(arg_function):
             variables[action.dest] = action.default
 
     return variables
+
 
 def main(args):
     default_config = {

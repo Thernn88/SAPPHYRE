@@ -32,7 +32,7 @@ def process_folder(args, superfolder_path):
             "align",
             "nt_aligned",
             "blosum",
-            "collapsed"
+            "collapsed",
             "excise",
             "internal",
             "trimmed",

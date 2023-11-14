@@ -21,6 +21,7 @@ from msgspec import Struct, json
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
 
+
 def make_nt_name(x):
     return str(x).replace(".aa.", ".nt.")
 
@@ -31,7 +32,9 @@ def make_seq_dict(sequences: list) -> dict:
     cursor_dict = defaultdict(list)
 
     for sequence in sequences:
-        for cursor in range(sequence.start, sequence.end):  # exclusive, so add 1  edit: its already incremented
+        for cursor in range(
+            sequence.start, sequence.end
+        ):
             cursor_dict[cursor].append(sequence.header)
     return seq_dict, cursor_dict
 
@@ -41,7 +44,11 @@ def parse_fasta(gene_path: str) -> tuple[list[tuple[str, str]], list[tuple[str, 
     references: list[tuple[str, str]] = []
     candidates: list[tuple[str, str]] = []
     end_of_references = False
-    real_gene_path = gene_path if path.exists(gene_path) else str(gene_path).replace("/excise/", "/collapsed/")
+    real_gene_path = (
+        gene_path
+        if path.exists(gene_path)
+        else str(gene_path).replace("/excise/", "/collapsed/")
+    )
     try:
         for header, sequence in parseFasta(real_gene_path):
             if end_of_references is False:
@@ -78,7 +85,10 @@ def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
     for sequence in taxa_pair:
         if (
             current_region is None
-            or get_overlap(sequence.start, sequence.end, current_region[0], current_region[1], 0) is None
+            or get_overlap(
+                sequence.start, sequence.end, current_region[0], current_region[1], 0
+            )
+            is None
         ):
             if current_group:
                 result.append((current_region, current_group))
@@ -95,6 +105,7 @@ def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
 
     return result
 
+
 def calculate_split(sequence_a: str, sequence_b: str, comparison_sequence: str) -> int:
     """Iterates over each position in the overlap range of sequence A and sequence B and
     creates a frankenstein sequence of sequence A + Sequence B joined at each
@@ -108,7 +119,9 @@ def calculate_split(sequence_a: str, sequence_b: str, comparison_sequence: str) 
     pair_a = find_index_pair(sequence_a, "-")
     pair_b = find_index_pair(sequence_b, "-")
 
-    overlap_start, overlap_end = get_overlap(pair_a[0], pair_a[1], pair_b[0], pair_b[1], 1)
+    overlap_start, overlap_end = get_overlap(
+        pair_a[0], pair_a[1], pair_b[0], pair_b[1], 1
+    )
 
     sequence_a_overlap = list(islice(sequence_a, overlap_start, overlap_end + 1))
     sequence_b_overlap = list(islice(sequence_b, overlap_start, overlap_end + 1))
@@ -132,7 +145,7 @@ def directory_check(target_output_path) -> str:
         tmp_path = "/run/shm"
     elif path.exists("/dev/shm"):
         tmp_path = "/dev/shm"
-        
+
     aa_merged_path = path.join(target_output_path, "aa_merged")
     nt_merged_path = path.join(target_output_path, "nt_merged")
     rmtree(aa_merged_path, ignore_errors=True)
@@ -168,6 +181,7 @@ class Sequence(Struct, frozen=True):
             return self.header.split("|")[-1]
         return self.header.split("|")[-2]
 
+
 def non_overlap_chunks(sequence_list: list) -> list[Sequence]:
     current_region = None
     current_group = []
@@ -175,8 +189,13 @@ def non_overlap_chunks(sequence_list: list) -> list[Sequence]:
     result = []
 
     for sequence in sequence_list:
-        if current_region is None or get_overlap(sequence.start, sequence.end, current_region[0], current_region[1], 1) is not None:
-
+        if (
+            current_region is None
+            or get_overlap(
+                sequence.start, sequence.end, current_region[0], current_region[1], 1
+            )
+            is not None
+        ):
             if current_group:
                 result.append((current_region, current_group))
 
@@ -192,6 +211,7 @@ def non_overlap_chunks(sequence_list: list) -> list[Sequence]:
         result.append((current_region, current_group))
 
     return result
+
 
 def do_protein(
     protein: Literal["aa", "nt"],
@@ -377,9 +397,7 @@ def do_protein(
                                         else taxons_of_split[0]
                                     )
                                 else:
-                                    headers_here = "".join(
-                                       headers_at_current_point
-                                    )
+                                    headers_here = "".join(headers_at_current_point)
                                     key = f"{data_start}{data_end}{headers_here}"
                                     if key in quality_taxons_here:
                                         comparison_taxa = quality_taxons_here[key]
@@ -389,9 +407,7 @@ def do_protein(
                                             taxon,
                                             sequence,
                                         ) in comparison_sequences.items():
-                                            data_region = sequence[
-                                                data_start : data_end
-                                            ]
+                                            data_region = sequence[data_start:data_end]
                                             data = len(data_region) - data_region.count(
                                                 "-",
                                             )
@@ -524,7 +540,7 @@ def do_protein(
                             total_characters += count
 
                             candidate_characters.extend([this_char] * count)
-                            
+
                     if total_characters >= minimum_mr_amount:
                         # Translate all NT triplets into AA
                         translated_characters = [
@@ -730,10 +746,6 @@ def do_gene(
         writeFasta(aa_path, aa_data, compress)
         writeFasta(nt_path, nt_data, compress)
 
-def run_command(arg_tuple: tuple) -> None:
-    """Calls the do_gene() function parallel in each thread."""
-    do_gene(*arg_tuple)
-
 
 def do_folder(folder: Path, args):
     folder_time = TimeKeeper(KeeperMode.DIRECT)
@@ -752,9 +764,9 @@ def do_folder(folder: Path, args):
         reporter_dupe_counts = json.decode(
             rocksdb_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]]
         )
-        
+
         dbis_assembly = rocksdb_db.get("get:isassembly")
-        
+
         if dbis_assembly and dbis_assembly == "True":
             is_assembly = True
         ref_stats = rocksdb_db.get("getall:valid_refs").split(",")
@@ -815,7 +827,7 @@ def do_folder(folder: Path, args):
                 ),
             )
         with Pool(args.processes) as pool:
-            pool.map(run_command, arguments, chunksize=1)
+            pool.starmap(do_gene, arguments, chunksize=1)
     else:
         for target_gene in target_genes:
             prep_dupes_in_this_gene = prepare_dupe_counts.get(

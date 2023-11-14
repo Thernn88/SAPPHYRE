@@ -921,7 +921,7 @@ def main(args):
             "Z": ["CAA", "CAG", "GAA", "GAG"],
         },
     }
-    
+
     specified_dna_table = DICT_TABLES[str(args.table)]
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     for folder in args.INPUT:

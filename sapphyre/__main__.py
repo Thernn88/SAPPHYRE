@@ -13,6 +13,7 @@ Post-processing:
 """
 import argparse
 
+
 class CaseInsensitiveArgumentParser(argparse.ArgumentParser):
     def _parse_known_args(self, arg_strings, *args, **kwargs):
         # Iterate through the subparsers to find the command
@@ -81,7 +82,7 @@ def prepare_args(par):
         "--overlap_length",
         type=int,
         default=0,
-        help="Amount of overlap between chomped segments"
+        help="Amount of overlap between chomped segments",
     )
     par.add_argument(
         "-nr",
@@ -266,6 +267,7 @@ def subcmd_outlier(subparsers):
     outlier_args(par)
     par.set_defaults(func=outlier, formathelp=par.format_help)
 
+
 def outlier_args(par):
     # Globally used args
     par.add_argument(
@@ -363,13 +365,11 @@ def outlier_args(par):
         type=float,
         default=0.65,
     )
-    
-    # Excise commands
     par.add_argument(
-        "--no_excise",
-        action="store_true",
-        default=False,
-        help="Disable excise runs"
+        "--no_excise", 
+        action="store_true", 
+        default=False, 
+        help="Disable excise runs",
     )
     par.add_argument(
         "-ct",
@@ -406,18 +406,12 @@ def outlier_args(par):
         default="datasets/bad",
         help="Percentage of loci containg bad regions to move",
     )
-    # par.add_argument("--debug", default=False, action="store_true",
-    #                     help="Log the truncated consensus sequence and the removed tail.")
     par.add_argument(
         "--cut",
         default=False,
         action="store_true",
         help="Remove any regions flagged by excise.",
     )
-    # Internal Commands
-    # par.add_argument(
-    #     "-sd", "--sub_directory", default="collapsed", help="Name of input subfolder"
-    # )
     par.add_argument(
         "-o", "--output", type=str, default="internal", help="Path to output directory"
     )
@@ -437,6 +431,8 @@ def outlier_args(par):
         dest="internal_distance_threshold",
         help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence.",
     )
+
+
 def outlier(argsobj):
     from . import outlier
 
@@ -510,6 +506,7 @@ def merge_args(par):
         default=4,
         help="Percentage for majority ruling.",
     )
+
 
 def Merge(args):
     from . import merge
@@ -619,6 +616,7 @@ def subcmd_pal2nal(subparsers):
     )
     pal2nal_args(par)
     par.set_defaults(func=pal2nal, formathelp=par.format_help)
+
 
 def pal2nal_args(par):
     par.add_argument("-t", "--table", type=int, default=1, help="Table ID.")
@@ -1180,6 +1178,7 @@ def auto(args):
         print()
         print(args.formathelp())
 
+
 def internal(argsobj):
     from . import internal
 
@@ -1187,14 +1186,12 @@ def internal(argsobj):
         print()
         print(argsobj.formathelp())
 
+
 def subcmd_internal(subparser):
     parser = subparser.add_parser(
         "internal", help="Filter sequences by distance to the consensus sequence"
     )
     parser.add_argument("INPUT", help="Paths of directories.", type=str)
-    # parser.add_argument(
-    #     "-sd", "--sub_directory", default="collapsed", help="Name of input subfolder"
-    # )
     parser.add_argument(
         "-nd",
         "--no_dupes",
@@ -1212,14 +1209,11 @@ def subcmd_internal(subparser):
     parser.add_argument(
         "-c",
         "--compress",
-        # default=False,
+        default=False,
         action="store_false",
         dest="uncompress_intermediates",
         help="Compress intermediate files",
     )
-    # parser.add_argument(
-    #     ""
-    # )
     parser.add_argument(
         "-o",
         "--output",
@@ -1244,6 +1238,7 @@ def subcmd_internal(subparser):
         help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence.",
     )
     parser.set_defaults(func=internal, formathelp=parser.format_help)
+
 
 def main():
     parser = CaseInsensitiveArgumentParser(

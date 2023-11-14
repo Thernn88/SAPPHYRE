@@ -8,13 +8,20 @@ from itertools import combinations
 from multiprocessing.pool import Pool
 from pathlib import Path
 
-from phymmr_tools import find_index_pair, asm_index_split, blosum62_candidate_to_reference, blosum62_distance, delete_empty_columns
+from phymmr_tools import (
+    find_index_pair,
+    asm_index_split,
+    blosum62_candidate_to_reference,
+    blosum62_distance,
+    delete_empty_columns,
+)
 from wrap_rocks import RocksDB
 from numpy import float16, isnan, nanpercentile, nanmean
 from msgspec import Struct
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, write2Line2Fasta
+
 
 class Record(Struct):
     id: str
@@ -172,9 +179,7 @@ def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
     """
     result = []
     for ref in refs:
-        result.append(
-            blosum62_candidate_to_reference(candidate.sequence, ref.sequence)
-        )
+        result.append(blosum62_candidate_to_reference(candidate.sequence, ref.sequence))
     result.append(0.0)
     return result
 

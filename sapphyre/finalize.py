@@ -42,6 +42,7 @@ class GeneConfig:
     no_references: bool
     compress: bool
 
+
 def kick_taxa(content: list[tuple, tuple], to_kick: set) -> list:
     out = []
     for header, sequence in content:
@@ -149,7 +150,6 @@ def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict) -> tup
         else:
             nt_candidates.append((header, seq))
     for (aa_header, aa_line), (nt_header, nt_line) in zip(aa_candidates, nt_candidates):
-    # for (aa_header, aa_line), (nt_header, nt_line) in zip(aa_content, nt_content):
         if not aa_header.endswith("."):
             if aa_header != nt_header:
                 print("Warning RENAME: Nucleotide order doesn't match Amino Acid order")
@@ -202,8 +202,12 @@ def clean_gene(gene_config: GeneConfig):
         aa_content = parseFasta(str(gene_config.aa_file))
         nt_content = parseFasta(str(gene_config.nt_file))
     else:
-        aa_content = (pair for pair in parseFasta(str(gene_config.aa_file)) if pair[0][-1] != ".")
-        nt_content = (pair for pair in parseFasta(str(gene_config.nt_file)) if pair[0][-1] != ".")
+        aa_content = (
+            pair for pair in parseFasta(str(gene_config.aa_file)) if pair[0][-1] != "."
+        )
+        nt_content = (
+            pair for pair in parseFasta(str(gene_config.nt_file)) if pair[0][-1] != "."
+        )
 
     if gene_config.stopcodon:
         aa_content, nt_content = stopcodon(aa_content, nt_content)
@@ -244,32 +248,42 @@ def clean_gene(gene_config: GeneConfig):
     gene_taxa_present = {}
 
     column_stats = {}
-    candidate_count = 0 
+    candidate_count = 0
 
     if gene_config.gene in gene_config.target or not gene_config.sort:
         if gene_config.count_taxa or gene_config.generating_names:
-            taxon_count, gene_taxon_to_taxa, gene_taxa_present = taxon_present(aa_content)
-
+            taxon_count, gene_taxon_to_taxa, gene_taxa_present = taxon_present(
+                aa_content
+            )
 
         col_dict = defaultdict(list)
         for header, sequence in aa_content:
             if not header.endswith("."):
                 candidate_count += 1
-            
+
             for i, char in enumerate(sequence):
                 col_dict[i].append(char.replace("X", "-"))
-        
+
         for col, chars in col_dict.items():
             this_most_common = Counter(chars).most_common()
             most_common_inclusive = this_most_common[0][1]
             if len(this_most_common) == 1:
-                if this_most_common[0][0] == "-": 
+                if this_most_common[0][0] == "-":
                     most_common_AA_count = 0
                 else:
                     most_common_AA_count = this_most_common[0][1]
             else:
-                most_common_AA_count =  this_most_common[0][1] if this_most_common[0][0] == "-" else this_most_common[1][1]
-            column_stats[col] = len(chars), len(chars)-chars.count("-"), most_common_inclusive, most_common_AA_count            
+                most_common_AA_count = (
+                    this_most_common[0][1]
+                    if this_most_common[0][0] == "-"
+                    else this_most_common[1][1]
+                )
+            column_stats[col] = (
+                len(chars),
+                len(chars) - chars.count("-"),
+                most_common_inclusive,
+                most_common_AA_count,
+            )
 
         aa_target_content.extend(aa_content)
         nt_target_content.extend(nt_content)
@@ -284,9 +298,8 @@ def clean_gene(gene_config: GeneConfig):
     if gene_config.rename and not gene_config.generating_names:
         aa_content = taxon_only(aa_content)
         nt_content = taxon_only(nt_content)
-    
-    if nt_content:
 
+    if nt_content:
         writeFasta(aa_path, aa_content, gene_config.compress)
         writeFasta(nt_path, nt_content, gene_config.compress)
 
@@ -304,7 +317,7 @@ def clean_gene(gene_config: GeneConfig):
         path_to,
         column_stats,
         candidate_count,
-        gene_taxa_present
+        gene_taxa_present,
     )
 
 
@@ -511,13 +524,13 @@ def process_folder(args, input_path):
     gene_lengths = defaultdict(dict)
     total = defaultdict({"p": 0, "bp": 0}.copy)
     taxon_to_taxa = {}
-    
+
     positions = None
     if args.position != {1, 2, 3}:
-        positions = [i for i in range(3) if str(i+1) not in set(str(args.position))]
+        positions = [i for i in range(3) if str(i + 1) not in set(str(args.position))]
 
-    total_lax =  0
-    total_strict= 0
+    total_lax = 0
+    total_strict = 0
     total_inform = 0
     total_inform_lax = 0
     column_stats_res = []
@@ -539,26 +552,36 @@ def process_folder(args, input_path):
         this_strict = 0
         this_inform = 0
         this_inform_lax = 0
-        for (_, non_gap, most_common_inclusive, most_common_AA_count) in column_stats.values():
+        for (
+            _,
+            non_gap,
+            most_common_inclusive,
+            most_common_AA_count,
+        ) in column_stats.values():
             if non_gap >= max_candidate_count:
                 this_strict += 1
                 if most_common_inclusive < max_candidate_count - MISMATCHES:
                     this_inform += 1
-                                                        
+
             if non_gap != 0:
                 if non_gap >= 4:
                     if most_common_AA_count < non_gap - MISMATCHES:
                         this_inform_lax += 1
-                                                        
+
                 this_lax += 1
 
         total_lax += this_lax
         total_strict += this_strict
         total_inform += this_inform
         total_inform_lax += this_inform_lax
-            
-        column_stats_res.append((this_strict,f"{gene},{str(this_lax)},{str(this_strict)},{str(this_inform)},{str(this_inform_lax)}"))
-        
+
+        column_stats_res.append(
+            (
+                this_strict,
+                f"{gene},{str(this_lax)},{str(this_strict)},{str(this_inform)},{str(this_inform_lax)}",
+            )
+        )
+
         if args.gene_kick:
             if kick_gene(taxa_local, gene_kick, taxa_global):
                 aa_path, nt_path = path_to
@@ -590,7 +613,7 @@ def process_folder(args, input_path):
                     sequence = list(sequence)
                     for ai in range(0, len(sequence), 3):
                         for ti in positions:
-                            sequence[ai+ti] = ""
+                            sequence[ai + ti] = ""
                     sequence = "".join(sequence)
 
                 if i == 0:
@@ -643,15 +666,18 @@ def process_folder(args, input_path):
 
                 fp.write("end;\n")
 
-    column_stats_res.sort(key = lambda x: x[0], reverse = True)
-    column_stats_res = ["Gene,Lax Count,Strict Count,Informative Count,Lax Informative Count"] + [i[1] for i in column_stats_res]
+    column_stats_res.sort(key=lambda x: x[0], reverse=True)
+    column_stats_res = [
+        "Gene,Lax Count,Strict Count,Informative Count,Lax Informative Count"
+    ] + [i[1] for i in column_stats_res]
 
-    column_stats_res.append(f"Total,{str(total_lax)},{str(total_strict)},{str(total_inform)},{str(total_inform_lax)}")
-   
+    column_stats_res.append(
+        f"Total,{str(total_lax)},{str(total_strict)},{str(total_inform)},{str(total_inform_lax)}"
+    )
+
     with open(str(processed_folder.joinpath("ColumnStats.csv")), "w") as fwcsv:
-        fwcsv.write("\n".join(column_stats_res))  
+        fwcsv.write("\n".join(column_stats_res))
 
-            
     if args.count:
         out = ["Taxa,Taxon,Present,Total AA"]
 
