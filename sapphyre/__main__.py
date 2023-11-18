@@ -1159,7 +1159,14 @@ def subcmd_auto(subparsers):
         "--start",
         type=str,
         default="Prepare",
-        help="Step to start from. Default: Prepare",
+        choices=["Prepare", "Diamond", "Reporter", "Align", "Pal2nal", "Flexcull", "Outlier", "Merge"],
+        help="Module to start from. Default: Prepare",
+    )
+    par.add_argument(
+        "--solo",
+        action="store_true",
+        default=False,
+        help="Skip trying to glob *.fa from the input directory.",
     )
     par.add_argument(
         "-c",
