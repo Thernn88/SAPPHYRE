@@ -108,7 +108,7 @@ class Hit(ReporterHit, frozen=True):
             if debug_fp:
                 debug_fp.write(
                     f">ref_{number} = {result.score}\n{ref_seq}\n>aln\n{this_aa}\n"
-                ) 
+                )
 
         if debug_fp:
             debug_fp.write("\n")
@@ -518,14 +518,14 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     debug_alignments = None
     debug_dupes = None
     if oargs.debug:
-        makedirs(f"align_debug/{oargs.gene}", exist_ok=True) 
+        makedirs(f"align_debug/{oargs.gene}", exist_ok=True)
         debug_alignments = open(
             f"align_debug/{oargs.gene}/{oargs.taxa_id}.alignments",
             "w",
-        ) 
+        )
         debug_alignments.write(
             f"GAP_PENALTY: 2\nEXTEND_PENALTY: 1\n",
-        ) 
+        )
         debug_dupes = open(f"align_debug/{oargs.gene}/{oargs.taxa_id}.dupes", "w")
 
     mat = BLOSUM(62)
