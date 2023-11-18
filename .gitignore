@@ -1,4 +1,4 @@
-# misc test files
+# SAPPHYRE directories
 aa/
 nt/
 trimmed/
@@ -6,6 +6,7 @@ taxa/
 orthosets/
 intermediates/
 align_debug/
+datasets/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
