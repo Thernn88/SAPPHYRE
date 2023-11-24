@@ -7,7 +7,6 @@ Sapphyre is an assembly-less solution for processing high-throughput sequencing 
 	Externals
 	Mafft 7.489+ https://mafft.cbrc.jp/alignment/software/ sudo apt install mafft
 	Diamond 2.1.6+ - https://github.com/bbuchfink/diamond 
-	SQLite3 - sudo apt install sqlite3 (Will be removed later.)
 	sra-toolkit - sudo apt install sra-toolkit
 	clustalo - sudo apt install clustalo
 	
