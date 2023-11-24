@@ -90,41 +90,34 @@ def main(args):
 
             if not prepare.main(this_args):
                 print("Error in Prepare.")
-            from . import diamond
         elif script == "diamond":
             from . import diamond
 
-            print(vars(this_args))
             if not diamond.main(this_args):
                 print("Error in Diamond.")
         elif script == "reporter":
             from . import reporter
 
-            print(vars(this_args))
             if not reporter.main(this_args):
                 print("Error in Reporter.")
         elif script == "align":
             from . import align
 
-            print(vars(this_args))
             if not align.main(this_args):
                 print("Error in Align.")
         elif script == "pal2nal":
             from . import pal2nal
 
-            print(vars(this_args))
             if not pal2nal.main(this_args):
                 print("Error in Pal2Nal.")
         elif script == "flexcull":
             from . import flexcull
 
-            print(vars(this_args))
             if not flexcull.main(this_args):
                 print("Error in FlexCull.")
         elif script == "outlier":
             from . import outlier
 
-            print(vars(this_args))
             if not outlier.main(this_args):
                 print("Error in Outlier.")
         elif script == "merge":
