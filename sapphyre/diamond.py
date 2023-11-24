@@ -591,16 +591,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
             extension_found = True
             break
 
-    # # # # # # # # # # # # # # #
-    # Bandaid to fix >> headers #
-    # # # # # # # # # # # # # # #
-    for i in recipe:
-        batch = nt_db.get_bytes(f"ntbatch:{i}").decode().split("\n")
-        if batch[0].startswith(">>"):
-            batch = [i[1:] if i.startswith(">>") else i for i in batch]
-        nt_db.put_bytes(f"ntbatch:{i}", "\n".join(batch).encode())
-    # # # # # # # # # # # # # # #
-
     if not path.exists(out_path) or stat(out_path).st_size == 0:
         with TemporaryDirectory(dir=gettempdir()) as dir, NamedTemporaryFile(
             dir=dir,
