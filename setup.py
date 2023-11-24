@@ -1,16 +1,22 @@
 from setuptools import setup, find_packages
 
-setup(name='sapphyre',
-    version='0.1',
-    description='An assembly-less solution for processing high-throughput sequencing reads for phylogenetics',
-    url='https://github.com/Thernn88/SAPPHYRE',
-    author='Sapphyre TEAM',
-    license='GPL3',
+setup(
+    name="sapphyre",
+    version="0.2",
+    description="An assembly-less solution for processing high-throughput sequencing reads for phylogenetics",
+    long_description=open("README.md").read(),
+    long_description_content_type="text/markdown",
+    url="https://github.com/Thernn88/SAPPHYRE",
+    author="Kevin Moran",
+    author_email="thernn8891@gmail.com",
+    maintainer="Ashton Pooley",
+    maintainer_email="admin@ashi.digital",
+    license="GPLv3",
     packages=find_packages(where="."),
     zip_safe=False,
     entry_points={
-        'console_scripts': [
-            'sapphyre = sapphyre.__main__:main',
+        "console_scripts": [
+            "sapphyre = sapphyre.__main__:main",
         ],
     },
     install_requires=[
@@ -30,6 +36,34 @@ setup(name='sapphyre',
         "openpyxl>=3.1.2",
         "requests>=2.31.0",
         "beautifulsoup4>=4.12.2",
-        "tqdm>=4.66.1"
+        "tqdm>=4.66.1",
+    ],
+    keywords=[
+        "phylogenetics",
+        "bioinformatics",
+        "genomics",
+        "phylogenomics",
+        "phylogeny",
+        "bio",
+        "assembly",
+        "sequencing",
+    ],
+    platforms="any",
+    classifiers=[
+        "Natural Language :: English",
+        "Environment :: Console",
+        "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+        "Development Status :: 2 - Pre-Alpha",
+        "Intended Audience :: Science/Research",
+        "Operating System :: OS Independent",
+        "Programming Language :: Python",
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "Topic :: Scientific/Engineering",
+        "Topic :: Scientific/Engineering :: Bio-Informatics",
+        "Topic :: Software Development :: Libraries :: Python Modules",
     ]
 )

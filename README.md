@@ -1,5 +1,7 @@
 # sapphyre
 
+Sapphyre is an assembly-less solution for processing high-throughput sequencing reads for phylogenetics. Lorem Ipsum,,,
+
 ## Requirements
 	
 	Externals
@@ -11,27 +13,31 @@
 	
 	Python - 3.9+ (Recommended 3.11)
 		Python Modules
-			phymmr_tools>=0.5.10
-			wrap_rocks>=0.3.7
-			biopython>=1.79
-			numpy>=1.23.3
-			blosum==2.0.2
+			beautifulsoup4>=4.12.2
+			Bio>=1.6.0
+			biopython>=1.81
+			msgspec>=0.18.4
+			needletail>=0.5.0
+			numpy>=1.24.2
+			openpyxl>=3.1.2
+			pandas>=2.1.3
+			parasail>=1.3.4
+			phymmr_tools>=0.6.4
 			pro2codon>=1.2.4
 			pyfastx>=2.0.1
-			needletail>=0.5.0
-			pandas>=2.1.1
-			msgspec>=0.18.2
-			parasail>=1.3.4
-			xxhash>=3.3.0
-			pyarrow>=13.0.0
-			openpyxl>=3.1.2
-			requests>=2.31.0
-			beautifulsoup4>=4.12.2
+			Requests>=2.31.0
+			scipy>=1.11.4
+			setuptools>=67.6.1
 			tqdm>=4.66.1
+			wrap_rocks>=0.3.7
+			xxhash>=3.4.1
 			
 ## Usage
 
-All scripts are located in the sapphyre directory. You can call them using
+Generic command line
+
+	sapphyre <global args> <module> <module args> <FILE>
+	sapphyre -p 32 -v align -alm frags test_dataset/*.fa
 
 Example commands workflow using Mayer et al. (2021) reference set. Verbose enabled using -v. Multithreading enabled w/ -p <X> threads passed.  
 
