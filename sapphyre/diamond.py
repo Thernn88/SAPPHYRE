@@ -112,7 +112,7 @@ def get_overlap_amount(a_start: int, a_end: int, b_start: int, b_end: int) -> in
 
     Returns:
     -------
-        int: The number of elements in the overlap between the two ranges.
+        int: The amount of overlap between the two ranges.
     """
     overlap_coords = get_overlap(
         a_start,
@@ -164,10 +164,10 @@ def multi_filter(this_args: MultiArgs) -> tuple[list, int, list]:
 
     log = []
 
-    # Assign the highest scoring hit as the master
+    # Assign the highest scoring hit as the 'master'
     master = this_args.hits[0]
 
-    # Assign all the lower scoring hits as candidates
+    # Assign all the lower scoring hits as 'candidates'
     candidates = this_args.hits[1:]
     kicks = set()
     passes = len(this_args.hits)
@@ -216,7 +216,9 @@ def multi_filter(this_args: MultiArgs) -> tuple[list, int, list]:
                         ),
                     )
             else:
-                # If the score difference is not greater than 5% trigger miniscule score
+                # If the score difference is not greater than 5% trigger miniscule score.
+                # Miniscule score means hits map to loosely to multiple genes thus
+                # we can't determine a viable hit on a single gene and must kick all.
                 if this_args.debug:
                     log.extend(
                         [
@@ -304,6 +306,16 @@ def internal_filter(this_args: InternalArgs) -> tuple[set, list, int]:
 
 
 def convert_and_cull(this_args: ConvertArgs) -> ConvertReturn:
+    """Converts a list of the larger Hit class to a smaller ReporterHit class and culls
+    left over data
+
+    Args:
+    ----
+        this_args (ConvertArgs): The arguments for the convert_and_cull function.
+    Returns:
+    -------
+        ConvertReturn: A struct containing the gene and the list of ReporterHits.
+    """
     output = []
     for hit in this_args.hits:
         output.append(
@@ -338,6 +350,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
     multi_kicks = 0
     this_log = []
 
+    # Grab groups of data based on base header
     for _, header_df in pargs.grouped_data.groupby("header"):
         frame_to_hits = defaultdict(list)
         target_to_hits = defaultdict(list)
@@ -345,6 +358,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
 
         hits = []
         for row in header_df.values:
+            # These values are referenced multiple times
             target = row[1]
             sstart = row[7]
             send = row[8]
@@ -353,17 +367,23 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             qend = row[6]
             evalue = row[3]
 
+            # Skip if evalue is greater than threshold
             if evalue > pargs.evalue_threshold:
                 continue
 
+            # Negative frames coords are in reverse order.
             if frame < 0:
                 qend, qstart = qstart, qend
+
+            # Get the gene and taxon from the target orthoset data
             gene, ref, _ = pargs.target_to_taxon[target]
 
+            # Create a list of ReferenceHit objects starting with the
+            # reference hit for the current row
             refs = [ReferenceHit(target, ref, sstart, send)]
 
             this_hit = Hit(
-                row[0].lstrip(">"),  # # # BANDAID # # #
+                row[0],
                 target,
                 row[2],
                 row[3],
@@ -373,22 +393,26 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                 sstart,
                 send,
                 gene,
-                hash(time()),
+                abs(hash(time())) // (pargs.i + 1),
                 ref,
                 refs,
             )
 
+            # Used to calculate the sum of each targets' individual scores
             if target not in pool_scores:
                 pool_scores[target] = this_hit.score
             else:
                 pool_scores[target] += this_hit.score
 
+            # Add the hit to a dict based on target
             target_to_hits[target].append(this_hit)
 
         if pool_scores:
             top_score = max(pool_scores.values())
             top_score *= 0.9
 
+            # Filter hits based on target where the sum of scores is not greater than 90% of
+            # the highest targets' sum.
             for target, hits in target_to_hits.items():
                 if pool_scores[target] >= top_score:
                     for this_hit in hits:
@@ -398,6 +422,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             hits.sort(key=lambda x: x.score, reverse=True)
             genes_present = {hit.gene for hit in hits}
 
+            # Run multi filter if hits map to multiple genes
             kicks = set()
             if len(genes_present) > 1:
                 result = multi_filter(MultiArgs(hits, pargs.debug))
@@ -407,6 +432,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                     this_log.extend(result.log)
 
             if any(hits):
+                # Delegate hits into a gene based dict. If multi was ran then apply kicks
                 if len(genes_present) > 1:
                     gene_hits = defaultdict(list)
                     for hit in hits:
@@ -417,7 +443,8 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                         hits[0].gene: [hit for hit in hits if hit.uid not in kicks]
                     }
 
-                for _, hits in gene_hits.items():
+                # Output the top hit for each gene with the remaining hits as references
+                for hits in gene_hits.values():
                     top_hit = hits[0]
 
                     if pargs.is_assembly:
@@ -441,11 +468,24 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
         output,
     )
 
+    # Write the results as a compressed msgspec Struct JSON object to the temporary file
+    # allocated to this thread
     with open(pargs.result_fp, "wb") as result_file:
         result_file.write(json.encode(result))
 
 
 def get_head_to_seq(nt_db, recipe):
+    """Get a dictionary of headers to sequences.
+
+    Args:
+    ----
+        nt_db (RocksDB): The NT rocksdb database.
+        recipe (list[str]): A list of each batch index.
+    Returns:
+    -------
+        dict[str, str]: A dictionary of headers to sequences.
+    """
+
     head_to_seq = {}
     for i in recipe:
         lines = nt_db.get_bytes(f"ntbatch:{i}").decode().split("\n")
@@ -497,7 +537,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
     taxa = path.basename(input_path)
     printv(f"Processing: {taxa}", args.verbose, 0)
-    printv("Grabbing reference data from Orthoset DB.", args.verbose)
+    printv("Grabbing necessary directories.", args.verbose)
     # make dirs
     diamond_path = path.join(input_path, "diamond")
     if args.overwrite and path.exists(diamond_path):
@@ -534,6 +574,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
         if not gen:
             print("Aborting")
             return False
+    printv(
+        f"Done! Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Grabbing reference data from Orthoset DB",
+        args.verbose,
+    )
     orthoset_db = RocksDB(orthoset_db_path)
 
     target_to_taxon_raw = orthoset_db.get_bytes("getall:targetreference")
@@ -549,11 +593,17 @@ def run_process(args: Namespace, input_path: str) -> bool:
     )
 
     del orthoset_db
-    time_keeper.lap()  # Reset timer
 
-    printv("Done! Grabbing NT sequences.", args.verbose)
+    printv(
+        f"Done! Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Grabbing NT sequences",
+        args.verbose,
+    )
 
     nt_db_path = path.join(input_path, "rocksdb", "sequences", "nt")
+
+    if not path.exists(nt_db_path):
+        msg = "Could not find NT database. Either your dataset is corrupt or Prepare has failed to run."
+        raise ValueError(msg)
 
     nt_db = RocksDB(nt_db_path)
 
@@ -575,9 +625,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     if recipe:
         recipe = recipe.split(",")
     else:
-        msg = (
-            "Nucleotide sequence not found in database. Did Prepare succesfully finish?"
-        )
+        msg = "Nucleotide sequences not found in database. Did Prepare succesfully finish?"
         raise ValueError(
             msg,
         )
@@ -591,6 +639,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
             extension_found = True
             break
 
+    printv(
+        f"Done! Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Running Diamond",
+        args.verbose,
+    )
+
     if not path.exists(out_path) or stat(out_path).st_size == 0:
         with TemporaryDirectory(dir=gettempdir()) as dir, NamedTemporaryFile(
             dir=dir,
@@ -601,10 +654,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
             quiet = "--quiet" if args.verbose == 0 else ""
 
-            printv(
-                f"Done! Running Diamond. Elapsed time {time_keeper.differential():.2f}s.",
-                args.verbose,
-            )
             time_keeper.lap()  # Reset timer
             if not extension_found:
                 out_path += ".tsv"
@@ -615,7 +664,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             input_file.seek(0)
 
         printv(
-            f"Diamond done. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Reading file to memory",
+            f"Diamond completed successfully. Took: {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Reading file to memory",
             args.verbose,
         )
     else:
@@ -663,7 +712,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
             "send": uint16,
         },
     )
-
+    printv(
+        f"Done! Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Calculating targets.",
+        args.verbose,
+    )
     target_counts = df["target"].value_counts()
     combined_count = Counter()
     taxon_to_targets = defaultdict(list)
@@ -757,18 +809,17 @@ def run_process(args: Namespace, input_path: str) -> bool:
         )
 
         printv(
-            f"Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Processing data.",
+            f"Done! Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Processing data.",
             args.verbose,
         )
         if post_threads > 1:
-            # with Pool(post_threads) as pool:
             pool.map(process_lines, arguments)
         else:
             for arg in arguments:
                 process_lines(arg)
 
         printv(
-            f"Processed. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Reading thread outputs",
+            f"Data processed. Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Consolidating threads",
             args.verbose,
         )
 
@@ -791,7 +842,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             this_log,
         )
         printv(
-            f"Done reading outputs. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
+            f"Done! Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
             args.verbose,
         )
 
@@ -844,9 +895,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
             output[gene] = [i for i in output[gene] if i.uid not in result.this_kicks]
 
-        next_step = "Writing to db"
         printv(
-            f"Filtering done. Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. {next_step}",
+            f"Filtering done. Took {time_keeper.lap():.2f}s."
+            + f" Elapsed time {time_keeper.differential():.2f}s. Doing variant filter",
             args.verbose,
         )
         arguments = []
@@ -892,10 +943,15 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         variant_filter = {k: list(v) for k, v in variant_filter.items()}
 
+        printv(
+            f"Done! Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Writing to DB",
+            args.verbose,
+        )
+
         db.put_bytes(
             "getall:target_variants",
             json_encoder.encode(variant_filter),
-        )  # type=dict[str, list[str]]
+        )
 
         del variant_filter
         nt_db.put("getall:valid_refs", ",".join(list(top_refs)))
@@ -964,7 +1020,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
         )
         printv(
             f"Took {time_keeper.lap():.2f}s for {multi_kicks+internal_kicks} kicks leaving {passes} results. Writing to DB",
-            # f"Took {time_keeper.lap():.2f}s for {multi_kicks + internal_kicks} kicks leaving {passes} results. Writing to DB",
             args.verbose,
         )
 
@@ -984,7 +1039,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     del db
     del nt_db
 
-    printv(f"Took {time_keeper.differential():.2f}s overall.", args.verbose)
+    printv(f"Done! Took {time_keeper.differential():.2f}s overall.", args.verbose)
 
     return True
 
