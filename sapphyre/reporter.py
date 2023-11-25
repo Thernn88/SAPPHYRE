@@ -10,14 +10,14 @@ from typing import TextIO
 from blosum import BLOSUM
 from parasail import profile_create_16, blosum62, nw_trace_scan_profile_16
 from xxhash import xxh3_64
-from Bio.Seq import Seq
+from phymmr_tools import translate
 from msgspec import json
 from wrap_rocks import RocksDB
 
 from . import rocky
 from .diamond import ReporterHit
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import printv, writeFasta
+from .utils import printv, writeFasta, gettempdir
 
 MainArgs = namedtuple(
     "MainArgs",
@@ -33,7 +33,7 @@ MainArgs = namedtuple(
         "blosum_strictness",
         "minimum_bp",
         "gene_list_file",
-        "clear_output",
+        "keep_output",
     ],
 )
 
@@ -98,7 +98,7 @@ class Hit(ReporterHit, frozen=True):
                 EXTEND_PENALTY,
             )
 
-            # Get the aligned sequences
+            # Get the aligned sequence with the highest score
             this_aa, ref_seq = result.traceback.query, result.traceback.ref
             if result.score > best_alignment_score:
                 best_alignment = (this_aa, ref_seq)
@@ -248,8 +248,7 @@ def translate_cdna(cdna_seq):
     if len(cdna_seq) % 3 != 0:
         printv("WARNING: NT Sequence length is not divisable by 3", 0)
 
-    return str(Seq(cdna_seq).translate())
-
+    return translate(cdna_seq)
 
 def get_core_sequences(
     gene: str,
@@ -458,9 +457,10 @@ def print_unmerged_sequences(
                 else:
                     base_header_mapped_already[base_header] = header, aa_seq
 
+                # Save the index of the sequence output
                 header_maps_to_where[header] = len(
                     aa_result,
-                )  # Save the index of the sequence output
+                )
 
                 # Write unique sequence
                 aa_result.append((header, aa_seq))
@@ -508,6 +508,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     t_gene_start = TimeKeeper(KeeperMode.DIRECT)
     printv(f"Doing output for: {oargs.gene}", oargs.verbose, 2)
 
+    # Get reference sequences
     core_sequences, core_sequences_nt = get_core_sequences(
         oargs.gene,
         rocky.get_rock("rocks_orthoset_db"),
@@ -528,6 +529,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         )
         debug_dupes = open(f"align_debug/{oargs.gene}/{oargs.taxa_id}.dupes", "w")
 
+    # Initialize blosum matrix and distance function
     mat = BLOSUM(62)
     if oargs.blosum_strictness == "exact":
 
@@ -544,8 +546,10 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         def dist(bp_a, bp_b, mat):
             return mat[bp_a][bp_b] >= 0.0 and bp_a != "-" and bp_b != "-"
 
+    # Unpack the hits
     this_hits = json.decode(oargs.list_of_hits, type=list[Hit])
 
+    # Trim and save the sequences
     this_gene_dupes, aa_output, nt_output = print_unmerged_sequences(
         this_hits,
         oargs.gene,
@@ -565,22 +569,24 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         debug_alignments.close()
         debug_dupes.close()
     if aa_output:
+        # If valid sequences were found, insert the present references
         aa_core_sequences = print_core_sequences(
             oargs.gene,
             core_sequences,
             oargs.target_taxon,
             oargs.top_refs,
         )
-        writeFasta(this_aa_path, aa_core_sequences + aa_output, oargs.compress)
-
-        this_nt_path = path.join(oargs.nt_out_path, oargs.gene + ".nt.fa")
-
+        
         nt_core_sequences = print_core_sequences(
             oargs.gene,
             core_sequences_nt,
             oargs.target_taxon,
             oargs.top_refs,
         )
+        # Write the output
+        writeFasta(this_aa_path, aa_core_sequences + aa_output, oargs.compress)
+
+        this_nt_path = path.join(oargs.nt_out_path, oargs.gene + ".nt.fa")
         writeFasta(this_nt_path, nt_core_sequences + nt_output, oargs.compress)
 
     printv(
@@ -607,17 +613,8 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
 
     num_threads = args.processes
-    if not isinstance(num_threads, int) or num_threads < 1:
-        num_threads = 1
 
-    if path.exists("/run/shm"):
-        tmp_path = "/run/shm"
-    elif path.exists("/dev/shm"):
-        tmp_path = "/dev/shm"
-    else:
-        tmp_path = taxa_path.join(taxa_path, "tmp")
-        makedirs(tmp_path, exist_ok=True)
-
+    # Grab gene list file if present
     if args.gene_list_file:
         with open(args.gene_list_file) as fp:
             list_of_wanted_genes = fp.read().split("\n")
@@ -630,7 +627,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     aa_out_path = path.join(taxa_path, aa_out)
     nt_out_path = path.join(taxa_path, nt_out)
 
-    if args.clear_output:
+    if not args.keep_output:
         if path.exists(aa_out_path):
             rmtree(aa_out_path)
         if path.exists(nt_out_path):
@@ -687,11 +684,10 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
         )
     if args.debug:
         makedirs("align_debug", exist_ok=True)
-    # this sorting the list so that the ones with the most hits are first
+
     if num_threads > 1:
         with Pool(num_threads) as pool:
             recovered = pool.starmap(trim_and_write, arguments, chunksize=1)
-
     else:
         recovered = [trim_and_write(i[0]) for i in arguments]
 

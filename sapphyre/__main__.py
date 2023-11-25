@@ -228,11 +228,11 @@ def reporter_args(par):
         help="Enable debug",
     )
     par.add_argument(
-        "-clear",
-        "--clear_output",
-        action="store_false",
-        default=True,
-        help="Clear output folder before running.",
+        "-k",
+        "--keep_output",
+        action="store_true",
+        default=False,
+        help="Stops reporter from overwriting output.",
     )
 
 
@@ -251,7 +251,7 @@ def reporter(args):
         args.blosum_strictness,
         args.minimum_bp,
         args.gene_list_file,
-        args.clear_output,
+        args.keep_output,
     )
     if not reporter.main(mainargs):
         print(args.formathelp())
