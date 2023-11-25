@@ -21,7 +21,7 @@ Sapphyre is an assembly-less solution for processing high-throughput sequencing 
 			openpyxl>=3.1.2
 			pandas>=2.1.3
 			parasail>=1.3.4
-			phymmr_tools>=0.6.4
+			phymmr_tools>=0.6.5
 			pro2codon>=1.2.4
 			pyfastx>=2.0.1
 			Requests>=2.31.0
