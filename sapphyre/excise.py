@@ -22,41 +22,6 @@ def min_aa_check(sequence: list, minimum: int) -> bool:
     return valid_count >= minimum
 
 
-def find_quesion_marks(sequences: list, start: int, stop: int) -> set:
-    def check_index(i: int):
-        for seq in sequences:
-            if seq[i] != "-":
-                return False
-        return True
-
-    output = set()
-    for i in range(start, stop):
-        if check_index(i):
-            output.add(i)
-    return output
-
-
-def replace_inner_gaps(seq: list, start, stop, question_marks) -> str:
-    # start = None
-    for i, bp in enumerate(seq[start:stop], start):
-        if i not in question_marks:
-            continue
-        if bp == "?":
-            if start is None:
-                start = i
-                continue
-            if start is not None:
-                if i - start >= 7:
-                    for index in range(start, i + 1):
-                        seq[index] = "-"
-                start = None
-    if start is not None:
-        if len(seq) - start >= 7:
-            for index in range(start, i + 1):
-                seq[index] = "-"
-    return seq
-
-
 def first_last_X(string: str) -> tuple:
     first = None
     last = None
@@ -71,33 +36,6 @@ def first_last_X(string: str) -> tuple:
     if first is None or last is None:
         return None, None
     return first, last + 1
-
-
-def sensitive_check_bad_regions(consensus: str, limit: float, window=16) -> list:
-    # window = initial_window
-    # total = window
-    first, last = find_index_pair(consensus, "X")
-    if first is None or last is None:
-        return []
-    begin = None
-    output = []
-    for i in range(first, last, window):
-        ratio = consensus[i : i + window].count("X") / window
-        if ratio >= limit:
-            if begin is None:
-                begin = i
-        else:
-            if begin is not None:
-                # the new first is the old window end
-                a, b = first_last_X(consensus[begin:i])
-                output.append((a + begin, b + begin))
-                begin = None
-    if begin is not None:
-        a, b = first_last_X(consensus[begin:last])
-        if a is not None and b is not None:
-            output.append((a + begin, b + begin))
-
-    return output
 
 
 def find_coverage_regions(consensus: str, start: int, stop: int, ambiguous="?") -> list:
