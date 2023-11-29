@@ -42,6 +42,11 @@ def folder_check(taxa_path: Path, debug: bool) -> None:
 
 
 def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_counts):
+    """
+    Pairs each record object with its dupe count from prepare and reporter databases.
+    Given dupe count dictionaries and a list of Record objects, makes tuples of the records
+    and their dupe counts. Returns the tuples in a list.
+    """
     output = []
     for rec in sequences:
         node = rec.id.split("|")[3]
@@ -54,6 +59,9 @@ def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_co
 
 
 def load_dupes(folder):
+    """
+    Load dupe counts from prepare and reporter runs.
+    """
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
     if rocks_db_path.exists():
         rocksdb_db = RocksDB(str(rocks_db_path))
@@ -84,6 +92,10 @@ def get_data_path(gene: Path) -> list:
 
 
 def has_candidates(records: list) -> bool:
+    """
+    Checks if there are any candidates in a list of sequences. If a candidate header is
+    found, returns True. Otherwise, returns False.
+    """
     for rec in records:
         if rec.id[-1] != ".":
             return True
@@ -98,9 +110,30 @@ def aa_internal(
     prepare_dupes,
     reporter_dupes,
 ):
+    """
+    Compares the candidate sequences to their consensus sequence. If the hamming distance between
+    a candidate and the consesnus seq is too high, kicks the candidate.
+    Returns a tuple containing a list of passing candidates, a set of failing seqs, and a list of
+    reference seqs.
+
+    Gene is the path to the input file.
+
+    Consensus threshold is a float between 0.0 and 1.0 that represents the minimum
+    ratio a character must reach to become the consensus character at that location.
+
+    Distance threshold is a float between 0.0 and 1.0 that represesnts the maximum allowable
+    ratio between hamming distance and the length of candidate data region.
+
+    No dupes is a flag that enables or disables use of dupe counts from prepare and reporter.
+
+    Prepare Dupes and Reporter Dupes are dictionaries that map node names to their duplicate counts.
+    """
     failing = set()
 
+    # load sequences from file
     raws = get_data_path(gene)
+
+    # split sequences into references and candidates
     candidates, references = [], []
     for record in raws:
         if record.id[-1] != ".":
@@ -108,8 +141,11 @@ def aa_internal(
         else:
             references.append(record)
 
+    # if no candidates found, return from function
     if not candidates:
-        return [], {}, references
+        return [], set(), references
+
+    # make consensus sequences, use dupe counts if available
     if no_dupes:
         consensus_func = dumb_consensus
         sequences = [rec.seq for rec in candidates]
@@ -118,17 +154,25 @@ def aa_internal(
         sequences = bundle_seqs_and_dupes(candidates, prepare_dupes, reporter_dupes)
 
     consensus = consensus_func(sequences, consensus_threshold)
+
+    # compare the hamming distance between each candidate and the appropriate slice of the consensus
+    # divides by length of the candidate's data region to adjust for length
     for i, candidate in enumerate(candidates):
         start, stop = find_index_pair(candidate.seq, "-")
         distance = constrained_distance(consensus, candidate.seq) / (stop - start)
+        # if the ratio of hamming_distance to length is too high, kick the candidate
         if distance >= distance_threshold:
             failing.add(candidate.id)
             candidates[i] = None
+    # failed records are represented by None values, so filter them from candidates
     candidates = [cand for cand in candidates if cand is not None]
     return candidates, failing, references
 
 
 def mirror_nt(input_path, output_path, failing, gene, compression):
+    """
+    Mirrors aa kicks in the appropriate nt file.
+    """
     output_path = Path(output_path, gene)
     input_path = Path(input_path, gene)
     if not path.exists(input_path):
@@ -136,6 +180,7 @@ def mirror_nt(input_path, output_path, failing, gene, compression):
 
     records = get_data_path(input_path)
     records = [rec for rec in records if rec.id not in failing]
+    # if no candidates are left after the internal check, don't make an output file
     if not has_candidates(records):
         return
     writeFasta(
@@ -155,6 +200,10 @@ def run_internal(
     reporter_dupes,
     decompress,
 ):
+    """
+    Given a gene, reads the aa file and compares the candidates to their consensus sequence.
+    If a candidate has too many locations that disagree with the consensus, kicks the sequence.
+    """
     compression = not decompress
     passing, failing, references = aa_internal(
         gene,
