@@ -1,48 +1,52 @@
-from __future__ import annotations
-
 import os
 import re
 from collections.abc import Callable, Generator
+from typing import Any
 from itertools import count
 from pathlib import Path
 from queue import Queue
 from shutil import rmtree
 from tempfile import NamedTemporaryFile
 from time import time
-from typing import Any
 
 import phymmr_tools
 import wrap_rocks
 import xxhash
 from msgspec import json
-from tqdm import tqdm
 
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import ConcurrentLogger, gettempdir, parseFasta
+from .utils import printv, parseFasta, writeFasta
 
-ROCKSDB_FOLDER_NAME = "rocksdb"
-SEQUENCES_FOLDER_NAME = "sequences"
-NT_DB_NAME = "nt"
-CORE_FOLDER = "datasets"
-ALLOWED_FILETYPES_NORMAL = [
-    ".fa",
-    ".fas",
-    ".fasta",
-    ".fq",
-    ".fastq",
-    ".fq",
-    ".fsa_nt",
-]
-ALLOWED_FILETYPES_GZ = [f"{ft}.gz" for ft in ALLOWED_FILETYPES_NORMAL]
 
-ALLOWED_FILETYPES = ALLOWED_FILETYPES_NORMAL + ALLOWED_FILETYPES_GZ
+def N_trim(parent_sequence: str, minimum_sequence_length: int):
+    """
+    Breaks sequence into chunks at Ns, and yields chunks that are longer than the minimum sequence length.
+    """
+    if "N" in parent_sequence:
+        # Get N indices and start and end of sequence
+        indices = (
+            [0]
+            + [i for i, ltr in enumerate(parent_sequence) if ltr == "N"]
+            + [len(parent_sequence)]
+        )
 
-ASSEMBLY_LEN = 750
-CHOMP_LEN = 750
-CHOMP_CUTOFF = 10000
+        for i in range(0, len(indices) - 1):
+            start = indices[i]
+            end = indices[i + 1]
+
+            length = end - start
+            if length >= minimum_sequence_length:
+                raw_seq = parent_sequence[start + 1 : end]
+                yield raw_seq
+    else:
+        yield parent_sequence
 
 
 class IndexIter:
+    """
+    Utilize the itertools count function but with the ability to call the index without incrementing it
+    """
+
     def __init__(self) -> None:
         self.counter = count(1)
         self.x = next(self.counter)
@@ -59,7 +63,7 @@ def truncate_taxa(taxa: str, extension=None) -> str:
     If found, truncates the string.
     Returns the string + suffix to check for name matches.
     """
-    # search for _# and _R#, where # is digits
+
     result = taxa.replace("_001", "")
     m = re.search(r"(_\d.fa)|(_R\d.fa)|(_part\d.fa)", result + extension)
 
@@ -68,36 +72,26 @@ def truncate_taxa(taxa: str, extension=None) -> str:
         result = result[0:-tail_length]
     if extension:
         result += extension
-    # result = result.replace("_001.",".")
+
     return result
 
 
-def N_trim(parent_sequence: str, minimum_sequence_length: int, tike: TimeKeeper):
-    if "N" in parent_sequence:
-        # Get N indices and start and end of sequence
-        indices = (
-            [0]
-            + [i for i, ltr in enumerate(parent_sequence) if ltr == "N"]
-            + [len(parent_sequence)]
-        )
-
-        for i in range(0, len(indices) - 1):
-            start = indices[i]
-            end = indices[i + 1]
-
-            length = end - start
-            if length >= minimum_sequence_length:
-                raw_seq = parent_sequence[start + 1 : end]
-                tike[0].timer1("now")
-                yield raw_seq
-    else:
-        yield parent_sequence
-
-
-def glob_for_fasta_and_save_for_runs(
+def group_taxa_in_glob(
     globbed: Generator[Path, Any, Any],
 ) -> dict[str, list[Path]]:
-    """Scan all the files in the input. Remove _R# and merge taxa."""
+    """Filters and truncates fasta files for processing. Returns a dict of taxa to files."""
+    ALLOWED_FILETYPES_NORMAL = [
+        ".fa",
+        ".fas",
+        ".fasta",
+        ".fq",
+        ".fastq",
+        ".fq",
+        ".fsa_nt",
+    ]
+    ALLOWED_FILETYPES_GZ = [f"{ft}.gz" for ft in ALLOWED_FILETYPES_NORMAL]
+
+    ALLOWED_FILETYPES = ALLOWED_FILETYPES_NORMAL + ALLOWED_FILETYPES_GZ
     taxa_runs = {}
 
     for f in globbed:
@@ -136,25 +130,22 @@ class SeqDeduplicator:
     def __call__(
         self,
         fa_file_path: str,
-        trim_times: TimeKeeper,
         duplicates: dict[str, int],
         rev_comp_save: dict[str, int],
         transcript_mapped_to: dict[str, str],
-        dupes: count[int],
+        dupes: count,
         this_index: IndexIter,
-        dedup_time: list[int],
     ):
-        fasta_file = parseFasta(fa_file_path, True)
-
-        for_loop = tqdm(fasta_file) if self.verbose else fasta_file
-        for row in for_loop:
-            header, parent_seq = row[:2]
+        CHOMP_LEN = 750
+        CHOMP_CUTOFF = 10000
+        ASSEMBLY_LEN = 750
+        for header, parent_seq in parseFasta(fa_file_path, True):
 
             if not len(parent_seq) >= self.minimum_sequence_length:
                 continue
             parent_seq = parent_seq.upper()
 
-            n_sequences = N_trim(parent_seq, self.minimum_sequence_length, trim_times)
+            n_sequences = N_trim(parent_seq, self.minimum_sequence_length)
             if not self.rename:
                 n_sequences = list(n_sequences)
 
@@ -196,7 +187,6 @@ class SeqDeduplicator:
                 transcript_mapped_to[rev_seq_hash] = header
 
                 seq_end = time()
-                dedup_time[0] += seq_end - seq_start
 
                 if not self.this_assembly and len(seq) >= ASSEMBLY_LEN:
                     self.this_assembly = True
@@ -220,192 +210,140 @@ class SeqDeduplicator:
                     next(this_index)
 
 
-class DatabasePreparer:
-    def __init__(
-        self,
-        formatted_taxa_out: str,
-        components: list[Path],
-        verbose: bool,
-        printv: Callable,
-        clear_database: bool,
-        keep_prepared: bool,
-        minimum_sequence_length: int,
-        dedup_time: list[int],
-        trim_times: TimeKeeper,
-        chunk_size: int,
-        overlap_length: int,
-        rename: bool,
-    ) -> None:
-        self.fto = formatted_taxa_out
-        self.comp = components
-        self.trim_times = trim_times
-        self.fa_file_out = []
-        self.verbose = verbose
-        self.printv = printv
-        self.clear_database = clear_database
-        self.minimum_sequence_length = minimum_sequence_length
-        self.keep_prepared = keep_prepared
-        self.duplicates = {}
-        self.rev_comp_save = {}
-        self.transcript_mapped_to = {}
-        self.dupes = count()
-        self.this_index = IndexIter()
-        self.dedup_time = dedup_time
-        self.chunk_size = chunk_size
-        self.overlap_length = overlap_length
-        self.rename = rename
+def map_taxa_runs(
+    formatted_taxa_out,
+    secondary_directory,
+    verbose,
+    clear_database,
+    minimum_sequence_length,
+    overlap_length,
+    rename,
+    components,
+    keep_prepared,
+    chunk_size,
+):
+    """
+    Removes duplicate sequences, renames them and inserts them into the taxa database.
+    """
+    ROCKSDB_FOLDER_NAME = "rocksdb"
+    SEQUENCES_FOLDER_NAME = "sequences"
+    NT_DB_NAME = "nt"
 
-    def init_db(
-        self,
-        secondary_directory: Path,
-    ) -> Any:
-        self.taxa_time_keeper = TimeKeeper(KeeperMode.DIRECT)
-        self.printv(f"Preparing: {self.fto}", self.verbose, 0)
-        self.printv(
-            "Formatting input sequences and inserting into database",
-            self.verbose,
+    time_keeper = TimeKeeper(KeeperMode.DIRECT)
+
+    printv(f"Preparing: {formatted_taxa_out}", verbose)
+
+    taxa_destination_directory = secondary_directory.joinpath(formatted_taxa_out)
+
+    rocksdb_path = taxa_destination_directory.joinpath(ROCKSDB_FOLDER_NAME)
+    sequences_folder = rocksdb_path.joinpath(SEQUENCES_FOLDER_NAME)
+    nt_db_path = sequences_folder.joinpath(NT_DB_NAME)
+
+    if clear_database and rocksdb_path.exists():
+        printv("Clearing old database", verbose)
+        rmtree(rocksdb_path)
+
+    printv("Creating rocksdb database", verbose)
+    rocksdb_path.mkdir(parents=True, exist_ok=True)
+    taxa_destination_directory.mkdir(parents=True, exist_ok=True)
+
+    nt_db = wrap_rocks.RocksDB(str(nt_db_path))
+    prepared_file_destination = taxa_destination_directory.joinpath(formatted_taxa_out)
+
+    duplicates = {}
+    rev_comp_save = {}
+    transcript_mapped_to = {}
+    dupes = count()
+    this_index = IndexIter()
+
+    printv(
+        f"Got rocksdb database. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Processsing sequences",
+        verbose,
+    )
+
+    deduper = SeqDeduplicator(
+        nt_db,
+        minimum_sequence_length,
+        verbose,
+        overlap_length,
+        rename,
+    )
+    for fa_file_path in components:
+        deduper(
+            fa_file_path,
+            duplicates,
+            rev_comp_save,
+            transcript_mapped_to,
+            dupes,
+            this_index,
         )
 
-        taxa_destination_directory = secondary_directory.joinpath(self.fto)
+    fa_file_out = deduper.lines
+    this_is_assembly = deduper.this_assembly
+    prior = len(fa_file_out)
+    passing = phymmr_tools.entropy_filter(fa_file_out, 0.7)
+    recipe = []
+    recipe_index = IndexIter()
+    final = IndexIter()
 
-        rocksdb_path = taxa_destination_directory.joinpath(ROCKSDB_FOLDER_NAME)
-        sequences_folder = rocksdb_path.joinpath(SEQUENCES_FOLDER_NAME)
-        nt_db_path = sequences_folder.joinpath(NT_DB_NAME)
+    current_count = IndexIter()
+    current_batch = []
+    prepared_file = None
+    if keep_prepared:
+        prepared_file = prepared_file_destination.open("w")
 
-        if self.clear_database and rocksdb_path.exists():
-            self.printv("Clearing old database", self.verbose)
-            rmtree(rocksdb_path)
+    printv(
+        f"Done! Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Inserting sequences into database.",
+        verbose,
+    )
+    for header, seq in passing:
+        next(final)
+        current_batch.append(f"{header}\n{seq}\n")
 
-        self.printv("Creating rocksdb database", self.verbose)
-        rocksdb_path.mkdir(parents=True, exist_ok=True)
-        self.nt_db = wrap_rocks.RocksDB(str(nt_db_path))
-        taxa_destination_directory.mkdir(parents=True, exist_ok=True)
-        self.prepared_file_destination = taxa_destination_directory.joinpath(self.fto)
+        if prepared_file:
+            prepared_file.write(f"{header}\n{seq}\n")
 
-    def dedup(self):
-        deduper = SeqDeduplicator(
-            self.nt_db,
-            self.minimum_sequence_length,
-            self.verbose,
-            self.overlap_length,
-            self.rename,
-        )
-        for fa_file_path in self.comp:
-            deduper(
-                fa_file_path,
-                self.trim_times,
-                self.duplicates,
-                self.rev_comp_save,
-                self.transcript_mapped_to,
-                self.dupes,
-                self.this_index,
-                self.dedup_time,
-            )
+        next(current_count)
 
-        self.fa_file_out = deduper.lines
-        this_is_assembly = deduper.this_assembly
-        prior = len(self.fa_file_out)
-        passing = phymmr_tools.entropy_filter(self.fa_file_out, 0.7)
-        recipe = []
-        recipe_index = IndexIter()
-        final = IndexIter()
-
-        current_count = IndexIter()
-        current_batch = []
-        prepared_file = None
-        if self.keep_prepared:
-            prepared_file = self.prepared_file_destination.open("w")
-        for header, seq in passing:
-            next(final)
-            current_batch.append(f"{header}\n{seq}\n")
-
-            if prepared_file:
-                prepared_file.write(f"{header}\n{seq}\n")
-
-            next(current_count)
-
-            if current_count.x > self.chunk_size:
-                current_count = IndexIter()
-                next(recipe_index)
-                recipe.append(str(recipe_index.x))
-
-                self.nt_db.put(f"ntbatch:{recipe_index.x}", "".join(current_batch))
-                current_batch = []
-
-        if current_batch:
+        if current_count.x > chunk_size:
+            current_count = IndexIter()
             next(recipe_index)
             recipe.append(str(recipe_index.x))
 
-            self.nt_db.put(f"ntbatch:{recipe_index.x}", "".join(current_batch))
+            nt_db.put(f"ntbatch:{recipe_index.x}", "".join(current_batch))
+            current_batch = []
 
-        if prepared_file:
-            prepared_file.close()
+    if current_batch:
+        next(recipe_index)
+        recipe.append(str(recipe_index.x))
 
-        recipe_data = ",".join(recipe)
-        self.nt_db.put("getall:batches", recipe_data)
+        nt_db.put(f"ntbatch:{recipe_index.x}", "".join(current_batch))
 
-        self.nt_db.put("get:isassembly", str(this_is_assembly))
+    if prepared_file:
+        prepared_file.close()
 
-        sequence_count = str(self.this_index)
-        self.printv(
-            f"Inserted {sequence_count} sequences. Found {next(self.dupes)} duplicates. Entropy removed {prior + 1 - final.x}.",
-            self.verbose,
-        )
+    recipe_data = ",".join(recipe)
+    nt_db.put("getall:batches", recipe_data)
 
-        # Store the count of dupes in the database
-        self.nt_db.put_bytes("getall:dupes", json.encode(self.duplicates))
+    nt_db.put("get:isassembly", str(this_is_assembly))
 
-        self.printv(
-            f"{self.fto} took {self.taxa_time_keeper.differential():.2f}s overall\n",
-            self.verbose,
-        )
-
-    def __call__(
-        self,
-        secondary_directory: Path,
-    ):
-        self.init_db(secondary_directory)
-        self.dedup()
-
-
-def map_taxa_runs(
-    tuple_in: tuple[str, str],
-    verbose: int,
-    printv: Callable,
-    clear_database: int,
-    keep_prepared: int,
-    minimum_sequence_length: int,
-    secondary_directory: Path,
-    dedup_time: list[int],
-    trim_times: TimeKeeper,
-    chunk_size,
-    overlap_size,
-    rename,
-):
-    formatted_taxa_out, components = tuple_in
-
-    DatabasePreparer(
-        formatted_taxa_out,
-        components,
+    sequence_count = str(this_index)
+    printv(
+        f"Inserted {sequence_count} sequences. Found {next(dupes)} duplicates. Entropy removed {prior + 1 - final.x}. Took {time_keeper.lap():.2f}s.",
         verbose,
-        printv,
-        clear_database,
-        keep_prepared,
-        minimum_sequence_length,
-        dedup_time,
-        trim_times,
-        chunk_size,
-        overlap_size,
-        rename,
-    )(
-        secondary_directory,
+    )
+
+    # Store the count of dupes in the database
+    nt_db.put_bytes("getall:dupes", json.encode(duplicates))
+
+    printv(
+        f"Done! {formatted_taxa_out} took {time_keeper.differential():.2f}s overall.",
+        verbose,
     )
 
 
 def main(args):
-    msgq = Queue()
-    printv = ConcurrentLogger(msgq)
-    printv.start()
+    CORE_FOLDER = "datasets"
 
     input_path = Path(args.INPUT)
 
@@ -423,43 +361,32 @@ def main(args):
     printv("Creating directories", args.verbose)
     secondary_directory.mkdir(parents=True, exist_ok=True)
 
-    trim_times = [TimeKeeper(KeeperMode.SUM)]  # Append computed time for each loop.
-    dedup_time = [0]
     global_time_keeper = TimeKeeper(KeeperMode.DIRECT)
 
     globbed = list(input_path.glob("*"))
     globbed.sort()
-    taxa_runs = glob_for_fasta_and_save_for_runs(globbed)
+    taxa_runs = group_taxa_in_glob(globbed)
 
-    ls_args = [
-        (
-            tuple_in,
-            args.verbose,
-            printv,
-            args.clear_database,
-            args.keep_prepared,
-            minimum_sequence_length,
+    for formatted_taxa_out, components in taxa_runs.items():
+        map_taxa_runs(
+            formatted_taxa_out,
             secondary_directory,
-            dedup_time,
-            trim_times,
-            args.chunk_size,
+            args.verbose,
+            args.clear_database,
+            minimum_sequence_length,
             args.overlap_length,
             not args.no_rename,
+            components,
+            args.keep_prepared,
+            args.chunk_size,
         )
-        for tuple_in in taxa_runs.items()
-    ]
-
-    [map_taxa_runs(x[0], *x[1:]) for x in ls_args]
 
     printv(
         f"Finished! Took {global_time_keeper.differential():.2f}s overall.",
         args.verbose,
         0,
     )
-    printv(f"N_trim time: {trim_times[0].time1} seconds", args.verbose, 2)
-    printv(f"Dedupe time: {dedup_time[0]}", args.verbose, 2)
 
-    msgq.join()
     return True
 
 
