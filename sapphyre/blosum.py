@@ -453,7 +453,7 @@ def main_process(
 
     printv(f"Doing: {filename}", verbose, 2)
 
-    threshold = args_threshold / 100
+    threshold = args_threshold
     aa_output = path.join(args_output, "aa")
     aa_output = path.join(aa_output, filename.rstrip(".gz"))
     reference_records, candidate_records, ref_check = split_sequences(file_input)

@@ -69,7 +69,7 @@ def prepare_args(par):
         "--chunk_size",
         default=500000,
         type=int,
-        help="Sequences per chunk in DB.",
+        help="Sequences per chunk in database.",
     )
     par.add_argument(
         "-k",
@@ -89,7 +89,7 @@ def prepare_args(par):
         "--no_rename",
         action="store_true",
         default=False,
-        help="Don't rename headers to NODE_#.",
+        help="Disables prepare from renaming headers.",
     )
 
 
@@ -104,7 +104,7 @@ def prepare(args):
 def subcmd_diamond(subparsers):
     par = subparsers.add_parser(
         "Diamond",
-        help="To be written.",
+        help="TODO: To be written.",
     )
     par.add_argument(
         "INPUT",
@@ -123,15 +123,7 @@ def diamond_args(par):
         action="store_true",
         help="Overwrite existing files.",
     )
-    par.add_argument("-d", "--debug", action="store_true", help="Enable debug out.")
-
-    # Should be based on Taxa name. Check TODO.
-    par.add_argument(
-        "-strict",
-        "--strict-search-mode",
-        action="store_true",
-        help="Only allow sequences that hit on every present taxa.",
-    )
+    par.add_argument("-d", "--debug", action="store_true", help="Enable debug outputs.")
     par.add_argument(
         "-s",
         "--sensitivity",
@@ -180,7 +172,7 @@ def diamond(args):
 def subcmd_reporter(subparsers):
     par = subparsers.add_parser(
         "reporter",
-        help="Trims mapped sequence to mapped region." "Produces aa and nt output.",
+        help="Trims mapped sequence to mapped region. Produces aa and nt output. TODO EXTEND",
     )
     par.add_argument(
         "INPUT",
@@ -218,7 +210,7 @@ def reporter_args(par):
         "--blosum_strictness",
         choices=["exact", "strict", "lax"],
         default="strict",
-        help="Trim distance mode.",
+        help="Pairwise edge trim strictness setting.",
     )
     par.add_argument(
         "-d",
@@ -286,13 +278,14 @@ def outlier_args(par):
     par.add_argument(
         "-t",
         "--threshold",
-        type=int,
-        default=50,
-        help="Greater than reference mean to be counted as an outlier. Default is 2x.",
+        type=float,
+        default=0.5,
+        help="Greater than reference mean to be counted as an outlier. Default is 50%.",
     )
     par.add_argument(
         "--no-references",
         action="store_true",
+        default=False,
         help="Disable output of reference sequences",
     )
     par.add_argument(
@@ -373,10 +366,9 @@ def outlier_args(par):
     )
     par.add_argument(
         "-ct",
-        "--excise_consensus_threshold",
+        "--consensus",
         default=0.65,
         type=float,
-        dest="consensus",
         help="Threshold for selecting a consensus bp",
     )
     par.add_argument(
@@ -504,7 +496,7 @@ def merge_args(par):
         "--majority_count",
         type=int,
         default=4,
-        help="Percentage for majority ruling.",
+        help="Minimum present candidates to trigger majority.",
     )
 
 
