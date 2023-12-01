@@ -11,52 +11,40 @@ from pr2codon import pn2codon
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
+from phymmr_tools import find_index_pair
 
 
-def return_aligned_paths(
-    glob_paths_taxa: list[Path],
-    glob_paths_genes: list[Path],
-    path_aligned: Path,
-    specified_dna_table: dict,
-    verbose: bool,
-    compress: bool,
-) -> Generator[Path, Any, Any]:
-    for path_nt, path_aa in zip(glob_paths_taxa, glob_paths_genes):
-        if not path_nt.is_file() or not path_aa.is_file():
-            continue
-
-        nt_gene = str(path_nt.parts[-1]).split(".", maxsplit=1)[0]
-        aa_gene = str(path_aa.parts[-1]).split(".", maxsplit=1)[0]
-
-        if nt_gene != aa_gene:
-            continue
-
-        yield (
-            path_aa,
-            path_nt,
-            path_aligned.joinpath(Path(f"{nt_gene}.nt.fa")),
-            specified_dna_table,
-            verbose,
-            compress,
-        )
-
-
-def prepare_taxa_and_genes(
+def do_folder(
+    num_threads: int,
     input: str,
-    specified_dna_table,
-    verbose,
-    compress,
-) -> tuple[Generator[tuple[Path, Path, Path], Any, Any], int]:
+    specified_dna_table: dict,
+    verbose: int,
+    compress: bool,
+) -> bool:
+    """
+    Runs pr2codon in parallel on all genes for a given input
+
+    Args:
+    ----
+        num_threads (int): Number of threads to use
+        input (str): Path to input folder
+        specified_dna_table (dict): DNA table to use
+        verbose (int): Verbosity level
+        compress (bool): Whether to compress output
+    Returns:
+    -------
+        bool: Whether all genes were processed successfully
+    """
+    
     input_path = Path(input)
 
     joined_align = input_path.joinpath(Path("align"))
-    joined_nt = input_path.joinpath(Path("nt"))
     joined_nt_aligned = input_path.joinpath(Path("nt_aligned"))
 
     rmtree(joined_nt_aligned, ignore_errors=True)
     joined_nt_aligned.mkdir()
 
-    glob_aa = sorted(
+    aa_genes = sorted(
         [
             i
             for i in joined_align.iterdir()
@@ -64,39 +52,81 @@ def prepare_taxa_and_genes(
         ],
         key=lambda x: x.name.split(".")[0],
     )
-    glob_nt = sorted(
-        [
-            i
-            for i in joined_nt.iterdir()
-            if i.suffix in [".fa", ".gz", ".fq", ".fastq", ".fasta"]
-        ],
-        key=lambda x: x.name.split(".")[0],
-    )
 
-    out_generator = return_aligned_paths(
-        glob_nt,
-        glob_aa,
-        joined_nt_aligned,
-        specified_dna_table,
-        verbose,
-        compress,
-    )
+    arguments = []
+    for aa_path in aa_genes:
+        aa_path = str(aa_path)
+        nt_path = make_nt(aa_path)
+        
 
-    return out_generator, len(glob_aa)
+        arguments.append(
+            [
+                aa_path,
+                nt_path,
+                Path(input, "nt_aligned", ospath.basename(nt_path)),
+                specified_dna_table,
+                verbose,
+                compress,
+            ]
+        )
 
+    with Pool(num_threads) as pool:
+        result = pool.starmap(worker, arguments, chunksize=100)
 
-def find_start(sequence: str, gap_character="-") -> int:
-    for i, bp in enumerate(sequence):
-        if bp != gap_character:
-            return i
-    return -1
+    return all(result)
 
 
-def find_end(sequence: str, gap_character="-") -> int:
-    for i, bp in enumerate(sequence[::-1]):
-        if bp != gap_character:
-            return i
-    return -1
+def make_nt(aa_path: str) -> str:
+    return aa_path.replace(".aa.", ".nt.").replace("/align/", "/nt/")
+
+
+def worker(
+    aa_file: str,
+    nt_file: str,
+    out_file: Path,
+    specified_dna_table: dict,
+    verbose: bool,
+    compress: bool,
+) -> bool:
+    """
+    Runs pr2codon on a single gene and writes the result to a file
+    
+    Args:
+    ----
+        aa_file (str): Path to amino acid file
+        nt_file (str): Path to nucleotide file
+        out_file (Path): Path to output file
+        specified_dna_table (dict): DNA table to use
+        verbose (int): Verbosity level
+        compress (bool): Whether to compress output
+    Returns:
+    -------
+        bool: Whether the gene was processed successfully
+    """
+    gene = ospath.basename(aa_file).split(".")[0]
+    printv(f"Doing: {gene}", verbose, 2)
+    if not ospath.exists(aa_file):
+        printv(f"ERROR CAUGHT in {gene}: AA file does not exist", verbose, 0)
+        return False
+    if not ospath.exists(nt_file):
+        printv(f"ERROR CAUGHT in {gene}: NT file does not exist", verbose, 0)
+        return False
+    seqs = read_and_convert_fasta_files(gene, aa_file, nt_file, verbose)
+
+    if seqs is False:
+        return False
+
+    outfile_stem = out_file.stem
+    aligned_result = pn2codon(outfile_stem, specified_dna_table, seqs)
+    aligned_lines = aligned_result.split("\n")
+
+    records = []
+    for i in range(0, len(aligned_lines) - 1, 2):
+        records.append((aligned_lines[i].lstrip(">"), aligned_lines[i + 1]))
+
+    writeFasta(str(out_file), records, compress)
+
+    return True
 
 
 def read_and_convert_fasta_files(
@@ -105,6 +135,19 @@ def read_and_convert_fasta_files(
     nt_file: str,
     verbose: bool,
 ) -> dict[str, tuple[list[tuple[str, str]], list[tuple[str, str]]]]:
+    """
+    Grabs the aa and nt sequence pairs while also checking whether the NT file has refs or if any of the headers are missing in either files
+
+    Args:
+    ----
+        gene (str): Name of gene
+        aa_file (str): Path to amino acid file
+        nt_file (str): Path to nucleotide file
+        verbose (int): Verbosity level
+    Returns:
+    -------
+        dict[str, tuple[list[tuple[str, str]], list[tuple[str, str]]]]: Dictionary of headers to tuples of (AA header, AA sequence) and (NT header, NT sequence)
+    """
     aas = []
     nts = {}
 
@@ -124,7 +167,7 @@ def read_and_convert_fasta_files(
         else:
             aa_intermediate.append((aa_header.strip(), aa_seq.strip()))
     # sort aa candidates by first and last data bp
-    aa_intermediate.sort(key=lambda x: (find_start(x[1]), find_end(x[1])))
+    aa_intermediate.sort(key=lambda x: find_index_pair(x[1], "-"))
     # add candidates to references
     aas.extend(aa_intermediate)
 
@@ -163,44 +206,6 @@ def read_and_convert_fasta_files(
             printv(f"SEQUENCE MISSING: {e}", verbose, 0)
             return False
     return result
-
-
-def worker(
-    aa_file: str,
-    nt_file: str,
-    out_file: Path,
-    specified_dna_table: dict,
-    verbose: bool,
-    compress: bool,
-) -> bool:
-    gene = ospath.basename(aa_file).split(".")[0]
-    printv(f"Doing: {gene}", verbose, 2)
-    seqs = read_and_convert_fasta_files(gene, aa_file, nt_file, verbose)
-
-    if seqs is False:
-        return False
-
-    outfile_stem = out_file.stem
-    aligned_result = pn2codon(outfile_stem, specified_dna_table, seqs)
-    aligned_lines = aligned_result.split("\n")
-
-    records = []
-    for i in range(0, len(aligned_lines) - 1, 2):
-        records.append((aligned_lines[i].lstrip(">"), aligned_lines[i + 1]))
-
-    writeFasta(str(out_file), records, compress)
-
-    return True
-
-
-def run_batch_threaded(
-    num_threads: int,
-    ls: list[list[list[tuple[tuple[Path, Path, Path], dict, bool]]]],
-):
-    with Pool(num_threads) as pool:
-        result = pool.starmap(worker, ls, chunksize=100)
-
-    return all(result)
 
 
 def main(args):
@@ -936,17 +941,16 @@ def main(args):
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     for folder in args.INPUT:
         printv(f"Processing: {ospath.basename(folder)}", args.verbose, 0)
-        this_taxa_jobs, _ = prepare_taxa_and_genes(
+        success = do_folder(
+            args.processes,
             folder,
             specified_dna_table,
             args.verbose,
             args.compress,
         )
 
-        success = run_batch_threaded(num_threads=args.processes, ls=this_taxa_jobs)
-
         if not success:
-            printv("A fatal error has occured.", args.verbose, 0)
+            printv(f"A fatal error has occured in {folder}.", args.verbose, 0)
             return False
         printv(f"Done! Took {time_keeper.lap():.2f}s", args.verbose, 1)
     if len(args.INPUT) > 1 or not args.verbose:
