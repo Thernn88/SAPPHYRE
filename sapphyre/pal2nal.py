@@ -7,7 +7,7 @@ from pathlib import Path
 from shutil import rmtree
 from typing import Any
 
-from pro2codon import pn2codon
+from pr2codon import pn2codon
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
@@ -100,6 +100,7 @@ def find_end(sequence: str, gap_character="-") -> int:
 
 
 def read_and_convert_fasta_files(
+    gene: str,
     aa_file: str,
     nt_file: str,
     verbose: bool,
@@ -137,6 +138,15 @@ def read_and_convert_fasta_files(
     if not nt_has_refs:
         aa_final = aa_intermediate
 
+    # Nt has header AA doesn't
+    if len(nts) > len(aa_final):
+        printv(
+            f"ERROR CAUGHT in {gene}: There are more headers in NUC sequence FASTA ({len(nts)}) file than in PEP sequence FASTA file ({len(aa_final)})",
+            verbose,
+            0,
+        )
+        return False
+
     result = {}
     i = -1
     for header, sequence in aa_final:
@@ -146,7 +156,7 @@ def read_and_convert_fasta_files(
             result[header] = ((header, sequence), (i, *nts[header]))
         except KeyError as e:
             printv(
-                "ERROR CAUGHT: There is a single header in PEP sequence FASTA file that does not exist in NUC sequence FASTA file",
+                "ERROR CAUGHT in {gene}: There is a single header in PEP sequence FASTA file that does not exist in NUC sequence FASTA file",
                 verbose,
                 0,
             )
@@ -165,7 +175,7 @@ def worker(
 ) -> bool:
     gene = ospath.basename(aa_file).split(".")[0]
     printv(f"Doing: {gene}", verbose, 2)
-    seqs = read_and_convert_fasta_files(aa_file, nt_file, verbose)
+    seqs = read_and_convert_fasta_files(gene, aa_file, nt_file, verbose)
 
     if seqs is False:
         return False
