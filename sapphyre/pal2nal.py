@@ -35,7 +35,7 @@ def do_folder(
     -------
         bool: Whether all genes were processed successfully
     """
-    
+
     input_path = Path(input)
 
     joined_align = input_path.joinpath(Path("align"))
@@ -57,7 +57,6 @@ def do_folder(
     for aa_path in aa_genes:
         aa_path = str(aa_path)
         nt_path = make_nt(aa_path)
-        
 
         arguments.append(
             [
@@ -90,7 +89,7 @@ def worker(
 ) -> bool:
     """
     Runs pr2codon on a single gene and writes the result to a file
-    
+
     Args:
     ----
         aa_file (str): Path to amino acid file

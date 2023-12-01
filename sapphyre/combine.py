@@ -72,9 +72,7 @@ def main(args):
 
                 aa_result = pool.map(parse_gene, aa_path.iterdir(), chunksize=8)
 
-                for (
-                    result
-                ) in aa_result:
+                for result in aa_result:
                     for path, out_tuple in result.items():
                         (
                             out_candidates,
@@ -103,9 +101,7 @@ def main(args):
 
                 nt_result = pool.starmap(parse_gene, arguments, chunksize=8)
 
-                for (
-                    result
-                ) in nt_result:
+                for result in nt_result:
                     for path, out_tuple in result.items():
                         (
                             out_candidates,

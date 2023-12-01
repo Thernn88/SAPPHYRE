@@ -265,7 +265,6 @@ def log_excised_consensus(
     kicked_headers = set()
     if cut:
         if bad_regions:
-
             # log bad regions
             if len(bad_regions) == 1:
                 a, b = bad_regions[0]

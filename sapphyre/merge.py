@@ -32,9 +32,7 @@ def make_seq_dict(sequences: list) -> dict:
     cursor_dict = defaultdict(list)
 
     for sequence in sequences:
-        for cursor in range(
-            sequence.start, sequence.end
-        ):
+        for cursor in range(sequence.start, sequence.end):
             cursor_dict[cursor].append(sequence.header)
     return seq_dict, cursor_dict
 

@@ -1151,7 +1151,16 @@ def subcmd_auto(subparsers):
         "--start",
         type=str,
         default="Prepare",
-        choices=["Prepare", "Diamond", "Reporter", "Align", "Pal2nal", "Flexcull", "Outlier", "Merge"],
+        choices=[
+            "Prepare",
+            "Diamond",
+            "Reporter",
+            "Align",
+            "Pal2nal",
+            "Flexcull",
+            "Outlier",
+            "Merge",
+        ],
         help="Module to start from. Default: Prepare",
     )
     par.add_argument(

@@ -140,7 +140,6 @@ class SeqDeduplicator:
         CHOMP_CUTOFF = 10000
         ASSEMBLY_LEN = 750
         for header, parent_seq in parseFasta(fa_file_path, True):
-
             if not len(parent_seq) >= self.minimum_sequence_length:
                 continue
             parent_seq = parent_seq.upper()

@@ -137,7 +137,7 @@ class NODE(Struct):
 
         Returns:
         -------
-            str: The contig header        
+            str: The contig header
         """
         contig_node = self.header.split("|")[3]
         children_nodes = "|".join([i.split("|")[3] for i in self.children])

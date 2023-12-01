@@ -250,6 +250,7 @@ def translate_cdna(cdna_seq):
 
     return translate(cdna_seq)
 
+
 def get_core_sequences(
     gene: str,
     orthoset_db: RocksDB,
@@ -576,7 +577,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
             oargs.target_taxon,
             oargs.top_refs,
         )
-        
+
         nt_core_sequences = print_core_sequences(
             oargs.gene,
             core_sequences_nt,

@@ -72,7 +72,6 @@ def process_genefile(
             targets[header.split("|")[2]] = header
             continue
 
-
         seq_hash = xxh3_64(sequence).hexdigest()
         trimmed_header_to_full[header[:127]] = header
         if seq_hash not in seq_to_first_header:
@@ -81,9 +80,7 @@ def process_genefile(
             reinsertions[seq_to_first_header[seq_hash]].append(header)
             continue
         # Delete gaps from previous alignment
-        data[header] = sequence.replace(
-            "-", ""
-        )
+        data[header] = sequence.replace("-", "")
 
     return len(data), data, targets, reinsertions, trimmed_header_to_full
 
@@ -170,7 +167,7 @@ def seperate_into_clusters(
     Returns:
         list[list[str]]: A list of each clusters' headers
     """
-    SUBCLUSTER_AT = 1000 # Subcluster threshold
+    SUBCLUSTER_AT = 1000  # Subcluster threshold
     CLUSTER_EVERY = 500  # Sequences per subcluster
     clusters = []
     for this_cluster in cluster_children:
@@ -196,7 +193,7 @@ def generate_tmp_aln(
     this_intermediates: str,
     align_method: str,
 ) -> None:
-    """Grabs target reference sequences. If the current align method is equal to base, then delete empty columns. 
+    """Grabs target reference sequences. If the current align method is equal to base, then delete empty columns.
     For all other methods, return the sequences without gaps and realign them.
 
     Args:
@@ -317,7 +314,16 @@ def insert_gaps(input_string, positions, existing_gaps={}):
     return "".join(input_string)
 
 
-def align_cluster(cluster_seqs, cluster_i, gene, raw_files_tmp, aligned_files_tmp, debug, this_intermediates, command_string):
+def align_cluster(
+    cluster_seqs,
+    cluster_i,
+    gene,
+    raw_files_tmp,
+    aligned_files_tmp,
+    debug,
+    this_intermediates,
+    command_string,
+):
     """
     Performs a pairwise alignment on a cluster of sequences.
 
@@ -345,7 +351,7 @@ def align_cluster(cluster_seqs, cluster_i, gene, raw_files_tmp, aligned_files_tm
     )
     if cluster_length == 1:
         writeFasta(aligned_cluster, cluster_seqs)
-        
+
         if debug:
             writeFasta(
                 path.join(
@@ -384,7 +390,16 @@ def align_cluster(cluster_seqs, cluster_i, gene, raw_files_tmp, aligned_files_tm
     return (aligned_cluster, len(aligned_sequences), cluster_i)
 
 
-def create_subalignment(align_method: str, parent_tmpdir: str, file: str, tmp_aln: NamedTemporaryFile, cluster_i: int, seq_count: int, debug: bool, this_intermediates: str) -> list[tuple[str, str]]:
+def create_subalignment(
+    align_method: str,
+    parent_tmpdir: str,
+    file: str,
+    tmp_aln: NamedTemporaryFile,
+    cluster_i: int,
+    seq_count: int,
+    debug: bool,
+    this_intermediates: str,
+) -> list[tuple[str, str]]:
     """
     Creates a subalignment by aligning an aligned cluster with the reference alignment.
 
@@ -422,7 +437,9 @@ def create_subalignment(align_method: str, parent_tmpdir: str, file: str, tmp_al
     )
 
     if debug:
-        print(f"clustalo --p1 {tmp_aln.name} --p2 {file} -o {out_file} --threads=1 --full {is_profile} --force")
+        print(
+            f"clustalo --p1 {tmp_aln.name} --p2 {file} -o {out_file} --threads=1 --full {is_profile} --force"
+        )
         writeFasta(
             path.join(
                 this_intermediates,
@@ -430,7 +447,7 @@ def create_subalignment(align_method: str, parent_tmpdir: str, file: str, tmp_al
             ),
             parseFasta(out_file, True),
         )
-    
+
     return []
 
 
@@ -451,9 +468,7 @@ def get_insertions(parent_tmpdir: str) -> tuple[list, list, list]:
 
     for item in listdir(parent_tmpdir):
         if item.startswith("References_"):
-            refs = list(
-                parseFasta(path.join(parent_tmpdir, item), True)
-            )
+            refs = list(parseFasta(path.join(parent_tmpdir, item), True))
             continue
 
         if not item.startswith("part_"):
@@ -461,9 +476,7 @@ def get_insertions(parent_tmpdir: str) -> tuple[list, list, list]:
 
         references = []
         this_seqs = []
-        for header, seq in parseFasta(
-            path.join(parent_tmpdir, item), True
-        ):
+        for header, seq in parseFasta(path.join(parent_tmpdir, item), True):
             if header.endswith("."):
                 references.append(seq)
                 continue
@@ -493,7 +506,7 @@ def get_insertions(parent_tmpdir: str) -> tuple[list, list, list]:
 def insert_refs(refs, alignment_insertion_coords):
     """
     Inserts insertion gaps into the reference sequences at the given positions.
-    
+
     Args:
     ----
         refs (list[tuple[str, str]]): The reference sequences
@@ -514,7 +527,9 @@ def insert_refs(refs, alignment_insertion_coords):
     return final_refs
 
 
-def insert_sequences(subalignments: list, alignment_insertion_coords: list[int]) -> list[tuple[str, str]]:
+def insert_sequences(
+    subalignments: list, alignment_insertion_coords: list[int]
+) -> list[tuple[str, str]]:
     """
     Inserts insertion gaps into the candidate sequences while ignoring and masking existing gaps.
 
@@ -528,15 +543,10 @@ def insert_sequences(subalignments: list, alignment_insertion_coords: list[int])
     """
     out_seqs = []
     for seqs, this_msa_insertions in subalignments:
-        
         for header, seq in seqs:
             if alignment_insertion_coords:
-                existing_gaps = {
-                    k: v for k, v in this_msa_insertions if v > 0
-                }
-                seq = insert_gaps(
-                    seq, alignment_insertion_coords, existing_gaps
-                )
+                existing_gaps = {k: v for k, v in this_msa_insertions if v > 0}
+                seq = insert_gaps(seq, alignment_insertion_coords, existing_gaps)
             out_seqs.append((header, seq))
 
     out_seqs.sort(key=lambda x: find_index_pair(x[1], "-")[0])
@@ -642,7 +652,7 @@ def run_command(args: CmdArgs) -> None:
                 f"Found {seq_count} sequences over {len(clusters)} clusters. Elapsed time: {keeper.differential():.2f}",
                 args.verbose,
                 3,
-            ) 
+            )
             printv(
                 f"Aligning Clusters. Elapsed time: {keeper.differential():.2f}",
                 args.verbose,
@@ -652,7 +662,7 @@ def run_command(args: CmdArgs) -> None:
             # Align each cluster
             for cluster_i, cluster in enumerate(clusters):
                 cluster_seqs = [(header, data[header]) for header in cluster]
-                
+
                 printv(
                     f"Aligning cluster {cluster_i}. Elapsed time: {keeper.differential():.2f}",
                     args.verbose,
@@ -660,7 +670,16 @@ def run_command(args: CmdArgs) -> None:
                 )  # Debug
 
                 aligned_ingredients.append(
-                    align_cluster(cluster_seqs, cluster_i, args.gene, raw_files_tmp, aligned_files_tmp, debug, this_intermediates, args.string)
+                    align_cluster(
+                        cluster_seqs,
+                        cluster_i,
+                        args.gene,
+                        raw_files_tmp,
+                        aligned_files_tmp,
+                        debug,
+                        this_intermediates,
+                        args.string,
+                    )
                 )
 
         align_time = keeper.differential() - cluster_time
@@ -695,18 +714,31 @@ def run_command(args: CmdArgs) -> None:
                         3,
                     )
                     # If frags we want to save the final_sequences from the aligned result
-                    final_sequences = create_subalignment(args.align_method, parent_tmpdir, file, tmp_aln, cluster_i, seq_count, debug, this_intermediates)
+                    final_sequences = create_subalignment(
+                        args.align_method,
+                        parent_tmpdir,
+                        file,
+                        tmp_aln,
+                        cluster_i,
+                        seq_count,
+                        debug,
+                        this_intermediates,
+                    )
 
                 # Otherwise we want to do insertion logic
                 if args.align_method != "frags":
                     # Grab insertions in each subalignment
-                    alignment_insertion_coords, subalignments, refs = get_insertions(parent_tmpdir)
-                    
+                    alignment_insertion_coords, subalignments, refs = get_insertions(
+                        parent_tmpdir
+                    )
+
                     # Insert into refs
                     final_refs = insert_refs(refs, alignment_insertion_coords)
 
                     # Insert into each subalignment
-                    sequences = insert_sequences(subalignments, alignment_insertion_coords)
+                    sequences = insert_sequences(
+                        subalignments, alignment_insertion_coords
+                    )
 
                     # Consolidate output
                     final_sequences = final_refs + sequences

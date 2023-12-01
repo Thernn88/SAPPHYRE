@@ -96,7 +96,7 @@ def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
 
 def delete_empty_columns(raw_fed_sequences: list, verbose: bool) -> tuple[list, list]:
     """Iterates over each sequence and deletes columns
-    that consist of 100% dashes. 
+    that consist of 100% dashes.
 
     Args:
     ----
@@ -180,6 +180,7 @@ def parse_fasta(fasta_path: str) -> tuple[list[tuple[str, str]], list[tuple[str,
         end_of_references = True
 
     return references, candidates
+
 
 def trim_around(
     starting_index: int,
@@ -643,7 +644,7 @@ def cull_codons(
     while non_trimmed_codons:
         # Start from the middle
         i = non_trimmed_codons[int(len(non_trimmed_codons) / 2)]
-        
+
         # Use the trim around function to scan left and right of the codon
         positions = trim_around(
             i,
@@ -989,7 +990,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
             gap_offset = aligned_aa[start:cull_end].count("-")
 
             if aligned_aa[raw_start:raw_end] != raw_sequence[raw_start:raw_end]:
-                pass # Alignment failed, skip
+                pass  # Alignment failed, skip
             else:
                 # If alignment is good, extend the sequence if the bp removed is found in
                 # other sequences at each index
@@ -1176,7 +1177,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                         out_line, positions_to_trim, this_column_cull
                     )
                     nt_out.append((header, out_line))
-                
+
             nt_out = align_col_removal(nt_out, aa_positions_to_keep)
             out_nt = []
             for header, sequence in nt_out:
