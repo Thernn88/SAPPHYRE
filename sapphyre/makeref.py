@@ -39,15 +39,23 @@ class Sequence:
         self.id = id
 
     def raw_seq(self):
+        """
+        Returns the unaligned aa sequence
+        """
         return self.aa_sequence.replace("-", "")
 
     def to_tuple(self):
+        """
+        Returns the record tuple (header, aa_sequence)
+        """
         return self.header, self.aa_sequence
 
     def seq_with_regen_data(self):
+        """
+        Returns the sequence with the organism name and pub_og_id present for regeneration
+        """
         if self.raw_head:
             return self.raw_head
-        # Try to generate orthodb alike header
 
         return (
             f">{self.header}"
@@ -71,24 +79,37 @@ class Sequence_Set:
         self.has_aligned = False
 
     def add_sequence(self, seq: Sequence) -> None:
+        """Adds a sequence to the set."""
         self.sequences.append(seq)
 
     def add_aligned_sequences(
         self, gene: str, aligned_sequences: list[Sequence]
     ) -> None:
+        """
+        Adds a list of aligned sequences to the set.
+        """
         if not self.has_aligned:
             self.has_aligned = True
         self.aligned_sequences[gene] = aligned_sequences
 
-    def get_aligned_sequences(self) -> str:
+    def get_aligned_sequences(self) -> dict:
+        """
+        Returns the aligned sequences dict
+        """
         return self.aligned_sequences
 
     def get_last_id(self) -> int:
+        """
+        Gets the last id of the current sequences in the set
+        """
         if not self.sequences:
             return 0
         return self.sequences[-1].id
 
     def get_gene_taxon_count(self) -> Counter:
+        """
+        Returns the count of genes present for each taxon
+        """
         data = defaultdict(set)
 
         for seq in self.sequences:
@@ -97,6 +118,9 @@ class Sequence_Set:
         return Counter({taxon: len(genes) for taxon, genes in data.items()})
 
     def kick_dupes(self, headers):
+        """
+        Kicks sequences with headers in the headers list
+        """
         self.sequences = [i for i in self.sequences if i.header not in headers]
 
     def get_taxon_in_set(self) -> list:
@@ -159,6 +183,7 @@ class Sequence_Set:
         return core_sequences
 
     def get_diamond_data(self):
+        """Returns the data required to generate a diamond database."""
         diamond_data = []
         target_to_taxon = {}
         taxon_to_sequences = {}
@@ -181,6 +206,7 @@ class Sequence_Set:
         return "".join(map(str, self.sequences))
 
     def absorb(self, other):
+        """Merges two sets together."""
         current_cursor = self.get_last_id() + 1
         for i, seq in enumerate(other.sequences):
             seq.id = current_cursor + i
@@ -191,6 +217,9 @@ class Sequence_Set:
 
 
 def cull(sequences, percent):
+    """
+    Culls each edge of the sequences to a column where the percentage of non-gap characters is greater than or equal to the percent argument.
+    """
     msa_length = len(sequences[0][1])
 
     for i in range(msa_length):
@@ -218,6 +247,9 @@ def generate_aln(
     do_cull,
     cull_percent,
 ):
+    """
+    Generates the .aln.fa files for each gene in the set.
+    """
     sequences = set.get_gene_dict(True).copy()
 
     aln_path = set_path.joinpath("aln")
@@ -257,6 +289,9 @@ def generate_aln(
 
 
 def do_merge(sequences):
+    """
+    Merges perfectly overlapping sequences.
+    """
     merged_indices = set()
     merge_occured = True
     while merge_occured:
@@ -329,6 +364,9 @@ def aln_function(
     do_cull,
     cull_percent,
 ):
+    """
+    Calls the alignment program, runs some additional logic on the result and returns the aligned sequences
+    """
     raw_fa_file = raw_path.joinpath(gene + ".fa")
     aln_file = aln_path.joinpath(gene + ".aln.fa")
     trimmed_path = trimmed_path.joinpath(gene + ".aln.fa")
@@ -385,6 +423,9 @@ def aln_function(
 
 
 def make_diamonddb(set: Sequence_Set, overwrite, threads):
+    """
+    Calls the diamond makedb function and returns the data to insert into the rocksdb.
+    """
     diamond_dir = Path(SETS_DIR, set.name, "diamond")
     diamond_dir.mkdir(exist_ok=True)
 
@@ -410,6 +451,9 @@ SETS_DIR = None
 
 
 def generate_subset(file_paths, taxon_to_kick: set):
+    """
+    Grabs alls sequences in a fasta file and inserts them into a subset.
+    """
     subset = Sequence_Set("subset")
     index = count()
     for file in file_paths:
