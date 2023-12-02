@@ -423,7 +423,7 @@ def create_subalignment(
 
         system(command)
 
-        return parseFasta(out_file, True)
+        return list(parseFasta(out_file, True))
 
     out_file = path.join(parent_tmpdir, f"part_{cluster_i}.fa")
 
@@ -778,6 +778,7 @@ def do_folder(folder, args):
     aa_path = path.join(folder, AA_FOLDER)
     if not path.exists(aa_path):
         printv(f"ERROR: Can't find aa ({aa_path}) folder. Abort", args.verbose, 0)
+        printv(f"Please make sure Reporter finished succesfully", args.verbose, 0)
         return False
     if args.overwrite:
         rmtree(align_path, ignore_errors=True)
@@ -806,6 +807,7 @@ def do_folder(folder, args):
         mkdir(intermediates)
 
     func_args = []
+    printv(f"Aligning AA Files. Elapsed time: {time_keeper.differential():.2f}s", args.verbose)
     for file, _ in genes:
         gene = file.split(".")[0]
         gene_file = path.join(aa_path, file)
@@ -835,6 +837,7 @@ def do_folder(folder, args):
                     ),
                 ),
             )
+   
 
     if args.processes > 1:
         with Pool(args.processes) as pool:

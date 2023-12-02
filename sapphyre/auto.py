@@ -70,7 +70,7 @@ def main(args):
     time = TimeKeeper(KeeperMode.DIRECT)
     for script in scripts:
         sargs = config[script]
-        print(f"Executing: {script.title()}")
+        print(f"\nExecuting: {script.title()}")
         this_args = global_args.copy()
         this_args.update(sargs)
         this_args = argparse.Namespace(**this_args)

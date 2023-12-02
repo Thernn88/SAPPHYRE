@@ -595,7 +595,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     del orthoset_db
 
     printv(
-        f"Done! Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Grabbing NT sequences",
+        f"Got reference data. Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Grabbing NT sequences",
         args.verbose,
     )
 
@@ -640,7 +640,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             break
 
     printv(
-        f"Done! Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Running Diamond",
+        f"Got NT sequences. Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Running Diamond",
         args.verbose,
     )
 
@@ -809,7 +809,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         )
 
         printv(
-            f"Done! Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Processing data.",
+            f"Got targets. Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Processing data.",
             args.verbose,
         )
         if post_threads > 1:
@@ -1019,7 +1019,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             args.verbose,
         )
         printv(
-            f"Took {time_keeper.lap():.2f}s for {multi_kicks+internal_kicks} kicks leaving {passes} results. Writing to DB",
+            f"Wrote {passes} results after {multi_kicks+internal_kicks} kicks.",
             args.verbose,
         )
 

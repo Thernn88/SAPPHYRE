@@ -196,12 +196,20 @@ def get_diamondhits(
     Returns:
         dict[str, list[Hit]]: Dictionary of gene to corresponding hits
     """
-    present_genes = rocks_hits_db.get("getall:presentgenes").split(",")
-    genes_to_process = list_of_wanted_genes or present_genes
+    present_genes = rocks_hits_db.get("getall:presentgenes")
+    if not present_genes:
+        printv("ERROR: No genes found in hits database", 0)
+        printv("Please make sure Diamond completed successfully", 0)
+        return None
+    genes_to_process = list_of_wanted_genes or present_genes.split(",")
 
     gene_based_results = []
     for gene in genes_to_process:
-        gene_based_results.append((gene, rocks_hits_db.get_bytes(f"gethits:{gene}")))
+        gene_result = rocks_hits_db.get_bytes(f"gethits:{gene}")
+        if not gene_result:
+            printv(f"WARNING: No hits found for {gene}. If you are using a gene list file this may be a non-issue", 0)
+            continue
+        gene_based_results.append((gene, gene_result))
 
     return gene_based_results
 

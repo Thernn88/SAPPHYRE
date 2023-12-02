@@ -69,6 +69,7 @@ def do_folder(
             ]
         )
 
+    printv(f"Aligning NT Files", verbose)
     with Pool(num_threads) as pool:
         result = pool.starmap(worker, arguments, chunksize=100)
 
@@ -198,7 +199,7 @@ def read_and_convert_fasta_files(
             result[header] = ((header, sequence), (i, *nts[header]))
         except KeyError as e:
             printv(
-                "ERROR CAUGHT in {gene}: There is a single header in PEP sequence FASTA file that does not exist in NUC sequence FASTA file",
+                f"ERROR CAUGHT in {gene}: There is a single header in PEP sequence FASTA file that does not exist in NUC sequence FASTA file",
                 verbose,
                 0,
             )
