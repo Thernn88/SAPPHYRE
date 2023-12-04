@@ -1,6 +1,6 @@
 # sapphyre
 
-Sapphyre is an assembly-less solution for processing high-throughput sequencing reads for phylogenetics. Lorem Ipsum,,,
+Sapphyre is an assembly-less solution for processing high-throughput sequencing reads for phylogenetics.
 
 ## Requirements
 	
@@ -30,6 +30,7 @@ Sapphyre is an assembly-less solution for processing high-throughput sequencing 
 			tqdm>=4.66.1
 			wrap_rocks>=0.3.7
 			xxhash>=3.4.1
+			pr2codon>=1.1.12
 			
 ## Usage
 
