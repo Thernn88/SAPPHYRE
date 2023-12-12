@@ -38,7 +38,7 @@ setup(
         "tqdm>=4.66.1",
         "wrap_rocks>=0.3.7",
         "xxhash>=3.4.1",
-        "pr2codon>=1.1.12",
+        "pr2codon>=1.1.14",
     ],
     keywords=[
         "phylogenetics",
