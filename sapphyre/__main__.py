@@ -104,7 +104,7 @@ def prepare(args):
 def subcmd_diamond(subparsers):
     par = subparsers.add_parser(
         "Diamond",
-        help="TODO: To be written.",
+        help="Uses Diamond to blast AA sequences against the reference orthoset.",
     )
     par.add_argument(
         "INPUT",
@@ -1139,7 +1139,7 @@ def wrap_final(argsobj):
 def subcmd_auto(subparsers):
     par = subparsers.add_parser(
         "auto",
-        help="Aligns AA sequences against existing reference alignment.",
+        help="Wrapper that allows for automatic processing of a dataset. Also allows the use of predefined configs, and the ability to start at any point within the pipeline.",
     )
     par.add_argument(
         "INPUT",
