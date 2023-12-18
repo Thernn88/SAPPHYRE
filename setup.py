@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="sapphyre",
-    version="0.1.1",
+    version="0.1.2",
     description="An assembly-less solution for processing high-throughput sequencing reads for phylogenetics",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
@@ -39,6 +39,9 @@ setup(
         "wrap_rocks>=0.3.7",
         "xxhash>=3.4.1",
         "pr2codon>=1.1.14",
+    ],
+    dependency_links=[
+        'https://pypi.org/simple/',
     ],
     keywords=[
         "phylogenetics",
