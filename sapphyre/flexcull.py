@@ -932,7 +932,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                     if i < raw_end:
                         continue
 
-                    if aligned_aa[i] not in character_at_each_pos[i]:
+                    if aligned_aa[i] == "*":
                         break
                     else:
                         sequence[i] = aligned_aa[i]
