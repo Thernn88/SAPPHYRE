@@ -5,7 +5,7 @@ PyLint 9.81/10
 from __future__ import annotations
 
 from os import path, listdir, makedirs
-from collections import Counter, namedtuple
+from collections import Counter, defaultdict, namedtuple
 from multiprocessing.pool import Pool
 from shutil import rmtree
 from .diamond import ReporterHit as Hit
@@ -14,6 +14,7 @@ from phymmr_tools import (
     join_with_exclusions,
     join_triplets_with_exclusions,
     find_index_pair,
+    bio_revcomp,
 )
 from Bio.Seq import Seq
 from parasail import profile_create_16, blosum62, nw_trace_scan_profile_16
@@ -68,6 +69,7 @@ FlexcullArgs = namedtuple(
         "is_assembly",
         "is_ncg",  # non coding gene
         "keep_codons",
+        "reporter_trims",
     ],
 )
 
@@ -805,6 +807,24 @@ def align_to_aa_order(nt_out, aa_content):
         yield (header, nt_out[header])
 
 
+def get_internal_gaps(input_string):
+    positions = []
+
+    for i in range(*find_index_pair(input_string, "-")):
+        if input_string[i] == "-":
+            positions.append(i)
+    
+    return positions
+
+
+def insert_gaps(input_string, positions):
+    input_string = list(input_string)
+    for coord in positions:
+        input_string.insert(coord, "-")
+
+    return ''.join(input_string)
+
+
 def do_gene(fargs: FlexcullArgs) -> None:
     """FlexCull main function. Culls input aa and nt using specified amount of matches."""
     gene_path = path.join(fargs.aa_input, fargs.aa_file)
@@ -837,7 +857,8 @@ def do_gene(fargs: FlexcullArgs) -> None:
     this_db_sequences = {}
 
     for entry in this_db_entry:
-        this_db_sequences.setdefault(entry.node, {})[str(entry.frame)] = entry.seq
+        frame = str(entry.frame)
+        this_db_sequences.setdefault(entry.node, {})[frame] = entry.seq, entry.qstart
 
     extensions = 0
     nt_extension_align = {}
@@ -864,58 +885,60 @@ def do_gene(fargs: FlexcullArgs) -> None:
             gap_present_threshold,
         )
 
-        if True:
-            if (cull_start, cull_end) == find_index_pair(raw_sequence, "-"):
-                fields = header.split("|")
-                node = fields[3]
-                if node.count("_") > 1:
-                    node = "NODE_"+node.split("_")[1]
-                frame = fields[4]
-                nt_seq = this_db_sequences[node][frame]
+        if (cull_start, cull_end) == find_index_pair(raw_sequence, "-"):
+            fields = header.split("|")
+            node = fields[3]
+            if node.count("_") > 1:
+                node = "NODE_"+node.split("_")[1]
+            frame = fields[4]
+
+            reporter_removed = fargs.reporter_trims[node+"|"+frame]
+
+            nt_seq, diamond_query = this_db_sequences[node][frame]
+            if int(frame) < 0:
+                nt_seq = bio_revcomp(nt_seq)
+
+            frame_offset = abs(int(frame))-1
+            nt_seq = nt_seq[frame_offset:]
+
+            
+            this_aa = str(Seq(nt_seq).translate())
+
+            #
+            start_offset = cull_start - int(((diamond_query - 1)/3) + (3 - (int(frame)-1))/3) - reporter_removed + 1
+            add_start = start_offset
+
+            aligned_aa = ("-" * add_start) + this_aa
+
+            insertions = get_internal_gaps(raw_sequence)
+            aligned_aa = insert_gaps(aligned_aa, insertions)
+            
+            extend_start, extend_end = find_index_pair(aligned_aa, "-")
+            _, raw_end = find_index_pair(raw_sequence, "-")
+            character_index = -1
+            if extend_end > raw_end:
                 
-                this_aa = str(Seq(nt_seq).translate())
                 nt_seq = [nt_seq[i:i+3] for i in range(0, len(nt_seq), 3)]
-                profile = profile_create_16(this_aa, blosum62)
-                result = nw_trace_scan_profile_16(
-                    profile,
-                    raw_sequence[cull_start: cull_end],
-                    2,
-                    0,
-                )
-                start_offset = 0
-                for i, let in enumerate(result.traceback.ref):
-                    if let == "-":
-                        start_offset += 1
-                    else:
+
+                nt_extension_align[header] = {}
+                for i in range(extend_start, len(aligned_aa)):
+                    if i >= len(raw_sequence):
                         break
+                    if aligned_aa[i] != "-":
+                        character_index += 1
+                    else:
+                        continue
 
-                start = (cull_start - start_offset)
-                aligned_aa = ("-" * start) + result.traceback.query
-                
-                #Bad alignment check
-                raw_start, raw_end = find_index_pair(raw_sequence, "-")
-                gap_offset = aligned_aa[start : cull_end].count("-")
+                    if i < raw_end:
+                        continue
 
-                if aligned_aa[raw_start: raw_end] != raw_sequence[raw_start: raw_end]:
-                    #BLOW UP
-                    pass
-                else:
-                    nt_extension_align[header] = {}
-                    for i in range(cull_end, len(aligned_aa)):
-                        if i >= len(raw_sequence):
-                            break
-
-                        if aligned_aa[i] == "-":
-                            gap_offset += 1
-                            continue
-                    
-                        elif aligned_aa[i] not in character_at_each_pos[i]:
-                            break
-                        else:
-                            sequence[i] = aligned_aa[i]
-                            nt_extension_align[header][i * 3] = nt_seq[i - start - gap_offset]
-                            cull_end += 1
-                            extensions += 1
+                    if aligned_aa[i] not in character_at_each_pos[i]:
+                        break
+                    else:
+                        sequence[i] = aligned_aa[i]
+                        nt_extension_align[header][i * 3] = nt_seq[character_index]
+                        cull_end += 1
+                        extensions += 1
 
         if not kick:  # If also passed Cull End Calc. Finish
             out_line = ["-"] * cull_start + sequence[cull_start:cull_end]
@@ -1161,6 +1184,8 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
         for key, sub_dict in mat.items()
     }
 
+    this_trims = json.decode(nt_db.get(f"getall:reporter_trims"), type = dict[str, dict[str, int]])
+
     if args.processes > 1:
         arguments = []
         for input_gene in file_inputs:
@@ -1183,6 +1208,7 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
                         is_assembly,
                         input_gene in non_coding_gene,
                         args.keep_codons,
+                        this_trims[input_gene.split(".")[0]]
                     ),
                 ),
             )
@@ -1209,6 +1235,7 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
                     is_assembly,
                     input_gene in non_coding_gene,
                     args.keep_codons,
+                    this_trims[input_gene.split(".")[0]]
                 ),
             )
             for input_gene in file_inputs
