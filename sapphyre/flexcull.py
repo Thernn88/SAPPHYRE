@@ -1163,11 +1163,11 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
         return
 
     nt_db_path = path.join(folder, "rocksdb", "sequences", "nt")
-    rocky.create_pointer(
-        "nt_db",
-        nt_db_path,
-    )
-    dbis_assembly = rocky.get_rock("nt_db").get("get:isassembly")
+    nt_db = RocksDB(nt_db_path)
+    this_trims = json.decode(nt_db.get(f"getall:reporter_trims"), type = dict[str, dict[str, int]])
+    recipe = nt_db.get("getall:batches")
+    this_db_sequences = get_head_to_seq(nt_db, recipe)
+    dbis_assembly = nt_db.get("get:isassembly")
     is_assembly = False
     if dbis_assembly and dbis_assembly == "True":
         is_assembly = True
@@ -1206,11 +1206,6 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
         }
         for key, sub_dict in mat.items()
     }
-
-    this_trims = json.decode(rocky.get_rock("nt_db").get(f"getall:reporter_trims"), type = dict[str, dict[str, int]])
-    nt_db = rocky.get_rock("nt_db")
-    recipe = nt_db.get("getall:batches")
-    this_db_sequences = get_head_to_seq(nt_db, recipe)
 
     arguments = []
     for input_gene in file_inputs:
