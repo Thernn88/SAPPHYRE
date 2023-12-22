@@ -91,6 +91,13 @@ def prepare_args(par):
         default=False,
         help="Disables prepare from renaming headers.",
     )
+    par.add_argument(
+        "-o",
+        "--out",
+        type=str,
+        default="datasets",
+        help="Output directory for processed inputs.",
+    )
 
 
 def prepare(args):
@@ -1145,6 +1152,13 @@ def subcmd_auto(subparsers):
         "INPUT",
         help="Path to directory of Input folder",
         type=str,
+    )
+    par.add_argument(
+        "-in",
+        "--in_folder",
+        type=str,
+        default="datasets",
+        help="Folder to look for input in.",
     )
     par.add_argument(
         "-s",

@@ -342,8 +342,6 @@ def map_taxa_runs(
 
 
 def main(args):
-    CORE_FOLDER = "datasets"
-
     input_path = Path(args.INPUT)
 
     if not input_path.exists():
@@ -352,9 +350,8 @@ def main(args):
 
     minimum_sequence_length = args.minimum_sequence_length
 
-    project_root = Path(__file__).parent.parent
-    core_directory = Path(CORE_FOLDER).joinpath(input_path.parts[-1])
-    secondary_directory = project_root.joinpath(core_directory)
+    core_directory = Path(args.out).joinpath(input_path.parts[-1])
+    secondary_directory = Path(os.getcwd()).joinpath(core_directory)
 
     # Create necessary directories
     printv("Creating directories", args.verbose)

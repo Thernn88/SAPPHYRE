@@ -79,9 +79,9 @@ def main(args):
         elif script == "prepare":
             this_args.INPUT = args.INPUT
         else:
-            sorted(
+            this_args.INPUT = sorted(
                 glob(
-                    os.path.join("datasets", os.path.split(args.INPUT)[-1], "*.fa"),
+                    os.path.join(args.in_folder, os.path.split(args.INPUT)[-1], "*.fa"),
                 ),
             )
 
