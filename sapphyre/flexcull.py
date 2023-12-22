@@ -878,6 +878,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
     
     extensions = 0
     nt_extension_align = {}
+    extension_log = []
 
     for header, raw_sequence in candidates:
         sequence = list(raw_sequence)
@@ -934,6 +935,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
             _, raw_end = find_index_pair(raw_sequence, "-")
             character_index = -1
             if extend_end > raw_end:
+                this_extend = 0
                 
                 nt_seq = [nt_seq[i:i+3] for i in range(0, len(nt_seq), 3)]
 
@@ -955,7 +957,9 @@ def do_gene(fargs: FlexcullArgs) -> None:
                         sequence[i] = aligned_aa[i]
                         nt_extension_align[header][i * 3] = nt_seq[character_index]
                         cull_end += 1
-                        extensions += 1
+                        this_extend += 1
+                extensions += this_extend
+                extension_log.append(f"{header},{this_extend}\n")
 
         if not kick:  # If also passed Cull End Calc. Finish
             out_line = ["-"] * cull_start + sequence[cull_start:cull_end]
@@ -1142,7 +1146,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
             writeFasta(nt_out_path, out_nt, fargs.compress)
 
-    return log, extensions
+    return log, extensions, extension_log
 
 
 def do_folder(folder, args: MainArgs, non_coding_gene: set):
@@ -1256,9 +1260,17 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
 
     if args.debug:
         log_global = []
+        extend_log_global = []
 
-        for component, _ in log_components:
+        for component, _, extend_component in log_components:
             log_global.extend(component)
+            extend_log_global.extend(extend_component)
+
+        extend_log_global.sort()
+        extend_log_global.insert(0, "Gene,Extensions\n")
+        extend_out = path.join(output_path, "Extensions.csv")
+        with open(extend_out, "w") as fp:
+            fp.writelines(extend_log_global)
 
         log_global.sort()
         log_global.insert(
