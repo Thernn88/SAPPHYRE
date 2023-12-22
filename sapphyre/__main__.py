@@ -81,7 +81,7 @@ def prepare_args(par):
         "-ol",
         "--overlap_length",
         type=int,
-        default=0,
+        default=250,
         help="Amount of overlap between chomped segments",
     )
     par.add_argument(
@@ -149,7 +149,7 @@ def diamond_args(par):
         "-t",
         "--top",
         type=int,
-        default=10,
+        default=20,
         help="Diamond top percentage cull.",
     )
     par.add_argument(
