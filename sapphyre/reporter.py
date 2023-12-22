@@ -369,9 +369,6 @@ def print_unmerged_sequences(
         db_query = base_header+"|"+reference_frame
 
         nt_seq = hit.seq
-        if hit.frame < 0:
-            nt_seq = bio_revcomp(nt_seq)
-    
         # Translate to AA
         aa_seq = translate_cdna(nt_seq)
 
