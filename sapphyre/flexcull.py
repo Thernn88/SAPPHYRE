@@ -1165,7 +1165,7 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
     nt_db_path = path.join(folder, "rocksdb", "sequences", "nt")
     nt_db = RocksDB(nt_db_path)
     this_trims = json.decode(nt_db.get(f"getall:reporter_trims"), type = dict[str, dict[str, int]])
-    recipe = nt_db.get("getall:batches")
+    recipe = nt_db.get("getall:batches").split(',')
     this_db_sequences = get_head_to_seq(nt_db, recipe)
     dbis_assembly = nt_db.get("get:isassembly")
     is_assembly = False
