@@ -349,7 +349,6 @@ def print_unmerged_sequences(
     dupes = defaultdict(list)
 
     reporter_trims = {}
-
     for hit in hits:
         base_header = hit.node
         reference_frame = str(hit.frame)
@@ -369,7 +368,7 @@ def print_unmerged_sequences(
 
         db_query = base_header+"|"+reference_frame
 
-        nt_seq = hit.seq[hit.qstart - 1 : hit.qend]
+        nt_seq = hit.seq
         if hit.frame < 0:
             nt_seq = bio_revcomp(nt_seq)
     
@@ -459,7 +458,6 @@ def print_unmerged_sequences(
                             + "|"
                             + reference_frame
                         )
-
                         header_mapped_x_times[base_header] += 1
                 else:
                     base_header_mapped_already[base_header] = header, aa_seq

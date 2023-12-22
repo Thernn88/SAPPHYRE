@@ -70,6 +70,7 @@ FlexcullArgs = namedtuple(
         "is_ncg",  # non coding gene
         "keep_codons",
         "reporter_trims",
+        "sequences"
     ],
 )
 
@@ -825,6 +826,21 @@ def insert_gaps(input_string, positions):
     return ''.join(input_string)
 
 
+def get_head_to_seq(nt_db, recipe):
+    head_to_seq = {}
+    for i in recipe:
+        lines = nt_db.get_bytes(f"ntbatch:{i}").decode().split("\n")
+        head_to_seq.update(
+            {
+                lines[i][1:]: lines[i + 1]
+                for i in range(0, len(lines), 2)
+                if lines[i] != ""
+            },
+        )
+    
+    return head_to_seq
+
+
 def do_gene(fargs: FlexcullArgs) -> None:
     """FlexCull main function. Culls input aa and nt using specified amount of matches."""
     gene_path = path.join(fargs.aa_input, fargs.aa_file)
@@ -852,14 +868,14 @@ def do_gene(fargs: FlexcullArgs) -> None:
     aa_out = references.copy()
     this_seqs = []
 
+
     db = rocky.get_rock("db")
     this_db_entry = json.decode(db.get(f"gethits:{this_gene}"), type = list[Hit])
-    this_db_sequences = {}
-
+    diamond_hits = {}
     for entry in this_db_entry:
         frame = str(entry.frame)
-        this_db_sequences.setdefault(entry.node, {})[frame] = entry.seq, entry.qstart
-
+        diamond_hits.setdefault(entry.node, {})[frame] =  entry.qstart
+    
     extensions = 0
     nt_extension_align = {}
 
@@ -894,7 +910,8 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
             reporter_removed = fargs.reporter_trims[node+"|"+frame]
 
-            nt_seq, diamond_query = this_db_sequences[node][frame]
+            nt_seq = fargs.sequences[node]
+            diamond_query = diamond_hits[node][frame]
             if int(frame) < 0:
                 nt_seq = bio_revcomp(nt_seq)
 
@@ -1142,12 +1159,14 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
         return
 
     nt_db_path = path.join(folder, "rocksdb", "sequences", "nt")
-    nt_db = RocksDB(nt_db_path)
-    dbis_assembly = nt_db.get("get:isassembly")
+    rocky.create_pointer(
+        "nt_db",
+        nt_db_path,
+    )
+    dbis_assembly = rocky.get_rock("nt_db").get("get:isassembly")
     is_assembly = False
     if dbis_assembly and dbis_assembly == "True":
         is_assembly = True
-
 
     hits_db_path = path.join(folder, "rocksdb", "hits")
     rocky.create_pointer(
@@ -1184,40 +1203,21 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
         for key, sub_dict in mat.items()
     }
 
-    this_trims = json.decode(nt_db.get(f"getall:reporter_trims"), type = dict[str, dict[str, int]])
+    this_trims = json.decode(rocky.get_rock("nt_db").get(f"getall:reporter_trims"), type = dict[str, dict[str, int]])
+    nt_db = rocky.get_rock("nt_db")
+    recipe = nt_db.get("getall:batches")
+    this_db_sequences = get_head_to_seq(nt_db, recipe)
 
-    if args.processes > 1:
-        arguments = []
-        for input_gene in file_inputs:
-            arguments.append(
-                (
-                    FlexcullArgs(
-                        aa_path,
-                        nt_path,
-                        output_path,
-                        args.matches,
-                        input_gene,
-                        args.debug,
-                        args.base_pair,
-                        args.verbose,
-                        args.compress,
-                        args.gap_threshold,
-                        args.mismatches,
-                        args.column_cull,
-                        filtered_mat,
-                        is_assembly,
-                        input_gene in non_coding_gene,
-                        args.keep_codons,
-                        this_trims[input_gene.split(".")[0]]
-                    ),
-                ),
-            )
+    arguments = []
+    for input_gene in file_inputs:
+        gene_trims = this_trims[input_gene.split(".")[0]]
+        this_sequences = {}
+        for query in gene_trims.keys():
+            head, _ = query.split("|")
+            this_sequences[head] = this_db_sequences[head]
 
-        with Pool(args.processes) as pool:
-            log_components = pool.starmap(do_gene, arguments, chunksize=1)
-    else:
-        log_components = [
-            do_gene(
+        arguments.append(
+            (
                 FlexcullArgs(
                     aa_path,
                     nt_path,
@@ -1235,10 +1235,21 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
                     is_assembly,
                     input_gene in non_coding_gene,
                     args.keep_codons,
-                    this_trims[input_gene.split(".")[0]]
+                    gene_trims,
+                    this_sequences,
+                    
                 ),
+            ),
+        )
+    if args.processes > 1:
+        with Pool(args.processes) as pool:
+            log_components = pool.starmap(do_gene, arguments, chunksize=1)
+    else:
+        log_components = [
+            do_gene(
+                arg
             )
-            for input_gene in file_inputs
+            for arg in arguments
         ]
 
     total_extensions = sum([i[1] for i in log_components])
