@@ -634,8 +634,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
     out_path = path.join(diamond_path, f"{sensitivity}")
     extension_found = False
     for extension in [".tsv", ".tsv.gz", ".tsv.tar.gz"]:
-        if path.exists(out_path + extension):
-            out_path += extension
+        possible = out_path + extension
+        if path.exists(possible):
+            out_path = possible
             extension_found = True
             break
 
