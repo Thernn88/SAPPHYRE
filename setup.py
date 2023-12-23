@@ -39,6 +39,8 @@ setup(
         "wrap_rocks>=0.3.7",
         "xxhash>=3.4.1",
         "pr2codon>=1.1.14",
+        "pyarrow>=13.0.0",
+        "blosum>=2.0.2",
     ],
     dependency_links=[
         'https://pypi.org/simple/',
