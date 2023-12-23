@@ -1,23 +1,23 @@
 """Outlier Check."""
 from __future__ import annotations
-from sys import exit
-from os import mkdir, path
 
 from collections import defaultdict
 from itertools import combinations
 from multiprocessing.pool import Pool
+from os import mkdir, path
 from pathlib import Path
+from sys import exit
 
+from msgspec import Struct
+from numpy import float16, isnan, nanmean, nanpercentile
 from phymmr_tools import (
-    find_index_pair,
     asm_index_split,
     blosum62_candidate_to_reference,
     blosum62_distance,
     delete_empty_columns,
+    find_index_pair,
 )
 from wrap_rocks import RocksDB
-from numpy import float16, isnan, nanpercentile, nanmean
-from msgspec import Struct
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, write2Line2Fasta

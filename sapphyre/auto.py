@@ -2,18 +2,18 @@ import argparse
 import json
 import os
 from glob import glob
-from .timekeeper import KeeperMode, TimeKeeper
 
 from .__main__ import (
-    prepare_args,
-    diamond_args,
-    reporter_args,
     align_args,
-    pal2nal_args,
+    diamond_args,
     flexcull_args,
-    outlier_args,
     merge_args,
+    outlier_args,
+    pal2nal_args,
+    prepare_args,
+    reporter_args,
 )
+from .timekeeper import KeeperMode, TimeKeeper
 
 
 def get_args(arg_function):

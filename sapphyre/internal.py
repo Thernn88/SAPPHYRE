@@ -1,9 +1,8 @@
-from os import path
 from multiprocessing.pool import Pool
-
+from os import path
 from pathlib import Path
-from msgspec import Struct, json
 
+from msgspec import Struct, json
 from phymmr_tools import (
     constrained_distance,
     dumb_consensus,
@@ -11,6 +10,7 @@ from phymmr_tools import (
     find_index_pair,
 )
 from wrap_rocks import RocksDB
+
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
 

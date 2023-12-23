@@ -3,20 +3,20 @@
 PyLint 9.61/10
 """
 from __future__ import annotations
+
 from collections import Counter, defaultdict
 from itertools import islice
-
-from os import makedirs, mkdir, path, remove
 from multiprocessing.pool import Pool
+from os import makedirs, mkdir, path, remove
 from pathlib import Path
 from shutil import rmtree
 from typing import Literal
-from phymmr_tools import score_splits, get_overlap, find_index_pair
-from numpy import uint8
 
-from wrap_rocks import RocksDB
 from Bio.Seq import Seq
 from msgspec import Struct, json
+from numpy import uint8
+from phymmr_tools import find_index_pair, get_overlap, score_splits
+from wrap_rocks import RocksDB
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta

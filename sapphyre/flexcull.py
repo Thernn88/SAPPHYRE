@@ -4,25 +4,25 @@ PyLint 9.81/10
 """
 from __future__ import annotations
 
-from os import path, listdir, makedirs
 from collections import Counter, defaultdict, namedtuple
 from multiprocessing.pool import Pool
+from os import listdir, makedirs, path
 from shutil import rmtree
-from .diamond import ReporterHit as Hit
-from phymmr_tools import (
-    join_by_tripled_index,
-    join_with_exclusions,
-    join_triplets_with_exclusions,
-    find_index_pair,
-    translate,
-)
-from parasail import profile_create_16, blosum62, nw_trace_scan_profile_16
-from . import rocky
-from msgspec import json
-from wrap_rocks import RocksDB
 
 from blosum import BLOSUM
+from msgspec import json
+from parasail import blosum62, nw_trace_scan_profile_16, profile_create_16
+from phymmr_tools import (
+    find_index_pair,
+    join_by_tripled_index,
+    join_triplets_with_exclusions,
+    join_with_exclusions,
+    translate,
+)
+from wrap_rocks import RocksDB
 
+from . import rocky
+from .diamond import ReporterHit as Hit
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
 

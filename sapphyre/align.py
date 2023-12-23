@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from os import path, mkdir, system, listdir, stat
 from collections import Counter, defaultdict, namedtuple
 from math import ceil
 from multiprocessing.pool import Pool
+from os import listdir, mkdir, path, stat, system
 from shutil import rmtree
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 
-from xxhash import xxh3_64
 from phymmr_tools import find_index_pair, sigclust
+from xxhash import xxh3_64
+
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import gettempdir, parseFasta, printv, writeFasta
 
@@ -807,7 +808,10 @@ def do_folder(folder, args):
         mkdir(intermediates)
 
     func_args = []
-    printv(f"Aligning AA Files. Elapsed time: {time_keeper.differential():.2f}s", args.verbose)
+    printv(
+        f"Aligning AA Files. Elapsed time: {time_keeper.differential():.2f}s",
+        args.verbose,
+    )
     for file, _ in genes:
         gene = file.split(".")[0]
         gene_file = path.join(aa_path, file)
@@ -837,7 +841,6 @@ def do_folder(folder, args):
                     ),
                 ),
             )
-   
 
     if args.processes > 1:
         with Pool(args.processes) as pool:

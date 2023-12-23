@@ -1,23 +1,23 @@
 from __future__ import annotations
 
-from os import makedirs, path
-from shutil import rmtree
 from argparse import Namespace
 from collections import Counter, defaultdict, namedtuple
 from multiprocessing.pool import Pool
+from os import makedirs, path
+from shutil import rmtree
 from typing import TextIO
 
 from blosum import BLOSUM
-from parasail import profile_create_16, blosum62, nw_trace_scan_profile_16
-from xxhash import xxh3_64
-from phymmr_tools import translate
 from msgspec import json
+from parasail import blosum62, nw_trace_scan_profile_16, profile_create_16
+from phymmr_tools import translate
 from wrap_rocks import RocksDB
+from xxhash import xxh3_64
 
 from . import rocky
 from .diamond import ReporterHit
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import printv, writeFasta, gettempdir
+from .utils import gettempdir, printv, writeFasta
 
 MainArgs = namedtuple(
     "MainArgs",
@@ -207,7 +207,10 @@ def get_diamondhits(
     for gene in genes_to_process:
         gene_result = rocks_hits_db.get_bytes(f"gethits:{gene}")
         if not gene_result:
-            printv(f"WARNING: No hits found for {gene}. If you are using a gene list file this may be a non-issue", 0)
+            printv(
+                f"WARNING: No hits found for {gene}. If you are using a gene list file this may be a non-issue",
+                0,
+            )
             continue
         gene_based_results.append((gene, gene_result))
 

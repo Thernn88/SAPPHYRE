@@ -2,19 +2,20 @@ from collections import defaultdict
 from itertools import combinations
 from math import ceil
 from multiprocessing import Pool
-from os import path, mkdir, listdir
+from os import listdir, mkdir, path
 
 from msgspec import Struct
 from phymmr_tools import (
     constrained_distance,
+    dumb_consensus,
     find_index_pair,
     get_overlap,
     is_same_kmer,
-    dumb_consensus,
 )
 from wrap_rocks import RocksDB
+
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import writeFasta, parseFasta, printv
+from .utils import parseFasta, printv, writeFasta
 
 
 class CollapserArgs(Struct):
@@ -596,7 +597,7 @@ def kick_rolling_consensus(
     window_match,
     consensus_percent,
     window_size,
-    step = 1,
+    step=1,
 ):
     """
     Creates a candidate consensus and kicks any nodes who fail the rolling_window_consensus check
@@ -733,7 +734,15 @@ def process_batch(
             continue
 
         nodes = kick_rolling_consensus(
-            nodes, ref_consensus_seq, kicked_headers, consensus_kicks, args.debug, gene, args.rolling_matching_percent, args.rolling_consensus_percent, args.rolling_window_size
+            nodes,
+            ref_consensus_seq,
+            kicked_headers,
+            consensus_kicks,
+            args.debug,
+            gene,
+            args.rolling_matching_percent,
+            args.rolling_consensus_percent,
+            args.rolling_window_size,
         )
 
         if not nodes:
@@ -840,7 +849,6 @@ def main(args, from_folder):
         rolling_matching_percent=args.rolling_matching_percent,
         rolling_consensus_percent=args.rolling_consensus_percent,
         rolling_window_size=args.rolling_window_size,
-
     )
     return do_folder(this_args, args.INPUT)
 

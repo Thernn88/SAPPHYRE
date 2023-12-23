@@ -1,10 +1,11 @@
 from __future__ import annotations
-from collections import defaultdict
-import os
-from math import ceil
 
+import os
+from collections import defaultdict
+from math import ceil
 from multiprocessing.pool import Pool
 from pathlib import Path
+
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
 

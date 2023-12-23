@@ -1139,7 +1139,7 @@ def subcmd_wrap_final(sp):
 
 
 def wrap_final(argsobj):
-    from . import combine, align, merge, pal2nal
+    from . import align, combine, merge, pal2nal
 
     print("Triggering Combine")
     if not combine.main(argsobj):

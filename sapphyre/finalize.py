@@ -1,18 +1,18 @@
-from collections import Counter, defaultdict
-from glob import glob
 import json
-from math import ceil
 import os
+from collections import Counter, defaultdict
 from dataclasses import dataclass
+from glob import glob
+from math import ceil
 from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import rmtree
-from bs4 import BeautifulSoup
 
 import requests
+from bs4 import BeautifulSoup
 
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import printv, parseFasta, writeFasta
+from .utils import parseFasta, printv, writeFasta
 
 AA_FOLDER = "aa_merged"
 NT_FOLDER = "nt_merged"

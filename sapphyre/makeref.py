@@ -1,19 +1,21 @@
-from collections import Counter, defaultdict
-from math import ceil
 import os
-from shutil import rmtree
 import sqlite3
+from collections import Counter, defaultdict
 from itertools import count
+from math import ceil
 from multiprocessing.pool import Pool
 from pathlib import Path
+from shutil import rmtree
 from tempfile import NamedTemporaryFile
-import xxhash
+
 import wrap_rocks
+import xxhash
 from Bio import SeqIO
 from msgspec import json
-from phymmr_tools import find_index_pair, get_overlap, constrained_distance
-from .utils import printv, writeFasta, parseFasta
-from .timekeeper import TimeKeeper, KeeperMode
+from phymmr_tools import constrained_distance, find_index_pair, get_overlap
+
+from .timekeeper import KeeperMode, TimeKeeper
+from .utils import parseFasta, printv, writeFasta
 
 
 class Sequence:

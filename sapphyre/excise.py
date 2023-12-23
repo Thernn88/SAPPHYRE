@@ -1,20 +1,21 @@
 from multiprocessing import Pool
-from os import path, mkdir, listdir
-from shutil import move
+from os import listdir, mkdir, path
 from pathlib import Path
+from shutil import move
+
+from msgspec import json
 from phymmr_tools import (
-    dumb_consensus,
     convert_consensus,
-    find_index_pair,
+    dumb_consensus,
     dumb_consensus_dupe,
+    find_index_pair,
     get_overlap,
     is_same_kmer,
 )
 from wrap_rocks import RocksDB
 
-from msgspec import json
-from .utils import parseFasta, writeFasta, printv
 from .timekeeper import KeeperMode, TimeKeeper
+from .utils import parseFasta, printv, writeFasta
 
 
 def min_aa_check(sequence: list, minimum: int) -> bool:

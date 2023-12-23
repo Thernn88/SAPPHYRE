@@ -1,19 +1,20 @@
-from decimal import Decimal
-from itertools import count, combinations
-from os import makedirs, path, stat, system
 from argparse import Namespace
 from collections import Counter, defaultdict
+from decimal import Decimal
+from itertools import combinations, count
 from math import ceil
 from multiprocessing.pool import Pool
+from os import makedirs, path, stat, system
 from shutil import rmtree
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from time import time
 from typing import Union
-from numpy import int8, uint16, float32, float64, where
-from phymmr_tools import bio_revcomp, get_overlap
-from pandas import DataFrame, read_csv
-from wrap_rocks import RocksDB
+
 from msgspec import Struct, json
+from numpy import float32, float64, int8, uint16, where
+from pandas import DataFrame, read_csv
+from phymmr_tools import bio_revcomp, get_overlap
+from wrap_rocks import RocksDB
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import gettempdir, printv
@@ -792,11 +793,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
                         # Outliers cause our estimation to go whack.
                         end_index = (
                             where(
-                                df[start_index :][
-                                    "header"
-                                ].values
-                                == last_header,
-                            )[0][-1]
+                                df[start_index:]["header"].values == last_header,
+                            )[
+                                0
+                            ][-1]
                             + start_index
                         )
 

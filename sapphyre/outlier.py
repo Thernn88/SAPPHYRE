@@ -1,9 +1,10 @@
 import argparse
 import os
 from shutil import rmtree
+
 from . import blosum, collapser, excise, internal
+from .timekeeper import KeeperMode, TimeKeeper
 from .utils import printv
-from .timekeeper import TimeKeeper, KeeperMode
 
 
 def main(argsobj):

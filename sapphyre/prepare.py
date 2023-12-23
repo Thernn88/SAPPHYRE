@@ -1,13 +1,13 @@
 import os
 import re
 from collections.abc import Callable, Generator
-from typing import Any
 from itertools import count
 from pathlib import Path
 from queue import Queue
 from shutil import rmtree
 from tempfile import NamedTemporaryFile
 from time import time
+from typing import Any
 
 import phymmr_tools
 import wrap_rocks
@@ -15,7 +15,7 @@ import xxhash
 from msgspec import json
 
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import printv, parseFasta, writeFasta
+from .utils import parseFasta, printv, writeFasta
 
 
 def N_trim(parent_sequence: str, minimum_sequence_length: int):
