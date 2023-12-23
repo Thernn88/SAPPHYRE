@@ -31,6 +31,10 @@ class CollapserArgs(Struct):
     matching_consensus_percent: float
     gross_diference_percent: float
 
+    rolling_matching_percent: float
+    rolling_consensus_percent: float
+    rolling_window_size: int
+
     from_folder: str
 
 
@@ -589,6 +593,10 @@ def kick_rolling_consensus(
     consensus_kicks,
     debug,
     gene,
+    window_match,
+    consensus_percent,
+    window_size,
+    step = 1,
 ):
     """
     Creates a candidate consensus and kicks any nodes who fail the rolling_window_consensus check
@@ -605,12 +613,8 @@ def kick_rolling_consensus(
     -------
         list: The filtered list of nodes after kicking out the fails
     """
-    CONSENSUS_PERCENT = 0.5
-    WINDOW_SIZE = 14
-    WINDOW_MATCHING_PERCENT = 0.7
-    STEP = 1
     cand_consensus = dumb_consensus(
-        [node.sequence for node in nodes], CONSENSUS_PERCENT
+        [node.sequence for node in nodes], consensus_percent
     )
 
     for node in nodes:
@@ -625,14 +629,14 @@ def kick_rolling_consensus(
             ref_consensus_seq,
             node.start,
             node.end,
-            WINDOW_SIZE,
-            WINDOW_MATCHING_PERCENT,
-            STEP,
+            window_size,
+            window_match,
+            step,
         )
         if is_kick:
             if debug:
                 consensus_kicks.append(
-                    f"{gene},{node.header},{window_start}:{window_start+WINDOW_SIZE}\nCand: {node.sequence[window_start: window_start+WINDOW_SIZE]}\nCons: {cand_consensus[window_start: window_start+WINDOW_SIZE]}\nRefc: {ref_consensus_seq[window_start: window_start+WINDOW_SIZE]}\nMatch: {matching_percent},Ambig: {ambig_percent}\n"
+                    f"{gene},{node.header},{window_start}:{window_start+window_size}\nCand: {node.sequence[window_start: window_start+window_size]}\nCons: {cand_consensus[window_start: window_start+window_size]}\nRefc: {ref_consensus_seq[window_start: window_start+window_size]}\nMatch: {matching_percent},Ambig: {ambig_percent}\n"
                 )
             kicked_headers.add(node.header)
             node.kick = True
@@ -729,7 +733,7 @@ def process_batch(
             continue
 
         nodes = kick_rolling_consensus(
-            nodes, ref_consensus_seq, kicked_headers, consensus_kicks, args.debug, gene
+            nodes, ref_consensus_seq, kicked_headers, consensus_kicks, args.debug, gene, args.rolling_matching_percent, args.rolling_consensus_percent, args.rolling_window_size
         )
 
         if not nodes:
@@ -833,6 +837,10 @@ def main(args, from_folder):
         matching_consensus_percent=args.matching_consensus_percent,
         gross_diference_percent=args.gross_diference_percent,
         from_folder=from_folder,
+        rolling_matching_percent=args.rolling_matching_percent,
+        rolling_consensus_percent=args.rolling_consensus_percent,
+        rolling_window_size=args.rolling_window_size,
+
     )
     return do_folder(this_args, args.INPUT)
 

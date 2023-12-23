@@ -366,6 +366,27 @@ def outlier_args(par):
         default=0.65,
     )
     par.add_argument(
+        "-rmp",
+        "--rolling_matching_percent",
+        help="The percent the rolling window consensus has to match a read to pass",
+        type=float,
+        default=0.7,
+    )
+    par.add_argument(
+        "-rcp",
+        "--rolling_consensus_percent",
+        help="The consensus arg for generating the rolling window consensus sequence",
+        type=float,
+        default=0.5,
+    )
+    par.add_argument(
+        "-rws",
+        "--rolling_window_size",
+        help="Amount of bp to check at a time in the rolling window consensus",
+        type=int,
+        default=14,
+    )
+    par.add_argument(
         "--no_excise",
         action="store_true",
         default=False,
