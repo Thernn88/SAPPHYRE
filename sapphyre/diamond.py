@@ -515,7 +515,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     # Due to the thread bottleneck of chunking a ceiling is set on the threads post reporter
     THREAD_CAP = 32
     # Amount of overshoot in estimating end
-    OVERSHOOT_AMOUNT = 1.75
+    OVERSHOOT_AMOUNT = 1.5
     # Minimum headers to try to estimate thread distrubution
     MINIMUM_HEADERS = 32000
     # Minimum amount of hits to delegate to a process
@@ -777,21 +777,32 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
                 if x != chunks:
                     last_header = headers[i + per_thread - 1]
-                    end_index = (
-                        where(
-                            df[start_index : (start_index + estimated_end)][
-                                "header"
-                            ].values
-                            == last_header,
-                        )[0][-1]
-                        + start_index
-                    )
+                    try:
+                        end_index = (
+                            where(
+                                df[start_index : (start_index + estimated_end)][
+                                    "header"
+                                ].values
+                                == last_header,
+                            )[0][-1]
+                            + start_index
+                        )
+                    except IndexError:
+                        # Outliers cause our estimation to go whack.
+                        end_index = (
+                            where(
+                                df[start_index :][
+                                    "header"
+                                ].values
+                                == last_header,
+                            )[0][-1]
+                            + start_index
+                        )
 
                 else:
                     end_index = len(df) - 1
 
                 indices.append((start_index, end_index))
-
         temp_files = [NamedTemporaryFile(dir=gettempdir()) for _ in range(chunks)]
 
         arguments = (
