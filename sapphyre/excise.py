@@ -460,6 +460,9 @@ def main(args, override_cut, sub_dir):
             f.write("".join(log_output))
 
     printv(f"Done! Took {timer.differential():.2f} seconds", args.verbose)
+    if len(genes) == 0:
+        printv("WARNING: No genes in output.", args.verbose, 0)
+        return True, True
     return True, loci_containing_bad_regions / len(genes) >= args.majority_excise
 
 
