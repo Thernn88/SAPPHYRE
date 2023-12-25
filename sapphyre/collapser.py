@@ -834,6 +834,42 @@ def process_batch(
 
 
 def main(args, from_folder):
+    if not (0 < args.matching_percent < 1.0):
+        if 0 < args.matching_percent <= 100:
+            args.matching_percent = args.matching_percent / 100
+        else:
+            raise ValueError(
+                "Cannot convert matching percent threshold to a percent. Use a decimal or a whole number between 0 and 100"
+            )
+    if not (0 < args.matching_consensus_percent < 1.0):
+        if 0 < args.matching_consensus_percent <= 100:
+            args.matching_consensus_percent = args.matching_consensus_percent / 100
+        else:
+            raise ValueError(
+                "Cannot convert matching consensus percent threshold to a percent. Use a decimal or a whole number between 0 and 100"
+            )
+    if not (0 < args.gross_diference_percent < 1.0):
+        if 0 < args.gross_diference_percent <= 100:
+            args.gross_diference_percent = args.gross_diference_percent / 100
+        else:
+            raise ValueError(
+                "Cannot convert gross difference percent threshold to a percent. Use a decimal or a whole number between 0 and 100"
+            )
+    if not (0 < args.rolling_matching_percent < 1.0):
+        if 0 < args.rolling_matching_percent <= 100:
+            args.rolling_matching_percent = args.rolling_matching_percent / 100
+        else:
+            raise ValueError(
+                "Cannot convert rolling matching percent threshold to a percent. Use a decimal or a whole number between 0 and 100"
+            )
+    if not (0 < args.rolling_consensus_percent < 1.0):
+        if 0 < args.rolling_consensus_percent <= 100:
+            args.rolling_consensus_percent = args.rolling_consensus_percent / 100
+        else:
+            raise ValueError(
+                "Cannot convert rolling consensus percent threshold to a percent. Use a decimal or a whole number between 0 and 100"
+            )
+
     this_args = CollapserArgs(
         compress=args.compress,
         uncompress_intermediates=args.uncompress_intermediates,

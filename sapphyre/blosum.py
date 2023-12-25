@@ -577,6 +577,35 @@ def do_folder(folder, args):
 
     compress = not args.uncompress_intermediates or args.compress
 
+    if not (0 < args.threshold < 1.0):
+        if 0 < args.threshold <= 100:
+            args.threshold = args.threshold / 100
+        else:
+            raise ValueError(
+                "Cannot convert threshold to a percent. Use a decimal or a whole number between 0 and 100"
+            )
+    if not (0 < args.col_cull_percent < 1.0):
+        if 0 < args.col_cull_percent <= 100:
+            args.col_cull_percent = args.col_cull_percent / 100
+        else:
+            raise ValueError(
+                "Cannot convert column cull percent to a percent. Use a decimal or a whole number between 0 and 100"
+            )
+    if not (0 < args.ref_gap_percent < 1.0):
+        if 0 < args.ref_gap_percent <= 100:
+            args.ref_gap_percent = args.ref_gap_percent / 100
+        else:
+            raise ValueError(
+                "Cannot convert ref gap percent to a percent. Use a decimal or a whole number between 0 and 100"
+            )
+    if not (0 < args.ref_min_percent < 1.0):
+        if 0 < args.ref_min_percent <= 100:
+            args.ref_min_percent = args.ref_min_percent / 100
+        else:
+            raise ValueError(
+                "Cannot convert ref min percent to a percent. Use a decimal or a whole number between 0 and 100"
+            )
+
     file_inputs.sort(key=lambda x: x.stat().st_size, reverse=True)
     if args.processes > 1:
         arguments = []
@@ -612,16 +641,16 @@ def do_folder(folder, args):
                     gene,
                     nt_input,
                     output_path,
-                    args.threshold,
+                    threshold,
                     args.no_references,
                     nt_output_path,
                     args.debug,
                     args.verbose,
                     compress,
-                    args.col_cull_percent,
+                    col_cull_percent,
                     args.index_group_min_bp,
-                    args.ref_gap_percent,
-                    args.ref_min_percent,
+                    ref_gap_percent,
+                    ref_min_percent,
                     # args.internal_consensus_threshold,
                     # args.internal_kick_threshold,
                     assembly,

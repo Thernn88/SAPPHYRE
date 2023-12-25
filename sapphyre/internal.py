@@ -266,6 +266,21 @@ def main(args, after_collapser, from_folder):
         file_inputs.sort(key=lambda x: x.stat().st_size, reverse=True)
         arguments = []
 
+        if not (0 < args.internal_consensus_threshold < 1.0):
+            if 0 < args.internal_consensus_threshold <= 100:
+                args.internal_consensus_threshold = args.internal_consensus_threshold / 100
+            else:
+                raise ValueError(
+                    "Cannot convert internal consensus threshold to a percent. Use a decimal or a whole number between 0 and 100"
+                )
+        if not (0 < args.internal_distance_threshold < 1.0):
+            if 0 < args.internal_distance_threshold <= 100:
+                args.internal_distance_threshold = args.internal_distance_threshold / 100
+            else:
+                raise ValueError(
+                    "Cannot convert internal distance threshold to a percent. Use a decimal or a whole number between 0 and 100"
+                )
+            
         for gene in file_inputs:
             gene_raw = gene.stem.split(".")[0]
             if not args.no_dupes:
@@ -279,7 +294,7 @@ def main(args, after_collapser, from_folder):
                     nt_input,
                     output_path,
                     nt_output_path,
-                    args.internal_consensus_threshold,
+                    args.internal_distance_threshold,
                     args.internal_distance_threshold,
                     args.no_dupes,
                     prepare_dupes,
