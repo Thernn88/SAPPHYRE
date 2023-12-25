@@ -328,7 +328,7 @@ def log_excised_consensus(
             writeFasta(str(aa_out), raw_sequences, compress_intermediates)
             writeFasta(str(nt_out), parseFasta(str(nt_in)), compress_intermediates)
             if debug:
-                log_output += f"{gene},N/A,{consensus_seq}\n"
+                log_output.append(f"{gene},N/A,{consensus_seq}\n")
 
     return log_output, bad_regions != [], len(kicked_headers)
 
