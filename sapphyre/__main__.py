@@ -287,7 +287,7 @@ def outlier_args(par):
         "--threshold",
         type=float,
         default=0.5,
-        help="Greater than reference mean to be counted as an outlier. Default is 50%.",
+        help="Greater than reference mean to be counted as an outlier. Default is 50%%.",
     )
     par.add_argument(
         "--no-references",
