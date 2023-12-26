@@ -239,6 +239,37 @@ def cull(sequences, percent):
     return sequences
 
 
+def generate_hmm(set: Sequence_Set, overwrite, threads, verbosity, set_path):
+    """
+    Generates the .hmm files for each gene in the set.
+    """
+    aligned_sequences = set.get_aligned_sequences()
+    hmm_path = set_path.joinpath("hmms")
+    hmm_path.mkdir(exist_ok=True)
+
+    arguments = []
+    for gene, sequences in aligned_sequences.items():
+        arguments.append((gene, sequences, hmm_path, overwrite, verbosity))
+
+    with Pool(threads) as pool:
+        pool.starmap(hmm_function, arguments)
+
+
+def hmm_function(gene, sequences, hmm_path, overwrite, verbosity):
+    """
+    Calls the hmm build function and returns the result.
+    """
+    hmm_file = hmm_path.joinpath(gene + ".hmm")
+    if not hmm_file.exists() or overwrite:
+        printv(f"Generating: {gene}", verbosity, 2)
+        with NamedTemporaryFile(mode="w") as fp:
+            fp.write("".join([i.seq_with_regen_data() for i in sequences]))
+            fp.flush()
+
+            os.system(f"hmmbuild '{hmm_file}' '{fp.name}'")
+
+
+
 def generate_aln(
     set: Sequence_Set,
     align_method,
@@ -544,6 +575,7 @@ def main(args):
     do_align = args.align or args.all
     do_count = args.count or args.all
     do_diamond = args.diamond or args.all
+    do_hmm = args.hmmer or args.all
     cull_percent = args.cull_percent
     do_cull = cull_percent != 0
     this_set = Sequence_Set(set_name)
@@ -657,7 +689,7 @@ def main(args):
             for taxon, tcount in counter.most_common():
                 fp.write(f"{taxon},{tcount}\n")
 
-    if do_align or do_cull:
+    if do_align or do_cull or do_hmm:
         with Pool(threads) as pool:
             printv("Generating aln", verbosity)
             generate_aln(
@@ -670,6 +702,9 @@ def main(args):
                 do_cull,
                 cull_percent,
             )
+
+    if do_hmm:
+        generate_hmm(this_set, overwrite, threads, verbosity, set_path)
 
     if do_diamond:
         printv("Making Diamond DB", verbosity)
