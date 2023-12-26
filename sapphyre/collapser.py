@@ -733,17 +733,18 @@ def process_batch(
             )
             continue
 
-        nodes = kick_rolling_consensus(
-            nodes,
-            ref_consensus_seq,
-            kicked_headers,
-            consensus_kicks,
-            args.debug,
-            gene,
-            args.rolling_matching_percent,
-            args.rolling_consensus_percent,
-            args.rolling_window_size,
-        )
+        if not batch_args.is_assembly:
+            nodes = kick_rolling_consensus(
+                nodes,
+                ref_consensus_seq,
+                kicked_headers,
+                consensus_kicks,
+                args.debug,
+                gene,
+                args.rolling_matching_percent,
+                args.rolling_consensus_percent,
+                args.rolling_window_size,
+            )
 
         if not nodes:
             total += aa_count
