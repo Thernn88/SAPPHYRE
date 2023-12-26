@@ -36,6 +36,8 @@ class CollapserArgs(Struct):
     rolling_consensus_percent: float
     rolling_window_size: int
 
+    true_cluster_threshold: int
+
     from_folder: str
 
 
@@ -324,12 +326,16 @@ def do_folder(args: CollapserArgs, input_path: str):
         kicked_genes = "\n".join(["\n".join(i[3]) for i in results])
         genes_kicked_count = len(kicked_genes.split("\n"))
         kicked_consensus = "".join(["".join(i[4]) for i in results])
+        rescued_kicks = "\n".join(["\n".join(i[6]) for i in results])
 
         with open(path.join(collapsed_path, "kicked_genes.txt"), "w") as fp:
             fp.write(kicked_genes)
 
         with open(path.join(collapsed_path, "kicked_consensus.txt"), "w") as fp:
             fp.write(kicked_consensus)
+
+        with open(path.join(collapsed_path, "rescued_kicks.txt"), "w") as fp:
+            fp.write(rescued_kicks)
 
         with open(path.join(collapsed_path, "kicks.txt"), "w") as fp:
             fp.write(f"Total Kicks: {total_kicks}\n")
@@ -687,6 +693,8 @@ def process_batch(
 
         nodes = []
 
+        true_cluster_raw = []
+
         # make nodes out of the non reference sequences for processing
         aa_count = 0
         for header, sequence in aa_sequences:
@@ -702,6 +710,9 @@ def process_batch(
 
             node_is_contig = batch_args.is_assembly or "&&" in header
 
+            id = header.split("|")[3].split("_")[1]
+            true_cluster_raw.append((int(id), header))
+
             nodes.append(
                 NODE(
                     header=header,
@@ -715,6 +726,26 @@ def process_batch(
                     kick=False,
                 )
             )
+
+        true_cluster_raw.sort(key = lambda x: x[0])
+        before_true_clusters = []
+
+        current_cluster = []
+        for child_index, child_full in true_cluster_raw:
+            if not current_cluster:
+                current_cluster.append(child_full)
+                current_index = child_index
+            else:
+                if child_index - current_index <= args.true_cluster_threshold:
+                    current_cluster.append(child_full)
+                    current_index = child_index
+                else:
+                    before_true_clusters.append(current_cluster)
+                    current_cluster = [child_full]
+                    current_index = child_index
+        
+        if current_cluster:
+            before_true_clusters.append(current_cluster)
 
         ref_average_data_length, nodes, ref_consensus_seq = kick_read_consensus(
             aa_output,
@@ -784,6 +815,46 @@ def process_batch(
             kicks.extend(this_debug)
 
         kicked_headers.update(this_kicks)
+        after_data = []
+        for node in nodes:
+            if node.header in kicked_headers:
+                continue
+            after_data.append((node.header.split("|")[3].split("_")[1], node.header))
+
+        after_data.sort(key = lambda x: x[0])
+        after_true_clusters = []
+
+        current_cluster = []
+        for child_index, child_full in true_cluster_raw:
+            if not current_cluster:
+                current_cluster.append(child_full)
+                current_index = child_index
+            else:
+                if child_index - current_index <= args.true_cluster_threshold:
+                    current_cluster.append(child_full)
+                    current_index = child_index
+                else:
+                    after_true_clusters.append(current_cluster)
+                    current_cluster = [child_full]
+                    current_index = child_index
+        
+        if current_cluster:
+            after_true_clusters.append(current_cluster)
+
+        after_true_cluster = set(max(after_true_clusters, key=lambda x: len(x)))
+        matches = []
+        for i, cluster in enumerate(before_true_clusters):
+            matches.append((len(after_true_cluster.intersection(set(cluster))) / len( cluster), i))
+        matches.sort(key=lambda x: x[0], reverse= True)
+        
+        best_match = max(matches, key=lambda x: x[0])[1]
+
+        rescues = [f"Rescued in gene: {gene}"]
+        for header in before_true_clusters[best_match]:
+            if header in kicked_headers:
+                kicked_headers.remove(header)
+                rescues.append(header)
+
 
         aa_output_after_kick = sum(
             1
@@ -829,9 +900,9 @@ def process_batch(
         total += count
 
     if args.debug:
-        return True, kicks, total, kicked_genes, consensus_kicks, passed_total
+        return True, kicks, total, kicked_genes, consensus_kicks, passed_total, rescues
 
-    return True, [], total, kicked_genes, consensus_kicks, passed_total
+    return True, [], total, kicked_genes, consensus_kicks, passed_total, rescues
 
 
 def main(args, from_folder):
@@ -870,6 +941,7 @@ def main(args, from_folder):
             raise ValueError(
                 "Cannot convert rolling consensus percent threshold to a percent. Use a decimal or a whole number between 0 and 100"
             )
+            
 
     this_args = CollapserArgs(
         compress=args.compress,
@@ -886,6 +958,7 @@ def main(args, from_folder):
         rolling_matching_percent=args.rolling_matching_percent,
         rolling_consensus_percent=args.rolling_consensus_percent,
         rolling_window_size=args.rolling_window_size,
+        true_cluster_threshold=args.true_cluster_threshold,
     )
     return do_folder(this_args, args.INPUT)
 

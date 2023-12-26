@@ -387,6 +387,13 @@ def outlier_args(par):
         default=14,
     )
     par.add_argument(
+        "-tct",
+        "--true_cluster_threshold",
+        help="Largest distance between two reads to be considered in the same cluster",
+        type=int,
+        default=50,
+    )
+    par.add_argument(
         "--no_excise",
         action="store_true",
         default=False,
