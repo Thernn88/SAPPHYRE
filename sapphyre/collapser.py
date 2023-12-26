@@ -677,6 +677,7 @@ def process_batch(
     passed_total = 0
 
     kicks = []
+    rescues = []
     for gene in batch_args.genes:
         kicked_headers = set()
         printv(f"Doing: {gene}", args.verbose, 2)
@@ -848,13 +849,14 @@ def process_batch(
         matches.sort(key=lambda x: x[0], reverse= True)
         
         best_match = max(matches, key=lambda x: x[0])[1]
-
-        rescues = [f"Rescued in gene: {gene}"]
+        this_rescues = [f"Rescued in gene: {gene}"]
         for header in before_true_clusters[best_match]:
             if header in kicked_headers:
                 kicked_headers.remove(header)
-                rescues.append(header)
+                this_rescues.append(header)
 
+        if len(this_rescues) > 1:
+            rescues.append("\n".join(this_rescues))
 
         aa_output_after_kick = sum(
             1
