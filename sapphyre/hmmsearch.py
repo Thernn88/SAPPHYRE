@@ -80,7 +80,7 @@ def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_loca
 
             node, start, end = line[0], int(line[17]), int(line[18])
 
-            data[node] = (start, end)
+            data[node] = (start - 1, end)
 
     for hit in diamond_hits:
         if hit.node not in data:
