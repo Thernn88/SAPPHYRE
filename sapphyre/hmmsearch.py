@@ -43,7 +43,7 @@ def get_diamondhits(
 
     return gene_based_results
 
-def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_location, overwrite):
+def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_location, overwrite, debug):
     # printv(f"Processing: {gene}", 1)
     aligned_sequences = []
     this_hmm_output = path.join(hmm_output_folder, f"{gene}.hmmout")
@@ -68,9 +68,17 @@ def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_loca
         with NamedTemporaryFile(dir=gettempdir()) as aligned_files:
             writeFasta(aligned_files.name, aligned_sequences)
             aligned_files.flush()
-            system(
+            if debug:
+                system(
+                f"hmmsearch --o {this_hmm_output} --domT 10.0 {hmm_file} {aligned_files.name} > /dev/null",
+                )
+            else:
+                system(
                 f"hmmsearch --domtblout {this_hmm_output} --domT 10.0 {hmm_file} {aligned_files.name} > /dev/null",
-            )
+                )
+
+    if args.debug:
+        return "", []
     data = defaultdict(list)
     with open(this_hmm_output) as f:
         for line in f:
@@ -111,13 +119,13 @@ def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_loca
 
     return gene, output
 
-def get_arg(transcripts_mapped_to, raw_db_sequences, hmm_output_folder, hmm_location, overwrite):
+def get_arg(transcripts_mapped_to, raw_db_sequences, hmm_output_folder, hmm_location, overwrite, debug):
     for gene, transcript_hits in transcripts_mapped_to:
         this_seqs = {}
         for hit in transcript_hits:
             this_seqs[hit.node] = raw_db_sequences[hit.node]
         
-        yield gene, transcript_hits, this_seqs, hmm_output_folder, hmm_location, overwrite
+        yield gene, transcript_hits, this_seqs, hmm_output_folder, hmm_location, overwrite, debug
 
 
 def get_head_to_seq(nt_db, recipe):
@@ -163,7 +171,7 @@ def do_folder(input_folder, args):
 
     hmm_location = path.join(args.orthoset_input, args.orthoset, "hmms")
 
-    arguments = get_arg(transcripts_mapped_to, raw_db_sequences, hmm_output_folder, hmm_location, args.overwrite)
+    arguments = get_arg(transcripts_mapped_to, raw_db_sequences, hmm_output_folder, hmm_location, args.overwrite, args.debug)
 
     all_hits = []
 
@@ -174,8 +182,11 @@ def do_folder(input_folder, args):
         with Pool(args.processes) as p:
             all_hits = p.starmap(hmm_search, arguments)
 
+
     hits_db = rocky.get_rock("rocks_hits_db")
     for gene, hits in all_hits:
+        if not gene:
+            continue
         hits_db.put_bytes(f"gethmmhits:{gene}", json.encode(hits))
 
     return True
