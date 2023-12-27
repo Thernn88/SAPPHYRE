@@ -1,3 +1,4 @@
+from collections import defaultdict
 from shutil import rmtree
 from tempfile import NamedTemporaryFile
 from .diamond import ReporterHit as Hit
@@ -59,7 +60,7 @@ def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_loca
 
             this_aa = str(Seq(raw_sequence).translate())
 
-            aligned_sequences.append((hit.node, this_aa))
+            aligned_sequences.append((hit.node+"_"+str(hit.frame), this_aa))
 
         hmm_file = path.join(hmm_location, f"{gene}.hmm")
 
@@ -69,7 +70,7 @@ def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_loca
             system(
                 f"hmmsearch --domtblout {this_hmm_output} --domT 10.0 {hmm_file} {aligned_files.name} > /dev/null",
             )
-    data = {}
+    data = defaultdict(list)
     with open(this_hmm_output) as f:
         for line in f:
             if line.startswith("#"):
@@ -78,12 +79,13 @@ def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_loca
                 line = line.replace("  ", " ")
             line = line.strip().split()
 
-            node, start, end = line[0], int(line[17]), int(line[18])
+            query, start, end = line[0], int(line[17]), int(line[18])
 
-            data[node] = (start - 1, end)
+            data[query].append((start - 1, end))
 
     for hit in diamond_hits:
-        if hit.node not in data:
+        query = hit.node+"_"+str(hit.frame)
+        if query not in data:
             continue
 
         raw_sequence = parent_sequences[hit.node]
@@ -95,14 +97,14 @@ def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_loca
         frame_offset = abs(int(frame))-1
         raw_sequence = raw_sequence[frame_offset:]
 
-        start, end = data[hit.node]
-        start = start * 3
-        end = end * 3
+        for start, end in data[query]:
+            start = start * 3
+            end = end * 3
 
-        hit.hstart = start
-        hit.hend = end
+            hit.hstart = start
+            hit.hend = end
 
-        hit.seq = raw_sequence[start:end]
+            hit.seq = raw_sequence[start:end]
 
     return gene, diamond_hits
 
