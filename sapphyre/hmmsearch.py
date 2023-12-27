@@ -105,17 +105,18 @@ def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_loca
             raw_sequence = bio_revcomp(raw_sequence)
 
         for start, end, index in data[query]:
-            hit.node = hit.node+'-'+index
+            
+            node = hit.node+'-'+index
             
             start = start * 3
             end = end * 3
 
-            hit.hstart = start
-            hit.hend = end
+            hstart = start
+            hend = end
             
-            hit.seq = hit.seq[start:end]
-
-        output.append(hit)
+            seq = hit.seq[start:end]
+            this_hit = Hit(node, hit.frame, hit.qstart, hit.qend, hit.gene, hit.query, hit.uid, hit.refs, seq, hstart, hend)
+            output.append(this_hit)
 
     return gene, output
 
