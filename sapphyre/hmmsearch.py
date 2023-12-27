@@ -49,16 +49,17 @@ def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_loca
     this_hmm_output = path.join(hmm_output_folder, f"{gene}.hmmout")
     if not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
         for hit in diamond_hits:
-            raw_sequence = parent_sequences[hit.node]
-            frame = hit.frame
+            # raw_sequence = parent_sequences[hit.node]
+            # frame = hit.frame
 
-            if frame < 0:
-                raw_sequence = bio_revcomp(raw_sequence)
+            # if frame < 0:
+            #     raw_sequence = bio_revcomp(raw_sequence)
 
-            frame_offset = abs(int(frame))-1
-            raw_sequence = raw_sequence[frame_offset:]
+            # frame_offset = abs(int(frame))-1
+            # raw_sequence = raw_sequence[frame_offset:]
 
-            this_aa = str(Seq(raw_sequence).translate())
+            # this_aa = str(Seq(raw_sequence).translate())
+            this_aa = str(Seq(hit.seq).translate())
 
             aligned_sequences.append((hit.node+"_"+str(hit.frame), this_aa))
 
