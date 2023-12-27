@@ -98,25 +98,25 @@ def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_loca
         if query not in data:
             continue
 
-        raw_sequence = parent_sequences[hit.node]
-        frame = hit.frame
+        # raw_sequence = parent_sequences[hit.node]
+        # frame = hit.frame
 
-        if frame < 0:
-            raw_sequence = bio_revcomp(raw_sequence)
+        # if frame < 0:
+        #     raw_sequence = bio_revcomp(raw_sequence)
 
-        for start, end, index in data[query]:
+        # for start, end, index in data[query]:
             
-            node = hit.node+'-'+index
+        #     node = hit.node+'-'+index
             
-            start = start * 3
-            end = end * 3
+        #     start = start * 3
+        #     end = end * 3
 
-            hstart = start
-            hend = end
+        #     hstart = start
+        #     hend = end
             
-            seq = hit.seq[start:end]
-            this_hit = Hit(node, hit.frame, hit.qstart, hit.qend, hit.gene, hit.query, hit.uid, hit.refs, seq, hstart, hend)
-            output.append(this_hit)
+        #     seq = hit.seq[start:end]
+        #     this_hit = Hit(node, hit.frame, hit.qstart, hit.qend, hit.gene, hit.query, hit.uid, hit.refs, seq, hstart, hend)
+        output.append(hit)
 
     return gene, output
 
