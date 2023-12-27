@@ -44,7 +44,7 @@ def get_diamondhits(
     return gene_based_results
 
 def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_location, overwrite):
-    printv(f"Processing: {gene}", 1)
+    # printv(f"Processing: {gene}", 1)
     aligned_sequences = []
     this_hmm_output = path.join(hmm_output_folder, f"{gene}.hmmout")
     if not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
@@ -96,18 +96,17 @@ def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_loca
         if frame < 0:
             raw_sequence = bio_revcomp(raw_sequence)
 
-        frame_offset = abs(int(frame))-1
-        raw_sequence = raw_sequence[frame_offset:]
-
         for start, end, index in data[query]:
             hit.node = hit.node+'-'+index
+            
             start = start * 3
             end = end * 3
 
             hit.hstart = start
             hit.hend = end
+            
+            hit.seq = hit.seq[start:end]
 
-            hit.seq = raw_sequence[start:end]
         output.append(hit)
 
     return gene, output
