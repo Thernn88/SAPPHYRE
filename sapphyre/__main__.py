@@ -239,6 +239,7 @@ def subcmd_hmmsearch(subparsers):
         "Hmmsearch",
         help="Blah blah",
     )
+    par.add_argument("-d", "--debug", action="store_true", help="Enable debug outputs.")
     par.add_argument(
         "INPUT",
         help="Path to directory of Input folder",

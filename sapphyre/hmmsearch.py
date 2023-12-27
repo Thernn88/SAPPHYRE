@@ -47,7 +47,7 @@ def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_loca
     # printv(f"Processing: {gene}", 1)
     aligned_sequences = []
     this_hmm_output = path.join(hmm_output_folder, f"{gene}.hmmout")
-    if not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
+    if debug or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
         for hit in diamond_hits:
             # raw_sequence = parent_sequences[hit.node]
             # frame = hit.frame
@@ -70,14 +70,14 @@ def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_loca
             aligned_files.flush()
             if debug:
                 system(
-                f"hmmsearch --o {this_hmm_output} --domT 10.0 {hmm_file} {aligned_files.name} > /dev/null",
+                f"hmmsearch -o {this_hmm_output} --domT 10.0 {hmm_file} {aligned_files.name} > /dev/null",
                 )
             else:
                 system(
                 f"hmmsearch --domtblout {this_hmm_output} --domT 10.0 {hmm_file} {aligned_files.name} > /dev/null",
                 )
 
-    if args.debug:
+    if debug:
         return "", []
     data = defaultdict(list)
     with open(this_hmm_output) as f:
@@ -164,7 +164,7 @@ def do_folder(input_folder, args):
 
     hmm_output_folder = path.join(input_folder, "hmmsearch")
     
-    if args.overwrite and path.exists(hmm_output_folder):
+    if (args.debug or args.overwrite) and path.exists(hmm_output_folder):
         rmtree(hmm_output_folder, ignore_errors=True)
     if not path.exists(hmm_output_folder):
         system(f"mkdir {hmm_output_folder}")
