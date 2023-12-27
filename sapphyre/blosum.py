@@ -9,7 +9,7 @@ from pathlib import Path
 from sys import exit
 
 from msgspec import Struct
-from numpy import float16, isnan, nanmean, nanpercentile
+from numpy import float16, isnan, nanmean, nanpercentile,nanmedian
 from phymmr_tools import (
     asm_index_split,
     blosum62_candidate_to_reference,
@@ -318,7 +318,7 @@ def compare_means(
                     candidate,
                     ref_alignments,
                 )
-                candidate.mean_distance = nanmean(candidate_distances)
+                candidate.mean_distance = nanmedian(candidate_distances)
                 candidate.iqr = IQR
                 candidate.upper_bound = upper_bound
                 if candidate.mean_distance <= upper_bound:
