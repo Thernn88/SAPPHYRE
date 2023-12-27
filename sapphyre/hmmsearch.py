@@ -80,10 +80,11 @@ def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_loca
                 line = line.replace("  ", " ")
             line = line.strip().split()
 
-            query, start, end = line[0], int(line[17]), int(line[18])
+            query, start, end, index = line[0], int(line[17]), int(line[18]), line[9]
 
-            data[query].append((start - 1, end))
+            data[query].append((start - 1, end, index))
 
+    output = []
     for hit in diamond_hits:
         query = hit.node+"_"+str(hit.frame)
         if query not in data:
@@ -98,7 +99,8 @@ def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_loca
         frame_offset = abs(int(frame))-1
         raw_sequence = raw_sequence[frame_offset:]
 
-        for start, end in data[query]:
+        for start, end, index in data[query]:
+            hit.node = hit.node+'-'+index
             start = start * 3
             end = end * 3
 
@@ -106,8 +108,9 @@ def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_loca
             hit.hend = end
 
             hit.seq = raw_sequence[start:end]
+        output.append(hit)
 
-    return gene, diamond_hits
+    return gene, output
 
 def get_arg(transcripts_mapped_to, raw_db_sequences, hmm_output_folder, hmm_location, overwrite):
     for gene, transcript_hits in transcripts_mapped_to:
