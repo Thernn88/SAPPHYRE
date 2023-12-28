@@ -1012,6 +1012,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
                         hit.refs,
                     )
                 hit.seq = head_to_seq[hit.node][hit.qstart - 1 : hit.qend]
+                if hit.node == "NODE_175077":
+                    print(hit.seq)
+                    exit()
                 if hit.frame < 0:
                     hit.seq = bio_revcomp(hit.seq)
                 out.append(hit)
@@ -1019,7 +1022,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
             passes += len(out)
             db.put_bytes(f"gethits:{gene}", encoder.encode(out))
-
+        exit()
         del head_to_seq
         if global_log:
             with open(path.join(input_path, "multi.log"), "w") as fp:

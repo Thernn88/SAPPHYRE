@@ -239,7 +239,12 @@ def subcmd_hmmsearch(subparsers):
         "Hmmsearch",
         help="Blah blah",
     )
-    par.add_argument("-d", "--debug", action="store_true", help="Enable debug outputs.")
+    par.add_argument(
+        "-d",
+        "--debug",
+        action="count",
+        help="0 = insert them into og alignment, 1 = Just output new sequences, 2 = output hmm result",
+    )
     par.add_argument(
         "INPUT",
         help="Path to directory of Input folder",

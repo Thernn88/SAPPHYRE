@@ -143,12 +143,15 @@ def folder_check(output_target_path: str) -> None:
     -------
         None
     """
+    output_flagged_path = path.join(output_target_path, "flagged")
     output_aa_path = path.join(output_target_path, "aa")
     output_nt_path = path.join(output_target_path, "nt")
     rmtree(output_aa_path, ignore_errors=True)
     rmtree(output_nt_path, ignore_errors=True)
+    rmtree(output_flagged_path, ignore_errors=True)
     makedirs(output_aa_path, exist_ok=True)
     makedirs(output_nt_path, exist_ok=True)
+    makedirs(output_flagged_path, exist_ok=True)
 
 
 def parse_fasta(fasta_path: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
@@ -552,6 +555,7 @@ def process_refs(
     character_at_each_pos = defaultdict(list)
     gap_present_threshold = {}
     column_cull = set()
+    frameshift_data_present = {}
 
     # Get the length of the longest reference and create
     # a dict with a default value for every index covered by the references
@@ -566,6 +570,7 @@ def process_refs(
         data_present = 1 - (chars.count("-") / len(chars))
         all_dashes_by_index[i] = data_present == 0
         gap_present_threshold[i] = data_present >= gap_threshold
+        frameshift_data_present[i] = data_present >= 0.5
         if data_present < column_cull_percent:
             column_cull.add(i * 3)
 
@@ -579,6 +584,7 @@ def process_refs(
         gap_present_threshold,
         all_dashes_by_index,
         column_cull,
+        frameshift_data_present,
     )
 
 
@@ -894,6 +900,21 @@ def align_to_aa_order(nt_out, aa_content):
         yield (header, nt_out[header])
 
 
+def shift(frame, by):
+    coeff = 1
+    if frame <= 0:
+        coeff = -1
+
+    frame = abs(frame) + by
+
+    if frame > 3:
+        frame = frame - 3
+    if frame < 1:
+        frame = frame + 3
+
+    return frame * coeff
+
+
 def do_gene(fargs: FlexcullArgs) -> None:
     """FlexCull main function. Culls input aa and nt using specified amount of matches."""
     gene_path = path.join(fargs.aa_input, fargs.aa_file)
@@ -908,6 +929,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
         gap_present_threshold,
         all_dashes_by_index,
         column_cull,
+        frameshift_data_present,
     ) = process_refs(
         references, fargs.gap_threshold, fargs.column_cull_percent, fargs.filtered_mat
     )
@@ -916,6 +938,8 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
     follow_through = {}
     offset = fargs.amt_matches - 1
+
+    flagged_path = path.join(fargs.output, "flagged", fargs.aa_file.rstrip(".gz"))
 
     aa_out_path = path.join(fargs.output, "aa", fargs.aa_file.rstrip(".gz"))
     aa_out = references.copy()
@@ -930,6 +954,8 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
     extensions = 0
     nt_extension_align = {}
+    flagged_sequences = []
+    flagged_regions = {}
 
     for header, raw_sequence in candidates:
         sequence = list(raw_sequence)
@@ -953,14 +979,16 @@ def do_gene(fargs: FlexcullArgs) -> None:
             gap_present_threshold,
         )
 
+        fields = header.split("|")
+        node = fields[3]
+        frame = fields[4]
+
         # If no cull occurs check to see if reporter over trimmed
         if not kick and (cull_start, cull_end) == find_index_pair(raw_sequence, "-"):
             # Grab original NT sequence from database
-            fields = header.split("|")
-            node = fields[3]
+            
             if node.count("_") > 1:
                 node = "NODE_" + node.split("_")[1]
-            frame = fields[4]
             nt_seq = this_db_sequences[node][frame]
 
             # Translate original into AA and align against the reporter sequence
@@ -1037,6 +1065,36 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
             # Join sequence and check bp after cull
             out_line = "".join(out_line)
+            consec = 0
+            gap_start = None
+            gap_end = None
+            # input(positions_to_trim)
+            after_codon_start, after_codon_end = find_index_pair(out_line, "-")
+            for i in range(after_codon_start, after_codon_end):
+                let = out_line[i]
+                if let != "-":
+                    gap_end = i
+                    if consec >= 15:
+                        break
+                    consec = 0
+                    gap_start = None
+                else:
+                    if not gap_start:
+                        gap_start = i
+
+                    if i*3 in positions_to_trim and frameshift_data_present[i]:
+                        consec += 1
+                    else:
+                        if consec <= 15:
+                            consec = 0
+
+            if consec >= 15:
+                flagged_region = gap_start, gap_end
+                frame = int(frame)
+
+                header_before = "|".join(header.split("|")[:4])
+
+                flagged_regions[header] = header_before, frame, flagged_region[0], flagged_region[1]
 
             data_length = cull_end - cull_start
             bp_after_cull = len(out_line) - out_line.count("-")
@@ -1108,6 +1166,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
             post_gap_present_threshold,
             post_all_dashes_by_index,
             _,
+            _,
         ) = process_refs(
             post_references,
             fargs.gap_threshold,
@@ -1149,6 +1208,18 @@ def do_gene(fargs: FlexcullArgs) -> None:
             nt_out_path = path.join(fargs.output, "nt", nt_file_name.rstrip(".gz"))
             nt_out = references.copy()
             for header, sequence in candidates:
+                if header in flagged_regions:
+                    header_before, frame, flagged_region_start, flagged_region_end = flagged_regions[header]
+                    if abs(frame) == 1:
+                        flagged_sequences.append((f"{header_before}|{shift(frame, 1)}", sequence[(flagged_region_start*3)+1:flagged_region_end*3].replace("-","")))
+                        flagged_sequences.append((f"{header_before}|{shift(frame, 2)}", sequence[(flagged_region_start*3)+2:flagged_region_end*3].replace("-","")))
+                    elif abs(frame) == 2:
+                        flagged_sequences.append((f"{header_before}|{shift(frame, -1)}", sequence[(flagged_region_start*3)-1:flagged_region_end*3].replace("-","")))
+                        flagged_sequences.append((f"{header_before}|{shift(frame, 1)}", sequence[(flagged_region_start*3)+1:flagged_region_end*3].replace("-","")))
+                    elif abs(frame) == 3:
+                        flagged_sequences.append((f"{header_before}|{shift(frame, -1)}", sequence[(flagged_region_start*3)-1:flagged_region_end*3].replace("-","")))
+                        flagged_sequences.append((f"{header_before}|{shift(frame, -2)}", sequence[(flagged_region_start*3)-2:flagged_region_end*3].replace("-","")))
+
                 gene = header.split("|")[0]
                 kick, cull_start, cull_end, positions_to_trim = follow_through[header]
 
@@ -1201,6 +1272,9 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
             # Align order
             out_nt = align_to_aa_order(out_nt, aa_out)
+
+            if flagged_sequences:
+                writeFasta(flagged_path, flagged_sequences)
 
             writeFasta(nt_out_path, out_nt, fargs.compress)
 

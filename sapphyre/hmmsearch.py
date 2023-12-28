@@ -1,11 +1,11 @@
 from collections import defaultdict
 from shutil import rmtree
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from .diamond import ReporterHit as Hit
 from wrap_rocks import RocksDB
 from .utils import printv, gettempdir, parseFasta, writeFasta
 from . import rocky
-from os import path, system, stat
+import os
 from msgspec import json
 from multiprocessing import Pool
 from phymmr_tools import translate, bio_revcomp
@@ -43,90 +43,95 @@ def get_diamondhits(
 
     return gene_based_results
 
-def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_location, overwrite, debug):
+def hmm_search(gene, path, flagged_sequences, hmm_output_folder, hmm_location, overwrite, debug):
     # printv(f"Processing: {gene}", 1)
     aligned_sequences = []
-    this_hmm_output = path.join(hmm_output_folder, f"{gene}.hmmout")
-    if debug or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
-        for hit in diamond_hits:
-            # raw_sequence = parent_sequences[hit.node]
-            # frame = hit.frame
+    sequence_data = {}
+    this_aa_output = os.path.join(hmm_output_folder, "aa", f"{gene}.aa.fa")
+    this_nt_output = os.path.join(hmm_output_folder, "nt", f"{gene}.nt.fa")
 
-            # if frame < 0:
-            #     raw_sequence = bio_revcomp(raw_sequence)
+    this_hmm_output = os.path.join(hmm_output_folder, f"{gene}.txt")
+    if debug or not os.path.exists(this_aa_output) or os.stat(this_aa_output).st_size == 0 or overwrite:
+        for header, sequence in flagged_sequences:
+            this_aa = str(Seq(sequence).translate())
 
-            # frame_offset = abs(int(frame))-1
-            # raw_sequence = raw_sequence[frame_offset:]
+            sequence_data[header] = sequence
 
-            # this_aa = str(Seq(raw_sequence).translate())
-            this_aa = str(Seq(hit.seq).translate())
+            aligned_sequences.append((header, this_aa))
 
-            aligned_sequences.append((hit.node+"_"+str(hit.frame), this_aa))
+        hmm_file = os.path.join(hmm_location, f"{gene}.hmm")
 
-        hmm_file = path.join(hmm_location, f"{gene}.hmm")
+        with TemporaryDirectory(dir=gettempdir()) as temp_dir:
+            with NamedTemporaryFile(dir=temp_dir) as aligned_files, NamedTemporaryFile(dir=temp_dir) as result_file:
+                writeFasta(aligned_files.name, aligned_sequences)
+                aligned_files.flush()
+                if debug == 2:
+                    os.system(
+                    f"hmmsearch -o {this_hmm_output} --domT 10.0 {hmm_file} {aligned_files.name} > /dev/null",
+                    )
+                    return "", []
+                else:
+                    os.system(
+                    f"hmmsearch --domtblout {result_file.name} --domT 10.0 {hmm_file} {aligned_files.name} > /dev/null",
+                    )
+                    
+            
+                result = []
 
-        with NamedTemporaryFile(dir=gettempdir()) as aligned_files:
-            writeFasta(aligned_files.name, aligned_sequences)
-            aligned_files.flush()
-            if debug:
-                system(
-                f"hmmsearch -o {this_hmm_output} --domT 10.0 {hmm_file} {aligned_files.name} > /dev/null",
-                )
-            else:
-                system(
-                f"hmmsearch --domtblout {this_hmm_output} --domT 10.0 {hmm_file} {aligned_files.name} > /dev/null",
-                )
+                with open(result_file.name) as f:
+                    for line in f:
+                        if line.startswith("#"):
+                            continue
+                        while "  " in line:
+                            line = line.replace("  ", " ")
+                        line = line.strip().split()
 
-    if debug:
-        return "", []
-    data = defaultdict(list)
-    with open(this_hmm_output) as f:
-        for line in f:
-            if line.startswith("#"):
-                continue
-            while "  " in line:
-                line = line.replace("  ", " ")
-            line = line.strip().split()
+                        query, start, end, score = line[0], int(line[17]), int(line[18]), float(line[13])
+                        start -= 1
+                        
+                        result.append((query, start, end, score))
 
-            query, start, end, index = line[0], int(line[17]), int(line[18]), line[9]
-
-            data[query].append((start - 1, end, index))
-
-    output = []
-    for hit in diamond_hits:
-        query = hit.node+"_"+str(hit.frame)
-        if query not in data:
+    result.sort(key=lambda x: x[3], reverse=True)
+    done = set()
+    aa_output = []
+    nt_output = []
+    for query, start, end, score in result:
+        if query not in done:
+            done.add(query)
+        else:
             continue
 
-        # raw_sequence = parent_sequences[hit.node]
-        # frame = hit.frame
+        seq = sequence_data[query][start*3:end*3]
 
-        # if frame < 0:
-        #     raw_sequence = bio_revcomp(raw_sequence)
+        aa_output.append((query, str(Seq(seq).translate())))
+        nt_output.append((query, seq))
 
-        # for start, end, index in data[query]:
-            
-        #     node = hit.node+'-'+index
-            
-        #     start = start * 3
-        #     end = end * 3
-
-        #     hstart = start
-        #     hend = end
-            
-        #     seq = hit.seq[start:end]
-        #     this_hit = Hit(node, hit.frame, hit.qstart, hit.qend, hit.gene, hit.query, hit.uid, hit.refs, seq, hstart, hend)
-        output.append(hit)
-
-    return gene, output
-
-def get_arg(transcripts_mapped_to, raw_db_sequences, hmm_output_folder, hmm_location, overwrite, debug):
-    for gene, transcript_hits in transcripts_mapped_to:
-        this_seqs = {}
-        for hit in transcript_hits:
-            this_seqs[hit.node] = raw_db_sequences[hit.node]
+    if aa_output:
+        writeFasta(this_nt_output, nt_output)
+        if debug:
+            writeFasta(this_aa_output, aa_output)
+            return True
         
-        yield gene, transcript_hits, this_seqs, hmm_output_folder, hmm_location, overwrite, debug
+        else:
+            with TemporaryDirectory(dir=gettempdir()) as temp_dir:
+                with NamedTemporaryFile(dir=temp_dir) as aligned_files, NamedTemporaryFile(dir=temp_dir) as temp_result:
+                    writeFasta(aligned_files.name, aa_output)
+                    aligned_files.flush()
+                    os.system(
+                        f"mafft --anysymbol --quiet --jtt 1 --addfragments {aligned_files.name} --thread 1 {path} > {temp_result.name}"
+                    )
+
+                    writeFasta(this_aa_output, parseFasta(temp_result.name, True))
+
+    return True
+
+def get_arg(gene_paths, hmm_output_folder, hmm_location, overwrite, debug, og_aa):
+    for this_path in gene_paths:
+        flagged_sequences = list(parseFasta(this_path))
+
+        gene_raw = os.path.basename(this_path)
+        
+        yield gene_raw.split(".")[0], os.path.join(og_aa, gene_raw), flagged_sequences, hmm_output_folder, hmm_location, overwrite, debug
 
 
 def get_head_to_seq(nt_db, recipe):
@@ -155,24 +160,25 @@ def get_head_to_seq(nt_db, recipe):
     return head_to_seq
 
 def do_folder(input_folder, args):
-    transcripts_mapped_to = get_diamondhits(
-        rocky.get_rock("rocks_hits_db"),
-    )
+    flagged_aa = os.path.join(input_folder, "trimmed", "flagged")
 
-    nt_db = rocky.get_rock("rocks_nt_db")
-    recipe = nt_db.get("getall:batches").split(",")
-    raw_db_sequences = get_head_to_seq(nt_db, recipe)
+    og_aa = os.path.join(input_folder, "trimmed", "aa")
 
-    hmm_output_folder = path.join(input_folder, "hmmsearch")
+    hmm_output_folder = os.path.join(input_folder, "hmmsearch")
+    hmm_output_folder_aa = os.path.join(input_folder, "hmmsearch", "aa")
+    hmm_output_folder_nt = os.path.join(input_folder, "hmmsearch", "nt")
     
-    if (args.debug or args.overwrite) and path.exists(hmm_output_folder):
+    if (args.debug or args.overwrite) and os.path.exists(hmm_output_folder):
         rmtree(hmm_output_folder, ignore_errors=True)
-    if not path.exists(hmm_output_folder):
-        system(f"mkdir {hmm_output_folder}")
+    if not os.path.exists(hmm_output_folder):
+        os.mkdir(hmm_output_folder)
+        os.mkdir(hmm_output_folder_aa)
+        os.mkdir(hmm_output_folder_nt)
 
-    hmm_location = path.join(args.orthoset_input, args.orthoset, "hmms")
+    hmm_location = os.path.join(args.orthoset_input, args.orthoset, "hmms")
 
-    arguments = get_arg(transcripts_mapped_to, raw_db_sequences, hmm_output_folder, hmm_location, args.overwrite, args.debug)
+    gene_paths = [os.path.join(flagged_aa, i) for i in os.listdir(flagged_aa) if i.endswith(".fa")]
+    arguments = get_arg(gene_paths, hmm_output_folder, hmm_location, args.overwrite, args.debug, og_aa)
 
     all_hits = []
 
@@ -183,31 +189,24 @@ def do_folder(input_folder, args):
         with Pool(args.processes) as p:
             all_hits = p.starmap(hmm_search, arguments)
 
-
-    hits_db = rocky.get_rock("rocks_hits_db")
-    for gene, hits in all_hits:
-        if not gene:
-            continue
-        hits_db.put_bytes(f"gethmmhits:{gene}", json.encode(hits))
-
     return True
 
 def main(args):
-    if not all(path.exists(i) for i in args.INPUT):
+    if not all(os.path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exist.", args.verbose, 0)
         return False
     rocky.create_pointer(
         "rocks_orthoset_db",
-        path.join(args.orthoset_input, args.orthoset, "rocksdb"),
+        os.path.join(args.orthoset_input, args.orthoset, "rocksdb"),
     )
     result = []
     for input_path in args.INPUT:
-        rocks_db_path = path.join(input_path, "rocksdb")
+        rocks_db_path = os.path.join(input_path, "rocksdb")
         rocky.create_pointer(
             "rocks_nt_db",
-            path.join(rocks_db_path, "sequences", "nt"),
+            os.path.join(rocks_db_path, "sequences", "nt"),
         )
-        rocky.create_pointer("rocks_hits_db", path.join(rocks_db_path, "hits"))
+        rocky.create_pointer("rocks_hits_db", os.path.join(rocks_db_path, "hits"))
         result.append(
             do_folder(
                 input_path,
