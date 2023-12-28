@@ -82,9 +82,10 @@ def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_loca
                 unaligned_sequences.append((f"{header_before}|{shift(frame, -2)}", sequence[(hit.qstart)-2:hit.qend*3]))
 
             if frame < 0:
-                aligned_sequences = [(i[0], str(Seq(bio_revcomp(i[1])))) for i in unaligned_sequences]
+                new_sequences = [(i[0], str(Seq(bio_revcomp(i[1])).translate())) for i in unaligned_sequences]
             else:
-                aligned_sequences = [(i[0], str(Seq(i[1]))) for i in unaligned_sequences]
+                new_sequences = [(i[0], str(Seq(i[1]).translate())) for i in unaligned_sequences]
+            aligned_sequences.extend(new_sequences)  #
 
         hmm_file = path.join(hmm_location, f"{gene}.hmm")
         with NamedTemporaryFile(dir=gettempdir()) as aligned_files:
