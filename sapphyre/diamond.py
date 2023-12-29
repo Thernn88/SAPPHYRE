@@ -732,7 +732,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     pairwise_refs = set()
     top_targets = set()
     most_common = combined_count.most_common()
-    min_count = min(most_common[0:5], key=lambda x: x[1])[1]
+    min_count = min(most_common[0:10], key=lambda x: x[1])[1]
     target_count = min_count * (1 - args.top_ref)
     for taxa, count in most_common:
         if count >= target_count:
