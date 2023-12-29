@@ -171,10 +171,10 @@ def read_and_convert_fasta_files(
     # add candidates to references
     aas.extend(aa_intermediate)
 
-    with open(aa_file, "w") as fa:
-        for header, sequence in aas:
-            fa.write(">" + header + "\n")
-            fa.write(sequence + "\n")
+    #with open(aa_file, "w") as fa:
+        #for header, sequence in aas:
+            #fa.write(">" + header + "\n")
+            #fa.write(sequence + "\n")
 
     # if no nt refs found, do not process aa refs
     aa_final = aas
