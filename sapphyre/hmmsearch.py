@@ -91,8 +91,6 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, d
         
         new_sequences = []
         for header, seq in unaligned_sequences:
-            if frame < 0:
-                seq = bio_revcomp(seq)
             nt_sequences[header] = seq
             new_sequences.append((header, str(Seq(seq).translate())))
 
