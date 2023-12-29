@@ -922,7 +922,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
     this_seqs = []
 
     db = rocky.get_rock("db")
-    this_db_entry = json.decode(db.get(f"gethits:{this_gene}"), type=list[Hit])
+    this_db_entry = json.decode(db.get(f"gethmmhits:{this_gene}"), type=list[Hit])
     this_db_sequences = {}
 
     for entry in this_db_entry:
