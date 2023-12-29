@@ -60,7 +60,7 @@ def shift(frame, by):
 
 
 def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, debug, verbose):
-    printv(f"Processing: {gene}", 2)
+    printv(f"Processing: {gene}", verbose, 2)
     aligned_sequences = []
     this_hmm_output = path.join(hmm_output_folder, f"{gene}.hmmout")
     
