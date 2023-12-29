@@ -4,12 +4,12 @@ from tempfile import NamedTemporaryFile
 from .diamond import ReporterHit as Hit
 from wrap_rocks import RocksDB
 from .utils import printv, gettempdir, parseFasta, writeFasta
-from . import rocky
 from os import path, system, stat
 from msgspec import json
 from multiprocessing import Pool
 from phymmr_tools import translate, bio_revcomp
 from Bio.Seq import Seq
+from .timekeeper import TimeKeeper, KeeperMode
 
 def get_diamondhits(
     rocks_hits_db: RocksDB,
@@ -59,56 +59,47 @@ def shift(frame, by):
     return frame * coeff
 
 
-def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_location, overwrite, debug):
+def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, debug):
     printv(f"Processing: {gene}", 1)
     aligned_sequences = []
     this_hmm_output = path.join(hmm_output_folder, f"{gene}.hmmout")
-    if debug or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
-        hits_have_frames_already = defaultdict(set)
-        for hit in diamond_hits:
-            hits_have_frames_already[hit.node].add(hit.frame)
+    
+    hits_have_frames_already = defaultdict(set)
+    for hit in diamond_hits:
+        hits_have_frames_already[hit.node].add(hit.frame)
 
-        nt_sequences = {}
-        parents = {}
-        children = {}
-        node_has_frames_already = hits_have_frames_already.copy()
-        for hit in diamond_hits:
-            unaligned_sequences = []
-            sequence = parent_sequences[hit.node]
-            raw_sequence = sequence[hit.qstart - 1 : hit.qend]
-            frame = hit.frame
-            query = f"{hit.node}|{frame}"
-            unaligned_sequences.append((query, raw_sequence))
-            parents[query] = hit
-            if abs(frame) == 1:
-                next_shift = [1,2]
-            elif abs(frame) == 2:
-                next_shift = [-1,1]
-            elif abs(frame) == 3:
-                next_shift = [-1,-2]
+    nt_sequences = {}
+    parents = {}
+    children = {}
+    node_has_frames_already = hits_have_frames_already.copy()
+    for hit in diamond_hits:
+        unaligned_sequences = []
+        raw_sequence = hit.seq
+        frame = hit.frame
+        query = f"{hit.node}|{frame}"
+        unaligned_sequences.append((query, raw_sequence))
+        parents[query] = hit
 
-            for shift_by in next_shift:
-                shifted = shift(frame, shift_by)
-                if not shifted in node_has_frames_already[hit.node]:
-                    new_query = f"{hit.node}|{shifted}"
-                    if shifted < 0:
-                        unaligned_sequences.append((new_query, sequence[hit.qstart - 1 : hit.qend - shift_by]))
-                    else:
-                        unaligned_sequences.append((new_query, bio_revcomp(sequence[hit.qstart + shift_by - 1 : hit.qend])))
-                    node_has_frames_already[hit.node].add(shifted)
-                    children[new_query] = hit
-            
+        for shift_by in [1, 2]:
+            shifted = shift(frame, shift_by)
+            if not shifted in node_has_frames_already[hit.node]:
+                new_query = f"{hit.node}|{shifted}"
+                unaligned_sequences.append((new_query, raw_sequence[shift_by:]))
+                node_has_frames_already[hit.node].add(shifted)
+                children[new_query] = hit
             
         
-            new_sequences = []
-            for header, seq in unaligned_sequences:
-                if frame < 0:
-                    seq = bio_revcomp(seq)
-                nt_sequences[header] = seq
-                new_sequences.append((header, str(Seq(seq).translate())))
+        new_sequences = []
+        for header, seq in unaligned_sequences:
+            if frame < 0:
+                seq = bio_revcomp(seq)
+            nt_sequences[header] = seq
+            new_sequences.append((header, str(Seq(seq).translate())))
 
-            aligned_sequences.extend(new_sequences)  #
-        hmm_file = path.join(hmm_location, f"{gene}.hmm")
+        aligned_sequences.extend(new_sequences)  #
+        
+    hmm_file = path.join(hmm_location, f"{gene}.hmm")
+    if debug or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
         with NamedTemporaryFile(dir=gettempdir()) as aligned_files:
             writeFasta(aligned_files.name, aligned_sequences)
             aligned_files.flush()
@@ -140,6 +131,7 @@ def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_loca
                 data[query] = (start - 1, end)
 
     output = []
+    new_outs = []
     parents_done = set()
     for query, result in data.items():
         
@@ -160,18 +152,14 @@ def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_loca
             end = end * 3
 
             clone = Hit(node=parent.node, frame=int(frame), qstart=hit.qstart, qend=hit.qend, gene=parent.gene, query=parent.query, uid=parent.uid, refs=parent.refs, seq=sequence[start: end])
-
+            new_outs.append((f"{clone.gene}|{clone.node}|{clone.frame}"))
             output.append(clone)
 
-    return gene, output
+    return gene, output, new_outs
 
-def get_arg(transcripts_mapped_to, raw_db_sequences, hmm_output_folder, hmm_location, overwrite, debug):
+def get_arg(transcripts_mapped_to, hmm_output_folder, hmm_location, overwrite, debug):
     for gene, transcript_hits in transcripts_mapped_to:
-        this_seqs = {}
-        for hit in transcript_hits:
-            this_seqs[hit.node] = raw_db_sequences[hit.node]
-    
-        yield gene, transcript_hits, this_seqs, hmm_output_folder, hmm_location, overwrite, debug
+        yield gene, transcript_hits, hmm_output_folder, hmm_location, overwrite, debug
 
 
 def get_head_to_seq(nt_db, recipe):
@@ -200,13 +188,11 @@ def get_head_to_seq(nt_db, recipe):
     return head_to_seq
 
 def do_folder(input_folder, args):
+    hits_db = RocksDB(path.join(input_folder, "rocksdb", "hits"))
+    tk = TimeKeeper(KeeperMode.DIRECT)
     transcripts_mapped_to = get_diamondhits(
-        rocky.get_rock("rocks_hits_db"),
+        hits_db
     )
-
-    nt_db = rocky.get_rock("rocks_nt_db")
-    recipe = nt_db.get("getall:batches").split(",")
-    raw_db_sequences = get_head_to_seq(nt_db, recipe)
 
     hmm_output_folder = path.join(input_folder, "hmmsearch")
     
@@ -217,7 +203,7 @@ def do_folder(input_folder, args):
 
     hmm_location = path.join(args.orthoset_input, args.orthoset, "hmms")
 
-    arguments = get_arg(transcripts_mapped_to, raw_db_sequences, hmm_output_folder, hmm_location, args.overwrite, args.debug)
+    arguments = get_arg(transcripts_mapped_to, hmm_output_folder, hmm_location, args.overwrite, args.debug)
 
     all_hits = []
 
@@ -228,39 +214,32 @@ def do_folder(input_folder, args):
         with Pool(args.processes) as p:
             all_hits = p.starmap(hmm_search, arguments)
 
-
-    hits_db = rocky.get_rock("rocks_hits_db")
-    for gene, hits in all_hits:
+    log = []
+    for gene, hits, logs in all_hits:
         if not gene:
             continue
         hits_db.put_bytes(f"gethmmhits:{gene}", json.encode(hits))
+        log.extend(logs)
 
+    del hits_db
+
+    with open(path.join(input_folder, "hmmsearch.log"), "w") as f:
+        f.write("\n".join(log))
+
+    printv(f"Done with {input_folder}. Took {tk.lap():.2f}s", args.verbose, 1)
     return True
 
 def main(args):
     if not all(path.exists(i) for i in args.INPUT):
         printv("ERROR: All folders passed as argument must exist.", args.verbose, 0)
         return False
-    rocky.create_pointer(
-        "rocks_orthoset_db",
-        path.join(args.orthoset_input, args.orthoset, "rocksdb"),
-    )
     result = []
     for input_path in args.INPUT:
-        rocks_db_path = path.join(input_path, "rocksdb")
-        rocky.create_pointer(
-            "rocks_nt_db",
-            path.join(rocks_db_path, "sequences", "nt"),
-        )
-        rocky.create_pointer("rocks_hits_db", path.join(rocks_db_path, "hits"))
         result.append(
             do_folder(
                 input_path,
                 args,
             ),
         )
-        rocky.close_pointer("rocks_nt_db")
-        rocky.close_pointer("rocks_hits_db")
-    rocky.close_pointer("rocks_orthoset_db")
     
     return all(result)
