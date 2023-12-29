@@ -159,7 +159,7 @@ def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_loca
             start = start * 3
             end = end * 3
 
-            clone = Hit(node=parent.node, frame=int(frame), qstart=hit.qstart, qend=hit.qend, gene=parent.gene, query=parent.query, uid=parent.uid, refs=parent.refs, seq=sequence[start*3: end*3])
+            clone = Hit(node=parent.node, frame=int(frame), qstart=hit.qstart, qend=hit.qend, gene=parent.gene, query=parent.query, uid=parent.uid, refs=parent.refs, seq=sequence[start: end])
 
             output.append(clone)
 
