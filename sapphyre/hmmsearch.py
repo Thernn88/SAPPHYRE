@@ -1,3 +1,5 @@
+import warnings
+from Bio import BiopythonWarning
 from collections import defaultdict
 from shutil import rmtree
 from tempfile import NamedTemporaryFile
@@ -60,6 +62,7 @@ def shift(frame, by):
 
 
 def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, debug, verbose):
+    warnings.filterwarnings("ignore", category=BiopythonWarning)
     printv(f"Processing: {gene}", verbose, 2)
     aligned_sequences = []
     this_hmm_output = path.join(hmm_output_folder, f"{gene}.hmmout")
