@@ -103,11 +103,11 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, d
             aligned_files.flush()
             if debug:
                 system(
-                f"hmmsearch -o {this_hmm_output} --domT 20.0 {hmm_file} {aligned_files.name} > /dev/null",
+                f"hmmsearch -o {this_hmm_output} --domT 10.0 {hmm_file} {aligned_files.name} > /dev/null",
                 )
             else:
                 system(
-                f"hmmsearch --domtblout {this_hmm_output} --domT 20.0 {hmm_file} {aligned_files.name} > /dev/null",
+                f"hmmsearch --domtblout {this_hmm_output} --domT 10.0 {hmm_file} {aligned_files.name} > /dev/null",
                 )
 
     if debug:
