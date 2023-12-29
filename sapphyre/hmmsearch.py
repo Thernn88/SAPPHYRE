@@ -59,8 +59,8 @@ def shift(frame, by):
     return frame * coeff
 
 
-def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, debug):
-    printv(f"Processing: {gene}", 1)
+def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, debug, verbose):
+    printv(f"Processing: {gene}", 2)
     aligned_sequences = []
     this_hmm_output = path.join(hmm_output_folder, f"{gene}.hmmout")
     
@@ -155,9 +155,9 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, d
 
     return gene, output, new_outs
 
-def get_arg(transcripts_mapped_to, hmm_output_folder, hmm_location, overwrite, debug):
+def get_arg(transcripts_mapped_to, hmm_output_folder, hmm_location, overwrite, debug, verbose):
     for gene, transcript_hits in transcripts_mapped_to:
-        yield gene, transcript_hits, hmm_output_folder, hmm_location, overwrite, debug
+        yield gene, transcript_hits, hmm_output_folder, hmm_location, overwrite, debug, verbose
 
 
 def get_head_to_seq(nt_db, recipe):
@@ -201,9 +201,11 @@ def do_folder(input_folder, args):
 
     hmm_location = path.join(args.orthoset_input, args.orthoset, "hmms")
 
-    arguments = get_arg(transcripts_mapped_to, hmm_output_folder, hmm_location, args.overwrite, args.debug)
+    arguments = get_arg(transcripts_mapped_to, hmm_output_folder, hmm_location, args.overwrite, args.debug, args.verbose)
 
     all_hits = []
+
+    printv(f"Processing {input_folder}", args.verbose, 1)
 
     if args.processes <= 1:
         for this_arg in arguments:
