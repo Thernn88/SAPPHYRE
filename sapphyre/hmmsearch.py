@@ -90,8 +90,11 @@ def hmm_search(gene, diamond_hits, parent_sequences, hmm_output_folder, hmm_loca
             for shift_by in next_shift:
                 shifted = shift(frame, shift_by)
                 if not shifted in node_has_frames_already[hit.node]:
-                    new_query = f"{hit.node}|{next_shift}"
-                    unaligned_sequences.append((new_query, sequence[(hit.qstart)+1:hit.qend*3]))
+                    new_query = f"{hit.node}|{shifted}"
+                    if shifted < 0:
+                        unaligned_sequences.append((new_query, sequence[hit.qstart - 1 : hit.qend - shift_by]))
+                    else:
+                        unaligned_sequences.append((new_query, bio_revcomp(sequence[hit.qstart + shift_by - 1 : hit.qend])))
                     node_has_frames_already[hit.node].add(shifted)
                     children[new_query] = hit
             
