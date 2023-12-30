@@ -407,47 +407,51 @@ def print_unmerged_sequences(
         data_after = len(aa_seq)
 
         if data_after >= minimum_bp:
-            # Hash the NT sequence and the AA sequence + base header
-            unique_hit = xxh3_64(base_header + aa_seq).hexdigest()
-            nt_seq_hash = xxh3_64(nt_seq).hexdigest()
-            # Filter and save NT dupes
-            if nt_seq_hash in seq_mapped_already:
-                mapped_to = seq_mapped_already[nt_seq_hash]
-                dupes.setdefault(mapped_to, []).append(base_header)
-                if dupe_debug_fp:
-                    dupe_debug_fp.write(
-                        f"{header}\n{nt_seq}\nis an nt dupe of\n{mapped_to}\n\n",
-                    )
-                continue
-            seq_mapped_already[nt_seq_hash] = base_header
+            unique_hit = None
+
+            if not is_assembly:
+                # Hash the NT sequence and the AA sequence + base header
+                unique_hit = xxh3_64(base_header + aa_seq).hexdigest()
+                nt_seq_hash = xxh3_64(nt_seq).hexdigest()
+                # Filter and save NT dupes
+                if nt_seq_hash in seq_mapped_already:
+                    mapped_to = seq_mapped_already[nt_seq_hash]
+                    dupes.setdefault(mapped_to, []).append(base_header)
+                    if dupe_debug_fp:
+                        dupe_debug_fp.write(
+                            f"{header}\n{nt_seq}\nis an nt dupe of\n{mapped_to}\n\n",
+                        )
+                    continue
+                seq_mapped_already[nt_seq_hash] = base_header
 
             # If the sequence is unique
-            if unique_hit not in exact_hit_mapped_already:
+            if is_assembly or unique_hit not in exact_hit_mapped_already:
                 # Remove subsequence dupes from same read
                 if base_header in base_header_mapped_already:
                     (
                         already_mapped_header,
                         already_mapped_sequence,
                     ) = base_header_mapped_already[base_header]
-
-                    if len(aa_seq) > len(already_mapped_sequence):
-                        if already_mapped_sequence in aa_seq:
-                            aa_result[header_maps_to_where[already_mapped_header]] = (
-                                header,
-                                aa_seq,
-                            )
-                            nt_result[header_maps_to_where[already_mapped_header]] = (
-                                header,
-                                nt_seq,
-                            )
-                            continue
-                    else:
-                        if aa_seq in already_mapped_sequence:
-                            if dupe_debug_fp:
-                                dupe_debug_fp.write(
-                                    f"{header}\n{aa_seq}\nis an aa dupe of\n{already_mapped_header}\n\n",
+                    # Dont kick if assembly
+                    if not is_assembly:
+                        if len(aa_seq) > len(already_mapped_sequence):
+                            if already_mapped_sequence in aa_seq:
+                                aa_result[header_maps_to_where[already_mapped_header]] = (
+                                    header,
+                                    aa_seq,
                                 )
-                            continue
+                                nt_result[header_maps_to_where[already_mapped_header]] = (
+                                    header,
+                                    nt_seq,
+                                )
+                                continue
+                        else:
+                            if aa_seq in already_mapped_sequence:
+                                if dupe_debug_fp:
+                                    dupe_debug_fp.write(
+                                        f"{header}\n{aa_seq}\nis an aa dupe of\n{already_mapped_header}\n\n",
+                                    )
+                                continue
 
                     if base_header in header_mapped_x_times:
                         # Make header unique
