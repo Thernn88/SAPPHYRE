@@ -307,8 +307,7 @@ def compare_means(
             # Interquartile range (IQR)
             IQR = Q3 - Q1
             margin = 0.02
-            # if len(sequence) > 200, add .5 to max distance
-            if index_pair[1] - index_pair[0] > 200:
+            if index_pair[1] - index_pair[0] > ref_seq_len * 0.5:
                 threshold = threshold * 2
             upper_bound = Q3 + (threshold * IQR) + margin
         else:  # if no ref_distances, this is an orthograph, so reject
