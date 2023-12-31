@@ -430,26 +430,43 @@ def make_asm_exclusions(passing: list, failing: list) -> set:
     return failing_set.difference(passing_set)
 
 
-def get_passing_headers(passing: list) -> set:
+def get_passing_headers(passing: list) -> dict:
     """
     Iterate over a list of passing assembly records and get the headers.
     Return a set containing all original headers that had at least one
     subsequence pass.
     """
-    return {candidate.id.split("$$")[0] for candidate in passing}
+    any_passed = {}
+    for candidate in passing:
+        header, start, stop = candidate.id.split("$$")
+        start = int(start)
+        stop = int(stop)
+        if header not in any_passed:
+            any_passed[header] = [float('inf'), 0]
+            current = any_passed[header]
+            if start < current[0]:
+                current[0] = start
+            if stop > current[1]:
+                current[1] = stop
+    return any_passed
 
 
-def save_partial_fails(failing: list, any_passing: set) -> tuple:
+def save_partial_fails(failing: list, any_passing: dict) -> tuple:
     """
     Find all failing assembly headers that had a passing subsequence at
-    a different index.
+    a different index. Saves the failing sequence if it is between two
+    passing sequences.
     Takes a list of failing candidate records and a set
     of passing headers.
     Returns a list of records.
     """
     output = []
     for i, cand in enumerate(failing):
-        if cand.id.split("$$")[0] in any_passing:
+        header, start, stop = cand.id.split("$$")
+        start = int(start)
+        stop = int(stop)
+        current = any_passing[header]
+        if start > current[0] and stop < current[1]:
             output.append(cand)
             failing[i] = None
     failing = [candidate for candidate in failing if candidate is not None]
