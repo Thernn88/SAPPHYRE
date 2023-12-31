@@ -309,7 +309,7 @@ def compare_means(
             margin = 0.02
             # if len(sequence) > 200, add .5 to max distance
             if index_pair[1] - index_pair[0] > 200:
-                margin = 0.52
+                threshold = threshold * 2
             upper_bound = Q3 + (threshold * IQR) + margin
         else:  # if no ref_distances, this is an orthograph, so reject
             upper_bound = "N/A"
@@ -469,6 +469,8 @@ def save_partial_fails(failing: list, any_passing: dict) -> tuple:
         header, start, stop = cand.id.split("$$")
         start = int(start)
         stop = int(stop)
+        if header not in any_passing:
+            continue
         current = any_passing[header]
         if start > current[0] and stop < current[1]:
             output.append(cand)
