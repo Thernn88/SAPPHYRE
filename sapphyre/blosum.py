@@ -213,6 +213,7 @@ def compare_means(
     index_group_min_bp: int,
     ref_gap_percent: float,
     ref_min_percent: float,
+    ref_seq_len: int,
 ) -> tuple:
     """For each candidate record, finds the index of the first non-gap bp and makes
     matching cuts in the reference sequences. Afterwards finds the mean of the trimmed
@@ -478,6 +479,9 @@ def save_partial_fails(failing: list, any_passing: dict) -> tuple:
     return output, failing
 
 
+def find_ref_len(ref: str) -> int:
+    start, stop = find_index_pair(ref, '-')
+    return stop - start
 
 def main_process(
     args_input,
@@ -521,7 +525,8 @@ def main_process(
         )
         if percent_of_non_dash <= col_cull_percent:
             rejected_indices.add(i)
-
+    ref_seq_len = sum(find_ref_len(ref) for ref in ref_seqs) / len(ref_seqs)
+    # ref_seq_len = len(ref_seqs[0]) - len(rejected_indices)
     # find number of unique reference variants in file, use for refs_in_file
     if ref_check:
         refs_in_file = len(ref_check)
@@ -543,6 +548,7 @@ def main_process(
         index_group_min_bp,
         ref_gap_percent,
         ref_min_percent,
+        ref_seq_len
     )
     logs = []
     if passing:
