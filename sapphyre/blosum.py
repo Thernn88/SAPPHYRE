@@ -4,7 +4,7 @@ from __future__ import annotations
 from collections import defaultdict
 from itertools import combinations
 from multiprocessing.pool import Pool
-from os import mkdir, path
+from os import mkdir, path, remove
 from pathlib import Path
 from sys import exit
 
@@ -548,6 +548,7 @@ def main_process(
     ref_gap_percent: float,
     ref_min_percent: int,
     assembly: bool,
+    ref_kick_path,
 ):
     keep_refs = not args_references
 
@@ -589,6 +590,10 @@ def main_process(
             regulars.append(ref.raw)
     # filter references with large average distance
     reference_records, filtered_refs = cull_reference_outliers(reference_records)
+    with open(ref_kick_path, "a") as ref_log:
+        for ref_kick, _ in filtered_refs:
+            ref_log.write(f'{ref_kick.id[1:]}\n')
+
     raw_regulars, passing, failing = compare_means(
         reference_records,
         regulars,
@@ -649,6 +654,9 @@ def main_process(
 
 def do_folder(folder, args):
     ALLOWED_EXTENSIONS = {".fa", ".fas", ".fasta", ".fa", ".gz", ".fq", ".fastq"}
+    reference_kick_path = Path(folder, "reference_kicks.log")
+    if path.exists(reference_kick_path):
+        remove(reference_kick_path)
 
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     wanted_aa_path = Path(folder, "trimmed", "aa")
@@ -667,7 +675,7 @@ def do_folder(folder, args):
     # else:
     #     err = f"cannot find dupe databases for {folder}"
     #     raise FileNotFoundError(err)
-    assembly= True
+    assembly = True
     if not aa_input.exists():  # exit early
         printv(
             f"WARNING: Can't find aa folder for taxa {folder}: '{wanted_aa_path}'. Aborting",
@@ -738,6 +746,7 @@ def do_folder(folder, args):
                     # args.internal_consensus_threshold,
                     # args.internal_kick_threshold,
                     assembly,
+                    reference_kick_path,
                 ),
             )
 
@@ -764,6 +773,7 @@ def do_folder(folder, args):
                     # args.internal_consensus_threshold,
                     # args.internal_kick_threshold,
                     assembly,
+                    reference_kick_path,
                 ),
             )
     if args.debug:
