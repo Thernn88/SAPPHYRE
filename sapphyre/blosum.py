@@ -514,7 +514,7 @@ def cull_reference_outliers(reference_records: list) -> list:
 
     total_mean = sum(all_distances) / len(all_distances)
     ALLOWABLE_COEFFICENT = 1.4
-    allowable = total_mean * ALLOWABLE_COEFFICENT
+    allowable = max(total_mean * ALLOWABLE_COEFFICENT, 0.2)
 
     # if a record's mean is too high, cull it
     filtered = []
