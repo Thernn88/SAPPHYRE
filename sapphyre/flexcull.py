@@ -1006,7 +1006,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
         )
 
         # If no cull occurs check to see if reporter over trimmed
-        if (cull_start, cull_end) == find_index_pair(raw_sequence, "-"):
+        if False:#(cull_start, cull_end) == find_index_pair(raw_sequence, "-"):
             fields = header.split("|")
             node = fields[3]
             if node.count("_") > 1:
