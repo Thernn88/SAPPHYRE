@@ -667,15 +667,14 @@ def do_folder(folder, args):
         aa_input = Path(folder, "align")
         nt_input = Path(folder, "nt_aligned")
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
-    # if rocks_db_path.exists():
-    #     rocksdb_db = RocksDB(str(rocks_db_path))
-    #     assembly = rocksdb_db.get("get:isassembly")
-    #     assembly = assembly == "False"
-    #     del rocksdb_db
-    # else:
-    #     err = f"cannot find dupe databases for {folder}"
-    #     raise FileNotFoundError(err)
-    assembly = True
+    if rocks_db_path.exists():
+        rocksdb_db = RocksDB(str(rocks_db_path))
+        assembly = rocksdb_db.get("get:isassembly")
+        assembly = assembly == "False"
+        del rocksdb_db
+    else:
+        err = f"cannot find dupe databases for {folder}"
+        raise FileNotFoundError(err)
     if not aa_input.exists():  # exit early
         printv(
             f"WARNING: Can't find aa folder for taxa {folder}: '{wanted_aa_path}'. Aborting",
