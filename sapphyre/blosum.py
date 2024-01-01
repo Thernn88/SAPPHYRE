@@ -484,6 +484,55 @@ def find_ref_len(ref: str) -> int:
     start, stop = find_index_pair(ref, '-')
     return stop - start
 
+
+def cull_reference_outliers(reference_records: list) -> list:
+    """
+    Removes reference sequences which have an unusually large mean
+    blosum distance. Finds the constrained blosum distance between
+    each reference pull any reference with a mean 1.5x higher than
+    the group mean. Returns the remaining references in a list.
+    """
+    distances_by_index = defaultdict(list)
+    all_distances = []
+    indices = {i:find_index_pair(reference_records[i].raw, '-') for i in range(len(reference_records))}
+    # generate reference distances
+    for i, ref1 in enumerate(reference_records[:-1]):
+        start1, stop1 = indices[i]
+        for j, ref2 in enumerate(reference_records[i+1:],i+1):
+            start2, stop2 = indices[j]
+            start = max(start1, start2)
+            stop = min(stop1, stop2)
+            # avoid the occasional rust-nan result
+            if start >= stop:
+                distances_by_index[i].append(1)
+                distances_by_index[j].append(1)
+                continue
+            dist = blosum62_distance(ref1.raw[start:stop], ref2.raw[start:stop])
+            distances_by_index[i].append(dist)
+            distances_by_index[j].append(dist)
+            all_distances.append(dist)
+
+    total_mean = sum(all_distances) / len(all_distances)
+    ALLOWABLE_COEFFICENT = 1.4
+    allowable = total_mean * ALLOWABLE_COEFFICENT
+
+    # if a record's mean is too high, cull it
+    filtered = []
+    for index, distances in distances_by_index.items():
+        mean = sum(distances) / len(distances)
+        if mean > allowable:
+            distances_by_index[index] = None
+            filtered.append( (reference_records[index], mean) )
+        # else:
+        #     distances_by_index[index] = mean
+    # get all remaining records
+    output = [reference_records[i] for i in range(len(reference_records)) if distances_by_index[i] is not None]
+    return output, filtered
+
+
+
+
+
 def main_process(
     args_input,
     nt_input,
@@ -538,7 +587,8 @@ def main_process(
         for ref in reference_records:
             regulars.append(ref.id)
             regulars.append(ref.raw)
-    # reference_records = [ref for ref in reference_records if has_data(ref.raw)]
+    # filter references with large average distance
+    reference_records, filtered_refs = cull_reference_outliers(reference_records)
     raw_regulars, passing, failing = compare_means(
         reference_records,
         regulars,
@@ -609,15 +659,15 @@ def do_folder(folder, args):
         aa_input = Path(folder, "align")
         nt_input = Path(folder, "nt_aligned")
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
-    if rocks_db_path.exists():
-        rocksdb_db = RocksDB(str(rocks_db_path))
-        assembly = rocksdb_db.get("get:isassembly")
-        assembly = assembly == "False"
-        del rocksdb_db
-    else:
-        err = f"cannot find dupe databases for {folder}"
-        raise FileNotFoundError(err)
-
+    # if rocks_db_path.exists():
+    #     rocksdb_db = RocksDB(str(rocks_db_path))
+    #     assembly = rocksdb_db.get("get:isassembly")
+    #     assembly = assembly == "False"
+    #     del rocksdb_db
+    # else:
+    #     err = f"cannot find dupe databases for {folder}"
+    #     raise FileNotFoundError(err)
+    assembly= True
     if not aa_input.exists():  # exit early
         printv(
             f"WARNING: Can't find aa folder for taxa {folder}: '{wanted_aa_path}'. Aborting",
