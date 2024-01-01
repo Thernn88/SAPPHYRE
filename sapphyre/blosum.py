@@ -308,9 +308,10 @@ def compare_means(
             # Interquartile range (IQR)
             IQR = Q3 - Q1
             margin = 0.02
+            new_threshold = threshold
             if index_pair[1] - index_pair[0] > ref_seq_len * 0.5:
-                threshold = threshold * 2
-            upper_bound = Q3 + (threshold * IQR) + margin
+                new_threshold = new_threshold * 2
+            upper_bound = Q3 + (new_threshold * IQR) + margin
         else:  # if no ref_distances, this is an orthograph, so reject
             upper_bound = "N/A"
             IQR = "N/A"
@@ -611,7 +612,7 @@ def do_folder(folder, args):
     if rocks_db_path.exists():
         rocksdb_db = RocksDB(str(rocks_db_path))
         assembly = rocksdb_db.get("get:isassembly")
-        assembly = assembly == "True"
+        assembly = assembly == "False"
         del rocksdb_db
     else:
         err = f"cannot find dupe databases for {folder}"
