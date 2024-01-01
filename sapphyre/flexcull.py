@@ -703,8 +703,12 @@ def cull_codons(
         right_highest_consecutive = 0
 
         this_consec = 0
+
         for ix, let in enumerate(left_after, cull_start):
             if let == "-":
+                if not gap_present_threshold[ix]:
+                    continue
+
                 if this_consec > left_highest_consecutive:
                     left_highest_consecutive = this_consec
                 this_consec = 0
@@ -716,6 +720,9 @@ def cull_codons(
         this_consec = 0
         for ix, let in enumerate(right_after, i):
             if let == "-":
+                if not gap_present_threshold[ix]:
+                    continue
+
                 if this_consec > right_highest_consecutive:
                     right_highest_consecutive = this_consec
                 this_consec = 0
@@ -726,9 +733,8 @@ def cull_codons(
 
         # If the difference between the amount of data columns in the candidate and
         # the reference is less than 55%, cull the remainder side
-
         if (
-            left_highest_consecutive < 28 and
+            left_highest_consecutive < 30 and
             get_data_difference(
                 left_of_trim_data_columns,
                 left_side_ref_data_columns,
@@ -739,7 +745,7 @@ def cull_codons(
                 positions_to_trim.add(x * 3)
                 out_line[x] = "-"
         if (
-            right_highest_consecutive < 28 and
+            right_highest_consecutive < 30 and
             get_data_difference(
                 right_of_trim_data_columns,
                 right_side_ref_data_columns,
