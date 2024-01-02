@@ -591,7 +591,7 @@ def main_process(
     # filter references with large average distance
     reference_records, filtered_refs, total_mean = cull_reference_outliers(reference_records)
     with open(ref_kick_path, "a") as ref_log:
-        ref_log.write(f'Total mean: {total_mean}')
+        ref_log.write(f'{filename} total mean: {total_mean}\n')
         for ref_kick, ref_mean in filtered_refs:
             ref_log.write(f'{ref_kick.id[1:]},{ref_mean}\n')
 
