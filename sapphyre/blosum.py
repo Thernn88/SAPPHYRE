@@ -527,7 +527,7 @@ def cull_reference_outliers(reference_records: list) -> list:
         #     distances_by_index[index] = mean
     # get all remaining records
     output = [reference_records[i] for i in range(len(reference_records)) if distances_by_index[i] is not None]
-    return output, filtered
+    return output, filtered, total_mean
 
 
 
@@ -589,10 +589,11 @@ def main_process(
             regulars.append(ref.id)
             regulars.append(ref.raw)
     # filter references with large average distance
-    reference_records, filtered_refs = cull_reference_outliers(reference_records)
+    reference_records, filtered_refs, total_mean = cull_reference_outliers(reference_records)
     with open(ref_kick_path, "a") as ref_log:
-        for ref_kick, _ in filtered_refs:
-            ref_log.write(f'{ref_kick.id[1:]}\n')
+        ref_log.write(f'Total mean: {total_mean}')
+        for ref_kick, ref_mean in filtered_refs:
+            ref_log.write(f'{ref_kick.id[1:]},{ref_mean}\n')
 
     raw_regulars, passing, failing = compare_means(
         reference_records,
