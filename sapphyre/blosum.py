@@ -590,10 +590,11 @@ def main_process(
             regulars.append(ref.raw)
     # filter references with large average distance
     reference_records, filtered_refs, total_mean = cull_reference_outliers(reference_records)
-    with open(ref_kick_path, "a") as ref_log:
-        ref_log.write(f'{filename} total mean: {total_mean}\n')
-        for ref_kick, ref_mean in filtered_refs:
-            ref_log.write(f'{ref_kick.id[1:]},{ref_mean}\n')
+    if filtered_refs:
+        with open(ref_kick_path, "a") as ref_log:
+            ref_log.write(f'{filename} total mean: {total_mean}\n')
+            for ref_kick, ref_mean in filtered_refs:
+                ref_log.write(f'{ref_kick.id[1:]},{ref_mean}\n')
 
     raw_regulars, passing, failing = compare_means(
         reference_records,
