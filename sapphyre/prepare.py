@@ -124,6 +124,7 @@ class SeqDeduplicator:
         self.nt_db = db
         self.lines = []
         self.this_assembly = False
+        self.this_genome = False
         self.overlap_length = overlap_length
         self.rename = rename
 
@@ -158,8 +159,6 @@ class SeqDeduplicator:
                 seq_hash = xxhash.xxh3_64(seq).hexdigest()
 
                 # Check for dupe, if so save how many times that sequence occured
-                seq_start = time()
-
                 if seq_hash in transcript_mapped_to:
                     duplicates.setdefault(transcript_mapped_to[seq_hash], 1)
                     duplicates[transcript_mapped_to[seq_hash]] += 1
@@ -185,12 +184,14 @@ class SeqDeduplicator:
                     continue
                 transcript_mapped_to[rev_seq_hash] = header
 
-                seq_end = time()
-
-                if not self.this_assembly and len(seq) >= ASSEMBLY_LEN:
+                if (not self.this_assembly and not self.self.this_genome) and len(seq) >= ASSEMBLY_LEN:
                     self.this_assembly = True
 
                 if len(seq) > CHOMP_CUTOFF:
+                    if not self.this_genome:
+                        self.this_genome = True
+                        self.this_assembly = False
+
                     for i in range(0, len(seq), CHOMP_LEN - self.overlap_length):
                         if self.rename:
                             this_header = f"NODE_{this_index}"
@@ -279,6 +280,7 @@ def map_taxa_runs(
 
     fa_file_out = deduper.lines
     this_is_assembly = deduper.this_assembly
+    this_is_genome = deduper.this_genome
     prior = len(fa_file_out)
     passing = phymmr_tools.entropy_filter(fa_file_out, 0.7)
     recipe = []
@@ -325,6 +327,7 @@ def map_taxa_runs(
     nt_db.put("getall:batches", recipe_data)
 
     nt_db.put("get:isassembly", str(this_is_assembly))
+    nt_db.put("get:isgenome", str(this_is_genome))
 
     sequence_count = str(this_index)
     printv(

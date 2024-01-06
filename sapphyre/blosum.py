@@ -671,8 +671,10 @@ def do_folder(folder, args):
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
     if rocks_db_path.exists():
         rocksdb_db = RocksDB(str(rocks_db_path))
-        assembly = rocksdb_db.get("get:isassembly")
-        assembly = assembly == "False"
+        is_assembly = rocksdb_db.get("get:isassembly")
+        is_assembly = is_assembly == "False"
+        is_genome = rocksdb_db.get("get:isgenome")
+        is_genome = is_genome == "False"
         del rocksdb_db
     else:
         err = f"cannot find dupe databases for {folder}"
@@ -746,7 +748,7 @@ def do_folder(folder, args):
                     args.ref_min_percent,
                     # args.internal_consensus_threshold,
                     # args.internal_kick_threshold,
-                    assembly,
+                    is_genome or is_assembly,
                     reference_kick_path,
                 ),
             )
@@ -773,7 +775,7 @@ def do_folder(folder, args):
                     args.ref_min_percent,
                     # args.internal_consensus_threshold,
                     # args.internal_kick_threshold,
-                    assembly,
+                    is_genome or is_assembly,
                     reference_kick_path,
                 ),
             )
@@ -791,17 +793,18 @@ def do_folder(folder, args):
                         global_csv.write(line)
 
     printv(f"Done! Took {time_keeper.differential():.2f} seconds", args.verbose)
-    return True, assembly
+    return True, is_assembly, is_genome
 
 
 def main(args):
     is_assembly = None
+    is_genome = None
     success = False
     if isinstance(args.INPUT, list):
         success = all([do_folder(Path(folder), args)[0] for folder in args.INPUT])
     elif isinstance(args.INPUT, str):
-        success, is_assembly = do_folder(Path(args.INPUT), args)
-    return success, is_assembly
+        success, is_assembly, is_genome = do_folder(Path(args.INPUT), args)
+    return success, is_assembly, is_genome
 
 
 if __name__ == "__main__":

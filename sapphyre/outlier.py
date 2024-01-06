@@ -23,12 +23,11 @@ def main(argsobj):
         printv(f"Processing: {folder}", argsobj.verbose)
         rmtree(os.path.join(folder, "outlier"), ignore_errors=True)
         printv("Blosum62 Outlier Removal.", argsobj.verbose)
-        is_assembly = False
         this_args = vars(argsobj)
         this_args["INPUT"] = folder
         this_args = argparse.Namespace(**this_args)
 
-        blosum_passed, is_assembly = blosum.main(this_args)
+        blosum_passed, is_assembly, is_genome = blosum.main(this_args)
         if not blosum_passed:
             print()
             print(argsobj.formathelp())
