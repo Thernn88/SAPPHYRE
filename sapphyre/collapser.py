@@ -326,6 +326,7 @@ def do_folder(args: CollapserArgs, input_path: str):
         genes_kicked_count = len(kicked_genes.split("\n"))
         kicked_consensus = "".join(["".join(i[4]) for i in results])
         rescued_kicks = "\n".join(["\n".join(i[6]) for i in results])
+        reported_nodes = "True Node,Node,Overlap Percent\n" + "".join(["\n".join(i[7]) for i in results])
 
         with open(path.join(collapsed_path, "kicked_genes.txt"), "w") as fp:
             fp.write(kicked_genes)
@@ -335,6 +336,9 @@ def do_folder(args: CollapserArgs, input_path: str):
 
         with open(path.join(collapsed_path, "rescued_kicks.txt"), "w") as fp:
             fp.write(rescued_kicks)
+
+        with open(path.join(collapsed_path, "reported_nodes.txt"), "w") as fp:
+            fp.write(reported_nodes)
 
         with open(path.join(collapsed_path, "kicks.txt"), "w") as fp:
             fp.write(f"Total Kicks: {total_kicks}\n")
@@ -420,8 +424,6 @@ def kick_read_consensus(
                 )
             kicked_headers.add(read.header)
             read.kick = True
-
-    nodes = list(filter(lambda x: not x.kick, nodes))
 
     return ref_average_data_length, nodes, ref_consensus_seq
 
@@ -651,6 +653,35 @@ def kick_rolling_consensus(
     return nodes
 
 
+def report_overlaps(nodes, true_cluster_headers):
+    THRESHOLD = 0
+    true, not_true = [], []
+    reported = []
+
+    for node in nodes:
+        if node.header in true_cluster_headers:
+            true.append(node)
+        else:
+            not_true.append(node)
+
+    print(len(true), len(not_true))
+
+    for node_2 in not_true:
+        for node in true:
+            overlap_coords = get_overlap(
+                node_2.start, node_2.end, node.start, node.end, 1
+            )
+            if overlap_coords:
+                overlap_amount = overlap_coords[1] - overlap_coords[0]
+                percent = overlap_amount / min(node.length, node_2.length)
+
+                if percent > THRESHOLD:
+                    reported.append(f"{node.header},{node_2.header},{percent}")
+                    break
+
+    return reported
+
+
 def process_batch(
     batch_args: BatchArgs,
 ):
@@ -676,6 +707,7 @@ def process_batch(
     passed_total = 0
 
     kicks = []
+    reported = []
     rescues = []
     for gene in batch_args.genes:
         kicked_headers = set()
@@ -857,6 +889,8 @@ def process_batch(
         if len(this_rescues) > 1:
             rescues.append("\n".join(this_rescues))
 
+        reported.extend(report_overlaps(nodes, before_true_clusters[best_match]))
+
         aa_output_after_kick = sum(
             1
             for i in aa_output
@@ -903,9 +937,9 @@ def process_batch(
         total += count
 
     if args.debug:
-        return True, kicks, total, kicked_genes, consensus_kicks, passed_total, rescues
+        return True, kicks, total, kicked_genes, consensus_kicks, passed_total, rescues, reported
 
-    return True, [], total, kicked_genes, consensus_kicks, passed_total, rescues
+    return True, [], total, kicked_genes, consensus_kicks, passed_total, rescues, reported
 
 
 def main(args, from_folder):
