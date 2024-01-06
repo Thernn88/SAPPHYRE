@@ -62,7 +62,7 @@ class ProcessingArgs(Struct, frozen=True):
     debug: bool
     result_fp: str
     pairwise_refs: set[str]
-    is_assembly: bool
+    is_assembly_or_genome: bool
     evalue_threshold: float
 
 
@@ -448,7 +448,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                 for hits in gene_hits.values():
                     top_hit = hits[0]
 
-                    if pargs.is_assembly:
+                    if pargs.is_assembly_or_genome:
                         ref_seqs = [
                             ReferenceHit(hit.target, hit.ref, hit.sstart, hit.send)
                             for hit in hits[1:]
@@ -609,12 +609,12 @@ def run_process(args: Namespace, input_path: str) -> bool:
     nt_db = RocksDB(nt_db_path)
 
     # Check if sequence is assembly
-    dbis_assembly = nt_db.get("get:isassembly")
+    dbis_assembly = nt_db.get("get:isassembly") == "True"
+    dbis_genome = nt_db.get("get:isgenome") == "True"
     evalue = args.evalue
     min_orf = NORMAL_MIN_ORF
-    is_assembly = False
-    if dbis_assembly and dbis_assembly == "True":
-        is_assembly = True
+    is_assembly_or_genome = dbis_assembly or dbis_genome
+    if is_assembly_or_genome:
         evalue = ASSEMBLY_EVALUE
         min_orf = ASSEMBLY_MIN_ORF
 
@@ -814,7 +814,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 args.debug,
                 temp_files[i].name,
                 pairwise_refs,
-                is_assembly,
+                is_assembly_or_genome,
                 precision,
             )
             for i, index in enumerate(indices)
@@ -970,7 +970,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         head_to_seq = get_head_to_seq(nt_db, recipe)
 
-        if is_assembly:
+        if is_assembly_or_genome:
             arguments = []
             for gene, hits in output:
                 arguments.append(
@@ -991,14 +991,14 @@ def run_process(args: Namespace, input_path: str) -> bool:
         passes = 0
         encoder = json.Encoder()
         for result in output:
-            if is_assembly:
+            if is_assembly_or_genome:
                 hits, gene = result.hits, result.gene
             else:
                 gene, hits = result
 
             out = []
             for hit in hits:
-                if not is_assembly:
+                if not is_assembly_or_genome:
                     hit = ReporterHit(
                         hit.node,
                         hit.frame,

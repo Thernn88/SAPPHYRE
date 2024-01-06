@@ -753,7 +753,7 @@ def do_folder(folder: Path, args):
     tmp_dir = directory_check(folder)
     dupe_tmp_file = Path(tmp_dir, "DupeSeqs.tmp")
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
-    is_assembly = False
+    is_assembly_or_genome = False
     if rocks_db_path.exists():
         rocksdb_db = RocksDB(str(rocks_db_path))
         prepare_dupe_counts = json.decode(
@@ -763,17 +763,18 @@ def do_folder(folder: Path, args):
             rocksdb_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]]
         )
 
-        dbis_assembly = rocksdb_db.get("get:isassembly")
+        dbis_assembly = rocksdb_db.get("get:isassembly") == "True"
+        dbis_genome = rocksdb_db.get("get:isgenome") == "True"
 
-        if dbis_assembly and dbis_assembly == "True":
-            is_assembly = True
+        if dbis_assembly or dbis_genome:
+            is_assembly_or_genome = True
         ref_stats = rocksdb_db.get("getall:valid_refs").split(",")
     else:
         prepare_dupe_counts = {}
         reporter_dupe_counts = {}
         ref_stats = []
 
-    if is_assembly:
+    if is_assembly_or_genome:
         input_path = Path(str(folder).replace("/excise/", "/internal/"))
     else:
         input_path = folder
