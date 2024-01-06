@@ -68,7 +68,7 @@ FlexcullArgs = namedtuple(
         "mismatches",
         "column_cull_percent",
         "filtered_mat",
-        "is_assembly",
+        "is_assembly_or_genome",
         "is_ncg",  # non coding gene
         "keep_codons",
         # "reporter_trims",
@@ -606,7 +606,7 @@ def process_refs(
 
 
 def column_cull_seqs(
-    this_seqs: list[tuple], column_cull: set, minimum_bp: int, is_assembly: bool
+    this_seqs: list[tuple], column_cull: set, minimum_bp: int
 ) -> tuple[list[tuple], list[str], set]:
     aa_out = []
     kicks = []
@@ -1147,7 +1147,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
     if this_seqs:
         # Cull columns
         this_seqs, kicks, this_column_cull = column_cull_seqs(
-            this_seqs, column_cull, fargs.gap_threshold, fargs.is_assembly
+            this_seqs, column_cull, fargs.gap_threshold
         )
         for header in kicks:
             follow_through[header] = True, 0, 0, []
@@ -1297,10 +1297,9 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
     # this_trims = json.decode(nt_db.get(f"getall:reporter_trims"), type = dict[str, dict[str, int]])
     # recipe = nt_db.get("getall:batches").split(',')
     # this_db_sequences = get_head_to_seq(nt_db, recipe)
-    dbis_assembly = nt_db.get("get:isassembly")
-    is_assembly = False
-    if dbis_assembly and dbis_assembly == "True":
-        is_assembly = True
+    dbis_assembly = nt_db.get("get:isassembly") == "True"
+    dbis_genome = nt_db.get("get:isgenome") == "True"
+    is_assembly_or_genome = dbis_assembly or dbis_genome
 
     # hits_db_path = path.join(folder, "rocksdb", "hits")
     # rocky.create_pointer(
@@ -1362,7 +1361,7 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
                     args.mismatches,
                     args.column_cull,
                     filtered_mat,
-                    is_assembly,
+                    is_assembly_or_genome,
                     input_gene in non_coding_gene,
                     args.keep_codons,
                     # gene_trims,

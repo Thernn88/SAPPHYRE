@@ -49,7 +49,7 @@ class BatchArgs(Struct):
     aa_input_path: str
     aa_out_path: str
     compress: bool
-    is_assembly: bool
+    is_assembly_or_genome: bool
 
 
 class NODE(Struct):
@@ -272,13 +272,12 @@ def do_folder(args: CollapserArgs, input_path: str):
     mkdir(aa_out_path)
 
     nt_db_path = path.join(input_path, "rocksdb", "sequences", "nt")
-    is_assembly = False
+    is_assembly_or_genome = False
     if path.exists(nt_db_path):
         nt_db = RocksDB(nt_db_path)
-        dbis_assembly = nt_db.get("get:isassembly")
-
-        if dbis_assembly and dbis_assembly == "True":
-            is_assembly = True
+        dbis_assembly = nt_db.get("get:isassembly") == "True"
+        dbis_genome = nt_db.get("get:isgenome") == "True"
+        is_assembly_or_genome = dbis_genome or dbis_assembly
         del nt_db
 
     nt_input_path = path.join(input_path, "outlier", args.from_folder, "nt")
@@ -304,7 +303,7 @@ def do_folder(args: CollapserArgs, input_path: str):
             aa_input_path,
             aa_out_path,
             compress,
-            is_assembly,
+            is_assembly_or_genome,
         )
         for i in range(0, len(genes), per_thread)
     ]
@@ -709,7 +708,7 @@ def process_batch(
 
             internal_gaps = sequence[start:end].count("-")
 
-            node_is_contig = batch_args.is_assembly or "&&" in header
+            node_is_contig = batch_args.is_assembly_or_genome or "&&" in header
 
             id = header.split("|")[3].split("_")[1]
             true_cluster_raw.append((int(id), header))
@@ -765,7 +764,7 @@ def process_batch(
             )
             continue
 
-        if not batch_args.is_assembly:
+        if not batch_args.is_assembly_or_genome:
             nodes = kick_rolling_consensus(
                 nodes,
                 ref_consensus_seq,
@@ -791,7 +790,7 @@ def process_batch(
         printv("Calculating Coverage", args.verbose, 3)
         coverage = get_coverage(nodes, ref_average_data_length)
 
-        req_coverage = 0.3 if batch_args.is_assembly else 0.01
+        req_coverage = 0.3 if batch_args.is_assembly_or_genome else 0.01
         if coverage < req_coverage:
             total += aa_count
             kicked_genes.append(f"{gene} -> failed due to Coverage: {coverage}")

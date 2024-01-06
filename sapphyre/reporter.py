@@ -245,6 +245,7 @@ def get_toprefs(rocks_nt_db: RocksDB) -> list[str]:
     return (
         rocks_nt_db.get("getall:valid_refs").split(","),
         rocks_nt_db.get("get:isassembly") == "True",
+        rocks_nt_db.get("get:isgenome") == "True",
     )
 
 
@@ -326,7 +327,7 @@ def print_unmerged_sequences(
     dupe_debug_fp: TextIO,
     verbose: int,
     mat: dict,
-    is_assembly: bool,
+    is_assembly_or_genome: bool,
     exact_match_amount: int,
     gfm_mode: bool,
 ) -> tuple[dict[str, list], list[tuple[str, str]], list[tuple[str, str]]]:
@@ -396,7 +397,7 @@ def print_unmerged_sequences(
 
         # Trim to match reference
         r_start = 0
-        if not is_assembly and not gfm_mode:
+        if not is_assembly_or_genome and not gfm_mode_or_genome:
             r_start, r_end = hit.get_bp_trim(
                 aa_seq,
                 core_aa_seqs,
@@ -428,7 +429,7 @@ def print_unmerged_sequences(
         if data_after >= minimum_bp:
             unique_hit = None
 
-            if not is_assembly:
+            if not is_assembly_or_genome:
                 # Hash the NT sequence and the AA sequence + base header
                 unique_hit = xxh3_64(base_header + aa_seq).hexdigest()
                 nt_seq_hash = xxh3_64(nt_seq).hexdigest()
@@ -444,7 +445,7 @@ def print_unmerged_sequences(
                 seq_mapped_already[nt_seq_hash] = base_header
 
             # If the sequence is unique
-            if is_assembly or unique_hit not in exact_hit_mapped_already:
+            if is_assembly_or_genome or unique_hit not in exact_hit_mapped_already:
                 # Remove subsequence dupes from same read
                 if base_header in base_header_mapped_already:
                     (
@@ -452,7 +453,7 @@ def print_unmerged_sequences(
                         already_mapped_sequence,
                     ) = base_header_mapped_already[base_header]
                     # Dont kick if assembly
-                    if not is_assembly:
+                    if not is_assembly_or_genome:
                         if len(aa_seq) > len(already_mapped_sequence):
                             if already_mapped_sequence in aa_seq:
                                 aa_result[header_maps_to_where[already_mapped_header]] = (
@@ -536,7 +537,7 @@ OutputArgs = namedtuple(
         "EXACT_MATCH_AMOUNT",
         "minimum_bp",
         "debug",
-        "is_assembly",
+        "is_assembly_or_genome",
         "gfm_mode",
     ],
 )
@@ -610,7 +611,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         debug_dupes,
         oargs.verbose,
         mat,
-        oargs.is_assembly,
+        oargs.is_assembly_or_genome,
         oargs.EXACT_MATCH_AMOUNT,
         oargs.gfm_mode,
     )
@@ -701,7 +702,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     )
 
     target_taxon = get_gene_variants(rocky.get_rock("rocks_hits_db"))
-    top_refs, is_assembly = get_toprefs(rocky.get_rock("rocks_nt_db"))
+    top_refs, is_assembly, is_genome = get_toprefs(rocky.get_rock("rocks_nt_db"))
 
     printv(
         f"Got reference data. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Trimming hits to alignment coords.",
@@ -727,7 +728,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
                     EXACT_MATCH_AMOUNT,
                     args.minimum_bp,
                     args.debug,
-                    is_assembly,
+                    is_assembly or is_genome,
                     args.gene_family_mapping,
                 ),
             ),
