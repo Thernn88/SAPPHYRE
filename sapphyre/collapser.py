@@ -758,24 +758,7 @@ def process_batch(
             )
 
         true_cluster_raw.sort(key = lambda x: x[0])
-        before_true_clusters = []
-
-        current_cluster = []
-        for child_index, child_full in true_cluster_raw:
-            if not current_cluster:
-                current_cluster.append(child_full)
-                current_index = child_index
-            else:
-                if child_index - current_index <= args.true_cluster_threshold:
-                    current_cluster.append(child_full)
-                    current_index = child_index
-                else:
-                    before_true_clusters.append(current_cluster)
-                    current_cluster = [child_full]
-                    current_index = child_index
-        
-        if current_cluster:
-            before_true_clusters.append(current_cluster)
+        before_true_clusters = grab_index_cluster(args.true_cluster_threshold, true_cluster_raw)
 
         ref_average_data_length, nodes, ref_consensus_seq = kick_read_consensus(
             aa_output,
@@ -849,45 +832,30 @@ def process_batch(
         for node in nodes:
             if node.header in kicked_headers:
                 continue
-            after_data.append((node.header.split("|")[3].split("_")[1], node.header))
+            after_data.append((int(node.header.split("|")[3].split("_")[1]), node.header))
 
         after_data.sort(key = lambda x: x[0])
-        after_true_clusters = []
-
-        current_cluster = []
-        for child_index, child_full in true_cluster_raw:
-            if not current_cluster:
-                current_cluster.append(child_full)
-                current_index = child_index
-            else:
-                if child_index - current_index <= args.true_cluster_threshold:
-                    current_cluster.append(child_full)
-                    current_index = child_index
-                else:
-                    after_true_clusters.append(current_cluster)
-                    current_cluster = [child_full]
-                    current_index = child_index
         
-        if current_cluster:
-            after_true_clusters.append(current_cluster)
+        if after_data:
+            after_true_clusters = grab_index_cluster(args.true_cluster_threshold, after_data)
 
-        after_true_cluster = set(max(after_true_clusters, key=lambda x: len(x)))
-        matches = []
-        for i, cluster in enumerate(before_true_clusters):
-            matches.append((len(after_true_cluster.intersection(set(cluster))) / len( cluster), i))
-        matches.sort(key=lambda x: x[0], reverse= True)
-        
-        best_match = max(matches, key=lambda x: x[0])[1]
-        this_rescues = [f"Rescued in gene: {gene}"]
-        for header in before_true_clusters[best_match]:
-            if header in kicked_headers:
-                kicked_headers.remove(header)
-                this_rescues.append(header)
+            after_true_cluster = set(max(after_true_clusters, key=lambda x: len(x)))
+            matches = []
+            for i, cluster in enumerate(before_true_clusters):
+                matches.append((len(after_true_cluster.intersection(set(cluster))) / len( cluster), i))
+            matches.sort(key=lambda x: x[0], reverse= True)
+            
+            best_match = max(matches, key=lambda x: x[0])[1]
+            this_rescues = [f"Rescued in gene: {gene}"]
+            for header in before_true_clusters[best_match]:
+                if header in kicked_headers:
+                    kicked_headers.remove(header)
+                    this_rescues.append(header)
 
-        if len(this_rescues) > 1:
-            rescues.append("\n".join(this_rescues))
+            if len(this_rescues) > 1:
+                rescues.append("\n".join(this_rescues))
 
-        reported.extend(report_overlaps(nodes, before_true_clusters[best_match]))
+            reported.extend(report_overlaps(nodes, before_true_clusters[best_match]))
 
         aa_output_after_kick = sum(
             1
@@ -936,6 +904,27 @@ def process_batch(
         return True, kicks, total, kicked_genes, consensus_kicks, passed_total, rescues, reported
 
     return True, [], total, kicked_genes, consensus_kicks, passed_total, rescues, reported
+
+def grab_index_cluster(true_cluster_threshold, true_cluster_raw):
+    before_true_clusters = []
+
+    current_cluster = []
+    for child_index, child_full in true_cluster_raw:
+        if not current_cluster:
+            current_cluster.append(child_full)
+            current_index = child_index
+        else:
+            if child_index - current_index <= true_cluster_threshold:
+                current_cluster.append(child_full)
+                current_index = child_index
+            else:
+                before_true_clusters.append(current_cluster)
+                current_cluster = [child_full]
+                current_index = child_index
+        
+    if current_cluster:
+        before_true_clusters.append(current_cluster)
+    return before_true_clusters
 
 
 def main(args, from_folder):
