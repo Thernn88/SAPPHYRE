@@ -16,6 +16,7 @@ from phymmr_tools import (
     blosum62_distance,
     delete_empty_columns,
     find_index_pair,
+    get_overlap
 )
 from wrap_rocks import RocksDB
 
@@ -530,7 +531,53 @@ def cull_reference_outliers(reference_records: list) -> list:
     return output, filtered, total_mean
 
 
+def grab_index_cluster(true_cluster_threshold, true_cluster_raw):
+    before_true_clusters = []
 
+    current_cluster = []
+    for child_index, child_full in true_cluster_raw:
+        if not current_cluster:
+            current_cluster.append(child_full)
+            current_index = child_index
+        else:
+            if child_index - current_index <= true_cluster_threshold:
+                current_cluster.append(child_full)
+                current_index = child_index
+            else:
+                before_true_clusters.append(current_cluster)
+                current_cluster = [child_full]
+                current_index = child_index
+        
+    if current_cluster:
+        before_true_clusters.append(current_cluster)
+    return before_true_clusters
+
+
+def report_overlaps(records, true_cluster_headers):
+        THRESHOLD = 0
+        true, not_true = [], []
+        reported = []
+
+        for rec in records:
+            if rec.id in true_cluster_headers:
+                true.append((rec, *find_index_pair(rec.sequence, "-")))
+            else:
+                not_true.append((rec, *find_index_pair(rec.sequence, "-")))
+
+        for node_2, start_2, end_2 in not_true:
+            for node, start, end in true:
+                overlap_coords = get_overlap(
+                    start_2, end_2, start, end, 1
+                )
+                if overlap_coords:
+                    overlap_amount = overlap_coords[1] - overlap_coords[0]
+                    percent = overlap_amount / min((end_2 - start_2), (end - start))
+
+                    if percent > THRESHOLD:
+                        reported.append(f"{node.id},{node_2.id},{percent}")
+                        break
+
+        return reported
 
 
 def main_process(
@@ -543,6 +590,7 @@ def main_process(
     debug: bool,
     verbose: int,
     compress: bool,
+    true_cluster_threshold: int,
     col_cull_percent: float,
     index_group_min_bp: int,
     ref_gap_percent: float,
@@ -561,7 +609,13 @@ def main_process(
     aa_output = path.join(args_output, "aa")
     aa_output = path.join(aa_output, filename.rstrip(".gz"))
     reference_records, candidate_records, ref_check = split_sequences(file_input)
+    
     original_order = [candidate.id for candidate in candidate_records]
+
+    true_cluster_raw = [(int(header.split("|")[3].split("_")[1]), header[1:]) for header in original_order]
+    true_cluster_raw.sort(key=lambda x: x[0])
+    before_true_clusters = grab_index_cluster(true_cluster_threshold, true_cluster_raw)
+
     if not assembly:
         candidates_dict = find_index_groups(candidate_records)
     else:
@@ -594,7 +648,7 @@ def main_process(
         with open(ref_kick_path, "a") as ref_log:
             ref_log.write(f'{filename} total mean: {total_mean}\n')
             for ref_kick, ref_mean in filtered_refs:
-                ref_log.write(f'{ref_kick.id[1:]},{ref_mean}\n')
+                ref_log.write(f'{ref_kick.id},{ref_mean}\n')
 
     raw_regulars, passing, failing = compare_means(
         reference_records,
@@ -617,8 +671,26 @@ def main_process(
             passing.extend(to_save)
             passing, header_to_indices = remake_introns(passing)
     passing = original_order_sort(original_order, passing)
+
+    after_data = []
     for candidate in passing:
+        after_data.append((int(candidate.id.split("|")[3].split("_")[1]), candidate.id[1:]))
         raw_regulars.extend([candidate.id, candidate.raw])
+
+    reported = []
+    if after_data:
+        after_data.sort(key=lambda x: x[0])
+        after_true_clusters = grab_index_cluster(true_cluster_threshold, after_data)
+        after_true_cluster = set(max(after_true_clusters, key=lambda x: len(x)))
+        matches = []
+        for i, cluster in enumerate(before_true_clusters):
+            matches.append((len(after_true_cluster.intersection(set(cluster))) / len( cluster), i))
+        matches.sort(key=lambda x: x[0], reverse= True)
+        
+        best_match = max(matches, key=lambda x: x[0])[1]
+
+        reported = report_overlaps(passing, before_true_clusters[best_match])
+    
     # regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
     regulars, allowed_columns = delete_empty_columns(raw_regulars)
     if assembly:
@@ -651,7 +723,7 @@ def main_process(
         non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
 
         write2Line2Fasta(nt_output_path, non_empty_lines, compress)
-    return logs
+    return logs, reported
 
 
 def do_folder(folder, args):
@@ -742,6 +814,7 @@ def do_folder(folder, args):
                     args.debug,
                     args.verbose,
                     compress,
+                    args.true_cluster_threshold,
                     args.col_cull_percent,
                     args.index_group_min_bp,
                     args.ref_gap_percent,
@@ -769,6 +842,7 @@ def do_folder(folder, args):
                     args.debug,
                     args.verbose,
                     compress,
+                    args.true_cluster_threshold,
                     args.col_cull_percent,
                     args.index_group_min_bp,
                     args.ref_gap_percent,
@@ -784,13 +858,18 @@ def do_folder(folder, args):
         global_csv_path = path.join(log_folder_path, "outliers_global.csv")
         with open(global_csv_path, "w", encoding="UTF-8") as global_csv:
             global_csv.write("Gene,Header,Mean_Dist,Ref_Mean,IQR\n")
+            reported_nodes = ["True Node,Node,Overlap Percent"]
 
-            for log_data in process_data:
+            for log_data, reported_log in process_data:
+                reported_nodes.extend(reported_log)
                 for line in log_data:
                     if line.split(",")[-2] != "Pass":
                         if line[-1] != "\n":
                             line = f"{line}\n"
                         global_csv.write(line)
+        
+        with open(path.join(log_folder_path, "outliers_reported.csv"), "w", encoding="UTF-8") as reported_csv:
+            reported_csv.write("\n".join(reported_nodes))
 
     printv(f"Done! Took {time_keeper.differential():.2f} seconds", args.verbose)
     return True, is_assembly, is_genome
