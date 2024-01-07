@@ -4,12 +4,12 @@ from __future__ import annotations
 from collections import defaultdict
 from itertools import combinations
 from multiprocessing.pool import Pool
-from os import mkdir, path
+from os import mkdir, path, remove
 from pathlib import Path
 from sys import exit
 
 from msgspec import Struct
-from numpy import float16, isnan, nanmean, nanpercentile
+from numpy import float16, isnan, nanmean, nanpercentile,nanmedian
 from phymmr_tools import (
     asm_index_split,
     blosum62_candidate_to_reference,
@@ -213,6 +213,7 @@ def compare_means(
     index_group_min_bp: int,
     ref_gap_percent: float,
     ref_min_percent: float,
+    ref_seq_len: int,
 ) -> tuple:
     """For each candidate record, finds the index of the first non-gap bp and makes
     matching cuts in the reference sequences. Afterwards finds the mean of the trimmed
@@ -306,7 +307,11 @@ def compare_means(
                 )
             # Interquartile range (IQR)
             IQR = Q3 - Q1
-            upper_bound = Q3 + (threshold * IQR) + 0.02
+            margin = 0.02
+            new_threshold = threshold
+            if index_pair[1] - index_pair[0] > ref_seq_len * 0.5:
+                new_threshold = new_threshold * 2
+            upper_bound = Q3 + (new_threshold * IQR) + margin
         else:  # if no ref_distances, this is an orthograph, so reject
             upper_bound = "N/A"
             IQR = "N/A"
@@ -318,7 +323,7 @@ def compare_means(
                     candidate,
                     ref_alignments,
                 )
-                candidate.mean_distance = nanmean(candidate_distances)
+                candidate.mean_distance = nanmedian(candidate_distances)
                 candidate.iqr = IQR
                 candidate.upper_bound = upper_bound
                 if candidate.mean_distance <= upper_bound:
@@ -430,6 +435,104 @@ def make_asm_exclusions(passing: list, failing: list) -> set:
     return failing_set.difference(passing_set)
 
 
+def get_passing_headers(passing: list) -> dict:
+    """
+    Iterate over a list of passing assembly records and get the headers.
+    Return a set containing all original headers that had at least one
+    subsequence pass.
+    """
+    any_passed = {}
+    for candidate in passing:
+        header, start, stop = candidate.id.split("$$")
+        start = int(start)
+        stop = int(stop)
+        if header not in any_passed:
+            any_passed[header] = [float('inf'), 0]
+            current = any_passed[header]
+            if start < current[0]:
+                current[0] = start
+            if stop > current[1]:
+                current[1] = stop
+    return any_passed
+
+
+def save_partial_fails(failing: list, any_passing: dict) -> tuple:
+    """
+    Find all failing assembly headers that had a passing subsequence at
+    a different index. Saves the failing sequence if it is between two
+    passing sequences.
+    Takes a list of failing candidate records and a set
+    of passing headers.
+    Returns a list of records.
+    """
+    output = []
+    for i, cand in enumerate(failing):
+        header, start, stop = cand.id.split("$$")
+        start = int(start)
+        stop = int(stop)
+        if header not in any_passing:
+            continue
+        current = any_passing[header]
+        if start > current[0] and stop < current[1]:
+            output.append(cand)
+            failing[i] = None
+    failing = [candidate for candidate in failing if candidate is not None]
+    return output, failing
+
+
+def find_ref_len(ref: str) -> int:
+    start, stop = find_index_pair(ref, '-')
+    return stop - start
+
+
+def cull_reference_outliers(reference_records: list) -> list:
+    """
+    Removes reference sequences which have an unusually large mean
+    blosum distance. Finds the constrained blosum distance between
+    each reference pull any reference with a mean 1.5x higher than
+    the group mean. Returns the remaining references in a list.
+    """
+    distances_by_index = defaultdict(list)
+    all_distances = []
+    indices = {i:find_index_pair(reference_records[i].raw, '-') for i in range(len(reference_records))}
+    # generate reference distances
+    for i, ref1 in enumerate(reference_records[:-1]):
+        start1, stop1 = indices[i]
+        for j, ref2 in enumerate(reference_records[i+1:],i+1):
+            start2, stop2 = indices[j]
+            start = max(start1, start2)
+            stop = min(stop1, stop2)
+            # avoid the occasional rust-nan result
+            if start >= stop:
+                distances_by_index[i].append(1)
+                distances_by_index[j].append(1)
+                continue
+            dist = blosum62_distance(ref1.raw[start:stop], ref2.raw[start:stop])
+            distances_by_index[i].append(dist)
+            distances_by_index[j].append(dist)
+            all_distances.append(dist)
+
+    total_mean = sum(all_distances) / len(all_distances)
+    ALLOWABLE_COEFFICENT = 2
+    allowable = max(total_mean * ALLOWABLE_COEFFICENT, 0.3)
+
+    # if a record's mean is too high, cull it
+    filtered = []
+    for index, distances in distances_by_index.items():
+        mean = sum(distances) / len(distances)
+        if mean > allowable:
+            distances_by_index[index] = None
+            filtered.append( (reference_records[index], mean) )
+        # else:
+        #     distances_by_index[index] = mean
+    # get all remaining records
+    output = [reference_records[i] for i in range(len(reference_records)) if distances_by_index[i] is not None]
+    return output, filtered, total_mean
+
+
+
+
+
 def main_process(
     args_input,
     nt_input,
@@ -445,6 +548,7 @@ def main_process(
     ref_gap_percent: float,
     ref_min_percent: int,
     assembly: bool,
+    ref_kick_path,
 ):
     keep_refs = not args_references
 
@@ -472,7 +576,8 @@ def main_process(
         )
         if percent_of_non_dash <= col_cull_percent:
             rejected_indices.add(i)
-
+    ref_seq_len = sum(find_ref_len(ref) for ref in ref_seqs) / len(ref_seqs)
+    # ref_seq_len = len(ref_seqs[0]) - len(rejected_indices)
     # find number of unique reference variants in file, use for refs_in_file
     if ref_check:
         refs_in_file = len(ref_check)
@@ -483,7 +588,14 @@ def main_process(
         for ref in reference_records:
             regulars.append(ref.id)
             regulars.append(ref.raw)
-    # reference_records = [ref for ref in reference_records if has_data(ref.raw)]
+    # filter references with large average distance
+    reference_records, filtered_refs, total_mean = cull_reference_outliers(reference_records)
+    if filtered_refs:
+        with open(ref_kick_path, "a") as ref_log:
+            ref_log.write(f'{filename} total mean: {total_mean}\n')
+            for ref_kick, ref_mean in filtered_refs:
+                ref_log.write(f'{ref_kick.id[1:]},{ref_mean}\n')
+
     raw_regulars, passing, failing = compare_means(
         reference_records,
         regulars,
@@ -494,10 +606,15 @@ def main_process(
         index_group_min_bp,
         ref_gap_percent,
         ref_min_percent,
+        ref_seq_len
     )
     logs = []
     if passing:
         if assembly:
+            # save any failed subseqs if the original seq had a passing segment
+            any_passed = get_passing_headers(passing)
+            to_save, failing = save_partial_fails(failing, any_passed)
+            passing.extend(to_save)
             passing, header_to_indices = remake_introns(passing)
     passing = original_order_sort(original_order, passing)
     for candidate in passing:
@@ -539,6 +656,9 @@ def main_process(
 
 def do_folder(folder, args):
     ALLOWED_EXTENSIONS = {".fa", ".fas", ".fasta", ".fa", ".gz", ".fq", ".fastq"}
+    reference_kick_path = Path(folder, "reference_kicks.log")
+    if path.exists(reference_kick_path):
+        remove(reference_kick_path)
 
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     wanted_aa_path = Path(folder, "trimmed", "aa")
@@ -552,12 +672,11 @@ def do_folder(folder, args):
     if rocks_db_path.exists():
         rocksdb_db = RocksDB(str(rocks_db_path))
         assembly = rocksdb_db.get("get:isassembly")
-        assembly = assembly == "True"
+        assembly = assembly == "False"
         del rocksdb_db
     else:
         err = f"cannot find dupe databases for {folder}"
         raise FileNotFoundError(err)
-
     if not aa_input.exists():  # exit early
         printv(
             f"WARNING: Can't find aa folder for taxa {folder}: '{wanted_aa_path}'. Aborting",
@@ -628,6 +747,7 @@ def do_folder(folder, args):
                     # args.internal_consensus_threshold,
                     # args.internal_kick_threshold,
                     assembly,
+                    reference_kick_path,
                 ),
             )
 
@@ -654,6 +774,7 @@ def do_folder(folder, args):
                     # args.internal_consensus_threshold,
                     # args.internal_kick_threshold,
                     assembly,
+                    reference_kick_path,
                 ),
             )
     if args.debug:

@@ -761,7 +761,7 @@ def run_command(args: CmdArgs) -> None:
                     to_write.append((insertion_header, sequence))
             to_write.append((header, sequence))
 
-    to_write.sort(key=lambda x: get_start(x[1]))
+    to_write.sort(key=lambda x: find_index_pair(x[1], "-"))
 
     writeFasta(args.result_file, references + to_write, compress=args.compress)
     printv(f"Done. Took {keeper.differential():.2f}", args.verbose, 3)  # Debug

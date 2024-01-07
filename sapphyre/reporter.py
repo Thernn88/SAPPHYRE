@@ -205,7 +205,7 @@ def get_diamondhits(
 
     gene_based_results = []
     for gene in genes_to_process:
-        gene_result = rocks_hits_db.get_bytes(f"gethits:{gene}")
+        gene_result = rocks_hits_db.get_bytes(f"gethmmhits:{gene}")
         if not gene_result:
             printv(
                 f"WARNING: No hits found for {gene}. If you are using a gene list file this may be a non-issue",
@@ -356,6 +356,7 @@ def print_unmerged_sequences(
     seq_mapped_already = {}
     exact_hit_mapped_already = set()
     dupes = defaultdict(list)
+    reporter_trims = {}
     for hit in hits:
         base_header = hit.node
         reference_frame = str(hit.frame)
@@ -372,12 +373,14 @@ def print_unmerged_sequences(
             + "|"
             + reference_frame
         )
+        db_query = base_header+"|"+reference_frame
 
         # Translate to AA
         nt_seq = hit.seq
         aa_seq = translate_cdna(nt_seq)
 
         # Trim to match reference
+        r_start = 0
         if not is_assembly:
             r_start, r_end = hit.get_bp_trim(
                 aa_seq,
@@ -402,52 +405,57 @@ def print_unmerged_sequences(
 
             if debug_fp:
                 debug_fp.write(f">{header}\n{aa_seq}\n\n")
+        reporter_trims[db_query] = r_start
 
         # Check if new seq is over bp minimum
         data_after = len(aa_seq)
 
         if data_after >= minimum_bp:
-            # Hash the NT sequence and the AA sequence + base header
-            unique_hit = xxh3_64(base_header + aa_seq).hexdigest()
-            nt_seq_hash = xxh3_64(nt_seq).hexdigest()
-            # Filter and save NT dupes
-            if nt_seq_hash in seq_mapped_already:
-                mapped_to = seq_mapped_already[nt_seq_hash]
-                dupes.setdefault(mapped_to, []).append(base_header)
-                if dupe_debug_fp:
-                    dupe_debug_fp.write(
-                        f"{header}\n{nt_seq}\nis an nt dupe of\n{mapped_to}\n\n",
-                    )
-                continue
-            seq_mapped_already[nt_seq_hash] = base_header
+            unique_hit = None
+
+            if not is_assembly:
+                # Hash the NT sequence and the AA sequence + base header
+                unique_hit = xxh3_64(base_header + aa_seq).hexdigest()
+                nt_seq_hash = xxh3_64(nt_seq).hexdigest()
+                # Filter and save NT dupes
+                if nt_seq_hash in seq_mapped_already:
+                    mapped_to = seq_mapped_already[nt_seq_hash]
+                    dupes.setdefault(mapped_to, []).append(base_header)
+                    if dupe_debug_fp:
+                        dupe_debug_fp.write(
+                            f"{header}\n{nt_seq}\nis an nt dupe of\n{mapped_to}\n\n",
+                        )
+                    continue
+                seq_mapped_already[nt_seq_hash] = base_header
 
             # If the sequence is unique
-            if unique_hit not in exact_hit_mapped_already:
+            if is_assembly or unique_hit not in exact_hit_mapped_already:
                 # Remove subsequence dupes from same read
                 if base_header in base_header_mapped_already:
                     (
                         already_mapped_header,
                         already_mapped_sequence,
                     ) = base_header_mapped_already[base_header]
-
-                    if len(aa_seq) > len(already_mapped_sequence):
-                        if already_mapped_sequence in aa_seq:
-                            aa_result[header_maps_to_where[already_mapped_header]] = (
-                                header,
-                                aa_seq,
-                            )
-                            nt_result[header_maps_to_where[already_mapped_header]] = (
-                                header,
-                                nt_seq,
-                            )
-                            continue
-                    else:
-                        if aa_seq in already_mapped_sequence:
-                            if dupe_debug_fp:
-                                dupe_debug_fp.write(
-                                    f"{header}\n{aa_seq}\nis an aa dupe of\n{already_mapped_header}\n\n",
+                    # Dont kick if assembly
+                    if not is_assembly:
+                        if len(aa_seq) > len(already_mapped_sequence):
+                            if already_mapped_sequence in aa_seq:
+                                aa_result[header_maps_to_where[already_mapped_header]] = (
+                                    header,
+                                    aa_seq,
                                 )
-                            continue
+                                nt_result[header_maps_to_where[already_mapped_header]] = (
+                                    header,
+                                    nt_seq,
+                                )
+                                continue
+                        else:
+                            if aa_seq in already_mapped_sequence:
+                                if dupe_debug_fp:
+                                    dupe_debug_fp.write(
+                                        f"{header}\n{aa_seq}\nis an aa dupe of\n{already_mapped_header}\n\n",
+                                    )
+                                continue
 
                     if base_header in header_mapped_x_times:
                         # Make header unique
@@ -481,7 +489,7 @@ def print_unmerged_sequences(
                 header_mapped_x_times.setdefault(base_header, 1)
                 exact_hit_mapped_already.add(unique_hit)
 
-    return dupes, aa_result, nt_result
+    return dupes, aa_result, nt_result, reporter_trims
 
 
 OutputArgs = namedtuple(
@@ -562,7 +570,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     this_hits = json.decode(oargs.list_of_hits, type=list[Hit])
 
     # Trim and save the sequences
-    this_gene_dupes, aa_output, nt_output = print_unmerged_sequences(
+    this_gene_dupes, aa_output, nt_output, reporter_trims = print_unmerged_sequences(
         this_hits,
         oargs.gene,
         oargs.taxa_id,
@@ -606,7 +614,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.verbose,
         2,
     )
-    return oargs.gene, this_gene_dupes, len(aa_output)
+    return oargs.gene, this_gene_dupes, len(aa_output), reporter_trims
 
 
 def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: int):
@@ -705,13 +713,19 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
 
     final_count = 0
     this_gene_based_dupes = {}
+    this_gene_based_trims = {}
 
-    for gene, dupes, amount in recovered:
+    for gene, dupes, amount, trims in recovered:
         final_count += amount
         this_gene_based_dupes[gene] = dupes
+        this_gene_based_trims[gene] = trims
 
     key = "getall:reporter_dupes"
     data = json.encode(this_gene_based_dupes)
+    rocky.get_rock("rocks_nt_db").put_bytes(key, data)
+
+    key = "getall:reporter_trims"
+    data = json.encode(this_gene_based_trims)
     rocky.get_rock("rocks_nt_db").put_bytes(key, data)
 
     printv(

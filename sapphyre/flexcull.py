@@ -8,6 +8,8 @@ from collections import Counter, defaultdict, namedtuple
 from multiprocessing.pool import Pool
 from os import listdir, makedirs, path
 from shutil import rmtree
+import warnings
+from Bio import BiopythonWarning
 
 from blosum import BLOSUM
 from msgspec import json
@@ -17,9 +19,10 @@ from phymmr_tools import (
     join_by_tripled_index,
     join_triplets_with_exclusions,
     join_with_exclusions,
-    translate,
+    bio_revcomp,
 )
 from wrap_rocks import RocksDB
+from Bio.Seq import Seq
 
 from . import rocky
 from .diamond import ReporterHit as Hit
@@ -68,6 +71,8 @@ FlexcullArgs = namedtuple(
         "is_assembly",
         "is_ncg",  # non coding gene
         "keep_codons",
+        "reporter_trims",
+        "sequences"
     ],
 )
 
@@ -180,6 +185,24 @@ def parse_fasta(fasta_path: str) -> tuple[list[tuple[str, str]], list[tuple[str,
         end_of_references = True
 
     return references, candidates
+
+
+def get_internal_gaps(input_string):
+    positions = []
+
+    for i in range(*find_index_pair(input_string, "-")):
+        if input_string[i] == "-":
+            positions.append(i)
+    
+    return positions
+
+
+def insert_gaps(input_string, positions):
+    input_string = list(input_string)
+    for coord in positions:
+        input_string.insert(coord, "-")
+
+    return ''.join(input_string)
 
 
 def trim_around(
@@ -676,9 +699,42 @@ def cull_codons(
         )
         right_of_trim_data_columns = len(right_after) - right_after.count("-")
 
+        left_highest_consecutive = 0
+        right_highest_consecutive = 0
+
+        this_consec = 0
+
+        for ix, let in enumerate(left_after, cull_start):
+            if let == "-":
+                if not gap_present_threshold[ix]:
+                    continue
+
+                if this_consec > left_highest_consecutive:
+                    left_highest_consecutive = this_consec
+                this_consec = 0
+            elif let in character_at_each_pos[ix]:
+                this_consec += 1
+        if this_consec > left_highest_consecutive:
+            left_highest_consecutive = this_consec
+
+        this_consec = 0
+        for ix, let in enumerate(right_after, i):
+            if let == "-":
+                if not gap_present_threshold[ix]:
+                    continue
+
+                if this_consec > right_highest_consecutive:
+                    right_highest_consecutive = this_consec
+                this_consec = 0
+            elif let in character_at_each_pos[ix]:
+                this_consec += 1
+        if this_consec > right_highest_consecutive:
+            right_highest_consecutive = this_consec
+
         # If the difference between the amount of data columns in the candidate and
         # the reference is less than 55%, cull the remainder side
         if (
+            left_highest_consecutive < 30 and
             get_data_difference(
                 left_of_trim_data_columns,
                 left_side_ref_data_columns,
@@ -689,6 +745,7 @@ def cull_codons(
                 positions_to_trim.add(x * 3)
                 out_line[x] = "-"
         if (
+            right_highest_consecutive < 30 and
             get_data_difference(
                 right_of_trim_data_columns,
                 right_side_ref_data_columns,
@@ -896,6 +953,7 @@ def align_to_aa_order(nt_out, aa_content):
 
 def do_gene(fargs: FlexcullArgs) -> None:
     """FlexCull main function. Culls input aa and nt using specified amount of matches."""
+    warnings.filterwarnings("ignore", category=BiopythonWarning)
     gene_path = path.join(fargs.aa_input, fargs.aa_file)
     this_gene = fargs.aa_file.split(".")[0]
 
@@ -922,11 +980,11 @@ def do_gene(fargs: FlexcullArgs) -> None:
     this_seqs = []
 
     db = rocky.get_rock("db")
-    this_db_entry = json.decode(db.get(f"gethits:{this_gene}"), type=list[Hit])
-    this_db_sequences = {}
-
+    this_db_entry = json.decode(db.get(f"gethmmhits:{this_gene}"), type = list[Hit])
+    diamond_hits = {}
     for entry in this_db_entry:
-        this_db_sequences.setdefault(entry.node, {})[str(entry.frame)] = entry.seq
+        frame = str(entry.frame)
+        diamond_hits.setdefault(entry.node, {})[frame] =  entry.qstart
 
     extensions = 0
     nt_extension_align = {}
@@ -954,64 +1012,63 @@ def do_gene(fargs: FlexcullArgs) -> None:
         )
 
         # If no cull occurs check to see if reporter over trimmed
-        if not kick and (cull_start, cull_end) == find_index_pair(raw_sequence, "-"):
-            # Grab original NT sequence from database
+        if False:#(cull_start, cull_end) == find_index_pair(raw_sequence, "-"):
             fields = header.split("|")
             node = fields[3]
             if node.count("_") > 1:
-                node = "NODE_" + node.split("_")[1]
+                node = "NODE_"+node.split("_")[1]
             frame = fields[4]
-            nt_seq = this_db_sequences[node][frame]
 
-            # Translate original into AA and align against the reporter sequence
-            this_aa = translate(nt_seq)
-            nt_seq = [nt_seq[i : i + 3] for i in range(0, len(nt_seq), 3)]
-            profile = profile_create_16(this_aa, blosum62)
-            result = nw_trace_scan_profile_16(
-                profile,
-                raw_sequence[cull_start:cull_end],
-                2,
-                0,
-            )
-            # Handle leading and trailing gaps
-            start_offset = 0
-            for i, let in enumerate(result.traceback.ref):
-                if let == "-":
-                    start_offset += 1
-                else:
-                    break
+            reporter_removed = fargs.reporter_trims[node+"|"+frame]
 
-            start = cull_start - start_offset
-            aligned_aa = ("-" * start) + result.traceback.query
+            nt_seq = fargs.sequences[node]
+            diamond_query = diamond_hits[node][frame]
+            if int(frame) < 0:
+                nt_seq = bio_revcomp(nt_seq)
 
-            # Bad alignment check
-            raw_start, raw_end = find_index_pair(raw_sequence, "-")
-            # Handle internal gaps
-            gap_offset = aligned_aa[start:cull_end].count("-")
+            frame_offset = abs(int(frame))-1
+            nt_seq = nt_seq[frame_offset:]
 
-            if aligned_aa[raw_start:raw_end] != raw_sequence[raw_start:raw_end]:
-                pass  # Alignment failed, skip
-            else:
-                # If alignment is good, extend the sequence if the bp removed is found in
-                # other sequences at each index
+            
+            this_aa = str(Seq(nt_seq).translate())
+
+            #
+            start_offset = cull_start - int(((diamond_query - 1)/3) + (3 - (int(frame)-1))/3) - reporter_removed + 1
+            add_start = start_offset
+
+            aligned_aa = ("-" * add_start) + this_aa
+
+            insertions = get_internal_gaps(raw_sequence)
+            aligned_aa = insert_gaps(aligned_aa, insertions)
+            
+            extend_start, extend_end = find_index_pair(aligned_aa, "-")
+            _, raw_end = find_index_pair(raw_sequence, "-")
+            character_index = -1
+            if extend_end > raw_end:
+                this_extend = 0
+                
+                nt_seq = [nt_seq[i:i+3] for i in range(0, len(nt_seq), 3)]
+
                 nt_extension_align[header] = {}
-                for i in range(cull_end, len(aligned_aa)):
+                for i in range(extend_start, len(aligned_aa)):
                     if i >= len(raw_sequence):
                         break
-
-                    if aligned_aa[i] == "-":
-                        gap_offset += 1
+                    if aligned_aa[i] != "-":
+                        character_index += 1
+                    else:
                         continue
 
-                    elif aligned_aa[i] not in character_at_each_pos[i]:
+                    if i < raw_end:
+                        continue
+
+                    if aligned_aa[i] not in character_at_each_pos[i]:
                         break
                     else:
                         sequence[i] = aligned_aa[i]
-                        nt_extension_align[header][i * 3] = nt_seq[
-                            i - start - gap_offset
-                        ]
+                        nt_extension_align[header][i * 3] = nt_seq[character_index]
                         cull_end += 1
-                        extensions += 1
+                        this_extend += 1
+                extensions += this_extend
 
         # If cull didn't kick
         if not kick:
@@ -1207,6 +1264,21 @@ def do_gene(fargs: FlexcullArgs) -> None:
     return log, extensions
 
 
+def get_head_to_seq(nt_db, recipe):
+    head_to_seq = {}
+    for i in recipe:
+        lines = nt_db.get_bytes(f"ntbatch:{i}").decode().split("\n")
+        head_to_seq.update(
+            {
+                lines[i][1:]: lines[i + 1]
+                for i in range(0, len(lines), 2)
+                if lines[i] != ""
+            },
+        )
+    
+    return head_to_seq
+
+
 def do_folder(folder, args: MainArgs, non_coding_gene: set):
     folder_time = TimeKeeper(KeeperMode.DIRECT)
     printv(f"Processing: {folder}", args.verbose, 0)
@@ -1222,6 +1294,9 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
 
     nt_db_path = path.join(folder, "rocksdb", "sequences", "nt")
     nt_db = RocksDB(nt_db_path)
+    this_trims = json.decode(nt_db.get(f"getall:reporter_trims"), type = dict[str, dict[str, int]])
+    recipe = nt_db.get("getall:batches").split(',')
+    this_db_sequences = get_head_to_seq(nt_db, recipe)
     dbis_assembly = nt_db.get("get:isassembly")
     is_assembly = False
     if dbis_assembly and dbis_assembly == "True":
@@ -1232,6 +1307,7 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
         "db",
         hits_db_path,
     )
+
 
     folder_check(output_path)
     file_inputs = [
@@ -1262,37 +1338,16 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
         for key, sub_dict in mat.items()
     }
 
-    if args.processes > 1:
-        arguments = []
-        for input_gene in file_inputs:
-            arguments.append(
-                (
-                    FlexcullArgs(
-                        aa_path,
-                        nt_path,
-                        output_path,
-                        args.matches,
-                        input_gene,
-                        args.debug,
-                        args.base_pair,
-                        args.verbose,
-                        args.compress,
-                        args.gap_threshold,
-                        args.mismatches,
-                        args.column_cull,
-                        filtered_mat,
-                        is_assembly,
-                        input_gene in non_coding_gene,
-                        args.keep_codons,
-                    ),
-                ),
-            )
+    arguments = []
+    for input_gene in file_inputs:
+        gene_trims = this_trims[input_gene.split(".")[0]]
+        this_sequences = {}
+        for query in gene_trims.keys():
+            head, _ = query.split("|")
+            this_sequences[head] = this_db_sequences[head]
 
-        with Pool(args.processes) as pool:
-            log_components = pool.starmap(do_gene, arguments, chunksize=1)
-    else:
-        log_components = [
-            do_gene(
+        arguments.append(
+            (
                 FlexcullArgs(
                     aa_path,
                     nt_path,
@@ -1310,12 +1365,25 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
                     is_assembly,
                     input_gene in non_coding_gene,
                     args.keep_codons,
+                    gene_trims,
+                    this_sequences,
+                    
                 ),
+            ),
+        )
+    if args.processes > 1:
+        with Pool(args.processes) as pool:
+            log_components = pool.starmap(do_gene, arguments, chunksize=1)
+    else:
+        log_components = [
+            do_gene(
+                arg[0]
             )
-            for input_gene in file_inputs
+            for arg in arguments
         ]
 
     total_extensions = sum([i[1] for i in log_components])
+
 
     if args.debug:
         log_global = []

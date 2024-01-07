@@ -234,6 +234,31 @@ def reporter_args(par):
         help="Stops reporter from overwriting output.",
     )
 
+def subcmd_hmmsearch(subparsers):
+    par = subparsers.add_parser(
+        "Hmmsearch",
+        help="Blah blah",
+    )
+    par.add_argument("-d", "--debug", action="store_true", help="Enable debug outputs.")
+    par.add_argument(
+        "INPUT",
+        help="Path to directory of Input folder",
+        action="extend",
+        nargs="+",
+    )
+    par.add_argument(
+        "-ovw",
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing files.",
+    )
+    par.set_defaults(func=hmmsearch, formathelp=par.format_help)
+
+def hmmsearch(args):
+    from . import hmmsearch
+
+    if not hmmsearch.main(args):
+        print(args.formathelp())
 
 def reporter(args):
     from . import reporter
@@ -1005,6 +1030,13 @@ def subcmd_makeref(sp):
         default=False,
     )
     par.add_argument(
+        "-hmm",
+        "--hmmer",
+        action="store_true",
+        help="Generate diamond database.",
+        default=False,
+    )
+    par.add_argument(
         "-all",
         "--all",
         action="store_true",
@@ -1344,6 +1376,7 @@ def main():
     # the subcommands will be displayed.
     subcmd_prepare(subparsers)
     subcmd_diamond(subparsers)
+    subcmd_hmmsearch(subparsers)
     subcmd_reporter(subparsers)
 
     subcmd_align(subparsers)

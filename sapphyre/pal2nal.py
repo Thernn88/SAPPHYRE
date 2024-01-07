@@ -55,7 +55,7 @@ def do_folder(
 
     arguments = []
     for aa_path in aa_genes:
-        aa_path = str(aa_path)
+        aa_path = str(aa_path).replace(".gz","")
         nt_path = make_nt(aa_path)
 
         arguments.append(
@@ -106,11 +106,17 @@ def worker(
     gene = ospath.basename(aa_file).split(".")[0]
     printv(f"Doing: {gene}", verbose, 2)
     if not ospath.exists(aa_file):
-        printv(f"ERROR CAUGHT in {gene}: AA file does not exist", verbose, 0)
-        return False
+        if ospath.exists(aa_file + ".gz"):
+            aa_file += ".gz"
+        else:
+            printv(f"ERROR CAUGHT in {gene}: AA file does not exist", verbose, 0)
+            return False
     if not ospath.exists(nt_file):
-        printv(f"ERROR CAUGHT in {gene}: NT file does not exist", verbose, 0)
-        return False
+        if ospath.exists(nt_file + ".gz"):
+            nt_file += ".gz"
+        else:
+            printv(f"ERROR CAUGHT in {gene}: NT file does not exist", verbose, 0)
+            return False
     seqs = read_and_convert_fasta_files(gene, aa_file, nt_file, verbose)
 
     if seqs is False:
@@ -170,11 +176,6 @@ def read_and_convert_fasta_files(
     aa_intermediate.sort(key=lambda x: find_index_pair(x[1], "-"))
     # add candidates to references
     aas.extend(aa_intermediate)
-
-    #with open(aa_file, "w") as fa:
-        #for header, sequence in aas:
-            #fa.write(">" + header + "\n")
-            #fa.write(sequence + "\n")
 
     # if no nt refs found, do not process aa refs
     aa_final = aas
