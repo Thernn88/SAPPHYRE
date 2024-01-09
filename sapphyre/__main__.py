@@ -12,6 +12,7 @@ Post-processing:
     10. Combine.
 """
 import argparse
+from shutil import which
 
 
 class CaseInsensitiveArgumentParser(argparse.ArgumentParser):
@@ -1323,6 +1324,27 @@ def subcmd_internal(subparser):
 
 
 def main():
+    # Check mafft exists
+    if not which("mafft"):
+        raise FileNotFoundError(
+            "MAFFT binary not found in PATH. Verify installation or premissions."
+                                )
+    # Check clustalo exists
+    if not which("clustalo"):
+        raise FileNotFoundError(
+            "Clustalo binary not found in PATH. Verify installation or premissions."
+                                )
+    # Check diamond exists
+    if not which("diamond"):
+        raise FileNotFoundError(
+            "Diamond binary not found in PATH. Verify installation or premissions."
+                                )
+    # Check hmmsearch exist
+    if not which("hmmsearch"):
+        raise FileNotFoundError(
+            "Hmmsearch binary not found in PATH. Verify installation or premissions."
+                                )
+    
     parser = CaseInsensitiveArgumentParser(
         prog="sapphyre",
         # TODO write me
