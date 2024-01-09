@@ -146,6 +146,13 @@ def diamond_args(par):
         help="Diamond blast evalue threshold.",
     )
     par.add_argument(
+        "-gc",
+        "--geneticcode",
+        type=int,
+        default=1,
+        help="Genetic code used for translation of query in Diamond.",
+    )
+    par.add_argument(
         "-t",
         "--top",
         type=int,

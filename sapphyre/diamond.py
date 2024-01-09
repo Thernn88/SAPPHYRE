@@ -536,6 +536,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
     sensitivity = args.sensitivity
     top_amount = args.top
 
+    geneticcode = args.geneticcode
+
     taxa = path.basename(input_path)
     printv(f"Processing: {taxa}", args.verbose, 0)
     printv("Grabbing necessary directories.", args.verbose)
@@ -660,7 +662,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             if not extension_found:
                 out_path += ".tsv"
             system(
-                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {precision} --compress 1 --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --min-orf {min_orf} --max-hsps 0 -p {num_threads}",
+                f"diamond blastx -d {diamond_db_path} -q {input_file.name} --query-gencode {geneticcode} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {precision} --compress 1 --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --min-orf {min_orf} --max-hsps 0 -p {num_threads}",
             )
             out_path += ".gz"
             input_file.seek(0)
