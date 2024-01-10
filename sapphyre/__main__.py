@@ -214,6 +214,13 @@ def reporter_args(par):
         help="Amount of matches for dynamic pairwise aligned edge trim.",
     )
     par.add_argument(
+        "-gc",
+        "--geneticcode",
+        type=int,
+        default=1,
+        help="NCBI Integer Genetic code used for translation",
+    )
+    par.add_argument(
         "--gene_list_file",
         type=str,
         default=None,
@@ -283,6 +290,7 @@ def reporter(args):
         args.minimum_bp,
         args.gene_list_file,
         args.keep_output,
+        args.geneticcode,
     )
     if not reporter.main(mainargs):
         print(args.formathelp())

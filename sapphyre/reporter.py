@@ -13,7 +13,7 @@ from parasail import blosum62, nw_trace_scan_profile_16, profile_create_16
 from phymmr_tools import translate
 from wrap_rocks import RocksDB
 from xxhash import xxh3_64
-
+from Bio.Seq import Seq
 from . import rocky
 from .diamond import ReporterHit
 from .timekeeper import KeeperMode, TimeKeeper
@@ -34,6 +34,7 @@ MainArgs = namedtuple(
         "minimum_bp",
         "gene_list_file",
         "keep_output",
+        "geneticcode",
     ],
 )
 
@@ -248,7 +249,7 @@ def get_toprefs(rocks_nt_db: RocksDB) -> list[str]:
     )
 
 
-def translate_cdna(cdna_seq):
+def translate_cdna(cdna_seq, genetic_code):
     """Translates Nucleotide sequence to Amino Acid sequence.
 
     Args:
@@ -260,7 +261,10 @@ def translate_cdna(cdna_seq):
     if len(cdna_seq) % 3 != 0:
         printv("WARNING: NT Sequence length is not divisable by 3", 0)
 
-    return translate(cdna_seq)
+    if genetic_code == 1:
+        return translate(cdna_seq)
+    else:
+        return str(Seq(cdna_seq).translate(table=genetic_code))
 
 
 def get_core_sequences(
@@ -328,6 +332,7 @@ def print_unmerged_sequences(
     mat: dict,
     is_assembly_or_genome: bool,
     exact_match_amount: int,
+    genetic_code: int,
 ) -> tuple[dict[str, list], list[tuple[str, str]], list[tuple[str, str]]]:
     """Returns a list of unique trimmed sequences for a given gene with formatted headers.
 
@@ -378,7 +383,7 @@ def print_unmerged_sequences(
 
         # Translate to AA
         nt_seq = hit.seq
-        aa_seq = translate_cdna(nt_seq)
+        aa_seq = translate_cdna(nt_seq, genetic_code)
 
         # Trim to match reference
         r_start = 0
@@ -410,7 +415,7 @@ def print_unmerged_sequences(
 
         # Check if new seq is over bp minimum
         data_after = len(aa_seq)
-
+        
         if data_after >= minimum_bp:
             unique_hit = None
 
@@ -511,6 +516,7 @@ OutputArgs = namedtuple(
         "minimum_bp",
         "debug",
         "is_assembly_or_genome",
+        "genetic_code",
     ],
 )
 
@@ -585,6 +591,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         mat,
         oargs.is_assembly_or_genome,
         oargs.EXACT_MATCH_AMOUNT,
+        oargs.genetic_code
     )
     if debug_alignments:
         debug_alignments.close()
@@ -700,6 +707,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
                     args.minimum_bp,
                     args.debug,
                     is_assembly or is_genome,
+                    args.geneticcode,
                 ),
             ),
         )
