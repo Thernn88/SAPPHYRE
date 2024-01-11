@@ -71,8 +71,8 @@ FlexcullArgs = namedtuple(
         "is_assembly",
         "is_ncg",  # non coding gene
         "keep_codons",
-        "reporter_trims",
-        "sequences"
+        # "reporter_trims",
+        # "sequences"
     ],
 )
 
@@ -979,12 +979,12 @@ def do_gene(fargs: FlexcullArgs) -> None:
     aa_out = references.copy()
     this_seqs = []
 
-    db = rocky.get_rock("db")
-    this_db_entry = json.decode(db.get(f"gethmmhits:{this_gene}"), type = list[Hit])
-    diamond_hits = {}
-    for entry in this_db_entry:
-        frame = str(entry.frame)
-        diamond_hits.setdefault(entry.node, {})[frame] =  entry.qstart
+    # db = rocky.get_rock("db")
+    # this_db_entry = json.decode(db.get(f"gethmmhits:{this_gene}"), type = list[Hit])
+    # diamond_hits = {}
+    # for entry in this_db_entry:
+    #     frame = str(entry.frame)
+    #     diamond_hits.setdefault(entry.node, {})[frame] =  entry.qstart
 
     extensions = 0
     nt_extension_align = {}
@@ -1294,19 +1294,19 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
 
     nt_db_path = path.join(folder, "rocksdb", "sequences", "nt")
     nt_db = RocksDB(nt_db_path)
-    this_trims = json.decode(nt_db.get(f"getall:reporter_trims"), type = dict[str, dict[str, int]])
-    recipe = nt_db.get("getall:batches").split(',')
-    this_db_sequences = get_head_to_seq(nt_db, recipe)
+    # this_trims = json.decode(nt_db.get(f"getall:reporter_trims"), type = dict[str, dict[str, int]])
+    # recipe = nt_db.get("getall:batches").split(',')
+    # this_db_sequences = get_head_to_seq(nt_db, recipe)
     dbis_assembly = nt_db.get("get:isassembly")
     is_assembly = False
     if dbis_assembly and dbis_assembly == "True":
         is_assembly = True
 
-    hits_db_path = path.join(folder, "rocksdb", "hits")
-    rocky.create_pointer(
-        "db",
-        hits_db_path,
-    )
+    # hits_db_path = path.join(folder, "rocksdb", "hits")
+    # rocky.create_pointer(
+    #     "db",
+    #     hits_db_path,
+    # )
 
 
     folder_check(output_path)
@@ -1340,11 +1340,11 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
 
     arguments = []
     for input_gene in file_inputs:
-        gene_trims = this_trims[input_gene.split(".")[0]]
-        this_sequences = {}
-        for query in gene_trims.keys():
-            head, _ = query.split("|")
-            this_sequences[head] = this_db_sequences[head]
+        # gene_trims = this_trims[input_gene.split(".")[0]]
+        # this_sequences = {}
+        # for query in gene_trims.keys():
+        #     head, _ = query.split("|")
+        #     this_sequences[head] = this_db_sequences[head]
 
         arguments.append(
             (
@@ -1365,8 +1365,8 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
                     is_assembly,
                     input_gene in non_coding_gene,
                     args.keep_codons,
-                    gene_trims,
-                    this_sequences,
+                    # gene_trims,
+                    # this_sequences,
                     
                 ),
             ),
@@ -1382,7 +1382,8 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
             for arg in arguments
         ]
 
-    total_extensions = sum([i[1] for i in log_components])
+    # total_extensions = sum([i[1] for i in log_components])
+    total_extensions = 0
 
 
     if args.debug:
@@ -1400,7 +1401,7 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
         with open(log_out, "w") as fp:
             fp.writelines(log_global)
 
-    rocky.close_pointer("db")
+    # rocky.close_pointer("db")
 
     printv(
         f"Done! Took {folder_time.differential():.2f}s. Extended a total of {total_extensions} AA",
