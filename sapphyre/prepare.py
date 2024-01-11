@@ -184,7 +184,7 @@ class SeqDeduplicator:
                     continue
                 transcript_mapped_to[rev_seq_hash] = header
 
-                if (not self.this_assembly and not self.self.this_genome) and len(seq) >= ASSEMBLY_LEN:
+                if (not self.this_assembly and not self.this_genome) and len(seq) >= ASSEMBLY_LEN:
                     self.this_assembly = True
 
                 if len(seq) > CHOMP_CUTOFF:
