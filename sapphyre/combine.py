@@ -1,10 +1,11 @@
 from __future__ import annotations
-from collections import defaultdict
-import os
-from math import ceil
 
+import os
+from collections import defaultdict
+from math import ceil
 from multiprocessing.pool import Pool
 from pathlib import Path
+
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
 
@@ -13,6 +14,7 @@ def delete_all_files(path: str) -> None:
     fastas = [os.path.join(path, x) for x in os.listdir(path) if ".fa" in x]
     for fasta in fastas:
         os.remove(fasta)
+
 
 def prepend(inputs, directory):
     return [Path(directory, i) for i in inputs]
@@ -69,19 +71,16 @@ def main(args):
                     )
                     continue
 
-                arguments = []
-                for aa_gene in aa_path.iterdir():
-                    arguments.append(
-                        (
-                            aa_gene,
-                        ),
-                    )
+                aa_result = pool.map(parse_gene, aa_path.iterdir(), chunksize=8)
 
-                aa_result = pool.starmap(parse_gene, arguments, chunksize=8)
-
-                for result in aa_result:#this_out, present_taxon, taxon_to_target, this_refs
+                for result in aa_result:
                     for path, out_tuple in result.items():
-                        out_candidates, present_taxons, taxon_to_target, ref_sequences = out_tuple
+                        (
+                            out_candidates,
+                            present_taxons,
+                            taxon_to_target,
+                            ref_sequences,
+                        ) = out_tuple
                         path = path.name
                         already_grabbed = grabbed_aa_references[path]
                         references = []
@@ -98,16 +97,19 @@ def main(args):
                 arguments = []
                 for nt_gene in nt_path.iterdir():
                     arguments.append(
-                        (
-                            nt_gene,
-                        ),
+                        (nt_gene,),
                     )
 
                 nt_result = pool.starmap(parse_gene, arguments, chunksize=8)
 
-                for result in nt_result:#this_out, present_taxon, taxon_to_target, this_refs
+                for result in nt_result:
                     for path, out_tuple in result.items():
-                        out_candidates, present_taxons, taxon_to_target, ref_sequences = out_tuple
+                        (
+                            out_candidates,
+                            present_taxons,
+                            taxon_to_target,
+                            ref_sequences,
+                        ) = out_tuple
                         path = path.name
                         already_grabbed = grabbed_nt_references[path]
                         references = []
@@ -133,16 +135,21 @@ def main(args):
     nt_sequences = list(nt_out.items())
 
     if aa_sequences:
-
         per_thread = ceil(len(aa_sequences) / args.processes)
 
-        aa_arguments = [(aa_out_path, aa_sequences[i:i + per_thread], args.compress) for i in range(0, len(aa_sequences), per_thread)]
+        aa_arguments = [
+            (aa_out_path, aa_sequences[i : i + per_thread], args.compress)
+            for i in range(0, len(aa_sequences), per_thread)
+        ]
 
         with Pool(args.processes) as pool:
             pool.starmap(write_gene, aa_arguments)
         del aa_arguments
 
-        nt_arguments = [(nt_out_path, nt_sequences[i:i + per_thread], args.compress) for i in range(0, len(nt_sequences), per_thread)]
+        nt_arguments = [
+            (nt_out_path, nt_sequences[i : i + per_thread], args.compress)
+            for i in range(0, len(nt_sequences), per_thread)
+        ]
 
         with Pool(args.processes) as pool:
             pool.starmap(write_gene, nt_arguments)

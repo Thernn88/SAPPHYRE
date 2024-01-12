@@ -4,25 +4,28 @@ PyLint 9.81/10
 """
 from __future__ import annotations
 
-from os import path, listdir, makedirs
-from collections import Counter, namedtuple
+from collections import Counter, defaultdict, namedtuple
 from multiprocessing.pool import Pool
+from os import listdir, makedirs, path
 from shutil import rmtree
-from .diamond import ReporterHit as Hit
-from phymmr_tools import (
-    join_by_tripled_index,
-    join_with_exclusions,
-    join_triplets_with_exclusions,
-    find_index_pair,
-)
-from Bio.Seq import Seq
-from parasail import profile_create_16, blosum62, nw_trace_scan_profile_16
-from . import rocky
-from msgspec import json
-from wrap_rocks import RocksDB
+import warnings
+from Bio import BiopythonWarning
 
 from blosum import BLOSUM
+from msgspec import json
+from parasail import blosum62, nw_trace_scan_profile_16, profile_create_16
+from phymmr_tools import (
+    find_index_pair,
+    join_by_tripled_index,
+    join_triplets_with_exclusions,
+    join_with_exclusions,
+    bio_revcomp,
+)
+from wrap_rocks import RocksDB
+from Bio.Seq import Seq
 
+from . import rocky
+from .diamond import ReporterHit as Hit
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
 
@@ -68,6 +71,8 @@ FlexcullArgs = namedtuple(
         "is_assembly",
         "is_ncg",  # non coding gene
         "keep_codons",
+        "reporter_trims",
+        "sequences"
     ],
 )
 
@@ -77,15 +82,17 @@ def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
     that were removed in the empty column removal.
 
     Args:
+    ----
         raw_fed_sequences (list): List of tuples containing header and sequence
         positions_to_keep (list): List of positions to keep
     Returns:
+    -------
         list: List of tuples containing header and sequence with empty columns removed
     """
     result = []
     for raw_sequence in raw_fed_sequences:
         sequence = raw_sequence[1]
-        # sequence = ''.join(sequence[i*3:(i*3)+3] for i in positions_to_keep)
+
         sequence = join_by_tripled_index(sequence, positions_to_keep)
         result.append((raw_sequence[0], sequence))
 
@@ -94,13 +101,14 @@ def align_col_removal(raw_fed_sequences: list, positions_to_keep: list) -> list:
 
 def delete_empty_columns(raw_fed_sequences: list, verbose: bool) -> tuple[list, list]:
     """Iterates over each sequence and deletes columns
-    that consist of 100% dashes. In this version, raw_feed_sequences
-    is a list of tuples.
+    that consist of 100% dashes.
 
     Args:
+    ----
         raw_fed_sequences (list): List of tuples containing header and sequence
         verbose (bool): Whether to print verbose output
     Returns:
+    -------
         tuple[list, list]: List of tuples containing header and sequence with empty columns removed and a list of positions to keep
     """
     result = []
@@ -134,8 +142,10 @@ def folder_check(output_target_path: str) -> None:
     if not, create missing folders.
 
     Args:
+    ----
         output_target_path (str): Path to output directory
     Returns:
+    -------
         None
     """
     output_aa_path = path.join(output_target_path, "aa")
@@ -146,24 +156,17 @@ def folder_check(output_target_path: str) -> None:
     makedirs(output_nt_path, exist_ok=True)
 
 
-def make_nt(aa_file_name: str) -> str:
-    """Converts AA file name to NT file name.
-
-    Args:
-        aa_file_name (str): AA file name
-    Returns:
-        str: NT file name
-    """
-    return aa_file_name.replace(".aa.", ".nt.")
-
-
 def parse_fasta(fasta_path: str) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
     """Parses fasta file into header and sequences.
 
     Args:
+    ----
         fasta_path (str): Path to fasta file
     Returns:
-        tuple[list[tuple[str, str]], list[tuple[str, str]]]: Tuple containing list of reference record tuples and candidate record tuples
+    -------
+        tuple[
+            list[tuple[str, str]], list[tuple[str, str]]
+        ]: Tuple containing list of reference record tuples and candidate record tuples
     """
     references = []
     candidates = []
@@ -184,6 +187,24 @@ def parse_fasta(fasta_path: str) -> tuple[list[tuple[str, str]], list[tuple[str,
     return references, candidates
 
 
+def get_internal_gaps(input_string):
+    positions = []
+
+    for i in range(*find_index_pair(input_string, "-")):
+        if input_string[i] == "-":
+            positions.append(i)
+    
+    return positions
+
+
+def insert_gaps(input_string, positions):
+    input_string = list(input_string)
+    for coord in positions:
+        input_string.insert(coord, "-")
+
+    return ''.join(input_string)
+
+
 def trim_around(
     starting_index: int,
     lower_limit: int,
@@ -201,6 +222,7 @@ def trim_around(
     Trim will stop once the amount of matches is reached or the upper limit is reached.
 
     Args:
+    ----
         starting_index (int): Starting index
         lower_limit (int): Lower limit
         upper_limit (int): Upper limit
@@ -211,26 +233,32 @@ def trim_around(
         character_at_each_pos (list[set[str]]): List of sets containing characters at each position
         gap_present_threshold (list[bool]): List of booleans indicating whether references contain gaps at the index
     Returns:
+    -------
         range: Range of the trimmed slice"""
 
     offset = amt_matches - 1
     cull_end = upper_limit
 
+    # Trim to the right
     for i in range(starting_index, len(sequence) - 1):
         skip_first = 0
         char = sequence[i]
         mismatch = mismatches
 
+        # If current index will look beyond the length of the sequence, skip
         if i == upper_limit - offset:
             break
 
+        # If candidate is a gap or all references are dashes at this index, skip
         if char == "-" or all_dashes_by_index[i]:
             continue
 
+        # Allow first position to be a mismatch
         if char not in character_at_each_pos[i]:
             skip_first = 1
             mismatch -= 1
 
+        # If mismatch exhausted, skip
         if mismatch < 0:
             continue
 
@@ -238,7 +266,9 @@ def trim_around(
         checks = amt_matches - 1
         match_i = 1
 
+        # Scan until amt_matches is reached, upper limit is reached or mismatch is exhausted
         while checks > 0:
+            # Scan will extend beyond the end of the sequence
             if i + match_i >= upper_limit:
                 pass_all = False
                 break
@@ -246,18 +276,21 @@ def trim_around(
             next_char = sequence[i + match_i]
 
             if next_char == "-":
+                # References don't contain gap at this index, fail
                 if gap_present_threshold[i + match_i]:
                     pass_all = False
                     break
                 match_i += 1
             elif next_char not in character_at_each_pos[i + match_i]:
                 mismatch -= 1
+                # Mismatch exhausted, fail
                 if mismatch < 0:
                     pass_all = False
                     break
                 match_i += 1
                 checks -= 1
             else:
+                # Match, move right by one and decrement checks
                 match_i += 1
                 checks -= 1
 
@@ -267,22 +300,27 @@ def trim_around(
 
     cull_start = starting_index
 
+    # Repeat cull to the left
     for i in range(starting_index - 1, -1, -1):
         mismatch = mismatches
         skip_last = 0
 
         char = sequence[i]
 
+        # Scan will extend beyond the start of the sequence
         if i < lower_limit + offset:
             break
 
+        # If candidate is a gap or all references are dashes at this index, skip
         if char == "-" or all_dashes_by_index[i]:
             continue
 
+        # Allow first position to be a mismatch
         if char not in character_at_each_pos[i]:
             skip_last += 1
             mismatch -= 1
 
+        # If mismatch exhausted, skip
         if mismatch < 0:
             continue
 
@@ -290,7 +328,9 @@ def trim_around(
         checks = amt_matches - 1
         match_i = 1
 
+        # Scan until amt_matches is reached, lower limit is reached or mismatch is exhausted
         while checks > 0:
+            # Scan will extend beyond the start of the sequence
             if i - match_i < lower_limit:
                 pass_all = False
                 break
@@ -298,18 +338,21 @@ def trim_around(
             prev_char = sequence[i - match_i]
 
             if prev_char == "-":
+                # References don't contain gap at this index, fail
                 if gap_present_threshold[i - match_i]:
                     pass_all = False
                     break
                 match_i += 1
             elif prev_char not in character_at_each_pos[i - match_i]:
                 mismatch -= 1
+                # Mismatch exhausted, fail
                 if mismatch < 0:
                     pass_all = False
                     break
                 match_i += 1
                 checks -= 1
             else:
+                # Match, move left by one and decrement checks
                 match_i += 1
                 checks -= 1
 
@@ -323,6 +366,14 @@ def trim_around(
 def get_data_difference(trim: int, ref: int) -> float:
     """
     Returns the difference between the trim and ref.
+
+    Args:
+    ----
+        trim (int): Integer value A
+        ref (int): Integer Value B
+    Returns:
+    -------
+        float: Difference between trim and ref, q A over B
     """
     if trim == 0:
         return 0.0
@@ -347,6 +398,7 @@ def do_cull(
     Culls leading and trailing bp from a sequence based on if the bp is present in a reference sequence.
 
     Args:
+    ----
         sequence (str): Sequence to cull
         sequence_length (int): Length of the sequence
         offset (int): Offset to start culling from
@@ -356,6 +408,7 @@ def do_cull(
         character_at_each_pos (list[set[str]]): List of sets containing characters at each position
         gap_present_threshold (list[bool]): List of booleans indicating whether references contain gaps at the index
     Returns:
+    -------
         tuple: Tuple containing the index of the first bp that has required consecutive matches,
         the index of the last bp that has required consecutive matches, and a boolean indicating whether the trim kicked the entire sequence
     """
@@ -366,24 +419,29 @@ def do_cull(
         mismatch = mismatches
         skip_first = 0
 
+        # Scan will extend beyond the end of the sequence
         if i == sequence_length - offset:
             kick = True
             break
 
-        # Don't allow cull to point of all dashes
+        # Don't allow cull to begin from a gap
         if char == "-":
             continue
 
         window_start = i
 
+        # Don't allow cull to point of all dashes in references
         if all_dashes_by_index[i]:
             continue
+
+        # Allow first position to be a mismatch
         if char not in character_at_each_pos[i]:
             skip_first = 1
             if window_start == i:
                 continue
             mismatch -= 1
 
+        # If mismatch exhausted, skip
         if mismatch < 0:
             continue
 
@@ -391,16 +449,22 @@ def do_cull(
         checks = amt_matches - 1
         match_i = 1
 
+        # Scan until amt_matches is reached, end of sequence is reached or mismatch is exhausted
         while checks > 0:
+            # Scan will extend beyond the end of the sequence
             if i + match_i >= len(sequence):
                 pass_all = False
                 break
 
             if sequence[i + match_i] == "-":
+                # References don't contain gap at this index, fail
                 if gap_present_threshold[i + match_i]:
                     pass_all = False
                     break
+                # Skip if references also have gap
                 match_i += 1
+
+            # If candidate is a mismatch, decrement mismatch. If mismatch exhausted, fail.
             elif sequence[i + match_i] not in character_at_each_pos[i + match_i]:
                 mismatch -= 1
                 if mismatch < 0 or sequence[i + match_i] == "*":
@@ -409,6 +473,7 @@ def do_cull(
                 match_i += 1
                 checks -= 1
             else:
+                # Match, move right by one and decrement checks
                 match_i += 1
                 checks -= 1
 
@@ -425,46 +490,56 @@ def do_cull(
             skip_last = 0
 
             char = sequence[i]
+            # Scan will extend beyond the previous cull position
             if i < cull_start + offset:
                 kick = True
                 break
+
+            # Don't allow cull to begin from a gap
             if char == "-":
                 continue
             window_end = i
 
+            # Don't allow cull to point of all dashes
             if all_dashes_by_index[i]:
-                # Don't allow cull to point of all dashes
                 continue
+
+            # Allow mismatch
             if char not in character_at_each_pos[i]:
                 skip_last += 1
                 if window_end == i:
                     continue
                 mismatch -= 1
 
+            # If mismatch exhausted, skip
             if mismatch < 0:
                 continue
 
             pass_all = True
             checks = amt_matches - 1
             match_i = 1
+            # Scan until amt_matches is reached, lower limit is reached or mismatch is exhausted
             while checks > 0:
                 if i - match_i < 0:
                     pass_all = False
                     break
 
                 if sequence[i - match_i] == "-":
+                    # References don't contain gap at this index, fail
                     if gap_present_threshold[i - match_i]:
                         pass_all = False
                         break
                     match_i += 1
                 elif sequence[i - match_i] not in character_at_each_pos[i - match_i]:
                     mismatch -= 1
+                    # Don't allow mismatch to be a stop codon
                     if mismatch < 0 or sequence[i - match_i] == "*":
                         pass_all = False
                         break
                     match_i += 1
                     checks -= 1
                 else:
+                    # Match, move left by one and decrement checks
                     match_i += 1
                     checks -= 1
 
@@ -487,25 +562,28 @@ def process_refs(
     all_dashes_by_index: boolean indicating whether all references have a dash at the index
 
     Args:
+    ----
         references (list[tuple]): List of tuples containing the reference name and sequence
         gap_threshold (float): Threshold for the amount of gaps required in a reference for it to be a reference gap column
         column_cull_percent (float): Percent of data required in a column to allow it to pass
         mat (dict): The blosum62 subsitution matrix
     Returns:
+    -------
         tuple: Tuple containing the character_at_each_pos, gap_present_threshold , column_cull and all_dashes_by_index tables
 
     """
-    character_at_each_pos = {}
+    character_at_each_pos = defaultdict(list)
     gap_present_threshold = {}
-    all_dashes_by_index = {}
     column_cull = set()
 
+    # Get the length of the longest reference and create
+    # a dict with a default value for every index covered by the references
     max_ref_length = max(len(sequence) for _, sequence in references)
     all_dashes_by_index = {i: True for i in range(max_ref_length)}
 
     for _, sequence in references:
         for i, char in enumerate(sequence.replace("*", "-")):
-            character_at_each_pos.setdefault(i, []).append(char)
+            character_at_each_pos[i].append(char)
 
     for i, chars in list(character_at_each_pos.items()):
         data_present = 1 - (chars.count("-") / len(chars))
@@ -514,6 +592,7 @@ def process_refs(
         if data_present < column_cull_percent:
             column_cull.add(i * 3)
 
+        # Include all blosum subsitutions for each character in the column
         character_at_each_pos[i] = set(chars).union(
             blosum_sub for char in chars for blosum_sub in mat.get(char, {}).keys()
         )
@@ -535,6 +614,7 @@ def column_cull_seqs(
     this_column_cull = set()
     for nt_i in column_cull:
         i = nt_i // 3
+        # Count the amount of each bp at this position
         this_sequence = Counter()
         internal_count = 0
         for _, seq, start, end in this_seqs:
@@ -542,20 +622,18 @@ def column_cull_seqs(
                 internal_count += 1
                 if seq[i] != "-":
                     this_sequence[seq[i]] += 1
-        # Get the count of the most occuring bp at this position
+
+        # If the most present bp has a count of 5 or greater and is present
+        # in a third of sequences at this index, don't cull
         if sum(this_sequence.values()) >= 5:
             if this_sequence.most_common()[0][1] > internal_count / 3:
                 continue
         this_column_cull.add(i * 3)
 
+    # If columns require culling, use phymmr_tools join with exclusions.
+    # Check bp is still above minimum and then output
     if this_column_cull:
         for header, seq, _, _ in this_seqs:
-            # new_seq = "".join(
-            #     [
-            #         let if i * 3 not in this_column_cull else "-"
-            #         for i, let in enumerate(seq)
-            #     ],
-            # )
             new_seq = join_with_exclusions(seq, this_column_cull)
             if len(new_seq) - new_seq.count("-") < minimum_bp:
                 kicks.append(header)
@@ -579,6 +657,7 @@ def cull_codons(
 ):
     positions_to_trim = set()
     codons = []
+    # Save index of all codons
     for i in range(cull_start, cull_end):
         char = out_line[i]
         if char == "*":
@@ -586,7 +665,10 @@ def cull_codons(
 
     non_trimmed_codons = [c for c in codons if c * 3 not in positions_to_trim]
     while non_trimmed_codons:
+        # Start from the middle
         i = non_trimmed_codons[int(len(non_trimmed_codons) / 2)]
+
+        # Use the trim around function to scan left and right of the codon
         positions = trim_around(
             i,
             cull_start,
@@ -605,6 +687,8 @@ def cull_codons(
         left_after = out_line[cull_start:i]
         right_after = out_line[i:cull_end]
 
+        # Grab the amount of columns where data is present in the refrences and
+        # data is present in the candidate after trimming the codon
         left_side_ref_data_columns = sum(
             gap_present_threshold[x] for x in range(cull_start, i)
         )
@@ -615,17 +699,53 @@ def cull_codons(
         )
         right_of_trim_data_columns = len(right_after) - right_after.count("-")
 
+        left_highest_consecutive = 0
+        right_highest_consecutive = 0
+
+        this_consec = 0
+
+        for ix, let in enumerate(left_after, cull_start):
+            if let == "-":
+                if not gap_present_threshold[ix]:
+                    continue
+
+                if this_consec > left_highest_consecutive:
+                    left_highest_consecutive = this_consec
+                this_consec = 0
+            elif let in character_at_each_pos[ix]:
+                this_consec += 1
+        if this_consec > left_highest_consecutive:
+            left_highest_consecutive = this_consec
+
+        this_consec = 0
+        for ix, let in enumerate(right_after, i):
+            if let == "-":
+                if not gap_present_threshold[ix]:
+                    continue
+
+                if this_consec > right_highest_consecutive:
+                    right_highest_consecutive = this_consec
+                this_consec = 0
+            elif let in character_at_each_pos[ix]:
+                this_consec += 1
+        if this_consec > right_highest_consecutive:
+            right_highest_consecutive = this_consec
+
+        # If the difference between the amount of data columns in the candidate and
+        # the reference is less than 55%, cull the remainder side
         if (
+            left_highest_consecutive < 30 and
             get_data_difference(
                 left_of_trim_data_columns,
                 left_side_ref_data_columns,
             )
             < 0.55
-        ):  # candidate has less than % of data columns compared to reference
+        ):
             for x in range(cull_start, i):
                 positions_to_trim.add(x * 3)
                 out_line[x] = "-"
         if (
+            right_highest_consecutive < 30 and
             get_data_difference(
                 right_of_trim_data_columns,
                 right_side_ref_data_columns,
@@ -656,6 +776,7 @@ def trim_large_gaps(
     Trims gaps with a length of 80 or more non-reference gap column gaps.
 
     Args:
+    ----
         aa_out (list[tuple]): List of tuples containing header and sequence
         reference_gap_col (set): Set of reference gap columns
         amt_matches (int): Amount of consecutive matches required to pass
@@ -666,6 +787,7 @@ def trim_large_gaps(
         minimum_bp (int): Minimum amount of bp required to pass
         debug (bool): Whether to print debug output
     Returns:
+    -------
         tuple: Tuple containing the updated aa_out, gap_pass_through to align the deletions to NT, the debug log, and kicks
     """
     log = []
@@ -673,6 +795,7 @@ def trim_large_gaps(
     gap_pass_through = {}
     for record_index, record in enumerate(aa_out):
         header, sequence = record
+
         if not header.endswith("."):
             gap_cull = set()
             seq_start, seq_end = find_index_pair(sequence, "-")
@@ -680,14 +803,18 @@ def trim_large_gaps(
             non_ref_gap_dash_count = 0
             raw_dash_count = 0
             out_line = list(sequence)
-            for j, let in enumerate(out_line[seq_start : seq_end], seq_start):
+
+            for j, let in enumerate(out_line[seq_start:seq_end], seq_start):
                 if let == "-":
                     if j not in reference_gap_col:
                         non_ref_gap_dash_count += 1
                     raw_dash_count += 1
                 else:
+                    # Consecutive gap with length of 80 or more where the majority of the
+                    # gaps are not reference gaps
                     if non_ref_gap_dash_count >= 80:
                         i = j - (raw_dash_count // 2)
+                        # Trim around the middle of the gap
                         positions = trim_around(
                             i,
                             seq_start,
@@ -705,6 +832,9 @@ def trim_large_gaps(
 
                         left_after = out_line[seq_start:i]
                         right_after = out_line[i:seq_end]
+
+                        # Grab the amount of columns where data is present in the refrences and
+                        # data is present in the candidate after trimming the gap
                         left_side_ref_data_columns = sum(
                             post_gap_present_threshold[x] for x in range(seq_start, i)
                         )
@@ -719,7 +849,8 @@ def trim_large_gaps(
                             right_after,
                         ) - right_after.count("-")
 
-                        # If both sides kicked and sequence ends up being empty keep the side with the most bp.
+                        # If both sides will end up being kicked force it to keep the side
+                        # with the most bp.
                         keep_left = False
                         keep_right = False
 
@@ -742,6 +873,8 @@ def trim_large_gaps(
                             ) - right_after.count("-")
                             keep_right = not keep_left
 
+                        # Kick the side that has less than 55% of the data columns compared to the reference
+                        # and that isn't kept by previous logic
                         if (
                             get_data_difference(
                                 left_of_trim_data_columns,
@@ -768,6 +901,7 @@ def trim_large_gaps(
 
                     non_ref_gap_dash_count = 0
                     raw_dash_count = 0
+            # If change made in sequence, log the change, kick the sequence if necessary and output
             if change_made:
                 bp_after_cull = len(out_line) - out_line.count("-")
                 if bp_after_cull < minimum_bp:
@@ -791,6 +925,7 @@ def trim_large_gaps(
                 else:
                     aa_out[record_index] = (header, "".join(out_line))
 
+                # Save cull data to pass onto NT sequences
                 gap_pass_through[header] = gap_cull
 
     aa_out = [i for i in aa_out if i is not None]
@@ -798,7 +933,18 @@ def trim_large_gaps(
 
 
 def align_to_aa_order(nt_out, aa_content):
-    headers = [header for header, _ in aa_content if not header.endswith('.')]
+    """
+    Aligns the nt output list to the order of the aa content list.
+
+    Args:
+    ----
+        nt_out (list): List of tuples containing header and sequence
+        aa_content (list): List of tuples containing header and sequence
+    Returns:
+    -------
+        list: An aligned list of tuples containing header and sequence
+    """
+    headers = [header for header, _ in aa_content if not header.endswith(".")]
 
     nt_out = dict(nt_out)
     for header in headers:
@@ -807,6 +953,7 @@ def align_to_aa_order(nt_out, aa_content):
 
 def do_gene(fargs: FlexcullArgs) -> None:
     """FlexCull main function. Culls input aa and nt using specified amount of matches."""
+    warnings.filterwarnings("ignore", category=BiopythonWarning)
     gene_path = path.join(fargs.aa_input, fargs.aa_file)
     this_gene = fargs.aa_file.split(".")[0]
 
@@ -833,11 +980,11 @@ def do_gene(fargs: FlexcullArgs) -> None:
     this_seqs = []
 
     db = rocky.get_rock("db")
-    this_db_entry = json.decode(db.get(f"gethits:{this_gene}"), type = list[Hit])
-    this_db_sequences = {}
-
+    this_db_entry = json.decode(db.get(f"gethmmhits:{this_gene}"), type = list[Hit])
+    diamond_hits = {}
     for entry in this_db_entry:
-        this_db_sequences.setdefault(entry.node, {})[str(entry.frame)] = entry.seq
+        frame = str(entry.frame)
+        diamond_hits.setdefault(entry.node, {})[frame] =  entry.qstart
 
     extensions = 0
     nt_extension_align = {}
@@ -864,65 +1011,74 @@ def do_gene(fargs: FlexcullArgs) -> None:
             gap_present_threshold,
         )
 
-        if True:
-            if (cull_start, cull_end) == find_index_pair(raw_sequence, "-"):
-                fields = header.split("|")
-                node = fields[-2]
-                if node.count("_") > 1:
-                    node = "NODE_"+node.split("_")[1]
-                frame = fields[-1]
-                nt_seq = this_db_sequences[node][frame]
+        # If no cull occurs check to see if reporter over trimmed
+        if False:#(cull_start, cull_end) == find_index_pair(raw_sequence, "-"):
+            fields = header.split("|")
+            node = fields[3]
+            if node.count("_") > 1:
+                node = "NODE_"+node.split("_")[1]
+            frame = fields[4]
+
+            reporter_removed = fargs.reporter_trims[node+"|"+frame]
+
+            nt_seq = fargs.sequences[node]
+            diamond_query = diamond_hits[node][frame]
+            if int(frame) < 0:
+                nt_seq = bio_revcomp(nt_seq)
+
+            frame_offset = abs(int(frame))-1
+            nt_seq = nt_seq[frame_offset:]
+
+            
+            this_aa = str(Seq(nt_seq).translate())
+
+            #
+            start_offset = cull_start - int(((diamond_query - 1)/3) + (3 - (int(frame)-1))/3) - reporter_removed + 1
+            add_start = start_offset
+
+            aligned_aa = ("-" * add_start) + this_aa
+
+            insertions = get_internal_gaps(raw_sequence)
+            aligned_aa = insert_gaps(aligned_aa, insertions)
+            
+            extend_start, extend_end = find_index_pair(aligned_aa, "-")
+            _, raw_end = find_index_pair(raw_sequence, "-")
+            character_index = -1
+            if extend_end > raw_end:
+                this_extend = 0
                 
-                this_aa = str(Seq(nt_seq).translate())
                 nt_seq = [nt_seq[i:i+3] for i in range(0, len(nt_seq), 3)]
-                profile = profile_create_16(this_aa, blosum62)
-                result = nw_trace_scan_profile_16(
-                    profile,
-                    raw_sequence[cull_start: cull_end],
-                    2,
-                    0,
-                )
-                start_offset = 0
-                for i, let in enumerate(result.traceback.ref):
-                    if let == "-":
-                        start_offset += 1
-                    else:
+
+                nt_extension_align[header] = {}
+                for i in range(extend_start, len(aligned_aa)):
+                    if i >= len(raw_sequence):
                         break
+                    if aligned_aa[i] != "-":
+                        character_index += 1
+                    else:
+                        continue
 
-                start = (cull_start - start_offset)
-                aligned_aa = ("-" * start) + result.traceback.query
-                
-                #Bad alignment check
-                raw_start, raw_end = find_index_pair(raw_sequence, "-")
-                gap_offset = aligned_aa[start : cull_end].count("-")
+                    if i < raw_end:
+                        continue
 
-                if aligned_aa[raw_start: raw_end] != raw_sequence[raw_start: raw_end]:
-                    #BLOW UP
-                    pass
-                else:
-                    nt_extension_align[header] = {}
-                    for i in range(cull_end, len(aligned_aa)):
-                        if i >= len(raw_sequence):
-                            break
+                    if aligned_aa[i] not in character_at_each_pos[i]:
+                        break
+                    else:
+                        sequence[i] = aligned_aa[i]
+                        nt_extension_align[header][i * 3] = nt_seq[character_index]
+                        cull_end += 1
+                        this_extend += 1
+                extensions += this_extend
 
-                        if aligned_aa[i] == "-":
-                            gap_offset += 1
-                            continue
-                    
-                        elif aligned_aa[i] not in character_at_each_pos[i]:
-                            break
-                        else:
-                            sequence[i] = aligned_aa[i]
-                            nt_extension_align[header][i * 3] = nt_seq[i - start - gap_offset]
-                            cull_end += 1
-                            extensions += 1
-
-        if not kick:  # If also passed Cull End Calc. Finish
+        # If cull didn't kick
+        if not kick:
+            # Pad the sequence with gaps and cull
             out_line = ["-"] * cull_start + sequence[cull_start:cull_end]
 
             characters_till_end = sequence_length - len(out_line)
             out_line += ["-"] * characters_till_end
 
+            # If gene is not NCG and we don't want to keep codons, cull codons
             positions_to_trim = set()
             if not fargs.is_ncg and not fargs.keep_codons:
                 out_line, positions_to_trim = cull_codons(
@@ -936,6 +1092,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                     gap_present_threshold,
                 )
 
+            # Join sequence and check bp after cull
             out_line = "".join(out_line)
 
             data_length = cull_end - cull_start
@@ -951,6 +1108,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
                 this_seqs.append((header, out_line, *find_index_pair(out_line, "-")))
 
+                # Log removed data
                 if fargs.debug:
                     removed_section = sequence[:cull_start] + sequence[cull_end:]
                     data_removed = len(removed_section) - removed_section.count("-")
@@ -985,14 +1143,16 @@ def do_gene(fargs: FlexcullArgs) -> None:
             if fargs.debug:
                 log.append(gene + "," + header + ",Kicked,Zero Data After Cull,0,\n")
 
+    # If sequences still present after cull
     if this_seqs:
+        # Cull columns
         this_seqs, kicks, this_column_cull = column_cull_seqs(
             this_seqs, column_cull, fargs.gap_threshold, fargs.is_assembly
         )
         for header in kicks:
             follow_through[header] = True, 0, 0, []
 
-        # remove empty columns from refs and candidates
+        # Remove empty columns from refs and candidates
         aa_out, aa_positions_to_keep = delete_empty_columns(aa_out + this_seqs, False)
         if len(aa_out) == len(references):
             return log, 0  # Only refs
@@ -1014,6 +1174,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
         reference_gap_col = {i for i, x in post_gap_present_threshold.items() if not x}
 
+        # Trim large gaps
         aa_out, gap_pass_through, trim_log, kicks = trim_large_gaps(
             aa_out,
             reference_gap_col,
@@ -1032,14 +1193,16 @@ def do_gene(fargs: FlexcullArgs) -> None:
         for kick in kicks:
             follow_through[kick] = True, 0, 0, []
 
+        # If sequences still present after column cull and gap cull, output
         if len(aa_out) != len(references):
             writeFasta(aa_out_path, aa_out, fargs.compress)
 
-            nt_file_name = make_nt(fargs.aa_file)
+            nt_file_name = fargs.aa_file.replace(".aa.", ".nt.")
             gene_path = path.join(fargs.nt_input, nt_file_name)
 
             references, candidates = parse_fasta(gene_path)
 
+            # Align culls to NT
             nt_out_path = path.join(fargs.output, "nt", nt_file_name.rstrip(".gz"))
             nt_out = references.copy()
             for header, sequence in candidates:
@@ -1067,23 +1230,17 @@ def do_gene(fargs: FlexcullArgs) -> None:
                             out_seq.append(out_line[i : i + 3])
 
                     out_line = "".join(out_seq)
-                    # out_line = [
-                    #     out_line[i : i + 3]
-                    #     if i not in positions_to_trim and i not in this_column_cull
-                    #     else "---"
-                    #     for i in range(0, len(out_line), 3)
-                    # ]
-                    # out_line = "".join(out_line)
                     out_line = join_triplets_with_exclusions(
                         out_line, positions_to_trim, this_column_cull
                     )
                     nt_out.append((header, out_line))
+
             nt_out = align_col_removal(nt_out, aa_positions_to_keep)
             out_nt = []
             for header, sequence in nt_out:
                 gap_cull = gap_pass_through.get(header, None)
                 out_seq = []
-                
+
                 if gap_cull:
                     out_nt.append(
                         (
@@ -1098,11 +1255,28 @@ def do_gene(fargs: FlexcullArgs) -> None:
                     )
                 else:
                     out_nt.append((header, sequence))
+
+            # Align order
             out_nt = align_to_aa_order(out_nt, aa_out)
 
             writeFasta(nt_out_path, out_nt, fargs.compress)
 
     return log, extensions
+
+
+def get_head_to_seq(nt_db, recipe):
+    head_to_seq = {}
+    for i in recipe:
+        lines = nt_db.get_bytes(f"ntbatch:{i}").decode().split("\n")
+        head_to_seq.update(
+            {
+                lines[i][1:]: lines[i + 1]
+                for i in range(0, len(lines), 2)
+                if lines[i] != ""
+            },
+        )
+    
+    return head_to_seq
 
 
 def do_folder(folder, args: MainArgs, non_coding_gene: set):
@@ -1120,17 +1294,20 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
 
     nt_db_path = path.join(folder, "rocksdb", "sequences", "nt")
     nt_db = RocksDB(nt_db_path)
+    this_trims = json.decode(nt_db.get(f"getall:reporter_trims"), type = dict[str, dict[str, int]])
+    recipe = nt_db.get("getall:batches").split(',')
+    this_db_sequences = get_head_to_seq(nt_db, recipe)
     dbis_assembly = nt_db.get("get:isassembly")
     is_assembly = False
     if dbis_assembly and dbis_assembly == "True":
         is_assembly = True
-
 
     hits_db_path = path.join(folder, "rocksdb", "hits")
     rocky.create_pointer(
         "db",
         hits_db_path,
     )
+
 
     folder_check(output_path)
     file_inputs = [
@@ -1161,37 +1338,16 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
         for key, sub_dict in mat.items()
     }
 
-    if args.processes > 1:
-        arguments = []
-        for input_gene in file_inputs:
-            arguments.append(
-                (
-                    FlexcullArgs(
-                        aa_path,
-                        nt_path,
-                        output_path,
-                        args.matches,
-                        input_gene,
-                        args.debug,
-                        args.base_pair,
-                        args.verbose,
-                        args.compress,
-                        args.gap_threshold,
-                        args.mismatches,
-                        args.column_cull,
-                        filtered_mat,
-                        is_assembly,
-                        input_gene in non_coding_gene,
-                        args.keep_codons,
-                    ),
-                ),
-            )
+    arguments = []
+    for input_gene in file_inputs:
+        gene_trims = this_trims[input_gene.split(".")[0]]
+        this_sequences = {}
+        for query in gene_trims.keys():
+            head, _ = query.split("|")
+            this_sequences[head] = this_db_sequences[head]
 
-        with Pool(args.processes) as pool:
-            log_components = pool.starmap(do_gene, arguments, chunksize=1)
-    else:
-        log_components = [
-            do_gene(
+        arguments.append(
+            (
                 FlexcullArgs(
                     aa_path,
                     nt_path,
@@ -1209,12 +1365,25 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
                     is_assembly,
                     input_gene in non_coding_gene,
                     args.keep_codons,
+                    gene_trims,
+                    this_sequences,
+                    
                 ),
+            ),
+        )
+    if args.processes > 1:
+        with Pool(args.processes) as pool:
+            log_components = pool.starmap(do_gene, arguments, chunksize=1)
+    else:
+        log_components = [
+            do_gene(
+                arg[0]
             )
-            for input_gene in file_inputs
+            for arg in arguments
         ]
 
     total_extensions = sum([i[1] for i in log_components])
+
 
     if args.debug:
         log_global = []
@@ -1230,10 +1399,13 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
         log_out = path.join(output_path, "Culls.csv")
         with open(log_out, "w") as fp:
             fp.writelines(log_global)
-    
+
     rocky.close_pointer("db")
 
-    printv(f"Done! Took {folder_time.differential():.2f}s. Extended a total of {total_extensions} AA", args.verbose)
+    printv(
+        f"Done! Took {folder_time.differential():.2f}s. Extended a total of {total_extensions} AA",
+        args.verbose,
+    )
 
 
 def main(args):

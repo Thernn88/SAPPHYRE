@@ -2,9 +2,19 @@ import argparse
 import json
 import os
 from glob import glob
+
+from .__main__ import (
+    align_args,
+    diamond_args,
+    flexcull_args,
+    merge_args,
+    outlier_args,
+    pal2nal_args,
+    prepare_args,
+    reporter_args,
+)
 from .timekeeper import KeeperMode, TimeKeeper
 
-from .__main__ import prepare_args, diamond_args, reporter_args, align_args, pal2nal_args, flexcull_args, outlier_args, merge_args
 
 def get_args(arg_function):
     parser = argparse.ArgumentParser()
@@ -15,6 +25,7 @@ def get_args(arg_function):
             variables[action.dest] = action.default
 
     return variables
+
 
 def main(args):
     default_config = {
@@ -59,26 +70,26 @@ def main(args):
     time = TimeKeeper(KeeperMode.DIRECT)
     for script in scripts:
         sargs = config[script]
-        print(f"Executing: {script.title()}")
+        print(f"\nExecuting: {script.title()}")
         this_args = global_args.copy()
         this_args.update(sargs)
         this_args = argparse.Namespace(**this_args)
-        this_args.INPUT = (
-            args.INPUT
-            if script == "prepare"
-            else sorted(
+        if args.solo:
+            this_args.INPUT = [args.INPUT]
+        elif script == "prepare":
+            this_args.INPUT = args.INPUT
+        else:
+            this_args.INPUT = sorted(
                 glob(
-                    os.path.join("datasets", os.path.split(args.INPUT)[-1], "*.fa"),
+                    os.path.join(args.in_folder, os.path.split(args.INPUT)[-1], "*.fa"),
                 ),
             )
-        )
 
         if script == "prepare":
             from . import prepare
 
             if not prepare.main(this_args):
                 print("Error in Prepare.")
-            from . import diamond
         elif script == "diamond":
             from . import diamond
 

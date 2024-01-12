@@ -1,26 +1,37 @@
-from collections import Counter, defaultdict
-from math import ceil
 import os
-from shutil import rmtree
 import sqlite3
+from collections import Counter, defaultdict
 from itertools import count
+from math import ceil
 from multiprocessing.pool import Pool
 from pathlib import Path
+from shutil import rmtree
 from tempfile import NamedTemporaryFile
-import xxhash
+
 import wrap_rocks
+import xxhash
 from Bio import SeqIO
 from msgspec import json
-from phymmr_tools import find_index_pair, get_overlap, constrained_distance
-from .utils import printv, writeFasta, parseFasta
-from .timekeeper import TimeKeeper, KeeperMode
+from phymmr_tools import constrained_distance, find_index_pair, get_overlap
 
+from .timekeeper import KeeperMode, TimeKeeper
+from .utils import parseFasta, printv, writeFasta
 
 
 class Sequence:
-    __slots__ = ("raw_head", "header", "aa_sequence", "nt_sequence", "taxon", "gene", "id")
+    __slots__ = (
+        "raw_head",
+        "header",
+        "aa_sequence",
+        "nt_sequence",
+        "taxon",
+        "gene",
+        "id",
+    )
 
-    def __init__(self, raw_head, header, aa_sequence, nt_sequence, taxon, gene, id) -> None:
+    def __init__(
+        self, raw_head, header, aa_sequence, nt_sequence, taxon, gene, id
+    ) -> None:
         self.raw_head = raw_head
         self.header = header
         self.aa_sequence = aa_sequence
@@ -30,9 +41,15 @@ class Sequence:
         self.id = id
 
     def raw_seq(self):
+        """
+        Returns the unaligned aa sequence
+        """
         return self.aa_sequence.replace("-", "")
 
     def to_tuple(self):
+        """
+        Returns the record tuple (header, aa_sequence)
+        """
         return self.header, self.aa_sequence
 
     def seq_with_regen_data(self):
@@ -60,32 +77,48 @@ class Sequence_Set:
         self.has_aligned = False
 
     def add_sequence(self, seq: Sequence) -> None:
+        """Adds a sequence to the set."""
         self.sequences.append(seq)
 
     def add_aligned_sequences(
         self, gene: str, aligned_sequences: list[Sequence]
     ) -> None:
+        """
+        Adds a list of aligned sequences to the set.
+        """
         if not self.has_aligned:
             self.has_aligned = True
         self.aligned_sequences[gene] = aligned_sequences
 
-    def get_aligned_sequences(self) -> str:
+    def get_aligned_sequences(self) -> dict:
+        """
+        Returns the aligned sequences dict
+        """
         return self.aligned_sequences
 
     def get_last_id(self) -> int:
+        """
+        Gets the last id of the current sequences in the set
+        """
         if not self.sequences:
             return 0
         return self.sequences[-1].id
 
     def get_gene_taxon_count(self) -> Counter:
+        """
+        Returns the count of genes present for each taxon
+        """
         data = defaultdict(set)
 
         for seq in self.sequences:
             data[seq.taxon].add(seq.gene)
 
         return Counter({taxon: len(genes) for taxon, genes in data.items()})
-    
+
     def kick_dupes(self, headers):
+        """
+        Kicks sequences with headers in the headers list
+        """
         self.sequences = [i for i in self.sequences if i.header not in headers]
 
     def get_taxon_in_set(self) -> list:
@@ -148,11 +181,16 @@ class Sequence_Set:
         return core_sequences
 
     def get_diamond_data(self):
+        """Returns the data required to generate a diamond database."""
         diamond_data = []
         target_to_taxon = {}
         taxon_to_sequences = {}
 
-        from_sequence_list = [item for sublist in self.aligned_sequences.values() for item in sublist] if self.has_aligned else self.sequences
+        from_sequence_list = (
+            [item for sublist in self.aligned_sequences.values() for item in sublist]
+            if self.has_aligned
+            else self.sequences
+        )
         for seq in from_sequence_list:
             aaseq = seq.raw_seq() if self.has_aligned else seq.aa_sequence
             diamond_data.append(f">{seq.header}\n{aaseq}\n")
@@ -166,6 +204,7 @@ class Sequence_Set:
         return "".join(map(str, self.sequences))
 
     def absorb(self, other):
+        """Merges two sets together."""
         current_cursor = self.get_last_id() + 1
         for i, seq in enumerate(other.sequences):
             seq.id = current_cursor + i
@@ -176,27 +215,55 @@ class Sequence_Set:
 
 
 def cull(sequences, percent):
+    """
+    Culls each edge of the sequences to a column where the percentage of non-gap characters is greater than or equal to the percent argument.
+    """
     msa_length = len(sequences[0][1])
 
     for i in range(msa_length):
         cull_start = i
-        if (
-            sum(1 for seq in sequences if seq[1][i] != "-") / len(sequences)
-            >= percent
-        ):
+        if sum(1 for seq in sequences if seq[1][i] != "-") / len(sequences) >= percent:
             break
 
     for i in range(msa_length - 1, 0, -1):
         cull_end = i
-        if (
-            sum(1 for seq in sequences if seq[1][i] != "-") / len(sequences)
-            >= percent
-        ):
+        if sum(1 for seq in sequences if seq[1][i] != "-") / len(sequences) >= percent:
             break
 
     sequences = [(seq[0], seq[1][cull_start : cull_end + 1]) for seq in sequences]
 
     return sequences
+
+
+def generate_hmm(set: Sequence_Set, overwrite, threads, verbosity, set_path):
+    """
+    Generates the .hmm files for each gene in the set.
+    """
+    aligned_sequences = set.get_aligned_sequences()
+    hmm_path = set_path.joinpath("hmms")
+    hmm_path.mkdir(exist_ok=True)
+
+    arguments = []
+    for gene, sequences in aligned_sequences.items():
+        arguments.append((gene, sequences, hmm_path, overwrite, verbosity))
+
+    with Pool(threads) as pool:
+        pool.starmap(hmm_function, arguments)
+
+
+def hmm_function(gene, sequences, hmm_path, overwrite, verbosity):
+    """
+    Calls the hmm build function and returns the result.
+    """
+    hmm_file = hmm_path.joinpath(gene + ".hmm")
+    if not hmm_file.exists() or overwrite:
+        printv(f"Generating: {gene}", verbosity, 2)
+        with NamedTemporaryFile(mode="w") as fp:
+            fp.write("".join([i.seq_with_regen_data() for i in sequences]))
+            fp.flush()
+
+            os.system(f"hmmbuild '{hmm_file}' '{fp.name}'")
+
 
 
 def generate_aln(
@@ -209,6 +276,9 @@ def generate_aln(
     do_cull,
     cull_percent,
 ):
+    """
+    Generates the .aln.fa files for each gene in the set.
+    """
     sequences = set.get_gene_dict(True).copy()
 
     aln_path = set_path.joinpath("aln")
@@ -248,6 +318,9 @@ def generate_aln(
 
 
 def do_merge(sequences):
+    """
+    Merges perfectly overlapping sequences.
+    """
     merged_indices = set()
     merge_occured = True
     while merge_occured:
@@ -261,7 +334,6 @@ def do_merge(sequences):
 
                 start_a, end_a = find_index_pair(seq_a, "-")
                 start_b, end_b = find_index_pair(seq_b, "-")
-                
 
                 overlap_coords = get_overlap(start_a, end_a, start_b, end_b, 1)
                 if overlap_coords is None:
@@ -272,45 +344,42 @@ def do_merge(sequences):
 
                     seq_a = new_seq
 
-                    header_a = header_a+"&&"+header_b
+                    header_a = header_a + "&&" + header_b
                     merged_indices.add(j)
                     sequences[i] = (header_a, seq_a)
                     merge_occured = True
                 else:
-                    kmer_a = seq_a[overlap_coords[0]:overlap_coords[1]]
-                    kmer_b = seq_b[overlap_coords[0]:overlap_coords[1]]
+                    kmer_a = seq_a[overlap_coords[0] : overlap_coords[1]]
+                    kmer_b = seq_b[overlap_coords[0] : overlap_coords[1]]
 
                     if constrained_distance(kmer_a, kmer_b) == 0:
                         overlap_coord = overlap_coords[0]
                         if start_b >= start_a and end_b <= end_a:
                             new_seq = (
                                 seq_a[:overlap_coord]
-                                + seq_b[overlap_coord : end_b]
-                                + seq_a[end_b :]
+                                + seq_b[overlap_coord:end_b]
+                                + seq_a[end_b:]
                             )
                         elif start_a >= start_b and end_a <= end_b:
                             new_seq = (
                                 seq_b[:overlap_coord]
-                                + seq_a[overlap_coord : end_a]
-                                + seq_b[end_a :]
+                                + seq_a[overlap_coord:end_a]
+                                + seq_b[end_a:]
                             )
                         elif start_b >= start_a:
-                            new_seq = (
-                                seq_a[:overlap_coord] + seq_b[overlap_coord:]
-                            )
+                            new_seq = seq_a[:overlap_coord] + seq_b[overlap_coord:]
                         else:
-                            new_seq = (
-                                seq_b[:overlap_coord] + seq_a[overlap_coord:]
-                            )
-                    
+                            new_seq = seq_b[:overlap_coord] + seq_a[overlap_coord:]
+
                         seq_a = new_seq
 
-                        header_a = header_a+"&&"+header_b
+                        header_a = header_a + "&&" + header_b
                         merged_indices.add(j)
                         sequences[i] = (header_a, seq_a)
                         merge_occured = True
-                        
+
     return sequences
+
 
 def aln_function(
     gene,
@@ -324,6 +393,9 @@ def aln_function(
     do_cull,
     cull_percent,
 ):
+    """
+    Calls the alignment program, runs some additional logic on the result and returns the aligned sequences
+    """
     raw_fa_file = raw_path.joinpath(gene + ".fa")
     aln_file = aln_path.joinpath(gene + ".aln.fa")
     trimmed_path = trimmed_path.joinpath(gene + ".aln.fa")
@@ -348,17 +420,16 @@ def aln_function(
 
     if do_cull:
         aligned_result = cull(aligned_result, cull_percent)
-    
+
     duped_headers = set()
     seq_hashes = set()
     for header, seq in aligned_result:
         component = header.split(":")[0]
-        seq_hash = xxhash.xxh3_64(component+seq).hexdigest()
+        seq_hash = xxhash.xxh3_64(component + seq).hexdigest()
         if seq_hash in seq_hashes:
             duped_headers.add(header)
         else:
             seq_hashes.add(seq_hash)
-
 
     if duped_headers:
         aligned_result = [i for i in aligned_result if i[0] not in duped_headers]
@@ -366,7 +437,7 @@ def aln_function(
     aligned_result = [i for i in aligned_result if len(i[1]) != i[1].count("-")]
 
     aligned_result = do_merge(aligned_result)
-        
+
     writeFasta(trimmed_path, aligned_result, False)
     for header, seq in aligned_result:
         aligned_dict[header] = seq
@@ -381,6 +452,9 @@ def aln_function(
 
 
 def make_diamonddb(set: Sequence_Set, overwrite, threads):
+    """
+    Calls the diamond makedb function and returns the data to insert into the rocksdb.
+    """
     diamond_dir = Path(SETS_DIR, set.name, "diamond")
     diamond_dir.mkdir(exist_ok=True)
 
@@ -406,6 +480,9 @@ SETS_DIR = None
 
 
 def generate_subset(file_paths, taxon_to_kick: set):
+    """
+    Grabs alls sequences in a fasta file and inserts them into a subset.
+    """
     subset = Sequence_Set("subset")
     index = count()
 
@@ -444,10 +521,23 @@ def generate_subset(file_paths, taxon_to_kick: set):
 
             data = json.decode(data)
             taxon = data["organism_name"].replace(" ", "_")
-            if taxon.lower() not in taxon_to_kick and data["organism_name"].lower() not in taxon_to_kick:
+            if (
+                taxon.lower() not in taxon_to_kick
+                and data["organism_name"].lower() not in taxon_to_kick
+            ):
                 gene = data["pub_og_id"]
 
-                subset.add_sequence(Sequence(seq_record.description, header, seq, "", taxon, gene, next(index)))
+                subset.add_sequence(
+                    Sequence(
+                        seq_record.description,
+                        header,
+                        seq,
+                        "",
+                        taxon,
+                        gene,
+                        next(index),
+                    )
+                )
 
     return subset
 
@@ -511,6 +601,7 @@ def main(args):
     do_align = args.align or args.all
     do_count = args.count or args.all
     do_diamond = args.diamond or args.all
+    do_hmm = args.hmmer or args.all
     cull_percent = args.cull_percent
     do_cull = cull_percent != 0
     this_set = Sequence_Set(set_name)
@@ -569,7 +660,9 @@ def main(args):
             if taxon not in kick:
                 if nt_id in nt_data:
                     nt_seq = nt_data[nt_id]
-                this_set.add_sequence(Sequence(None, header, aa_seq, nt_seq, taxon, gene, id))
+                this_set.add_sequence(
+                    Sequence(None, header, aa_seq, nt_seq, taxon, gene, id)
+                )
     else:
         printv("Input Detected: Folder containing Fasta", verbosity)
         file_paths = []
@@ -606,7 +699,7 @@ def main(args):
             for taxon, tcount in counter.most_common():
                 fp.write(f"{taxon},{tcount}\n")
 
-    if do_align or do_cull:
+    if do_align or do_cull or do_hmm:
         with Pool(threads) as pool:
             printv("Generating aln", verbosity)
             generate_aln(
@@ -619,6 +712,9 @@ def main(args):
                 do_cull,
                 cull_percent,
             )
+
+    if do_hmm:
+        generate_hmm(this_set, overwrite, threads, verbosity, set_path)
 
     if do_diamond:
         printv("Making Diamond DB", verbosity)

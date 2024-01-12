@@ -12,6 +12,8 @@ Post-processing:
     10. Combine.
 """
 import argparse
+from shutil import which
+
 
 class CaseInsensitiveArgumentParser(argparse.ArgumentParser):
     def _parse_known_args(self, arg_strings, *args, **kwargs):
@@ -68,7 +70,7 @@ def prepare_args(par):
         "--chunk_size",
         default=500000,
         type=int,
-        help="Sequences per chunk in DB.",
+        help="Sequences per chunk in database.",
     )
     par.add_argument(
         "-k",
@@ -80,15 +82,22 @@ def prepare_args(par):
         "-ol",
         "--overlap_length",
         type=int,
-        default=0,
-        help="Amount of overlap between chomped segments"
+        default=250,
+        help="Amount of overlap between chomped segments",
     )
     par.add_argument(
         "-nr",
         "--no_rename",
         action="store_true",
         default=False,
-        help="Don't rename headers to NODE_#.",
+        help="Disables prepare from renaming headers.",
+    )
+    par.add_argument(
+        "-o",
+        "--out",
+        type=str,
+        default="datasets",
+        help="Output directory for processed inputs.",
     )
 
 
@@ -103,7 +112,7 @@ def prepare(args):
 def subcmd_diamond(subparsers):
     par = subparsers.add_parser(
         "Diamond",
-        help="To be written.",
+        help="Uses Diamond to blast AA sequences against the reference orthoset.",
     )
     par.add_argument(
         "INPUT",
@@ -122,15 +131,7 @@ def diamond_args(par):
         action="store_true",
         help="Overwrite existing files.",
     )
-    par.add_argument("-d", "--debug", action="store_true", help="Enable debug out.")
-
-    # Should be based on Taxa name. Check TODO.
-    par.add_argument(
-        "-strict",
-        "--strict-search-mode",
-        action="store_true",
-        help="Only allow sequences that hit on every present taxa.",
-    )
+    par.add_argument("-d", "--debug", action="store_true", help="Enable debug outputs.")
     par.add_argument(
         "-s",
         "--sensitivity",
@@ -149,7 +150,7 @@ def diamond_args(par):
         "-t",
         "--top",
         type=int,
-        default=10,
+        default=20,
         help="Diamond top percentage cull.",
     )
     par.add_argument(
@@ -157,7 +158,7 @@ def diamond_args(par):
         "--top-ref",
         type=float,
         default=0.025,
-        help="Dynamically adjusts %% of hits a reference is less than our top 5 and still a good ref.",
+        help="Extends the top 5 refs to include any ref with a count within this percentage of the top refs.",
     )
     par.add_argument(
         "-ip",
@@ -179,7 +180,7 @@ def diamond(args):
 def subcmd_reporter(subparsers):
     par = subparsers.add_parser(
         "reporter",
-        help="Trims mapped sequence to mapped region." "Produces aa and nt output.",
+        help="Trims mapped sequence to mapped region. Produces aa and nt output. TODO EXTEND",
     )
     par.add_argument(
         "INPUT",
@@ -217,7 +218,7 @@ def reporter_args(par):
         "--blosum_strictness",
         choices=["exact", "strict", "lax"],
         default="strict",
-        help="Trim distance mode.",
+        help="Pairwise edge trim strictness setting.",
     )
     par.add_argument(
         "-d",
@@ -227,13 +228,38 @@ def reporter_args(par):
         help="Enable debug",
     )
     par.add_argument(
-        "-clear",
-        "--clear_output",
-        action="store_false",
-        default=True,
-        help="Clear output folder before running.",
+        "-k",
+        "--keep_output",
+        action="store_true",
+        default=False,
+        help="Stops reporter from overwriting output.",
     )
 
+def subcmd_hmmsearch(subparsers):
+    par = subparsers.add_parser(
+        "Hmmsearch",
+        help="Blah blah",
+    )
+    par.add_argument("-d", "--debug", action="store_true", help="Enable debug outputs.")
+    par.add_argument(
+        "INPUT",
+        help="Path to directory of Input folder",
+        action="extend",
+        nargs="+",
+    )
+    par.add_argument(
+        "-ovw",
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing files.",
+    )
+    par.set_defaults(func=hmmsearch, formathelp=par.format_help)
+
+def hmmsearch(args):
+    from . import hmmsearch
+
+    if not hmmsearch.main(args):
+        print(args.formathelp())
 
 def reporter(args):
     from . import reporter
@@ -250,7 +276,7 @@ def reporter(args):
         args.blosum_strictness,
         args.minimum_bp,
         args.gene_list_file,
-        args.clear_output,
+        args.keep_output,
         args.gene_family_mapping,
     )
     if not reporter.main(mainargs):
@@ -266,6 +292,7 @@ def subcmd_outlier(subparsers):
     par.add_argument("INPUT", help="Path to taxa", action="extend", nargs="+")
     outlier_args(par)
     par.set_defaults(func=outlier, formathelp=par.format_help)
+
 
 def outlier_args(par):
     # Globally used args
@@ -285,13 +312,14 @@ def outlier_args(par):
     par.add_argument(
         "-t",
         "--threshold",
-        type=int,
-        default=50,
-        help="Greater than reference mean to be counted as an outlier. Default is 2x.",
+        type=float,
+        default=0.5,
+        help="Greater than reference mean to be counted as an outlier. Default is 50%%.",
     )
     par.add_argument(
         "--no-references",
         action="store_true",
+        default=False,
         help="Disable output of reference sequences",
     )
     par.add_argument(
@@ -364,20 +392,45 @@ def outlier_args(par):
         type=float,
         default=0.65,
     )
-    
-    # Excise commands
+    par.add_argument(
+        "-rmp",
+        "--rolling_matching_percent",
+        help="The percent the rolling window consensus has to match a read to pass",
+        type=float,
+        default=0.7,
+    )
+    par.add_argument(
+        "-rcp",
+        "--rolling_consensus_percent",
+        help="The consensus arg for generating the rolling window consensus sequence",
+        type=float,
+        default=0.5,
+    )
+    par.add_argument(
+        "-rws",
+        "--rolling_window_size",
+        help="Amount of bp to check at a time in the rolling window consensus",
+        type=int,
+        default=14,
+    )
+    par.add_argument(
+        "-tct",
+        "--true_cluster_threshold",
+        help="Largest distance between two reads to be considered in the same cluster",
+        type=int,
+        default=50,
+    )
     par.add_argument(
         "--no_excise",
         action="store_true",
         default=False,
-        help="Disable excise runs"
+        help="Disable excise runs",
     )
     par.add_argument(
         "-ct",
-        "--excise_consensus_threshold",
+        "--consensus",
         default=0.65,
         type=float,
-        dest="consensus",
         help="Threshold for selecting a consensus bp",
     )
     par.add_argument(
@@ -407,18 +460,12 @@ def outlier_args(par):
         default="datasets/bad",
         help="Percentage of loci containg bad regions to move",
     )
-    # par.add_argument("--debug", default=False, action="store_true",
-    #                     help="Log the truncated consensus sequence and the removed tail.")
     par.add_argument(
         "--cut",
         default=False,
         action="store_true",
         help="Remove any regions flagged by excise.",
     )
-    # Internal Commands
-    # par.add_argument(
-    #     "-sd", "--sub_directory", default="collapsed", help="Name of input subfolder"
-    # )
     par.add_argument(
         "-o", "--output", type=str, default="internal", help="Path to output directory"
     )
@@ -438,6 +485,8 @@ def outlier_args(par):
         dest="internal_distance_threshold",
         help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence.",
     )
+
+
 def outlier(argsobj):
     from . import outlier
 
@@ -509,8 +558,9 @@ def merge_args(par):
         "--majority_count",
         type=int,
         default=4,
-        help="Percentage for majority ruling.",
+        help="Minimum present candidates to trigger majority.",
     )
+
 
 def Merge(args):
     from . import merge
@@ -620,6 +670,7 @@ def subcmd_pal2nal(subparsers):
     )
     pal2nal_args(par)
     par.set_defaults(func=pal2nal, formathelp=par.format_help)
+
 
 def pal2nal_args(par):
     par.add_argument("-t", "--table", type=int, default=1, help="Table ID.")
@@ -793,10 +844,10 @@ def subcmd_finalize(subparsers):
     )
     par.add_argument(
         "-k",
-        "--kick_file",
+        "--kick",
         type=str,
-        default="TaxaKick.txt",
-        help="Percent",
+        default=None,
+        help="Kicks taxa listed in line seperated file.",
     )
     par.add_argument(
         "-t",
@@ -837,12 +888,6 @@ def subcmd_finalize(subparsers):
         "--count",
         action="store_true",
         help="Count taxa in each gene and output to csv file.",
-    )
-    par.add_argument(
-        "-kt",
-        "--kick_taxa",
-        action="store_true",
-        help="Kick taxa present in kick file provided.",
     )
     par.add_argument(
         "-p",
@@ -982,6 +1027,13 @@ def subcmd_makeref(sp):
     par.add_argument(
         "-d",
         "--diamond",
+        action="store_true",
+        help="Generate diamond database.",
+        default=False,
+    )
+    par.add_argument(
+        "-hmm",
+        "--hmmer",
         action="store_true",
         help="Generate diamond database.",
         default=False,
@@ -1128,7 +1180,7 @@ def subcmd_wrap_final(sp):
 
 
 def wrap_final(argsobj):
-    from . import combine, align, merge, pal2nal
+    from . import align, combine, merge, pal2nal
 
     print("Triggering Combine")
     if not combine.main(argsobj):
@@ -1156,7 +1208,7 @@ def wrap_final(argsobj):
 def subcmd_auto(subparsers):
     par = subparsers.add_parser(
         "auto",
-        help="Aligns AA sequences against existing reference alignment.",
+        help="Wrapper that allows for automatic processing of a dataset. Also allows the use of predefined configs, and the ability to start at any point within the pipeline.",
     )
     par.add_argument(
         "INPUT",
@@ -1164,11 +1216,34 @@ def subcmd_auto(subparsers):
         type=str,
     )
     par.add_argument(
+        "-in",
+        "--in_folder",
+        type=str,
+        default="datasets",
+        help="Folder to look for input in.",
+    )
+    par.add_argument(
         "-s",
         "--start",
         type=str,
         default="Prepare",
-        help="Step to start from. Default: Prepare",
+        choices=[
+            "Prepare",
+            "Diamond",
+            "Reporter",
+            "Align",
+            "Pal2nal",
+            "Flexcull",
+            "Outlier",
+            "Merge",
+        ],
+        help="Module to start from. Default: Prepare",
+    )
+    par.add_argument(
+        "--solo",
+        action="store_true",
+        default=False,
+        help="Skip trying to glob *.fa from the input directory.",
     )
     par.add_argument(
         "-c",
@@ -1187,6 +1262,7 @@ def auto(args):
         print()
         print(args.formathelp())
 
+
 def internal(argsobj):
     from . import internal
 
@@ -1194,14 +1270,12 @@ def internal(argsobj):
         print()
         print(argsobj.formathelp())
 
+
 def subcmd_internal(subparser):
     parser = subparser.add_parser(
         "internal", help="Filter sequences by distance to the consensus sequence"
     )
     parser.add_argument("INPUT", help="Paths of directories.", type=str)
-    # parser.add_argument(
-    #     "-sd", "--sub_directory", default="collapsed", help="Name of input subfolder"
-    # )
     parser.add_argument(
         "-nd",
         "--no_dupes",
@@ -1219,14 +1293,11 @@ def subcmd_internal(subparser):
     parser.add_argument(
         "-c",
         "--compress",
-        # default=False,
+        default=False,
         action="store_false",
         dest="uncompress_intermediates",
         help="Compress intermediate files",
     )
-    # parser.add_argument(
-    #     ""
-    # )
     parser.add_argument(
         "-o",
         "--output",
@@ -1252,7 +1323,29 @@ def subcmd_internal(subparser):
     )
     parser.set_defaults(func=internal, formathelp=parser.format_help)
 
+
 def main():
+    # Check mafft exists
+    if not which("mafft"):
+        raise FileNotFoundError(
+            "MAFFT binary not found in PATH. Verify installation or premissions."
+                                )
+    # Check clustalo exists
+    if not which("clustalo"):
+        raise FileNotFoundError(
+            "Clustalo binary not found in PATH. Verify installation or premissions."
+                                )
+    # Check diamond exists
+    if not which("diamond"):
+        raise FileNotFoundError(
+            "Diamond binary not found in PATH. Verify installation or premissions."
+                                )
+    # Check hmmsearch exist
+    if not which("hmmsearch"):
+        raise FileNotFoundError(
+            "Hmmsearch binary not found in PATH. Verify installation or premissions."
+                                )
+    
     parser = CaseInsensitiveArgumentParser(
         prog="sapphyre",
         # TODO write me
@@ -1313,6 +1406,7 @@ def main():
     # the subcommands will be displayed.
     subcmd_prepare(subparsers)
     subcmd_diamond(subparsers)
+    subcmd_hmmsearch(subparsers)
     subcmd_reporter(subparsers)
 
     subcmd_align(subparsers)

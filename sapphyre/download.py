@@ -4,8 +4,8 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from subprocess import PIPE, Popen
-import openpyxl
 
+import openpyxl
 import requests
 from bs4 import BeautifulSoup
 

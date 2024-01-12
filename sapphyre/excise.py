@@ -1,56 +1,42 @@
 from multiprocessing import Pool
-from os import path, mkdir, listdir
-from shutil import move
+from os import listdir, mkdir, path
 from pathlib import Path
-from phymmr_tools import dumb_consensus, convert_consensus, find_index_pair, dumb_consensus_dupe, get_overlap, is_same_kmer
-from wrap_rocks import RocksDB
+from shutil import move
 
 from msgspec import json
-from .utils import parseFasta, writeFasta, printv
+from phymmr_tools import (
+    convert_consensus,
+    dumb_consensus,
+    dumb_consensus_dupe,
+    find_index_pair,
+    get_overlap,
+    is_same_kmer,
+)
+from wrap_rocks import RocksDB
+
 from .timekeeper import KeeperMode, TimeKeeper
+from .utils import parseFasta, printv, writeFasta
 
 
 def min_aa_check(sequence: list, minimum: int) -> bool:
+    """
+    Checks if the given sequence has at least the minimum amount of data characters.
+    '-' and 'X' are not counted as data. All other characters are counted as data.
+    Given sequence must be ascii characters.
+    Returns the answer as a boolean.
+    If enough data is found, returns True. Otherwise, returns False.
+    """
     valid_count = len(sequence) - sequence.count("-") - sequence.count("X")
     return valid_count >= minimum
 
 
-def find_quesion_marks(sequences: list, start: int, stop: int) -> set:
-    def check_index(i: int):
-        for seq in sequences:
-            if seq[i] != "-":
-                return False
-        return True
-
-    output = set()
-    for i in range(start, stop):
-        if check_index(i):
-            output.add(i)
-    return output
-
-
-def replace_inner_gaps(seq: list, start, stop, question_marks) -> str:
-    # start = None
-    for i, bp in enumerate(seq[start:stop], start):
-        if i not in question_marks:
-            continue
-        if bp == "?":
-            if start is None:
-                start = i
-                continue
-            if start is not None:
-                if i - start >= 7:
-                    for index in range(start, i + 1):
-                        seq[index] = "-"
-                start = None
-    if start is not None:
-        if len(seq) - start >= 7:
-            for index in range(start, i + 1):
-                seq[index] = "-"
-    return seq
-
-
 def first_last_X(string: str) -> tuple:
+    """
+    Finds the first and last occurrence of 'X' in the given string.
+    If found, returns a tuple containing the slice indices [first, last).
+    First in inclusive, last is exclusive.
+    If no 'X' is found in the string, returns (None, None).
+    """
     first = None
     last = None
     for i, bp in enumerate(string):
@@ -66,82 +52,98 @@ def first_last_X(string: str) -> tuple:
     return first, last + 1
 
 
-def sensitive_check_bad_regions(consensus: str, limit: float, window=16) -> list:
-    # window = initial_window
-    # total = window
-    first, last = find_index_pair(consensus, "X")
-    if first is None or last is None:
-        return []
-    begin = None
-    output = []
-    for i in range(first, last, window):
-        ratio = consensus[i : i + window].count("X") / window
-        if ratio >= limit:
-            if begin is None:
-                begin = i
-        else:
-            if begin is not None:
-                # the new first is the old window end
-                a, b = first_last_X(consensus[begin:i])
-                output.append((a + begin, b + begin))
-                begin = None
-    if begin is not None:
-        a, b = first_last_X(consensus[begin:last])
-        if a is not None and b is not None:
-            output.append((a + begin, b + begin))
-
-    return output
-
-
 def find_coverage_regions(consensus: str, start: int, stop: int, ambiguous="?") -> list:
+    """
+    Searches a given string slice for non-ambiguous regions.
+    The slice is consensus[start:stop]. Start is inclusive, stop is exclusive.
+    Returns a list of tuples. Each tuple is the [start,stop) indices for a region.
+    """
     output = []
     last_seen_data = None
     for i, bp in enumerate(consensus[start:stop], start):
+        # if last_seen_data is unset, we are in an ambiguous region
+        # if it is set, we are in a data region
         if bp is not ambiguous:
+            # this is the first character in a non-ambiguous region
             if last_seen_data is None:  # start of data region
                 last_seen_data = i
         else:  # bp is ambiguous character
             if last_seen_data is not None:
+                # this means the function just transitioned from a data region to
+                # an ambiguous region, so output tuple and reset variables
                 output.append((last_seen_data, i))
             last_seen_data = None
+    # check if the string end in a non-ambiguous region
     if last_seen_data is not None:
         output.append((last_seen_data, stop))
     return output
 
 
 def check_bad_regions(
-    consensus: str, limit: float, initial_window=16, offset=0, rig=False
+    consensus: str, limit: float, initial_window=16, offset=0, _rig=False
 ) -> list:
-    if not rig:
+    """
+    Checks a consensus sequence for regions containing too many 'X' characters.
+
+    Iterates over the consensus using a sliding window.
+    If the required number of 'X' are found, expands the end of the window until
+    the ratio of X falls below the given threshold, then reduces the window to the
+    indices of the first and last 'X' to make the final result.
+
+    If the required number of 'X' are not found, the current window is dumped and the
+    exclusive ending index of the current window becomes the inclusive starting index of the
+    next window.
+
+    Consensus is the region of the consensus sequence to be searched.
+
+    Limit is a float between 0.0 and 1.0 that represents the minimum ratio of
+    X to all characters to flag a region.
+
+    Initial_window is an int that sets the starting length of the window.
+
+    Offset is the index of the first character to be searched. By passing this to
+    the function and adding it to the results, we can search an arbitrary slice of the
+    consensus sequence and return indices that are usable without modification.
+
+    Rig is a debugging flag which can be ignored by a regular user.
+    """
+    if not _rig:
         first, last = 0, len(consensus)
     else:
         first, last = find_index_pair(consensus, "X")
     if first is None or last is None:
         return []
-    l, r = first, first + initial_window
-    num_x = consensus[l:r].count("X")
+    left, right = first, first + initial_window
+    num_x = consensus[left:right].count("X")
     begin = None
     output = {}
 
-    while r <= last:
-        ratio = num_x / (r - l)
-        if ratio > limit:
-            if begin is None:
-                begin = l
-            if r == len(consensus):
+    while right <= last:
+        ratio = num_x / (right - left)
+        if ratio > limit:  # if ratio is above limit, this is a bad region
+            if begin is None:  # if begin is None, this is the start of a region
+                begin = left
+            if right == len(consensus):
+                # This break stops an index error. The region will still be
+                # caught by the last check in this function.
                 break
-            num_x += consensus[r] == "X"
-            r += 1
+            # increment the X count, then expand the window
+            # without this we have to recount all the characters in the window
+            num_x += consensus[right] == "X"
+            right += 1
             continue
-        if begin is not None:
-            a, b = first_last_X(consensus[begin:r+1])
+        # If the following block executes, it means the ratio of X is below the threshold.
+        if begin is not None:  # end of region, so make output
+            a, b = first_last_X(consensus[begin : right + 1])
             a, b = a + begin + offset, b + begin + offset
             if b not in output:
                 output[b] = (a, b)
-        l = r
-        r = l + initial_window
+        # since the current window is below the threshold, discard it and make a new one
+        left = right
+        right = left + initial_window
         begin = None
-        num_x = consensus[l:r].count("X")
+        num_x = consensus[left:right].count("X")
+    # this check catches bad regions at the end of the string
     if begin is not None:
         a, b = first_last_X(consensus[begin:last])
         a, b = a + begin + offset, b + begin + offset
@@ -155,7 +157,20 @@ def check_covered_bad_regions(
     consensus: str, limit: float, initial_window=16, ambiguous="?"
 ) -> list:
     """
-    Creates a list of covered indices, then checks those slices for bad regions
+    Creates a list of covered indices, then checks those slices for bad regions.
+
+    Ignores leading and trailing 'X'. Makes a list of
+    non-ambiguous slices, then checks each slice for bad regions.
+    Returns a list of all found bad regions.
+
+    Consensus is the entire consensus sequence.
+
+    Limit is a float between 0.0 and 1.0 that represents the minimum ratio of
+    X to all characters to flag a region.
+
+    Initial_window is an int that sets the starting length of the window.
+
+    Ambiguous is the character used for ambiguous locations. Defaults to '?'.
     """
     start, stop = find_index_pair(consensus, "X")
     bad_regions = []
@@ -236,6 +251,8 @@ def log_excised_consensus(
 
     raw_sequences = list(parseFasta(str(aa_in)))
     sequences = [x[1] for x in raw_sequences if x[0][-1] != "."]
+
+    # Make consensus sequence. Use dupe counts if available.
     if prepare_dupes and reporter_dupes:
         consensus_seq = make_duped_consensus(
             raw_sequences, prepare_dupes, reporter_dupes, consensus_threshold
@@ -243,10 +260,13 @@ def log_excised_consensus(
     else:
         consensus_seq = dumb_consensus(sequences, consensus_threshold)
     consensus_seq = convert_consensus(sequences, consensus_seq)
+
+    # Search for slices of the consensus seq with a high ratio of 'X' to total characters
     bad_regions = check_covered_bad_regions(consensus_seq, excise_threshold)
     kicked_headers = set()
     if cut:
         if bad_regions:
+            # log bad regions
             if len(bad_regions) == 1:
                 a, b = bad_regions[0]
                 if b - a != len(consensus_seq):
@@ -261,24 +281,33 @@ def log_excised_consensus(
                         log_output.append(f"{gene},{a}:{b},{consensus_seq}\n")
                     else:
                         log_output.append(f"{gene},{a}:{b}\n")
+
+            # make a list of locations that will be removed
             positions_to_cull = [i for a, b in bad_regions for i in range(a, b)]
 
             aa_output = []
             for header, sequence in raw_sequences:
-                if header[-1] == ".":
+                if header[-1] == ".":  # we don't want to alter reference sequences
                     aa_output.append((header, sequence))
                     continue
+                # remove locations from the sequence, then remake string.
                 sequence = list(sequence)
                 for i in positions_to_cull:
                     sequence[i] = "-"
 
                 sequence = "".join(sequence)
+
+                # if the sequence no longer has the minimum amount of data characters,
+                # kick the entire sequence instead of just excising parts of it
                 if not min_aa_check(sequence, 20):
                     kicked_headers.add(header)
                     continue
+
+                # sequence has enough data after the excision, so output it
                 aa_output.append((header, sequence))
             writeFasta(str(aa_out), aa_output, compress_intermediates)
 
+            # mirror the excisions in nt sequences
             nt_output = []
             for header, sequence in parseFasta(str(nt_in)):
                 if header[-1] == ".":
@@ -289,6 +318,7 @@ def log_excised_consensus(
                     continue
 
                 sequence = list(sequence)
+                # sets bad locations to '-' instead of removing them
                 for i in positions_to_cull:
                     sequence[i * 3 : i * 3 + 3] = ["-", "-", "-"]
                 sequence = "".join(sequence)
@@ -298,7 +328,7 @@ def log_excised_consensus(
             writeFasta(str(aa_out), raw_sequences, compress_intermediates)
             writeFasta(str(nt_out), parseFasta(str(nt_in)), compress_intermediates)
             if debug:
-                log_output += f"{gene},N/A,{consensus_seq}\n"
+                log_output.append(f"{gene},N/A,{consensus_seq}\n")
 
     return log_output, bad_regions != [], len(kicked_headers)
 
@@ -420,7 +450,8 @@ def main(args, override_cut, sub_dir):
     loci_containing_bad_regions = len([x[1] for x in results if x[1]])
     kicked_sequences = sum(x[2] for x in results if x[1])
     printv(
-        f"{input_folder}: {loci_containing_bad_regions} bad loci found. Kicked {kicked_sequences} sequences", args.verbose
+        f"{input_folder}: {loci_containing_bad_regions} bad loci found. Kicked {kicked_sequences} sequences",
+        args.verbose,
     )
 
     if args.debug:
@@ -429,6 +460,9 @@ def main(args, override_cut, sub_dir):
             f.write("".join(log_output))
 
     printv(f"Done! Took {timer.differential():.2f} seconds", args.verbose)
+    if len(genes) == 0:
+        printv("WARNING: No genes in output.", args.verbose, 0)
+        return True, True
     return True, loci_containing_bad_regions / len(genes) >= args.majority_excise
 
 

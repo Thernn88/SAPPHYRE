@@ -1,9 +1,11 @@
 import argparse
 import os
 from shutil import rmtree
+
 from . import blosum, collapser, excise, internal
+from .timekeeper import KeeperMode, TimeKeeper
 from .utils import printv
-from .timekeeper import TimeKeeper, KeeperMode
+
 
 def main(argsobj):
     timer = TimeKeeper(KeeperMode.DIRECT)
@@ -45,7 +47,9 @@ def main(argsobj):
 
             is_flagged = module_return_tuple[1]
             if is_flagged:
-                bad_folder = os.path.join(this_args.move_fails, os.path.basename(folder))
+                bad_folder = os.path.join(
+                    this_args.move_fails, os.path.basename(folder)
+                )
                 to_move.append((folder, bad_folder))
 
         printv("Simple Assembly To Ensure Consistency.", argsobj.verbose)
@@ -70,13 +74,11 @@ def main(argsobj):
         if not internal.main(this_args, True, from_folder):
             print()
             print(argsobj.format)
-    # if to_move:
-    #     printv("Moving Pre-flagged Folders.", argsobj.verbose)
 
-    #     excise.move_flagged(to_move, this_args.processes)
     printv(f"Took {timer.differential():.2f} seconds overall.", argsobj.verbose)
 
     return True
+
 
 if __name__ == "__main__":
     MSG = "Cannot be called directly, please use the module:\nsapphyre OutlierCheck"

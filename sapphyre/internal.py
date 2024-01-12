@@ -1,11 +1,16 @@
-from os import path
 from multiprocessing.pool import Pool
-
+from os import path
 from pathlib import Path
-from msgspec import Struct, json
 
-from phymmr_tools import constrained_distance, dumb_consensus, dumb_consensus_dupe, find_index_pair
+from msgspec import Struct, json
+from phymmr_tools import (
+    constrained_distance,
+    dumb_consensus,
+    dumb_consensus_dupe,
+    find_index_pair,
+)
 from wrap_rocks import RocksDB
+
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
 
@@ -22,6 +27,7 @@ class Record(Struct):
     def get_pair(self):
         return (self.id, self.seq)
 
+
 def folder_check(taxa_path: Path, debug: bool) -> None:
     """Create subfolders 'aa' and 'nt' to given path."""
     aa_folder = Path(taxa_path, "aa")
@@ -36,6 +42,11 @@ def folder_check(taxa_path: Path, debug: bool) -> None:
 
 
 def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_counts):
+    """
+    Pairs each record object with its dupe count from prepare and reporter databases.
+    Given dupe count dictionaries and a list of Record objects, makes tuples of the records
+    and their dupe counts. Returns the tuples in a list.
+    """
     output = []
     for rec in sequences:
         node = rec.id.split("|")[-2]
@@ -48,6 +59,9 @@ def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_co
 
 
 def load_dupes(folder):
+    """
+    Load dupe counts from prepare and reporter runs.
+    """
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
     if rocks_db_path.exists():
         rocksdb_db = RocksDB(str(rocks_db_path))
@@ -74,12 +88,14 @@ def get_data_path(gene: Path) -> list:
         if path.exists(excise_path):
             return [Record(header, seq) for header, seq in parseFasta(excise_path)]
 
-
-
     return [Record(header, seq) for header, seq in parseFasta(str(gene))]
 
 
 def has_candidates(records: list) -> bool:
+    """
+    Checks if there are any candidates in a list of sequences. If a candidate header is
+    found, returns True. Otherwise, returns False.
+    """
     for rec in records:
         if rec.id[-1] != ".":
             return True
@@ -94,41 +110,69 @@ def aa_internal(
     prepare_dupes,
     reporter_dupes,
 ):
+    """
+    Compares the candidate sequences to their consensus sequence. If the hamming distance between
+    a candidate and the consesnus seq is too high, kicks the candidate.
+    Returns a tuple containing a list of passing candidates, a set of failing seqs, and a list of
+    reference seqs.
+
+    Gene is the path to the input file.
+
+    Consensus threshold is a float between 0.0 and 1.0 that represents the minimum
+    ratio a character must reach to become the consensus character at that location.
+
+    Distance threshold is a float between 0.0 and 1.0 that represesnts the maximum allowable
+    ratio between hamming distance and the length of candidate data region.
+
+    No dupes is a flag that enables or disables use of dupe counts from prepare and reporter.
+
+    Prepare Dupes and Reporter Dupes are dictionaries that map node names to their duplicate counts.
+    """
     failing = set()
-    # raws = [Record(head, seq) for head, seq in parseFasta(gene)]
+
+    # load sequences from file
     raws = get_data_path(gene)
+
+    # split sequences into references and candidates
     candidates, references = [], []
     for record in raws:
         if record.id[-1] != ".":
             candidates.append(record)
         else:
             references.append(record)
-    # if not candidates:  # if no candidates are found, report to user
-    #     print(f"{gene}: No Candidate Sequences found in file. Returning.")
-        # return [], {}, []
-    # candidates = excise_data_replacement(candidates, gene)
+
+    # if no candidates found, return from function
     if not candidates:
-        return [], {}, references
+        return [], set(), references
+
+    # make consensus sequences, use dupe counts if available
     if no_dupes:
         consensus_func = dumb_consensus
         sequences = [rec.seq for rec in candidates]
     else:
         consensus_func = dumb_consensus_dupe
         sequences = bundle_seqs_and_dupes(candidates, prepare_dupes, reporter_dupes)
-        
+
     consensus = consensus_func(sequences, consensus_threshold)
+
+    # compare the hamming distance between each candidate and the appropriate slice of the consensus
+    # divides by length of the candidate's data region to adjust for length
     for i, candidate in enumerate(candidates):
         start, stop = find_index_pair(candidate.seq, "-")
-        distance = constrained_distance(consensus, candidate.seq) / (stop-start)
+        distance = constrained_distance(consensus, candidate.seq) / (stop - start)
+        # if the ratio of hamming_distance to length is too high, kick the candidate
         if distance >= distance_threshold:
-            # failing[candidate[0]] = candidate[1]
             failing.add(candidate.id)
             candidates[i] = None
+    # failed records are represented by None values, so filter them from candidates
     candidates = [cand for cand in candidates if cand is not None]
     return candidates, failing, references
 
 
 def mirror_nt(input_path, output_path, failing, gene, compression):
+    """
+    Mirrors aa kicks in the appropriate nt file.
+    """
     output_path = Path(output_path, gene)
     input_path = Path(input_path, gene)
     if not path.exists(input_path):
@@ -136,9 +180,14 @@ def mirror_nt(input_path, output_path, failing, gene, compression):
 
     records = get_data_path(input_path)
     records = [rec for rec in records if rec.id not in failing]
+    # if no candidates are left after the internal check, don't make an output file
     if not has_candidates(records):
         return
-    writeFasta(str(output_path), [rec.get_pair() for rec in records], compress=compression)
+    writeFasta(
+        str(output_path), [rec.get_pair() for rec in records], compress=compression
+    )
+
+
 def run_internal(
     gene: str,
     nt_input: str,
@@ -149,8 +198,12 @@ def run_internal(
     dupes,
     prepare_dupes,
     reporter_dupes,
-    decompress
+    decompress,
 ):
+    """
+    Given a gene, reads the aa file and compares the candidates to their consensus sequence.
+    If a candidate has too many locations that disagree with the consensus, kicks the sequence.
+    """
     compression = not decompress
     passing, failing, references = aa_internal(
         gene,
@@ -163,8 +216,18 @@ def run_internal(
     if not passing:  # if no eligible candidates, don't create the output file
         return
     aa_output = Path(output_path, "aa", gene.name)
-    writeFasta(str(aa_output), [rec.get_pair() for rec in references + passing], compress=compression)
-    mirror_nt(nt_input, nt_output_path, failing, aa_output.name.replace(".aa.", ".nt."), compression)
+    writeFasta(
+        str(aa_output),
+        [rec.get_pair() for rec in references + passing],
+        compress=compression,
+    )
+    mirror_nt(
+        nt_input,
+        nt_output_path,
+        failing,
+        aa_output.name.replace(".aa.", ".nt."),
+        compression,
+    )
 
 
 def main(args, after_collapser, from_folder):
@@ -203,6 +266,21 @@ def main(args, after_collapser, from_folder):
         file_inputs.sort(key=lambda x: x.stat().st_size, reverse=True)
         arguments = []
 
+        if not (0 < args.internal_consensus_threshold < 1.0):
+            if 0 < args.internal_consensus_threshold <= 100:
+                args.internal_consensus_threshold = args.internal_consensus_threshold / 100
+            else:
+                raise ValueError(
+                    "Cannot convert internal consensus threshold to a percent. Use a decimal or a whole number between 0 and 100"
+                )
+        if not (0 < args.internal_distance_threshold < 1.0):
+            if 0 < args.internal_distance_threshold <= 100:
+                args.internal_distance_threshold = args.internal_distance_threshold / 100
+            else:
+                raise ValueError(
+                    "Cannot convert internal distance threshold to a percent. Use a decimal or a whole number between 0 and 100"
+                )
+            
         for gene in file_inputs:
             gene_raw = gene.stem.split(".")[0]
             if not args.no_dupes:
@@ -216,12 +294,12 @@ def main(args, after_collapser, from_folder):
                     nt_input,
                     output_path,
                     nt_output_path,
-                    args.internal_consensus_threshold,
+                    args.internal_distance_threshold,
                     args.internal_distance_threshold,
                     args.no_dupes,
                     prepare_dupes,
                     reporter_dupes,
-                    args.uncompress_intermediates
+                    args.uncompress_intermediates,
                 ),
             )
         pool.starmap(run_internal, arguments, chunksize=1)

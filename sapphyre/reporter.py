@@ -1,23 +1,23 @@
 from __future__ import annotations
 
-from os import makedirs, path
-from shutil import rmtree
 from argparse import Namespace
 from collections import Counter, defaultdict, namedtuple
 from multiprocessing.pool import Pool
+from os import makedirs, path
+from shutil import rmtree
 from typing import TextIO
 
 from blosum import BLOSUM
-from parasail import profile_create_16, blosum62, nw_trace_scan_profile_16
-from xxhash import xxh3_64
-from Bio.Seq import Seq
 from msgspec import json
+from parasail import blosum62, nw_trace_scan_profile_16, profile_create_16
+from phymmr_tools import translate
 from wrap_rocks import RocksDB
+from xxhash import xxh3_64
 
 from . import rocky
 from .diamond import ReporterHit
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import printv, writeFasta
+from .utils import gettempdir, printv, writeFasta
 
 MainArgs = namedtuple(
     "MainArgs",
@@ -33,7 +33,7 @@ MainArgs = namedtuple(
         "blosum_strictness",
         "minimum_bp",
         "gene_list_file",
-        "clear_output",
+        "keep_output",
         "gene_family_mapping",
     ],
 )
@@ -76,7 +76,7 @@ class Hit(ReporterHit, frozen=True):
         MISMATCH_AMOUNT = 1
         GAP_PENALTY = 2
         EXTEND_PENALTY = 1
-        
+
         # Create blosum pairwise aligner profile
         profile = profile_create_16(this_aa, blosum62)
 
@@ -99,7 +99,7 @@ class Hit(ReporterHit, frozen=True):
                 EXTEND_PENALTY,
             )
 
-            # Get the aligned sequences
+            # Get the aligned sequence with the highest score
             this_aa, ref_seq = result.traceback.query, result.traceback.ref
             if result.score > best_alignment_score:
                 best_alignment = (this_aa, ref_seq)
@@ -107,7 +107,9 @@ class Hit(ReporterHit, frozen=True):
 
             this_aa_len = len(this_aa)
             if debug_fp:
-                debug_fp.write(f">ref_{number} = {result.score}\n{ref_seq}\n>aln\n{this_aa}\n")  # DEBUG
+                debug_fp.write(
+                    f">ref_{number} = {result.score}\n{ref_seq}\n>aln\n{this_aa}\n"
+                )
 
         if debug_fp:
             debug_fp.write("\n")
@@ -142,7 +144,7 @@ class Hit(ReporterHit, frozen=True):
                             break
 
                 if this_pass and l_exact_matches >= exact_match_amount:
-                    reg_start = (i - skip_l)
+                    reg_start = i - skip_l
                     break
 
             # Find which end position matches for 'matches' bases
@@ -174,7 +176,7 @@ class Hit(ReporterHit, frozen=True):
                             break
 
                 if this_pass and r_exact_matches >= exact_match_amount:
-                    reg_end = (this_aa_len - i - (1 + skip_r))
+                    reg_end = this_aa_len - i - (1 + skip_r)
                     break
             return reg_start, reg_end
 
@@ -195,12 +197,23 @@ def get_diamondhits(
     Returns:
         dict[str, list[Hit]]: Dictionary of gene to corresponding hits
     """
-    present_genes = rocks_hits_db.get("getall:presentgenes").split(",")
-    genes_to_process = list_of_wanted_genes or present_genes
+    present_genes = rocks_hits_db.get("getall:presentgenes")
+    if not present_genes:
+        printv("ERROR: No genes found in hits database", 0)
+        printv("Please make sure Diamond completed successfully", 0)
+        return None
+    genes_to_process = list_of_wanted_genes or present_genes.split(",")
 
     gene_based_results = []
     for gene in genes_to_process:
-        gene_based_results.append((gene,rocks_hits_db.get_bytes(f"gethits:{gene}")))
+        gene_result = rocks_hits_db.get_bytes(f"gethmmhits:{gene}")
+        if not gene_result:
+            printv(
+                f"WARNING: No hits found for {gene}. If you are using a gene list file this may be a non-issue",
+                0,
+            )
+            continue
+        gene_based_results.append((gene, gene_result))
 
     return gene_based_results
 
@@ -229,7 +242,10 @@ def get_toprefs(rocks_nt_db: RocksDB) -> list[str]:
     Returns:
         list: List of top references
     """
-    return rocks_nt_db.get("getall:valid_refs").split(","), rocks_nt_db.get("get:isassembly") == "True"
+    return (
+        rocks_nt_db.get("getall:valid_refs").split(","),
+        rocks_nt_db.get("get:isassembly") == "True",
+    )
 
 
 def translate_cdna(cdna_seq):
@@ -244,7 +260,7 @@ def translate_cdna(cdna_seq):
     if len(cdna_seq) % 3 != 0:
         printv("WARNING: NT Sequence length is not divisable by 3", 0)
 
-    return str(Seq(cdna_seq).translate())
+    return translate(cdna_seq)
 
 
 def get_core_sequences(
@@ -292,14 +308,7 @@ def print_core_sequences(
             if taxon not in top_refs:
                 continue
 
-        header = (
-            gene
-            + "|"
-            + taxon
-            + "|"
-            + taxa_id
-            + "|."
-        )
+        header = gene + "|" + taxon + "|" + taxa_id + "|."
         result.append((header, seq))
 
     return result
@@ -319,7 +328,7 @@ def print_unmerged_sequences(
     mat: dict,
     is_assembly: bool,
     exact_match_amount: int,
-    gfm_mode: bool,
+    gfm_mode: bool,,
 ) -> tuple[dict[str, list], list[tuple[str, str]], list[tuple[str, str]]]:
     """Returns a list of unique trimmed sequences for a given gene with formatted headers.
 
@@ -349,6 +358,7 @@ def print_unmerged_sequences(
     seq_mapped_already = {}
     exact_hit_mapped_already = set()
     dupes = defaultdict(list)
+    reporter_trims = {}
     for hit in hits:
         base_header = hit.node
         reference_frame = str(hit.frame)
@@ -378,15 +388,24 @@ def print_unmerged_sequences(
                 + "|"
                 + reference_frame
             )
+        db_query = base_header+"|"+reference_frame
 
         # Translate to AA
         nt_seq = hit.seq
         aa_seq = translate_cdna(nt_seq)
 
         # Trim to match reference
+        r_start = 0
         if not is_assembly and not gfm_mode:
             r_start, r_end = hit.get_bp_trim(
-                aa_seq, core_aa_seqs, trim_matches, is_positive_match, debug_fp, header, mat, exact_match_amount
+                aa_seq,
+                core_aa_seqs,
+                trim_matches,
+                is_positive_match,
+                debug_fp,
+                header,
+                mat,
+                exact_match_amount,
             )
             if r_start is None or r_end is None:
                 printv(f"WARNING: Trim kicked: {hit.node}|{hit.frame}", verbose, 2)
@@ -401,52 +420,57 @@ def print_unmerged_sequences(
 
             if debug_fp:
                 debug_fp.write(f">{header}\n{aa_seq}\n\n")
+        reporter_trims[db_query] = r_start
 
         # Check if new seq is over bp minimum
         data_after = len(aa_seq)
 
         if data_after >= minimum_bp:
-            # Hash the NT sequence and the AA sequence + base header
-            unique_hit = xxh3_64(base_header + aa_seq).hexdigest()
-            nt_seq_hash = xxh3_64(nt_seq).hexdigest()
-            # Filter and save NT dupes
-            if nt_seq_hash in seq_mapped_already:
-                mapped_to = seq_mapped_already[nt_seq_hash]
-                dupes.setdefault(mapped_to, []).append(base_header)
-                if dupe_debug_fp:
-                    dupe_debug_fp.write(
-                        f"{header}\n{nt_seq}\nis an nt dupe of\n{mapped_to}\n\n",
-                    )
-                continue
-            seq_mapped_already[nt_seq_hash] = base_header
+            unique_hit = None
+
+            if not is_assembly:
+                # Hash the NT sequence and the AA sequence + base header
+                unique_hit = xxh3_64(base_header + aa_seq).hexdigest()
+                nt_seq_hash = xxh3_64(nt_seq).hexdigest()
+                # Filter and save NT dupes
+                if nt_seq_hash in seq_mapped_already:
+                    mapped_to = seq_mapped_already[nt_seq_hash]
+                    dupes.setdefault(mapped_to, []).append(base_header)
+                    if dupe_debug_fp:
+                        dupe_debug_fp.write(
+                            f"{header}\n{nt_seq}\nis an nt dupe of\n{mapped_to}\n\n",
+                        )
+                    continue
+                seq_mapped_already[nt_seq_hash] = base_header
 
             # If the sequence is unique
-            if unique_hit not in exact_hit_mapped_already:
+            if is_assembly or unique_hit not in exact_hit_mapped_already:
                 # Remove subsequence dupes from same read
                 if base_header in base_header_mapped_already:
                     (
                         already_mapped_header,
                         already_mapped_sequence,
                     ) = base_header_mapped_already[base_header]
-
-                    if len(aa_seq) > len(already_mapped_sequence):
-                        if already_mapped_sequence in aa_seq:
-                            aa_result[header_maps_to_where[already_mapped_header]] = (
-                                header,
-                                aa_seq,
-                            )
-                            nt_result[header_maps_to_where[already_mapped_header]] = (
-                                header,
-                                nt_seq,
-                            )
-                            continue
-                    else:
-                        if aa_seq in already_mapped_sequence:
-                            if dupe_debug_fp:
-                                dupe_debug_fp.write(
-                                    f"{header}\n{aa_seq}\nis an aa dupe of\n{already_mapped_header}\n\n",
+                    # Dont kick if assembly
+                    if not is_assembly:
+                        if len(aa_seq) > len(already_mapped_sequence):
+                            if already_mapped_sequence in aa_seq:
+                                aa_result[header_maps_to_where[already_mapped_header]] = (
+                                    header,
+                                    aa_seq,
                                 )
-                            continue
+                                nt_result[header_maps_to_where[already_mapped_header]] = (
+                                    header,
+                                    nt_seq,
+                                )
+                                continue
+                        else:
+                            if aa_seq in already_mapped_sequence:
+                                if dupe_debug_fp:
+                                    dupe_debug_fp.write(
+                                        f"{header}\n{aa_seq}\nis an aa dupe of\n{already_mapped_header}\n\n",
+                                    )
+                                continue
 
                     if base_header in header_mapped_x_times:
                         # Make header unique
@@ -480,9 +504,10 @@ def print_unmerged_sequences(
                 else:
                     base_header_mapped_already[base_header] = header, aa_seq
 
+                # Save the index of the sequence output
                 header_maps_to_where[header] = len(
                     aa_result,
-                )  # Save the index of the sequence output
+                )
 
                 # Write unique sequence
                 aa_result.append((header, aa_seq))
@@ -491,7 +516,7 @@ def print_unmerged_sequences(
                 header_mapped_x_times.setdefault(base_header, 1)
                 exact_hit_mapped_already.add(unique_hit)
 
-    return dupes, aa_result, nt_result
+    return dupes, aa_result, nt_result, reporter_trims
 
 
 OutputArgs = namedtuple(
@@ -531,6 +556,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     t_gene_start = TimeKeeper(KeeperMode.DIRECT)
     printv(f"Doing output for: {oargs.gene}", oargs.verbose, 2)
 
+    # Get reference sequences
     core_sequences, core_sequences_nt = get_core_sequences(
         oargs.gene,
         rocky.get_rock("rocks_orthoset_db"),
@@ -541,16 +567,17 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     debug_alignments = None
     debug_dupes = None
     if oargs.debug:
-        makedirs(f"align_debug/{oargs.gene}", exist_ok=True)  # DEBUG
+        makedirs(f"align_debug/{oargs.gene}", exist_ok=True)
         debug_alignments = open(
             f"align_debug/{oargs.gene}/{oargs.taxa_id}.alignments",
             "w",
-        )  # DEBUG
+        )
         debug_alignments.write(
             f"GAP_PENALTY: 2\nEXTEND_PENALTY: 1\n",
-        )  # DEBUG
+        )
         debug_dupes = open(f"align_debug/{oargs.gene}/{oargs.taxa_id}.dupes", "w")
 
+    # Initialize blosum matrix and distance function
     mat = BLOSUM(62)
     if oargs.blosum_strictness == "exact":
 
@@ -566,11 +593,12 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
 
         def dist(bp_a, bp_b, mat):
             return mat[bp_a][bp_b] >= 0.0 and bp_a != "-" and bp_b != "-"
-        
 
-    this_hits = json.decode(oargs.list_of_hits, type = list[Hit])
+    # Unpack the hits
+    this_hits = json.decode(oargs.list_of_hits, type=list[Hit])
 
-    this_gene_dupes, aa_output, nt_output = print_unmerged_sequences(
+    # Trim and save the sequences
+    this_gene_dupes, aa_output, nt_output, reporter_trims = print_unmerged_sequences(
         this_hits,
         oargs.gene,
         oargs.taxa_id,
@@ -584,21 +612,19 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         mat,
         oargs.is_assembly,
         oargs.EXACT_MATCH_AMOUNT,
-        oargs.gfm_mode,
+        oargs.gfm_mode,,
     )
     if debug_alignments:
         debug_alignments.close()
         debug_dupes.close()
     if aa_output:
+        # If valid sequences were found, insert the present references
         aa_core_sequences = print_core_sequences(
             oargs.gene,
             core_sequences,
             oargs.target_taxon,
             oargs.top_refs,
         )
-        writeFasta(this_aa_path, aa_core_sequences + aa_output, oargs.compress)
-
-        this_nt_path = path.join(oargs.nt_out_path, oargs.gene + ".nt.fa")
 
         nt_core_sequences = print_core_sequences(
             oargs.gene,
@@ -606,6 +632,10 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
             oargs.target_taxon,
             oargs.top_refs,
         )
+        # Write the output
+        writeFasta(this_aa_path, aa_core_sequences + aa_output, oargs.compress)
+
+        this_nt_path = path.join(oargs.nt_out_path, oargs.gene + ".nt.fa")
         writeFasta(this_nt_path, nt_core_sequences + nt_output, oargs.compress)
 
     printv(
@@ -613,7 +643,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.verbose,
         2,
     )
-    return oargs.gene, this_gene_dupes, len(aa_output)
+    return oargs.gene, this_gene_dupes, len(aa_output), reporter_trims
 
 
 def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: int):
@@ -632,17 +662,8 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
 
     num_threads = args.processes
-    if not isinstance(num_threads, int) or num_threads < 1:
-        num_threads = 1
 
-    if path.exists("/run/shm"):
-        tmp_path = "/run/shm"
-    elif path.exists("/dev/shm"):
-        tmp_path = "/dev/shm"
-    else:
-        tmp_path = taxa_path.join(taxa_path, "tmp")
-        makedirs(tmp_path, exist_ok=True)
-
+    # Grab gene list file if present
     if args.gene_list_file:
         with open(args.gene_list_file) as fp:
             list_of_wanted_genes = fp.read().split("\n")
@@ -655,7 +676,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     aa_out_path = path.join(taxa_path, aa_out)
     nt_out_path = path.join(taxa_path, nt_out)
 
-    if args.clear_output:
+    if not args.keep_output:
         if path.exists(aa_out_path):
             rmtree(aa_out_path)
         if path.exists(nt_out_path):
@@ -713,23 +734,28 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
         )
     if args.debug:
         makedirs("align_debug", exist_ok=True)
-    # this sorting the list so that the ones with the most hits are first
+
     if num_threads > 1:
         with Pool(num_threads) as pool:
             recovered = pool.starmap(trim_and_write, arguments, chunksize=1)
-
     else:
         recovered = [trim_and_write(i[0]) for i in arguments]
 
     final_count = 0
     this_gene_based_dupes = {}
+    this_gene_based_trims = {}
 
-    for gene, dupes, amount in recovered:
+    for gene, dupes, amount, trims in recovered:
         final_count += amount
         this_gene_based_dupes[gene] = dupes
+        this_gene_based_trims[gene] = trims
 
     key = "getall:reporter_dupes"
     data = json.encode(this_gene_based_dupes)
+    rocky.get_rock("rocks_nt_db").put_bytes(key, data)
+
+    key = "getall:reporter_trims"
+    data = json.encode(this_gene_based_trims)
     rocky.get_rock("rocks_nt_db").put_bytes(key, data)
 
     printv(
