@@ -75,6 +75,7 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, d
     parents = {}
     children = {}
     node_has_frames_already = hits_have_frames_already.copy()
+    diamond_nodes = set()
     for hit in diamond_hits:
         unaligned_sequences = []
         raw_sequence = hit.seq
@@ -82,6 +83,7 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, d
         query = f"{hit.node}|{frame}"
         unaligned_sequences.append((query, raw_sequence))
         parents[query] = hit
+        diamond_nodes.add(hit.node)
 
         for shift_by in [1, 2]:
             shifted = shift(frame, shift_by)
@@ -114,7 +116,7 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, d
                 )
 
     if debug:
-        return "", [], []
+        return "", [], [], []
     data = {}
     with open(this_hmm_output) as f:
         for line in f:
@@ -134,6 +136,7 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, d
     output = []
     new_outs = []
     parents_done = set()
+    output_nodes = set()
     for query, result in data.items():
         
         if query in parents:
@@ -141,9 +144,11 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, d
             if not f"{hit.node}|{hit.frame}" in parents_done:
                 parents_done.add(f"{hit.node}|{hit.frame}")
                 output.append(hit)
+                output_nodes.add(hit.node)
 
         if query in children:
-            _, frame = query.split("|")
+            node, frame = query.split("|")
+            output_nodes.add(node)
             parent = children[query]
             
             sequence = nt_sequences[query]
@@ -155,8 +160,10 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, d
             clone = Hit(node=parent.node, frame=int(frame), qstart=hit.qstart, qend=hit.qend, gene=parent.gene, query=parent.query, uid=parent.uid, refs=parent.refs, seq=sequence[start: end])
             new_outs.append((f"{clone.gene}|{clone.node}|{clone.frame}"))
             output.append(clone)
+        
+    kicks = diamond_nodes.difference(output_nodes)
 
-    return gene, output, new_outs
+    return gene, output, new_outs, kicks
 
 def get_arg(transcripts_mapped_to, hmm_output_folder, hmm_location, overwrite, debug, verbose):
     for gene, transcript_hits in transcripts_mapped_to:
@@ -218,16 +225,22 @@ def do_folder(input_folder, args):
             all_hits = p.starmap(hmm_search, arguments)
 
     log = []
-    for gene, hits, logs in all_hits:
+    tkicks = ["Gene,Node"]
+    for gene, hits, logs, kicks in all_hits:
         if not gene:
             continue
         hits_db.put_bytes(f"gethmmhits:{gene}", json.encode(hits))
         log.extend(logs)
 
+        for kick in kicks:
+            tkicks.append(f"{gene},{kick}")
+
     del hits_db
 
-    with open(path.join(input_folder, "hmmsearch.log"), "w") as f:
+    with open(path.join(input_folder, "hmm_new_seq.log"), "w") as f:
         f.write("\n".join(log))
+    with open(path.join(input_folder, "hmm_filtered_seqs.log"), "w") as f:
+        f.write("\n".join(tkicks))
 
     printv(f"Done with {input_folder}. Took {tk.lap():.2f}s", args.verbose, 1)
     return True
