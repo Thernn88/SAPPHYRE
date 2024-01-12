@@ -328,7 +328,7 @@ def print_unmerged_sequences(
     mat: dict,
     is_assembly: bool,
     exact_match_amount: int,
-    gfm_mode: bool,,
+    gfm_mode: bool,
 ) -> tuple[dict[str, list], list[tuple[str, str]], list[tuple[str, str]]]:
     """Returns a list of unique trimmed sequences for a given gene with formatted headers.
 
@@ -612,7 +612,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         mat,
         oargs.is_assembly,
         oargs.EXACT_MATCH_AMOUNT,
-        oargs.gfm_mode,,
+        oargs.gfm_mode,
     )
     if debug_alignments:
         debug_alignments.close()
