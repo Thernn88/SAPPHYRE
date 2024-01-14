@@ -139,20 +139,35 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, d
         if query in parents:
             hit = parents[query]
             if not f"{hit.node}|{hit.frame}" in parents_done:
+                start, end = result
+                start = start * 3
+                end = end * 3
+
+                sequence = nt_sequences[query][start: end]
+
+                new_qstart = hit.qstart + start
+
+
                 parents_done.add(f"{hit.node}|{hit.frame}")
-                output.append(hit)
+                new_hit = Hit(node=hit.node, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=sequence)
+                output.append(new_hit)
 
         if query in children:
             _, frame = query.split("|")
             parent = children[query]
             
-            sequence = nt_sequences[query]
+            
 
             start, end = result
             start = start * 3
             end = end * 3
 
-            clone = Hit(node=parent.node, frame=int(frame), qstart=hit.qstart, qend=hit.qend, gene=parent.gene, query=parent.query, uid=parent.uid, refs=parent.refs, seq=sequence[start: end])
+            sequence = nt_sequences[query][start: end]
+
+            new_qstart = parent.qstart + start
+
+
+            clone = Hit(node=parent.node, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=parent.gene, query=parent.query, uid=parent.uid, refs=parent.refs, seq=sequence)
             new_outs.append((f"{clone.gene}|{clone.node}|{clone.frame}"))
             output.append(clone)
 
