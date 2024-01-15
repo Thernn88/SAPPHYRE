@@ -61,7 +61,7 @@ def shift(frame, by):
     return frame * coeff
 
 
-def hmm_search(gene, diamond_hits, nt_seqs, hmm_output_folder, hmm_location, overwrite, debug, verbose):
+def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, debug, verbose):
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     printv(f"Processing: {gene}", verbose, 2)
     aligned_sequences = []
@@ -77,10 +77,7 @@ def hmm_search(gene, diamond_hits, nt_seqs, hmm_output_folder, hmm_location, ove
     node_has_frames_already = hits_have_frames_already.copy()
     for hit in diamond_hits:
         unaligned_sequences = []
-        if hit.frame > 0:
-            raw_sequence = nt_seqs[hit.node]
-        else:
-            raw_sequence = bio_revcomp(nt_seqs[hit.node])
+        raw_sequence = hit.seq
         frame = hit.frame
         query = f"{hit.node}|{frame}"
         unaligned_sequences.append((query, raw_sequence))
@@ -143,13 +140,16 @@ def hmm_search(gene, diamond_hits, nt_seqs, hmm_output_folder, hmm_location, ove
             hit = parents[query]
             if not f"{hit.node}|{hit.frame}" in parents_done:
                 start, end = result
-                start = (start * 3)
-                end = (end * 3)
+                start = start * 3
+                end = end * 3
 
                 sequence = nt_sequences[query][start: end]
 
+                new_qstart = hit.qstart + start
+
+
                 parents_done.add(f"{hit.node}|{hit.frame}")
-                new_hit = Hit(node=hit.node, frame=int(frame), qstart=start, qend=start + len(sequence), gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=sequence)
+                new_hit = Hit(node=hit.node, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=sequence)
                 output.append(new_hit)
 
         if query in children:
@@ -164,21 +164,18 @@ def hmm_search(gene, diamond_hits, nt_seqs, hmm_output_folder, hmm_location, ove
 
             sequence = nt_sequences[query][start: end]
 
+            new_qstart = parent.qstart + start
 
-            clone = Hit(node=parent.node, frame=int(frame), qstart=start, qend=start + len(sequence), gene=parent.gene, query=parent.query, uid=parent.uid, refs=parent.refs, seq=sequence)
+
+            clone = Hit(node=parent.node, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=parent.gene, query=parent.query, uid=parent.uid, refs=parent.refs, seq=sequence)
             new_outs.append((f"{clone.gene}|{clone.node}|{clone.frame}"))
             output.append(clone)
 
     return gene, output, new_outs
 
-def get_arg(transcripts_mapped_to, hmm_output_folder, nt_seqs, hmm_location, overwrite, debug, verbose):
+def get_arg(transcripts_mapped_to, hmm_output_folder, hmm_location, overwrite, debug, verbose):
     for gene, transcript_hits in transcripts_mapped_to:
-        this_seqs = {}
-        for hit in transcript_hits:
-            if not hit.node in this_seqs:
-                this_seqs[hit.node] = nt_seqs[hit.node]
-
-        yield gene, transcript_hits, this_seqs, hmm_output_folder, hmm_location, overwrite, debug, verbose
+        yield gene, transcript_hits, hmm_output_folder, hmm_location, overwrite, debug, verbose
 
 
 def get_head_to_seq(nt_db, recipe):
@@ -213,10 +210,6 @@ def do_folder(input_folder, args):
         hits_db
     )
 
-    seq_db = RocksDB(path.join(input_folder, "rocksdb", "sequences", "nt"))
-    recipe = seq_db.get("getall:batches").split(",")
-    head_to_seq = get_head_to_seq(seq_db, recipe)
-
     hmm_output_folder = path.join(input_folder, "hmmsearch")
     
     if (args.debug or args.overwrite) and path.exists(hmm_output_folder):
@@ -226,7 +219,7 @@ def do_folder(input_folder, args):
 
     hmm_location = path.join(args.orthoset_input, args.orthoset, "hmms")
 
-    arguments = get_arg(transcripts_mapped_to, hmm_output_folder, head_to_seq, hmm_location, args.overwrite, args.debug, args.verbose)
+    arguments = get_arg(transcripts_mapped_to, hmm_output_folder, hmm_location, args.overwrite, args.debug, args.verbose)
 
     all_hits = []
 
