@@ -485,54 +485,6 @@ def find_ref_len(ref: str) -> int:
     return stop - start
 
 
-def cull_reference_outliers(reference_records: list) -> list:
-    """
-    Removes reference sequences which have an unusually large mean
-    blosum distance. Finds the constrained blosum distance between
-    each reference pull any reference with a mean 1.5x higher than
-    the group mean. Returns the remaining references in a list.
-    """
-    distances_by_index = defaultdict(list)
-    all_distances = []
-    indices = {i:find_index_pair(reference_records[i].raw, '-') for i in range(len(reference_records))}
-    # generate reference distances
-    for i, ref1 in enumerate(reference_records[:-1]):
-        start1, stop1 = indices[i]
-        for j, ref2 in enumerate(reference_records[i+1:],i+1):
-            start2, stop2 = indices[j]
-            start = max(start1, start2)
-            stop = min(stop1, stop2)
-            # avoid the occasional rust-nan result
-            if start >= stop:
-                distances_by_index[i].append(1)
-                distances_by_index[j].append(1)
-                continue
-            dist = blosum62_distance(ref1.raw[start:stop], ref2.raw[start:stop])
-            distances_by_index[i].append(dist)
-            distances_by_index[j].append(dist)
-            all_distances.append(dist)
-
-    total_mean = sum(all_distances) / len(all_distances)
-    ALLOWABLE_COEFFICENT = 2
-    allowable = max(total_mean * ALLOWABLE_COEFFICENT, 0.3)
-
-    # if a record's mean is too high, cull it
-    filtered = []
-    for index, distances in distances_by_index.items():
-        mean = sum(distances) / len(distances)
-        if mean > allowable:
-            distances_by_index[index] = None
-            filtered.append( (reference_records[index], mean) )
-        # else:
-        #     distances_by_index[index] = mean
-    # get all remaining records
-    output = [reference_records[i] for i in range(len(reference_records)) if distances_by_index[i] is not None]
-    return output, filtered, total_mean
-
-
-
-
-
 def main_process(
     args_input,
     nt_input,
@@ -588,13 +540,6 @@ def main_process(
         for ref in reference_records:
             regulars.append(ref.id)
             regulars.append(ref.raw)
-    # filter references with large average distance
-    reference_records, filtered_refs, total_mean = cull_reference_outliers(reference_records)
-    if filtered_refs:
-        with open(ref_kick_path, "a") as ref_log:
-            ref_log.write(f'{filename} total mean: {total_mean}\n')
-            for ref_kick, ref_mean in filtered_refs:
-                ref_log.write(f'{ref_kick.id[1:]},{ref_mean}\n')
 
     raw_regulars, passing, failing = compare_means(
         reference_records,

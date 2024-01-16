@@ -20,6 +20,7 @@ from phymmr_tools import (
     join_triplets_with_exclusions,
     join_with_exclusions,
     bio_revcomp,
+    blosum62_distance,
 )
 from wrap_rocks import RocksDB
 from Bio.Seq import Seq
@@ -951,6 +952,51 @@ def align_to_aa_order(nt_out, aa_content):
         yield (header, nt_out[header])
 
 
+def cull_reference_outliers(reference_records: list) -> list:
+    """
+    Removes reference sequences which have an unusually large mean
+    blosum distance. Finds the constrained blosum distance between
+    each reference pull any reference with a mean 1.5x higher than
+    the group mean. Returns the remaining references in a list.
+    """
+    distances_by_index = defaultdict(list)
+    all_distances = []
+    indices = {i:find_index_pair(reference_records[i][1], '-') for i in range(len(reference_records))}
+    # generate reference distances
+    for i, ref1 in enumerate(reference_records[:-1]):
+        start1, stop1 = indices[i]
+        for j, ref2 in enumerate(reference_records[i+1:],i+1):
+            start2, stop2 = indices[j]
+            start = max(start1, start2)
+            stop = min(stop1, stop2)
+            # avoid the occasional rust-nan result
+            if start >= stop:
+                distances_by_index[i].append(1)
+                distances_by_index[j].append(1)
+                continue
+            dist = blosum62_distance(ref1[1][start:stop], ref2[1][start:stop])
+            distances_by_index[i].append(dist)
+            distances_by_index[j].append(dist)
+            all_distances.append(dist)
+
+    total_mean = sum(all_distances) / len(all_distances)
+    ALLOWABLE_COEFFICENT = 2
+    allowable = max(total_mean * ALLOWABLE_COEFFICENT, 0.3)
+
+    # if a record's mean is too high, cull it
+    filtered = []
+    for index, distances in distances_by_index.items():
+        mean = sum(distances) / len(distances)
+        if mean > allowable:
+            distances_by_index[index] = None
+            filtered.append( (reference_records[index], mean) )
+        # else:
+        #     distances_by_index[index] = mean
+    # get all remaining records
+    output = [reference_records[i] for i in range(len(reference_records)) if distances_by_index[i] is not None]
+    return output, filtered, total_mean
+
+
 def do_gene(fargs: FlexcullArgs) -> None:
     """FlexCull main function. Culls input aa and nt using specified amount of matches."""
     warnings.filterwarnings("ignore", category=BiopythonWarning)
@@ -960,6 +1006,13 @@ def do_gene(fargs: FlexcullArgs) -> None:
     printv(f"Doing: {this_gene}", fargs.verbosity, 2)
 
     references, candidates = parse_fasta(gene_path)
+
+    references, filtered_refs, total_mean = cull_reference_outliers(references)
+    culled_references = []
+    if filtered_refs:
+        culled_references.append(f'{this_gene} total mean: {total_mean}\n')
+        for ref_kick, ref_mean in filtered_refs:
+            culled_references.append(f'{ref_kick[0]},{ref_mean}\n')
 
     (
         character_at_each_pos,
@@ -1261,7 +1314,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
             writeFasta(nt_out_path, out_nt, fargs.compress)
 
-    return log, extensions
+    return log, extensions, culled_references
 
 
 def get_head_to_seq(nt_db, recipe):
@@ -1387,9 +1440,11 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
 
     if args.debug:
         log_global = []
+        ref_log_global = []
 
-        for component, _ in log_components:
+        for component, _, ref_kicks in log_components:
             log_global.extend(component)
+            ref_log_global.extend(ref_kicks)
 
         log_global.sort()
         log_global.insert(
@@ -1399,6 +1454,12 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
         log_out = path.join(output_path, "Culls.csv")
         with open(log_out, "w") as fp:
             fp.writelines(log_global)
+
+        ref_log_global.insert("Header,Mean\n", 0)
+
+        ref_log_out = path.join(output_path, "Reference_culls.csv")
+        with open(ref_log_out, "w") as fp:
+            fp.writelines(ref_log_global)
 
     # rocky.close_pointer("db")
 
