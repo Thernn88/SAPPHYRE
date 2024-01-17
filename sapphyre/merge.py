@@ -42,7 +42,6 @@ def parse_fasta(gene_path: str) -> tuple[list[tuple[str, str]], list[tuple[str, 
     references: list[tuple[str, str]] = []
     candidates: list[tuple[str, str]] = []
     end_of_references = False
-    print(gene_path)
     try:
         for header, sequence in parseFasta(gene_path):
             if end_of_references is False:
