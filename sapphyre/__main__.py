@@ -752,7 +752,7 @@ def flexcull_args(par):
     par.add_argument(
         "-d",
         "--debug",
-        action="store_true",
+        action="count",
         help="Enable debug. When enabled Output log of culls.",
     )
     par.add_argument(
