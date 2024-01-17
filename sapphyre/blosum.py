@@ -327,7 +327,10 @@ def compare_means(
                 candidate.mean_distance = nanmedian(candidate_distances)
                 candidate.iqr = IQR
                 candidate.upper_bound = upper_bound
-                if candidate.mean_distance <= upper_bound:
+                # a few seqs will score > 1.0 mean distance
+                # this means there is no possible relation, so kick
+                # leaving upper bounds > 1.0 intact so it shows up in the logs
+                if candidate.mean_distance <= 1.0 and candidate.mean_distance <= upper_bound:
                     candidate.grade = "Pass"
                     passing.append(candidate)
                 else:
