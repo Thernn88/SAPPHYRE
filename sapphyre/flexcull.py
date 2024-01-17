@@ -1455,7 +1455,7 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
         with open(log_out, "w") as fp:
             fp.writelines(log_global)
 
-        ref_log_global.insert("Header,Mean\n", 0)
+        ref_log_global.insert(0, "Header,Mean\n")
 
         ref_log_out = path.join(output_path, "Reference_culls.csv")
         with open(ref_log_out, "w") as fp:
