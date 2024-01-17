@@ -1014,6 +1014,10 @@ def do_gene(fargs: FlexcullArgs) -> None:
         for ref_kick, ref_mean in filtered_refs:
             culled_references.append(f'{ref_kick[0]},{ref_mean}\n')
 
+    if not references:
+        printv(f"No references for {this_gene} after cull", fargs.verbosity, 1)
+        return [], 0, culled_references
+
     (
         character_at_each_pos,
         gap_present_threshold,
