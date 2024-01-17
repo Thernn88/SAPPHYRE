@@ -512,20 +512,6 @@ def subcmd_Merge(subparsers):
 
 def merge_args(par):
     par.add_argument(
-        "-aa",
-        "--aa_input",
-        type=str,
-        default="outlier/excise/aa",
-        help="Path to directory of AA folder",
-    )
-    par.add_argument(
-        "-nt",
-        "--nt_input",
-        type=str,
-        default="outlier/excise/nt",
-        help="Path to directory of NT folder",
-    )
-    par.add_argument(
         "-d",
         "--debug",
         action="store_true",
@@ -1226,17 +1212,7 @@ def subcmd_auto(subparsers):
         "--start",
         type=str,
         default="Prepare",
-        choices=[
-            "Prepare",
-            "Diamond",
-            "Reporter",
-            "Align",
-            "Pal2nal",
-            "Flexcull",
-            "Outlier",
-            "Merge",
-        ],
-        help="Module to start from. Default: Prepare",
+        help="Module to start from.",
     )
     par.add_argument(
         "--solo",
