@@ -42,13 +42,9 @@ def parse_fasta(gene_path: str) -> tuple[list[tuple[str, str]], list[tuple[str, 
     references: list[tuple[str, str]] = []
     candidates: list[tuple[str, str]] = []
     end_of_references = False
-    real_gene_path = (
-        gene_path
-        if path.exists(gene_path)
-        else str(gene_path).replace("/excise/", "/collapsed/")
-    )
+    print(gene_path)
     try:
-        for header, sequence in parseFasta(real_gene_path):
+        for header, sequence in parseFasta(gene_path):
             if end_of_references is False:
                 # the reference header identifier is present in the header
                 if header[-1] == ".":
@@ -774,18 +770,19 @@ def do_folder(folder: Path, args):
         reporter_dupe_counts = {}
         ref_stats = []
 
-    if is_assembly_or_genome:
-        input_path = Path(str(folder).replace("/excise/", "/internal/"))
-    else:
-        input_path = folder
+    input_path = None
+    for subfolder in ["internal", "collapsed", "excise", "blosum"]:
+        if Path(folder, "outlier", subfolder).exists():
+            input_path = Path(str(folder), "outlier", subfolder)
+            break
 
-    aa_input = Path(input_path, args.aa_input)
-    nt_input = Path(input_path, args.nt_input)
-
-    if not path.exists(aa_input):
-        print(aa_input)
-        printv(f"WARNING: Can't find aa folder for taxa, {folder}", args.verbose, 0)
+    if not input_path or not path.exists(input_path):
+        print(input_path)
+        printv(f"WARNING: Can't find folder for taxa, {folder}", args.verbose, 0)
         return
+    
+    aa_input = Path(input_path, "aa")
+    nt_input = Path(input_path, "nt")
 
     target_genes = []
     for item in aa_input.iterdir():
