@@ -952,7 +952,7 @@ def align_to_aa_order(nt_out, aa_content):
         yield (header, nt_out[header])
 
 
-def cull_reference_outliers(reference_records: list) -> list:
+def cull_reference_outliers(reference_records: list, debug: int) -> list:
     """
     Removes reference sequences which have an unusually large mean
     blosum distance. Finds the constrained blosum distance between
@@ -962,6 +962,7 @@ def cull_reference_outliers(reference_records: list) -> list:
     distances_by_index = defaultdict(list)
     all_distances = []
     indices = {i:find_index_pair(reference_records[i][1], '-') for i in range(len(reference_records))}
+    filtered = []
     # generate reference distances
     for i, ref1 in enumerate(reference_records[:-1]):
         start1, stop1 = indices[i]
@@ -984,12 +985,14 @@ def cull_reference_outliers(reference_records: list) -> list:
     allowable = max(total_mean * ALLOWABLE_COEFFICENT, 0.3)
 
     # if a record's mean is too high, cull it
-    filtered = []
     for index, distances in distances_by_index.items():
         mean = sum(distances) / len(distances)
         if mean > allowable or mean > 1:
             distances_by_index[index] = None
-            filtered.append( (reference_records[index], mean) )
+            filtered.append( (reference_records[index], mean, "kicked") )
+        
+        if debug == 2:
+            filtered.append( (reference_records[index], mean, "") )
         # else:
         #     distances_by_index[index] = mean
     # get all remaining records
@@ -1007,12 +1010,12 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
     references, candidates = parse_fasta(gene_path)
 
-    references, filtered_refs, total_mean = cull_reference_outliers(references)
+    references, filtered_refs, total_mean = cull_reference_outliers(references, fargs.debug)
     culled_references = []
     if filtered_refs:
         culled_references.append(f'{this_gene} total mean: {total_mean}\n')
-        for ref_kick, ref_mean in filtered_refs:
-            culled_references.append(f'{ref_kick[0]},{ref_mean}\n')
+        for ref_kick, ref_mean, kick in filtered_refs:
+            culled_references.append(f'{ref_kick[0]},{ref_mean},{kick}\n')
 
     if not references:
         printv(f"No references for {this_gene} after cull", fargs.verbosity, 1)
