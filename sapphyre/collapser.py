@@ -884,7 +884,8 @@ def process_batch(
                     f.write(f">{node.contig_header()}{is_kick}\n{node.sequence}\n")
         else:
             aa_output = [pair for pair in aa_output if pair[0] not in kicked_headers]
-            writeFasta(aa_out, aa_output, batch_args.compress)
+            if aa_output:
+                writeFasta(aa_out, aa_output, batch_args.compress)
 
         # Align kicks to the NT
         nt_sequences = [
@@ -892,7 +893,8 @@ def process_batch(
             for header, sequence in parseFasta(nt_in)
             if header not in kicked_headers
         ]
-        writeFasta(nt_out, nt_sequences, batch_args.compress)
+        if nt_sequences:
+            writeFasta(nt_out, nt_sequences, batch_args.compress)
 
         count = len(kicked_headers)
         if args.debug:
