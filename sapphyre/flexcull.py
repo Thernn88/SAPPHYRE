@@ -987,7 +987,7 @@ def cull_reference_outliers(reference_records: list) -> list:
     filtered = []
     for index, distances in distances_by_index.items():
         mean = sum(distances) / len(distances)
-        if mean > allowable:
+        if mean > allowable or mean > 1:
             distances_by_index[index] = None
             filtered.append( (reference_records[index], mean) )
         # else:
