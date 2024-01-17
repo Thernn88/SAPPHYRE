@@ -285,6 +285,7 @@ def log_excised_consensus(
             # make a list of locations that will be removed
             positions_to_cull = [i for a, b in bad_regions for i in range(a, b)]
 
+            has_cand = False
             aa_output = []
             for header, sequence in raw_sequences:
                 if header[-1] == ".":  # we don't want to alter reference sequences
@@ -305,7 +306,9 @@ def log_excised_consensus(
 
                 # sequence has enough data after the excision, so output it
                 aa_output.append((header, sequence))
-            writeFasta(str(aa_out), aa_output, compress_intermediates)
+                has_cand = True
+            if has_cand:
+                writeFasta(str(aa_out), aa_output, compress_intermediates)
 
             # mirror the excisions in nt sequences
             nt_output = []
@@ -323,10 +326,12 @@ def log_excised_consensus(
                     sequence[i * 3 : i * 3 + 3] = ["-", "-", "-"]
                 sequence = "".join(sequence)
                 nt_output.append((header, sequence))
-            writeFasta(str(nt_out), nt_output, compress_intermediates)
+            if has_cand:
+                writeFasta(str(nt_out), nt_output, compress_intermediates)
         else:
-            writeFasta(str(aa_out), raw_sequences, compress_intermediates)
-            writeFasta(str(nt_out), parseFasta(str(nt_in)), compress_intermediates)
+            if raw_sequences:
+                writeFasta(str(aa_out), raw_sequences, compress_intermediates)
+                writeFasta(str(nt_out), parseFasta(str(nt_in)), compress_intermediates)
             if debug:
                 log_output.append(f"{gene},N/A,{consensus_seq}\n")
 
