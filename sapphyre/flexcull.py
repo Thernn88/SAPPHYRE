@@ -1213,7 +1213,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                         "-" * characters_till_end
                     )  # Add dashes till reached input distance
 
-                    out_line = "".join(out_seq)
+                    out_line = "".join(out_line)
                     out_line = join_triplets_with_exclusions(
                         out_line, positions_to_trim, this_column_cull
                     )
