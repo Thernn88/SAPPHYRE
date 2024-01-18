@@ -157,8 +157,8 @@ def diamond_args(par):
         "-tr",
         "--top-ref",
         type=float,
-        default=0.025,
-        help="Extends the top 5 refs to include any ref with a count within this percentage of the top refs.",
+        default=8,
+        help="How many references are sampled. We recommend lowering this number if you have a broadly sampled reference set with few closely related species.",
     )
     par.add_argument(
         "-ip",
