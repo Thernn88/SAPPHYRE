@@ -730,14 +730,12 @@ def run_process(args: Namespace, input_path: str) -> bool:
     pairwise_refs = set()
     top_targets = set()
     most_common = combined_count.most_common()
-    min_count = min(most_common[0:10], key=lambda x: x[1])[1]
-    target_count = min_count * (1 - args.top_ref)
+    target_count = min(most_common[0:args.top_ref], key=lambda x: x[1])[1]
+    #target_count = min_count * (1 - args.top_ref)
     for taxa, count in most_common:
         if count >= target_count:
             top_refs.add(taxa)
             top_targets.update(taxon_to_targets[taxa])
-        if count >= min_count:
-            pairwise_refs.add(taxa)
     target_has_hit = set(df["target"].unique())
     df = df[(df["target"].isin(top_targets))]
     headers = df["header"].unique()
