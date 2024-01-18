@@ -10,7 +10,7 @@ from os import listdir, makedirs, path
 from shutil import rmtree
 import warnings
 from Bio import BiopythonWarning
-from statistics import median
+from statistics import median, stdev
 from blosum import BLOSUM
 from msgspec import json
 from parasail import blosum62, nw_trace_scan_profile_16, profile_create_16
@@ -983,6 +983,7 @@ def cull_reference_outliers(reference_records: list, debug: int) -> list:
     total_median = median(all_distances)
     ALLOWABLE_COEFFICENT = 2
     allowable = max(total_median * ALLOWABLE_COEFFICENT, 0.3)
+    std = stdev(all_distances)
 
     # if a record's mean is too high, cull it
     for index, distances in distances_by_index.items():
@@ -997,7 +998,7 @@ def cull_reference_outliers(reference_records: list, debug: int) -> list:
         #     distances_by_index[index] = mean
     # get all remaining records
     output = [reference_records[i] for i in range(len(reference_records)) if distances_by_index[i] is not None]
-    return output, filtered, total_median, allowable
+    return output, filtered, total_median, allowable, std
 
 
 def do_gene(fargs: FlexcullArgs) -> None:
@@ -1010,11 +1011,13 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
     references, candidates = parse_fasta(gene_path)
 
-    references, filtered_refs, total_median, allowable = cull_reference_outliers(references, fargs.debug)
+    references, filtered_refs, total_median, allowable, std = cull_reference_outliers(references, fargs.debug)
     culled_references = []
     if filtered_refs:
         culled_references.append(f'{this_gene} total median: {total_median}\n')
         culled_references.append(f'{this_gene} threshold: {allowable}\n')
+        culled_references.append(f'{this_gene} standard deviation: {std}\n')
+        culled_references.append(f'{this_gene} median + 1 std: {total_median+std}\n')
         for ref_kick, ref_median, kick in filtered_refs:
             culled_references.append(f'{ref_kick[0]},{ref_median},{kick}\n')
 
