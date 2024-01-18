@@ -10,7 +10,7 @@ from os import listdir, makedirs, path
 from shutil import rmtree
 import warnings
 from Bio import BiopythonWarning
-
+from statistics import median
 from blosum import BLOSUM
 from msgspec import json
 from parasail import blosum62, nw_trace_scan_profile_16, profile_create_16
@@ -980,24 +980,24 @@ def cull_reference_outliers(reference_records: list, debug: int) -> list:
             distances_by_index[j].append(dist)
             all_distances.append(dist)
 
-    total_mean = sum(all_distances) / len(all_distances)
+    total_median = median(all_distances)
     ALLOWABLE_COEFFICENT = 2
-    allowable = max(total_mean * ALLOWABLE_COEFFICENT, 0.3)
+    allowable = max(total_median * ALLOWABLE_COEFFICENT, 0.3)
 
     # if a record's mean is too high, cull it
     for index, distances in distances_by_index.items():
-        mean = sum(distances) / len(distances)
-        if mean > allowable or mean > 1:
+        this_median = median(distances)
+        if this_median > allowable:# or mean > 1:
             distances_by_index[index] = None
-            filtered.append( (reference_records[index], mean, "kicked") )
+            filtered.append( (reference_records[index], this_median, "kicked") )
         
         if debug == 2:
-            filtered.append( (reference_records[index], mean, "") )
+            filtered.append( (reference_records[index], this_median, "") )
         # else:
         #     distances_by_index[index] = mean
     # get all remaining records
     output = [reference_records[i] for i in range(len(reference_records)) if distances_by_index[i] is not None]
-    return output, filtered, total_mean
+    return output, filtered, total_median, allowable
 
 
 def do_gene(fargs: FlexcullArgs) -> None:
@@ -1010,12 +1010,13 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
     references, candidates = parse_fasta(gene_path)
 
-    references, filtered_refs, total_mean = cull_reference_outliers(references, fargs.debug)
+    references, filtered_refs, total_median, allowable = cull_reference_outliers(references, fargs.debug)
     culled_references = []
     if filtered_refs:
-        culled_references.append(f'{this_gene} total mean: {total_mean}\n')
-        for ref_kick, ref_mean, kick in filtered_refs:
-            culled_references.append(f'{ref_kick[0]},{ref_mean},{kick}\n')
+        culled_references.append(f'{this_gene} total median: {total_median}\n')
+        culled_references.append(f'{this_gene} threshold: {allowable}\n')
+        for ref_kick, ref_median, kick in filtered_refs:
+            culled_references.append(f'{ref_kick[0]},{ref_median},{kick}\n')
 
     if not references:
         printv(f"No references for {this_gene} after cull", fargs.verbosity, 1)
@@ -1462,7 +1463,7 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
         with open(log_out, "w") as fp:
             fp.writelines(log_global)
 
-        ref_log_global.insert(0, "Header,Mean\n")
+        ref_log_global.insert(0, "Header,Median\n")
 
         ref_log_out = path.join(output_path, "Reference_culls.csv")
         with open(ref_log_out, "w") as fp:
