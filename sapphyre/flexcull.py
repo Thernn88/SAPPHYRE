@@ -25,7 +25,6 @@ from phymmr_tools import (
 from wrap_rocks import RocksDB
 from Bio.Seq import Seq
 
-from . import rocky
 from .diamond import ReporterHit as Hit
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
@@ -72,8 +71,6 @@ FlexcullArgs = namedtuple(
         "is_assembly_or_genome",
         "is_ncg",  # non coding gene
         "keep_codons",
-        # "reporter_trims",
-        # "sequences"
     ],
 )
 
@@ -1043,16 +1040,6 @@ def do_gene(fargs: FlexcullArgs) -> None:
     aa_out = references.copy()
     this_seqs = []
 
-    # db = rocky.get_rock("db")
-    # this_db_entry = json.decode(db.get(f"gethmmhits:{this_gene}"), type = list[Hit])
-    # diamond_hits = {}
-    # for entry in this_db_entry:
-    #     frame = str(entry.frame)
-    #     diamond_hits.setdefault(entry.node, {})[frame] =  entry.qstart
-
-    extensions = 0
-    nt_extension_align = {}
-
     for header, raw_sequence in candidates:
         sequence = list(raw_sequence)
 
@@ -1074,65 +1061,6 @@ def do_gene(fargs: FlexcullArgs) -> None:
             character_at_each_pos,
             gap_present_threshold,
         )
-
-        # If no cull occurs check to see if reporter over trimmed
-        if False:#(cull_start, cull_end) == find_index_pair(raw_sequence, "-"):
-            fields = header.split("|")
-            node = fields[3]
-            if node.count("_") > 1:
-                node = "NODE_"+node.split("_")[1]
-            frame = fields[4]
-
-            reporter_removed = fargs.reporter_trims[node+"|"+frame]
-
-            nt_seq = fargs.sequences[node]
-            diamond_query = diamond_hits[node][frame]
-            if int(frame) < 0:
-                nt_seq = bio_revcomp(nt_seq)
-
-            frame_offset = abs(int(frame))-1
-            nt_seq = nt_seq[frame_offset:]
-
-            
-            this_aa = str(Seq(nt_seq).translate())
-
-            #
-            start_offset = cull_start - int(((diamond_query - 1)/3) + (3 - (int(frame)-1))/3) - reporter_removed + 1
-            add_start = start_offset
-
-            aligned_aa = ("-" * add_start) + this_aa
-
-            insertions = get_internal_gaps(raw_sequence)
-            aligned_aa = insert_gaps(aligned_aa, insertions)
-            
-            extend_start, extend_end = find_index_pair(aligned_aa, "-")
-            _, raw_end = find_index_pair(raw_sequence, "-")
-            character_index = -1
-            if extend_end > raw_end:
-                this_extend = 0
-                
-                nt_seq = [nt_seq[i:i+3] for i in range(0, len(nt_seq), 3)]
-
-                nt_extension_align[header] = {}
-                for i in range(extend_start, len(aligned_aa)):
-                    if i >= len(raw_sequence):
-                        break
-                    if aligned_aa[i] != "-":
-                        character_index += 1
-                    else:
-                        continue
-
-                    if i < raw_end:
-                        continue
-
-                    if aligned_aa[i] not in character_at_each_pos[i]:
-                        break
-                    else:
-                        sequence[i] = aligned_aa[i]
-                        nt_extension_align[header][i * 3] = nt_seq[character_index]
-                        cull_end += 1
-                        this_extend += 1
-                extensions += this_extend
 
         # If cull didn't kick
         if not kick:
@@ -1285,14 +1213,6 @@ def do_gene(fargs: FlexcullArgs) -> None:
                         "-" * characters_till_end
                     )  # Add dashes till reached input distance
 
-                    this_extensions = nt_extension_align.get(header, {})
-                    out_seq = []
-                    for i in range(0, len(out_line), 3):
-                        if i in this_extensions:
-                            out_seq.append(this_extensions[i])
-                        else:
-                            out_seq.append(out_line[i : i + 3])
-
                     out_line = "".join(out_seq)
                     out_line = join_triplets_with_exclusions(
                         out_line, positions_to_trim, this_column_cull
@@ -1325,22 +1245,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
             writeFasta(nt_out_path, out_nt, fargs.compress)
 
-    return log, extensions, culled_references
-
-
-def get_head_to_seq(nt_db, recipe):
-    head_to_seq = {}
-    for i in recipe:
-        lines = nt_db.get_bytes(f"ntbatch:{i}").decode().split("\n")
-        head_to_seq.update(
-            {
-                lines[i][1:]: lines[i + 1]
-                for i in range(0, len(lines), 2)
-                if lines[i] != ""
-            },
-        )
-    
-    return head_to_seq
+    return log, culled_references
 
 
 def do_folder(folder, args: MainArgs, non_coding_gene: set):
@@ -1358,19 +1263,9 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
 
     nt_db_path = path.join(folder, "rocksdb", "sequences", "nt")
     nt_db = RocksDB(nt_db_path)
-    # this_trims = json.decode(nt_db.get(f"getall:reporter_trims"), type = dict[str, dict[str, int]])
-    # recipe = nt_db.get("getall:batches").split(',')
-    # this_db_sequences = get_head_to_seq(nt_db, recipe)
     dbis_assembly = nt_db.get("get:isassembly") == "True"
     dbis_genome = nt_db.get("get:isgenome") == "True"
     is_assembly_or_genome = dbis_assembly or dbis_genome
-
-    # hits_db_path = path.join(folder, "rocksdb", "hits")
-    # rocky.create_pointer(
-    #     "db",
-    #     hits_db_path,
-    # )
-
 
     folder_check(output_path)
     file_inputs = [
@@ -1403,12 +1298,6 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
 
     arguments = []
     for input_gene in file_inputs:
-        # gene_trims = this_trims[input_gene.split(".")[0]]
-        # this_sequences = {}
-        # for query in gene_trims.keys():
-        #     head, _ = query.split("|")
-        #     this_sequences[head] = this_db_sequences[head]
-
         arguments.append(
             (
                 FlexcullArgs(
@@ -1428,8 +1317,6 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
                     is_assembly_or_genome,
                     input_gene in non_coding_gene,
                     args.keep_codons,
-                    # gene_trims,
-                    # this_sequences,
                     
                 ),
             ),
@@ -1444,10 +1331,6 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
             )
             for arg in arguments
         ]
-
-    # total_extensions = sum([i[1] for i in log_components])
-    total_extensions = 0
-
 
     if args.debug:
         log_global = []
@@ -1471,11 +1354,8 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
         ref_log_out = path.join(output_path, "Reference_culls.csv")
         with open(ref_log_out, "w") as fp:
             fp.writelines(ref_log_global)
-
-    # rocky.close_pointer("db")
-
     printv(
-        f"Done! Took {folder_time.differential():.2f}s. Extended a total of {total_extensions} AA",
+        f"Done! Took {folder_time.differential():.2f}s.",
         args.verbose,
     )
 
