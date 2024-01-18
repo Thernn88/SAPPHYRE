@@ -99,7 +99,7 @@ def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
     return result
 
 
-def calculate_split(sequence_a: str, sequence_b: str, comparison_sequence: str) -> int:
+def calculate_split(sequence_a: str, sequence_b: str, comparison_sequences: dict) -> int:
     """Iterates over each position in the overlap range of sequence A and sequence B and
     creates a frankenstein sequence of sequence A + Sequence B joined at each
     position in the overlap.
@@ -116,20 +116,26 @@ def calculate_split(sequence_a: str, sequence_b: str, comparison_sequence: str) 
         pair_a[0], pair_a[1], pair_b[0], pair_b[1], 1
     )
 
-    sequence_a_overlap = list(islice(sequence_a, overlap_start, overlap_end + 1))
-    sequence_b_overlap = list(islice(sequence_b, overlap_start, overlap_end + 1))
-    comparison_overlap = comparison_sequence[overlap_start : overlap_end + 1]
+    base_score = 0
+    highest_scoring_pos = 0
 
-    seqs = [
-        ("".join(sequence_a_overlap[:i] + sequence_b_overlap[i:]), i)
-        for i in range(len(sequence_a_overlap) + 1)
-    ]
+    for i in range(overlap_start, overlap_end):
+        character = sequence_a[i]
+        if character in comparison_sequences[i]:
+            base_score += comparison_sequences[i].count(character)
+    highest_score = base_score
 
-    # Score splits using hamming distance and return the highest scoring split position
-    position = score_splits(comparison_overlap, seqs)
-
-    return position + overlap_start
-
+    for i in range(overlap_start, overlap_end):
+        character_a = sequence_a[i]
+        character_b = sequence_b[i]
+        if character_b in comparison_sequences[i]:
+            base_score -= comparison_sequences[i].count(character_b)
+        if character_a in comparison_sequences[i]:
+            base_score += comparison_sequences[i].count(character_a)
+        if base_score >= highest_score:
+            highest_score = base_score
+            highest_scoring_pos = i
+    return highest_scoring_pos
 
 def directory_check(target_output_path) -> str:
     """Creates necessary directories for merge output."""
@@ -230,12 +236,12 @@ def do_protein(
         return header.split("|")[1]
 
     # Grab all the reference sequences
-    comparison_sequences = {}
+    comparison_sequences = defaultdict(list)
     for header, sequence in references:
         gene_out.append((header, sequence))
         if protein == "aa":
-            taxon = header.split("|")[1]
-            comparison_sequences[taxon] = sequence
+            for i, let in enumerate(sequence):
+                comparison_sequences[i].append(let)
 
     # Grab all the candidate sequences and sort into taxa id based groups
     taxa_groups = {}
@@ -355,67 +361,6 @@ def do_protein(
                     # If there is more than one sequence at this current index
                     splits = amount_of_seqs_at_cursor - 1
 
-                    if protein == "aa":
-                        # Grab most occurring taxon
-                        if comparison_sequences:
-                            taxons_of_split = [
-                                get_ref(header)
-                                for header in headers_at_current_point
-                                if get_ref(header) in comparison_sequences
-                            ]
-
-                        comparison_taxa = None
-                        most_occuring = Counter(taxons_of_split).most_common(1)[0]
-                        if len(taxons_of_split) > 1 and most_occuring[1] > 1:
-                            comparison_taxa = most_occuring[0]
-                        elif len(taxons_of_split) == 1:
-                            comparison_taxa = taxons_of_split[0]
-                        else:
-                            if ref_stats:
-                                for reference in ref_stats:
-                                    if reference not in comparison_sequences:
-                                        continue
-                                    if taxons_of_split:
-                                        if reference in taxons_of_split:
-                                            comparison_taxa = reference
-                                            break
-                                    else:
-                                        comparison_taxa = reference
-                                        break
-                            else:
-                                if taxons_of_split:
-                                    comparison_taxa = (
-                                        most_occuring[0]
-                                        if most_occuring[1] != -1
-                                        else taxons_of_split[0]
-                                    )
-                                else:
-                                    headers_here = "".join(headers_at_current_point)
-                                    key = f"{data_start}{data_end}{headers_here}"
-                                    if key in quality_taxons_here:
-                                        comparison_taxa = quality_taxons_here[key]
-                                    else:
-                                        quality_taxons = []
-                                        for (
-                                            taxon,
-                                            sequence,
-                                        ) in comparison_sequences.items():
-                                            data_region = sequence[data_start:data_end]
-                                            data = len(data_region) - data_region.count(
-                                                "-",
-                                            )
-                                            quality_taxons.append((data, taxon))
-
-                                        comparison_taxa = max(
-                                            quality_taxons,
-                                            key=lambda x: x[0],
-                                        )[1]
-                                        quality_taxons_here[key] = comparison_taxa
-
-                        # Grab the reference sequence for the mode taxon
-                        if comparison_taxa:
-                            comparison_sequence = comparison_sequences[comparison_taxa]
-
                     next_character = sequences_dict[headers_at_current_point[0]][cursor]
 
                     # Iterate over each split if cursor is past calculated split
@@ -438,7 +383,7 @@ def do_protein(
                                 split_position = calculate_split(
                                     sequence_a,
                                     sequence_b,
-                                    comparison_sequence,
+                                    comparison_sequences,
                                 )
                                 already_calculated_splits[split_key] = split_position
 
