@@ -761,7 +761,7 @@ def cull_codons(
 
         if not cut_left and not cut_right:
             if gap_present_threshold[i]:
-                kick = True
+                kick = True, i
                 return out_line, positions_to_trim, kick
 
     return out_line, positions_to_trim, kick
@@ -1040,6 +1040,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
     )
 
     log = []
+    codon_log = []
 
     follow_through = {}
     offset = fargs.amt_matches - 1
@@ -1095,7 +1096,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                     follow_through[header] = True, 0, 0, []
 
                     if fargs.debug:
-                        log.append(gene + "," + header + ",Kicked,Codon in reference data column,0,\n")
+                        codon_log.append(f"{header},{kick[1]}\n")
                     continue
 
             # Join sequence and check bp after cull
@@ -1161,7 +1162,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
         # Remove empty columns from refs and candidates
         aa_out, aa_positions_to_keep = delete_empty_columns(aa_out + this_seqs, False)
         if len(aa_out) == len(references):
-            return log, 0  # Only refs
+            return log, culled_references, codon_log  # Only refs
 
         # Recalcuate position based tables
         post_references = [i for i in aa_out if i[0].endswith(".")]
@@ -1258,7 +1259,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
             writeFasta(nt_out_path, out_nt, fargs.compress)
 
-    return log, culled_references
+    return log, culled_references, codon_log
 
 
 def do_folder(folder, args: MainArgs, non_coding_gene: set):
@@ -1348,10 +1349,12 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
     if args.debug:
         log_global = []
         ref_log_global = []
+        codon_log_global = []
 
-        for component, ref_kicks in log_components:
+        for component, ref_kicks, codon_kicks in log_components:
             log_global.extend(component)
             ref_log_global.extend(ref_kicks)
+            codon_log_global.extend(codon_kicks)
 
         log_global.sort()
         log_global.insert(
@@ -1367,6 +1370,13 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
         ref_log_out = path.join(output_path, "Reference_culls.csv")
         with open(ref_log_out, "w") as fp:
             fp.writelines(ref_log_global)
+
+        codon_log_global.insert(0, "Header,Index\n")
+
+        codon_log_out = path.join(output_path, "Codon_culls.csv")
+        with open(codon_log_out, "w") as fp:
+            fp.writelines(codon_log_global)
+            
     printv(
         f"Done! Took {folder_time.differential():.2f}s.",
         args.verbose,
