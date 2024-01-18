@@ -981,9 +981,10 @@ def cull_reference_outliers(reference_records: list, debug: int) -> list:
             all_distances.append(dist)
 
     total_median = median(all_distances)
-    ALLOWABLE_COEFFICENT = 2
-    allowable = max(total_median * ALLOWABLE_COEFFICENT, 0.3)
+    # ALLOWABLE_COEFFICENT = 2
+    # allowable = max(total_median * ALLOWABLE_COEFFICENT, 0.3)
     std = stdev(all_distances)
+    allowable = total_median + std
 
     # if a record's mean is too high, cull it
     for index, distances in distances_by_index.items():
@@ -1017,7 +1018,6 @@ def do_gene(fargs: FlexcullArgs) -> None:
         culled_references.append(f'{this_gene} total median: {total_median}\n')
         culled_references.append(f'{this_gene} threshold: {allowable}\n')
         culled_references.append(f'{this_gene} standard deviation: {std}\n')
-        culled_references.append(f'{this_gene} median + 1 std: {total_median+std}\n')
         for ref_kick, ref_median, kick in filtered_refs:
             culled_references.append(f'{ref_kick[0]},{ref_median},{kick}\n')
 
