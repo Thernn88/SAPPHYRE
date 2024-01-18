@@ -660,7 +660,7 @@ def cull_codons(
         char = out_line[i]
         if char == "*":
             codons.append(i)
-
+    kick = False
     non_trimmed_codons = [c for c in codons if c * 3 not in positions_to_trim]
     while non_trimmed_codons:
         # Start from the middle
@@ -731,6 +731,7 @@ def cull_codons(
 
         # If the difference between the amount of data columns in the candidate and
         # the reference is less than 55%, cull the remainder side
+        cut_left, cut_right = False, False
         if (
             left_highest_consecutive < 30 and
             get_data_difference(
@@ -742,6 +743,7 @@ def cull_codons(
             for x in range(cull_start, i):
                 positions_to_trim.add(x * 3)
                 out_line[x] = "-"
+            cut_left = True
         if (
             right_highest_consecutive < 30 and
             get_data_difference(
@@ -753,10 +755,16 @@ def cull_codons(
             for x in range(i, cull_end):
                 positions_to_trim.add(x * 3)
                 out_line[x] = "-"
+            cut_right = True
 
         non_trimmed_codons.remove(i)
 
-    return out_line, positions_to_trim
+        if not cut_left and not cut_right:
+            if gap_present_threshold[i]:
+                kick = True
+                return out_line, positions_to_trim, kick
+
+    return out_line, positions_to_trim, kick
 
 
 def trim_large_gaps(
@@ -1073,7 +1081,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
             # If gene is not NCG and we don't want to keep codons, cull codons
             positions_to_trim = set()
             if not fargs.is_ncg and not fargs.keep_codons:
-                out_line, positions_to_trim = cull_codons(
+                out_line, positions_to_trim, kick = cull_codons(
                     out_line,
                     cull_start,
                     cull_end,
@@ -1083,6 +1091,12 @@ def do_gene(fargs: FlexcullArgs) -> None:
                     character_at_each_pos,
                     gap_present_threshold,
                 )
+                if kick:
+                    follow_through[header] = True, 0, 0, []
+
+                    if fargs.debug:
+                        log.append(gene + "," + header + ",Kicked,Codon in reference data column,0,\n")
+                    continue
 
             # Join sequence and check bp after cull
             out_line = "".join(out_line)
@@ -1223,7 +1237,6 @@ def do_gene(fargs: FlexcullArgs) -> None:
             out_nt = []
             for header, sequence in nt_out:
                 gap_cull = gap_pass_through.get(header, None)
-                out_seq = []
 
                 if gap_cull:
                     out_nt.append(
@@ -1336,7 +1349,7 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
         log_global = []
         ref_log_global = []
 
-        for component, _, ref_kicks in log_components:
+        for component, ref_kicks in log_components:
             log_global.extend(component)
             ref_log_global.extend(ref_kicks)
 
