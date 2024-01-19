@@ -118,7 +118,7 @@ def hmm_search(gene, diamond_hits, nt_seqs, hmm_output_folder, hmm_location, ove
 
     if debug:
         return "", [], []
-    data = {}
+    data = defaultdict(list)
     with open(this_hmm_output) as f:
         for line in f:
             if line.startswith("#"):
@@ -129,22 +129,22 @@ def hmm_search(gene, diamond_hits, nt_seqs, hmm_output_folder, hmm_location, ove
 
             query = line[0]
 
-            if query not in data:
-                start, end = int(line[17]), int(line[18])
+            start, end = int(line[17]), int(line[18])
 
-                data[query] = (start - 1, end)
+            data[query].append((start - 1, end))
 
     output = []
     new_outs = []
     parents_done = set()
-    for query, result in data.items():
+    for query, results in data.items():
         
         if query in parents:
             hit = parents[query]
             if not f"{hit.node}|{hit.frame}" in parents_done:
-                start, end = result
-                start = (start * 3)
-                end = (end * 3)
+                for result in results:
+                    start, end = result
+                    start = (start * 3)
+                    end = (end * 3)
 
                 sequence = nt_sequences[query][start: end]
 
@@ -155,14 +155,12 @@ def hmm_search(gene, diamond_hits, nt_seqs, hmm_output_folder, hmm_location, ove
         if query in children:
             _, frame = query.split("|")
             parent = children[query]
-            
-            
+            for result in results:
+                start, end = result
+                start = start * 3
+                end = end * 3
 
-            start, end = result
-            start = start * 3
-            end = end * 3
-
-            sequence = nt_sequences[query][start: end]
+                sequence = nt_sequences[query][start: end]
 
 
             clone = Hit(node=parent.node, frame=int(frame), qstart=start, qend=start + len(sequence), gene=parent.gene, query=parent.query, uid=parent.uid, refs=parent.refs, seq=sequence)
