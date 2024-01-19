@@ -214,7 +214,7 @@ def map_taxa_runs(
     formatted_taxa_out,
     secondary_directory,
     verbose,
-    overwrite,
+    clear_database,
     minimum_sequence_length,
     overlap_length,
     rename,
@@ -239,7 +239,7 @@ def map_taxa_runs(
     sequences_folder = rocksdb_path.joinpath(SEQUENCES_FOLDER_NAME)
     nt_db_path = sequences_folder.joinpath(NT_DB_NAME)
 
-    if overwrite and rocksdb_path.exists():
+    if clear_database and rocksdb_path.exists():
         printv("Clearing old database", verbose)
         rmtree(rocksdb_path)
 
@@ -371,7 +371,7 @@ def main(args):
             formatted_taxa_out,
             secondary_directory,
             args.verbose,
-            args.overwrite,
+            args.clear_database,
             minimum_sequence_length,
             args.overlap_length,
             not args.no_rename,

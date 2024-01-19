@@ -53,8 +53,8 @@ def subcmd_prepare(subparsers):
 
 def prepare_args(par):
     par.add_argument(
-        "-ovw",
-        "--overwrite",
+        "-clear",
+        "--clear_database",
         action="store_true",
         help="Overwrite existing rocksdb database.",
     )
@@ -240,22 +240,20 @@ def subcmd_hmmsearch(subparsers):
         "Hmmsearch",
         help="Blah blah",
     )
+    par.add_argument("-d", "--debug", action="store_true", help="Enable debug outputs.")
     par.add_argument(
         "INPUT",
         help="Path to directory of Input folder",
         action="extend",
         nargs="+",
     )
-    par.set_defaults(func=hmmsearch, formathelp=par.format_help)
-
-def hmmsearch_args(par):
-    par.add_argument("-d", "--debug", action="store_true", help="Enable debug outputs.")
     par.add_argument(
         "-ovw",
         "--overwrite",
         action="store_true",
         help="Overwrite existing files.",
     )
+    par.set_defaults(func=hmmsearch, formathelp=par.format_help)
 
 def hmmsearch(args):
     from . import hmmsearch
@@ -1209,7 +1207,6 @@ def subcmd_auto(subparsers):
         default="datasets",
         help="Folder to look for input in.",
     )
-    par.add_argument("-ovw", "--overwrite", action="store_true", help="Overwrite existing files.")
     par.add_argument(
         "-s",
         "--start",
