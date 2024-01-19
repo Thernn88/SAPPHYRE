@@ -246,6 +246,7 @@ def subcmd_hmmsearch(subparsers):
         action="extend",
         nargs="+",
     )
+    hmmsearch_args(par)
     par.set_defaults(func=hmmsearch, formathelp=par.format_help)
 
 def hmmsearch_args(par):
