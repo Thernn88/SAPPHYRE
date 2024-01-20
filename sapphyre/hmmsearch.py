@@ -151,7 +151,7 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, d
 
 
                     parents_done.add(f"{hit.node}|{hit.frame}")
-                    new_hit = Hit(node=hit.node, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=sequence)
+                    new_hit = Hit(node=hit.node, frame=hit.frame, qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=sequence)
                     output.append(new_hit)
 
         if query in children:
@@ -169,6 +169,7 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, d
 
                 clone = Hit(node=parent.node, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=parent.gene, query=parent.query, uid=parent.uid, refs=parent.refs, seq=sequence)
                 new_outs.append((f"{clone.gene},{clone.node},{clone.frame}"))
+                
                 output.append(clone)
 
     kick_log = []
