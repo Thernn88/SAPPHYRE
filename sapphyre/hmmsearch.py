@@ -101,17 +101,19 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, d
         
     hmm_file = path.join(hmm_location, f"{gene}.hmm")
     if debug or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
-        with NamedTemporaryFile(dir=gettempdir()) as aligned_files:
-            writeFasta(aligned_files.name, aligned_sequences)
-            aligned_files.flush()
             if debug:
+                this_hmm_in = path.join(hmm_output_folder, f"{gene}_input.fa")
+                writeFasta(this_hmm_in, aligned_sequences)
                 system(
-                f"hmmsearch -o {this_hmm_output} --domT 10.0 {hmm_file} {aligned_files.name} > /dev/null",
+                f"hmmsearch -o {this_hmm_output} --domT 10.0 {hmm_file} {this_hmm_in} > /dev/null",
                 )
             else:
-                system(
-                f"hmmsearch --domtblout {this_hmm_output} --domT 10.0 {hmm_file} {aligned_files.name} > /dev/null",
-                )
+                with NamedTemporaryFile(dir=gettempdir()) as aligned_files:
+                    writeFasta(aligned_files.name, aligned_sequences)
+                    aligned_files.flush()
+                    system(
+                    f"hmmsearch --domtblout {this_hmm_output} --domT 10.0 {hmm_file} {aligned_files.name} > /dev/null",
+                    )
 
     if debug:
         return "", [], []
@@ -166,10 +168,15 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, d
 
 
                 clone = Hit(node=parent.node, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=parent.gene, query=parent.query, uid=parent.uid, refs=parent.refs, seq=sequence)
-                new_outs.append((f"{clone.gene}|{clone.node}|{clone.frame}"))
+                new_outs.append((f"{clone.gene},{clone.node},{clone.frame}"))
                 output.append(clone)
 
-    return gene, output, new_outs
+    kick_log = []
+    for hit in diamond_hits:
+        if not f"{hit.node}|{hit.frame}" in parents_done:
+            kick_log.append(f"{hit.gene},{hit.node},{hit.frame}")
+
+    return gene, output, new_outs, kick_log
 
 def get_arg(transcripts_mapped_to, hmm_output_folder, hmm_location, overwrite, debug, verbose):
     for gene, transcript_hits in transcripts_mapped_to:
@@ -230,17 +237,21 @@ def do_folder(input_folder, args):
         with Pool(args.processes) as p:
             all_hits = p.starmap(hmm_search, arguments)
 
-    log = []
-    for gene, hits, logs in all_hits:
+    log = ["Gene,Node,Frame"]
+    klog = ["Gene,Node,Frame"]
+    for gene, hits, logs, klogs in all_hits:
         if not gene:
             continue
         hits_db.put_bytes(f"gethmmhits:{gene}", json.encode(hits))
         log.extend(logs)
+        klog.extend(klogs)
 
     del hits_db
 
-    with open(path.join(input_folder, "hmmsearch.log"), "w") as f:
+    with open(path.join(input_folder, "hmmsearch_new.log"), "w") as f:
         f.write("\n".join(log))
+    with open(path.join(input_folder, "hmmsearch_kick.log"), "w") as f:
+        f.write("\n".join(klog))
 
     printv(f"Done with {input_folder}. Took {tk.lap():.2f}s", args.verbose, 1)
     return True
