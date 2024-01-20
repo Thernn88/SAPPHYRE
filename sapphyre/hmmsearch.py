@@ -78,9 +78,10 @@ def hmm_search(gene, diamond_hits, nt_seqs, hmm_output_folder, hmm_location, ove
     for hit in diamond_hits:
         unaligned_sequences = []
         if hit.frame > 0:
-            raw_sequence = nt_seqs[hit.node]
+            raw_sequence = nt_seqs[hit.node][abs(int(hit.frame))-1:]
+            print(raw_sequence)
         else:
-            raw_sequence = bio_revcomp(nt_seqs[hit.node])
+            raw_sequence = bio_revcomp(nt_seqs[hit.node])[abs(int(hit.frame))-1:]
         frame = hit.frame
         query = f"{hit.node}|{frame}"
         unaligned_sequences.append((query, raw_sequence))
@@ -119,6 +120,7 @@ def hmm_search(gene, diamond_hits, nt_seqs, hmm_output_folder, hmm_location, ove
                     )
 
     if debug:
+        input()
         return "", [], []
     data = defaultdict(list)
     with open(this_hmm_output) as f:
