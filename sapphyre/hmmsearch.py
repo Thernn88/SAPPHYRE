@@ -79,7 +79,6 @@ def hmm_search(gene, diamond_hits, nt_seqs, hmm_output_folder, hmm_location, ove
         unaligned_sequences = []
         if hit.frame > 0:
             raw_sequence = nt_seqs[hit.node][abs(int(hit.frame))-1:]
-            print(raw_sequence)
         else:
             raw_sequence = bio_revcomp(nt_seqs[hit.node])[abs(int(hit.frame))-1:]
         frame = hit.frame
