@@ -296,8 +296,8 @@ def internal_filter(this_args: InternalArgs) -> tuple[set, list, int]:
                     log.append(
                         "".join(
                             [
-                                f"{this_args.gene}, {hit_b.uid}, {round(hit_b.score, 2)}, {hit_b.qstart}, ",
-                                f"{hit_b.qend} Internal kicked out by {this_args.gene}, {hit_a.uid}, ",
+                                f"{this_args.gene}, {hit_b.node}, {round(hit_b.score, 2)}, {hit_b.qstart}, ",
+                                f"{hit_b.qend} Internal kicked out by {this_args.gene}, {hit_a.node}, ",
                                 f"{round(hit_a.score, 2)}, {hit_a.qstart}, {hit_a.qend}, {round(percent, 3)}",
                             ],
                         )
