@@ -664,8 +664,6 @@ def report_overlaps(nodes, true_cluster_headers):
         else:
             not_true.append(node)
 
-    print(len(true), len(not_true))
-
     for node_2 in not_true:
         for node in true:
             overlap_coords = get_overlap(
