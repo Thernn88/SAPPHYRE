@@ -711,14 +711,14 @@ def flexcull_args(par):
         "-bs",
         "--blosum_strictness",
         choices=["exact", "strict", "lax"],
-        default="exact",
+        default="strict",
         help="Blosum strictness setting.",
     )
     par.add_argument(
         "-mm",
         "--mismatches",
         type=int,
-        default=1,
+        default=0,
         help="Amount mismatches allowed per trim.",
     )
     par.add_argument(
