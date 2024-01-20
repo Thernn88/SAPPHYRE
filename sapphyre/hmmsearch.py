@@ -149,11 +149,11 @@ def hmm_search(gene, diamond_hits, nt_seqs, hmm_output_folder, hmm_location, ove
                     start = (start * 3)
                     end = (end * 3)
 
-                sequence = nt_sequences[query][start: end]
+                    sequence = nt_sequences[query][start: end]
 
-                parents_done.add(f"{hit.node}|{hit.frame}")
-                new_hit = Hit(node=hit.node, frame=int(frame), qstart=start, qend=start + len(sequence), gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=sequence)
-                output.append(new_hit)
+                    parents_done.add(f"{hit.node}|{hit.frame}")
+                    new_hit = Hit(node=hit.node, frame=int(frame), qstart=start, qend=start + len(sequence), gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=sequence)
+                    output.append(new_hit)
 
         if query in children:
             _, frame = query.split("|")
