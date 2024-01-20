@@ -116,7 +116,7 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, d
                     )
 
     if debug:
-        return "", [], []
+        return "", [], [], []
     data = defaultdict(list)
     with open(this_hmm_output) as f:
         for line in f:
