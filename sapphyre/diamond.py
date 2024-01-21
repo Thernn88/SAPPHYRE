@@ -501,13 +501,13 @@ def get_head_to_seq(nt_db, recipe):
     return head_to_seq
 
 
-def top_reference_realign(orthoset_aln_path, top_targets, top_path, gene):
+def top_reference_realign(orthoset_aln_path, top_refs, target_to_taxon, top_path, gene):
     gene_path = path.join(orthoset_aln_path, gene+".aln.fa")
     out_path = path.join(top_path, gene+".aln.fa")
 
     out = []
     for header, seq in parseFasta(gene_path):
-        if header in top_targets: 
+        if target_to_taxon[header][1] in top_refs: 
             out.append((header, seq.replace("-", "")))
 
     if len(out) == 1:
@@ -757,7 +757,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
     top_refs = set()
     pairwise_refs = set()
     top_targets = set()
-    gene_top_refs = defaultdict(set)
     most_common = combined_count.most_common()
     target_count = min(most_common[0:args.top_ref], key=lambda x: x[1])[1]
     #target_count = min_count * (1 - args.top_ref)
@@ -765,10 +764,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
         if count >= target_count:
             top_refs.add(taxa)
             top_targets.update(taxon_to_targets[taxa])
-
-    for target in top_targets:
-        gene = target_to_gene[target]
-        gene_top_refs[gene].add(target)
 
     target_has_hit = set(df["target"].unique())
     df = df[(df["target"].isin(top_targets))]
@@ -1078,7 +1073,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         arguments = []
         for gene in present_genes:
             arguments.append(
-                (orthoset_aln_path, top_targets, top_path, gene)
+                (orthoset_aln_path, top_refs, target_to_taxon, top_path, gene)
             )
 
         if post_threads > 1:
