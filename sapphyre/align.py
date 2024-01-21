@@ -396,7 +396,7 @@ def create_subalignment(
     align_method: str,
     parent_tmpdir: str,
     file: str,
-    tmp_aln: NamedTemporaryFile,
+    tmp_aln: str,
     cluster_i: int,
     seq_count: int,
     debug: bool,
@@ -421,7 +421,7 @@ def create_subalignment(
     """
     if align_method == "frags":
         out_file = path.join(parent_tmpdir, f"aligned.fa")
-        command = f"mafft --anysymbol --quiet --jtt 1 --addfragments {file} --thread 1 {tmp_aln.name} > {out_file}"
+        command = f"mafft --anysymbol --quiet --jtt 1 --addfragments {file} --thread 1 {tmp_aln} > {out_file}"
 
         system(command)
 
@@ -435,12 +435,12 @@ def create_subalignment(
         is_profile = ""
 
     system(
-        f"clustalo --p1 {tmp_aln.name} --p2 {file} -o {out_file} --threads=1 --full {is_profile} --force",
+        f"clustalo --p1 {tmp_aln} --p2 {file} -o {out_file} --threads=1 --full {is_profile} --force",
     )
 
     if debug:
         print(
-            f"clustalo --p1 {tmp_aln.name} --p2 {file} -o {out_file} --threads=1 --full {is_profile} --force"
+            f"clustalo --p1 {tmp_aln} --p2 {file} -o {out_file} --threads=1 --full {is_profile} --force"
         )
         writeFasta(
             path.join(
@@ -756,15 +756,15 @@ def run_command(args: CmdArgs) -> None:
     references = []
     inserted = 0
     for header, sequence in final_sequences:
-        if header.endswith("."):
-            references.append((header, sequence))
+        if header in targets:
+            header = targets[header]
         else:
             header = trimmed_header_to_full[header[:127]]
-            if header in reinsertions:
-                for insertion_header in reinsertions[header]:
-                    inserted += 1
-                    to_write.append((insertion_header, sequence))
-            to_write.append((header, sequence))
+        if header in reinsertions:
+            for insertion_header in reinsertions[header]:
+                inserted += 1
+                to_write.append((insertion_header, sequence))
+        to_write.append((header, sequence))
 
     to_write.sort(key=lambda x: find_index_pair(x[1], "-"))
 
