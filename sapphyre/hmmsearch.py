@@ -102,7 +102,7 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location
     top_file = path.join(top_location, f"{gene}.aln.fa")
     if debug or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
         with NamedTemporaryFile(dir=gettempdir()) as hmm_temp_file:
-            system(f"hmmbuild '{hmm_temp_file.name}' '{top_file}'")
+            system(f"hmmbuild '{hmm_temp_file.name}' '{top_file}' > /dev/null")
 
             if debug:
                 this_hmm_in = path.join(hmm_output_folder, f"{gene}_input.fa")
