@@ -1080,7 +1080,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         arguments = []
         for gene in present_genes:
             arguments.append(
-                (orthoset_aln_path, gene_top_refs[gene], top_path, gene)
+                (orthoset_aln_path, top_targets, top_path, gene)
             )
 
         if post_threads > 1:
