@@ -4,7 +4,7 @@ from decimal import Decimal
 from itertools import combinations, count
 from math import ceil
 from multiprocessing.pool import Pool
-from os import makedirs, path, stat, system
+from os import makedirs, path, remove, stat, system
 from shutil import rmtree
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from time import time
@@ -501,16 +501,23 @@ def get_head_to_seq(nt_db, recipe):
     return head_to_seq
 
 
-def top_reference_realign(orthoset_aln_path, top_path, gene):
+def top_reference_realign(orthoset_aln_path, top_targets, top_path, gene):
     gene_path = path.join(orthoset_aln_path, gene+".aln.fa")
     out_path = path.join(top_path, gene+".aln.fa")
-    if path.exists(out_path) and stat(gene_path).st_size != 0:
-        return
+
     out = []
     for header, seq in parseFasta(gene_path):
-        out.append((header, seq.replace("-", "")))
+        if header in top_targets: 
+            out.append((header, seq.replace("-", "")))
 
-    with NamedTemporaryFile(dir=gettempdir()) as tmp_prealign:
+    if len(out) == 1:
+        writeFasta(out_path, out)
+        return
+    
+    if len(out) == len(list(parseFasta(out_path, True))):
+        return
+    
+    with NamedTemporaryFile(dir=gettempdir(), prefix=f"{gene}_") as tmp_prealign:
         tmp_prealign.write("\n".join([f">{i}\n{j}" for i, j in out]).encode())
         tmp_prealign.flush()
 
@@ -742,14 +749,17 @@ def run_process(args: Namespace, input_path: str) -> bool:
     target_counts = df["target"].value_counts()
     combined_count = Counter()
     taxon_to_targets = defaultdict(list)
+    target_to_gene = {}
     for target, count in target_counts.to_dict().items():
-        _, ref_taxa, _ = target_to_taxon[target]
+        gene, ref_taxa, _ = target_to_taxon[target]
         taxon_to_targets[ref_taxa].append(target)
+        target_to_gene[target] = gene
         combined_count[ref_taxa] += count
 
     top_refs = set()
     pairwise_refs = set()
     top_targets = set()
+    gene_top_refs = defaultdict(set)
     most_common = combined_count.most_common()
     target_count = min(most_common[0:args.top_ref], key=lambda x: x[1])[1]
     #target_count = min_count * (1 - args.top_ref)
@@ -757,6 +767,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
         if count >= target_count:
             top_refs.add(taxa)
             top_targets.update(taxon_to_targets[taxa])
+
+    for target in top_targets:
+        gene = target_to_gene[target]
+        gene_top_refs[gene].add(target)
+
     target_has_hit = set(df["target"].unique())
     df = df[(df["target"].isin(top_targets))]
     headers = df["header"].unique()
@@ -1065,7 +1080,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         arguments = []
         for gene in present_genes:
             arguments.append(
-                (orthoset_aln_path, top_path, gene)
+                (orthoset_aln_path, gene_top_refs[gene], top_path, gene)
             )
 
         if post_threads > 1:
@@ -1073,7 +1088,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
         else:
             for arg in arguments:
                 top_reference_realign(*arg)
-
         if post_threads > 1:
             pool.close()
             pool.terminate()
