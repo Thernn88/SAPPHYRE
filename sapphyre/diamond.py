@@ -4,7 +4,7 @@ from decimal import Decimal
 from itertools import combinations, count
 from math import ceil
 from multiprocessing.pool import Pool
-from os import makedirs, path, stat, system
+from os import makedirs, path, remove, stat, system
 from shutil import rmtree
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from time import time
@@ -17,7 +17,7 @@ from phymmr_tools import bio_revcomp, get_overlap
 from wrap_rocks import RocksDB
 
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import gettempdir, printv
+from .utils import gettempdir, parseFasta, printv, writeFasta
 
 
 class ReferenceHit(Struct, frozen=True):
@@ -501,6 +501,32 @@ def get_head_to_seq(nt_db, recipe):
     return head_to_seq
 
 
+def top_reference_realign(orthoset_aln_path, top_refs, target_to_taxon, top_path, gene):
+    gene_path = path.join(orthoset_aln_path, gene+".aln.fa")
+    out_path = path.join(top_path, gene+".aln.fa")
+
+    out = []
+    for header, seq in parseFasta(gene_path):
+        if target_to_taxon[header] in top_refs: 
+            out.append((header, seq.replace("-", "")))
+
+    if len(out) == 1:
+        writeFasta(out_path, out)
+        return
+    
+    # if path.exists(out_path):
+    #     if len(out) == len(list(parseFasta(out_path, True))):
+    #         return
+    
+    with NamedTemporaryFile(dir=gettempdir(), prefix=f"{gene}_") as tmp_prealign:
+        tmp_prealign.write("\n".join([f">{i}\n{j}" for i, j in out]).encode())
+        tmp_prealign.flush()
+
+        system(
+            f"clustalo -i '{tmp_prealign.name}' -o '{out_path}' --thread=1 --full --force"
+        )
+
+
 def run_process(args: Namespace, input_path: str) -> bool:
     """Run the main process on the input path.
 
@@ -721,9 +747,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
     target_counts = df["target"].value_counts()
     combined_count = Counter()
     taxon_to_targets = defaultdict(list)
+    target_to_gene = {}
     for target, count in target_counts.to_dict().items():
-        _, ref_taxa, _ = target_to_taxon[target]
+        gene, ref_taxa, _ = target_to_taxon[target]
         taxon_to_targets[ref_taxa].append(target)
+        target_to_gene[target] = gene
         combined_count[ref_taxa] += count
 
     top_refs = set()
@@ -736,6 +764,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
         if count >= target_count:
             top_refs.add(taxa)
             top_targets.update(taxon_to_targets[taxa])
+
+    gene_target_to_taxa = defaultdict(dict)
+    for target, (gene, taxa, _) in target_to_taxon.items():
+        gene_target_to_taxa[gene][target] = taxa
+
     target_has_hit = set(df["target"].unique())
     df = df[(df["target"].isin(top_targets))]
     headers = df["header"].unique()
@@ -983,9 +1016,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 output = pool.map(convert_and_cull, arguments)
             else:
                 output = [convert_and_cull(arg) for arg in arguments]
-        if post_threads > 1:
-            pool.close()
-            pool.terminate()
         passes = 0
         encoder = json.Encoder()
         for result in output:
@@ -1032,6 +1062,32 @@ def run_process(args: Namespace, input_path: str) -> bool:
             f"Wrote {passes} results after {multi_kicks+internal_kicks} kicks.",
             args.verbose,
         )
+        orthoset_aln_path = path.join(orthosets_dir, orthoset, "aln")
+        top_path = path.join(input_path, "top")
+
+        printv(
+            f"Writing top reference alignments",
+            args.verbose,
+        )
+
+        if path.exists(top_path):
+            rmtree(top_path)
+        makedirs(top_path, exist_ok=True)
+
+        arguments = []
+        for gene in present_genes:
+            arguments.append(
+                (orthoset_aln_path, top_refs, gene_target_to_taxa[gene], top_path, gene)
+            )
+
+        if post_threads > 1:
+            pool.starmap(top_reference_realign, arguments)
+        else:
+            for arg in arguments:
+                top_reference_realign(*arg)
+        if post_threads > 1:
+            pool.close()
+            pool.terminate()
 
         gene_dupe_count = defaultdict(dict)
         for gene, headers in dupe_divy_headers.items():
