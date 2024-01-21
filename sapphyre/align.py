@@ -284,6 +284,7 @@ CmdArgs = namedtuple(
         "debug",
         "align_method",
         "second_run",
+        "top_folder",
     ],
 )
 
@@ -395,7 +396,7 @@ def create_subalignment(
     align_method: str,
     parent_tmpdir: str,
     file: str,
-    tmp_aln: NamedTemporaryFile,
+    tmp_aln: str,
     cluster_i: int,
     seq_count: int,
     debug: bool,
@@ -420,7 +421,7 @@ def create_subalignment(
     """
     if align_method == "frags":
         out_file = path.join(parent_tmpdir, f"aligned.fa")
-        command = f"mafft --anysymbol --quiet --jtt 1 --addfragments {file} --thread 1 {tmp_aln.name} > {out_file}"
+        command = f"mafft --anysymbol --quiet --jtt 1 --addfragments {file} --thread 1 {tmp_aln} > {out_file}"
 
         system(command)
 
@@ -434,12 +435,12 @@ def create_subalignment(
         is_profile = ""
 
     system(
-        f"clustalo --p1 {tmp_aln.name} --p2 {file} -o {out_file} --threads=1 --full {is_profile} --force",
+        f"clustalo --p1 {tmp_aln} --p2 {file} -o {out_file} --threads=1 --full {is_profile} --force",
     )
 
     if debug:
         print(
-            f"clustalo --p1 {tmp_aln.name} --p2 {file} -o {out_file} --threads=1 --full {is_profile} --force"
+            f"clustalo --p1 {tmp_aln} --p2 {file} -o {out_file} --threads=1 --full {is_profile} --force"
         )
         writeFasta(
             path.join(
@@ -452,7 +453,7 @@ def create_subalignment(
     return []
 
 
-def get_insertions(parent_tmpdir: str) -> tuple[list, list, list]:
+def get_insertions(parent_tmpdir: str, target_dict, ref_path) -> tuple[list, list, list]:
     """
     Gets the insertion coords for each subalignment
 
@@ -467,18 +468,19 @@ def get_insertions(parent_tmpdir: str) -> tuple[list, list, list]:
 
     global_insertions = Counter()
 
-    for item in listdir(parent_tmpdir):
-        if item.startswith("References_"):
-            refs = list(parseFasta(path.join(parent_tmpdir, item), True))
-            continue
+    refs = []
+    for header, seq in parseFasta(ref_path, True):
+        if header in target_dict:
+            refs.append((target_dict[header], seq))
 
+    for item in listdir(parent_tmpdir):
         if not item.startswith("part_"):
             continue
 
         references = []
         this_seqs = []
         for header, seq in parseFasta(path.join(parent_tmpdir, item), True):
-            if header.endswith("."):
+            if "|" not in header or header.endswith("."):
                 references.append(seq)
                 continue
 
@@ -695,54 +697,58 @@ def run_command(args: CmdArgs) -> None:
                 args.verbose,
                 3,
             )  # Debug
-            with NamedTemporaryFile(
-                dir=parent_tmpdir, mode="w+", prefix="References_"
-            ) as tmp_aln:
-                generate_tmp_aln(
-                    aln_file,
-                    targets,
-                    tmp_aln,
+
+            # Grab target reference sequences
+            aln_path = path.join(args.top_folder, args.gene + ".aln.fa")
+
+            # with NamedTemporaryFile(
+            #     dir=parent_tmpdir, mode="w+", prefix="References_"
+            # ) as tmp_aln:
+            #     generate_tmp_aln(
+            #         aln_file,
+            #         targets,
+            #         tmp_aln,
+            #         parent_tmpdir,
+            #         debug,
+            #         this_intermediates,
+            #         args.align_method,
+            #     )
+
+            for i, (file, seq_count, cluster_i) in enumerate(aligned_ingredients):
+                printv(
+                    f"Creating reference subalignment {i+1} of {len(aligned_ingredients)}.",
+                    args.verbose,
+                    3,
+                )
+                # If frags we want to save the final_sequences from the aligned result
+                final_sequences = create_subalignment(
+                    args.align_method,
                     parent_tmpdir,
+                    file,
+                    aln_path,
+                    cluster_i,
+                    seq_count,
                     debug,
                     this_intermediates,
-                    args.align_method,
                 )
 
-                for i, (file, seq_count, cluster_i) in enumerate(aligned_ingredients):
-                    printv(
-                        f"Creating reference subalignment {i+1} of {len(aligned_ingredients)}.",
-                        args.verbose,
-                        3,
-                    )
-                    # If frags we want to save the final_sequences from the aligned result
-                    final_sequences = create_subalignment(
-                        args.align_method,
-                        parent_tmpdir,
-                        file,
-                        tmp_aln,
-                        cluster_i,
-                        seq_count,
-                        debug,
-                        this_intermediates,
-                    )
+            # Otherwise we want to do insertion logic
+            if args.align_method != "frags":
+                # Grab insertions in each subalignment
+                alignment_insertion_coords, subalignments, refs = get_insertions(
+                    parent_tmpdir, targets, aln_path
+                )
 
-                # Otherwise we want to do insertion logic
-                if args.align_method != "frags":
-                    # Grab insertions in each subalignment
-                    alignment_insertion_coords, subalignments, refs = get_insertions(
-                        parent_tmpdir
-                    )
+                # Insert into refs
+                final_refs = insert_refs(refs, alignment_insertion_coords)
 
-                    # Insert into refs
-                    final_refs = insert_refs(refs, alignment_insertion_coords)
+                # Insert into each subalignment
+                sequences = insert_sequences(
+                    subalignments, alignment_insertion_coords
+                )
 
-                    # Insert into each subalignment
-                    sequences = insert_sequences(
-                        subalignments, alignment_insertion_coords
-                    )
-
-                    # Consolidate output
-                    final_sequences = final_refs + sequences
+                # Consolidate output
+                final_sequences = final_refs + sequences
 
     merge_time = keeper.differential() - align_time - cluster_time
 
@@ -751,15 +757,23 @@ def run_command(args: CmdArgs) -> None:
     references = []
     inserted = 0
     for header, sequence in final_sequences:
-        if header.endswith("."):
-            references.append((header, sequence))
-        else:
+        if "|" not in header:
+            if header not in targets:
+                continue
+            
+            header = targets[header]
+        elif not header.endswith("."):
             header = trimmed_header_to_full[header[:127]]
-            if header in reinsertions:
-                for insertion_header in reinsertions[header]:
-                    inserted += 1
-                    to_write.append((insertion_header, sequence))
-            to_write.append((header, sequence))
+
+        if header.endswith('.'):
+            references.append((header, sequence))
+            continue
+
+        if header in reinsertions:
+            for insertion_header in reinsertions[header]:
+                inserted += 1
+                to_write.append((insertion_header, sequence))
+        to_write.append((header, sequence))
 
     to_write.sort(key=lambda x: find_index_pair(x[1], "-"))
 
@@ -803,6 +817,8 @@ def do_folder(folder, args):
 
     command = "clustalo -i {in_file} -o {out_file} --threads=1 --full"
 
+    top_folder = path.join(folder, "top")
+
     intermediates = "intermediates"
     if not path.exists(intermediates):
         mkdir(intermediates)
@@ -838,6 +854,7 @@ def do_folder(folder, args):
                         args.debug,
                         args.align_method.lower(),
                         args.second_run,
+                        top_folder,
                     ),
                 ),
             )
