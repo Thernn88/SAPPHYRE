@@ -470,7 +470,8 @@ def get_insertions(parent_tmpdir: str, target_dict, ref_path) -> tuple[list, lis
 
     refs = []
     for header, seq in parseFasta(ref_path, True):
-        refs.append((target_dict[header], seq))
+        if header in target_dict:
+            refs.append((target_dict[header], seq))
 
     for item in listdir(parent_tmpdir):
         if not item.startswith("part_"):
@@ -756,7 +757,10 @@ def run_command(args: CmdArgs) -> None:
     references = []
     inserted = 0
     for header, sequence in final_sequences:
-        if header in targets:
+        if "|" not in header:
+            if header not in targets:
+                continue
+            
             header = targets[header]
         elif not header.endswith("."):
             header = trimmed_header_to_full[header[:127]]
