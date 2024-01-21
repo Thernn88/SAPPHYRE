@@ -507,7 +507,7 @@ def top_reference_realign(orthoset_aln_path, top_refs, target_to_taxon, top_path
 
     out = []
     for header, seq in parseFasta(gene_path):
-        if target_to_taxon[header][1] in top_refs: 
+        if target_to_taxon[header] in top_refs: 
             out.append((header, seq.replace("-", "")))
 
     if len(out) == 1:
@@ -764,6 +764,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
         if count >= target_count:
             top_refs.add(taxa)
             top_targets.update(taxon_to_targets[taxa])
+
+    gene_target_to_taxa = defaultdict(dict)
+    for target, (gene, taxa, _) in target_to_taxon.items():
+        gene_target_to_taxa[gene][target] = taxa
 
     target_has_hit = set(df["target"].unique())
     df = df[(df["target"].isin(top_targets))]
@@ -1073,7 +1077,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         arguments = []
         for gene in present_genes:
             arguments.append(
-                (orthoset_aln_path, top_refs, target_to_taxon, top_path, gene)
+                (orthoset_aln_path, top_refs, gene_target_to_taxa[gene], top_path, gene)
             )
 
         if post_threads > 1:
