@@ -17,7 +17,7 @@ from phymmr_tools import bio_revcomp, get_overlap
 from wrap_rocks import RocksDB
 
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import gettempdir, printv
+from .utils import gettempdir, parseFasta, printv, writeFasta
 
 
 class ReferenceHit(Struct, frozen=True):
@@ -499,6 +499,27 @@ def get_head_to_seq(nt_db, recipe):
         )
 
     return head_to_seq
+
+
+def top_reference_realign(orthoset_aln_path, top_path, gene):
+    gene_path = path.join(orthoset_aln_path, gene+".aln.fa")
+    out_path = path.join(top_path, gene+".aln.fa")
+    if path.exists(out_path) and stat(gene_path).st_size != 0:
+        return
+    out = []
+    for header, seq in parseFasta(gene_path):
+        out.append((header, seq.replace("-", "")))
+
+    with NamedTemporaryFile(dir=gettempdir()) as tmp_prealign:
+        tmp_prealign.write("\n".join([f">{i}\n{j}" for i, j in out]).encode())
+        tmp_prealign.flush()
+
+        system(
+            f"clustalo -i '{tmp_prealign.name}' -o '{out_path}' --thread=1 --full --force"
+        )
+        # system(
+        #     f"mafft --localpair --quiet --thread 1 --anysymbol '{tmp_prealign.name}' > '{out_path}'"
+        # )
 
 
 def run_process(args: Namespace, input_path: str) -> bool:
@@ -983,9 +1004,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 output = pool.map(convert_and_cull, arguments)
             else:
                 output = [convert_and_cull(arg) for arg in arguments]
-        if post_threads > 1:
-            pool.close()
-            pool.terminate()
         passes = 0
         encoder = json.Encoder()
         for result in output:
@@ -1032,6 +1050,33 @@ def run_process(args: Namespace, input_path: str) -> bool:
             f"Wrote {passes} results after {multi_kicks+internal_kicks} kicks.",
             args.verbose,
         )
+        orthoset_aln_path = path.join(orthosets_dir, orthoset, "aln")
+        top_path = path.join(input_path, "top")
+
+        printv(
+            f"Writing top reference alignments",
+            args.verbose,
+        )
+
+        # if path.exists(top_path):
+        #     rmtree(top_path)
+        makedirs(top_path, exist_ok=True)
+
+        arguments = []
+        for gene in present_genes:
+            arguments.append(
+                (orthoset_aln_path, top_path, gene)
+            )
+
+        if post_threads > 1:
+            pool.starmap(top_reference_realign, arguments)
+        else:
+            for arg in arguments:
+                top_reference_realign(*arg)
+
+        if post_threads > 1:
+            pool.close()
+            pool.terminate()
 
         gene_dupe_count = defaultdict(dict)
         for gene, headers in dupe_divy_headers.items():

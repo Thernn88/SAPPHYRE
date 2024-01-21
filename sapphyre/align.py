@@ -284,6 +284,7 @@ CmdArgs = namedtuple(
         "debug",
         "align_method",
         "second_run",
+        "top_folder",
     ],
 )
 
@@ -695,54 +696,58 @@ def run_command(args: CmdArgs) -> None:
                 args.verbose,
                 3,
             )  # Debug
-            with NamedTemporaryFile(
-                dir=parent_tmpdir, mode="w+", prefix="References_"
-            ) as tmp_aln:
-                generate_tmp_aln(
-                    aln_file,
-                    targets,
-                    tmp_aln,
+
+            # Grab target reference sequences
+            aln_path = path.join(args.top_folder, args.gene + ".aln.fa")
+
+            # with NamedTemporaryFile(
+            #     dir=parent_tmpdir, mode="w+", prefix="References_"
+            # ) as tmp_aln:
+            #     generate_tmp_aln(
+            #         aln_file,
+            #         targets,
+            #         tmp_aln,
+            #         parent_tmpdir,
+            #         debug,
+            #         this_intermediates,
+            #         args.align_method,
+            #     )
+
+            for i, (file, seq_count, cluster_i) in enumerate(aligned_ingredients):
+                printv(
+                    f"Creating reference subalignment {i+1} of {len(aligned_ingredients)}.",
+                    args.verbose,
+                    3,
+                )
+                # If frags we want to save the final_sequences from the aligned result
+                final_sequences = create_subalignment(
+                    args.align_method,
                     parent_tmpdir,
+                    file,
+                    aln_path,
+                    cluster_i,
+                    seq_count,
                     debug,
                     this_intermediates,
-                    args.align_method,
                 )
 
-                for i, (file, seq_count, cluster_i) in enumerate(aligned_ingredients):
-                    printv(
-                        f"Creating reference subalignment {i+1} of {len(aligned_ingredients)}.",
-                        args.verbose,
-                        3,
-                    )
-                    # If frags we want to save the final_sequences from the aligned result
-                    final_sequences = create_subalignment(
-                        args.align_method,
-                        parent_tmpdir,
-                        file,
-                        tmp_aln,
-                        cluster_i,
-                        seq_count,
-                        debug,
-                        this_intermediates,
-                    )
+            # Otherwise we want to do insertion logic
+            if args.align_method != "frags":
+                # Grab insertions in each subalignment
+                alignment_insertion_coords, subalignments, refs = get_insertions(
+                    parent_tmpdir
+                )
 
-                # Otherwise we want to do insertion logic
-                if args.align_method != "frags":
-                    # Grab insertions in each subalignment
-                    alignment_insertion_coords, subalignments, refs = get_insertions(
-                        parent_tmpdir
-                    )
+                # Insert into refs
+                final_refs = insert_refs(refs, alignment_insertion_coords)
 
-                    # Insert into refs
-                    final_refs = insert_refs(refs, alignment_insertion_coords)
+                # Insert into each subalignment
+                sequences = insert_sequences(
+                    subalignments, alignment_insertion_coords
+                )
 
-                    # Insert into each subalignment
-                    sequences = insert_sequences(
-                        subalignments, alignment_insertion_coords
-                    )
-
-                    # Consolidate output
-                    final_sequences = final_refs + sequences
+                # Consolidate output
+                final_sequences = final_refs + sequences
 
     merge_time = keeper.differential() - align_time - cluster_time
 
@@ -803,6 +808,8 @@ def do_folder(folder, args):
 
     command = "clustalo -i {in_file} -o {out_file} --threads=1 --full"
 
+    top_folder = path.join(folder, "top")
+
     intermediates = "intermediates"
     if not path.exists(intermediates):
         mkdir(intermediates)
@@ -838,6 +845,7 @@ def do_folder(folder, args):
                         args.debug,
                         args.align_method.lower(),
                         args.second_run,
+                        top_folder,
                     ),
                 ),
             )

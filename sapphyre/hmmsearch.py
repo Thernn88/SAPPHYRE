@@ -61,7 +61,7 @@ def shift(frame, by):
     return frame * coeff
 
 
-def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, debug, verbose):
+def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location, overwrite, debug, verbose):
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     printv(f"Processing: {gene}", verbose, 2)
     aligned_sequences = []
@@ -99,20 +99,23 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, d
 
         aligned_sequences.extend(new_sequences)  #
         
-    hmm_file = path.join(hmm_location, f"{gene}.hmm")
+    top_file = path.join(top_location, f"{gene}.aln.fa")
     if debug or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
+        with NamedTemporaryFile(dir=gettempdir()) as hmm_temp_file:
+            system(f"hmmbuild '{hmm_temp_file.name}' '{top_file}'")
+
             if debug:
                 this_hmm_in = path.join(hmm_output_folder, f"{gene}_input.fa")
                 writeFasta(this_hmm_in, aligned_sequences)
                 system(
-                f"hmmsearch -o {this_hmm_output} --domT 10.0 {hmm_file} {this_hmm_in} > /dev/null",
+                f"hmmsearch -o {this_hmm_output} --domT 10.0 {hmm_temp_file.name} {this_hmm_in} > /dev/null",
                 )
             else:
                 with NamedTemporaryFile(dir=gettempdir()) as aligned_files:
                     writeFasta(aligned_files.name, aligned_sequences)
                     aligned_files.flush()
                     system(
-                    f"hmmsearch --domtblout {this_hmm_output} --domT 10.0 {hmm_file} {aligned_files.name} > /dev/null",
+                    f"hmmsearch --domtblout {this_hmm_output} --domT 10.0 {hmm_temp_file.name} {aligned_files.name} > /dev/null",
                     )
 
     if debug:
@@ -165,9 +168,9 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, hmm_location, overwrite, d
 
     return gene, output, new_outs, kick_log
 
-def get_arg(transcripts_mapped_to, hmm_output_folder, hmm_location, overwrite, debug, verbose):
+def get_arg(transcripts_mapped_to, hmm_output_folder, top_location, hmm_location, overwrite, debug, verbose):
     for gene, transcript_hits in transcripts_mapped_to:
-        yield gene, transcript_hits, hmm_output_folder, hmm_location, overwrite, debug, verbose
+        yield gene, transcript_hits, hmm_output_folder, top_location, hmm_location, overwrite, debug, verbose
 
 
 def get_head_to_seq(nt_db, recipe):
@@ -210,8 +213,9 @@ def do_folder(input_folder, args):
         system(f"mkdir {hmm_output_folder}")
 
     hmm_location = path.join(args.orthoset_input, args.orthoset, "hmms")
+    top_location = path.join(input_folder, "top")
 
-    arguments = get_arg(transcripts_mapped_to, hmm_output_folder, hmm_location, args.overwrite, args.debug, args.verbose)
+    arguments = get_arg(transcripts_mapped_to, hmm_output_folder, top_location, hmm_location, args.overwrite, args.debug, args.verbose)
 
     all_hits = []
 
