@@ -453,7 +453,7 @@ def create_subalignment(
     return []
 
 
-def get_insertions(parent_tmpdir: str) -> tuple[list, list, list]:
+def get_insertions(parent_tmpdir: str, target_dict, ref_path) -> tuple[list, list, list]:
     """
     Gets the insertion coords for each subalignment
 
@@ -468,18 +468,18 @@ def get_insertions(parent_tmpdir: str) -> tuple[list, list, list]:
 
     global_insertions = Counter()
 
-    for item in listdir(parent_tmpdir):
-        if item.startswith("References_"):
-            refs = list(parseFasta(path.join(parent_tmpdir, item), True))
-            continue
+    refs = []
+    for header, seq in parseFasta(ref_path, True):
+        refs.append((target_dict[header], seq))
 
+    for item in listdir(parent_tmpdir):
         if not item.startswith("part_"):
             continue
 
         references = []
         this_seqs = []
         for header, seq in parseFasta(path.join(parent_tmpdir, item), True):
-            if header.endswith("."):
+            if "|" not in header or header.endswith("."):
                 references.append(seq)
                 continue
 
@@ -735,7 +735,7 @@ def run_command(args: CmdArgs) -> None:
             if args.align_method != "frags":
                 # Grab insertions in each subalignment
                 alignment_insertion_coords, subalignments, refs = get_insertions(
-                    parent_tmpdir
+                    parent_tmpdir, targets, aln_path
                 )
 
                 # Insert into refs
