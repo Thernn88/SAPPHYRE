@@ -758,7 +758,7 @@ def run_command(args: CmdArgs) -> None:
     for header, sequence in final_sequences:
         if header in targets:
             header = targets[header]
-        else:
+        elif not header.endswith("."):
             header = trimmed_header_to_full[header[:127]]
         if header in reinsertions:
             for insertion_header in reinsertions[header]:
