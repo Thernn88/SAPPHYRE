@@ -514,9 +514,9 @@ def top_reference_realign(orthoset_aln_path, top_targets, top_path, gene):
         writeFasta(out_path, out)
         return
     
-    if path.exists(out_path):
-        if len(out) == len(list(parseFasta(out_path, True))):
-            return
+    # if path.exists(out_path):
+    #     if len(out) == len(list(parseFasta(out_path, True))):
+    #         return
     
     with NamedTemporaryFile(dir=gettempdir(), prefix=f"{gene}_") as tmp_prealign:
         tmp_prealign.write("\n".join([f">{i}\n{j}" for i, j in out]).encode())
@@ -1071,8 +1071,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
             args.verbose,
         )
 
-        # if path.exists(top_path):
-        #     rmtree(top_path)
+        if path.exists(top_path):
+            rmtree(top_path)
         makedirs(top_path, exist_ok=True)
 
         arguments = []
