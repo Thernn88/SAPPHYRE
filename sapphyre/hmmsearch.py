@@ -179,9 +179,12 @@ def hmm_search(gene, diamond_hits, nt_seqs, hmm_output_folder, top_location, hmm
 
     return gene, output, new_outs, kick_log
 
-def get_arg(transcripts_mapped_to, hmm_output_folder, top_location, hmm_location, overwrite, debug, verbose):
+def get_arg(transcripts_mapped_to, head_to_seq, hmm_output_folder, top_location, hmm_location, overwrite, debug, verbose):
     for gene, transcript_hits in transcripts_mapped_to:
-        yield gene, transcript_hits, hmm_output_folder, top_location, hmm_location, overwrite, debug, verbose
+        this_seqs = {}
+        for hit in transcript_hits:
+            this_seqs[hit.node] = head_to_seq[hit.node]
+        yield gene, transcript_hits, this_seqs, hmm_output_folder, top_location, hmm_location, overwrite, debug, verbose
 
 
 def get_head_to_seq(nt_db, recipe):
@@ -230,7 +233,7 @@ def do_folder(input_folder, args):
     hmm_location = path.join(args.orthoset_input, args.orthoset, "hmms")
     top_location = path.join(input_folder, "top")
 
-    arguments = get_arg(transcripts_mapped_to, hmm_output_folder, top_location, hmm_location, args.overwrite, args.debug, args.verbose)
+    arguments = get_arg(transcripts_mapped_to, head_to_seq, hmm_output_folder, top_location, hmm_location, args.overwrite, args.debug, args.verbose)
 
     all_hits = []
 
