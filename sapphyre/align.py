@@ -760,6 +760,11 @@ def run_command(args: CmdArgs) -> None:
             header = targets[header]
         elif not header.endswith("."):
             header = trimmed_header_to_full[header[:127]]
+
+        if header.endswith('.'):
+            references.append((header, sequence))
+            continue
+
         if header in reinsertions:
             for insertion_header in reinsertions[header]:
                 inserted += 1
