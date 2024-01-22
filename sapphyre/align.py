@@ -215,7 +215,6 @@ def generate_tmp_aln(
             if header in targets:
                 if len(sequence) != sequence.count("-"):
                     sequences.append((targets[header], sequence))
-
         if align_method == "base":
             empty_columns = None
             for header, sequence in sequences:
@@ -264,7 +263,7 @@ def generate_tmp_aln(
                 system(
                     f"mafft --localpair --quiet --thread 1 --anysymbol '{tmp_prealign.name}' > '{dest.name}'"
                 )
-
+    dest.flush()
     if debug:
         writeFasta(
             path.join(this_intermediates, "references.fa"), parseFasta(dest.name, True)
@@ -472,6 +471,8 @@ def get_insertions(parent_tmpdir: str, target_dict, ref_path) -> tuple[list, lis
     for header, seq in parseFasta(ref_path, True):
         if header in target_dict:
             refs.append((target_dict[header], seq))
+        elif header.endswith('.'):
+            refs.append((header, seq))
 
     for item in listdir(parent_tmpdir):
         if not item.startswith("part_"):
@@ -699,20 +700,19 @@ def run_command(args: CmdArgs) -> None:
             )  # Debug
 
             # Grab target reference sequences
-            aln_path = path.join(args.top_folder, args.gene + ".aln.fa")
+            top_aln_path = path.join(args.top_folder, args.gene + ".aln.fa")
 
-            # with NamedTemporaryFile(
-            #     dir=parent_tmpdir, mode="w+", prefix="References_"
-            # ) as tmp_aln:
-            #     generate_tmp_aln(
-            #         aln_file,
-            #         targets,
-            #         tmp_aln,
-            #         parent_tmpdir,
-            #         debug,
-            #         this_intermediates,
-            #         args.align_method,
-            #     )
+            if args.second_run:
+                tmp_aln = NamedTemporaryFile(dir=parent_tmpdir, mode="w+", prefix="References_")
+                generate_tmp_aln(
+                    aln_file,
+                    targets,
+                    tmp_aln,
+                    parent_tmpdir,
+                    debug,
+                    this_intermediates,
+                    args.align_method,
+                )
 
             for i, (file, seq_count, cluster_i) in enumerate(aligned_ingredients):
                 printv(
@@ -725,7 +725,7 @@ def run_command(args: CmdArgs) -> None:
                     args.align_method,
                     parent_tmpdir,
                     file,
-                    aln_path,
+                    tmp_aln.name if args.second_run else top_aln_path,
                     cluster_i,
                     seq_count,
                     debug,
@@ -736,7 +736,7 @@ def run_command(args: CmdArgs) -> None:
             if args.align_method != "frags":
                 # Grab insertions in each subalignment
                 alignment_insertion_coords, subalignments, refs = get_insertions(
-                    parent_tmpdir, targets, aln_path
+                    parent_tmpdir, targets, tmp_aln.name if args.second_run else top_aln_path
                 )
 
                 # Insert into refs
@@ -749,9 +749,11 @@ def run_command(args: CmdArgs) -> None:
 
                 # Consolidate output
                 final_sequences = final_refs + sequences
+            
+            if args.second_run:
+                del tmp_aln
 
     merge_time = keeper.differential() - align_time - cluster_time
-
     # Reinsert and sort by start position
     to_write = []
     references = []
@@ -776,7 +778,6 @@ def run_command(args: CmdArgs) -> None:
         to_write.append((header, sequence))
 
     to_write.sort(key=lambda x: find_index_pair(x[1], "-"))
-
     writeFasta(args.result_file, references + to_write, compress=args.compress)
     printv(f"Done. Took {keeper.differential():.2f}", args.verbose, 3)  # Debug
 
