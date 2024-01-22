@@ -717,7 +717,7 @@ def do_consensus(nodes, threshold):
         counts = {}
 
         for node in nodes:
-            if i >= node.start and i <= node.end:
+            if i >= node.start and i < node.end:
                 counts.setdefault(node.sequence[i], 0)
                 counts[node.sequence[i]] += 1
 
