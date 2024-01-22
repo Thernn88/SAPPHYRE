@@ -714,19 +714,23 @@ def do_folder(folder: Path, args):
         reporter_dupe_counts = {}
         ref_stats = []
 
-    input_path = None
-    for subfolder in ["internal", "collapsed", "excise", "blosum"]:
-        if Path(folder, "outlier", subfolder).exists():
-            input_path = Path(str(folder), "outlier", subfolder)
-            break
+    if args.second_run:
+        aa_input = Path(str(folder), "align")
+        nt_input = Path(str(folder), "nt_aligned")
+    else:
+        input_path = None
+        for subfolder in ["internal", "collapsed", "excise", "blosum"]:
+            if Path(folder, "outlier", subfolder).exists():
+                input_path = Path(str(folder), "outlier", subfolder)
+                break
 
-    if not input_path or not path.exists(input_path):
-        print(input_path)
-        printv(f"WARNING: Can't find folder for taxa, {folder}", args.verbose, 0)
-        return
-    
-    aa_input = Path(input_path, "aa")
-    nt_input = Path(input_path, "nt")
+        if not input_path or not path.exists(input_path):
+            print(input_path)
+            printv(f"WARNING: Can't find folder for taxa, {folder}", args.verbose, 0)
+            return
+        
+        aa_input = Path(input_path, "aa")
+        nt_input = Path(input_path, "nt")
 
     target_genes = []
     for item in aa_input.iterdir():
