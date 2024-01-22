@@ -518,13 +518,24 @@ def top_reference_realign(orthoset_aln_path, top_refs, target_to_taxon, top_path
     #     if len(out) == len(list(parseFasta(out_path, True))):
     #         return
     
-    with NamedTemporaryFile(dir=gettempdir(), prefix=f"{gene}_") as tmp_prealign:
+    with NamedTemporaryFile(dir=gettempdir(), prefix=f"{gene}_") as tmp_prealign, NamedTemporaryFile(dir=gettempdir(), prefix=f"{gene}_") as tmp_result:
         tmp_prealign.write("\n".join([f">{i}\n{j}" for i, j in out]).encode())
         tmp_prealign.flush()
 
         system(
-            f"clustalo -i '{tmp_prealign.name}' -o '{out_path}' --thread=1 --full --force"
+            f"clustalo -i '{tmp_prealign.name}' -o '{tmp_result.name}' --thread=1 --full --force"
         )
+
+        recs = list(parseFasta(tmp_result.name, True))
+        
+        del_columns = set()
+        for i in range(len(recs[0][1])):
+            if all(j[1][i] == "-" or j[1][i] == "X" for j in recs):
+                del_columns.add(i)
+
+        out = [(header, "".join([let for i, let in enumerate(seq) if i not in del_columns])) for header, seq in recs]
+
+        writeFasta(out_path, out)
 
 
 def run_process(args: Namespace, input_path: str) -> bool:
