@@ -29,6 +29,7 @@ class CollapserArgs(Struct):
 
     verbose: int
     debug: int
+    consensus: float
     matching_consensus_percent: float
     gross_diference_percent: float
 
@@ -327,6 +328,7 @@ def do_folder(args: CollapserArgs, input_path: str):
         kicked_consensus = "".join(["".join(i[4]) for i in results])
         rescued_kicks = "\n".join(["\n".join(i[6]) for i in results])
         reported_nodes = "True Node,Node,Overlap Percent\n" + "".join(["\n".join(i[7]) for i in results])
+        xRegions = "Gene,Index,Candidate Coverage\n" + "\n".join(["\n".join(i[8]) for i in results])
 
         with open(path.join(collapsed_path, "kicked_genes.txt"), "w") as fp:
             fp.write(kicked_genes)
@@ -339,6 +341,9 @@ def do_folder(args: CollapserArgs, input_path: str):
 
         with open(path.join(collapsed_path, "reported_nodes.txt"), "w") as fp:
             fp.write(reported_nodes)
+
+        with open(path.join(collapsed_path, "region_of_X.txt"), "w") as fp:
+            fp.write(xRegions)
 
         with open(path.join(collapsed_path, "kicks.txt"), "w") as fp:
             fp.write(f"Total Kicks: {total_kicks}\n")
@@ -680,6 +685,60 @@ def report_overlaps(nodes, true_cluster_headers):
     return reported
 
 
+def find_x_groups(s):
+    x_groups = []
+    start = None
+
+    for i, char in enumerate(s):
+        if char == 'X':
+            if start is None:
+                start = i
+        elif start is not None:
+            end = i - 1
+            x_groups.append((start, end))
+            start = None
+
+    # Check if the last group extends to the end of the string
+    if start is not None:
+        x_groups.append((start, len(s) - 1))
+
+    return x_groups
+
+
+def do_consensus(nodes, threshold):
+    if not nodes:
+        return ""
+
+    length = len(nodes[0].sequence)
+    consensus_sequence = ""
+    cand_coverage = {}
+
+    for i in range(length):
+        counts = {}
+
+        for node in nodes:
+            if i >= node.start and i <= node.end:
+                counts.setdefault(node.sequence[i], 0)
+                counts[node.sequence[i]] += 1
+
+        if not counts:
+            consensus_sequence += "-"
+            cand_coverage[i] = 0
+            continue
+
+        max_count = max(counts.values())
+        total_count = sum(counts.values())
+
+        cand_coverage[i] = total_count
+
+        if max_count / total_count >= threshold:
+            consensus_sequence += max(counts, key=counts.get)
+        else:
+            consensus_sequence += 'X'
+
+    return consensus_sequence, cand_coverage
+
+
 def process_batch(
     batch_args: BatchArgs,
 ):
@@ -707,6 +766,7 @@ def process_batch(
     kicks = []
     reported = []
     rescues = []
+    regions = []
     for gene in batch_args.genes:
         kicked_headers = set()
         printv(f"Doing: {gene}", args.verbose, 2)
@@ -756,6 +816,15 @@ def process_batch(
                     kick=False,
                 )
             )
+
+        x_cand_consensus, cand_coverage = do_consensus(
+            nodes, args.consensus
+        )
+
+        for i, let in enumerate(x_cand_consensus):
+            if let == 'X':
+                coverage = cand_coverage[i]
+                regions.append(f"{gene},{i},{coverage}")
 
         true_cluster_raw.sort(key = lambda x: x[0])
         before_true_clusters = []
@@ -907,6 +976,8 @@ def process_batch(
                     if header.endswith("."):
                         f.write(f">{header}\n{sequence}\n")
 
+                f.write(f">Cand_Consensus\n{x_cand_consensus}\n")
+
                 for node in nodes:
                     if node is None:
                         continue
@@ -935,9 +1006,9 @@ def process_batch(
         total += count
 
     if args.debug:
-        return True, kicks, total, kicked_genes, consensus_kicks, passed_total, rescues, reported
+        return True, kicks, total, kicked_genes, consensus_kicks, passed_total, rescues, reported, regions
 
-    return True, [], total, kicked_genes, consensus_kicks, passed_total, rescues, reported
+    return True, [], total, kicked_genes, consensus_kicks, passed_total, rescues, reported, regions
 
 
 def main(args, from_folder):
@@ -987,6 +1058,7 @@ def main(args, from_folder):
         matching_percent=args.matching_percent,
         verbose=args.verbose,
         debug=args.debug,
+        consensus=args.consensus,
         matching_consensus_percent=args.matching_consensus_percent,
         gross_diference_percent=args.gross_diference_percent,
         from_folder=from_folder,
