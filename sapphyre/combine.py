@@ -24,7 +24,6 @@ def parse_gene(path):
     this_out = []
     this_refs = {}
     already_grabbed_references = set()
-    present_taxon = set()
     taxon_to_target = defaultdict(list)
     for header, sequence in parseFasta(str(path)):
         if header.endswith("."):
@@ -34,9 +33,8 @@ def parse_gene(path):
                 already_grabbed_references.add(fields[2])
                 this_refs[fields[2]] = header, sequence.replace("-", "")
         else:
-            present_taxon.add(header.split("|")[1])
             this_out.append((header, sequence.replace("-", "")))
-    return {path: (this_out, present_taxon, taxon_to_target, this_refs)}
+    return {path: (this_out, taxon_to_target, this_refs)}
 
 
 def write_gene(path, gene_sequences, compress):
@@ -77,15 +75,14 @@ def main(args):
                     for path, out_tuple in result.items():
                         (
                             out_candidates,
-                            present_taxons,
                             taxon_to_target,
                             ref_sequences,
                         ) = out_tuple
                         path = path.name
                         already_grabbed = grabbed_aa_references[path]
                         references = []
-                        for taxon in present_taxons:
-                            for target in taxon_to_target[taxon]:
+                        for taxon_targets in taxon_to_target.values():
+                            for target in taxon_targets:
                                 if target not in already_grabbed:
                                     references.append(ref_sequences[target])
                                     already_grabbed.add(target)
@@ -106,15 +103,14 @@ def main(args):
                     for path, out_tuple in result.items():
                         (
                             out_candidates,
-                            present_taxons,
                             taxon_to_target,
                             ref_sequences,
                         ) = out_tuple
                         path = path.name
                         already_grabbed = grabbed_nt_references[path]
                         references = []
-                        for taxon in present_taxons:
-                            for target in taxon_to_target[taxon]:
+                        for taxon_targets in taxon_to_target.values():
+                            for target in taxon_targets:
                                 if target not in already_grabbed:
                                     references.append(ref_sequences[target])
                                     already_grabbed.add(target)
