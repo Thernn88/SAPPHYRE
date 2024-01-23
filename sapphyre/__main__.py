@@ -521,6 +521,13 @@ def merge_args(par):
         help="Enable debug. When enabled displays each component of merged headers.",
     )
     par.add_argument(
+        "-sr",
+        "--second_run",
+        action="store_true",
+        default=False,
+        help="Enable second run logic",
+    )
+    par.add_argument(
         "-sm",
         "--special_merge",
         action="store_true",
