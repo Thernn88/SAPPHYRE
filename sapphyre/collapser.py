@@ -55,7 +55,7 @@ class BatchArgs(Struct):
 
 class NODE(Struct):
     header: str
-    sequence: str
+    sequence: str | list
     start: int
     end: int
     internal_gaps: int
@@ -322,6 +322,11 @@ def do_folder(args: CollapserArgs, input_path: str):
     total_kicks = sum(i[2] for i in results if i[2] != 0)
     total_sequences = sum(i[5] for i in results)
 
+    before_total = sum(i[9] for i in results)
+    after_total = sum(i[10] for i in results)
+
+    print("Ambig columns before trim:", before_total, "Ambig columns after trim:", after_total)
+
     if args.debug:
         kicked_genes = "\n".join(["\n".join(i[3]) for i in results])
         genes_kicked_count = len(kicked_genes.split("\n"))
@@ -366,7 +371,7 @@ def do_folder(args: CollapserArgs, input_path: str):
 
 
 def kick_read_consensus(
-    aa_output,
+    ref_consensus,
     match_percent,
     nodes,
     kicked_headers,
@@ -393,25 +398,6 @@ def kick_read_consensus(
         list: The list of nodes to be kicked
         str: The consensus sequence formed from the reference sequences
     """
-    ref_average_data_length = []
-    ref_consensus = defaultdict(list)
-    reference_seqs = [seq for header, seq in aa_output if header.endswith(".")]
-
-    # Create a consensus using dumb_consensus from phymmr_tools
-    ref_consensus_seq = dumb_consensus(reference_seqs, 0.5)
-
-    # Create a flex consensus using the reference sequences
-    for seq in reference_seqs:
-        start, end = find_index_pair(seq, "-")
-        for i in range(start, end):
-            ref_consensus[i].append(seq[i])
-
-        ref_average_data_length.append(len(seq) - seq.count("-"))
-
-    # Calculate the average amount of data characters in the reference sequences
-    ref_average_data_length = sum(ref_average_data_length) / len(
-        ref_average_data_length
-    )
 
     # Kick reads with a score below the threshold
     for read in nodes:
@@ -430,7 +416,7 @@ def kick_read_consensus(
             kicked_headers.add(read.header)
             read.kick = True
 
-    return ref_average_data_length, nodes, ref_consensus_seq
+    return nodes
 
 
 def merge_overlapping_reads(nodes, minimum_overlap):
@@ -685,26 +671,6 @@ def report_overlaps(nodes, true_cluster_headers):
     return reported
 
 
-def find_x_groups(s):
-    x_groups = []
-    start = None
-
-    for i, char in enumerate(s):
-        if char == 'X':
-            if start is None:
-                start = i
-        elif start is not None:
-            end = i - 1
-            x_groups.append((start, end))
-            start = None
-
-    # Check if the last group extends to the end of the string
-    if start is not None:
-        x_groups.append((start, len(s) - 1))
-
-    return x_groups
-
-
 def do_consensus(nodes, threshold):
     if not nodes:
         return ""
@@ -739,6 +705,12 @@ def do_consensus(nodes, threshold):
     return consensus_sequence, cand_coverage
 
 
+def del_cols(sequence, columns):
+    seq = list(sequence)
+    for i in columns:
+        seq[i] = "-"
+    return "".join(seq)
+
 def process_batch(
     batch_args: BatchArgs,
 ):
@@ -762,6 +734,9 @@ def process_batch(
     consensus_kicks = []
     total = 0
     passed_total = 0
+
+    has_x_genes = 0
+    has_x_genes_after = 0 
 
     kicks = []
     reported = []
@@ -806,7 +781,7 @@ def process_batch(
             nodes.append(
                 NODE(
                     header=header,
-                    sequence=sequence,
+                    sequence=list(sequence),
                     start=start,
                     end=end,
                     length=(end - start),
@@ -817,14 +792,70 @@ def process_batch(
                 )
             )
 
+        ref_average_data_length = []
+        ref_consensus = defaultdict(list)
+        reference_seqs = [seq for header, seq in aa_output if header.endswith(".")]
+
+        # Create a consensus using dumb_consensus from phymmr_tools
+        ref_consensus_seq = dumb_consensus(reference_seqs, 0.5)
+        
+
+        # Create a flex consensus using the reference sequences
+        for seq in reference_seqs:
+            start, end = find_index_pair(seq, "-")
+            for i in range(start, end):
+                ref_consensus[i].append(seq[i])
+
+            ref_average_data_length.append(len(seq) - seq.count("-"))
+
+        # Calculate the average amount of data characters in the reference sequences
+        ref_average_data_length = sum(ref_average_data_length) / len(
+            ref_average_data_length
+        )
+
+        x_cand_consensus, cand_coverage = do_consensus(
+            nodes, args.consensus
+        )
+        trimmed_pos = 0
+        x_positions = defaultdict(set)
+
+        has_x_before = 0
+        has_x_after = 0
+
+        for i, let in enumerate(x_cand_consensus):
+            if let == 'X':
+                has_x_before += 1
+                for node in nodes:
+                    # Within 3 bp of start or end
+                    cond_1 = i <= node.start + 2 and i >= node.start
+                    cond_2 = i >= node.end - 2 and i <= node.end
+
+                    if cond_1 or cond_2:
+                        if ref_consensus_seq[i] != node.sequence[i]:
+                            if cond_1:
+                                for x in range(i, node.start-1, -1):
+                                    node.sequence[x] = "X"
+                                    trimmed_pos += 1
+                                    x_positions[node.header].add(x)
+                                node.start = i+1
+                            else:
+                                for x in range(i, node.end):
+                                    node.sequence[x] = "-"
+                                    trimmed_pos += 1
+                                    x_positions[node.header].add(x)
+                                node.end = i
+                            
+        for node in nodes:
+            node.sequence = "".join(node.sequence)
+
         x_cand_consensus, cand_coverage = do_consensus(
             nodes, args.consensus
         )
 
-        for i, let in enumerate(x_cand_consensus):
-            if let == 'X':
-                coverage = cand_coverage[i]
-                regions.append(f"{gene},{i},{coverage}")
+        for let in x_cand_consensus:
+            if let == "X":
+                has_x_after += 1
+                
 
         true_cluster_raw.sort(key = lambda x: x[0])
         before_true_clusters = []
@@ -846,8 +877,8 @@ def process_batch(
         if current_cluster:
             before_true_clusters.append(current_cluster)
 
-        ref_average_data_length, nodes, ref_consensus_seq = kick_read_consensus(
-            aa_output,
+        nodes = kick_read_consensus(
+            ref_consensus,
             args.matching_consensus_percent,
             nodes,
             kicked_headers,
@@ -882,6 +913,8 @@ def process_batch(
                 f"No valid sequences after rolling candidate consensus: {gene.split('.')[0]}"
             )
             continue
+
+        
 
         printv("Merging Overlapping Reads", args.verbose, 3)
         nodes = merge_overlapping_reads(nodes, args.merge_overlap)
@@ -986,7 +1019,8 @@ def process_batch(
                     )
                     f.write(f">{node.contig_header()}{is_kick}\n{node.sequence}\n")
         else:
-            aa_output = [pair for pair in aa_output if pair[0] not in kicked_headers]
+            aa_output = [(header, del_cols(seq, x_positions[header])) for header, seq in aa_output if header not in kicked_headers]
+
             if aa_output:
                 writeFasta(aa_out, aa_output, batch_args.compress)
 
@@ -1005,10 +1039,16 @@ def process_batch(
         passed_total += aa_output_after_kick
         total += count
 
-    if args.debug:
-        return True, kicks, total, kicked_genes, consensus_kicks, passed_total, rescues, reported, regions
+        if has_x_before:
+            has_x_genes += has_x_before
 
-    return True, [], total, kicked_genes, consensus_kicks, passed_total, rescues, reported, regions
+        if has_x_after:
+            has_x_genes_after += has_x_after
+
+    if args.debug:
+        return True, kicks, total, kicked_genes, consensus_kicks, passed_total, rescues, reported, regions, has_x_genes, has_x_genes_after
+
+    return True, [], total, kicked_genes, consensus_kicks, passed_total, rescues, reported, regions, has_x_genes, has_x_genes_after
 
 
 def main(args, from_folder):
