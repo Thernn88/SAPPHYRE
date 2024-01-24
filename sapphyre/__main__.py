@@ -93,7 +93,7 @@ def prepare_args(par):
         help="Disables prepare from renaming headers.",
     )
     par.add_argument(
-        "-o",
+        "-out",
         "--out",
         type=str,
         default="datasets",
@@ -469,7 +469,7 @@ def outlier_args(par):
         help="Remove any regions flagged by excise.",
     )
     par.add_argument(
-        "-o", "--output", type=str, default="internal", help="Path to output directory"
+        "-out", "--output", type=str, default="internal", help="Path to output directory"
     )
     par.add_argument(
         "-ict",
@@ -697,7 +697,7 @@ def subcmd_flexcull(subparsers):
 
 def flexcull_args(par):
     par.add_argument(
-        "-o",
+        "-out",
         "--output",
         type=str,
         default="trimmed",
@@ -1285,7 +1285,7 @@ def subcmd_internal(subparser):
         help="Compress intermediate files",
     )
     parser.add_argument(
-        "-o",
+        "-out",
         "--output",
         type=str,
         default="internal",
