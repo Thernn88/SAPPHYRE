@@ -912,27 +912,6 @@ def subcmd_finalize(subparsers):
     par.set_defaults(func=finalize, formathelp=par.format_help)
 
 
-def recover(args):
-    from . import recover
-
-    if not recover.main(args):
-        print(args.formathelp())
-
-
-def subcmd_recover(subparsers):
-    par = subparsers.add_parser(
-        "Recover",
-        help=""
-    )
-    par.add_argument(
-        "INPUT",
-        help="Path to directory of Input folder",
-        action="extend",
-        nargs="+",
-    )
-    par.set_defaults(func=recover, formathelp=par.format_help)
-
-
 def subcmd_download(sp):
     par = sp.add_parser(
         "download",
@@ -1421,9 +1400,6 @@ def main():
 
     # Finalize
     subcmd_finalize(subparsers)
-
-    # Recover
-    subcmd_recover(subparsers)
 
     # Makeref
     subcmd_makeref(subparsers)
