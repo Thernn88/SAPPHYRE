@@ -834,7 +834,7 @@ def process_batch(
                         if ref_consensus_seq[i] != node.sequence[i]:
                             if cond_1:
                                 for x in range(i, node.start-1, -1):
-                                    node.sequence[x] = "X"
+                                    node.sequence[x] = "-"
                                     trimmed_pos += 1
                                     x_positions[node.header].add(x)
                                 node.start = i+1
