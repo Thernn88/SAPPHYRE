@@ -852,10 +852,11 @@ def process_batch(
             nodes, args.consensus
         )
 
-        for let in x_cand_consensus:
+        for i, let in enumerate(x_cand_consensus):
             if let == "X":
                 has_x_after += 1
-                
+                coverage = cand_coverage[i]
+                regions.append(f"{gene},{i},{coverage}")
 
         true_cluster_raw.sort(key = lambda x: x[0])
         before_true_clusters = []
