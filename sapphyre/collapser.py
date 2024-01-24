@@ -796,6 +796,7 @@ def process_batch(
     reported = []
     rescues = []
     regions = []
+    region_kicks = []
     for input_gene in batch_args.genes:
         gene = input_gene.split('.')[0]
         kicked_headers = set()
@@ -810,7 +811,7 @@ def process_batch(
         aa_sequences = parseFasta(aa_in)
 
         aa_output = []
-
+        
         nodes = []
 
         true_cluster_raw = []
@@ -917,7 +918,6 @@ def process_batch(
 
         regions = find_regions_with_x(x_cand_consensus)
 
-        region_kicks = []
 
         for region in regions:
             headers = get_nodes_overlapping_regions(nodes, region)
@@ -948,7 +948,7 @@ def process_batch(
                             # i in node
                             if i >= node.start and i < node.end:
                                 if node.sequence[i] != master.sequence[i]:
-                                    region_kicks.append(f"{i},{master.header},{master.score},{node.header},{node.score}")
+                                    region_kicks.append(f"{gene},{i},{master.header},{master.score},{node.header},{node.score}")
                                     break
 
         nodes = [node for node in nodes if not node.kick]
