@@ -507,7 +507,7 @@ def top_reference_realign(orthoset_aln_path, top_refs, target_to_taxon, top_path
     out_path = path.join(top_path, gene+".aln.fa")
 
     out = []
-    for header, seq in parseFasta(gene_path):
+    for header, seq in parseFasta(gene_path, True):
         if target_to_taxon[header] in top_refs: 
             out.append((header, seq.replace("-", "")))
 
