@@ -13,6 +13,7 @@ from phymmr_tools import (
     is_same_kmer,
 )
 from wrap_rocks import RocksDB
+from msgspec import json
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
@@ -51,10 +52,12 @@ class BatchArgs(Struct):
     aa_out_path: str
     compress: bool
     is_assembly_or_genome: bool
+    gene_scores: dict
 
 
 class NODE(Struct):
     header: str
+    score: float
     sequence: str | list
     start: int
     end: int
@@ -274,10 +277,12 @@ def do_folder(args: CollapserArgs, input_path: str):
 
     nt_db_path = path.join(input_path, "rocksdb", "sequences", "nt")
     is_assembly_or_genome = False
+    gene_scores = {}
     if path.exists(nt_db_path):
         nt_db = RocksDB(nt_db_path)
         dbis_assembly = nt_db.get("get:isassembly") == "True"
         dbis_genome = nt_db.get("get:isgenome") == "True"
+        gene_scores = json.decode(nt_db.get("getall:hmm_gene_scores"), type=dict[str, dict[str, float]])
         is_assembly_or_genome = dbis_genome or dbis_assembly
         del nt_db
 
@@ -295,19 +300,27 @@ def do_folder(args: CollapserArgs, input_path: str):
 
     compress = not args.uncompress_intermediates or args.compress
 
-    batched_arguments = [
-        BatchArgs(
-            args,
-            genes[i : i + per_thread],
-            nt_input_path,
-            nt_out_path,
-            aa_input_path,
-            aa_out_path,
-            compress,
-            is_assembly_or_genome,
-        )
-        for i in range(0, len(genes), per_thread)
-    ]
+    batched_arguments = []
+    for i in range(0, len(genes), per_thread):
+        this_batch_genes = genes[i : i + per_thread]
+        this_batch_scores = {}
+
+        for raw_gene in this_batch_genes:
+            gene = raw_gene.split(".")[0]
+            this_batch_scores[gene] = gene_scores.get(gene, {})
+
+        batched_arguments.append(BatchArgs(
+                args,
+                this_batch_genes,
+                nt_input_path,
+                nt_out_path,
+                aa_input_path,
+                aa_out_path,
+                compress,
+                is_assembly_or_genome,
+                this_batch_scores
+            ))
+
 
     if args.processes <= 1:
         results = []
@@ -324,6 +337,7 @@ def do_folder(args: CollapserArgs, input_path: str):
 
     before_total = sum(i[9] for i in results)
     after_total = sum(i[10] for i in results)
+    
 
     print("Ambig columns before trim:", before_total, "Ambig columns after trim:", after_total)
 
@@ -334,6 +348,7 @@ def do_folder(args: CollapserArgs, input_path: str):
         rescued_kicks = "\n".join(["\n".join(i[6]) for i in results])
         reported_nodes = "True Node,Node,Overlap Percent\n" + "".join(["\n".join(i[7]) for i in results])
         xRegions = "Gene,Index,Candidate Coverage\n" + "\n".join(["\n".join(i[8]) for i in results])
+        region_kicks =  "Triggering X Position,Master Header,Master Score,Kicked Header,Kicked Score\n" + "\n".join(["\n".join(i[11]) for i in results])
 
         with open(path.join(collapsed_path, "kicked_genes.txt"), "w") as fp:
             fp.write(kicked_genes)
@@ -355,6 +370,9 @@ def do_folder(args: CollapserArgs, input_path: str):
             for data in results:
                 kick_list = data[1]
                 fp.write("".join(kick_list))
+
+        with open(path.join(collapsed_path, "region_kicks.txt"), "w") as fp:
+            fp.write(region_kicks)
     else:
         genes_kicked_count = sum(len(i[3]) for i in results)
 
@@ -711,6 +729,42 @@ def del_cols(sequence, columns):
         seq[i] = "-"
     return "".join(seq)
 
+
+def find_regions_with_x(candidate_consensus, min_x_count=3, window_size=60):
+    regions = []
+    current_region = []
+    
+    for i, char in enumerate(candidate_consensus):
+        if char == 'X':
+            current_region.append(i)
+        else:
+            if len(current_region) >= min_x_count:
+                regions.append(current_region)
+            current_region = []
+    
+    if len(current_region) >= min_x_count:
+        regions.append(current_region)
+    
+    filtered_regions = [region for region in regions if len(region) >= min_x_count and region[-1] - region[0] < window_size]
+
+    return filtered_regions
+
+
+def get_nodes_overlapping_regions(nodes, region):
+    overlapping_nodes = []
+
+    for node in nodes:
+        if region[0] >= node.start and region[-1] <= node.end:
+        # overlap = get_overlap(region[0], region[-1], node.start, node.end, 1)
+        # if overlap is not None:
+            overlapping_nodes.append(node)
+
+    overlapping_nodes.sort(key = lambda x: x.score, reverse= True)
+
+    return [i.header for i in overlapping_nodes]
+
+
+
 def process_batch(
     batch_args: BatchArgs,
 ):
@@ -742,15 +796,16 @@ def process_batch(
     reported = []
     rescues = []
     regions = []
-    for gene in batch_args.genes:
+    for input_gene in batch_args.genes:
+        gene = input_gene.split('.')[0]
         kicked_headers = set()
         printv(f"Doing: {gene}", args.verbose, 2)
 
-        nt_out = path.join(batch_args.nt_out_path, gene)
-        aa_out = path.join(batch_args.aa_out_path, gene.replace(".nt.", ".aa."))
+        nt_out = path.join(batch_args.nt_out_path, input_gene)
+        aa_out = path.join(batch_args.aa_out_path, input_gene.replace(".nt.", ".aa."))
 
-        nt_in = path.join(batch_args.nt_input_path, gene)
-        aa_in = path.join(batch_args.aa_input_path, gene.replace(".nt.", ".aa."))
+        nt_in = path.join(batch_args.nt_input_path, input_gene)
+        aa_in = path.join(batch_args.aa_input_path, input_gene.replace(".nt.", ".aa."))
 
         aa_sequences = parseFasta(aa_in)
 
@@ -759,6 +814,7 @@ def process_batch(
         nodes = []
 
         true_cluster_raw = []
+        this_gene_scores = batch_args.gene_scores.get(gene, {})
 
         # make nodes out of the non reference sequences for processing
         aa_count = 0
@@ -781,6 +837,7 @@ def process_batch(
             nodes.append(
                 NODE(
                     header=header,
+                    score=this_gene_scores.get(header, 0),
                     sequence=list(sequence),
                     start=start,
                     end=end,
@@ -858,6 +915,44 @@ def process_batch(
                 coverage = cand_coverage[i]
                 regions.append(f"{gene},{i},{coverage}")
 
+        regions = find_regions_with_x(x_cand_consensus)
+
+        region_kicks = []
+
+        for region in regions:
+            headers = get_nodes_overlapping_regions(nodes, region)
+
+            # Grab master
+            master = None
+            for node in nodes:
+                if node.kick:
+                    continue
+                if node.header in headers:
+                    fail = False
+                    for i in range(node.start, node.end):
+                        if node.sequence[i] != x_cand_consensus[i] and x_cand_consensus[i] != "X":
+                            fail = True
+                            break
+                    
+                    if node.score < 30:
+                        continue
+
+                    if not fail:
+                        master = node
+            if master:
+                for node in nodes:
+                    if node.kick:
+                        continue
+                    if node != master and node.header in headers:
+                        for i in region:
+                            # i in node
+                            if i >= node.start and i < node.end:
+                                if node.sequence[i] != master.sequence[i]:
+                                    region_kicks.append(f"{i},{master.header},{master.score},{node.header},{node.score}")
+                                    break
+
+        nodes = [node for node in nodes if not node.kick]
+
         true_cluster_raw.sort(key = lambda x: x[0])
         before_true_clusters = []
 
@@ -891,7 +986,7 @@ def process_batch(
         if not nodes:
             total += aa_count
             kicked_genes.append(
-                f"No valid sequences after consensus: {gene.split('.')[0]}"
+                f"No valid sequences after consensus: {gene}"
             )
             continue
 
@@ -911,7 +1006,7 @@ def process_batch(
         if not nodes:
             total += aa_count
             kicked_genes.append(
-                f"No valid sequences after rolling candidate consensus: {gene.split('.')[0]}"
+                f"No valid sequences after rolling candidate consensus: {gene}"
             )
             continue
 
@@ -999,7 +1094,7 @@ def process_batch(
         )
 
         if not aa_output_after_kick:
-            kicked_genes.append(f"No valid sequences after kick: {gene.split('.')[0]}")
+            kicked_genes.append(f"No valid sequences after kick: {gene}")
             continue
 
         # Output detailed debug information
@@ -1047,9 +1142,9 @@ def process_batch(
             has_x_genes_after += has_x_after
 
     if args.debug:
-        return True, kicks, total, kicked_genes, consensus_kicks, passed_total, rescues, reported, regions, has_x_genes, has_x_genes_after
+        return True, kicks, total, kicked_genes, consensus_kicks, passed_total, rescues, reported, regions, has_x_genes, has_x_genes_after, region_kicks
 
-    return True, [], total, kicked_genes, consensus_kicks, passed_total, rescues, reported, regions, has_x_genes, has_x_genes_after
+    return True, [], total, kicked_genes, consensus_kicks, passed_total, rescues, reported, regions, has_x_genes, has_x_genes_after, region_kicks
 
 
 def main(args, from_folder):

@@ -13,6 +13,8 @@ from phymmr_tools import translate, bio_revcomp
 from Bio.Seq import Seq
 from .timekeeper import TimeKeeper, KeeperMode
 
+
+
 def get_diamondhits(
     rocks_hits_db: RocksDB,
 ) -> dict[str, list[Hit]]:
@@ -131,9 +133,9 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location
 
             query = line[0]
 
-            start, end = int(line[17]), int(line[18])
+            start, end, score = int(line[17]), int(line[18]), float(line[7])
 
-            data[query].append((start - 1, end))
+            data[query].append((start - 1, end, score))
 
     output = []
     new_outs = []
@@ -144,7 +146,7 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location
             hit = parents[query]
             if not f"{hit.node}|{hit.frame}" in parents_done:
                 for result in results:
-                    start, end = result
+                    start, end, score = result
                     start = start * 3
                     end = end * 3
 
@@ -154,14 +156,14 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location
 
 
                     parents_done.add(f"{hit.node}|{hit.frame}")
-                    new_hit = Hit(node=hit.node, frame=hit.frame, qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=sequence)
+                    new_hit = Hit(node=hit.node, score=score, frame=hit.frame, qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=sequence)
                     output.append(new_hit)
 
         if query in children:
             _, frame = query.split("|")
             parent = children[query]
             for result in results:
-                start, end = result
+                start, end, score = result
                 start = start * 3
                 end = end * 3
 
@@ -170,7 +172,7 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location
                 new_qstart = parent.qstart + start
 
 
-                clone = Hit(node=parent.node, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=parent.gene, query=parent.query, uid=parent.uid, refs=parent.refs, seq=sequence)
+                clone = Hit(node=parent.node, score=score, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=parent.gene, query=parent.query, uid=parent.uid, refs=parent.refs, seq=sequence)
                 new_outs.append((f"{clone.gene},{clone.node},{clone.frame}"))
                 
                 output.append(clone)

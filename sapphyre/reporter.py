@@ -357,7 +357,7 @@ def print_unmerged_sequences(
     seq_mapped_already = {}
     exact_hit_mapped_already = set()
     dupes = defaultdict(list)
-    reporter_trims = {}
+    header_to_score = {}
     for hit in hits:
         base_header = hit.node
         reference_frame = str(hit.frame)
@@ -374,7 +374,6 @@ def print_unmerged_sequences(
             + "|"
             + reference_frame
         )
-        db_query = base_header+"|"+reference_frame
 
         # Translate to AA
         nt_seq = hit.seq
@@ -406,7 +405,6 @@ def print_unmerged_sequences(
 
             if debug_fp:
                 debug_fp.write(f">{header}\n{aa_seq}\n\n")
-        reporter_trims[db_query] = r_start
 
         # Check if new seq is over bp minimum
         data_after = len(aa_seq)
@@ -487,10 +485,12 @@ def print_unmerged_sequences(
                 aa_result.append((header, aa_seq))
                 nt_result.append((header, nt_seq))
 
+                header_to_score[header] = hit.score
+
                 header_mapped_x_times.setdefault(base_header, 1)
                 exact_hit_mapped_already.add(unique_hit)
 
-    return dupes, aa_result, nt_result, reporter_trims
+    return dupes, aa_result, nt_result, header_to_score
 
 
 OutputArgs = namedtuple(
@@ -571,7 +571,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     this_hits = json.decode(oargs.list_of_hits, type=list[Hit])
 
     # Trim and save the sequences
-    this_gene_dupes, aa_output, nt_output, reporter_trims = print_unmerged_sequences(
+    this_gene_dupes, aa_output, nt_output, header_to_score = print_unmerged_sequences(
         this_hits,
         oargs.gene,
         oargs.taxa_id,
@@ -615,7 +615,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.verbose,
         2,
     )
-    return oargs.gene, this_gene_dupes, len(aa_output), reporter_trims
+    return oargs.gene, this_gene_dupes, len(aa_output), header_to_score
 
 
 def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: int):
@@ -714,19 +714,19 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
 
     final_count = 0
     this_gene_based_dupes = {}
-    this_gene_based_trims = {}
+    this_gene_based_scores = {}
 
-    for gene, dupes, amount, trims in recovered:
+    for gene, dupes, amount, scores in recovered:
         final_count += amount
         this_gene_based_dupes[gene] = dupes
-        this_gene_based_trims[gene] = trims
+        this_gene_based_scores[gene] = scores
 
     key = "getall:reporter_dupes"
     data = json.encode(this_gene_based_dupes)
     rocky.get_rock("rocks_nt_db").put_bytes(key, data)
 
-    key = "getall:reporter_trims"
-    data = json.encode(this_gene_based_trims)
+    key = "getall:hmm_gene_scores"
+    data = json.encode(this_gene_based_scores)
     rocky.get_rock("rocks_nt_db").put_bytes(key, data)
 
     printv(
