@@ -880,28 +880,29 @@ def process_batch(
         has_x_before = 0
         has_x_after = 0
 
-        for i, let in enumerate(x_cand_consensus):
-            if let == 'X':
-                has_x_before += 1
-                for node in nodes:
-                    # Within 3 bp of start or end
-                    cond_1 = i <= node.start + 2 and i >= node.start
-                    cond_2 = i >= node.end - 2 and i <= node.end
+        if True: #Toggle: trim edge regions
+            for i, let in enumerate(x_cand_consensus):
+                if let == 'X':
+                    has_x_before += 1
+                    for node in nodes:
+                        # Within 3 bp of start or end
+                        cond_1 = i <= node.start + 2 and i >= node.start
+                        cond_2 = i >= node.end - 2 and i <= node.end
 
-                    if cond_1 or cond_2:
-                        if ref_consensus_seq[i] != node.sequence[i]:
-                            if cond_1:
-                                for x in range(i, node.start-1, -1):
-                                    node.sequence[x] = "-"
-                                    trimmed_pos += 1
-                                    x_positions[node.header].add(x)
-                                node.start = i+1
-                            else:
-                                for x in range(i, node.end):
-                                    node.sequence[x] = "-"
-                                    trimmed_pos += 1
-                                    x_positions[node.header].add(x)
-                                node.end = i
+                        if cond_1 or cond_2:
+                            if ref_consensus_seq[i] != node.sequence[i]:
+                                if cond_1:
+                                    for x in range(i, node.start-1, -1):
+                                        node.sequence[x] = "-"
+                                        trimmed_pos += 1
+                                        x_positions[node.header].add(x)
+                                    node.start = i+1
+                                else:
+                                    for x in range(i, node.end):
+                                        node.sequence[x] = "-"
+                                        trimmed_pos += 1
+                                        x_positions[node.header].add(x)
+                                    node.end = i
                             
         for node in nodes:
             node.sequence = "".join(node.sequence)
@@ -918,39 +919,39 @@ def process_batch(
 
         regions = find_regions_with_x(x_cand_consensus)
 
+        if True: #Toggle: Kick x regions of 60 bp
+            for region in regions:
+                headers = get_nodes_overlapping_regions(nodes, region)
 
-        for region in regions:
-            headers = get_nodes_overlapping_regions(nodes, region)
-
-            # Grab master
-            master = None
-            for node in nodes:
-                if node.kick:
-                    continue
-                if node.header in headers:
-                    fail = False
-                    for i in range(node.start, node.end):
-                        if node.sequence[i] != x_cand_consensus[i] and x_cand_consensus[i] != "X":
-                            fail = True
-                            break
-                    
-                    if node.score < 30:
-                        continue
-
-                    if not fail:
-                        master = node
-            if master:
+                # Grab master
+                master = None
                 for node in nodes:
                     if node.kick:
                         continue
-                    if node != master and node.header in headers:
-                        for i in region:
-                            # i in node
-                            if i >= node.start and i < node.end:
-                                if node.sequence[i] != master.sequence[i]:
-                                    kicked_headers.add(node.header)
-                                    region_kicks.append(f"{gene},{i},{master.header},{master.score},{node.header},{node.score}")
-                                    break
+                    if node.header in headers:
+                        fail = False
+                        for i in range(node.start, node.end):
+                            if node.sequence[i] != x_cand_consensus[i] and x_cand_consensus[i] != "X":
+                                fail = True
+                                break
+                        
+                        if node.score < 30:
+                            continue
+
+                        if not fail:
+                            master = node
+                if master:
+                    for node in nodes:
+                        if node.kick:
+                            continue
+                        if node != master and node.header in headers:
+                            for i in region:
+                                # i in node
+                                if i >= node.start and i < node.end:
+                                    if node.sequence[i] != master.sequence[i]:
+                                        kicked_headers.add(node.header)
+                                        region_kicks.append(f"{gene},{i},{master.header},{master.score},{node.header},{node.score}")
+                                        break
 
         nodes = [node for node in nodes if not node.kick]
 
@@ -974,15 +975,16 @@ def process_batch(
         if current_cluster:
             before_true_clusters.append(current_cluster)
 
-        nodes = kick_read_consensus(
-            ref_consensus,
-            args.matching_consensus_percent,
-            nodes,
-            kicked_headers,
-            consensus_kicks,
-            args.debug,
-            gene,
-        )
+        if True: # Toggle: read consensus
+            nodes = kick_read_consensus(
+                ref_consensus,
+                args.matching_consensus_percent,
+                nodes,
+                kicked_headers,
+                consensus_kicks,
+                args.debug,
+                gene,
+            )
 
         if not nodes:
             total += aa_count
@@ -991,18 +993,19 @@ def process_batch(
             )
             continue
 
-        if not batch_args.is_assembly_or_genome:
-            nodes = kick_rolling_consensus(
-                nodes,
-                ref_consensus_seq,
-                kicked_headers,
-                consensus_kicks,
-                args.debug,
-                gene,
-                args.rolling_matching_percent,
-                args.rolling_consensus_percent,
-                args.rolling_window_size,
-            )
+        if True: # Toggle: rolling consensus
+            if not batch_args.is_assembly_or_genome:
+                nodes = kick_rolling_consensus(
+                    nodes,
+                    ref_consensus_seq,
+                    kicked_headers,
+                    consensus_kicks,
+                    args.debug,
+                    gene,
+                    args.rolling_matching_percent,
+                    args.rolling_consensus_percent,
+                    args.rolling_window_size,
+                )
 
         if not nodes:
             total += aa_count
@@ -1031,19 +1034,20 @@ def process_batch(
             )
         nodes.sort(key=lambda x: x.length, reverse=True)
 
-        printv("Kicking Overlapping Reads", args.verbose, 3)
-        this_kicks, this_debug = kick_overlapping_nodes(
-            nodes,
-            args.overlap_percent,
-            args.matching_percent,
-            args.gross_diference_percent,
-            args.debug,
-        )
+        if True: # Toggle: Kick overlapping assembly contigs
+            printv("Kicking Overlapping Reads", args.verbose, 3)
+            this_kicks, this_debug = kick_overlapping_nodes(
+                nodes,
+                args.overlap_percent,
+                args.matching_percent,
+                args.gross_diference_percent,
+                args.debug,
+            )
 
-        if args.debug:
-            kicks.extend(this_debug)
+            if args.debug:
+                kicks.extend(this_debug)
 
-        kicked_headers.update(this_kicks)
+            kicked_headers.update(this_kicks)
         after_data = []
         for node in nodes:
             if node.header in kicked_headers:
@@ -1078,10 +1082,11 @@ def process_batch(
         
         best_match = max(matches, key=lambda x: x[0])[1]
         this_rescues = [f"Rescued in gene: {gene}"]
-        for header in before_true_clusters[best_match]:
-            if header in kicked_headers:
-                kicked_headers.remove(header)
-                this_rescues.append(header)
+        if True: # Toggle: Rescuing
+            for header in before_true_clusters[best_match]:
+                if header in kicked_headers:
+                    kicked_headers.remove(header)
+                    this_rescues.append(header)
 
         if len(this_rescues) > 1:
             rescues.append("\n".join(this_rescues))
