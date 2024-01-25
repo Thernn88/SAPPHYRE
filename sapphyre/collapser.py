@@ -948,6 +948,7 @@ def process_batch(
                             # i in node
                             if i >= node.start and i < node.end:
                                 if node.sequence[i] != master.sequence[i]:
+                                    kicked_headers.add(node.header)
                                     region_kicks.append(f"{gene},{i},{master.header},{master.score},{node.header},{node.score}")
                                     break
 
