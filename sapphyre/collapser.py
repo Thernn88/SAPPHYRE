@@ -723,11 +723,17 @@ def do_consensus(nodes, threshold):
     return consensus_sequence, cand_coverage
 
 
-def del_cols(sequence, columns):
-    seq = list(sequence)
-    for i in columns:
-        seq[i] = "-"
-    return "".join(seq)
+def del_cols(sequence, columns, nt=False):
+    if nt:
+        seq = [sequence[i: i+3] for i in range(0, len(sequence), 3)]
+        for i in columns:
+            seq[i] = "---"
+        return "".join(seq)
+    else:
+        seq = list(sequence)
+        for i in columns:
+            seq[i] = "-"
+        return "".join(seq)
 
 
 def find_regions_with_x(candidate_consensus, min_x_count=3, window_size=60):
@@ -903,7 +909,36 @@ def process_batch(
                                         trimmed_pos += 1
                                         x_positions[node.header].add(x)
                                     node.end = i
-                            
+
+        x_cand_consensus, cand_coverage = do_consensus(
+            nodes, args.consensus
+        )
+
+        for node in nodes:
+            i = None
+            for poss_i in range(node.start, node.start + 3):
+                if node.sequence[poss_i] != x_cand_consensus[poss_i]:
+                    i = poss_i
+
+            if not i is None:
+                for x in range(node.start , i + 1):
+                    node.sequence[x] = "-"
+                    trimmed_pos += 1
+                    x_positions[node.header].add(x)
+                node.start = i+1
+
+            i = None
+            for poss_i in range(node.end-3, node.end):
+                if node.sequence[poss_i] != x_cand_consensus[poss_i]:
+                    i = poss_i
+
+            if not i is None:
+                for x in range(i, node.end):
+                    node.sequence[x] = "-"
+                    trimmed_pos += 1
+                    x_positions[node.header].add(x)
+                node.end = i
+
         for node in nodes:
             node.sequence = "".join(node.sequence)
 
@@ -1128,7 +1163,7 @@ def process_batch(
 
         # Align kicks to the NT
         nt_sequences = [
-            (header, sequence)
+            (header, del_cols(sequence, x_positions[header], True))
             for header, sequence in parseFasta(nt_in)
             if header not in kicked_headers
         ]
