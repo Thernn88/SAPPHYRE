@@ -993,7 +993,7 @@ def process_batch(
             )
             continue
 
-        if True: # Toggle: rolling consensus
+        if False: # Toggle: rolling consensus
             if not batch_args.is_assembly_or_genome:
                 nodes = kick_rolling_consensus(
                     nodes,
@@ -1034,7 +1034,7 @@ def process_batch(
             )
         nodes.sort(key=lambda x: x.length, reverse=True)
 
-        if True: # Toggle: Kick overlapping assembly contigs
+        if False: # Toggle: Kick overlapping assembly contigs
             printv("Kicking Overlapping Reads", args.verbose, 3)
             this_kicks, this_debug = kick_overlapping_nodes(
                 nodes,
