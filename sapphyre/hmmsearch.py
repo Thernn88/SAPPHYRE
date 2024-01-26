@@ -3,16 +3,29 @@ from Bio import BiopythonWarning
 from collections import defaultdict
 from shutil import rmtree
 from tempfile import NamedTemporaryFile
-from .diamond import ReporterHit as Hit
+from .diamond import ReferenceHit, ReporterHit as Hit
 from wrap_rocks import RocksDB
 from .utils import printv, gettempdir, parseFasta, writeFasta
 from os import path, system, stat
-from msgspec import json
+from msgspec import Struct, json
 from multiprocessing import Pool
 from phymmr_tools import translate, bio_revcomp
 from Bio.Seq import Seq
 from .timekeeper import TimeKeeper, KeeperMode
 
+
+class HmmHit(Struct):
+    node: str
+    score: float
+    frame: int
+    qstart: int
+    qend: int
+    gene: str
+    query: str
+    uid: int
+    refs: list[ReferenceHit]
+    seq: str = None
+    
 
 
 def get_diamondhits(
@@ -156,7 +169,7 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location
 
 
                     parents_done.add(f"{hit.node}|{hit.frame}")
-                    new_hit = Hit(node=hit.node, score=score, frame=hit.frame, qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=sequence)
+                    new_hit = HmmHit(node=hit.node, score=score, frame=hit.frame, qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=sequence)
                     output.append(new_hit)
 
         if query in children:
@@ -172,7 +185,7 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location
                 new_qstart = parent.qstart + start
 
 
-                clone = Hit(node=parent.node, score=score, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=parent.gene, query=parent.query, uid=parent.uid, refs=parent.refs, seq=sequence)
+                clone = HmmHit(node=parent.node, score=score, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=parent.gene, query=parent.query, uid=parent.uid, refs=parent.refs, seq=sequence)
                 new_outs.append((f"{clone.gene},{clone.node},{clone.frame}"))
                 
                 output.append(clone)

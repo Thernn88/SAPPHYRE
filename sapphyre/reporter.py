@@ -15,7 +15,7 @@ from wrap_rocks import RocksDB
 from xxhash import xxh3_64
 
 from . import rocky
-from .diamond import ReporterHit
+from .hmmsearch import HmmHit
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import gettempdir, printv, writeFasta
 
@@ -39,7 +39,7 @@ MainArgs = namedtuple(
 
 
 # Extend hit with new functions
-class Hit(ReporterHit, frozen=True):
+class Hit(HmmHit, frozen=True):
     def get_bp_trim(
         self,
         this_aa: str,

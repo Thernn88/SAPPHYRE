@@ -53,7 +53,6 @@ class ReporterHit(Struct):
     uid: int
     refs: list[ReferenceHit]
     seq: str = None
-    score: float = None
 
 
 class ProcessingArgs(Struct, frozen=True):
