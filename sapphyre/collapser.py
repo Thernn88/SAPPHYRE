@@ -3,6 +3,7 @@ from itertools import combinations
 from math import ceil
 from multiprocessing import Pool
 from os import listdir, mkdir, path
+import re
 
 from msgspec import Struct
 from phymmr_tools import (
@@ -735,40 +736,26 @@ def del_cols(sequence, columns, nt=False):
             seq[i] = "-"
         return "".join(seq)
 
+def find_regions_with_x(sequence, min_x_count=3, window_min_size=30):
+    pattern = re.compile(r'[^-]{3,}')
 
-def find_regions_with_x(candidate_consensus, min_x_count=3, window_size=60):
-    regions = []
-    current_region = []
-    
-    for i, char in enumerate(candidate_consensus):
-        if char == 'X':
-            current_region.append(i)
-        else:
-            if len(current_region) >= min_x_count:
-                regions.append(current_region)
-            current_region = []
-    
-    if len(current_region) >= min_x_count:
-        regions.append(current_region)
-    
-    filtered_regions = [region for region in regions if len(region) >= min_x_count and region[-1] - region[0] < window_size]
+    matches = pattern.finditer(sequence)
+    matching_regions = [(match.start(), match.end() - 1) for match in matches if match.group().count('X') >= min_x_count and len(match.group()) >= window_min_size]
 
-    return filtered_regions
+    return matching_regions
 
-
-def get_nodes_overlapping_regions(nodes, region):
+def get_nodes_overlapping_regions(nodes, region, minimum_overlap=15):
     overlapping_nodes = []
 
     for node in nodes:
-        if region[0] >= node.start and region[-1] <= node.end:
-        # overlap = get_overlap(region[0], region[-1], node.start, node.end, 1)
-        # if overlap is not None:
+        # if region[0] >= node.start and region[-1] <= node.end:
+        overlap = get_overlap(region[0], region[-1], node.start, node.end, minimum_overlap)
+        if overlap is not None:
             overlapping_nodes.append(node)
 
     overlapping_nodes.sort(key = lambda x: x.score, reverse= True)
 
     return [i.header for i in overlapping_nodes]
-
 
 
 def process_batch(
@@ -957,6 +944,8 @@ def process_batch(
                 coverage = cand_coverage[i]
                 reported_regions.append(f"{gene},{i},{coverage}")
 
+        
+
         regions = find_regions_with_x(x_cand_consensus)
 
         if True: #Toggle: Kick x regions of 60 bp
@@ -981,14 +970,19 @@ def process_batch(
                         if not fail:
                             master = node
                 if master:
+                    this_x_positions = []
+                    for i, let in enumerate(x_cand_consensus[region[0]: region[1]], region[0]):
+                        if let == "X":
+                            this_x_positions.append(i)
                     for node in nodes:
                         if node.kick:
                             continue
                         if node != master and node.header in headers:
-                            for i in region:
+                            for i in this_x_positions:
                                 # i in node
                                 if i >= node.start and i < node.end:
                                     if node.sequence[i] != master.sequence[i]:
+                                        node.kick = True
                                         kicked_headers.add(node.header)
                                         region_kicks.append(f"{gene},{i},{master.header},{master.score},{node.header},{node.score}")
                                         break
@@ -1122,7 +1116,7 @@ def process_batch(
         
         best_match = max(matches, key=lambda x: x[0])[1]
         this_rescues = [f"Rescued in gene: {gene}"]
-        if True: # Toggle: Rescuing
+        if False: # Toggle: Rescuing
             for header in before_true_clusters[best_match]:
                 if header in kicked_headers:
                     kicked_headers.remove(header)
