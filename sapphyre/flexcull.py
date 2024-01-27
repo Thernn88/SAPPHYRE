@@ -985,6 +985,9 @@ def cull_reference_outliers(reference_records: list, debug: int) -> list:
             distances_by_index[j].append(dist)
             all_distances.append(dist)
 
+    if not all_distances:
+        return reference_records, filtered, 0, 0, 0
+
     total_median = median(all_distances)
     # ALLOWABLE_COEFFICENT = 2
     # allowable = max(total_median * ALLOWABLE_COEFFICENT, 0.3)
