@@ -156,7 +156,7 @@ def diamond_args(par):
     par.add_argument(
         "-tr",
         "--top-ref",
-        type=float,
+        type=int,
         default=8,
         help="How many references are sampled. We recommend lowering this number if you have a broadly sampled reference set with few closely related species.",
     )
