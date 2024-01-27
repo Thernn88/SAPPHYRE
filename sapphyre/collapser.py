@@ -907,6 +907,8 @@ def process_batch(
             while i:
                 i = None
                 for poss_i in range(node.start, node.start + 3):
+                    if poss_i > node.end:
+                        break
                     if node.sequence[poss_i] != x_cand_consensus[poss_i]:
                         i = poss_i
 
@@ -932,7 +934,11 @@ def process_batch(
                     node.end = i
 
         for node in nodes:
-            node.sequence = "".join(node.sequence)
+            if len(node.sequence) - node.sequence.count('-') > 20: # Bp check
+                node.sequence = "".join(node.sequence)
+            else:
+                node.kick = True
+                kicked_headers.add(node.header)
 
         x_cand_consensus, cand_coverage = do_consensus(
             nodes, args.consensus
