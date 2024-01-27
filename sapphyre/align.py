@@ -215,6 +215,7 @@ def generate_tmp_aln(
             if header in targets:
                 if len(sequence) != sequence.count("-"):
                     sequences.append((targets[header], sequence))
+
         if align_method == "base":
             empty_columns = None
             for header, sequence in sequences:
@@ -263,6 +264,17 @@ def generate_tmp_aln(
                 system(
                     f"mafft --localpair --quiet --thread 1 --anysymbol '{tmp_prealign.name}' > '{dest.name}'"
                 )
+
+            recs = list(parseFasta(dest.name, True))
+        
+            del_columns = set()
+            for i in range(len(recs[0][1])):
+                if all(j[1][i] == "-" or j[1][i] == "X" for j in recs):
+                    del_columns.add(i)
+
+            out = [(header, "".join([let for i, let in enumerate(seq) if i not in del_columns])) for header, seq in recs]
+
+            writeFasta(dest.name, out)
     dest.flush()
     if debug:
         writeFasta(
