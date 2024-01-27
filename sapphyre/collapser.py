@@ -801,7 +801,7 @@ def process_batch(
     kicks = []
     reported = []
     rescues = []
-    regions = []
+    reported_regions = []
     region_kicks = []
     for input_gene in batch_args.genes:
         gene = input_gene.split('.')[0]
@@ -950,7 +950,7 @@ def process_batch(
             if let == "X":
                 has_x_after += 1
                 coverage = cand_coverage[i]
-                regions.append(f"{gene},{i},{coverage}")
+                reported_regions.append(f"{gene},{i},{coverage}")
 
         regions = find_regions_with_x(x_cand_consensus)
 
@@ -1183,9 +1183,9 @@ def process_batch(
             has_x_genes_after += has_x_after
 
     if args.debug:
-        return True, kicks, total, kicked_genes, consensus_kicks, passed_total, rescues, reported, regions, has_x_genes, has_x_genes_after, region_kicks
+        return True, kicks, total, kicked_genes, consensus_kicks, passed_total, rescues, reported, reported_regions, has_x_genes, has_x_genes_after, region_kicks
 
-    return True, [], total, kicked_genes, consensus_kicks, passed_total, rescues, reported, regions, has_x_genes, has_x_genes_after, region_kicks
+    return True, [], total, kicked_genes, consensus_kicks, passed_total, rescues, reported, reported_regions, has_x_genes, has_x_genes_after, region_kicks
 
 
 def main(args, from_folder):
