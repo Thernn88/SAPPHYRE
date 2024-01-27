@@ -887,8 +887,7 @@ def process_batch(
         has_x_after = 0
 
         if True: #Toggle: trim edge regions
-            for_loop = [(i, let) for i, let in enumerate(x_cand_consensus)] + [(len(x_cand_consensus) - i - 1, let) for i, let in enumerate(reversed(x_cand_consensus))]
-            for i, let in for_loop:
+            for i, let in enumerate(x_cand_consensus):
                 if let == 'X':
                     has_x_before += 1
                     for node in nodes:
@@ -916,33 +915,29 @@ def process_batch(
         )
 
         for node in nodes:
-            i = True
-            while i:
-                i = None
-                for poss_i in range(node.start, node.start + 3):
-                    if node.sequence[poss_i] != x_cand_consensus[poss_i]:
-                        i = poss_i
+            i = None
+            for poss_i in range(node.start, node.start + 3):
+                if node.sequence[poss_i] != x_cand_consensus[poss_i]:
+                    i = poss_i
 
-                if not i is None:
-                    for x in range(node.start , i + 1):
-                        node.sequence[x] = "-"
-                        trimmed_pos += 1
-                        x_positions[node.header].add(x)
-                    node.start = i+1
+            if not i is None:
+                for x in range(node.start , i + 1):
+                    node.sequence[x] = "-"
+                    trimmed_pos += 1
+                    x_positions[node.header].add(x)
+                node.start = i+1
 
-            i = True
-            while i:
-                i = None
-                for poss_i in range(node.end-3, node.end):
-                    if node.sequence[poss_i] != x_cand_consensus[poss_i]:
-                        i = poss_i
+            i = None
+            for poss_i in range(node.end-3, node.end):
+                if node.sequence[poss_i] != x_cand_consensus[poss_i]:
+                    i = poss_i
 
-                if not i is None:
-                    for x in range(i, node.end):
-                        node.sequence[x] = "-"
-                        trimmed_pos += 1
-                        x_positions[node.header].add(x)
-                    node.end = i
+            if not i is None:
+                for x in range(i, node.end):
+                    node.sequence[x] = "-"
+                    trimmed_pos += 1
+                    x_positions[node.header].add(x)
+                node.end = i
 
         for node in nodes:
             node.sequence = "".join(node.sequence)
