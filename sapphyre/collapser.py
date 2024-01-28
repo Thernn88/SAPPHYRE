@@ -886,30 +886,36 @@ def process_batch(
         has_x_before = 0
         has_x_after = 0
 
+        for let in x_cand_consensus:
+            if let == 'X': has_x_before += 1
+
         if True: #Toggle: trim edge regions
-            for i, let in enumerate(x_cand_consensus):
-                if let == 'X':
-                    has_x_before += 1
-                    for node in nodes:
+            for node in nodes:
+                trim_to = None
+                for i, let in enumerate(x_cand_consensus):
+                    if let == 'X':
                         # Within 3 bp of start or end
                         cond_1 = i <= node.start + 2 and i >= node.start
                         cond_2 = i >= node.end - 2 and i <= node.end
 
-                        if cond_1 or cond_2:
-                            if ref_consensus_seq[i] != node.sequence[i]:
-                                if cond_1:
-                                    for x in range(i, node.start-1, -1):
-                                        node.sequence[x] = "-"
-                                        trimmed_pos += 1
-                                        x_positions[node.header].add(x)
-                                    node.start = i+1
-                                else:
-                                    for x in range(i, node.end):
-                                        node.sequence[x] = "-"
-                                        trimmed_pos += 1
-                                        x_positions[node.header].add(x)
-                                    node.end = i
-
+                        if cond_1 or cond_2 and ref_consensus_seq[i] != node.sequence[i]:
+                            trim_to = i
+                            edge = "start" if cond_1 else "end"
+                        elif trim_to is not None:
+                            if edge == "start":
+                                for x in range(trim_to, node.start - 1, -1):
+                                    node.sequence[x] = "-"
+                                    trimmed_pos += 1
+                                    x_positions[node.header].add(x)
+                                node.start = trim_to + 1
+                            elif edge == "end":
+                                for x in range(trim_to, node.end):
+                                    node.sequence[x] = "-"
+                                    trimmed_pos += 1
+                                    x_positions[node.header].add(x)
+                                node.end = trim_to
+                            
+                            trim_to = None
         x_cand_consensus, cand_coverage = do_consensus(
             nodes, args.consensus
         )
