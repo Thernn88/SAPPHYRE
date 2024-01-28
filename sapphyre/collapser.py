@@ -890,12 +890,26 @@ def process_batch(
                             edge = "start" if cond_1 else "end"
                         elif trim_to is not None:
                             if edge == "start":
-                                for x in range(trim_to, node.start - 1, -1):
+                                if trim_to == node.start + 2:
+                                    for i in range(node.start + 2, node.end):
+                                        if x_cand_consensus[i] == "X":
+                                            trim_to = i
+                                        else:
+                                            break
+
+                                for x in range(node.start, trim_to):
                                     node.sequence[x] = "-"
                                     trimmed_pos += 1
                                     x_positions[node.header].add(x)
                                 node.start = trim_to + 1
                             elif edge == "end":
+                                if trim_to == node.end - 2:
+                                    for i in range(node.end, node.start, -1):
+                                        if x_cand_consensus[i] == "X":
+                                            trim_to = i
+                                        else:
+                                            break
+
                                 for x in range(trim_to, node.end):
                                     node.sequence[x] = "-"
                                     trimmed_pos += 1
