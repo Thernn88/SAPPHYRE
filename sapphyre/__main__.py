@@ -250,7 +250,7 @@ def subcmd_hmmsearch(subparsers):
     par.set_defaults(func=hmmsearch, formathelp=par.format_help)
 
 def hmmsearch_args(par):
-    par.add_argument("-d", "--debug", action="store_true", help="Enable debug outputs.")
+    par.add_argument("-d", "--debug", action="count", default = 0, help="Enable debug outputs.")
     par.add_argument(
         "-ovw",
         "--overwrite",
