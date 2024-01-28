@@ -744,13 +744,13 @@ def find_regions_with_x(sequence, min_x_count=3, window_min_size=30):
 
     return matching_regions
 
-def get_nodes_overlapping_regions(nodes, region, minimum_overlap=15):
+def get_nodes_in_region(nodes, region, minimum_overlap=15):
     overlapping_nodes = []
 
     for node in nodes:
-        # if region[0] >= node.start and region[-1] <= node.end:
-        overlap = get_overlap(region[0], region[-1], node.start, node.end, minimum_overlap)
-        if overlap is not None:
+        if region >= node.start and region <= node.end:
+        # overlap = get_overlap(region[0], region[-1], node.start, node.end, minimum_overlap)
+        # if overlap is not None:
             overlapping_nodes.append(node)
 
     overlapping_nodes.sort(key = lambda x: x.score, reverse= True)
@@ -948,45 +948,64 @@ def process_batch(
         
 
         regions = find_regions_with_x(x_cand_consensus)
-
+        x_nkicks = 0
         if True: #Toggle: Kick x regions of 60 bp
+            threshold = 0.5
             for region in regions:
-                headers = get_nodes_overlapping_regions(nodes, region)
+                this_x_positions = []
+                for i, let in enumerate(x_cand_consensus[region[0]: region[1]], region[0]):
+                    if let == "X":
+                        this_x_positions.append(i)
 
-                # Grab master
-                master = None
-                for node in nodes:
-                    if node.kick:
-                        continue
-                    if node.header in headers:
-                        fail = False
-                        for i in range(node.start, node.end):
-                            if node.sequence[i] != x_cand_consensus[i] and x_cand_consensus[i] != "X":
-                                fail = True
-                                break
-                        
-                        if node.score < 30:
-                            continue
+                for x_pos in this_x_positions:
+                    headers = get_nodes_in_region(nodes, x_pos)
 
-                        if not fail:
-                            master = node
-                if master:
-                    this_x_positions = []
-                    for i, let in enumerate(x_cand_consensus[region[0]: region[1]], region[0]):
-                        if let == "X":
-                            this_x_positions.append(i)
+                    # Grab master
+                    master = None
                     for node in nodes:
                         if node.kick:
                             continue
-                        if node != master and node.header in headers:
-                            for i in this_x_positions:
-                                # i in node
-                                if i >= node.start and i < node.end:
-                                    if node.sequence[i] != master.sequence[i]:
-                                        node.kick = True
-                                        kicked_headers.add(node.header)
-                                        region_kicks.append(f"{gene},{i},{master.header},{master.score},{node.header},{node.score}")
-                                        break
+                        if node.header in headers:
+                            fail = False
+                            for i in range(node.start, node.end):
+                                if node.sequence[i] != x_cand_consensus[i] and x_cand_consensus[i] != "X":
+                                    fail = True
+                                    break
+                            
+                            if node.score < 30:
+                                continue
+
+                            if not fail:
+                                master = node
+                    if not master:
+                        continue
+
+                    for node in nodes:
+                        if node.kick:
+                            continue
+                        if node == master:
+                            continue
+                        if not node.header in headers:
+                            continue
+                        if node.score >= master.score:
+                            continue
+                        overlap_coords = get_overlap(node.start, node.end, master.start, master.end, 1)
+
+                        if overlap_coords is None:
+                            continue
+
+                        overlap_amount = overlap_coords[1] - overlap_coords[0]
+                        percent = overlap_amount / min(node.length, master.length)
+
+                        if percent < threshold:
+                            continue
+
+                        if node.sequence[i] != master.sequence[i]:
+                            x_nkicks += 1
+                            node.kick = True
+                            kicked_headers.add(node.header)
+                            region_kicks.append(f"{gene},{i},{master.header},{master.score},{node.header},{node.score}")
+                            break
 
         nodes = [node for node in nodes if not node.kick]
 
