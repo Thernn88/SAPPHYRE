@@ -58,6 +58,7 @@ class BatchArgs(Struct):
 
 class NODE(Struct):
     header: str
+    base_header: str
     score: float
     sequence: str | list
     start: int
@@ -341,6 +342,7 @@ def do_folder(args: CollapserArgs, input_path: str):
     
 
     print("Ambig columns before trim:", before_total, "Ambig columns after trim:", after_total)
+    
 
     if args.debug:
         kicked_genes = "\n".join(["\n".join(i[3]) for i in results])
@@ -350,6 +352,10 @@ def do_folder(args: CollapserArgs, input_path: str):
         reported_nodes = "True Node,Node,Overlap Percent\n" + "".join(["\n".join(i[7]) for i in results])
         xRegions = "Gene,Index,Candidate Coverage\n" + "\n".join(["\n".join(i[8]) for i in results])
         region_kicks =  "Triggering X Position,Master Header,Master Score,Kicked Header,Kicked Score\n" + "\n".join(["\n".join(i[11]) for i in results])
+        int_kicks = "\n".join(["\n".join(i[12]) for i in results])
+        internal_kicks = "Kicked Gene,Header,Frame,Score,Start,End,Reason,Master Gene,Header,Frame,Score,Start,End" + int_kicks
+        kick_count = int_kicks.count('\n')
+        print(f"Internal Kicks: {kick_count}")
 
         with open(path.join(collapsed_path, "kicked_genes.txt"), "w") as fp:
             fp.write(kicked_genes)
@@ -374,6 +380,9 @@ def do_folder(args: CollapserArgs, input_path: str):
 
         with open(path.join(collapsed_path, "region_kicks.txt"), "w") as fp:
             fp.write(region_kicks)
+        
+        with open(path.join(collapsed_path, "internal_kicks.txt"), "w") as fp:
+            fp.write(internal_kicks)
     else:
         genes_kicked_count = sum(len(i[3]) for i in results)
 
@@ -758,6 +767,48 @@ def get_nodes_in_region(nodes, region, minimum_overlap=15):
     return [i.header for i in overlapping_nodes]
 
 
+def internal_filter_gene(nodes, debug, gene, min_overlap_internal=0.9, score_diff_internal=1.5):
+    nodes.sort(key=lambda hit: hit.score, reverse=True)
+    filtered_sequences_log = []
+
+    for i, hit_a in enumerate(nodes):
+        if not hit_a:
+            continue
+        for j in range(len(nodes) - 1, i, -1):
+            hit_b = nodes[j]
+            if hit_b:
+                if hit_a.base_header != hit_b.base_header:
+                    if ((hit_a.score / hit_b.score) if hit_b.score != 0 else 0) < score_diff_internal:
+                        break
+
+                    overlap_coords = get_overlap(
+                        hit_a.start,
+                        hit_a.end,
+                        hit_b.start,
+                        hit_b.end,
+                        1,
+                    )
+                    amount_of_overlap = 0 if overlap_coords is None else overlap_coords[1] - overlap_coords[0]
+
+                    distance = (hit_b.end - hit_b.start) + 1  # Inclusive
+                    percentage_of_overlap = amount_of_overlap / distance
+
+                    if percentage_of_overlap >= min_overlap_internal:
+
+                        kmer_a = hit_a.sequence[overlap_coords[0]: overlap_coords[1]]
+                        kmer_b = hit_b.sequence[overlap_coords[0]: overlap_coords[1]]
+
+                        if not is_same_kmer(kmer_a, kmer_b):
+                            nodes[j] = None
+                            if debug:
+                                filtered_sequences_log.append(
+                                    f"{gene},{hit_b.header},{hit_b.score},{hit_b.start},{hit_b.end},Internal Overlapped with Highest Score,{gene},{hit_a.header},{hit_a.score},{hit_a.start},{hit_a.end}\nHit A Kmer: {kmer_a}\nHit B Kmer: {kmer_b}\n"
+                                )
+
+
+    return [i for i in nodes if i is not None], filtered_sequences_log
+
+
 def process_batch(
     batch_args: BatchArgs,
 ):
@@ -789,6 +840,7 @@ def process_batch(
     reported = []
     rescues = []
     reported_regions = []
+    internal_kicks = []
     region_kicks = []
     for input_gene in batch_args.genes:
         gene = input_gene.split('.')[0]
@@ -831,8 +883,9 @@ def process_batch(
             nodes.append(
                 NODE(
                     header=header,
+                    base_header = header.split("|")[3],
                     score=this_gene_scores.get(header, 0),
-                    sequence=list(sequence),
+                    sequence=sequence,#list(sequence),
                     start=start,
                     end=end,
                     length=(end - start),
@@ -863,6 +916,10 @@ def process_batch(
         ref_average_data_length = sum(ref_average_data_length) / len(
             ref_average_data_length
         )
+
+        nodes, internal_log = internal_filter_gene(nodes, args.debug, gene)
+
+        internal_kicks.extend(internal_log)
 
         x_cand_consensus, cand_coverage = do_consensus(
             nodes, args.consensus
@@ -1216,9 +1273,9 @@ def process_batch(
             has_x_genes_after += has_x_after
 
     if args.debug:
-        return True, kicks, total, kicked_genes, consensus_kicks, passed_total, rescues, reported, reported_regions, has_x_genes, has_x_genes_after, region_kicks
+        return True, kicks, total, kicked_genes, consensus_kicks, passed_total, rescues, reported, reported_regions, has_x_genes, has_x_genes_after, region_kicks, internal_kicks
 
-    return True, [], total, kicked_genes, consensus_kicks, passed_total, rescues, reported, reported_regions, has_x_genes, has_x_genes_after, region_kicks
+    return True, [], total, kicked_genes, consensus_kicks, passed_total, rescues, reported, reported_regions, has_x_genes, has_x_genes_after, region_kicks, internal_kicks
 
 
 def main(args, from_folder):
