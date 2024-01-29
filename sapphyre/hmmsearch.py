@@ -254,7 +254,7 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location
     # output, filtered_sequences_log = internal_filter_gene(output, debug)
     filtered_sequences_log = []
 
-    return gene, output, new_outs, kick_log, filtered_sequences_log
+    return gene, [i[0] for i in output], new_outs, kick_log, filtered_sequences_log
 
 def get_arg(transcripts_mapped_to, hmm_output_folder, top_location, hmm_location, overwrite, debug, verbose):
     for gene, transcript_hits in transcripts_mapped_to:
