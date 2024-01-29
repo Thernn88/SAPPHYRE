@@ -876,7 +876,7 @@ def process_batch(
         for let in x_cand_consensus:
             if let == 'X': has_x_before += 1
 
-        if True: #Toggle: trim edge regions
+        if False: #Toggle: trim edge regions
             for node in nodes:
                 trim_to = None
                 for i, let in enumerate(x_cand_consensus):
@@ -921,33 +921,33 @@ def process_batch(
             nodes, args.consensus
         )
 
-        for node in nodes:
-            i = None
-            for poss_i in range(node.start, node.start + 3):
-                if node.sequence[poss_i] != x_cand_consensus[poss_i]:
-                    i = poss_i
+        # for node in nodes:
+        #     i = None
+        #     for poss_i in range(node.start, node.start + 3):
+        #         if node.sequence[poss_i] != x_cand_consensus[poss_i]:
+        #             i = poss_i
 
-            if not i is None:
-                for x in range(node.start , i + 1):
-                    node.sequence[x] = "-"
-                    trimmed_pos += 1
-                    x_positions[node.header].add(x)
-                node.start = i+1
+        #     if not i is None:
+        #         for x in range(node.start , i + 1):
+        #             node.sequence[x] = "-"
+        #             trimmed_pos += 1
+        #             x_positions[node.header].add(x)
+        #         node.start = i+1
 
-            i = None
-            for poss_i in range(node.end-3, node.end):
-                if node.sequence[poss_i] != x_cand_consensus[poss_i]:
-                    i = poss_i
+        #     i = None
+        #     for poss_i in range(node.end-3, node.end):
+        #         if node.sequence[poss_i] != x_cand_consensus[poss_i]:
+        #             i = poss_i
 
-            if not i is None:
-                for x in range(i, node.end):
-                    node.sequence[x] = "-"
-                    trimmed_pos += 1
-                    x_positions[node.header].add(x)
-                node.end = i
+        #     if not i is None:
+        #         for x in range(i, node.end):
+        #             node.sequence[x] = "-"
+        #             trimmed_pos += 1
+        #             x_positions[node.header].add(x)
+        #         node.end = i
 
-        for node in nodes:
-            node.sequence = "".join(node.sequence)
+        # for node in nodes:
+        #     node.sequence = "".join(node.sequence)
 
         x_cand_consensus, cand_coverage = do_consensus(
             nodes, args.consensus
@@ -963,7 +963,7 @@ def process_batch(
 
         regions = find_regions_with_x(x_cand_consensus)
         x_nkicks = 0
-        if True: #Toggle: Kick x regions of 60 bp
+        if False: #Toggle: Kick x regions of 60 bp
             threshold = 0.5
             for region in regions:
                 this_x_positions = []
