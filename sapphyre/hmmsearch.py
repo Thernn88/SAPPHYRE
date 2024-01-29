@@ -251,7 +251,8 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location
         if not f"{hit.node}|{hit.frame}" in parents_done:
             kick_log.append(f"{hit.gene},{hit.node},{hit.frame}")
 
-    output, filtered_sequences_log = internal_filter_gene(output, debug)
+    # output, filtered_sequences_log = internal_filter_gene(output, debug)
+    filtered_sequences_log = []
 
     return gene, output, new_outs, kick_log, filtered_sequences_log
 
