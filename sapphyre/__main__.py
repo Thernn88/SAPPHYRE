@@ -392,7 +392,7 @@ def outlier_args(par):
         "--matching_consensus_percent",
         help="Minimum percent of similar columns required for consensus ",
         type=float,
-        default=0.65,
+        default=0.3,
     )
     par.add_argument(
         "-rmp",
