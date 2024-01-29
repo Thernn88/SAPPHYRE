@@ -9,7 +9,7 @@ from .utils import printv, gettempdir, parseFasta, writeFasta
 from os import path, system, stat
 from msgspec import Struct, json
 from multiprocessing import Pool
-from phymmr_tools import translate, bio_revcomp, get_overlap, is_same_kmer
+from phymmr_tools import translate, bio_revcomp, get_overlap
 from Bio.Seq import Seq
 from .timekeeper import TimeKeeper, KeeperMode
 
@@ -76,6 +76,33 @@ def shift(frame, by):
     return frame * coeff
 
 
+def get_overlap_amount(a_start: int, a_end: int, b_start: int, b_end: int) -> int:
+    """Get the overlap between two ranges.
+
+    Args:
+    ----
+        a_start (int): The starting position of range A.
+        a_end (int): The ending position of range A.
+        b_start (int): The starting position of range B.
+        b_end (int): The ending position of range B.
+
+    Returns:
+    -------
+        int: The amount of overlap between the two ranges.
+    """
+    overlap_coords = get_overlap(
+        a_start,
+        a_end,
+        b_start,
+        b_end,
+        1,
+    )
+    if overlap_coords == None:
+        return 0
+
+    return overlap_coords[1] - overlap_coords[0]
+
+
 def internal_filter_gene(this_gene_hits, debug, min_overlap_internal=0.9, score_diff_internal=1.5):
     this_gene_hits.sort(key=lambda hit: hit[0].score, reverse=True)
     filtered_sequences_log = []
@@ -90,27 +117,16 @@ def internal_filter_gene(this_gene_hits, debug, min_overlap_internal=0.9, score_
                     if ((hit_a.score / hit_b.score) if hit_b.score != 0 else 0) < score_diff_internal:
                         break
 
-                    overlap_coords = get_overlap(
-                        start_a,
-                        end_a,
-                        start_b,
-                        end_b,
-                        1,
-                    )
-                    amount_of_overlap = 0 if overlap_coords is None else overlap_coords[1] - overlap_coords[0]
-
+                    amount_of_overlap = get_overlap_amount(start_a, end_a, start_b, end_b)
                     distance = (end_b - start_b) + 1  # Inclusive
                     percentage_of_overlap = amount_of_overlap / distance
 
                     if percentage_of_overlap >= min_overlap_internal:
-                        kmer_a = str(Seq(hit_a.seq[overlap_coords[0]-start_a:overlap_coords[1]-start_a]).translate())
-                        kmer_b = str(Seq(hit_b.seq[overlap_coords[0]-start_b:overlap_coords[1]-start_b]).translate())
-                        if not is_same_kmer(kmer_a, kmer_b):
-                            this_gene_hits[j] = None, None, None
-                            if debug:
-                                filtered_sequences_log.append(
-                                    f"{hit_b.gene},{hit_b.node},{hit_b.frame},{hit_b.score},{start_b},{end_b},Internal Overlapped with Highest Score,{hit_a.gene},{hit_a.node},{hit_a.frame},{hit_a.score},{start_a},{end_a}\nHit A Kmer: {kmer_a}\nHit B Kmer: {kmer_b}\n"
-                                )
+                        this_gene_hits[j] = None, None, None
+                        if debug:
+                            filtered_sequences_log.append(
+                                f"{hit_b.gene},{hit_b.node},{hit_b.frame},{hit_b.score},{start_b},{end_b},Internal Overlapped with Highest Score,{hit_a.gene},{hit_a.node},{hit_a.frame},{hit_a.score},{start_a},{end_a}"
+                            )
 
 
     return [i[0] for i in this_gene_hits if i[0] is not None], filtered_sequences_log
@@ -186,9 +202,9 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location
 
             query = line[0]
 
-            hmm_start, hmm_end, ali_start, ali_end, score = int(line[15]), int(line[16]), int(line[17]), int(line[18]), float(line[7])
+            start, end, ali_start, ali_end, score = int(line[17]), int(line[18]), int(line[15]), int(line[16]), float(line[7])
 
-            data[query].append((ali_start - 1, ali_end, score, hmm_start, hmm_end))
+            data[query].append((start - 1, end, score, ali_start, ali_end))
 
     output = []
     new_outs = []
@@ -199,7 +215,7 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location
             hit = parents[query]
             if not f"{hit.node}|{hit.frame}" in parents_done:
                 for result in results:
-                    start, end, score, hmm_start, hmm_end = result
+                    start, end, score, ali_start, ali_end = result
                     start = start * 3
                     end = end * 3
 
@@ -210,13 +226,13 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location
 
                     parents_done.add(f"{hit.node}|{hit.frame}")
                     new_hit = HmmHit(node=hit.node, score=score, frame=hit.frame, qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=sequence)
-                    output.append((new_hit, hmm_start, hmm_end))
+                    output.append((new_hit, ali_start, ali_end))
 
         if query in children:
             _, frame = query.split("|")
             parent = children[query]
             for result in results:
-                start, end, score, hmm_start, hmm_end = result
+                start, end, score, ali_start, ali_end = result
                 start = start * 3
                 end = end * 3
 
@@ -228,7 +244,7 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location
                 clone = HmmHit(node=parent.node, score=score, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=parent.gene, query=parent.query, uid=parent.uid, refs=parent.refs, seq=sequence)
                 new_outs.append((f"{clone.gene},{clone.node},{clone.frame}"))
                 
-                output.append((clone, hmm_start, hmm_end))
+                output.append((clone, ali_start, ali_end))
 
     kick_log = []
     for hit in diamond_hits:
