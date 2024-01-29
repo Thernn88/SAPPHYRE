@@ -125,11 +125,11 @@ def internal_filter_gene(this_gene_hits, debug, min_overlap_internal=0.9, score_
                         this_gene_hits[j] = None, None, None
                         if debug:
                             filtered_sequences_log.append(
-                                f"{hit_b.gene},{hit_b.node},{hit_b.score},{start_b},{end_b},Internal Overlapped with Highest Score,{hit_a.gene},{hit_a.node},{hit_a.score},{start_a},{end_a}"
+                                f"{hit_b.gene},{hit_b.node},{hit_b.frame},{hit_b.score},{start_b},{end_b},Internal Overlapped with Highest Score,{hit_a.gene},{hit_a.node},{hit_a.frame},{hit_a.score},{start_a},{end_a}"
                             )
 
 
-    return [i for i in this_gene_hits if i[0] is not None], filtered_sequences_log
+    return [i[0] for i in this_gene_hits if i[0] is not None], filtered_sequences_log
 
 
 def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location, overwrite, debug, verbose):
@@ -317,11 +317,12 @@ def do_folder(input_folder, args):
 
     log = ["Gene,Node,Frame"]
     klog = ["Gene,Node,Frame"]
-    ilog = ["Kicked Gene,Header,Score,Start,End,Reason,Master Gene,Header,Score,Start,End"]
+    ilog = ["Kicked Gene,Header,Frame,Score,Start,End,Reason,Master Gene,Header,Frame,Score,Start,End"]
     for gene, hits, logs, klogs, ilogs in all_hits:
         if not gene:
             continue
-        hits_db.put_bytes(f"gethmmhits:{gene}", json.encode([i[0] for i in hits]))
+        
+        hits_db.put_bytes(f"gethmmhits:{gene}", json.encode([i for i in hits]))
         log.extend(logs)
         klog.extend(klogs)
         ilog.extend(ilogs)
