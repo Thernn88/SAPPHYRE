@@ -69,6 +69,7 @@ FlexcullArgs = namedtuple(
         "column_cull_percent",
         "filtered_mat",
         "is_assembly_or_genome",
+        "is_genome",
         "is_ncg",  # non coding gene
         "keep_codons",
     ],
@@ -652,6 +653,7 @@ def cull_codons(
     all_dashes_by_index: dict,
     character_at_each_pos: dict,
     gap_present_threshold: dict,
+    is_genome: bool,
 ):
     positions_to_trim = set()
     codons = []
@@ -759,10 +761,11 @@ def cull_codons(
 
         non_trimmed_codons.remove(i)
 
-        if not cut_left and not cut_right:
-            if gap_present_threshold[i]:
-                kick = True, i
-                return out_line, positions_to_trim, kick
+        if not is_genome:
+            if not cut_left and not cut_right:
+                if gap_present_threshold[i]:
+                    kick = True, i
+                    return out_line, positions_to_trim, kick
 
     return out_line, positions_to_trim, kick
 
@@ -1092,6 +1095,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                     all_dashes_by_index,
                     character_at_each_pos,
                     gap_present_threshold,
+                    fargs.is_genome,
                 )
                 if kick:
                     follow_through[header] = True, 0, 0, []
@@ -1279,8 +1283,8 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
     nt_db_path = path.join(folder, "rocksdb", "sequences", "nt")
     nt_db = RocksDB(nt_db_path)
     dbis_assembly = nt_db.get("get:isassembly") == "True"
-    dbis_genome = nt_db.get("get:isgenome") == "True"
-    is_assembly_or_genome = dbis_assembly or dbis_genome
+    is_genome = nt_db.get("get:isgenome") == "True"
+    is_assembly_or_genome = dbis_assembly or is_genome
 
     folder_check(output_path)
     file_inputs = [
@@ -1329,6 +1333,7 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
                     args.mismatches,
                     args.column_cull,
                     filtered_mat,
+                    is_genome,
                     is_assembly_or_genome,
                     input_gene in non_coding_gene,
                     args.keep_codons,
