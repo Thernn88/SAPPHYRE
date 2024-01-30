@@ -13,7 +13,7 @@ from parasail import blosum62, nw_trace_scan_profile_16, profile_create_16
 from phymmr_tools import translate
 from wrap_rocks import RocksDB
 from xxhash import xxh3_64
-
+from Bio.Seq import Seq
 from . import rocky
 from .diamond import ReporterHit
 from .timekeeper import KeeperMode, TimeKeeper
@@ -97,6 +97,8 @@ class Hit(ReporterHit, frozen=True):
                 GAP_PENALTY,
                 EXTEND_PENALTY,
             )
+
+            
 
             # Get the aligned sequence with the highest score
             this_aa, ref_seq = result.traceback.query, result.traceback.ref
@@ -260,7 +262,7 @@ def translate_cdna(cdna_seq):
     if len(cdna_seq) % 3 != 0:
         printv("WARNING: NT Sequence length is not divisable by 3", 0)
 
-    return translate(cdna_seq)
+    return str(Seq(cdna_seq).translate())
 
 
 def get_core_sequences(
