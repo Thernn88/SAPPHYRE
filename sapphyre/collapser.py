@@ -770,6 +770,7 @@ def get_nodes_in_region(nodes, region, minimum_overlap=15):
 def internal_filter_gene(nodes, debug, gene, min_overlap_internal=0.9, score_diff_internal=1.5):
     nodes.sort(key=lambda hit: hit.score, reverse=True)
     filtered_sequences_log = []
+    kicks = set()
 
     for i, hit_a in enumerate(nodes):
         if not hit_a:
@@ -799,6 +800,7 @@ def internal_filter_gene(nodes, debug, gene, min_overlap_internal=0.9, score_dif
                         kmer_b = hit_b.sequence[overlap_coords[0]: overlap_coords[1]]
 
                         if not is_same_kmer(kmer_a, kmer_b):
+                            kicks.add(hit_b.header)
                             nodes[j] = None
                             if debug:
                                 filtered_sequences_log.append(
@@ -806,8 +808,7 @@ def internal_filter_gene(nodes, debug, gene, min_overlap_internal=0.9, score_dif
                                 )
 
 
-    return [i for i in nodes if i is not None], filtered_sequences_log
-
+    return [i for i in nodes if i is not None], filtered_sequences_log, kicks
 
 def process_batch(
     batch_args: BatchArgs,
@@ -917,8 +918,8 @@ def process_batch(
             ref_average_data_length
         )
 
-        nodes, internal_log = internal_filter_gene(nodes, args.debug, gene)
-
+        nodes, internal_log, kicks = internal_filter_gene(nodes, args.debug, gene)
+        kicked_headers.update(kicks)
         internal_kicks.extend(internal_log)
 
         x_cand_consensus, cand_coverage = do_consensus(
