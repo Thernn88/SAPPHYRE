@@ -917,9 +917,9 @@ def process_batch(
             ref_average_data_length
         )
 
-        nodes, internal_log = internal_filter_gene(nodes, args.debug, gene)
+        #nodes, internal_log = internal_filter_gene(nodes, args.debug, gene)
 
-        internal_kicks.extend(internal_log)
+        #internal_kicks.extend(internal_log)
 
         x_cand_consensus, cand_coverage = do_consensus(
             nodes, args.consensus
