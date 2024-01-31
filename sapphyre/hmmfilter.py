@@ -30,6 +30,7 @@ class HmmfilterArgs(Struct):
     consensus: float
 
     from_folder: str
+    min_overlap_internal: float
 
 
 class BatchArgs(Struct):
@@ -98,7 +99,7 @@ def del_cols(sequence, columns, nt=False):
             seq[i] = "-"
         return "".join(seq)
 
-def internal_filter_gene(nodes, debug, gene, min_overlap_internal=0.9, score_diff_internal=1.5):
+def internal_filter_gene(nodes, debug, gene, min_overlap_internal, score_diff_internal=1.5):
     nodes.sort(key=lambda hit: hit.score, reverse=True)
     filtered_sequences_log = []
     kicks = set()
@@ -232,7 +233,7 @@ def process_batch(
             ref_average_data_length
         )
 
-        nodes, internal_log, internal_header_kicks = internal_filter_gene(nodes, args.debug, gene)
+        nodes, internal_log, internal_header_kicks = internal_filter_gene(nodes, args.debug, gene, args.min_overlap_internal)
         kicked_headers.update(internal_header_kicks)
         internal_kicks.extend(internal_log)
 
@@ -477,6 +478,7 @@ def main(args, from_folder):
         debug=args.debug,
         consensus=args.consensus,
         from_folder=from_folder,
+        min_overlap_internal=args.min_overlap_internal,
     )
     return do_folder(this_args, args.INPUT)
 
