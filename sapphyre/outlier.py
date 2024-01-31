@@ -66,11 +66,6 @@ def main(argsobj):
                 print(argsobj.formathelp())
             from_folder = "excise"
 
-        printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
-        if not internal.main(this_args, True, from_folder):
-            print()
-            print(argsobj.format)
-
     printv(f"Took {timer.differential():.2f} seconds overall.", argsobj.verbose)
 
     return True
