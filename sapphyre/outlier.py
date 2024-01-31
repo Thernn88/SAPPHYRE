@@ -2,7 +2,7 @@ import argparse
 import os
 from shutil import rmtree
 
-from . import blosum, collapser, excise, internal
+from . import blosum, excise, hmmfilter, internal
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import printv
 
@@ -49,11 +49,11 @@ def main(argsobj):
                 to_move.append((folder, bad_folder))
 
         printv("Simple Assembly To Ensure Consistency.", argsobj.verbose)
-        if not collapser.main(this_args, from_folder):
+        if not hmmfilter.main(this_args, from_folder):
             print()
             print(argsobj.formathelp())
             return
-        from_folder = "collapsed"
+        from_folder = "hmmfilter"
 
         if debug > 1:
             continue

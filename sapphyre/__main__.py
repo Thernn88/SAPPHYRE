@@ -354,66 +354,10 @@ def outlier_args(par):
     )
     # Collapser commands
     par.add_argument(
-        "-mo",
-        "--merge_overlap",
-        help="Minimum overlap distance for splicing reads",
-        type=int,
-        default=6,
-    )
-    par.add_argument(
-        "-gdp",
-        "--gross_diference_percent",
-        help="Similarity percent required if reads have gross difference",
-        type=float,
-        default=0.90,
-    )
-    par.add_argument(
-        "-ko",
-        "--kick_overlap",
-        help="Minimum overlap percent to check for a possible kick",
-        type=float,
-        default=0.35,
-    )
-    par.add_argument(
-        "-mp",
-        "--matching_percent",
-        help="Minimum percent for matching columns in kick check",
-        default=0.8,
-    )
-    par.add_argument(
-        "-sp",
-        "--sub_percent",
-        help="Percentage difference to allow for blosum substitution",
-        type=float,
-        default=0.1,
-    )
-    par.add_argument(
-        "-mcp",
-        "--matching_consensus_percent",
-        help="Minimum percent of similar columns required for consensus ",
-        type=float,
-        default=0.3,
-    )
-    par.add_argument(
-        "-rmp",
-        "--rolling_matching_percent",
-        help="The percent the rolling window consensus has to match a read to pass",
-        type=float,
-        default=0.7,
-    )
-    par.add_argument(
-        "-rcp",
-        "--rolling_consensus_percent",
-        help="The consensus arg for generating the rolling window consensus sequence",
-        type=float,
-        default=0.5,
-    )
-    par.add_argument(
-        "-rws",
-        "--rolling_window_size",
-        help="Amount of bp to check at a time in the rolling window consensus",
-        type=int,
-        default=14,
+        "--no_excise",  
+        action="store_true",
+        default=False,
+        help="Disable excise runs",
     )
     par.add_argument(
         "-tct",
@@ -421,12 +365,6 @@ def outlier_args(par):
         help="Largest distance between two reads to be considered in the same cluster",
         type=int,
         default=50,
-    )
-    par.add_argument(
-        "--no_excise",
-        action="store_true",
-        default=False,
-        help="Disable excise runs",
     )
     par.add_argument(
         "-ct",
@@ -437,10 +375,9 @@ def outlier_args(par):
     )
     par.add_argument(
         "-et",
-        "--excise_placeholder_threshold",
+        "--excise",
         default=0.40,
         type=float,
-        dest="excise",
         help="Maximum percent of allowable X characters in consensus tail",
     )
     par.add_argument(
