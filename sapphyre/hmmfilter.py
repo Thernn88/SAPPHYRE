@@ -99,7 +99,7 @@ def del_cols(sequence, columns, nt=False):
             seq[i] = "-"
         return "".join(seq)
 
-def internal_filter_gene(nodes, debug, gene, min_overlap_internal, score_diff_internal=1.5):
+def internal_filter_gene(nodes, debug, gene, min_overlap_internal, score_diff_internal=1.3):
     nodes.sort(key=lambda hit: hit.score, reverse=True)
     filtered_sequences_log = []
     kicks = set()
