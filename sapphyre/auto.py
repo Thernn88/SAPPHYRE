@@ -133,9 +133,9 @@ def main(args):
             if not outlier.main(this_args):
                 print("Error in Outlier.")
         elif script == "merge":
-            from . import merge
+            from . import consensus_merge
 
-            if not merge.main(this_args):
+            if not consensus_merge.main(this_args):
                 print("Error in Merge.")
 
     time = time.differential()
