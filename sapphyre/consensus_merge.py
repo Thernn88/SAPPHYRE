@@ -97,6 +97,40 @@ def get_node(header):
     return header.split("|")[3]
 
 
+def do_consensus(nodes, threshold):
+    if not nodes:
+        return ""
+
+    length = len(nodes[0].sequence)
+    consensus_sequence = ""
+    cand_coverage = {}
+
+    for i in range(length):
+        counts = {}
+
+        for node in nodes:
+            if i >= node.start and i < node.end:
+                counts.setdefault(node.sequence[i], 0)
+                counts[node.sequence[i]] += 1
+
+        if not counts:
+            consensus_sequence += "-"
+            cand_coverage[i] = 0
+            continue
+
+        max_count = max(counts.values())
+        total_count = sum(counts.values())
+
+        cand_coverage[i] = total_count
+
+        if max_count / total_count > threshold:
+            consensus_sequence += max(counts, key=counts.get)
+        else:
+            consensus_sequence += 'X'
+
+    return consensus_sequence, cand_coverage
+
+
 class do_gene():
     def __init__(self, aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, compress) -> None:
         self.aa_gene_input = aa_gene_input
@@ -107,12 +141,14 @@ class do_gene():
 
         self.compress = compress
 
+        self.threshold = 0.25
+
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         self.do_gene(*args, **kwds)
 
     def do_gene(self, aa_gene, nt_gene):
         raw_gene = aa_gene.split('.')[0]
-        print("Doing:",raw_gene)
+        # print("Doing:",raw_gene)
 
         
 
@@ -131,8 +167,9 @@ class do_gene():
             else:
                 candidates.append(Node(header, seq, *find_index_pair(seq, "-")))
         
+        candidates.sort(key=lambda x: x.start)
+
         overlap_groups = disperse_into_overlap_groups(candidates)
-        header_to_ambig = {}
         coverage = [0] * len(candidates[0].sequence)
         for region, group in overlap_groups:
             columns = defaultdict(list)
@@ -151,7 +188,7 @@ class do_gene():
                 coverage_on_highest_aa = most_common[1] / coverage[i]
                 coverage_on_other_codons = 1 - coverage_on_highest_aa
 
-                if coverage_on_other_codons < 0.25:
+                if coverage_on_other_codons < self.threshold:
                     out_seq[i] = most_common[0]
                     continue
 
@@ -183,16 +220,7 @@ class do_gene():
             
             new_seq = "".join(out_seq)
             new_header = "&&".join(get_node(i.header) for i in group)
-            
-            codons = [new_seq[i:i+3] for i in range(0, len(new_seq), 3)]
-            acgt_gap = {"A", "C", "G", "T", "-"}
-            ambig_cols = set()
-            for i, codon in enumerate(codons):
-                if {i for i in set(codon) if i not in acgt_gap}:
-                    ambig_cols.add(i)
-
-            header_to_ambig[new_header] = ambig_cols
-
+      
             nt_out.append((new_header, new_seq))
 
         writeFasta(path.join(self.nt_gene_output, nt_gene), nt_out, self.compress)
@@ -207,29 +235,18 @@ class do_gene():
             else:
                 candidates.append(Node(header, seq, *find_index_pair(seq, "-")))
 
+        candidates.sort(key=lambda x: x.start)
+
         overlap_groups = disperse_into_overlap_groups(candidates)
 
         for region, group in overlap_groups:
             new_header = "&&".join(get_node(i.header) for i in group)
-            ambig_cols = header_to_ambig[new_header]
             new_seq = []
-
-            for i in range(len(group[0].sequence)):
-                if i in ambig_cols:
-                    new_seq.append("X")
-                else:
-                    
-                    amino = list(x.sequence[i] for x in group if x.start <= i <= x.end and x.sequence[i] != "-")
-                    if len(amino) == 0:
-                        new_seq.append("-")
-                        continue
-
-                    amino = Counter(amino).most_common(1)[0][0]
-
-                    new_seq.append(amino)
             
-            new_seq = "".join(new_seq)
-            aa_out.append((new_header, new_seq))
+
+            cand_seq, x = do_consensus(group, 1-self.threshold)
+
+            aa_out.append((new_header, cand_seq))
 
         writeFasta(path.join(self.aa_gene_output, aa_gene), aa_out, self.compress)
 
