@@ -510,7 +510,10 @@ def merge_args(par):
 
 
 def Merge(args):
-    from . import merge
+    if args.second_run:
+        from . import merge
+    else:
+        from . import consensus_merge as merge
 
     if not merge.main(args):
         print()
