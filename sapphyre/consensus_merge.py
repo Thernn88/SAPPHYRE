@@ -93,8 +93,10 @@ class Node(Struct):
     end: int
     
 
-def get_node(header):
-    return header.split("|")[3]
+def get_header_parts(headers):
+    node_part = "&&".join(header.split("|")[3] for header in headers)
+    ref_part = Counter(header.split("|")[1] for header in headers).most_common(1)[0][0]
+    return node_part, ref_part, headers[0].split("|")[2]
 
 
 def do_consensus(nodes, threshold):
@@ -219,7 +221,10 @@ class do_gene():
                 out_seq[i] = get_IUPAC(column)
             
             new_seq = "".join(out_seq)
-            new_header = "&&".join(get_node(i.header) for i in group)
+
+            new_node, new_ref, old_taxa = get_header_parts([i.header for i in group])
+
+            new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}"
       
             nt_out.append((new_header, new_seq))
 
@@ -240,7 +245,10 @@ class do_gene():
         overlap_groups = disperse_into_overlap_groups(candidates)
 
         for region, group in overlap_groups:
-            new_header = "&&".join(get_node(i.header) for i in group)
+            new_node, new_ref, old_taxa = get_header_parts([i.header for i in group])
+
+            new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}"
+
             new_seq = []
             
 
