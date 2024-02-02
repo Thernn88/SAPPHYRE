@@ -114,6 +114,8 @@ class do_gene():
         raw_gene = aa_gene.split('.')[0]
         print("Doing:",raw_gene)
 
+        
+
         aa_gene_path = path.join(self.aa_gene_input, aa_gene)
         nt_gene_path = path.join(self.nt_gene_input, nt_gene)
         
@@ -131,40 +133,55 @@ class do_gene():
         
         overlap_groups = disperse_into_overlap_groups(candidates)
         header_to_ambig = {}
+        coverage = [0] * len(candidates[0].sequence)
         for region, group in overlap_groups:
-            columns = defaultdict(set)
+            columns = defaultdict(list)
             for node in group:
-                for i, let in enumerate(node.sequence):
-                    columns[i].add(let)
+                for i, let in enumerate(node.sequence[node.start:], node.start):
+                    if let != '-':
+                        columns[i].append(let)
+                for i in range(node.start, node.end):
+                    coverage[i] += 1
 
+            out_seq = ["-"] * len(group[0].sequence)
             for i, column in columns.items():
-                if column == {"-"}:
-                    columns[i] = "-"
+                column_counts = Counter(column)
+
+                most_common = column_counts.most_common(1)[0]
+                coverage_on_highest_aa = most_common[1] / coverage[i]
+                coverage_on_other_codons = 1 - coverage_on_highest_aa
+
+                if coverage_on_other_codons < 0.25:
+                    out_seq[i] = most_common[0]
+                    continue
+
+                column = set(column)
+                if column == set():
+                    out_seq[i] = "-"
                     continue
                 
                 column = {char for char in column if char != '-'}
 
                 if column == {"A"}:
-                    columns[i] = "A"
+                    out_seq[i] = "A"
                     continue
 
                 if column == {"C"}:
-                    columns[i] = "C"
+                    out_seq[i] = "C"
                     continue
 
                 if column == {"G"}:
-                    columns[i] = "G"
+                    out_seq[i] = "G"
                     continue
                 
                 
                 if column == {"T"}:
-                    columns[i] = "T"
+                    out_seq[i] = "T"
                     continue
 
-                columns[i] = get_IUPAC(column)
+                out_seq[i] = get_IUPAC(column)
             
-
-            new_seq = "".join(columns[i] for i in range(len(columns)))
+            new_seq = "".join(out_seq)
             new_header = "&&".join(get_node(i.header) for i in group)
             
             codons = [new_seq[i:i+3] for i in range(0, len(new_seq), 3)]
@@ -201,12 +218,15 @@ class do_gene():
                 if i in ambig_cols:
                     new_seq.append("X")
                 else:
-                    amino = list({x.sequence[i] for x in group if x.start <= i <= x.end and x.sequence[i] != "-"})
+                    
+                    amino = list(x.sequence[i] for x in group if x.start <= i <= x.end and x.sequence[i] != "-")
                     if len(amino) == 0:
                         new_seq.append("-")
                         continue
 
-                    new_seq.append(amino[0])
+                    amino = Counter(amino).most_common(1)[0][0]
+
+                    new_seq.append(amino)
             
             new_seq = "".join(new_seq)
             aa_out.append((new_header, new_seq))
