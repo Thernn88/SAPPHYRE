@@ -125,9 +125,6 @@ def do_consensus(nodes, threshold):
         max_count = max(counts.values())
         total_count = sum(counts.values())
 
-        if i >= 915:
-            print(i, counts)
-
         cand_coverage[i] = total_count
 
         if max_count / total_count > threshold:
