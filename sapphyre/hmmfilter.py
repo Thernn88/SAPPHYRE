@@ -177,7 +177,7 @@ def kick_read_consensus(
     """
 
     # Kick reads with a score below the threshold
-    for read in nodes:
+    for i, read in enumerate(nodes):
         average_matching_cols = average_match(
             read.sequence,
             ref_consensus,
@@ -192,8 +192,9 @@ def kick_read_consensus(
                     f"{gene},{read.header},{average_matching_cols},{length}\n"
                 )
             kicked_headers.add(read.header)
+            nodes[i] = None
 
-    return nodes
+    return [i for i in nodes if i is not None]
 
 def average_match(seq_a, consensus, start, end):
     """
