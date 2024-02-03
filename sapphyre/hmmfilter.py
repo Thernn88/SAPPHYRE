@@ -187,11 +187,11 @@ def kick_read_consensus(
 
         if average_matching_cols < match_percent:
             if debug:
+                length = read.end - read.start
                 consensus_kicks.append(
-                    f"{gene},{read.header},{average_matching_cols},{read.length}\n"
+                    f"{gene},{read.header},{average_matching_cols},{length}\n"
                 )
             kicked_headers.add(read.header)
-            read.kick = True
 
     return nodes
 
