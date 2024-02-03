@@ -327,6 +327,13 @@ def outlier_args(par):
         help="Minimum overlap percent between reads in hmmfilter",
     )
     par.add_argument(
+        "-mcp",
+        "--matching_consensus_percent",
+        help="Minimum percent of similar columns required for consensus ",
+        type=float,
+        default=0.2,
+    )
+    par.add_argument(
         "-sdi",
         "--score_diff_internal",
         type=float,
