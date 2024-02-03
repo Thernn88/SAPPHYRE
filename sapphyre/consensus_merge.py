@@ -112,16 +112,21 @@ def do_consensus(nodes, threshold):
 
         for node in nodes:
             if i >= node.start and i < node.end:
-                counts.setdefault(node.sequence[i], 0)
-                counts[node.sequence[i]] += 1
+                if node.sequence[i] != "-":
+                    counts.setdefault(node.sequence[i], 0)
+                    counts[node.sequence[i]] += 1
 
         if not counts:
             consensus_sequence += "-"
             cand_coverage[i] = 0
             continue
 
+
         max_count = max(counts.values())
         total_count = sum(counts.values())
+
+        if i >= 915:
+            print(i, counts)
 
         cand_coverage[i] = total_count
 
@@ -172,8 +177,9 @@ class do_gene():
         candidates.sort(key=lambda x: x.start)
 
         overlap_groups = disperse_into_overlap_groups(candidates)
-        coverage = [0] * len(candidates[0].sequence)
+        
         for region, group in overlap_groups:
+            coverage = [0] * len(candidates[0].sequence)
             columns = defaultdict(list)
             for node in group:
                 for i, let in enumerate(node.sequence[node.start:], node.start):
@@ -182,7 +188,7 @@ class do_gene():
                 for i in range(node.start, node.end):
                     coverage[i] += 1
 
-            out_seq = ["-"] * len(group[0].sequence)
+            out_seq = [""] * len(candidates[0].sequence)
             for i, column in columns.items():
                 column_counts = Counter(column)
 
@@ -190,7 +196,10 @@ class do_gene():
                 coverage_on_highest_aa = most_common[1] / coverage[i]
                 coverage_on_other_codons = 1 - coverage_on_highest_aa
 
-                if coverage_on_other_codons < self.threshold:
+                
+                
+
+                if coverage_on_other_codons <= self.threshold:
                     out_seq[i] = most_common[0]
                     continue
 
