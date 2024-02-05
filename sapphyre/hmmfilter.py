@@ -57,7 +57,7 @@ class NODE(Struct):
 
 def do_consensus(nodes, threshold):
     if not nodes:
-        return ""
+        return "", {}
 
     length = len(nodes[0].sequence)
     consensus_sequence = ""
