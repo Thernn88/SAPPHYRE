@@ -409,7 +409,7 @@ def process_batch(
                 node.start = i+1
 
             i = None
-            for poss_i in range(node.end, node.end - 3, -1):
+            for poss_i in range(node.end -1, node.end - 4, -1):
                 if node.sequence[poss_i] != x_cand_consensus[poss_i]:
                     i = poss_i
 
