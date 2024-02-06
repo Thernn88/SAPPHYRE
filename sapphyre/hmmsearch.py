@@ -27,7 +27,18 @@ class HmmHit(Struct):
     seq: str = None
     
 
-
+def generate_pool_id_to_score(hits: list[HmmHit]) -> dict:
+    for i, (hit1, start_a, end_a) in enumerate(hits):
+        final_score = hit1.score
+        for j, (hit2, start_b, end_b) in enumerate(hits):
+            if i != j:
+                if hit1.node == hit2.node:
+                    amount_of_overlap = get_overlap_amount(start_a, end_a, start_b, end_b)
+                    distance = min((end_b - start_b), (end_a - start_a)) + 1  # Inclusive
+                    overlap_percentage = amount_of_overlap / distance
+                    if overlap_percentage >= 0.3:
+                        final_score += hit2.score
+    
 def get_diamondhits(
     rocks_hits_db: RocksDB,
 ) -> dict[str, list[Hit]]:
@@ -250,6 +261,8 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location
     for hit in diamond_hits:
         if not f"{hit.node}|{hit.frame}" in parents_done:
             kick_log.append(f"{hit.gene},{hit.node},{hit.frame}")
+
+    generate_pool_id_to_score(output)
 
     # output, filtered_sequences_log = internal_filter_gene(output, debug)
     filtered_sequences_log = []
