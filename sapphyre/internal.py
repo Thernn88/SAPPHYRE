@@ -114,6 +114,7 @@ def aa_internal(
     no_dupes,
     prepare_dupes,
     reporter_dupes,
+    minimum_depth,
 ):
     """
     Compares the candidate sequences to their consensus sequence. If the hamming distance between
@@ -206,6 +207,7 @@ def run_internal(
     reporter_dupes,
     decompress,
     log_path,
+    minimum_depth
 ):
     """
     Given a gene, reads the aa file and compares the candidates to their consensus sequence.
@@ -219,6 +221,7 @@ def run_internal(
         dupes,
         prepare_dupes,
         reporter_dupes,
+        minimum_depth,
     )
     # log_path = Path(log_folder_path, "fail.log")
     if fail_dict:
@@ -309,13 +312,14 @@ def main(args, after_collapser, from_folder):
                     nt_input,
                     output_path,
                     nt_output_path,
-                    args.internal_distance_threshold,
+                    args.internal_consensus_threshold,
                     args.internal_distance_threshold,
                     args.no_dupes,
                     prepare_dupes,
                     reporter_dupes,
                     args.uncompress_intermediates,
                     log_path,
+                    args.minimum_depth
                 ),
             )
         pool.starmap(run_internal, arguments, chunksize=1)

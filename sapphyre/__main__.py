@@ -439,6 +439,13 @@ def outlier_args(par):
         help="Minimum ratio for choosing a character in the consensus sequence",
     )
     par.add_argument(
+        "-md",
+        "--minimum-depth",
+        type=int,
+        default=3,
+        help="Minium depth for choosing a character in the consensus sequence"
+    )
+    par.add_argument(
         "-idt",
         "--internal_distance_threshold",
         type=float,
@@ -1262,6 +1269,13 @@ def subcmd_internal(subparser):
         help="Minimum ratio for choosing a character in the consensus sequence",
     )
     parser.add_argument(
+        "-md",
+        "--minimum-depth",
+        type=int,
+        default=3,
+        help="Minium depth for choosing a character in the consensus sequence"
+    )
+    parser.add_argument(
         "-idt",
         "--internal_distance_threshold",
         type=float,
@@ -1269,6 +1283,7 @@ def subcmd_internal(subparser):
         dest="internal_distance_threshold",
         help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence.",
     )
+
     parser.set_defaults(func=internal, formathelp=parser.format_help)
 
 
