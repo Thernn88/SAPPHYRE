@@ -254,42 +254,7 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location
     # output, filtered_sequences_log = internal_filter_gene(output, debug)
     filtered_sequences_log = []
 
-    header_to_hits = defaultdict(list)
-    for hit, ali_start, ali_end in output:
-        header_to_hits[hit.node].append((hit, ali_start, ali_end))
-
-    final_output = []
-    for node, hits in header_to_hits.items():
-        for i, (hit, start, end) in enumerate(hits):
-            if hit is None:
-                continue
-            final_node_score = hit.score
-            for j, (hit_b, start_b, end_b) in enumerate(hits):
-                if hit_b is None:
-                    continue
-                if i == j:
-                    continue
-                hit_b, start_b, end_b = hits[j]
-                if hit_b:
-                    amount_of_overlap = get_overlap_amount(start, end, start_b, end_b)
-                    distance = (end_b - start_b) + 1
-                    percentage_of_overlap = amount_of_overlap / distance
-
-                    if percentage_of_overlap >= 0.5:
-                        if hit.score > hit_b.score:
-                            hits[j] = None, None, None
-                            if debug:
-                                filtered_sequences_log.append(
-                                    f"{hit_b.gene},{hit_b.node},{hit_b.frame},{hit_b.score},{start_b},{end_b},Same Header with Lowest Score,{hit.gene},{hit.node},{hit.frame},{hit.score},{start},{end}"
-                                )
-                    else:
-                        final_node_score += hit_b.score
-                        
-            hit.score = final_node_score
-            final_output.append((hit, final_node_score))
-
-
-    return gene, [i for i in final_output if i is not None], new_outs, kick_log, filtered_sequences_log
+    return gene, [i[0] for i in output], new_outs, kick_log, filtered_sequences_log
 
 def get_arg(transcripts_mapped_to, hmm_output_folder, top_location, hmm_location, overwrite, debug, verbose):
     for gene, transcript_hits in transcripts_mapped_to:
