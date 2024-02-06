@@ -217,8 +217,8 @@ def run_internal(
         prepare_dupes,
         reporter_dupes,
     )
-    log_path = Path(log_folder_path, gene.name)
-    with open(log_path) as f:
+    log_path = Path(log_folder_path, "fail.log")
+    with open(log_path, 'w') as f:
         f.write(f"id\tdistance\tthreshold\n")
         for id, tup in fail_dict.items():
             distance, threshold = tup
