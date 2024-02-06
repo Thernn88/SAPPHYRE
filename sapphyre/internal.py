@@ -28,7 +28,7 @@ class Record(Struct):
         return (self.id, self.seq)
 
 
-def folder_check(taxa_path: Path, debug: bool) -> None:
+def folder_check(taxa_path: Path, debug: bool) -> Path:
     """Create subfolders 'aa' and 'nt' to given path."""
     aa_folder = Path(taxa_path, "aa")
     nt_folder = Path(taxa_path, "nt")
@@ -36,10 +36,12 @@ def folder_check(taxa_path: Path, debug: bool) -> None:
     aa_folder.mkdir(parents=True, exist_ok=True)
     nt_folder.mkdir(parents=True, exist_ok=True)
 
-    if debug:
-        logs_folder = Path(taxa_path, "logs")
-        logs_folder.mkdir(parents=True, exist_ok=True)
-
+    # if debug:
+    logs_folder = Path(taxa_path, "logs")
+    logs_folder.mkdir(parents=True, exist_ok=True)
+    return logs_folder
+    # else:
+    #     return None
 
 def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_counts):
     """
@@ -129,7 +131,7 @@ def aa_internal(
     Prepare Dupes and Reporter Dupes are dictionaries that map node names to their duplicate counts.
     """
     failing = set()
-
+    failing_dists = {}
     # load sequences from file
     raws = get_data_path(gene)
 
@@ -163,10 +165,11 @@ def aa_internal(
         # if the ratio of hamming_distance to length is too high, kick the candidate
         if distance >= distance_threshold:
             failing.add(candidate.id)
+            failing_dists[candidate.id] = (distance, distance_threshold)
             candidates[i] = None
     # failed records are represented by None values, so filter them from candidates
     candidates = [cand for cand in candidates if cand is not None]
-    return candidates, failing, references
+    return candidates, failing, references, failing_dists
 
 
 def mirror_nt(input_path, output_path, failing, gene, compression):
@@ -199,13 +202,14 @@ def run_internal(
     prepare_dupes,
     reporter_dupes,
     decompress,
+    log_folder_path,
 ):
     """
     Given a gene, reads the aa file and compares the candidates to their consensus sequence.
     If a candidate has too many locations that disagree with the consensus, kicks the sequence.
     """
     compression = not decompress
-    passing, failing, references = aa_internal(
+    passing, failing, references, fail_dict = aa_internal(
         gene,
         consensus_threshold,
         distance_threshold,
@@ -213,6 +217,13 @@ def run_internal(
         prepare_dupes,
         reporter_dupes,
     )
+    log_path = Path(log_folder_path, gene.name)
+    with open(log_path) as f:
+        f.write(f"id\tdistance\tthreshold\n")
+        for id, tup in fail_dict.items():
+            distance, threshold = tup
+            f.write(f'{id}\t{distance}\t{threshold}\n')
+
     if not passing:  # if no eligible candidates, don't create the output file
         return
     aa_output = Path(output_path, "aa", gene.name)
@@ -262,7 +273,7 @@ def main(args, after_collapser, from_folder):
 
         output_path = Path(folder, "outlier", "internal")
         nt_output_path = path.join(output_path, "nt")
-        folder_check(output_path, False)
+        log_folder_path = folder_check(output_path, args.debug)
         file_inputs.sort(key=lambda x: x.stat().st_size, reverse=True)
         arguments = []
 
@@ -300,6 +311,7 @@ def main(args, after_collapser, from_folder):
                     prepare_dupes,
                     reporter_dupes,
                     args.uncompress_intermediates,
+                    log_folder_path,
                 ),
             )
         pool.starmap(run_internal, arguments, chunksize=1)
