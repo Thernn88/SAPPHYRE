@@ -134,7 +134,7 @@ def aa_internal(
     Prepare Dupes and Reporter Dupes are dictionaries that map node names to their duplicate counts.
     """
     failing = set()
-    failing_dists = {}
+    failing_dict = {}
     # load sequences from file
     raws = get_data_path(gene)
 
@@ -168,11 +168,11 @@ def aa_internal(
         # if the ratio of hamming_distance to length is too high, kick the candidate
         if distance >= distance_threshold:
             failing.add(candidate.id)
-            failing_dists[candidate.id] = (distance, distance_threshold)
+            failing_dict[candidate.id] = (candidate, start, stop, distance, distance_threshold)
             candidates[i] = None
     # failed records are represented by None values, so filter them from candidates
     candidates = [cand for cand in candidates if cand is not None]
-    return candidates, failing, references, failing_dists
+    return candidates, failing, references, failing_dict, consensus
 
 
 def mirror_nt(input_path, output_path, failing, gene, compression):
@@ -212,7 +212,7 @@ def run_internal(
     If a candidate has too many locations that disagree with the consensus, kicks the sequence.
     """
     compression = not decompress
-    passing, failing, references, fail_dict = aa_internal(
+    passing, failing, references, fail_dict, consensus = aa_internal(
         gene,
         consensus_threshold,
         distance_threshold,
@@ -221,11 +221,13 @@ def run_internal(
         reporter_dupes,
     )
     # log_path = Path(log_folder_path, "fail.log")
-    with open(log_path, 'a+') as f:
-        for id, tup in fail_dict.items():
-            distance, threshold = tup
-            f.write(f'{id}\t{distance}\t{threshold}\n')
-
+    if fail_dict:
+        with open(log_path, 'a+') as f:
+            f.write(f"{gene.name}\n")
+            for id, tup in fail_dict.items():
+                candidate, start, stop, distance, threshold = tup
+                f.write(f'{candidate.id}\tstart:{start}\tstop:{stop}\tdistance:{distance}\tthreshold:{threshold}\n')
+                f.write(f'cand seq:{candidate.seq[start:stop]}\ncons seq:{consensus[start:stop]}\n')
     if not passing:  # if no eligible candidates, don't create the output file
         return
     aa_output = Path(output_path, "aa", gene.name)
