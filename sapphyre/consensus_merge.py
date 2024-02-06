@@ -89,9 +89,9 @@ def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
 class Node(Struct):
     header: str
     sequence: str
+    count: int
     start: int
     end: int
-    
 
 def get_header_parts(headers):
     node_part = "&&".join(header.split("|")[3] for header in headers)
@@ -114,7 +114,7 @@ def do_consensus(nodes, threshold):
             if i >= node.start and i < node.end:
                 if node.sequence[i] != "-":
                     counts.setdefault(node.sequence[i], 0)
-                    counts[node.sequence[i]] += 1
+                    counts[node.sequence[i]] += node.count
 
         if not counts:
             consensus_sequence += "-"
@@ -136,7 +136,7 @@ def do_consensus(nodes, threshold):
 
 
 class do_gene():
-    def __init__(self, aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, compress) -> None:
+    def __init__(self, aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, compress, prepare_dupe_counts, reporter_dupe_counts) -> None:
         self.aa_gene_input = aa_gene_input
         self.nt_gene_input = nt_gene_input
 
@@ -146,6 +146,9 @@ class do_gene():
         self.compress = compress
 
         self.threshold = 0.25
+
+        self.prepare_dupes = prepare_dupe_counts
+        self.reporter_dupes = reporter_dupe_counts
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         self.do_gene(*args, **kwds)
@@ -169,7 +172,12 @@ class do_gene():
             if header.endswith("."):
                 nt_out.append((header, seq))
             else:
-                candidates.append(Node(header, seq, *find_index_pair(seq, "-")))
+                node = header.split("|")[3]
+                count = self.prepare_dupes.get(node, 1) + sum(
+                    self.prepare_dupes.get(node, 1)
+                    for node in self.reporter_dupes.get(node, [])
+                )
+                candidates.append(Node(header, seq, count, *find_index_pair(seq, "-")))
         
         candidates.sort(key=lambda x: x.start)
 
@@ -181,7 +189,7 @@ class do_gene():
             for node in group:
                 for i, let in enumerate(node.sequence[node.start:], node.start):
                     if let != '-':
-                        columns[i].append(let)
+                        columns[i].extend([let] * node.count)
                 for i in range(node.start, node.end):
                     coverage[i] += 1
 
@@ -244,7 +252,12 @@ class do_gene():
             if header.endswith("."):
                 aa_out.append((header, seq))
             else:
-                candidates.append(Node(header, seq, *find_index_pair(seq, "-")))
+                node = header.split("|")[3]
+                count = self.prepare_dupes.get(node, 1) + sum(
+                    self.prepare_dupes.get(node, 1)
+                    for node in self.reporter_dupes.get(node, [])
+                )
+                candidates.append(Node(header, seq, count, *find_index_pair(seq, "-")))
 
         candidates.sort(key=lambda x: x.start)
 
@@ -287,7 +300,19 @@ def do_folder(input_folder, args):
     mkdir(aa_gene_output)
     mkdir(nt_gene_output)
 
-    gene_func = do_gene(aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, args.compress)
+    nt_db_path = path.join(input_folder, "rocksdb", "sequences", "nt")
+    prepare_dupe_counts, reporter_dupe_counts = {}, {}
+    if path.exists(nt_db_path):
+        nt_db = RocksDB(nt_db_path)
+        prepare_dupe_counts = json.decode(
+            nt_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]]
+        )
+        reporter_dupe_counts = json.decode(
+            nt_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]]
+        )
+        del nt_db
+
+    gene_func = do_gene(aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, args.compress, prepare_dupe_counts, reporter_dupe_counts)
 
     arguments = []
     for aa_gene in listdir(aa_gene_input):
