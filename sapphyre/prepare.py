@@ -119,10 +119,11 @@ class SeqDeduplicator:
         overlap_length,
         rename,
     ) -> None:
+        self.original_positions = {}
+        self.lines = []
         self.minimum_sequence_length = minimum_sequence_length
         self.verbose = verbose
         self.nt_db = db
-        self.lines = []
         self.this_assembly = False
         self.this_genome = False
         self.overlap_length = overlap_length
@@ -140,7 +141,7 @@ class SeqDeduplicator:
         CHOMP_LEN = 750
         CHOMP_CUTOFF = 10000
         ASSEMBLY_LEN = 750
-        for header, parent_seq in parseFasta(fa_file_path, True):
+        for line_index, (header, parent_seq) in enumerate(parseFasta(fa_file_path, True)):
             if not len(parent_seq) >= self.minimum_sequence_length:
                 continue
             parent_seq = parent_seq.upper()
@@ -205,6 +206,8 @@ class SeqDeduplicator:
                     if not self.rename and len(n_sequences) > 1:
                         this_header = f"{header}_{individual_index}"
                         next(individual_index)
+
+                    self.original_positions[this_header] = line_index
 
                     self.lines.append(f">{this_header}\n{seq}\n")
                     next(this_index)
@@ -334,6 +337,10 @@ def map_taxa_runs(
         f"Inserted {sequence_count} sequences. Found {next(dupes)} duplicates. Entropy removed {prior + 1 - final.x}. Took {time_keeper.lap():.2f}s.",
         verbose,
     )
+
+    # Store the original positions
+    if not (this_is_assembly or this_is_genome):
+        nt_db.put_bytes("getall:original_positions", json.encode(deduper.original_positions))
 
     # Store the count of dupes in the database
     nt_db.put_bytes("getall:dupes", json.encode(duplicates))
