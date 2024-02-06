@@ -9,6 +9,7 @@ from msgspec import Struct
 from phymmr_tools import (
     constrained_distance,
     dumb_consensus,
+    dumb_consensus_dupe,
     find_index_pair,
     get_overlap,
     is_same_kmer,
@@ -44,6 +45,9 @@ class BatchArgs(Struct):
     aa_out_path: str
     compress: bool
     gene_scores: dict
+    prepare_dupe_counts: dict
+    reporter_dupe_counts: dict
+    has_dupes: bool
 
 
 class NODE(Struct):
@@ -55,7 +59,7 @@ class NODE(Struct):
     end: int
 
 
-def do_consensus(nodes, threshold):
+def do_consensus(nodes, threshold, prepare_dupe_counts, reporter_dupe_counts):
     if not nodes:
         return "", {}
 
@@ -63,13 +67,23 @@ def do_consensus(nodes, threshold):
     consensus_sequence = ""
     cand_coverage = {}
 
+    node_with_dupes = []
+    for node in nodes:
+        dupes = prepare_dupe_counts.get(node.base_header, 1) + sum(
+            prepare_dupe_counts.get(node.base_header, 1)
+            for node in reporter_dupe_counts.get(node.base_header, [])
+        )
+
+        node_with_dupes.append((node, dupes))
+        
+
     for i in range(length):
         counts = {}
 
-        for node in nodes:
+        for node, count in node_with_dupes:
             if i >= node.start and i < node.end:
                 counts.setdefault(node.sequence[i], 0)
-                counts[node.sequence[i]] += 1
+                counts[node.sequence[i]] += count
 
         if not counts:
             consensus_sequence += "-"
@@ -196,6 +210,24 @@ def kick_read_consensus(
 
     return [i for i in nodes if i is not None]
 
+
+def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_counts):
+    """
+    Pairs each record object with its dupe count from prepare and reporter databases.
+    Given dupe count dictionaries and a list of Record objects, makes tuples of the records
+    and their dupe counts. Returns the tuples in a list.
+    """
+    output = []
+    for header, seq in sequences:
+        node = header.split("|")[3]
+        dupes = prepare_dupe_counts.get(node, 1) + sum(
+            prepare_dupe_counts.get(node, 1)
+            for node in reporter_dupe_counts.get(node, [])
+        )
+        output.append((seq, dupes))
+    return output
+
+
 def average_match(seq_a, consensus, start, end):
     """
     Returns a score based on the matching percent of characters in the given sequence and the consensus.
@@ -301,10 +333,16 @@ def process_batch(
 
         ref_average_data_length = []
         ref_consensus = defaultdict(list)
-        reference_seqs = [seq for header, seq in aa_output if header.endswith(".")]
-
+        
         # Create a consensus using dumb_consensus from phymmr_tools
-        ref_consensus_seq = dumb_consensus(reference_seqs, 0.5)
+        reference_seqs = [seq for header, seq in aa_output if header.endswith(".")]
+        if batch_args.has_dupes:
+            bundle = [(header, seq) for header, seq in aa_output if header.endswith(".")]
+            sequences = bundle_seqs_and_dupes(bundle, batch_args.prepare_dupe_counts, batch_args.reporter_dupe_counts)
+
+            ref_consensus_seq = dumb_consensus_dupe(sequences, 0.5)
+        else:
+            ref_consensus_seq = dumb_consensus(reference_seqs, 0.5)
         
 
         # Create a flex consensus using the reference sequences
@@ -335,7 +373,7 @@ def process_batch(
         internal_kicks.extend(internal_log)
 
         x_cand_consensus, cand_coverage = do_consensus(
-            nodes, args.consensus
+            nodes, args.consensus, batch_args.prepare_dupe_counts, batch_args.reporter_dupe_counts
         )
 
         for node in nodes:
@@ -392,7 +430,7 @@ def process_batch(
                         trim_to = None
 
         x_cand_consensus, cand_coverage = do_consensus(
-            nodes, args.consensus
+            nodes, args.consensus, batch_args.prepare_dupe_counts, batch_args.reporter_dupe_counts
         )
 
         for node in nodes:
@@ -424,7 +462,7 @@ def process_batch(
             node.sequence = "".join(node.sequence)
 
         x_cand_consensus, cand_coverage = do_consensus(
-            nodes, args.consensus
+            nodes, args.consensus, batch_args.prepare_dupe_counts, batch_args.reporter_dupe_counts
         )
 
         for i, let in enumerate(x_cand_consensus):
@@ -482,8 +520,17 @@ def do_folder(args: HmmfilterArgs, input_path: str):
 
     nt_db_path = path.join(input_path, "rocksdb", "sequences", "nt")
     gene_scores = {}
+    has_dupes = False
+    prepare_dupe_counts, reporter_dupe_counts = {}, {}
     if path.exists(nt_db_path):
+        has_dupes = True
         nt_db = RocksDB(nt_db_path)
+        prepare_dupe_counts = json.decode(
+            nt_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]]
+        )
+        reporter_dupe_counts = json.decode(
+            nt_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]]
+        )
         gene_scores = json.decode(nt_db.get("getall:hmm_gene_scores"), type=dict[str, dict[str, float]])
         del nt_db
 
@@ -518,7 +565,10 @@ def do_folder(args: HmmfilterArgs, input_path: str):
                 aa_input_path,
                 aa_out_path,
                 compress,
-                this_batch_scores
+                this_batch_scores,
+                prepare_dupe_counts, 
+                reporter_dupe_counts,
+                has_dupes,
             ))
 
 
