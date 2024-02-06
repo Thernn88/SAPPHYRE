@@ -284,6 +284,8 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location
                                 )
                     else:
                         final_node_score += hit_b.score
+                        
+            hit.score = final_node_score
             final_output.append((hit, final_node_score))
 
 
