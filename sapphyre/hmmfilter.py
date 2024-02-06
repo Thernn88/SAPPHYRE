@@ -286,6 +286,7 @@ def process_batch(
 
     consensus_kicks = []
     reported_regions = []
+    overlap_kicks = []
     internal_kicks = []
 
     total_x_before = 0
@@ -367,6 +368,35 @@ def process_batch(
         ref_average_data_length = sum(ref_average_data_length) / len(
             ref_average_data_length
         )
+
+        header_to_hits = defaultdict(list)
+        for node in nodes:
+            header_to_hits[node.base_header.split("_")[1]].append(node)
+        
+        nodes = []
+        for node, hits in header_to_hits.items():
+            overlap_kick_uids = set()
+            for (i, hit), (j, hit_b) in combinations(enumerate(hits), 2):
+                if i in overlap_kick_uids:
+                    continue
+                if j in overlap_kick_uids:
+                    continue
+
+                overlap_coords = get_overlap(hit.start, hit.end, hit_b.start, hit_b.end, 1)
+                amount_of_overlap = 0 if overlap_coords is None else overlap_coords[1] - overlap_coords[0]
+                distance = (hit_b.end - hit_b.start) + 1
+                percentage_of_overlap = amount_of_overlap / distance
+
+                if percentage_of_overlap >= 0.8:
+                        overlap_kick_uids.add(j)
+                        overlap_kick_uids.add(i)
+                        hits[j] = None
+                        hits[i] = None
+                        if args.debug:
+                            overlap_kicks.append(
+                                f"{hit_b.header},{hit_b.score},{hit_b.start},{hit_b.end},Same Header Overlap Lowest Score,{hit.header},{hit.score},{start},{end}"
+                            )
+            nodes.extend(i for i in hits if i is not None)
 
         nodes, internal_log, internal_header_kicks = internal_filter_gene(nodes, args.debug, gene, args.min_overlap_internal, args.score_diff_internal)
         kicked_headers.update(internal_header_kicks)
@@ -494,6 +524,7 @@ def process_batch(
         reported_regions,
         total_x_before,
         total_x_after,
+        overlap_kicks,
     )
 
 def do_folder(args: HmmfilterArgs, input_path: str):
@@ -583,12 +614,14 @@ def do_folder(args: HmmfilterArgs, input_path: str):
     consensus_log = []
     internal_log = []
     reported_regions = []
+    overlap_log = []
     total_x_before = 0
     total_x_after = 0
-    for consensus_kicks, internal_kicks, reported_regions, chunk_x_before, chunk_x_after in results:
+    for consensus_kicks, internal_kicks, reported_regions, chunk_x_before, chunk_x_after, overlap_kicks in results:
         consensus_log.extend(consensus_kicks)
         internal_log.extend(internal_kicks)
         reported_regions.extend(reported_regions)
+        overlap_log.extend(overlap_kicks)
         total_x_before += chunk_x_before
         total_x_after += chunk_x_after
 
@@ -609,6 +642,10 @@ def do_folder(args: HmmfilterArgs, input_path: str):
         with open(path.join(hmmfilter_path, "internal_kicks.txt"), "w") as fp:
             fp.write("Kicked Gene,Header,Frame,Score,Start,End,Reason,Master Gene,Header,Frame,Score,Start,End\n")
             fp.write("\n".join(internal_log))
+
+        with open(path.join(hmmfilter_path, "overlap_kicks.txt"), "w") as fp:
+            fp.write("Header,Score,Start,End,Reason,Header,Frame,Score,Start,End\n")
+            fp.write("\n".join(overlap_log))
 
     printv(f"Done! Took {time_keeper.differential():.2f} seconds", args.verbose, 1)
 
