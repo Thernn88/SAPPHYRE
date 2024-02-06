@@ -334,25 +334,29 @@ def process_batch(
         header_to_hits = defaultdict(list)
         for node in nodes:
             header_to_hits[node.base_header.split("_")[1]].append(node)
-
+        
         for node, hits in header_to_hits.items():
+            overlap_kick_uids = set()
             for (i, hit), (j, hit_b) in combinations(enumerate(hits), 2):
-                if hit is None:
+                if i in overlap_kick_uids:
                     continue
-                if hit_b is None:
+                if j in overlap_kick_uids:
                     continue
 
                 overlap_coords = get_overlap(hit.start, hit.end, hit_b.start, hit_b.end, 1)
                 amount_of_overlap = 0 if overlap_coords is None else overlap_coords[1] - overlap_coords[0]
-                distance = (hit_b.start - hit_b.end) + 1
+                distance = (hit_b.end - hit_b.start) + 1
                 percentage_of_overlap = amount_of_overlap / distance
 
                 if percentage_of_overlap >= 0.8:
+                        overlap_kick_uids.add(j)
                         hits[j] = None
                         if args.debug:
                             overlap_kicks.append(
-                                f"{hit_b.gene},{hit_b.base_header},{hit_b.frame},{hit_b.score},{hit_b.start},{hit_b.end},Same Header Overlap Lowest Score,{hit.gene},{hit.base_header},{hit.frame},{hit.score},{start},{end}"
+                                f"{hit_b.header},{hit_b.score},{hit_b.start},{hit_b.end},Same Header Overlap Lowest Score,{hit.header},{hit.score},{start},{end}"
                             )
+            header_to_hits[node] = hits
+            
 
         nodes = []
         for node, hits in header_to_hits.items():
