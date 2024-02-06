@@ -333,7 +333,7 @@ def process_batch(
 
         header_to_hits = defaultdict(list)
         for node in nodes:
-            header_to_hits[node.base_header].append(node)
+            header_to_hits[node.base_header.split("_")[1]].append(node)
 
         for node, hits in header_to_hits.items():
             for (i, hit), (j, hit_b) in combinations(enumerate(hits), 2):
@@ -354,6 +354,7 @@ def process_batch(
                                 f"{hit_b.gene},{hit_b.base_header},{hit_b.frame},{hit_b.score},{hit_b.start},{hit_b.end},Same Header Overlap Lowest Score,{hit.gene},{hit.base_header},{hit.frame},{hit.score},{start},{end}"
                             )
 
+        nodes = []
         for node, hits in header_to_hits.items():
             for i, hit in enumerate(hits):
                 if hit is None:
@@ -368,6 +369,7 @@ def process_batch(
                     final_node_score += hit_b.score
                             
                 hit.score = final_node_score
+                nodes.append(hit)
 
         nodes, internal_log, internal_header_kicks = internal_filter_gene(nodes, args.debug, gene, args.min_overlap_internal, args.score_diff_internal)
         kicked_headers.update(internal_header_kicks)
