@@ -39,7 +39,10 @@ def folder_check(taxa_path: Path, debug: bool) -> Path:
     # if debug:
     logs_folder = Path(taxa_path, "logs")
     logs_folder.mkdir(parents=True, exist_ok=True)
-    return logs_folder
+    log_path = Path(logs_folder, "fail.log")
+    with open(log_path, "w") as log:
+        log.write("id\tdistance\tthreshold\n")
+    return log_path
     # else:
     #     return None
 
@@ -202,7 +205,7 @@ def run_internal(
     prepare_dupes,
     reporter_dupes,
     decompress,
-    log_folder_path,
+    log_path,
 ):
     """
     Given a gene, reads the aa file and compares the candidates to their consensus sequence.
@@ -217,9 +220,8 @@ def run_internal(
         prepare_dupes,
         reporter_dupes,
     )
-    log_path = Path(log_folder_path, "fail.log")
-    with open(log_path, 'w') as f:
-        f.write(f"id\tdistance\tthreshold\n")
+    # log_path = Path(log_folder_path, "fail.log")
+    with open(log_path, 'a+') as f:
         for id, tup in fail_dict.items():
             distance, threshold = tup
             f.write(f'{id}\t{distance}\t{threshold}\n')
@@ -273,7 +275,7 @@ def main(args, after_collapser, from_folder):
 
         output_path = Path(folder, "outlier", "internal")
         nt_output_path = path.join(output_path, "nt")
-        log_folder_path = folder_check(output_path, args.debug)
+        log_path = folder_check(output_path, args.debug)
         file_inputs.sort(key=lambda x: x.stat().st_size, reverse=True)
         arguments = []
 
@@ -311,7 +313,7 @@ def main(args, after_collapser, from_folder):
                     prepare_dupes,
                     reporter_dupes,
                     args.uncompress_intermediates,
-                    log_folder_path,
+                    log_path,
                 ),
             )
         pool.starmap(run_internal, arguments, chunksize=1)
