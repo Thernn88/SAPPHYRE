@@ -14,7 +14,7 @@ from statistics import median, stdev
 from blosum import BLOSUM
 from msgspec import json
 from parasail import blosum62, nw_trace_scan_profile_16, profile_create_16
-from phymmr_tools import (
+from sapphyre_tools import (
     find_index_pair,
     join_by_tripled_index,
     join_triplets_with_exclusions,
@@ -628,7 +628,7 @@ def column_cull_seqs(
                 continue
         this_column_cull.add(i * 3)
 
-    # If columns require culling, use phymmr_tools join with exclusions.
+    # If columns require culling, use sapphyre_tools join with exclusions.
     # Check bp is still above minimum and then output
     if this_column_cull:
         for header, seq, _, _ in this_seqs:

@@ -9,7 +9,7 @@ from tempfile import NamedTemporaryFile
 from time import time
 from typing import Any
 
-import phymmr_tools
+import sapphyre_tools
 import wrap_rocks
 import xxhash
 from msgspec import json
@@ -173,7 +173,7 @@ class SeqDeduplicator:
                     rev_seq_hash = rev_comp_save[seq_hash]
                 else:
                     rev_seq_hash = xxhash.xxh3_64(
-                        phymmr_tools.bio_revcomp(seq),
+                        sapphyre_tools.bio_revcomp(seq),
                     ).hexdigest()
                     rev_comp_save[seq_hash] = rev_seq_hash
 
@@ -285,7 +285,7 @@ def map_taxa_runs(
     this_is_assembly = deduper.this_assembly
     this_is_genome = deduper.this_genome
     prior = len(fa_file_out)
-    passing = phymmr_tools.entropy_filter(fa_file_out, 0.7)
+    passing = sapphyre_tools.entropy_filter(fa_file_out, 0.7)
     recipe = []
     recipe_index = IndexIter()
     final = IndexIter()

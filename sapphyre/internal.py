@@ -3,7 +3,7 @@ from os import path
 from pathlib import Path
 
 from msgspec import Struct, json
-from phymmr_tools import (
+from sapphyre_tools import (
     constrained_distance,
     dumb_consensus,
     dumb_consensus_dupe,
@@ -166,7 +166,7 @@ def do_internal(
         consensus_func = dumb_consensus_dupe
         sequences = bundle_seqs_and_dupes(candidates, prepare_dupes, reporter_dupes)
 
-    consensus = consensus_func(sequences, consensus_threshold)
+    consensus = consensus_func(sequences, consensus_threshold, minimum_depth)
 
     # compare the hamming distance between each candidate and the appropriate slice of the consensus
     # divides by length of the candidate's data region to adjust for length

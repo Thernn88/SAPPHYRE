@@ -6,7 +6,7 @@ from os import listdir, mkdir, path
 import re
 
 from msgspec import Struct
-from phymmr_tools import (
+from sapphyre_tools import (
     constrained_distance,
     dumb_consensus,
     dumb_consensus_dupe,
@@ -334,15 +334,15 @@ def process_batch(
         ref_average_data_length = []
         ref_consensus = defaultdict(list)
         
-        # Create a consensus using dumb_consensus from phymmr_tools
+        # Create a consensus using dumb_consensus from sapphyre_tools
         reference_seqs = [seq for header, seq in aa_output if header.endswith(".")]
         if batch_args.has_dupes:
             bundle = [(header, seq) for header, seq in aa_output if header.endswith(".")]
             sequences = bundle_seqs_and_dupes(bundle, batch_args.prepare_dupe_counts, batch_args.reporter_dupe_counts)
 
-            ref_consensus_seq = dumb_consensus_dupe(sequences, 0.5)
+            ref_consensus_seq = dumb_consensus_dupe(sequences, 0.5, 1)
         else:
-            ref_consensus_seq = dumb_consensus(reference_seqs, 0.5)
+            ref_consensus_seq = dumb_consensus(reference_seqs, 0.5, 1)
         
 
         # Create a flex consensus using the reference sequences

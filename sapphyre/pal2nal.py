@@ -7,7 +7,7 @@ from pathlib import Path
 from shutil import rmtree
 from typing import Any
 
-from phymmr_tools import find_index_pair
+from sapphyre_tools import find_index_pair
 from pr2codon import pn2codon
 
 from .timekeeper import KeeperMode, TimeKeeper

@@ -13,7 +13,7 @@ from typing import Union
 from msgspec import Struct, json
 from numpy import float32, float64, int8, uint16, where
 from pandas import DataFrame, read_csv
-from phymmr_tools import bio_revcomp, get_overlap
+from sapphyre_tools import bio_revcomp, get_overlap
 from wrap_rocks import RocksDB
 
 from .timekeeper import KeeperMode, TimeKeeper

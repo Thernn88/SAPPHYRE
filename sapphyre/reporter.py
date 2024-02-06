@@ -10,7 +10,7 @@ from typing import TextIO
 from blosum import BLOSUM
 from msgspec import json
 from parasail import blosum62, nw_trace_scan_profile_16, profile_create_16
-from phymmr_tools import translate
+from sapphyre_tools import translate
 from wrap_rocks import RocksDB
 from xxhash import xxh3_64
 

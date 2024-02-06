@@ -12,7 +12,7 @@ import wrap_rocks
 import xxhash
 from Bio import SeqIO
 from msgspec import json
-from phymmr_tools import constrained_distance, find_index_pair, get_overlap
+from sapphyre_tools import constrained_distance, find_index_pair, get_overlap
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta

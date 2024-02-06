@@ -9,7 +9,7 @@ from .utils import printv, gettempdir, parseFasta, writeFasta
 from os import path, system, stat
 from msgspec import Struct, json
 from multiprocessing import Pool
-from phymmr_tools import translate, bio_revcomp, get_overlap
+from sapphyre_tools import translate, bio_revcomp, get_overlap
 from Bio.Seq import Seq
 from .timekeeper import TimeKeeper, KeeperMode
 

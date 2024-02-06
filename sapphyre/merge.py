@@ -15,7 +15,7 @@ from typing import Literal
 from Bio.Seq import Seq
 from msgspec import Struct, json
 from numpy import uint8
-from phymmr_tools import find_index_pair, get_overlap, score_splits
+from sapphyre_tools import find_index_pair, get_overlap, score_splits
 from wrap_rocks import RocksDB
 
 from .timekeeper import KeeperMode, TimeKeeper

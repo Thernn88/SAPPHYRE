@@ -7,7 +7,7 @@ from os import listdir, mkdir, path, stat, system
 from shutil import rmtree
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 
-from phymmr_tools import find_index_pair, sigclust
+from sapphyre_tools import find_index_pair, sigclust
 from xxhash import xxh3_64
 
 from .timekeeper import KeeperMode, TimeKeeper
