@@ -281,7 +281,7 @@ class do_gene():
 def do_folder(input_folder, args):
     print("Processing:", input_folder)
     gene_input_folder = None
-    for folder in ["hmmfilter", "excise", "blosum"]:
+    for folder in ["internal","hmmfilter", "excise", "blosum"]:
         if path.exists(path.join(input_folder, "outlier", folder)):
             gene_input_folder = path.join(input_folder, "outlier", folder)
             break

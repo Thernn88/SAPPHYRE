@@ -1265,7 +1265,7 @@ def subcmd_internal(subparser):
         "-idt",
         "--internal_distance_threshold",
         type=float,
-        default=0.075,
+        default=0.15,
         dest="internal_distance_threshold",
         help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence.",
     )

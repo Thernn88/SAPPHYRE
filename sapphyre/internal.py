@@ -83,8 +83,8 @@ def get_data_path(gene: Path) -> list:
     If the excise path exists, read it and replace any candidate sequences with the version
     from the excise file.
     """
-    if "collapsed" in str(gene):
-        excise_path = str(gene).replace("/collapsed/", "/excise/")
+    if "hmmfilter" in str(gene):
+        excise_path = str(gene).replace("/hmmfilter/", "/hmmfilter/")
         if path.exists(excise_path):
             return [Record(header, seq) for header, seq in parseFasta(excise_path)]
 
@@ -247,8 +247,8 @@ def main(args, after_collapser, from_folder):
     with Pool(args.processes) as pool:
         folder = args.INPUT
         if after_collapser:
-            aa_input = Path(folder, "outlier", "collapsed", "aa")
-            nt_input = Path(folder, "outlier", "collapsed", "nt")
+            aa_input = Path(folder, "outlier", "hmmfilter", "aa")
+            nt_input = Path(folder, "outlier", "hmmfilter", "nt")
         else:
             aa_input = Path(folder, "outlier", from_folder, "aa")
             nt_input = Path(folder, "outlier", from_folder, "nt")
