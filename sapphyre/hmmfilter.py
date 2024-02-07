@@ -143,7 +143,6 @@ def internal_filter_gene(nodes, debug, gene, min_overlap_internal, score_diff_in
 
                     distance = min((hit_b.end - hit_b.start), (hit_a.end - hit_a.start)) + 1  # Inclusive
                     percentage_of_overlap = amount_of_overlap / distance
-
                     if percentage_of_overlap >= min_overlap_internal:
 
                         kmer_a = hit_a.sequence[overlap_coords[0]: overlap_coords[1]]
@@ -369,18 +368,14 @@ def process_batch(
             ref_average_data_length
         )
 
+        nodes.sort(key=lambda hit: hit.score, reverse=True)
         header_to_hits = defaultdict(list)
         for node in nodes:
             header_to_hits[node.base_header.split("_")[1]].append(node)
         
-        nodes = []
+        kicked_headers = set()
         for node, hits in header_to_hits.items():
-            overlap_kick_uids = set()
             for (i, hit), (j, hit_b) in combinations(enumerate(hits), 2):
-                if i in overlap_kick_uids:
-                    continue
-                if j in overlap_kick_uids:
-                    continue
 
                 overlap_coords = get_overlap(hit.start, hit.end, hit_b.start, hit_b.end, 1)
                 amount_of_overlap = 0 if overlap_coords is None else overlap_coords[1] - overlap_coords[0]
@@ -388,15 +383,13 @@ def process_batch(
                 percentage_of_overlap = amount_of_overlap / distance
 
                 if percentage_of_overlap >= 0.8:
-                        overlap_kick_uids.add(j)
-                        overlap_kick_uids.add(i)
-                        hits[j] = None
-                        hits[i] = None
+                        kicked_headers.add(hit_b.header)
                         if args.debug:
                             overlap_kicks.append(
                                 f"{hit_b.header},{hit_b.score},{hit_b.start},{hit_b.end},Same Header Overlap Lowest Score,{hit.header},{hit.score},{start},{end}"
                             )
-            nodes.extend(i for i in hits if i is not None)
+        
+        nodes = [i for i in nodes if i.header not in kicked_headers]
 
         nodes, internal_log, internal_header_kicks = internal_filter_gene(nodes, args.debug, gene, args.min_overlap_internal, args.score_diff_internal)
         kicked_headers.update(internal_header_kicks)
