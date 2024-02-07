@@ -340,9 +340,9 @@ def process_batch(
             bundle = [(header, seq) for header, seq in aa_output if header.endswith(".")]
             sequences = bundle_seqs_and_dupes(bundle, batch_args.prepare_dupe_counts, batch_args.reporter_dupe_counts)
 
-            ref_consensus_seq = dumb_consensus_dupe(sequences, 0.5, 1)
+            ref_consensus_seq = dumb_consensus_dupe(sequences, 0.5, 0)
         else:
-            ref_consensus_seq = dumb_consensus(reference_seqs, 0.5, 1)
+            ref_consensus_seq = dumb_consensus(reference_seqs, 0.5, 0)
         
 
         # Create a flex consensus using the reference sequences

@@ -7,6 +7,7 @@ from sapphyre_tools import (
     constrained_distance,
     dumb_consensus,
     dumb_consensus_dupe,
+    consensus_distance,
     find_index_pair,
 )
 from wrap_rocks import RocksDB
@@ -118,6 +119,8 @@ def do_internal(
     prepare_dupes,
     reporter_dupes,
     minimum_depth,
+    minimum_length,
+    minimum_overlap,
     existing_fails = set(),
 ):
     """
@@ -171,11 +174,15 @@ def do_internal(
     # compare the hamming distance between each candidate and the appropriate slice of the consensus
     # divides by length of the candidate's data region to adjust for length
     for i, candidate in enumerate(candidates):
-        start, stop = find_index_pair(candidate.seq, "-")
-        distance = constrained_distance(consensus, candidate.seq) / (stop - start)
+        # start, stop = find_index_pair(candidate.seq, "-")
+        total_distance, total_length = consensus_distance(consensus, candidate.seq, minimum_length, minimum_overlap)
+        if not total_length:
+            continue
+        distance = total_distance / total_length
         # if the ratio of hamming_distance to length is too high, kick the candidate
         if distance >= distance_threshold:
             failing.add(candidate.id)
+            start, stop = find_index_pair(candidate.seq, '-')
             failing_dict[candidate.id] = (candidate, start, stop, distance, distance_threshold)
             candidates[i] = None
     # failed records are represented by None values, so filter them from candidates
@@ -217,7 +224,9 @@ def run_internal(
     decompress,
     aa_log_path,
     nt_log_path,
-    minimum_depth
+    minimum_depth,
+    minimum_length,
+    minimum_overlap,
 ):
     """
     Given a gene, reads the aa file and compares the candidates to their consensus sequence.
@@ -232,6 +241,8 @@ def run_internal(
         prepare_dupes,
         reporter_dupes,
         minimum_depth,
+        minimum_length,
+        minimum_overlap,
     )
 
     nt_passing, nt_failing, nt_references, nt_fail_dict, nt_consensus = do_internal(
@@ -242,6 +253,8 @@ def run_internal(
         prepare_dupes,
         reporter_dupes,
         minimum_depth,
+        minimum_length,
+        minimum_overlap,
         existing_fails = aa_failing
     )
 
@@ -252,8 +265,8 @@ def run_internal(
             f.write(f"{gene.name}\n")
             for id, tup in aa_fail_dict.items():
                 candidate, start, stop, distance, threshold = tup
-                f.write(f'{candidate.id}\tstart:{start}\tstop:{stop}\tdistance:{distance}\tthreshold:{threshold}\n')
-                f.write(f'cand seq:{candidate.seq[start:stop]}\ncons seq:{aa_consensus[start:stop]}\n')
+                f.write(f'{candidate.id}\tstart:{start}\tstop:{stop}distance:{distance}\tthreshold:{threshold}\n')
+                f.write(f'cand seq:{candidate.seq}\ncons seq:{aa_consensus}\n')
     if nt_fail_dict:
         with open(nt_log_path, 'a+') as f:
             f.write(f"{gene.name}\n")
@@ -345,7 +358,9 @@ def main(args, after_collapser, from_folder):
                     args.uncompress_intermediates,
                     aa_log_path,
                     nt_log_path,
-                    args.minimum_depth
+                    args.minimum_depth,
+                    args.minimum_candidate_length,
+                    args.minimum_candidate_overlap
                 ),
             )
         pool.starmap(run_internal, arguments, chunksize=1)

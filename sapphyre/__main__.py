@@ -438,6 +438,20 @@ def outlier_args(par):
         help="Minium depth for choosing a character in the consensus sequence"
     )
     par.add_argument(
+        "-mcl",
+        "--minimum-candidate-length",
+        type=int,
+        default=5,
+        help="Minimum length a candidate region must have to be compared to the consensus"
+    )
+    par.add_argument(
+        "-mco",
+        "--minimum-candidate-overlap",
+        type=int,
+        default=5,
+        help="Minimum overlap necessary to enable the distance check between a candidate region and the consensus"
+    )
+    par.add_argument(
         "-ict",
         "--internal_consensus_threshold",
         type=float,
@@ -1290,6 +1304,20 @@ def subcmd_internal(subparser):
         type=int,
         default=3,
         help="Minium depth for choosing a character in the consensus sequence"
+    )
+    parser.add_argument(
+        "-mcl",
+        "--minimum-candidate-length",
+        type=int,
+        default=5,
+        help="Minimum length a candidate region must have to be compared to the consensus"
+    )
+    parser.add_argument(
+        "-mco",
+        "--minimum-candidate-overlap",
+        type=int,
+        default=5,
+        help="Minimum overlap necessary to enable the distance check between a candidate region and the consensus"
     )
     parser.add_argument(
         "-idt",

@@ -204,7 +204,7 @@ def make_duped_consensus(
 ) -> str:
     seqs = [(header, seq) for header, seq in raw_sequences if header[-1] != "."]
     bundled_seqs = bundle_seqs_and_dupes(seqs, prepare_dupes, reporter_dupes)
-    return dumb_consensus_dupe(bundled_seqs, threshold, 1)
+    return dumb_consensus_dupe(bundled_seqs, threshold, 0)
 
 
 def log_excised_consensus(
@@ -258,7 +258,7 @@ def log_excised_consensus(
             raw_sequences, prepare_dupes, reporter_dupes, consensus_threshold
         )
     else:
-        consensus_seq = dumb_consensus(sequences, consensus_threshold, 1)
+        consensus_seq = dumb_consensus(sequences, consensus_threshold, 0)
     consensus_seq = convert_consensus(sequences, consensus_seq)
 
     # Search for slices of the consensus seq with a high ratio of 'X' to total characters

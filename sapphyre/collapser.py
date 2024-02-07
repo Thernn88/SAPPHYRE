@@ -902,7 +902,7 @@ def process_batch(
         reference_seqs = [seq for header, seq in aa_output if header.endswith(".")]
 
         # Create a consensus using dumb_consensus from sapphyre_tools
-        ref_consensus_seq = dumb_consensus(reference_seqs, 0.5, 1)
+        ref_consensus_seq = dumb_consensus(reference_seqs, 0.5, 0)
         
 
         # Create a flex consensus using the reference sequences
