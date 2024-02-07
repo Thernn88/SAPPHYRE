@@ -431,14 +431,6 @@ def outlier_args(par):
         "-out", "--output", type=str, default="internal", help="Path to output directory"
     )
     par.add_argument(
-        "-ict",
-        "--internal_consensus_threshold",
-        type=float,
-        default=0.65,
-        dest="internal_consensus_threshold",
-        help="Minimum ratio for choosing a character in the consensus sequence",
-    )
-    par.add_argument(
         "-md",
         "--minimum-depth",
         type=int,
@@ -446,12 +438,36 @@ def outlier_args(par):
         help="Minium depth for choosing a character in the consensus sequence"
     )
     par.add_argument(
+        "-ict",
+        "--internal_consensus_threshold",
+        type=float,
+        default=0.65,
+        dest="internal_consensus_threshold",
+        help="Minimum ratio for choosing a character in the consensus sequence",
+    )  
+    par.add_argument(
         "-idt",
         "--internal_distance_threshold",
         type=float,
         default=0.075,
         dest="internal_distance_threshold",
         help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence.",
+    )
+    par.add_argument(
+        "-ictn",
+        "--internal_consensus_threshold_nt",
+        type=float,
+        default=0.65,
+        dest="internal_consensus_threshold_nt",
+        help="Minimum ratio for choosing a character in the consensus sequence in the nt run",
+    )  
+    par.add_argument(
+        "-idtn",
+        "--internal_distance_threshold_nt",
+        type=float,
+        default=0.075,
+        dest="internal_distance_threshold_nt",
+        help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence in the nt run.",
     )
 
 

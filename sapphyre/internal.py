@@ -39,10 +39,13 @@ def folder_check(taxa_path: Path, debug: bool) -> Path:
     # if debug:
     logs_folder = Path(taxa_path, "logs")
     logs_folder.mkdir(parents=True, exist_ok=True)
-    log_path = Path(logs_folder, "fail.log")
-    with open(log_path, "w") as log:
+    aa_log_path = Path(logs_folder, "aa_fail.log")
+    with open(aa_log_path, "w") as log:
         log.write("id\tdistance\tthreshold\n")
-    return log_path
+    nt_log_path = Path(logs_folder, "nt_fail.log")
+    with open(nt_log_path, "w") as log:
+        log.write("id\tdistance\tthreshold\n")
+    return aa_log_path, nt_log_path
     # else:
     #     return None
 
@@ -107,7 +110,7 @@ def has_candidates(records: list) -> bool:
     return False
 
 
-def aa_internal(
+def do_internal(
     gene: str,
     consensus_threshold,
     distance_threshold,
@@ -115,6 +118,7 @@ def aa_internal(
     prepare_dupes,
     reporter_dupes,
     minimum_depth,
+    existing_fails = set(),
 ):
     """
     Compares the candidate sequences to their consensus sequence. If the hamming distance between
@@ -142,6 +146,9 @@ def aa_internal(
     # split sequences into references and candidates
     candidates, references = [], []
     for record in raws:
+        if record.id in existing_fails:
+            continue
+
         if record.id[-1] != ".":
             candidates.append(record)
         else:
@@ -202,11 +209,14 @@ def run_internal(
     nt_output_path,
     consensus_threshold,
     distance_threshold,
+    consensus_threshold_nt,
+    distance_threshold_nt,
     dupes,
     prepare_dupes,
     reporter_dupes,
     decompress,
-    log_path,
+    aa_log_path,
+    nt_log_path,
     minimum_depth
 ):
     """
@@ -214,7 +224,7 @@ def run_internal(
     If a candidate has too many locations that disagree with the consensus, kicks the sequence.
     """
     compression = not decompress
-    passing, failing, references, fail_dict, consensus = aa_internal(
+    aa_passing, aa_failing, aa_references, aa_fail_dict, aa_consensus = do_internal(
         gene,
         consensus_threshold,
         distance_threshold,
@@ -223,28 +233,48 @@ def run_internal(
         reporter_dupes,
         minimum_depth,
     )
+
+    nt_passing, nt_failing, nt_references, nt_fail_dict, nt_consensus = do_internal(
+        Path(nt_input, gene .name.replace(".aa.", ".nt.")),
+        consensus_threshold_nt,
+        distance_threshold_nt,
+        dupes,
+        prepare_dupes,
+        reporter_dupes,
+        minimum_depth,
+        existing_fails = aa_failing
+    )
+
+    aa_passing = [rec for rec in aa_passing if rec.id not in nt_failing]
     # log_path = Path(log_folder_path, "fail.log")
-    if fail_dict:
-        with open(log_path, 'a+') as f:
+    if aa_fail_dict:
+        with open(aa_log_path, 'a+') as f:
             f.write(f"{gene.name}\n")
-            for id, tup in fail_dict.items():
+            for id, tup in aa_fail_dict.items():
                 candidate, start, stop, distance, threshold = tup
                 f.write(f'{candidate.id}\tstart:{start}\tstop:{stop}\tdistance:{distance}\tthreshold:{threshold}\n')
-                f.write(f'cand seq:{candidate.seq[start:stop]}\ncons seq:{consensus[start:stop]}\n')
-    if not passing:  # if no eligible candidates, don't create the output file
+                f.write(f'cand seq:{candidate.seq[start:stop]}\ncons seq:{aa_consensus[start:stop]}\n')
+    if nt_fail_dict:
+        with open(nt_log_path, 'a+') as f:
+            f.write(f"{gene.name}\n")
+            for id, tup in nt_fail_dict.items():
+                candidate, start, stop, distance, threshold = tup
+                f.write(f'{candidate.id}\tstart:{start}\tstop:{stop}\tdistance:{distance}\tthreshold:{threshold}\n')
+                f.write(f'cand seq:{candidate.seq[start:stop]}\ncons seq:{nt_consensus[start:stop]}\n')
+            
+    if not aa_passing:  # if no eligible candidates, don't create the output file
         return
     aa_output = Path(output_path, "aa", gene.name)
     writeFasta(
         str(aa_output),
-        [rec.get_pair() for rec in references + passing],
+        [rec.get_pair() for rec in aa_references + aa_passing],
         compress=compression,
     )
-    mirror_nt(
-        nt_input,
-        nt_output_path,
-        failing,
-        aa_output.name.replace(".aa.", ".nt."),
-        compression,
+    nt_output = Path(nt_output_path, gene.name.replace(".aa.", ".nt."))
+    writeFasta(
+        str(nt_output),
+        [rec.get_pair() for rec in nt_references + nt_passing],
+        compress=compression,
     )
 
 
@@ -260,7 +290,15 @@ def main(args, after_collapser, from_folder):
     if args.internal_distance_threshold > 100 or args.internal_distance_threshold <= 0:
         raise ValueError("cannot express given distance threshold as a percent")
     if args.internal_distance_threshold > 1:
-        args.internal_distance_threshold = args.distance_thesold / 100
+        args.internal_distance_threshold = args.internal_distance_threshold / 100
+    if args.internal_consensus_threshold_nt > 100 or args.internal_consensus_threshold_nt <= 0:
+        raise ValueError("cannot express given consensus threshold as a percent")
+    if args.internal_consensus_threshold_nt > 1:
+        args.internal_consensus_threshold_nt = args.consensus_thesold_nt / 100
+    if args.internal_distance_threshold_nt > 100 or args.internal_distance_threshold_nt <= 0:
+        raise ValueError("cannot express given distance threshold as a percent")
+    if args.internal_distance_threshold_nt > 1:
+        args.internal_distance_threshold_nt = args.internal_distance_threshold_nt / 100
 
     with Pool(args.processes) as pool:
         folder = args.INPUT
@@ -280,24 +318,9 @@ def main(args, after_collapser, from_folder):
 
         output_path = Path(folder, "outlier", "internal")
         nt_output_path = path.join(output_path, "nt")
-        log_path = folder_check(output_path, args.debug)
+        aa_log_path, nt_log_path = folder_check(output_path, args.debug)
         file_inputs.sort(key=lambda x: x.stat().st_size, reverse=True)
         arguments = []
-
-        if not (0 < args.internal_consensus_threshold < 1.0):
-            if 0 < args.internal_consensus_threshold <= 100:
-                args.internal_consensus_threshold = args.internal_consensus_threshold / 100
-            else:
-                raise ValueError(
-                    "Cannot convert internal consensus threshold to a percent. Use a decimal or a whole number between 0 and 100"
-                )
-        if not (0 < args.internal_distance_threshold < 1.0):
-            if 0 < args.internal_distance_threshold <= 100:
-                args.internal_distance_threshold = args.internal_distance_threshold / 100
-            else:
-                raise ValueError(
-                    "Cannot convert internal distance threshold to a percent. Use a decimal or a whole number between 0 and 100"
-                )
             
         for gene in file_inputs:
             gene_raw = gene.stem.split(".")[0]
@@ -314,11 +337,14 @@ def main(args, after_collapser, from_folder):
                     nt_output_path,
                     args.internal_consensus_threshold,
                     args.internal_distance_threshold,
+                    args.internal_consensus_threshold_nt,
+                    args.internal_distance_threshold_nt,
                     args.no_dupes,
                     prepare_dupes,
                     reporter_dupes,
                     args.uncompress_intermediates,
-                    log_path,
+                    aa_log_path,
+                    nt_log_path,
                     args.minimum_depth
                 ),
             )
