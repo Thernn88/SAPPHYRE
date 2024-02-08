@@ -218,7 +218,7 @@ def run_internal(
     distance_threshold,
     consensus_threshold_nt,
     distance_threshold_nt,
-    dupes,
+    no_dupes,
     prepare_dupes,
     reporter_dupes,
     decompress,
@@ -227,6 +227,7 @@ def run_internal(
     minimum_depth,
     minimum_length,
     minimum_overlap,
+    add_internal_dupes,
 ):
     """
     Given a gene, reads the aa file and compares the candidates to their consensus sequence.
@@ -237,7 +238,7 @@ def run_internal(
         gene,
         consensus_threshold,
         distance_threshold,
-        dupes,
+        no_dupes,
         prepare_dupes,
         reporter_dupes,
         minimum_depth,
@@ -249,7 +250,7 @@ def run_internal(
         Path(nt_input, gene .name.replace(".aa.", ".nt.")),
         consensus_threshold_nt,
         distance_threshold_nt,
-        dupes,
+        no_dupes,
         prepare_dupes,
         reporter_dupes,
         minimum_depth,
@@ -277,16 +278,44 @@ def run_internal(
             
     if not aa_passing:  # if no eligible candidates, don't create the output file
         return
+    
+    aa_out = []
+    nt_out = []
+    if add_internal_dupes and not no_dupes:
+        #insert aa dupes
+        for rec in aa_passing:
+            node = rec.id.split("|")[3]
+            dupes = prepare_dupes.get(node, 1) + sum(
+                prepare_dupes.get(node, 1)
+                for node in reporter_dupes.get(node, [])
+            )
+            aa_out.append(rec.get_pair())
+            for i in range(dupes - 1):
+                aa_out.append((f"{rec.id}_dupe{i}", rec.seq))
+            #insert nt dupes
+            for rec in nt_passing:
+                node = rec.id.split("|")[3]
+                dupes = prepare_dupes.get(node, 1) + sum(
+                    prepare_dupes.get(node, 1)
+                    for node in reporter_dupes.get(node, [])
+                )
+                nt_out.append(rec.get_pair())
+                for i in range(dupes - 1):
+                    nt_out.append((f"{rec.id}_dupe{i}", rec.seq))
+    else:
+        aa_out = aa_passing
+        nt_out = nt_passing
+
     aa_output = Path(output_path, "aa", gene.name)
     writeFasta(
         str(aa_output),
-        [rec.get_pair() for rec in aa_references + aa_passing],
+        aa_out,
         compress=compression,
     )
     nt_output = Path(nt_output_path, gene.name.replace(".aa.", ".nt."))
     writeFasta(
         str(nt_output),
-        [rec.get_pair() for rec in nt_references + nt_passing],
+        nt_out,
         compress=compression,
     )
 
@@ -360,7 +389,8 @@ def main(args, after_collapser, from_folder):
                     nt_log_path,
                     args.minimum_depth,
                     args.minimum_candidate_length,
-                    args.minimum_candidate_overlap
+                    args.minimum_candidate_overlap,
+                    args.add_internal_dupes,
                 ),
             )
         pool.starmap(run_internal, arguments, chunksize=1)

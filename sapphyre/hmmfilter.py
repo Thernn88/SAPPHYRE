@@ -34,6 +34,7 @@ class HmmfilterArgs(Struct):
     min_overlap_internal: float
     score_diff_internal: float
     matching_consensus_percent: float
+    add_hmmfilter_dupes: bool
 
 
 class BatchArgs(Struct):
@@ -48,6 +49,7 @@ class BatchArgs(Struct):
     prepare_dupe_counts: dict
     reporter_dupe_counts: dict
     has_dupes: bool
+    add_hmmfilter_dupes: bool
 
 
 class NODE(Struct):
@@ -70,8 +72,8 @@ def do_consensus(nodes, threshold, prepare_dupe_counts, reporter_dupe_counts):
     node_with_dupes = []
     for node in nodes:
         dupes = prepare_dupe_counts.get(node.base_header, 1) + sum(
-            prepare_dupe_counts.get(node.base_header, 1)
-            for node in reporter_dupe_counts.get(node.base_header, [])
+            prepare_dupe_counts.get(xnode, 1)
+            for xnode in reporter_dupe_counts.get(node.base_header, [])
         )
 
         node_with_dupes.append((node, dupes))
@@ -293,6 +295,8 @@ def process_batch(
 
     for input_gene in batch_args.genes:
         gene = input_gene.split('.')[0]
+        prepare_dupe_count = batch_args.prepare_dupe_counts.get(gene, {})
+        reporter_dupe_count = batch_args.reporter_dupe_counts.get(gene, {})
         kicked_headers = set()
         printv(f"Doing: {gene}", args.verbose, 2)
 
@@ -338,7 +342,7 @@ def process_batch(
         reference_seqs = [seq for header, seq in aa_output if header.endswith(".")]
         if batch_args.has_dupes:
             bundle = [(header, seq) for header, seq in aa_output if header.endswith(".")]
-            sequences = bundle_seqs_and_dupes(bundle, batch_args.prepare_dupe_counts, batch_args.reporter_dupe_counts)
+            sequences = bundle_seqs_and_dupes(bundle, prepare_dupe_count, reporter_dupe_count)
 
             ref_consensus_seq = dumb_consensus_dupe(sequences, 0.5, 0)
         else:
@@ -396,7 +400,7 @@ def process_batch(
         internal_kicks.extend(internal_log)
 
         x_cand_consensus, cand_coverage = do_consensus(
-            nodes, args.consensus, batch_args.prepare_dupe_counts, batch_args.reporter_dupe_counts
+            nodes, args.consensus, prepare_dupe_count, reporter_dupe_count
         )
 
         for node in nodes:
@@ -453,7 +457,7 @@ def process_batch(
                         trim_to = None
 
         x_cand_consensus, cand_coverage = do_consensus(
-            nodes, args.consensus, batch_args.prepare_dupe_counts, batch_args.reporter_dupe_counts
+            nodes, args.consensus, prepare_dupe_count, reporter_dupe_count
         )
 
         for node in nodes:
@@ -485,7 +489,7 @@ def process_batch(
             node.sequence = "".join(node.sequence)
 
         x_cand_consensus, cand_coverage = do_consensus(
-            nodes, args.consensus, batch_args.prepare_dupe_counts, batch_args.reporter_dupe_counts
+            nodes, args.consensus, prepare_dupe_count, reporter_dupe_count
         )
 
         for i, let in enumerate(x_cand_consensus):
@@ -495,18 +499,46 @@ def process_batch(
                 reported_regions.append(f"{gene},{i},{coverage}")
 
         aa_output = [(header, del_cols(seq, x_positions[header])) for header, seq in aa_output if header not in kicked_headers]
-
-        if aa_output:
-            writeFasta(aa_out, aa_output, batch_args.compress)
-
         # Align kicks to the NT
         nt_sequences = [
             (header, del_cols(sequence, x_positions[header], True))
             for header, sequence in parseFasta(nt_in)
             if header not in kicked_headers
         ]
-        if nt_sequences:
-            writeFasta(nt_out, nt_sequences, batch_args.compress)
+
+        aa_out_dupes = []
+        nt_out_dupes = []
+        if batch_args.add_hmmfilter_dupes and batch_args.has_dupes:
+            #insert aa dupes
+            for header, seq in aa_output:
+                node = header.split("|")[3]
+                dupes = prepare_dupe_count.get(node, 1) + sum(
+                    prepare_dupe_count.get(node, 1)
+                    for node in reporter_dupe_count.get(node, [])
+                )
+                aa_out_dupes.append((header, seq))
+                for i in range(dupes - 1):
+                    aa_out_dupes.append((f"{header}_dupe_{i}", seq))
+            #insert nt dupes
+            for header, seq in nt_sequences:
+                node = header.split("|")[3]
+                dupes = prepare_dupe_count.get(node, 1) + sum(
+                    prepare_dupe_count.get(node, 1)
+                    for node in reporter_dupe_count.get(node, [])
+                )
+            
+                nt_out_dupes.append((header, seq))
+                for i in range(dupes - 1):
+                
+                    nt_out_dupes.append((f"{header}_dupe{i}", seq))
+        else:
+            aa_out_dupes = aa_output
+            nt_out_dupes = nt_sequences
+
+        if aa_out_dupes:
+            writeFasta(aa_out, aa_out_dupes, batch_args.compress)
+        if nt_out_dupes:
+            writeFasta(nt_out, nt_out_dupes, batch_args.compress)
 
         total_x_before += has_x_before
         total_x_after += has_x_after
@@ -593,6 +625,7 @@ def do_folder(args: HmmfilterArgs, input_path: str):
                 prepare_dupe_counts, 
                 reporter_dupe_counts,
                 has_dupes,
+                args.add_hmmfilter_dupes,
             ))
 
 
@@ -664,6 +697,7 @@ def main(args, from_folder):
         min_overlap_internal = args.min_overlap_internal,
         score_diff_internal = args.score_diff_internal,
         matching_consensus_percent = args.matching_consensus_percent,
+        add_hmmfilter_dupes = args.add_hmmfilter_dupes
     )
     return do_folder(this_args, args.INPUT)
 

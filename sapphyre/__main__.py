@@ -297,6 +297,18 @@ def subcmd_outlier(subparsers):
 
 
 def outlier_args(par):
+    par.add_argument(
+        "-aid",
+        "--add_internal_dupes",
+        action="store_true",
+        help="Add dupes to internal",
+    )
+    par.add_argument(
+        "-ahd",
+        "--add_hmmfilter_dupes",
+        action="store_true",
+        help="Add dupes to hmmfilter",
+    )
     # Globally used args
     par.add_argument(
         "-d",
