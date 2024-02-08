@@ -279,9 +279,9 @@ def run_internal(
     if not aa_passing:  # if no eligible candidates, don't create the output file
         return
     
-    aa_out = []
-    nt_out = []
     if add_internal_dupes and not no_dupes:
+        aa_out = [rec.get_pair() for rec in aa_references]
+        nt_out = [rec.get_pair() for rec in nt_references]
         #insert aa dupes
         for rec in aa_passing:
             node = rec.id.split("|")[3]
@@ -293,18 +293,21 @@ def run_internal(
             for i in range(dupes - 1):
                 aa_out.append((f"{rec.id}_dupe{i}", rec.seq))
             #insert nt dupes
-            for rec in nt_passing:
-                node = rec.id.split("|")[3]
-                dupes = prepare_dupes.get(node, 1) + sum(
-                    prepare_dupes.get(node, 1)
-                    for node in reporter_dupes.get(node, [])
-                )
-                nt_out.append(rec.get_pair())
-                for i in range(dupes - 1):
-                    nt_out.append((f"{rec.id}_dupe{i}", rec.seq))
+                
+        for rec in nt_passing:
+            node = rec.id.split("|")[3]
+            dupes = prepare_dupes.get(node, 1) + sum(
+                prepare_dupes.get(node, 1)
+                for node in reporter_dupes.get(node, [])
+            )
+            nt_out.append(rec.get_pair())
+            for i in range(dupes - 1):
+                nt_out.append((f"{rec.id}_dupe{i}", rec.seq))
+        
+        
     else:
-        aa_out = aa_passing
-        nt_out = nt_passing
+        aa_out = [rec.get_pair() for rec in aa_references + aa_passing]
+        nt_out = [rec.get_pair() for rec in nt_references + nt_passing]
 
     aa_output = Path(output_path, "aa", gene.name)
     writeFasta(
