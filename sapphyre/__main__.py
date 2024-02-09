@@ -169,6 +169,32 @@ def diamond_args(par):
     )
 
 
+def subcmd_correction(subparsers):
+    par = subparsers.add_parser(
+        "Correction",
+        help="Uses Spades to perform error correction on the sequences returned by diamond.",
+    )
+    par.add_argument(
+        "INPUT",
+        help="Path to directory of Input folder",
+        action="extend",
+        nargs="+",
+    )
+    correction_args(par)
+    par.set_defaults(func=correction, formathelp=par.format_help)
+
+
+def correction_args(par):
+    par.add_argument("-fq", "--fastq", type=str, default="", help="Path to fastq for error correction")
+
+def correction(args):
+    from . import correct_errors
+
+    if not correct_errors.main(args):
+        print()
+        print(args.formathelp())
+
+
 def diamond(args):
     from . import diamond
 
@@ -1249,6 +1275,9 @@ def subcmd_auto(subparsers):
         default=None,
         help="Config file to use. If not specified, will use default configuration.",
     )
+
+    #Required args
+    par.add_argument("-fq", "--fastq", type=str, default="", help="Path to fastq for error correction")
     par.set_defaults(func=auto, formathelp=par.format_help)
 
 
@@ -1418,6 +1447,7 @@ def main():
     # the subcommands will be displayed.
     subcmd_prepare(subparsers)
     subcmd_diamond(subparsers)
+    subcmd_correction(subparsers)
     subcmd_hmmsearch(subparsers)
     subcmd_reporter(subparsers)
 

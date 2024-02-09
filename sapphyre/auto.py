@@ -12,7 +12,8 @@ from .__main__ import (
     pal2nal_args,
     prepare_args,
     reporter_args,
-    hmmsearch_args
+    hmmsearch_args,
+    correction_args,
 )
 from .timekeeper import KeeperMode, TimeKeeper
 
@@ -32,6 +33,7 @@ def main(args):
     default_config = {
         "prepare": get_args(prepare_args),
         "diamond": get_args(diamond_args),
+        "correction": get_args(correction_args),
         "hmmsearch": get_args(hmmsearch_args),
         "reporter": get_args(reporter_args),
         "align": get_args(align_args),
@@ -72,6 +74,11 @@ def main(args):
     time = TimeKeeper(KeeperMode.DIRECT)
     for script in scripts:
         sargs = config[script]
+
+        if script == "correction":
+            if not sargs["fastq"]:
+                sargs["fastq"] = args.fastq
+
         print(f"\nExecuting: {script.title()}")
         this_args = global_args.copy()
         this_args.update(sargs)
@@ -102,6 +109,11 @@ def main(args):
 
             if not diamond.main(this_args):
                 print("Error in Diamond.")
+        elif script == "correction":
+            from . import correct_errors
+
+            if not correct_errors.main(this_args):
+                print("Error in Correction.")
         elif script == "hmmsearch":
             from . import hmmsearch
 
