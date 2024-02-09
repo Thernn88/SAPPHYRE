@@ -55,7 +55,7 @@ def main(argsobj):
             return
         from_folder = "hmmfilter"
 
-        if debug > 1 or this_args.add_hmmfilter_dupes:
+        if debug > 1:
             continue
 
         if not argsobj.no_excise:
@@ -65,7 +65,6 @@ def main(argsobj):
                 print()
                 print(argsobj.formathelp())
             from_folder = "excise"
-            
 
         printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
         if not internal.main(this_args, True, from_folder):
