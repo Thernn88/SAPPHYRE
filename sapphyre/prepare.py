@@ -361,6 +361,8 @@ def map_taxa_runs(
     # Store the count of dupes in the database
     nt_db.put_bytes("getall:dupes", json.encode(duplicates))
 
+    del nt_db
+
     printv(
         f"Done! {formatted_taxa_out} took {time_keeper.differential():.2f}s overall.",
         verbose,
