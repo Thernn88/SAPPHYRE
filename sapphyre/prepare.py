@@ -168,10 +168,6 @@ class SeqDeduplicator:
                 else:
                     header = header.split(" ")[0]
 
-                if header == "NODE_73645":
-                    print(n_index, n_sequences, parent_seq)
-
-
 
                 seq_hash = xxhash.xxh3_64(seq).hexdigest()
 
