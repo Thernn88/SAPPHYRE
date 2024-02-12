@@ -510,9 +510,9 @@ def top_reference_realign(orthoset_aln_path, top_refs, target_to_taxon, top_path
         if target_to_taxon[header] in top_refs: 
             out.append((header, seq.replace("-", "")))
 
-    if len(out) == 1:
-        writeFasta(out_path, out)
-        return
+    # if len(out) == 1:
+    #     writeFasta(out_path, out)
+    #     return
     
     if path.exists(out_path):
         if len(out) == len(list(parseFasta(out_path, True))):
@@ -1092,9 +1092,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
             args.verbose,
         )
 
-        # if path.exists(top_path):
-        #     rmtree(top_path)
-        # makedirs(top_path, exist_ok=True)
+        if path.exists(top_path):
+            rmtree(top_path)
+        makedirs(top_path, exist_ok=True)
 
         arguments = []
         for gene in present_genes:
