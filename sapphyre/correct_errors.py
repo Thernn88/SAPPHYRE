@@ -142,6 +142,8 @@ def correct_folder(folder, args):
                 results += len(hits)
                 hits_db.put_bytes(f"gethits:{gene}", encoder.encode(hits))
 
+        hits_db.put("getall:presentgenes", ",".join(list(gene_output.keys())))
+
         printv(f"Stored {results} corrected reads", args.verbose, 1)
 
 def main(args):

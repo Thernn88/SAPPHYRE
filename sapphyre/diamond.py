@@ -1117,8 +1117,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 if base_header in dupe_counts:
                     gene_dupe_count[gene][base_header] = dupe_counts[base_header]
 
-        db.put("getall:presentgenes", ",".join(present_genes))
-
         key = "getall:gene_dupes"
         data = json_encoder.encode(gene_dupe_count)  # type=dict[str, dict[str, int]]
         nt_db.put_bytes(key, data)
