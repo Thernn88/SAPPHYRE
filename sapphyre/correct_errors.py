@@ -32,6 +32,27 @@ def get_diamondhits(
     return this_hits
 
 
+def N_trim(parent_sequence: str):
+    """
+    Breaks sequence into chunks at Ns, and yields chunks that are longer than the minimum sequence length.
+    """
+    if "N" in parent_sequence:
+        # Get N indices and start and end of sequence
+        indices = (
+            [0]
+            + [i for i, ltr in enumerate(parent_sequence) if ltr == "N"]
+            + [len(parent_sequence)]
+        )
+
+        for i in range(0, len(indices) - 1):
+            start = indices[i]
+            end = indices[i + 1]
+
+            raw_seq = parent_sequence[start + 1 : end]
+            yield raw_seq
+    else:
+        yield parent_sequence
+
 def correct_folder(folder, args):
     nt_db_path = os.path.join(folder, "rocksdb", "sequences", "nt")
     nt_db = RocksDB(nt_db_path)
@@ -41,7 +62,7 @@ def correct_folder(folder, args):
         return True
 
 
-    original_posiitons = json.decode(nt_db.get("getall:original_positions"), type=dict[str, tuple[int, int]])
+    original_posiitons = json.decode(nt_db.get("getall:original_positions"), type=dict[str, tuple[int, int, int|None]])
     original_inputs = json.decode(nt_db.get("getall:original_inputs"), type=list[str])
 
     hits_db = RocksDB(os.path.join(folder, "rocksdb", "hits"))
@@ -55,13 +76,14 @@ def correct_folder(folder, args):
     hit_count = 0
     for i, hit in enumerate(diamond_hits):
         hit_count += 1
-        file_index, line_index = original_posiitons[hit.node]
+        file_index, line_index, n_index = original_posiitons[hit.node]
 
         keep_set[file_index].add(line_index)
-        positions_to_keep[file_index][line_index] = (hit.gene, i)
+        positions_to_keep[file_index][line_index] = (hit.gene, i, n_index)
 
     
     header_to_old_pos = {}
+    old_seq = {}
     printv(f"Found {hit_count} hits from diamond.", args.verbose, 1)
 
     with TemporaryDirectory(dir=gettempdir()) as tempdir:
@@ -73,6 +95,7 @@ def correct_folder(folder, args):
                 for i, (header, seq, qual) in enumerate(Fastq(file, build_index = False)):
                     if i in keep_set[file_index]:
                         header_to_old_pos[header] = file_index, i
+                        old_seq[header] = seq
                         out.write(f"@{header}\n{seq}\n+{header}\n{qual}\n")
 
         printv("Correcting reads using spades.", args.verbose, 0)
@@ -94,12 +117,21 @@ def correct_folder(folder, args):
         for i, (header, seq, qual) in enumerate(Fastq(result_file, build_index = False)):   
             from_file, from_index = header_to_old_pos[header]
 
-            gene, hit_index = positions_to_keep[from_file][from_index]
+            gene, hit_index, n_index = positions_to_keep[from_file][from_index]
             hit = diamond_hits[hit_index]
+
+            if n_index is not None:
+                if "N" in seq:
+                    seq = list(N_trim(seq))[n_index]
+                else:
+                    #N was deleted
+                    # print(header)
+                    continue
+
             hit.seq = seq[hit.qstart - 1 : hit.qend]
             if hit.frame < 0:
                 hit.seq = bio_revcomp(hit.seq)
-            
+
             gene_output[gene].append(hit)
 
         printv("Writing corrected reads.", args.verbose, 1)

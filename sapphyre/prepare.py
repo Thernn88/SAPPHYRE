@@ -18,28 +18,27 @@ from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
 
 
-def N_trim(parent_sequence: str, minimum_sequence_length: int):
+def N_trim(parent_sequence: str):
     """
     Breaks sequence into chunks at Ns, and yields chunks that are longer than the minimum sequence length.
     """
-    if "N" in parent_sequence:
-        # Get N indices and start and end of sequence
-        indices = (
-            [0]
-            + [i for i, ltr in enumerate(parent_sequence) if ltr == "N"]
-            + [len(parent_sequence)]
-        )
 
-        for i in range(0, len(indices) - 1):
-            start = indices[i]
-            end = indices[i + 1]
+    # Get N indices and start and end of sequence
+    indices = (
+        [0]
+        + [i for i, ltr in enumerate(parent_sequence) if ltr == "N"]
+        + [len(parent_sequence)]
+    )
 
-            length = end - start
-            if length >= minimum_sequence_length:
-                raw_seq = parent_sequence[start + 1 : end]
-                yield raw_seq
-    else:
-        yield parent_sequence
+    for x, i in enumerate(range(0, len(indices) - 1)):
+        start = indices[i]
+        end = indices[i + 1]
+
+        if x != 0:
+            start += 1
+
+        raw_seq = parent_sequence[start : end]
+        yield raw_seq
 
 
 class IndexIter:
@@ -151,17 +150,29 @@ class SeqDeduplicator:
                 continue
             parent_seq = parent_seq.upper()
 
-            n_sequences = N_trim(parent_seq, self.minimum_sequence_length)
-            if not self.rename:
-                n_sequences = list(n_sequences)
+            if "N" in parent_seq:
+                n_sequences = list(N_trim(parent_seq))
+            else:
+                n_sequences = [parent_seq]
 
             individual_index = IndexIter()
 
-            for seq in n_sequences:
+            for n_index, seq in enumerate(n_sequences):
+                if len(seq) < self.minimum_sequence_length:
+                    continue
+                if len(n_sequences) == 1:
+                    n_index = None
+
                 if self.rename:
                     header = f"NODE_{this_index}"
                 else:
                     header = header.split(" ")[0]
+
+                if header == "NODE_73645":
+                    print(n_index, n_sequences, parent_seq)
+
+
+
                 seq_hash = xxhash.xxh3_64(seq).hexdigest()
 
                 # Check for dupe, if so save how many times that sequence occured
@@ -212,7 +223,7 @@ class SeqDeduplicator:
                         this_header = f"{header}_{individual_index}"
                         next(individual_index)
 
-                    self.original_positions[this_header] = (self.file_index, line_index)
+                    self.original_positions[this_header] = (self.file_index, line_index, n_index)
 
                     self.lines.append(f">{this_header}\n{seq}\n")
                     next(this_index)
