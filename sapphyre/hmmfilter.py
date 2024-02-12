@@ -324,11 +324,12 @@ def process_batch(
             aa_count += 1
 
             start, end = find_index_pair(sequence, "-")
+            base = header.split("|")[3]
             nodes.append(
                 NODE(
                     header=header,
-                    base_header = header.split("|")[3],
-                    score=this_gene_scores.get(header, 0),
+                    base_header = base,
+                    score=this_gene_scores.get(base, 0),
                     sequence=sequence,
                     start=start,
                     end=end,

@@ -485,7 +485,8 @@ def print_unmerged_sequences(
                 aa_result.append((header, aa_seq))
                 nt_result.append((header, nt_seq))
 
-                header_to_score[header] = hit.score
+
+                header_to_score[hit.node] = max(header_to_score.get(hit.node, 0), hit.score)
 
                 header_mapped_x_times.setdefault(base_header, 1)
                 exact_hit_mapped_already.add(unique_hit)
