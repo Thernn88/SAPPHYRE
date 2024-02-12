@@ -185,7 +185,7 @@ def subcmd_correction(subparsers):
 
 
 def correction_args(par):
-    par.add_argument("-fq", "--fastq", type=str, default="", help="Path to fastq for error correction")
+    pass
 
 def correction(args):
     from . import correct_errors
@@ -1265,7 +1265,6 @@ def subcmd_auto(subparsers):
     )
 
     #Required args
-    par.add_argument("-fq", "--fastq", type=str, default="", help="Path to fastq for error correction")
     par.set_defaults(func=auto, formathelp=par.format_help)
 
 

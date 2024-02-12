@@ -514,9 +514,9 @@ def top_reference_realign(orthoset_aln_path, top_refs, target_to_taxon, top_path
         writeFasta(out_path, out)
         return
     
-    # if path.exists(out_path):
-    #     if len(out) == len(list(parseFasta(out_path, True))):
-    #         return
+    if path.exists(out_path):
+        if len(out) == len(list(parseFasta(out_path, True))):
+            return
     
     with NamedTemporaryFile(dir=gettempdir(), prefix=f"{gene}_") as tmp_prealign, NamedTemporaryFile(dir=gettempdir(), prefix=f"{gene}_") as tmp_result:
         tmp_prealign.write("\n".join([f">{i}\n{j}" for i, j in out]).encode())
@@ -1029,6 +1029,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 output = [convert_and_cull(arg) for arg in arguments]
         passes = 0
         encoder = json.Encoder()
+        global_out = []
         for result in output:
             if is_assembly_or_genome:
                 hits, gene = result.hits, result.gene
@@ -1048,14 +1049,24 @@ def run_process(args: Namespace, input_path: str) -> bool:
                         hit.uid,
                         hit.refs,
                     )
-                hit.seq = head_to_seq[hit.node][hit.qstart - 1 : hit.qend]
-                if hit.frame < 0:
-                    hit.seq = bio_revcomp(hit.seq)
+                    hit.seq = ""
+                else:
+                    hit.seq = head_to_seq[hit.node][hit.qstart - 1 : hit.qend]
+                    if hit.frame < 0:
+                        hit.seq = bio_revcomp(hit.seq)
+                        
+
                 out.append(hit)
                 dupe_divy_headers[gene].add(hit.node)
 
             passes += len(out)
-            db.put_bytes(f"gethits:{gene}", encoder.encode(out))
+            if is_assembly_or_genome:
+                db.put_bytes(f"gethits:{gene}", encoder.encode(out))
+            else:
+                global_out.extend(out)
+
+        if global_out:
+            db.put_bytes("getall:hits", encoder.encode(global_out))
 
         del head_to_seq
         if global_log:
@@ -1081,9 +1092,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
             args.verbose,
         )
 
-        if path.exists(top_path):
-            rmtree(top_path)
-        makedirs(top_path, exist_ok=True)
+        # if path.exists(top_path):
+        #     rmtree(top_path)
+        # makedirs(top_path, exist_ok=True)
 
         arguments = []
         for gene in present_genes:

@@ -120,6 +120,8 @@ class SeqDeduplicator:
         rename,
     ) -> None:
         self.original_positions = {}
+        self.file_index = 0
+        self.original_inputs = []
         self.lines = []
         self.minimum_sequence_length = minimum_sequence_length
         self.verbose = verbose
@@ -141,6 +143,9 @@ class SeqDeduplicator:
         CHOMP_LEN = 750
         CHOMP_CUTOFF = 10000
         ASSEMBLY_LEN = 750
+
+        self.original_inputs.append(str(fa_file_path))
+
         for line_index, (header, parent_seq) in enumerate(parseFasta(fa_file_path, True)):
             if not len(parent_seq) >= self.minimum_sequence_length:
                 continue
@@ -207,10 +212,12 @@ class SeqDeduplicator:
                         this_header = f"{header}_{individual_index}"
                         next(individual_index)
 
-                    self.original_positions[this_header] = line_index
+                    self.original_positions[this_header] = (self.file_index, line_index)
 
                     self.lines.append(f">{this_header}\n{seq}\n")
                     next(this_index)
+        
+        self.file_index += 1
 
 
 def map_taxa_runs(
@@ -341,6 +348,8 @@ def map_taxa_runs(
     # Store the original positions
     if not (this_is_assembly or this_is_genome):
         nt_db.put_bytes("getall:original_positions", json.encode(deduper.original_positions))
+        nt_db.put_bytes("getall:original_inputs", json.encode(deduper.original_inputs))
+        
 
     # Store the count of dupes in the database
     nt_db.put_bytes("getall:dupes", json.encode(duplicates))

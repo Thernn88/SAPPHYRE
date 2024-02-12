@@ -24,24 +24,15 @@ def get_diamondhits(
     Returns:
         dict[str, list[Hit]]: Dictionary of gene to corresponding hits
     """
-    present_genes = rocks_hits_db.get("getall:presentgenes")
 
-    genes_to_process = present_genes.split(",")
+    hits_result = rocks_hits_db.get_bytes(f"getall:hits")
+    this_hits = json.decode(hits_result, type=list[Hit])
 
-    gene_based_results = []
-    for gene in genes_to_process:
-        gene_result = rocks_hits_db.get_bytes(f"gethits:{gene}")
-        this_hits = json.decode(gene_result, type=list[Hit])
 
-        gene_based_results.append((gene, this_hits))
-
-    return gene_based_results
+    return this_hits
 
 
 def correct_folder(folder, args):
-    if not args.fastq:
-        msg = "FastQ file not provided, please provide one using -fq (path)."
-        raise FileNotFoundError(msg)
     nt_db_path = os.path.join(folder, "rocksdb", "sequences", "nt")
     nt_db = RocksDB(nt_db_path)
 
@@ -50,34 +41,39 @@ def correct_folder(folder, args):
         return True
 
 
-    original_posiitons = json.decode(nt_db.get("getall:original_positions"), type=dict[str, int])
+    original_posiitons = json.decode(nt_db.get("getall:original_positions"), type=dict[str, tuple[int, int]])
+    original_inputs = json.decode(nt_db.get("getall:original_inputs"), type=list[str])
 
     hits_db = RocksDB(os.path.join(folder, "rocksdb", "hits"))
 
 
     diamond_hits = get_diamondhits(hits_db)
 
-    positions_to_keep = {}
-    gene_to_hit = defaultdict(list)
+    positions_to_keep = defaultdict(dict)
+    keep_set = defaultdict(set)
 
-    for gene, hits in diamond_hits:
-        for i, hit in enumerate(hits):
-            positions_to_keep[original_posiitons[hit.node]] = (gene, i)
-            gene_to_hit[gene].append(hit)
+    hit_count = 0
+    for i, hit in enumerate(diamond_hits):
+        hit_count += 1
+        file_index, line_index = original_posiitons[hit.node]
 
-    keep_set = set(positions_to_keep.keys())
+        keep_set[file_index].add(line_index)
+        positions_to_keep[file_index][line_index] = (hit.gene, i)
+
+    
     header_to_old_pos = {}
-    printv(f"Found {len(positions_to_keep)} hits from diamond.", args.verbose, 1)
+    printv(f"Found {hit_count} hits from diamond.", args.verbose, 1)
 
     with TemporaryDirectory(dir=gettempdir()) as tempdir:
         output = os.path.join(tempdir, "output.fastq")
         result = os.path.join(tempdir, "result")
         os.makedirs(result)
         with open(output, "w") as out:
-            for i, (header, seq, qual) in enumerate(Fastq(args.fastq, build_index = False)):
-                if i in keep_set:
-                    header_to_old_pos[header] = i
-                    out.write(f"@{header}\n{seq}\n+{header}\n{qual}\n")
+            for file_index, file in enumerate(original_inputs):
+                for i, (header, seq, qual) in enumerate(Fastq(file, build_index = False)):
+                    if i in keep_set[file_index]:
+                        header_to_old_pos[header] = file_index, i
+                        out.write(f"@{header}\n{seq}\n+{header}\n{qual}\n")
 
         printv("Correcting reads using spades.", args.verbose, 0)
         os.system(f"spades --only-error-correction --disable-gzip-output -s '{output}' -o '{result}' > /dev/null")
@@ -96,8 +92,10 @@ def correct_folder(folder, args):
 
         gene_output = defaultdict(list)
         for i, (header, seq, qual) in enumerate(Fastq(result_file, build_index = False)):   
-            gene, hit_index = positions_to_keep[header_to_old_pos[header]]
-            hit = gene_to_hit[gene][hit_index]
+            from_file, from_index = header_to_old_pos[header]
+
+            gene, hit_index = positions_to_keep[from_file][from_index]
+            hit = diamond_hits[hit_index]
             hit.seq = seq[hit.qstart - 1 : hit.qend]
             if hit.frame < 0:
                 hit.seq = bio_revcomp(hit.seq)

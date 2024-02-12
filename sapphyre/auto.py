@@ -74,11 +74,7 @@ def main(args):
     time = TimeKeeper(KeeperMode.DIRECT)
     for script in scripts:
         sargs = config[script]
-
-        if script == "correction":
-            if not sargs["fastq"]:
-                sargs["fastq"] = args.fastq
-
+        
         print(f"\nExecuting: {script.title()}")
         this_args = global_args.copy()
         this_args.update(sargs)
