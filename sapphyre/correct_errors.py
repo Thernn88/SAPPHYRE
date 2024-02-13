@@ -5,6 +5,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from .timekeeper import TimeKeeper, KeeperMode
 from wrap_rocks import RocksDB
+from multiprocessing import Pool
 import os
 from msgspec import json
 from .diamond import ReporterHit as Hit
@@ -53,6 +54,52 @@ def N_trim(parent_sequence: str):
     else:
         yield parent_sequence
 
+
+def run_spades(data, verbose, header_to_old_pos, positions_to_keep, diamond_hits):
+    with TemporaryDirectory(dir=gettempdir()) as tempdir:
+        output = os.path.join(tempdir, "output.fastq")
+        result = os.path.join(tempdir, "result")
+        os.makedirs(result)
+        with open(output, "w") as out:
+            out.write("".join(data))
+
+        # printv("Correcting reads using spades.", verbose, 0)
+        os.system(f"spades --only-error-correction --disable-gzip-output -s '{output}' -o '{result}' > /dev/null")
+
+        # printv("Reading result.", verbose, 1)
+        expected_outupt_location = os.path.join(result, "corrected")
+        result_file = None
+        for item in os.listdir(expected_outupt_location):
+            if item.endswith(".fastq"):
+                result_file = os.path.join(expected_outupt_location, item)
+                break
+        
+        if not result_file:
+            msg = "Could not find the result file"
+            raise FileNotFoundError(msg)
+
+        output = []
+        for i, (header, seq, qual) in enumerate(Fastq(result_file, build_index = False)):   
+            gene, from_file, from_index = header_to_old_pos[header]
+
+            for hit_index, n_index in positions_to_keep[gene][from_file][from_index]:
+                hit = diamond_hits[hit_index]
+
+                if n_index is not None:
+                    if "N" in seq:
+                        seq = list(N_trim(seq))[n_index]
+                    else:
+                        #N was deleted
+                        # print(header)
+                        continue
+
+                hit.seq = seq[hit.qstart - 1 : hit.qend]
+                if hit.frame < 0:
+                    hit.seq = bio_revcomp(hit.seq)
+
+                output.append(hit)
+    return gene, output
+
 def correct_folder(folder, args):
     nt_db_path = os.path.join(folder, "rocksdb", "sequences", "nt")
     nt_db = RocksDB(nt_db_path)
@@ -71,7 +118,10 @@ def correct_folder(folder, args):
     diamond_hits = get_diamondhits(hits_db)
 
     positions_to_keep = defaultdict(dict)
+    line_to_gene = defaultdict(dict)
     keep_set = defaultdict(set)
+
+    diamond_hits_by_gene = defaultdict(list)
 
     hit_count = 0
     for i, hit in enumerate(diamond_hits):
@@ -79,72 +129,54 @@ def correct_folder(folder, args):
         file_index, line_index, n_index = original_posiitons[hit.node]
 
         keep_set[file_index].add(line_index)
-        positions_to_keep[file_index].setdefault(line_index, []).append((hit.gene, i, n_index))
+        line_to_gene[file_index][line_index] = hit.gene
+        positions_to_keep[hit.gene].setdefault(file_index, {}).setdefault(line_index, []).append((i, n_index))
+        diamond_hits_by_gene[hit.gene].append(hit)
+
+    del diamond_hits
 
     
-    header_to_old_pos = {}
+    header_to_old_pos = defaultdict(dict)
     old_seq = {}
     printv(f"Found {hit_count} hits from diamond.", args.verbose, 1)
 
-    with TemporaryDirectory(dir=gettempdir()) as tempdir:
-        output = os.path.join(tempdir, "output.fastq")
-        result = os.path.join(tempdir, "result")
-        os.makedirs(result)
-        with open(output, "w") as out:
-            for file_index, file in enumerate(original_inputs):
-                for i, (header, seq, qual) in enumerate(Fastq(file, build_index = False)):
-                    if i in keep_set[file_index]:
-                        header_to_old_pos[header] = file_index, i
-                        old_seq[header] = seq
-                        out.write(f"@{header}\n{seq}\n+{header}\n{qual}\n")
+    distribution = defaultdict(list)
 
-        printv("Correcting reads using spades.", args.verbose, 0)
-        os.system(f"spades --only-error-correction --disable-gzip-output -s '{output}' -o '{result}' > /dev/null")
+    for file_index, file in enumerate(original_inputs):
+        for i, (header, seq, qual) in enumerate(Fastq(file, build_index = False)):
+            if i in keep_set[file_index]:
+                gene = line_to_gene[file_index][i]
+                header_to_old_pos[gene][header] = gene, file_index, i
+                old_seq[header] = seq
 
-        printv("Reading result.", args.verbose, 1)
-        expected_outupt_location = os.path.join(result, "corrected")
-        result_file = None
-        for item in os.listdir(expected_outupt_location):
-            if item.endswith(".fastq"):
-                result_file = os.path.join(expected_outupt_location, item)
-                break
-        
-        if not result_file:
-            msg = "Could not find the result file"
-            raise FileNotFoundError(msg)
+                
+                distribution[gene].append(f"@{header}\n{seq}\n+{header}\n{qual}\n")
 
-        gene_output = defaultdict(list)
-        for i, (header, seq, qual) in enumerate(Fastq(result_file, build_index = False)):   
-            from_file, from_index = header_to_old_pos[header]
+    arguments = []
+    for gene, data in distribution.items():
+        arguments.append((data, args.verbose, header_to_old_pos[gene], positions_to_keep, diamond_hits_by_gene[gene]))
 
-            for gene, hit_index, n_index in positions_to_keep[from_file][from_index]:
-                hit = diamond_hits[hit_index]
+    if args.processes <= 1:
+        gene_output = []
+        for arg in arguments:
+            gene_output.append(run_spades(*arg))
+    else:
+        with Pool(args.processes) as pool:
+            gene_output = pool.starmap(run_spades, arguments)
 
-                if n_index is not None:
-                    if "N" in seq:
-                        seq = list(N_trim(seq))[n_index]
-                    else:
-                        #N was deleted
-                        # print(header)
-                        continue
+    printv("Writing corrected reads.", args.verbose, 1)
+    encoder = json.Encoder()
+    results = 0
+    genes_present = set()
+    for gene, hits in gene_output:
+        if hits:
+            genes_present.add(gene)
+            results += len(hits)
+            hits_db.put_bytes(f"gethits:{gene}", encoder.encode(hits))
 
-                hit.seq = seq[hit.qstart - 1 : hit.qend]
-                if hit.frame < 0:
-                    hit.seq = bio_revcomp(hit.seq)
+    hits_db.put("getall:presentgenes", ",".join(list(genes_present)))
 
-                gene_output[gene].append(hit)
-
-        printv("Writing corrected reads.", args.verbose, 1)
-        encoder = json.Encoder()
-        results = 0
-        for gene, hits in gene_output.items():
-            if hits:
-                results += len(hits)
-                hits_db.put_bytes(f"gethits:{gene}", encoder.encode(hits))
-
-        hits_db.put("getall:presentgenes", ",".join(list(gene_output.keys())))
-
-        printv(f"Stored {results} corrected reads", args.verbose, 1)
+    printv(f"Stored {results} corrected reads", args.verbose, 1)
 
 def main(args):
     global_time = TimeKeeper(KeeperMode.DIRECT)
