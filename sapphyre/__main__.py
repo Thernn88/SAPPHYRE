@@ -343,7 +343,7 @@ def outlier_args(par):
         "--matching_consensus_percent",
         help="Minimum percent of similar columns required for consensus ",
         type=float,
-        default=0.2,
+        default=0.3,
     )
     par.add_argument(
         "-sdi",
@@ -446,7 +446,7 @@ def outlier_args(par):
         "-md",
         "--minimum-depth",
         type=int,
-        default=3,
+        default=5,
         help="Minium depth for choosing a character in the consensus sequence"
     )
     par.add_argument(
@@ -467,7 +467,7 @@ def outlier_args(par):
         "-ict",
         "--internal_consensus_threshold",
         type=float,
-        default=0.65,
+        default=0.67,
         dest="internal_consensus_threshold",
         help="Minimum ratio for choosing a character in the consensus sequence",
     )  
