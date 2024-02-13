@@ -737,9 +737,12 @@ def do_folder(folder, args):
     if rocks_db_path.exists():
         rocksdb_db = RocksDB(str(rocks_db_path))
         is_assembly = rocksdb_db.get("get:isassembly")
-        is_assembly = is_assembly == "False"
+        is_assembly = is_assembly == "True"
         is_genome = rocksdb_db.get("get:isgenome")
-        is_genome = is_genome == "False"
+        is_genome = is_genome == "True"
+        # debugging lines, uncomment to manually set a flag
+        # is_assembly = False
+        # is_genome = False
         del rocksdb_db
     else:
         err = f"cannot find dupe databases for {folder}"
