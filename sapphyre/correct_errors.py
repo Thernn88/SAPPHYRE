@@ -79,7 +79,7 @@ def correct_folder(folder, args):
         file_index, line_index, n_index = original_posiitons[hit.node]
 
         keep_set[file_index].add(line_index)
-        positions_to_keep[file_index][line_index] = (hit.gene, i, n_index)
+        positions_to_keep[file_index].setdefault(line_index, []).append((hit.gene, i, n_index))
 
     
     header_to_old_pos = {}
@@ -117,22 +117,22 @@ def correct_folder(folder, args):
         for i, (header, seq, qual) in enumerate(Fastq(result_file, build_index = False)):   
             from_file, from_index = header_to_old_pos[header]
 
-            gene, hit_index, n_index = positions_to_keep[from_file][from_index]
-            hit = diamond_hits[hit_index]
+            for gene, hit_index, n_index in positions_to_keep[from_file][from_index]:
+                hit = diamond_hits[hit_index]
 
-            if n_index is not None:
-                if "N" in seq:
-                    seq = list(N_trim(seq))[n_index]
-                else:
-                    #N was deleted
-                    # print(header)
-                    continue
+                if n_index is not None:
+                    if "N" in seq:
+                        seq = list(N_trim(seq))[n_index]
+                    else:
+                        #N was deleted
+                        # print(header)
+                        continue
 
-            hit.seq = seq[hit.qstart - 1 : hit.qend]
-            if hit.frame < 0:
-                hit.seq = bio_revcomp(hit.seq)
+                hit.seq = seq[hit.qstart - 1 : hit.qend]
+                if hit.frame < 0:
+                    hit.seq = bio_revcomp(hit.seq)
 
-            gene_output[gene].append(hit)
+                gene_output[gene].append(hit)
 
         printv("Writing corrected reads.", args.verbose, 1)
         encoder = json.Encoder()
