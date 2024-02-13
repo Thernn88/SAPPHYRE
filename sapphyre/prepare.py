@@ -158,7 +158,7 @@ class SeqDeduplicator:
             individual_index = IndexIter()
 
             for n_index, seq in enumerate(n_sequences):
-                if len(seq) < self.minimum_sequence_length:
+                if (len(seq) + 1) < self.minimum_sequence_length:
                     continue
                 if len(n_sequences) == 1:
                     n_index = None
