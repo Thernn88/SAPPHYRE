@@ -157,6 +157,7 @@ def generate_clusters(data: dict[str, str], second_run) -> list[list[str]]:
 
         diamond_run = run(terminal_args)
         if diamond_run.returncode != 0:
+            print(f"non-zero exit code for diamond, rerunning {tmp_in.name}")
             run(terminal_args)
 
         cluster_children = defaultdict(list)
