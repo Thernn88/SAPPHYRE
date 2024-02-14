@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from collections import Counter, defaultdict, namedtuple
 from math import ceil
+from multiprocessing import Manager
 from multiprocessing.pool import Pool
 from os import listdir, mkdir, path, stat, system
 from shutil import rmtree
+from subprocess import run
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 from sapphyre_tools import find_index_pair, sigclust
@@ -115,7 +117,7 @@ def compare_cluster(
     return sum(average_identity) / len(average_identity)
 
 
-def generate_clusters(data: dict[str, str], second_run) -> list[list[str]]:
+def generate_clusters(data: dict[str, str], second_run, fail_queue) -> list[list[str]]:
     """Generates clusters from a dictionary of header -> sequence.
 
     Clusters are based on the average identity of kmers between sequences.
@@ -135,14 +137,29 @@ def generate_clusters(data: dict[str, str], second_run) -> list[list[str]]:
         writeFasta(tmp_in.name, data.items())
         tmp_in.flush()
 
+        # if second_run:
+        #     system(
+        #         f"diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 85 --member-cover 65 --threads 1 --ignore-warnings --quiet"
+        #     )
+        # else:
+        #     system(
+        #         f"diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 85 --member-cover 70 --threads 1 --ignore-warnings --quiet"
+        #     )
+        terminal_args = [
+            "diamond", "cluster",
+            "-d", str(tmp_in.name),
+            "-o", str(tmp_result.name),
+            "--approx-id", "85",
+            "--member-cover", "70",
+            "--threads", "1",
+            "--ignore-warnings", "--quiet"]
         if second_run:
-            system(
-                f"diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 85 --member-cover 65 --threads 1 --ignore-warnings --quiet"
-            )
-        else:
-            system(
-                f"diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 85 --member-cover 70 --threads 1 --ignore-warnings --quiet"
-            )
+            terminal_args[9] = "65"
+
+        diamond_run = run(terminal_args, timeout=60, capture_output=True)
+        if diamond_run.returncode != 0:
+            fail_queue.put(terminal_args)
+            return []
 
         cluster_children = defaultdict(list)
 
@@ -296,6 +313,7 @@ CmdArgs = namedtuple(
         "align_method",
         "second_run",
         "top_folder",
+        "fail_queue"
     ],
 )
 
@@ -652,7 +670,7 @@ def run_command(args: CmdArgs) -> None:
             if len(data) < 5:
                 cluster_children = [[i] for i in data]
             else:
-                cluster_children = generate_clusters(data, args.second_run)
+                cluster_children = generate_clusters(data, args.second_run, args.fail_queue)
             clusters = seperate_into_clusters(cluster_children, data)
             cluster_time = keeper.differential()
 
@@ -841,6 +859,7 @@ def do_folder(folder, args):
         f"Aligning AA Files. Elapsed time: {time_keeper.differential():.2f}s",
         args.verbose,
     )
+    fail_queue = Manager().Queue()
     for file, _ in genes:
         gene = file.split(".")[0]
         gene_file = path.join(aa_path, file)
@@ -868,6 +887,7 @@ def do_folder(folder, args):
                         args.align_method.lower(),
                         args.second_run,
                         top_folder,
+                        fail_queue
                     ),
                 ),
             )
@@ -877,6 +897,11 @@ def do_folder(folder, args):
             pool.starmap(run_command, func_args, chunksize=1)
     else:
         [run_command(arg[0]) for arg in func_args]
+    if not fail_queue.empty():
+        with open("diamond_fails.log",'w') as f:
+            while not fail_queue.empty():
+                job = fail_queue.get()
+                f.write(" ".join(job)+'\n')
 
     printv(f"Done! Took {time_keeper.differential():.2f}s overall", args.verbose, 0)
     return True
