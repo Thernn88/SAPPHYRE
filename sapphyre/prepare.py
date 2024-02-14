@@ -25,20 +25,19 @@ def N_trim(parent_sequence: str):
 
     # Get N indices and start and end of sequence
     indices = (
-        [0]
+        [-1]
         + [i for i, ltr in enumerate(parent_sequence) if ltr == "N"]
-        + [len(parent_sequence)]
+        + [len(parent_sequence) + 1]
     )
-
     for x, i in enumerate(range(0, len(indices) - 1)):
         start = indices[i]
         end = indices[i + 1]
 
-        if x != 0:
-            start += 1
+        # Don't include N
+        start += 1
 
         raw_seq = parent_sequence[start : end]
-        yield raw_seq
+        yield (start, end), raw_seq
 
 
 class IndexIter:
@@ -153,21 +152,18 @@ class SeqDeduplicator:
             if "N" in parent_seq:
                 n_sequences = list(N_trim(parent_seq))
             else:
-                n_sequences = [parent_seq]
+                n_sequences = [(None, parent_seq)]
 
             individual_index = IndexIter()
 
-            for n_index, seq in enumerate(n_sequences):
+            for n_coords, seq in n_sequences:
                 if (len(seq) + 1) < self.minimum_sequence_length:
                     continue
-                if len(n_sequences) == 1:
-                    n_index = None
 
                 if self.rename:
                     header = f"NODE_{this_index}"
                 else:
                     header = header.split(" ")[0]
-
 
                 seq_hash = xxhash.xxh3_64(seq).hexdigest()
 
@@ -219,7 +215,7 @@ class SeqDeduplicator:
                         this_header = f"{header}_{individual_index}"
                         next(individual_index)
 
-                    self.original_positions[this_header] = (self.file_index, line_index, n_index)
+                    self.original_positions[this_header] = (self.file_index, line_index, n_coords)
 
                     self.lines.append(f">{this_header}\n{seq}\n")
                     next(this_index)

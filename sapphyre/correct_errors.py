@@ -54,6 +54,8 @@ def N_trim(parent_sequence: str):
         yield parent_sequence
 
 def correct_folder(folder, args):
+    printv(f"Correcting errors in {os.path.basename(folder)}", args.verbose, 0)
+    folder_tk = TimeKeeper(KeeperMode.DIRECT)
     nt_db_path = os.path.join(folder, "rocksdb", "sequences", "nt")
     nt_db = RocksDB(nt_db_path)
 
@@ -62,7 +64,7 @@ def correct_folder(folder, args):
         return True
 
 
-    original_posiitons = json.decode(nt_db.get("getall:original_positions"), type=dict[str, tuple[int, int, int|None]])
+    original_posiitons = json.decode(nt_db.get("getall:original_positions"), type=dict[str, tuple[int, int, tuple[int, int]|None]])
     original_inputs = json.decode(nt_db.get("getall:original_inputs"), type=list[str])
 
     hits_db = RocksDB(os.path.join(folder, "rocksdb", "hits"))
@@ -76,10 +78,10 @@ def correct_folder(folder, args):
     hit_count = 0
     for i, hit in enumerate(diamond_hits):
         hit_count += 1
-        file_index, line_index, n_index = original_posiitons[hit.node]
+        file_index, line_index, n_coord = original_posiitons[hit.node]
 
         keep_set[file_index].add(line_index)
-        positions_to_keep[file_index].setdefault(line_index, []).append((hit.gene, i, n_index))
+        positions_to_keep[file_index].setdefault(line_index, []).append((hit.gene, i, n_coord))
 
     
     header_to_old_pos = {}
@@ -118,19 +120,16 @@ def correct_folder(folder, args):
         for i, (header, seq, qual) in enumerate(Fastq(result_file, build_index = False)):   
             from_file, from_index = header_to_old_pos[header]
 
-            for gene, hit_index, n_index in positions_to_keep[from_file][from_index]:
+            for gene, hit_index, n_coord in positions_to_keep[from_file][from_index]:
                 hit = diamond_hits[hit_index]
                 output_indices.add(hit_index)
 
-                if n_index is not None:
-                    if "N" in seq:
-                        seq = list(N_trim(seq))[n_index]
-                    else:
-                        #N was deleted
-                        # print(header)
-                        continue
+                if n_coord is not None:
+                    this_seq = seq[n_coord[0]:n_coord[1]]
+                else:
+                    this_seq = seq
 
-                hit.seq = seq[hit.qstart - 1 : hit.qend]
+                hit.seq = this_seq[hit.qstart - 1 : hit.qend]
                 if hit.frame < 0:
                     hit.seq = bio_revcomp(hit.seq)
 
@@ -153,7 +152,7 @@ def correct_folder(folder, args):
 
         hits_db.put("getall:presentgenes", ",".join(list(gene_output.keys())))
 
-        printv(f"Stored {results} corrected reads", args.verbose, 1)
+        printv(f"Stored {results} corrected reads. Took {folder_tk.differential():.2f}s", args.verbose, 1)
 
 def main(args):
     global_time = TimeKeeper(KeeperMode.DIRECT)
