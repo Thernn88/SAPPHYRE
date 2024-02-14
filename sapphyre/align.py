@@ -849,7 +849,7 @@ def do_folder(folder, args):
     top_folder = path.join(folder, "top")
 
     intermediates = "intermediates"
-    if not path.exists(intermediates):
+    if not path.exists(intermediates) and args.debug:
         mkdir(intermediates)
 
     func_args = []
@@ -906,7 +906,8 @@ def main(args):
 
     if path.exists("intermediates"):
         rmtree("intermediates")
-    mkdir("intermediates")
+    if args.debug:
+        mkdir("intermediates")
 
     for folder in args.INPUT:
         success = do_folder(folder, args)
