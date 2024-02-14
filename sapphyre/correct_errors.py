@@ -95,7 +95,7 @@ def correct_folder(folder, args):
                 for i, (header, seq, qual) in enumerate(Fastq(file, build_index = False)):
                     if i in keep_set[file_index]:
                         header_to_old_pos[header] = file_index, i
-                        old_seq[header] = seq
+                        old_seq[i] = seq
                         out.write(f"@{header}\n{seq}\n+{header}\n{qual}\n")
 
         printv("Correcting reads using spades.", args.verbose, 0)
@@ -114,11 +114,13 @@ def correct_folder(folder, args):
             raise FileNotFoundError(msg)
 
         gene_output = defaultdict(list)
+        output_indices = set()
         for i, (header, seq, qual) in enumerate(Fastq(result_file, build_index = False)):   
             from_file, from_index = header_to_old_pos[header]
 
             for gene, hit_index, n_index in positions_to_keep[from_file][from_index]:
                 hit = diamond_hits[hit_index]
+                output_indices.add(hit_index)
 
                 if n_index is not None:
                     if "N" in seq:
@@ -133,6 +135,13 @@ def correct_folder(folder, args):
                     hit.seq = bio_revcomp(hit.seq)
 
                 gene_output[gene].append(hit)
+        
+        to_check = set(range(len(diamond_hits))) - output_indices
+        for i in to_check:
+            hit = diamond_hits[i]
+            seq = old_seq[original_posiitons[hit.node][1]]
+            
+            gene_output[hit.gene].append(hit)
 
         printv("Writing corrected reads.", args.verbose, 1)
         encoder = json.Encoder()
