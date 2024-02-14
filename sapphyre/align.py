@@ -4,7 +4,8 @@ from collections import Counter, defaultdict, namedtuple
 from math import ceil
 from multiprocessing import Manager
 from multiprocessing.pool import Pool
-from os import listdir, mkdir, path, stat, system
+from os import listdir, makedirs, mkdir, path, stat, system
+from pathlib import Path
 from shutil import rmtree
 from subprocess import run
 from tempfile import NamedTemporaryFile, TemporaryDirectory
@@ -158,6 +159,8 @@ def generate_clusters(data: dict[str, str], second_run, fail_queue) -> list[list
 
         diamond_run = run(terminal_args, timeout=60, capture_output=True)
         if diamond_run.returncode != 0:
+            fail_path = Path("diamond_fails", tmp_in.name)
+            writeFasta(str(fail_path), data.items())
             fail_queue.put(terminal_args)
             return []
 
@@ -860,6 +863,9 @@ def do_folder(folder, args):
         args.verbose,
     )
     fail_queue = Manager().Queue()
+    if path.exists("diamond_fails"):
+        rmtree("diamond_fails")
+    makedirs("diamond_fails", exist_ok=True)
     for file, _ in genes:
         gene = file.split(".")[0]
         gene_file = path.join(aa_path, file)
