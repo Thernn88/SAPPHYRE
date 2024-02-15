@@ -335,7 +335,7 @@ def outlier_args(par):
         "-moi",
         "--min_overlap_internal",
         type=float,
-        default=0.8,
+        default=0.7,
         help="Minimum overlap percent between reads in hmmfilter",
     )
     par.add_argument(
@@ -349,7 +349,7 @@ def outlier_args(par):
         "-sdi",
         "--score_diff_internal",
         type=float,
-        default=1.3,
+        default=1.2,
         help="Minimum score difference for hmmfilter.",
     )
     par.add_argument(
