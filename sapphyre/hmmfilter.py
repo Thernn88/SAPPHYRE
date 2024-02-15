@@ -121,42 +121,47 @@ def internal_filter_gene(nodes, debug, gene, min_overlap_internal, score_diff_in
     nodes.sort(key=lambda hit: hit.score, reverse=True)
     filtered_sequences_log = []
     kicks = set()
+    safe = set()
 
     for i, hit_a in enumerate(nodes):
         if not hit_a:
             continue
         for j in range(len(nodes) - 1, i, -1):
             hit_b = nodes[j]
-            if hit_b:
-                if hit_a.base_header != hit_b.base_header:
-                    if ((hit_a.score / hit_b.score) if hit_b.score != 0 else 0) < score_diff_internal:
-                        continue
+            if not hit_b:
+                continue
+            if j in safe:
+                continue
+            if hit_a.base_header == hit_b.base_header:
+                continue
+            if ((hit_a.score / hit_b.score) if hit_b.score != 0 else 0) < score_diff_internal:
+                continue  
 
-                    
+            overlap_coords = get_overlap(
+                hit_a.start,
+                hit_a.end,
+                hit_b.start,
+                hit_b.end,
+                1,
+            )
+            amount_of_overlap = 0 if overlap_coords is None else overlap_coords[1] - overlap_coords[0]
 
-                    overlap_coords = get_overlap(
-                        hit_a.start,
-                        hit_a.end,
-                        hit_b.start,
-                        hit_b.end,
-                        1,
-                    )
-                    amount_of_overlap = 0 if overlap_coords is None else overlap_coords[1] - overlap_coords[0]
+            distance = min((hit_b.end - hit_b.start), (hit_a.end - hit_a.start)) + 1  # Inclusive
+            percentage_of_overlap = amount_of_overlap / distance
+            if percentage_of_overlap >= min_overlap_internal:
 
-                    distance = min((hit_b.end - hit_b.start), (hit_a.end - hit_a.start)) + 1  # Inclusive
-                    percentage_of_overlap = amount_of_overlap / distance
-                    if percentage_of_overlap >= min_overlap_internal:
+                kmer_a = hit_a.sequence[overlap_coords[0]: overlap_coords[1]]
+                kmer_b = hit_b.sequence[overlap_coords[0]: overlap_coords[1]]
 
-                        kmer_a = hit_a.sequence[overlap_coords[0]: overlap_coords[1]]
-                        kmer_b = hit_b.sequence[overlap_coords[0]: overlap_coords[1]]
-
-                        if not is_same_kmer(kmer_a, kmer_b):
-                            kicks.add(hit_b.header)
-                            nodes[j] = None
-                            if debug:
-                                filtered_sequences_log.append(
-                                    f"{gene},{hit_b.header},{hit_b.score},{hit_b.start},{hit_b.end},Internal Overlapped with Highest Score,{gene},{hit_a.header},{hit_a.score},{hit_a.start},{hit_a.end}\nHit A Kmer: {kmer_a}\nHit B Kmer: {kmer_b}\n"
-                                )
+                if not is_same_kmer(kmer_a, kmer_b):
+                    kicks.add(hit_b.header)
+                    nodes[j] = None
+                    if debug:
+                        filtered_sequences_log.append(
+                            f"{gene},{hit_b.header},{hit_b.score},{hit_b.start},{hit_b.end},Internal Overlapped with Highest Score,{gene},{hit_a.header},{hit_a.score},{hit_a.start},{hit_a.end}\nHit A Kmer: {kmer_a}\nHit B Kmer: {kmer_b}\n"
+                        )
+                else:
+                    safe.add(j)
 
 
     return [i for i in nodes if i is not None], filtered_sequences_log, kicks
