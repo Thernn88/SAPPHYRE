@@ -139,7 +139,7 @@ def correct_folder(folder, args):
         for i in to_check:
             hit = diamond_hits[i]
             seq = old_seq[original_posiitons[hit.node][1]]
-            
+            hit.seq = seq
             gene_output[hit.gene].append(hit)
 
         printv("Writing corrected reads.", args.verbose, 1)
