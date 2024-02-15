@@ -4,10 +4,11 @@ from collections import Counter, defaultdict, namedtuple
 from math import ceil
 from multiprocessing.pool import Pool
 from os import listdir, mkdir, path, stat, system
+from psutil import Process
 from shutil import rmtree
-from subprocess import run
+from subprocess import Popen, run
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-
+from time import sleep
 from sapphyre_tools import find_index_pair, sigclust
 from xxhash import xxh3_64
 
@@ -155,11 +156,23 @@ def generate_clusters(data: dict[str, str], second_run) -> list[list[str]]:
         if second_run:
             terminal_args[9] = "65"
 
-        diamond_run = run(terminal_args)
+        diamond_run = Popen(terminal_args)
+        diamond_process = Process(diamond_run.pid)
+        while True:
+            try:
+                cpu_percent = diamond_process.cpu_percent()
+                if diamond_run.poll() is not None:  # if process has a finished, break
+                    break
+                if cpu_percent == 0.0:  # if process is not using cpu, break
+                    print(f"Zombie diamond process {diamond_run.pid} found. Breaking and rerunning")
+                    diamond_process.terminate()
+                    break
+                sleep(1)  # sleep to avoid spamming the cpu with polling ops
+            except KeyboardInterrupt:
+                break
         if diamond_run.returncode != 0:
-            print(f"non-zero exit code for diamond, rerunning {tmp_in.name}")
-            run(terminal_args)
-
+            print(f"Non-zero exit code for diamond, rerunning process {diamond_run.pid} on {tmp_in.name}")
+            diamond_run = run(terminal_args)
         cluster_children = defaultdict(list)
 
         for line in tmp_result.read().split("\n"):
