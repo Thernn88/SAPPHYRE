@@ -252,6 +252,8 @@ def log_excised_consensus(
     raw_sequences = list(parseFasta(str(aa_in)))
     sequences = [x[1] for x in raw_sequences if x[0][-1] != "."]
 
+    nodes = [(header, seq, *find_index_pair(seq, "-")) for header, seq in raw_sequences]
+
     # Make consensus sequence. Use dupe counts if available.
     if prepare_dupes and reporter_dupes:
         consensus_seq = make_duped_consensus(
@@ -264,76 +266,93 @@ def log_excised_consensus(
     # Search for slices of the consensus seq with a high ratio of 'X' to total characters
     bad_regions = check_covered_bad_regions(consensus_seq, excise_threshold)
     kicked_headers = set()
-    if cut:
-        if bad_regions:
-            # log bad regions
-            if len(bad_regions) == 1:
-                a, b = bad_regions[0]
-                if b - a != len(consensus_seq):
-                    if debug:
-                        log_output.append(f"{gene},{a}:{b},{consensus_seq}\n")
-                    else:
-                        log_output.append(f"{gene},{a}:{b}\n")
-            else:
-                for region in bad_regions:
-                    a, b = region
-                    if debug:
-                        log_output.append(f"{gene},{a}:{b},{consensus_seq}\n")
-                    else:
-                        log_output.append(f"{gene},{a}:{b}\n")
+    if bad_regions:
+        for region in bad_regions:
+            sequences_in_region = []
+            a, b = region
 
-            # make a list of locations that will be removed
-            positions_to_cull = [i for a, b in bad_regions for i in range(a, b)]
+            for header,seq,start,end in nodes:
+                overlap_coords = get_overlap(a, b, start, end, 1)
+                if overlap_coords:
+                    overlap_amount = overlap_coords[1] - overlap_coords[0]
+                    overlap_percent = overlap_amount / (end - start)
 
-            has_cand = False
-            aa_output = []
-            for header, sequence in raw_sequences:
-                if header[-1] == ".":  # we don't want to alter reference sequences
-                    aa_output.append((header, sequence))
-                    continue
-                # remove locations from the sequence, then remake string.
-                sequence = list(sequence)
-                for i in positions_to_cull:
-                    sequence[i] = "-"
+                    if overlap_percent > 0.5: # Adjustable percent
+                        sequences_in_region.append((header, seq))
 
-                sequence = "".join(sequence)
+            if sequences_in_region:
+                log_output.extend([f">{header}\n{seq}" for header, seq in sequences_in_region])
+                log_output.append("\n")
+    # if cut:
+    #     if bad_regions:
+    #         # log bad regions
+    #         if len(bad_regions) == 1:
+    #             a, b = bad_regions[0]
+    #             if b - a != len(consensus_seq):
+    #                 if debug:
+    #                     log_output.append(f"{gene},{a}:{b},{consensus_seq}\n")
+    #                 else:
+    #                     log_output.append(f"{gene},{a}:{b}\n")
+    #         else:
+    #             for region in bad_regions:
+    #                 a, b = region
+    #                 if debug:
+    #                     log_output.append(f"{gene},{a}:{b},{consensus_seq}\n")
+    #                 else:
+    #                     log_output.append(f"{gene},{a}:{b}\n")
 
-                # if the sequence no longer has the minimum amount of data characters,
-                # kick the entire sequence instead of just excising parts of it
-                if not min_aa_check(sequence, 20):
-                    kicked_headers.add(header)
-                    continue
+    #         # make a list of locations that will be removed
+    #         positions_to_cull = [i for a, b in bad_regions for i in range(a, b)]
 
-                # sequence has enough data after the excision, so output it
-                aa_output.append((header, sequence))
-                has_cand = True
-            if has_cand:
-                writeFasta(str(aa_out), aa_output, compress_intermediates)
+    #         has_cand = False
+    #         aa_output = []
+    #         for header, sequence in raw_sequences:
+    #             if header[-1] == ".":  # we don't want to alter reference sequences
+    #                 aa_output.append((header, sequence))
+    #                 continue
+    #             # remove locations from the sequence, then remake string.
+    #             sequence = list(sequence)
+    #             for i in positions_to_cull:
+    #                 sequence[i] = "-"
 
-            # mirror the excisions in nt sequences
-            nt_output = []
-            for header, sequence in parseFasta(str(nt_in)):
-                if header[-1] == ".":
-                    nt_output.append((header, sequence))
-                    continue
+    #             sequence = "".join(sequence)
 
-                if header in kicked_headers:
-                    continue
+    #             # if the sequence no longer has the minimum amount of data characters,
+    #             # kick the entire sequence instead of just excising parts of it
+    #             if not min_aa_check(sequence, 20):
+    #                 kicked_headers.add(header)
+    #                 continue
 
-                sequence = list(sequence)
-                # sets bad locations to '-' instead of removing them
-                for i in positions_to_cull:
-                    sequence[i * 3 : i * 3 + 3] = ["-", "-", "-"]
-                sequence = "".join(sequence)
-                nt_output.append((header, sequence))
-            if has_cand:
-                writeFasta(str(nt_out), nt_output, compress_intermediates)
-        else:
-            if raw_sequences:
-                writeFasta(str(aa_out), raw_sequences, compress_intermediates)
-                writeFasta(str(nt_out), parseFasta(str(nt_in)), compress_intermediates)
-            if debug:
-                log_output.append(f"{gene},N/A,{consensus_seq}\n")
+    #             # sequence has enough data after the excision, so output it
+    #             aa_output.append((header, sequence))
+    #             has_cand = True
+    #         if has_cand:
+    #             writeFasta(str(aa_out), aa_output, compress_intermediates)
+
+    #         # mirror the excisions in nt sequences
+    #         nt_output = []
+    #         for header, sequence in parseFasta(str(nt_in)):
+    #             if header[-1] == ".":
+    #                 nt_output.append((header, sequence))
+    #                 continue
+
+    #             if header in kicked_headers:
+    #                 continue
+
+    #             sequence = list(sequence)
+    #             # sets bad locations to '-' instead of removing them
+    #             for i in positions_to_cull:
+    #                 sequence[i * 3 : i * 3 + 3] = ["-", "-", "-"]
+    #             sequence = "".join(sequence)
+    #             nt_output.append((header, sequence))
+    #         if has_cand:
+    #             writeFasta(str(nt_out), nt_output, compress_intermediates)
+    #     else:
+    #         if raw_sequences:
+    #             writeFasta(str(aa_out), raw_sequences, compress_intermediates)
+    #             writeFasta(str(nt_out), parseFasta(str(nt_in)), compress_intermediates)
+    #         if debug:
+    #             log_output.append(f"{gene},N/A,{consensus_seq}\n")
 
     return log_output, bad_regions != [], len(kicked_headers)
 
@@ -414,7 +433,7 @@ def main(args, override_cut, sub_dir):
     compress = not args.uncompress_intermediates or args.compress
 
     genes = [fasta for fasta in listdir(aa_input) if ".fa" in fasta]
-    log_path = Path(output_folder, "excise_indices.csv")
+    log_path = Path(output_folder, "excise_regions.txt")
     if args.processes > 1:
         arguments = [
             (
