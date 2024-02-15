@@ -8,7 +8,7 @@ from psutil import Process
 from shutil import rmtree
 from subprocess import Popen, run
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-from time import sleep
+from time import sleep, time
 from sapphyre_tools import find_index_pair, sigclust
 from xxhash import xxh3_64
 
@@ -158,14 +158,24 @@ def generate_clusters(data: dict[str, str], second_run) -> list[list[str]]:
 
         diamond_run = Popen(terminal_args)
         diamond_process = Process(diamond_run.pid)
+        first_zero_time = None
+        DIAMOND_WAIT = 20
         while True:
             try:
                 cpu_percent = diamond_process.cpu_percent()
                 if diamond_run.poll() is not None:  # if process has a finished, break
                     break
                 if cpu_percent == 0.0:  # if process is not using cpu, break
-                    print(f"Zombie diamond process {diamond_run.pid} found. Breaking and rerunning")
-                    diamond_process.terminate()
+                    if first_zero_time is None:
+                        first_zero_time = time()
+                    else:
+                        if time() - first_zero_time > DIAMOND_WAIT:
+                            diamond_process.terminate()
+                            print(f"Zombie diamond process {diamond_run.pid} found. Breaking and rerunning")
+                            diamond_process.terminate()
+                            break
+                else:
+                    first_zero_time = None
                     break
                 sleep(1)  # sleep to avoid spamming the cpu with polling ops
             except KeyboardInterrupt:
