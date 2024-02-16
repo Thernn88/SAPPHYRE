@@ -159,7 +159,7 @@ def generate_clusters(data: dict[str, str], second_run) -> list[list[str]]:
         diamond_run = Popen(terminal_args)
         diamond_process = Process(diamond_run.pid)
         first_zero_time = None
-        DIAMOND_WAIT = 20
+        DIAMOND_WAIT = 10
         while True:
             try:
                 cpu_percent = diamond_process.cpu_percent()
@@ -176,7 +176,6 @@ def generate_clusters(data: dict[str, str], second_run) -> list[list[str]]:
                             break
                 else:
                     first_zero_time = None
-                    break
                 sleep(1)  # sleep to avoid spamming the cpu with polling ops
             except KeyboardInterrupt:
                 break
