@@ -58,6 +58,12 @@ def main(argsobj):
         if debug > 1 or this_args.add_hmmfilter_dupes:
             continue
 
+        printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
+        if not internal.main(this_args, True, from_folder):
+            print()
+            print(argsobj.format)
+        from_folder = "internal"
+
         if not argsobj.no_excise:
             printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
             module_return_tuple = excise.main(this_args, True, from_folder)
@@ -65,12 +71,6 @@ def main(argsobj):
                 print()
                 print(argsobj.formathelp())
             from_folder = "excise"
-            
-
-        printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
-        if not internal.main(this_args, True, from_folder):
-            print()
-            print(argsobj.format)
 
     printv(f"Took {timer.differential():.2f} seconds overall.", argsobj.verbose)
 
