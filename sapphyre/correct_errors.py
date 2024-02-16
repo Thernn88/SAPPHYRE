@@ -85,7 +85,7 @@ def correct_folder(folder, args):
 
     
     header_to_old_pos = {}
-    old_seq = {}
+    old_seq = defaultdict(dict)
     printv(f"Found {hit_count} hits from diamond.", args.verbose, 1)
 
     with TemporaryDirectory(dir=gettempdir()) as tempdir:
@@ -97,7 +97,7 @@ def correct_folder(folder, args):
                 for i, (header, seq, qual) in enumerate(Fastq(file, build_index = False)):
                     if i in keep_set[file_index]:
                         header_to_old_pos[header] = file_index, i
-                        old_seq[i] = seq
+                        old_seq[file_index][i] = seq
                         out.write(f"@{header}\n{seq}\n+{header}\n{qual}\n")
 
         printv("Correcting reads using spades.", args.verbose, 0)
@@ -138,7 +138,12 @@ def correct_folder(folder, args):
         to_check = set(range(len(diamond_hits))) - output_indices
         for i in to_check:
             hit = diamond_hits[i]
-            seq = old_seq[original_posiitons[hit.node][1]]
+            file_index, line_index, n_coord = original_posiitons[hit.node]
+
+            seq = old_seq[file_index][line_index]
+            if n_coord is not None:
+                seq = seq[n_coord[0]:n_coord[1]]
+                
             hit.seq = seq
             gene_output[hit.gene].append(hit)
 
