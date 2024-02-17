@@ -176,7 +176,7 @@ def generate_clusters(data: dict[str, str], second_run) -> list[list[str]]:
                             break
                 else:
                     first_zero_time = None
-                sleep(1)  # sleep to avoid spamming the cpu with polling ops
+                #sleep(1)  # sleep to avoid spamming the cpu with polling ops
             except KeyboardInterrupt:
                 break
         if diamond_run.returncode != 0:
