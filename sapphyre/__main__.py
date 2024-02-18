@@ -408,12 +408,41 @@ def outlier_args(par):
         help="Threshold for selecting a consensus bp",
     )
     par.add_argument(
-        "-et",
-        "--excise",
-        default=0.40,
+        "-eom",
+        "--excise_overlap_merge",
+        default=0.5,
         type=float,
-        help="Maximum percent of allowable X characters in consensus tail",
+        help="Minimum overlap percent for merging in excise assembly",
     )
+    par.add_argument(
+        "-eoa",
+        "--excise_overlap_ambig",
+        default=0.5,
+        type=float,
+        help="Minimum overlap percent for sequences and ambigous regions",
+    )
+    par.add_argument(
+        "-ec",
+        "--excise_consensus",
+        default=0.67,
+        type=float,
+        help="Minimum percent of allowable X characters in consensus",
+    )
+    par.add_argument(
+        "-emd",
+        "--excise_maximum_depth",
+        default=5,
+        type=int,
+        help="Maximum depth for excise assembly",
+    )
+    par.add_argument(
+        "-ema",
+        "--excise_minimum_ambig",
+        default=5,
+        type=int,
+        help="Minimum ambigous characters for excise assembly",
+    )
+
     par.add_argument(
         "-nd",
         "--no_dupes",

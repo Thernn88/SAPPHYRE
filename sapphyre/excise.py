@@ -3,7 +3,7 @@ from os import listdir, mkdir, path
 from pathlib import Path
 from shutil import move
 
-from msgspec import json
+from msgspec import Struct, json
 from sapphyre_tools import (
     convert_consensus,
     dumb_consensus,
@@ -50,34 +50,6 @@ def first_last_X(string: str) -> tuple:
     if first is None or last is None:
         return None, None
     return first, last + 1
-
-
-def find_coverage_regions(consensus: str, start: int, stop: int, ambiguous="?") -> list:
-    """
-    Searches a given string slice for non-ambiguous regions.
-    The slice is consensus[start:stop]. Start is inclusive, stop is exclusive.
-    Returns a list of tuples. Each tuple is the [start,stop) indices for a region.
-    """
-    output = []
-    last_seen_data = None
-    for i, bp in enumerate(consensus[start:stop], start):
-        # if last_seen_data is unset, we are in an ambiguous region
-        # if it is set, we are in a data region
-        if bp is not ambiguous:
-            # this is the first character in a non-ambiguous region
-            if last_seen_data is None:  # start of data region
-                last_seen_data = i
-        else:  # bp is ambiguous character
-            if last_seen_data is not None:
-                # this means the function just transitioned from a data region to
-                # an ambiguous region, so output tuple and reset variables
-                output.append((last_seen_data, i))
-            last_seen_data = None
-    # check if the string end in a non-ambiguous region
-    if last_seen_data is not None:
-        output.append((last_seen_data, stop))
-    return output
-
 
 def check_bad_regions(
     consensus: str, limit: float, initial_window=16, offset=0, _rig=False
@@ -154,37 +126,36 @@ def check_bad_regions(
 
 
 def check_covered_bad_regions(
-    consensus: str, limit: float, initial_window=16, ambiguous="?"
+    consensus: str, excise_minimum_ambig: float, ambiguous="X", window_stretch=16,
 ) -> list:
-    """
-    Creates a list of covered indices, then checks those slices for bad regions.
 
-    Ignores leading and trailing 'X'. Makes a list of
-    non-ambiguous slices, then checks each slice for bad regions.
-    Returns a list of all found bad regions.
-
-    Consensus is the entire consensus sequence.
-
-    Limit is a float between 0.0 and 1.0 that represents the minimum ratio of
-    X to all characters to flag a region.
-
-    Initial_window is an int that sets the starting length of the window.
-
-    Ambiguous is the character used for ambiguous locations. Defaults to '?'.
-    """
     start, stop = find_index_pair(consensus, "X")
-    bad_regions = []
-    covered_indices = find_coverage_regions(consensus, start, stop, ambiguous=ambiguous)
-    for begin, end in covered_indices:
-        subregions = check_bad_regions(
-            consensus[begin:end],
-            limit,
-            offset=begin,
-            initial_window=initial_window,
-        )
-        if subregions:
-            bad_regions.extend(subregions)
-    return bad_regions
+    regions = []
+    first_i = None
+    ambig_count = 0
+    current_window_allowance = 0
+    for i, char in enumerate(consensus[start: stop], start):
+        
+        if char == ambiguous:
+            if first_i is None:
+                first_i = i
+                ambig_count = 0
+            ambig_count += 1
+            current_window_allowance = 0
+        else:
+
+            current_window_allowance += 1
+            if current_window_allowance >= window_stretch and first_i is not None:
+                if ambig_count >= excise_minimum_ambig:
+                    regions.append((first_i, i-current_window_allowance))
+                first_i = None
+                ambig_count = 0
+
+    if first_i is not None:
+        if ambig_count >= excise_minimum_ambig:
+            regions.append((start, len(consensus)))
+    
+    return regions
 
 
 def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_counts):
@@ -207,17 +178,158 @@ def make_duped_consensus(
     return dumb_consensus_dupe(bundled_seqs, threshold, 0)
 
 
+class NODE(Struct):
+    header: str
+    sequence: str
+    start: int
+    end: int
+    children: list
+
+    def extend(self, node_2, overlap_coord):
+        """
+        Merges two nodes together, extending the current node to include the other node.
+        Merges only occur if the overlapping kmer is a perfect match.
+
+        Args:
+        ----
+            node_2 (NODE): The node to be merged into the current node
+            overlap_coord (int): The index of the first matching character in the overlapping kmer
+        Returns:
+        -------
+            None
+        """
+        # If node_2 is contained inside self
+        if node_2.start >= self.start and node_2.end <= self.end:
+            self.sequence = (
+                self.sequence[:overlap_coord]
+                + node_2.sequence[overlap_coord : node_2.end]
+                + self.sequence[node_2.end :]
+            )
+        # If node_2 contains self
+        elif self.start >= node_2.start and self.end <= node_2.end:
+            self.sequence = (
+                node_2.sequence[:overlap_coord]
+                + self.sequence[overlap_coord : self.end]
+                + node_2.sequence[self.end :]
+            )
+
+            self.start = node_2.start
+            self.end = node_2.end
+        # If node_2 is to the right of self
+        elif node_2.start >= self.start:
+            self.sequence = (
+                self.sequence[:overlap_coord] + node_2.sequence[overlap_coord:]
+            )
+
+            self.end = node_2.end
+        # If node_2 is to the left of self
+        else:
+            self.sequence = (
+                node_2.sequence[:overlap_coord] + self.sequence[overlap_coord:]
+            )
+
+            self.start = node_2.start
+
+        # Save node_2 and the children of node_2 to self
+        self.children.append(node_2.header)
+        self.children.extend(node_2.children)
+
+    def clone(self):
+        return NODE(self.header, self.sequence, self.start, self.end, self.children)
+
+
+def simple_assembly(nodes, min_merge_overlap_percent):
+    merged = set()
+    for i, node in enumerate(nodes):
+        if i in merged:
+            continue
+        merge_occured = True
+        while merge_occured:
+            merge_occured = False
+            for j, node_b in enumerate(nodes):
+                if j in merged:
+                    continue
+                if i == j:
+                    continue
+
+                overlap_coords=  get_overlap(node.start, node.end, node_b.start, node_b.end, 1)
+                if overlap_coords:
+                    overlap_amount = overlap_coords[1] - overlap_coords[0]
+                    overlap_percent = overlap_amount / (node.end - node.start)
+                    if overlap_percent < min_merge_overlap_percent:
+                        continue
+
+                    kmer_a = node.sequence[overlap_coords[0]:overlap_coords[1]]
+                    kmer_b = node_b.sequence[overlap_coords[0]:overlap_coords[1]]
+
+                    if not is_same_kmer(kmer_a, kmer_b):
+                        continue
+
+                    merged.add(j)
+
+                    overlap_coord = overlap_coords[0]
+                    merge_occured = True
+                    node.extend(node_b, overlap_coord)
+
+                    nodes[j] = None
+    
+    nodes = [node for node in nodes if node is not None]
+
+    return nodes
+        
+
+def longest_merge_index(nodes, sequences_out_of_region, merge_percent):
+    """
+    This function is used to find the longest sequence in the list of sequences_out_of_region
+    that can be merged into the list of nodes. If a sequence is found that can be merged,
+    it is removed from the list of sequences_out_of_region and added to the list of nodes.
+    """
+    best_index = None
+    best_length = None
+    for i, node in enumerate(nodes):
+        this_seq_out = sequences_out_of_region.copy()
+        merge_occured = True
+        while merge_occured:
+            merge_occured = False
+            for j, node_b in enumerate(this_seq_out):
+                overlap_coords = get_overlap(node.start, node.end, node_b.start, node_b.end, 1)
+                if overlap_coords:
+                    overlap_amount = overlap_coords[1] - overlap_coords[0]
+                    overlap_percent = overlap_amount / (node.end - node.start)
+                    if overlap_percent > merge_percent:
+                        kmer_a = node.sequence[overlap_coords[0]:overlap_coords[1]]
+                        kmer_b = node_b.sequence[overlap_coords[0]:overlap_coords[1]]
+
+                        if not is_same_kmer(kmer_a, kmer_b):
+                            continue
+
+                        overlap_coord = overlap_coords[0]
+
+                        node.extend(node_b, overlap_coord)
+                        merge_occured = True
+                        this_seq_out.pop(j)
+
+        this_length = len(node.sequence) - node.sequence.count("-")
+        if best_length is None or this_length > best_length:
+            best_length = this_length
+            best_index = i
+
+    return best_index
+        
+
+
 def log_excised_consensus(
     gene: str,
     input_path: Path,
     output_path: Path,
     compress_intermediates: bool,
-    consensus_threshold,
-    excise_threshold,
+    excise_overlap_merge,
+    excise_overlap_ambig,
+    excise_consensus,
+    excise_maximum_depth,
+    excise_minimum_ambig,
     prepare_dupes: dict,
     reporter_dupes: dict,
-    debug,
-    cut,
 ):
     """
     By default, this does non-dupe consensus. If you pass "dupes=True", it will call
@@ -249,111 +361,67 @@ def log_excised_consensus(
     nt_in = input_path.joinpath("nt", gene.replace(".aa.", ".nt."))
     nt_out = output_path.joinpath("nt", gene.replace(".aa.", ".nt."))
 
-    raw_sequences = list(parseFasta(str(aa_in)))
+    raw_sequences = list(parseFasta(str(nt_in)))
     sequences = [x[1] for x in raw_sequences if x[0][-1] != "."]
 
-    nodes = [(header, seq, *find_index_pair(seq, "-")) for header, seq in raw_sequences]
+    nodes = [NODE(header, seq, *find_index_pair(seq, "-"), []) for header, seq in raw_sequences if header[-1] != "."]
 
     # Make consensus sequence. Use dupe counts if available.
     if prepare_dupes and reporter_dupes:
         consensus_seq = make_duped_consensus(
-            raw_sequences, prepare_dupes, reporter_dupes, consensus_threshold
+            raw_sequences, prepare_dupes, reporter_dupes, excise_consensus
         )
     else:
-        consensus_seq = dumb_consensus(sequences, consensus_threshold, 0)
-    consensus_seq = convert_consensus(sequences, consensus_seq)
+        consensus_seq = dumb_consensus(sequences, excise_consensus, 0)
+
 
     # Search for slices of the consensus seq with a high ratio of 'X' to total characters
-    bad_regions = check_covered_bad_regions(consensus_seq, excise_threshold)
+    bad_regions = check_covered_bad_regions(consensus_seq, excise_minimum_ambig)
+
     kicked_headers = set()
     if bad_regions:
+
         for region in bad_regions:
             sequences_in_region = []
+            sequences_out_of_region = []
             a, b = region
+            
 
-            for header,seq,start,end in nodes:
-                overlap_coords = get_overlap(a, b, start, end, 1)
+            for i, node in enumerate(nodes):
+                overlap_coords = get_overlap(a, b, node.start, node.end, 1)
                 if overlap_coords:
                     overlap_amount = overlap_coords[1] - overlap_coords[0]
-                    overlap_percent = overlap_amount / (end - start)
+                    overlap_percent = overlap_amount / (node.end - node.start)
+                    if overlap_percent >= excise_overlap_ambig: # Adjustable percent
+                        sequences_in_region.append(nodes[i].clone())
+                    else:
+                        sequences_out_of_region.append(nodes[i].clone())
 
-                    if overlap_percent > 0.5: # Adjustable percent
-                        sequences_in_region.append((header, seq))
+            if len(sequences_in_region) >= excise_maximum_depth or len(sequences_in_region) < 2:
+                continue
 
-            if sequences_in_region:
-                log_output.extend([f">{header}\n{seq}" for header, seq in sequences_in_region])
+            # Simple assembly of ambig sequences
+            nodes_in_region = simple_assembly(sequences_in_region, excise_overlap_merge)
+
+            best_index = longest_merge_index(nodes_in_region.copy(), sequences_out_of_region, excise_overlap_merge)
+            
+            for i, node in enumerate(nodes_in_region):
+                if i == best_index:
+                    continue
+
+                kicked_headers.add(node.header)
+                kicked_headers.update(node.children)
+
+            if nodes_in_region:
+                log_output.append(f">{gene}_ambig_{a}:{b}\n{consensus_seq}")
+                log_output.extend([f">{node.header}_{'kept' if i == best_index else 'kicked'}\n{node.sequence}" for i, node in enumerate(nodes_in_region)])
                 log_output.append("\n")
-    # if cut:
-    #     if bad_regions:
-    #         # log bad regions
-    #         if len(bad_regions) == 1:
-    #             a, b = bad_regions[0]
-    #             if b - a != len(consensus_seq):
-    #                 if debug:
-    #                     log_output.append(f"{gene},{a}:{b},{consensus_seq}\n")
-    #                 else:
-    #                     log_output.append(f"{gene},{a}:{b}\n")
-    #         else:
-    #             for region in bad_regions:
-    #                 a, b = region
-    #                 if debug:
-    #                     log_output.append(f"{gene},{a}:{b},{consensus_seq}\n")
-    #                 else:
-    #                     log_output.append(f"{gene},{a}:{b}\n")
 
-    #         # make a list of locations that will be removed
-    #         positions_to_cull = [i for a, b in bad_regions for i in range(a, b)]
-
-    #         has_cand = False
-    #         aa_output = []
-    #         for header, sequence in raw_sequences:
-    #             if header[-1] == ".":  # we don't want to alter reference sequences
-    #                 aa_output.append((header, sequence))
-    #                 continue
-    #             # remove locations from the sequence, then remake string.
-    #             sequence = list(sequence)
-    #             for i in positions_to_cull:
-    #                 sequence[i] = "-"
-
-    #             sequence = "".join(sequence)
-
-    #             # if the sequence no longer has the minimum amount of data characters,
-    #             # kick the entire sequence instead of just excising parts of it
-    #             if not min_aa_check(sequence, 20):
-    #                 kicked_headers.add(header)
-    #                 continue
-
-    #             # sequence has enough data after the excision, so output it
-    #             aa_output.append((header, sequence))
-    #             has_cand = True
-    #         if has_cand:
-    #             writeFasta(str(aa_out), aa_output, compress_intermediates)
-
-    #         # mirror the excisions in nt sequences
-    #         nt_output = []
-    #         for header, sequence in parseFasta(str(nt_in)):
-    #             if header[-1] == ".":
-    #                 nt_output.append((header, sequence))
-    #                 continue
-
-    #             if header in kicked_headers:
-    #                 continue
-
-    #             sequence = list(sequence)
-    #             # sets bad locations to '-' instead of removing them
-    #             for i in positions_to_cull:
-    #                 sequence[i * 3 : i * 3 + 3] = ["-", "-", "-"]
-    #             sequence = "".join(sequence)
-    #             nt_output.append((header, sequence))
-    #         if has_cand:
-    #             writeFasta(str(nt_out), nt_output, compress_intermediates)
-    #     else:
-    #         if raw_sequences:
-    #             writeFasta(str(aa_out), raw_sequences, compress_intermediates)
-    #             writeFasta(str(nt_out), parseFasta(str(nt_in)), compress_intermediates)
-    #         if debug:
-    #             log_output.append(f"{gene},N/A,{consensus_seq}\n")
-
+    nt_output = [(header, seq) for header, seq in raw_sequences if header not in kicked_headers]
+    writeFasta(nt_out, nt_output, compress_intermediates)
+    aa_output = [(header, seq) for header, seq in parseFasta(str(aa_in)) if header not in kicked_headers]
+    writeFasta(aa_out, aa_output, compress_intermediates)
+    
     return log_output, bad_regions != [], len(kicked_headers)
 
 
@@ -387,21 +455,28 @@ def move_flagged(to_move, processes):
 
 def main(args, override_cut, sub_dir):
     timer = TimeKeeper(KeeperMode.DIRECT)
-    if not (0 < args.consensus < 1.0):
-        if 0 < args.consensus <= 100:
-            args.consensus = args.consensus / 100
+    if not (0 < args.excise_overlap_merge < 1.0):
+        if 0 < args.excise_overlap_merge <= 100:
+            args.excise_overlap_merge = args.excise_overlap_merge / 100
         else:
             raise ValueError(
-                "Cannot convert consensus to a percent. Use a decimal or a whole number between 0 and 100"
+                "Cannot convert excise_overlap_merge to a percent. Use a decimal or a whole number between 0 and 100"
+            )
+    if not (0 < args.excise_overlap_ambig < 1.0):
+        if 0 < args.excise_overlap_ambig <= 100:
+            args.excise_overlap_ambig = args.excise_overlap_ambig / 100
+        else:
+            raise ValueError(
+                "Cannot convert excise_overlap_ambig to a percent. Use a decimal or a whole number between 0 and 100"
+            )
+    if not (0 < args.excise_consensus < 1.0):
+        if 0 < args.excise_consensus <= 100:
+            args.excise_consensus = args.excise_consensus / 100
+        else:
+            raise ValueError(
+                "Cannot convert excise_consensus to a percent. Use a decimal or a whole number between 0 and 100"
             )
 
-    if not (0 < args.excise < 1.0):
-        if 0 < args.excise <= 100:
-            args.excise = args.excise / 100
-        else:
-            raise ValueError(
-                "Cannot convert excise to a percent. Use a decimal or a whole number between 0 and 100"
-            )
     folder = args.INPUT
     if override_cut is None:
         cut = args.cut
@@ -441,12 +516,13 @@ def main(args, override_cut, sub_dir):
                 input_folder,
                 output_folder,
                 compress,
-                args.consensus,
-                args.excise,
+                args.excise_overlap_merge,
+                args.excise_overlap_ambig,
+                args.excise_consensus,
+                args.excise_maximum_depth,
+                args.excise_minimum_ambig,
                 prepare_dupes.get(gene.split(".")[0], {}),
                 reporter_dupes.get(gene.split(".")[0], {}),
-                args.debug,
-                cut,
             )
             for gene in genes
         ]
@@ -461,12 +537,13 @@ def main(args, override_cut, sub_dir):
                     input_folder,
                     output_folder,
                     compress,
-                    args.consensus,
-                    args.excise,
+                    args.excise_overlap_merge,
+                    args.excise_overlap_ambig,
+                    args.excise_consensus,
+                    args.excise_maximum_depth,
+                    args.excise_minimum_ambig,
                     prepare_dupes.get(gene.split(".")[0], {}),
                     reporter_dupes.get(gene.split(".")[0], {}),
-                    args.debug,
-                    cut,
                 )
             )
 

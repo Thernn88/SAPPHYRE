@@ -34,20 +34,6 @@ def main(argsobj):
             return
         from_folder = "blosum"
 
-        if not argsobj.no_excise:
-            printv("Checking for severe contamination.", argsobj.verbose)
-            module_return_tuple = excise.main(this_args, False, from_folder)
-            if not module_return_tuple:
-                print()
-                print(argsobj.formathelp())
-
-            is_flagged = module_return_tuple[1]
-            if is_flagged:
-                bad_folder = os.path.join(
-                    this_args.move_fails, os.path.basename(folder)
-                )
-                to_move.append((folder, bad_folder))
-
         printv("Simple Assembly To Ensure Consistency.", argsobj.verbose)
         if not hmmfilter.main(this_args, from_folder):
             print()
