@@ -44,7 +44,7 @@ def download_parallel_wgs(arguments):
 
 
 def main(args):
-    cmd = "fastq-dump --gzip"
+    cmd = "fastq-dump --split-3 --gzip"
     if args.bin:
         cmd = Path(args.bin, cmd)
 
