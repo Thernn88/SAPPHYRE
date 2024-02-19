@@ -421,46 +421,36 @@ def process_batch(
         for let in x_cand_consensus:
             if let == 'X': has_x_before += 1
 
+        TRIM_MAX = 6
+
         for node in nodes:
-            trim_to = None
-            for i, let in enumerate(x_cand_consensus):
-                if let == 'X':
-                    # Within 3 bp of start or end
-                    cond_1 = i <= node.start + 2 and i >= node.start
-                    cond_2 = i >= node.end - 2 and i <= node.end
+            new_start = node.start
+            new_end = node.end
 
-                    if cond_1 or cond_2 and ref_consensus_seq[i] != node.sequence[i]:
-                        trim_to = i
-                        edge = "start" if cond_1 else "end"
-                    elif trim_to is not None:
-                        if edge == "start":
-                            if trim_to == node.start + 2:
-                                for i in range(node.start + 2, node.end):
-                                    if x_cand_consensus[i] == "X":
-                                        trim_to = i
-                                    else:
-                                        break
 
-                            for x in range(node.start, trim_to):
-                                node.sequence[x] = "-"
-                                trimmed_pos += 1
-                                x_positions[node.header].add(x)
-                            node.start = trim_to + 1
-                        elif edge == "end":
-                            if trim_to == node.end - 2:
-                                for i in range(node.end, node.start, -1):
-                                    if x_cand_consensus[i] == "X":
-                                        trim_to = i
-                                    else:
-                                        break
+            for i, bp in enumerate(node.sequence):
+                let = x_cand_consensus[i]
+                if let == "X":
+                    if (i <= new_start + 2 and i >= new_start):
+                        new_start = i
+                        if new_start - node.start >= TRIM_MAX:
+                            break
+                    if (i >= new_end - 2 and i <= new_end):
+                        new_end = i
+                        if node.end - new_end >= TRIM_MAX:
+                            break
 
-                            for x in range(trim_to, node.end):
-                                node.sequence[x] = "-"
-                                trimmed_pos += 1
-                                x_positions[node.header].add(x)
-                            node.end = trim_to
-                        
-                        trim_to = None
+            if new_start != node.start or new_end != node.end:
+                for i in range(node.start, new_start):
+                    node.sequence[i] = "-"
+                    trimmed_pos += 1
+                    x_positions[node.header].add(i)
+                for i in range(new_end, node.end):
+                    node.sequence[i] = "-"
+                    trimmed_pos += 1
+                    x_positions[node.header].add(i)
+                node.start = new_start
+                node.end = new_end
 
         x_cand_consensus, cand_coverage = do_consensus(
             nodes, args.consensus, prepare_dupe_count, reporter_dupe_count
