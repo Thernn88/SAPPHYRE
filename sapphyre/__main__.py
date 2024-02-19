@@ -185,7 +185,7 @@ def subcmd_correction(subparsers):
 
 
 def correction_args(par):
-    pass
+    par.add_argument("-d", "--debug", action="store_true", help="Enable debug outputs.")
 
 def correction(args):
     from . import correct_errors

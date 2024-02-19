@@ -2,6 +2,7 @@ from argparse import ArgumentParser
 from collections import defaultdict
 from itertools import count
 from pathlib import Path
+from shutil import rmtree
 from tempfile import TemporaryDirectory
 from .timekeeper import TimeKeeper, KeeperMode
 from wrap_rocks import RocksDB
@@ -68,6 +69,9 @@ def correct_folder(folder, args):
     original_inputs = json.decode(nt_db.get("getall:original_inputs"), type=list[str])
 
     hits_db = RocksDB(os.path.join(folder, "rocksdb", "hits"))
+    log_output = os.path.join(folder, "correction_logs")
+    if os.path.exists(log_output):
+        rmtree(log_output)
 
 
     diamond_hits = get_diamondhits(hits_db)
@@ -129,11 +133,13 @@ def correct_folder(folder, args):
                 else:
                     this_seq = seq
 
+                previous_sequence = hit.seq
+
                 hit.seq = this_seq[hit.qstart - 1 : hit.qend]
                 if hit.frame < 0:
                     hit.seq = bio_revcomp(hit.seq)
 
-                gene_output[gene].append(hit)
+                gene_output[gene].append((hit, previous_sequence, "Corrected"))
         
         to_check = set(range(len(diamond_hits))) - output_indices
         for i in to_check:
@@ -149,16 +155,32 @@ def correct_folder(folder, args):
             if hit.frame < 0:
                 seq = bio_revcomp(seq)
 
+                
+            previous_sequence = hit.seq
             hit.seq = seq
-            gene_output[hit.gene].append(hit)
+            gene_output[hit.gene].append((hit, previous_sequence, "Recovered"))
 
         printv("Writing corrected reads.", args.verbose, 1)
         encoder = json.Encoder()
         results = 0
+
+        if args.debug:
+            os.makedirs(log_output)
+
         for gene, hits in gene_output.items():
+            output = []
+            previous_log = []
+
             if hits:
+                for hit, previous_sequence, log in hits:
+                    previous_log.append(f">{hit.node}|{hit.frame}|Original\n{previous_sequence}\n>{hit.node}|{hit.frame}|{log}\n{hit.seq}")
+                    output.append(hit)
                 results += len(hits)
-                hits_db.put_bytes(f"gethits:{gene}", encoder.encode(hits))
+                hits_db.put_bytes(f"gethits:{gene}", encoder.encode(output))
+
+                if args.debug:
+                    with open(os.path.join(log_output, gene+".fa"), "w") as out:
+                        out.write("\n".join(previous_log))
 
         hits_db.put("getall:presentgenes", ",".join(list(gene_output.keys())))
 

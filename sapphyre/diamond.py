@@ -1049,11 +1049,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
                         hit.uid,
                         hit.refs,
                     )
-                    hit.seq = ""
-                else:
-                    hit.seq = head_to_seq[hit.node][hit.qstart - 1 : hit.qend]
-                    if hit.frame < 0:
-                        hit.seq = bio_revcomp(hit.seq)
+                
+                hit.seq = head_to_seq[hit.node][hit.qstart - 1 : hit.qend]
+                if hit.frame < 0:
+                    hit.seq = bio_revcomp(hit.seq)
                         
 
                 out.append(hit)
