@@ -143,7 +143,12 @@ def correct_folder(folder, args):
             seq = old_seq[file_index][line_index]
             if n_coord is not None:
                 seq = seq[n_coord[0]:n_coord[1]]
-                
+            else:
+                seq = seq[hit.qstart - 1 : hit.qend]
+
+            if hit.frame < 0:
+                seq = bio_revcomp(seq)
+
             hit.seq = seq
             gene_output[hit.gene].append(hit)
 
