@@ -410,14 +410,14 @@ def outlier_args(par):
     par.add_argument(
         "-eom",
         "--excise_overlap_merge",
-        default=0.5,
+        default=0.25,
         type=float,
         help="Minimum overlap percent for merging in excise assembly",
     )
     par.add_argument(
         "-eoa",
         "--excise_overlap_ambig",
-        default=0.5,
+        default=0.25,
         type=float,
         help="Minimum overlap percent for sequences and ambigous regions",
     )
