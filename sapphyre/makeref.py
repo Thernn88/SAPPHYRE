@@ -522,27 +522,44 @@ def generate_subset(file_paths, taxon_to_kick: set):
     index = count()
     for file in file_paths:
         for seq_record in SeqIO.parse(file, "fasta"):
-            header, data = seq_record.description.split(" ", 1)
-            data = json.decode(data)
-            seq = str(seq_record.seq)
-            taxon = data["organism_name"].replace(" ", "_")
-            if (
-                taxon.lower() not in taxon_to_kick
-                and data["organism_name"].lower() not in taxon_to_kick
-            ):
-                gene = data["pub_og_id"]
-
-                subset.add_sequence(
-                    Sequence(
-                        seq_record.description,
-                        header,
-                        seq,
-                        "",
-                        taxon,
-                        gene,
-                        next(index),
+            if "|" in seq_record.description and " " not in seq_record.description:
+                #Assuming legacy GENE|TAXON|ID
+                gene, taxon, header = seq_record.description.split("|")
+                if taxon.lower() not in taxon_to_kick:
+                    subset.add_sequence(
+                        Sequence(
+                            None, # Want to generate new style
+                            header,
+                            str(seq_record.seq),
+                            "",
+                            taxon,
+                            gene,
+                            next(index),
+                        )
                     )
-                )
+            else:
+                header, data = seq_record.description.split(" ", 1)
+                #Assuming ID {JSON}
+                data = json.decode(data)
+                seq = str(seq_record.seq)
+                taxon = data["organism_name"].replace(" ", "_")
+                if (
+                    taxon.lower() not in taxon_to_kick
+                    and data["organism_name"].lower() not in taxon_to_kick
+                ):
+                    gene = data["pub_og_id"]
+
+                    subset.add_sequence(
+                        Sequence(
+                            seq_record.description,
+                            header,
+                            seq,
+                            "",
+                            taxon,
+                            gene,
+                            next(index),
+                        )
+                    )
 
     return subset
 
@@ -610,33 +627,14 @@ def main(args):
     cull_percent = args.cull_percent
     do_cull = cull_percent != 0
     this_set = Sequence_Set(set_name)
-
-    index = count()
-
     set_path = SETS_DIR.joinpath(set_name)
     set_path.mkdir(exist_ok=True)
 
     if input_file.split(".")[-1] == "fa":
         printv("Input Detected: Single fasta", verbosity)
-        for seq_record in SeqIO.parse(input_file, "fasta"):
-            header, data = seq_record.description.split(" ", 1)
-            data = json.decode(data)
-            seq = str(seq_record.seq)
-            taxon = data["organism_name"].replace(" ", "_")
-            if taxon.lower() not in kick and data["organism_name"].lower() not in kick:
-                gene = data["pub_og_id"]
+        subset = generate_subset([input_file], kick)
+        this_set.absorb(subset)
 
-                this_set.add_sequence(
-                    Sequence(
-                        seq_record.description,
-                        header,
-                        seq,
-                        "",
-                        taxon,
-                        gene,
-                        next(index),
-                    )
-                )
     elif input_file.split(".")[-1] in {
         "sql",
         "sqlite",
