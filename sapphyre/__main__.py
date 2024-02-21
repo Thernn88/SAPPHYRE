@@ -980,6 +980,24 @@ def subcmd_download(sp):
         help="Download from wgs.",
         action="store_true",
     )
+    par.add_argument(
+        "-f",
+        "--fast",
+        help="Uses the fasterq command (Does not gzip).",
+        action="store_true",
+    )
+    par.add_argument(
+        "-k",
+        "--keep_prefetch",
+        help="Keeps the cached SRA for quicker dumping.",
+        action="store_true",
+    )
+    par.add_argument(
+        "-skip",
+        "--skip_prefetch",
+        help="Dumps the fastq directly from download (Disables resuming; faster for small datasets).",
+        action="store_true",
+    )
     par.set_defaults(func=download, formathelp=par.format_help)
 
 
