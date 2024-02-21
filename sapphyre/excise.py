@@ -236,6 +236,18 @@ class NODE(Struct):
 
     def clone(self):
         return NODE(self.header, self.sequence, self.start, self.end, self.children)
+    
+    def contig_header(self):
+        """
+        Generates a header containg the contig node and all children nodes for debug
+
+        Returns:
+        -------
+            str: The contig header
+        """
+        contig_node = self.header.split("|")[3]
+        children_nodes = "|".join([i.split("|")[3] for i in self.children])
+        return f"CONTIG_{contig_node}|{children_nodes}"
 
 
 def simple_assembly(nodes, min_merge_overlap_percent):
@@ -258,6 +270,7 @@ def simple_assembly(nodes, min_merge_overlap_percent):
                     overlap_percent = overlap_amount / (node.end - node.start)
                     if overlap_percent < min_merge_overlap_percent:
                         continue
+
 
                     kmer_a = node.sequence[overlap_coords[0]:overlap_coords[1]]
                     kmer_b = node_b.sequence[overlap_coords[0]:overlap_coords[1]]
@@ -325,6 +338,7 @@ def log_excised_consensus(
     compress_intermediates: bool,
     excise_overlap_merge,
     excise_overlap_ambig,
+    excise_region_overlap,
     excise_consensus,
     excise_maximum_depth,
     excise_minimum_ambig,
@@ -392,7 +406,7 @@ def log_excised_consensus(
                 if overlap_coords:
                     overlap_amount = overlap_coords[1] - overlap_coords[0]
                     overlap_percent = overlap_amount / (node.end - node.start)
-                    if overlap_percent >= excise_overlap_ambig: # Adjustable percent
+                    if overlap_percent >= excise_region_overlap: # Adjustable percent
                         sequences_in_region.append(nodes[i].clone())
                     else:
                         sequences_out_of_region.append(nodes[i].clone())
@@ -401,7 +415,7 @@ def log_excised_consensus(
                 continue
 
             # Simple assembly of ambig sequences
-            nodes_in_region = simple_assembly(sequences_in_region, excise_overlap_merge)
+            nodes_in_region = simple_assembly(sequences_in_region, excise_overlap_ambig)
 
             best_index = longest_merge_index(nodes_in_region.copy(), sequences_out_of_region, excise_overlap_merge)
             
@@ -414,7 +428,7 @@ def log_excised_consensus(
 
             if nodes_in_region:
                 log_output.append(f">{gene}_ambig_{a}:{b}\n{consensus_seq}")
-                log_output.extend([f">{node.header}_{'kept' if i == best_index else 'kicked'}\n{node.sequence}" for i, node in enumerate(nodes_in_region)])
+                log_output.extend([f">{node.contig_header()}_{'kept' if i == best_index else 'kicked'}\n{node.sequence}" for i, node in enumerate(nodes_in_region)])
                 log_output.append("\n")
 
     nt_output = [(header, seq) for header, seq in raw_sequences if header not in kicked_headers]
@@ -476,6 +490,13 @@ def main(args, override_cut, sub_dir):
             raise ValueError(
                 "Cannot convert excise_consensus to a percent. Use a decimal or a whole number between 0 and 100"
             )
+    if not (0 < args.excise_region_overlap < 1.0):
+        if 0 < args.excise_region_overlap <= 100:
+            args.excise_region_overlap = args.excise_region_overlap / 100
+        else:
+            raise ValueError(
+                "Cannot convert excise_region_overlap to a percent. Use a decimal or a whole number between 0 and 100"
+            )
 
     folder = args.INPUT
     if override_cut is None:
@@ -518,6 +539,7 @@ def main(args, override_cut, sub_dir):
                 compress,
                 args.excise_overlap_merge,
                 args.excise_overlap_ambig,
+                args.excise_region_overlap,
                 args.excise_consensus,
                 args.excise_maximum_depth,
                 args.excise_minimum_ambig,
@@ -539,6 +561,7 @@ def main(args, override_cut, sub_dir):
                     compress,
                     args.excise_overlap_merge,
                     args.excise_overlap_ambig,
+                    args.excise_region_overlap,
                     args.excise_consensus,
                     args.excise_maximum_depth,
                     args.excise_minimum_ambig,
