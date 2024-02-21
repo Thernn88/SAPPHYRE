@@ -501,14 +501,22 @@ def get_head_to_seq(nt_db, recipe):
     return head_to_seq
 
 
-def top_reference_realign(orthoset_aln_path, top_refs, target_to_taxon, top_path, gene):
-    gene_path = path.join(orthoset_aln_path, gene+".aln.fa")
-    out_path = path.join(top_path, gene+".aln.fa")
-
+def top_reference_realign(orthoset_raw_path, orthoset_aln_path, top_refs, target_to_taxon, top_path, gene):
     out = []
-    for header, seq in parseFasta(gene_path, True):
-        if target_to_taxon[header] in top_refs: 
-            out.append((header, seq.replace("-", "")))
+
+    gene_path = path.join(orthoset_aln_path, gene+".aln.fa")
+    if not path.exists(gene_path):
+        gene_path = path.join(orthoset_raw_path, gene+".fa")
+        for header, seq in parseFasta(gene_path, True):
+            header = header.split(" ")[0]
+            if target_to_taxon[header] in top_refs: 
+                out.append((header, seq))
+    else:
+        for header, seq in parseFasta(gene_path, True):
+            if target_to_taxon[header] in top_refs: 
+                out.append((header, seq.replace("-", "")))        
+        
+    out_path = path.join(top_path, gene+".aln.fa")
 
     if len(out) == 1:
         writeFasta(out_path, out)
@@ -1073,6 +1081,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             f"Wrote {passes} results after {multi_kicks+internal_kicks} kicks.",
             args.verbose,
         )
+        orthoset_raw_path = path.join(orthosets_dir, orthoset, "raw")
         orthoset_aln_path = path.join(orthosets_dir, orthoset, "aln")
         top_path = path.join(input_path, "top")
 
@@ -1088,7 +1097,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         arguments = []
         for gene in present_genes:
             arguments.append(
-                (orthoset_aln_path, top_refs, gene_target_to_taxa[gene], top_path, gene)
+                (orthoset_raw_path, orthoset_aln_path, top_refs, gene_target_to_taxa[gene], top_path, gene)
             )
 
         if post_threads > 1:
