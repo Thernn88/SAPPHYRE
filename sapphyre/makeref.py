@@ -57,7 +57,7 @@ class Sequence:
         Returns the sequence with the organism name and pub_og_id present for regeneration
         """
         if self.raw_head:
-            return self.raw_head
+            return f">{self.raw_head}\n{self.aa_sequence}\n"
 
         return (
             f">{self.header}"
@@ -269,6 +269,35 @@ def hmm_function(gene, sequences, hmm_path, overwrite, verbosity):
             os.system(f"hmmbuild '{hmm_file}' '{fp.name}'")
 
 
+def generate_raw(
+    set: Sequence_Set,
+    overwrite,
+    pool,
+    verbosity,
+    raw_path,
+):
+    """
+    Generates the .fa files for each gene in the set.
+    """
+    sequences = set.get_gene_dict(True)
+
+    arguments = []
+    for gene, fasta in sequences.items():
+        arguments.append((gene, fasta, raw_path, overwrite, verbosity))
+
+    pool.starmap(raw_function, arguments)
+
+
+def raw_function(gene, sequences, raw_path, overwrite, verbosity):
+    """
+    Writes the sequences to a .fa file.
+    """
+    raw_fa_file = raw_path.joinpath(gene + ".fa")
+    if not raw_fa_file.exists() or overwrite:
+        printv(f"Generating: {gene}", verbosity, 2)
+        with raw_fa_file.open(mode="w") as fp:
+            fp.write("".join([i.seq_with_regen_data() for i in sequences]))
+
 
 def generate_aln(
     set: Sequence_Set,
@@ -277,6 +306,7 @@ def generate_aln(
     pool,
     verbosity,
     set_path,
+    raw_path,
     do_cull,
     cull_percent,
 ):
@@ -287,9 +317,6 @@ def generate_aln(
 
     aln_path = set_path.joinpath("aln")
     aln_path.mkdir(exist_ok=True)
-
-    raw_path = set_path.joinpath("raw")
-    raw_path.mkdir(exist_ok=True)
 
     trimmed_path = set_path.joinpath("trimmed")
     if os.path.exists(trimmed_path):
@@ -405,8 +432,12 @@ def aln_function(
     trimmed_path = trimmed_path.joinpath(gene + ".aln.fa")
     if not aln_file.exists() or overwrite:
         printv(f"Generating: {gene}", verbosity, 2)
-        with raw_fa_file.open(mode="w") as fp:
-            fp.write("".join([i.seq_with_regen_data() for i in sequences]))
+
+        if not raw_fa_file.exists():
+            msg = f"Raw file {raw_fa_file} does not exist"
+            raise FileNotFoundError(
+                msg
+            )
 
         if align_method == "clustal":
             os.system(
@@ -689,8 +720,20 @@ def main(args):
             for taxon, tcount in counter.most_common():
                 fp.write(f"{taxon},{tcount}\n")
 
-    if do_align or do_cull or do_hmm:
-        with Pool(threads) as pool:
+    raw_path = set_path.joinpath("raw")
+    raw_path.mkdir(exist_ok=True)
+
+    with Pool(threads) as pool:
+        printv("Generating raw", verbosity)
+        generate_raw(
+            this_set,
+            overwrite,
+            pool,
+            verbosity,
+            raw_path,
+        )
+
+        if do_align or do_cull or do_hmm:
             printv("Generating aln", verbosity)
             generate_aln(
                 this_set,
@@ -699,6 +742,7 @@ def main(args):
                 pool,
                 verbosity,
                 set_path,
+                raw_path,
                 do_cull,
                 cull_percent,
             )
