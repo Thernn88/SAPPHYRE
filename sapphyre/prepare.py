@@ -142,7 +142,7 @@ class SeqDeduplicator:
         CHOMP_CUTOFF = 10000
         ASSEMBLY_LEN = 750
         for line_index, (header, parent_seq) in enumerate(parseFasta(fa_file_path, True)):
-            if not len(parent_seq) >= self.minimum_sequence_length:
+            if len(parent_seq) < self.minimum_sequence_length:
                 continue
             parent_seq = parent_seq.upper()
 
@@ -224,6 +224,7 @@ def map_taxa_runs(
     components,
     keep_prepared,
     chunk_size,
+    skip_entropy,
 ):
     """
     Removes duplicate sequences, renames them and inserts them into the taxa database.
@@ -285,7 +286,8 @@ def map_taxa_runs(
     this_is_assembly = deduper.this_assembly
     this_is_genome = deduper.this_genome
     prior = len(fa_file_out)
-    passing = sapphyre_tools.entropy_filter(fa_file_out, 0.7)
+    if not skip_entropy:
+        fa_file_out = sapphyre_tools.entropy_filter(fa_file_out, 0.7)
     recipe = []
     recipe_index = IndexIter()
     final = IndexIter()
@@ -300,7 +302,8 @@ def map_taxa_runs(
         f"Done! Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Inserting sequences into database.",
         verbose,
     )
-    for header, seq in passing:
+    
+    for header, seq in fa_file_out:
         next(final)
         current_batch.append(f"{header}\n{seq}\n")
 
@@ -385,6 +388,7 @@ def main(args):
             components,
             args.keep_prepared,
             args.chunk_size,
+            args.skip_entropy,
         )
 
     printv(

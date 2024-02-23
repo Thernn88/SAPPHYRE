@@ -59,6 +59,12 @@ def prepare_args(par):
         help="Overwrite existing rocksdb database.",
     )
     par.add_argument(
+        "-skip",
+        "--skip_prefetch",
+        help="Dumps the fastq directly from download (Disables resuming; faster for small datasets).",
+        action="store_true",
+    )
+    par.add_argument(
         "-ml",
         "--minimum_sequence_length",
         default=90,
