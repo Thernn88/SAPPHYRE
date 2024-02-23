@@ -285,6 +285,8 @@ def map_taxa_runs(
     fa_file_out = deduper.lines
     this_is_assembly = deduper.this_assembly
     this_is_genome = deduper.this_genome
+    original_positions = deduper.original_positions
+    del deduper
     prior = len(fa_file_out)
     if not skip_entropy:
         fa_file_out = sapphyre_tools.entropy_filter(fa_file_out, 0.7)
@@ -343,7 +345,7 @@ def map_taxa_runs(
 
     # Store the original positions
     if not (this_is_assembly or this_is_genome):
-        nt_db.put_bytes("getall:original_positions", json.encode(deduper.original_positions))
+        nt_db.put_bytes("getall:original_positions", json.encode(original_positions))
 
     # Store the count of dupes in the database
     nt_db.put_bytes("getall:dupes", json.encode(duplicates))
