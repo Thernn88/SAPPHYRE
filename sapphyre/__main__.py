@@ -60,8 +60,8 @@ def prepare_args(par):
     )
     par.add_argument(
         "-skip",
-        "--skip_prefetch",
-        help="Dumps the fastq directly from download (Disables resuming; faster for small datasets).",
+        "--skip_entropy",
+        help="Skip entropy calculation.",
         action="store_true",
     )
     par.add_argument(
