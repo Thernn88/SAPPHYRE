@@ -305,12 +305,16 @@ def map_taxa_runs(
         verbose,
     )
     
-    for header, seq in fa_file_out:
+    for line in fa_file_out:
+        if not skip_entropy:
+            header, seq = line
+            line = f"{header}\n{seq}\n"
+        
         next(final)
-        current_batch.append(f"{header}\n{seq}\n")
+        current_batch.append(line)
 
         if prepared_file:
-            prepared_file.write(f"{header}\n{seq}\n")
+            prepared_file.write(line)
 
         next(current_count)
 
