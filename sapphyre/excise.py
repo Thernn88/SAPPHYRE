@@ -411,7 +411,7 @@ def log_excised_consensus(
                     else:
                         sequences_out_of_region.append(nodes[i].clone())
 
-            if len(sequences_in_region) >= excise_maximum_depth or len(sequences_in_region) < 2:
+            if len(sequences_in_region) > excise_maximum_depth or len(sequences_in_region) < 2:
                 continue
 
             # Simple assembly of ambig sequences
