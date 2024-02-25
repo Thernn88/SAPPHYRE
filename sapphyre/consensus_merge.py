@@ -39,7 +39,7 @@ def get_IUPAC(combination_set):
         "ACG": "V",
     }
     
-    return combinations.get("".join(sorted(list(combination_set))), "N")
+    return combinations.get("".join(sorted(list(i for i in combination_set if i != "-"))), "N")
 
 
 def make_nt(aa_gene):
@@ -112,9 +112,8 @@ def do_consensus(nodes, threshold):
 
         for node in nodes:
             if i >= node.start and i < node.end:
-                if node.sequence[i] != "-":
-                    counts.setdefault(node.sequence[i], 0)
-                    counts[node.sequence[i]] += node.count
+                counts.setdefault(node.sequence[i], 0)
+                counts[node.sequence[i]] += node.count
 
         if not counts:
             consensus_sequence += "-"
@@ -188,7 +187,7 @@ class do_gene():
             columns = defaultdict(list)
             for node in group:
                 for i, let in enumerate(node.sequence[node.start:], node.start):
-                    if let != '-':
+                    if i < node.end:
                         columns[i].extend([let] * node.count)
                 for i in range(node.start, node.end):
                     coverage[i] += 1
@@ -213,7 +212,7 @@ class do_gene():
                     out_seq[i] = "-"
                     continue
                 
-                column = {char for char in column if char != '-'}
+                column = {char for char in column}
 
                 if column == {"A"}:
                     out_seq[i] = "A"
@@ -227,9 +226,12 @@ class do_gene():
                     out_seq[i] = "G"
                     continue
                 
-                
                 if column == {"T"}:
                     out_seq[i] = "T"
+                    continue
+
+                if column == {"-"}:
+                    out_seq[i] = "-"
                     continue
 
                 out_seq[i] = get_IUPAC(column)
