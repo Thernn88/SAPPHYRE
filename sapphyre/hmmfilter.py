@@ -8,6 +8,7 @@ import re
 from msgspec import Struct
 from sapphyre_tools import (
     constrained_distance,
+    convert_consensus,
     dumb_consensus,
     dumb_consensus_dupe,
     find_index_pair,
@@ -54,7 +55,7 @@ class BatchArgs(Struct):
 
 class NODE(Struct):
     header: str
-    base_header: str
+    bh_id: str
     score: float
     sequence: str | list
     start: int
@@ -63,46 +64,29 @@ class NODE(Struct):
 
 def do_consensus(nodes, threshold, prepare_dupe_counts, reporter_dupe_counts):
     if not nodes:
-        return "", {}
+        return ""
+    
+    if prepare_dupe_counts or reporter_dupe_counts:
+        bundle = [(node.header, node.sequence) for node in nodes]
+        sequences = bundle_seqs_and_dupes(bundle, prepare_dupe_counts, reporter_dupe_counts)
 
-    length = len(nodes[0].sequence)
-    consensus_sequence = ""
-    cand_coverage = {}
+        consensus_seq = dumb_consensus_dupe(sequences, threshold, 0)
+        converted = convert_consensus([node.sequence for node in nodes], consensus_seq)
+    else:
+        sequences = [node.sequence for node in nodes]
+        consensus_seq = dumb_consensus(sequences, threshold, 0)
 
-    node_with_dupes = []
-    for node in nodes:
-        dupes = prepare_dupe_counts.get(node.base_header, 1) + sum(
-            prepare_dupe_counts.get(xnode, 1)
-            for xnode in reporter_dupe_counts.get(node.base_header, [])
-        )
-
-        node_with_dupes.append((node, dupes))
+        converted = convert_consensus(sequences, consensus_seq)
         
+    start = len(converted)
+    converted = converted.lstrip("X")
+    left = start - len(converted)
+    converted = converted.rstrip("X")
+    right = start - left - len(converted)
 
-    for i in range(length):
-        counts = {}
+    has_consensus = "X" in converted
 
-        for node, count in node_with_dupes:
-            if i >= node.start and i < node.end:
-                counts.setdefault(node.sequence[i], 0)
-                counts[node.sequence[i]] += count
-
-        if not counts:
-            consensus_sequence += "-"
-            cand_coverage[i] = 0
-            continue
-
-        max_count = max(counts.values())
-        total_count = sum(counts.values())
-
-        cand_coverage[i] = total_count
-
-        if max_count / total_count >= threshold:
-            consensus_sequence += max(counts, key=counts.get)
-        else:
-            consensus_sequence += 'X'
-
-    return consensus_sequence, cand_coverage
+    return (("-" * left) + converted.replace("?", "-") + ("-" * right)), has_consensus
 
 
 def del_cols(sequence, columns, nt=False):
@@ -122,17 +106,18 @@ def internal_filter_gene(nodes, debug, gene, min_overlap_internal, score_diff_in
     filtered_sequences_log = []
     kicks = set()
     safe = set()
+    kicked_indices = set()
 
     for i, hit_a in enumerate(nodes):
-        if not hit_a:
+        if i in kicked_indices:
             continue
         for j in range(len(nodes) - 1, i, -1):
-            hit_b = nodes[j]
-            if not hit_b:
+            if j in kicked_indices:
                 continue
+            hit_b = nodes[j]
             if j in safe:
                 continue
-            if hit_a.base_header == hit_b.base_header:
+            if hit_a.bh_id == hit_b.bh_id:
                 continue
             if ((hit_a.score / hit_b.score) if hit_b.score != 0 else 0) < score_diff_internal:
                 continue  
@@ -146,8 +131,8 @@ def internal_filter_gene(nodes, debug, gene, min_overlap_internal, score_diff_in
             )
             amount_of_overlap = 0 if overlap_coords is None else overlap_coords[1] - overlap_coords[0]
 
-            distance = min((hit_b.end - hit_b.start), (hit_a.end - hit_a.start)) + 1  # Inclusive
-            percentage_of_overlap = amount_of_overlap / distance
+            length = min((hit_b.end - hit_b.start), (hit_a.end - hit_a.start)) + 1  # Inclusive
+            percentage_of_overlap = amount_of_overlap / length
             if percentage_of_overlap >= min_overlap_internal:
 
                 kmer_a = hit_a.sequence[overlap_coords[0]: overlap_coords[1]]
@@ -155,7 +140,7 @@ def internal_filter_gene(nodes, debug, gene, min_overlap_internal, score_diff_in
 
                 if not is_same_kmer(kmer_a, kmer_b):
                     kicks.add(hit_b.header)
-                    nodes[j] = None
+                    kicked_indices.add(j)
                     if debug:
                         filtered_sequences_log.append(
                             f"{gene},{hit_b.header},{hit_b.score},{hit_b.start},{hit_b.end},Internal Overlapped with Highest Score,{gene},{hit_a.header},{hit_a.score},{hit_a.start},{hit_a.end}\nHit A Kmer: {kmer_a}\nHit B Kmer: {kmer_b}\n"
@@ -164,7 +149,7 @@ def internal_filter_gene(nodes, debug, gene, min_overlap_internal, score_diff_in
                     safe.add(j)
 
 
-    return [i for i in nodes if i is not None], filtered_sequences_log, kicks
+    return [node for i, node in enumerate(nodes) if not i in kicked_indices], filtered_sequences_log, kicks
 
 
 def kick_read_consensus(
@@ -321,6 +306,7 @@ def process_batch(
 
         # make nodes out of the non reference sequences for processing
         aa_count = 0
+        base_to_id = {}
         for header, sequence in aa_sequences:
             aa_output.append((header, sequence))
             if header.endswith("."):
@@ -333,7 +319,7 @@ def process_batch(
             nodes.append(
                 NODE(
                     header=header,
-                    base_header = base,
+                    bh_id = base_to_id.setdefault(base, len(nodes)),
                     score=this_gene_scores.get(base, 0),
                     sequence=sequence,
                     start=start,
@@ -346,15 +332,6 @@ def process_batch(
         
         # Create a consensus using dumb_consensus from sapphyre_tools
         reference_seqs = [seq for header, seq in aa_output if header.endswith(".")]
-        if batch_args.has_dupes:
-            bundle = [(header, seq) for header, seq in aa_output if header.endswith(".")]
-            sequences = bundle_seqs_and_dupes(bundle, prepare_dupe_count, reporter_dupe_count)
-
-            ref_consensus_seq = dumb_consensus_dupe(sequences, 0.5, 0)
-        else:
-            ref_consensus_seq = dumb_consensus(reference_seqs, 0.5, 0)
-        
-
         # Create a flex consensus using the reference sequences
         for seq in reference_seqs:
             start, end = find_index_pair(seq, "-")
@@ -381,7 +358,7 @@ def process_batch(
         nodes.sort(key=lambda hit: hit.score, reverse=True)
         header_to_hits = defaultdict(list)
         for node in nodes:
-            header_to_hits[node.base_header.split("_")[1]].append(node)
+            header_to_hits[node.bh_id].append(node)
         
         kicked_headers = set()
         for node, hits in header_to_hits.items():
@@ -405,94 +382,86 @@ def process_batch(
         kicked_headers.update(internal_header_kicks)
         internal_kicks.extend(internal_log)
 
-        x_cand_consensus, cand_coverage = do_consensus(
+        x_cand_consensus, has_ambig = do_consensus(
             nodes, args.consensus, prepare_dupe_count, reporter_dupe_count
         )
-
-        for node in nodes:
-            node.sequence = list(node.sequence)
-
+        
         trimmed_pos = 0
         x_positions = defaultdict(set)
 
         has_x_before = 0
         has_x_after = 0
 
-        for let in x_cand_consensus:
-            if let == 'X': has_x_before += 1
+        if has_ambig:
+            for let in x_cand_consensus:
+                if let == 'X': has_x_before += 1
 
-        TRIM_MAX = 6
+            TRIM_MAX = 6
 
-        for node in nodes:
-            new_start = node.start
-            new_end = node.end
+            for node in nodes:
+                new_start = node.start
+                new_end = node.end
 
+                this_positions = set()
 
-            for i, bp in enumerate(node.sequence):
-                let = x_cand_consensus[i]
-                if let == "X":
-                    if (i <= new_start + 2 and i >= new_start):
-                        new_start = i
-                        if new_start - node.start >= TRIM_MAX:
-                            break
-                    if (i >= new_end - 2 and i <= new_end):
-                        new_end = i
-                        if node.end - new_end >= TRIM_MAX:
-                            break
+                for i, bp in enumerate(node.sequence):
+                    let = x_cand_consensus[i]
+                    if let == "X":
+                        if (i <= new_start + 2 and i >= new_start):
+                            new_start = i
+                            if new_start - node.start >= TRIM_MAX:
+                                break
+                        if (i >= new_end - 2 and i <= new_end):
+                            new_end = i
+                            if node.end - new_end >= TRIM_MAX:
+                                break
 
-            if new_start != node.start or new_end != node.end:
-                for i in range(node.start, new_start):
-                    node.sequence[i] = "-"
-                    trimmed_pos += 1
-                    x_positions[node.header].add(i)
-                for i in range(new_end, node.end):
-                    node.sequence[i] = "-"
-                    trimmed_pos += 1
-                    x_positions[node.header].add(i)
-                node.start = new_start
-                node.end = new_end
+                if new_start != node.start or new_end != node.end:
+                    for i in range(node.start, new_start):
+                        this_positions.add(i)
+                        trimmed_pos += 1
+                        x_positions[node.header].add(i)
+                    for i in range(new_end, node.end):
+                        this_positions.add(i)
+                        trimmed_pos += 1
+                        x_positions[node.header].add(i)
+                    node.start = new_start
+                    node.end = new_end
 
-        x_cand_consensus, cand_coverage = do_consensus(
-            nodes, args.consensus, prepare_dupe_count, reporter_dupe_count
-        )
+                node.sequence = "".join(let if i not in this_positions else "-" for i, let in enumerate(node.sequence))
+        
+            for node in nodes:
+                this_positions = set()
+                i = None
+                for poss_i in range(node.start, node.start + 3):
+                    if node.sequence[poss_i] != x_cand_consensus[poss_i]:
+                        i = poss_i
 
-        for node in nodes:
-            i = None
-            for poss_i in range(node.start, node.start + 3):
-                if node.sequence[poss_i] != x_cand_consensus[poss_i]:
-                    i = poss_i
+                if not i is None:
+                    for x in range(node.start , i + 1):
+                        trimmed_pos += 1
+                        x_positions[node.header].add(x)
+                    node.start = i+1
 
-            if not i is None:
-                for x in range(node.start , i + 1):
-                    node.sequence[x] = "-"
-                    trimmed_pos += 1
-                    x_positions[node.header].add(x)
-                node.start = i+1
+                i = None
+                for poss_i in range(node.end -1, node.end - 4, -1):
+                    if node.sequence[poss_i] != x_cand_consensus[poss_i]:
+                        i = poss_i
 
-            i = None
-            for poss_i in range(node.end -1, node.end - 4, -1):
-                if node.sequence[poss_i] != x_cand_consensus[poss_i]:
-                    i = poss_i
+                if not i is None:
+                    for x in range(i, node.end):
+                        trimmed_pos += 1
+                        x_positions[node.header].add(x)
+                    node.end = i
 
-            if not i is None:
-                for x in range(i, node.end):
-                    node.sequence[x] = "-"
-                    trimmed_pos += 1
-                    x_positions[node.header].add(x)
-                node.end = i
-
-        for node in nodes:
-            node.sequence = "".join(node.sequence)
-
-        x_cand_consensus, cand_coverage = do_consensus(
+        x_cand_consensus, _ = do_consensus(
             nodes, args.consensus, prepare_dupe_count, reporter_dupe_count
         )
 
         for i, let in enumerate(x_cand_consensus):
             if let == "X":
                 has_x_after += 1
-                coverage = cand_coverage[i]
-                reported_regions.append(f"{gene},{i},{coverage}")
+                reported_regions.append(f"{gene},{i}")
 
         aa_output = [(header, del_cols(seq, x_positions[header])) for header, seq in aa_output if header not in kicked_headers]
         # Align kicks to the NT
@@ -688,7 +657,7 @@ def main(args, from_folder):
         processes=args.processes,
         verbose=args.verbose,
         debug=args.debug,
-        consensus=args.consensus,
+        consensus=args.hmmfilter_consensus,
         from_folder=from_folder,
         min_overlap_internal = args.min_overlap_internal,
         score_diff_internal = args.score_diff_internal,

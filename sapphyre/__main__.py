@@ -414,6 +414,13 @@ def outlier_args(par):
         help="Threshold for selecting a consensus bp",
     )
     par.add_argument(
+        "-hc",
+        "--hmmfilter_consensus",
+        default=0.65,
+        type=float,
+        help="Threshold for selecting a consensus bp in hmmfilter",
+    )
+    par.add_argument(
         "-eom",
         "--excise_overlap_merge",
         default=0.25,
