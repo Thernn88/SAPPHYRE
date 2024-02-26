@@ -287,7 +287,12 @@ def do_folder(input_folder, args):
         if path.exists(path.join(input_folder, "outlier", folder)):
             gene_input_folder = path.join(input_folder, "outlier", folder)
             break
-    
+
+    if gene_input_folder is None:
+        printv(f"No gene input folder found in {input_folder}", args.verbose, 2)
+    else:
+        printv(f"Current gene: {gene_input_folder}", args.verbose, 2)
+
     aa_gene_input = path.join(gene_input_folder, "aa")
     nt_gene_input = path.join(gene_input_folder, "nt")
 
