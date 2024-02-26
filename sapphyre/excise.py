@@ -327,7 +327,7 @@ def longest_merge_index(nodes, sequences_out_of_region, merge_percent):
                         
 
         this_length = len(node.sequence) - node.sequence.count("-")
-        if best_length is None or (this_length > best_length and has_unambig_merge):
+        if has_unambig_merge and (best_length is None or this_length > best_length):
             best_length = this_length
             best_index = i
 
