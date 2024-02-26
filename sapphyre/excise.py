@@ -301,29 +301,33 @@ def longest_merge_index(nodes, sequences_out_of_region, merge_percent):
     best_length = None
     for i, node in enumerate(nodes):
         this_seq_out = sequences_out_of_region.copy()
-        merge_occured = True
-        while merge_occured:
-            merge_occured = False
-            for j, node_b in enumerate(this_seq_out):
-                overlap_coords = get_overlap(node.start, node.end, node_b.start, node_b.end, 1)
-                if overlap_coords:
-                    overlap_amount = overlap_coords[1] - overlap_coords[0]
-                    overlap_percent = overlap_amount / (node.end - node.start)
-                    if overlap_percent > merge_percent:
-                        kmer_a = node.sequence[overlap_coords[0]:overlap_coords[1]]
-                        kmer_b = node_b.sequence[overlap_coords[0]:overlap_coords[1]]
+        has_unambig_merge = False
+        for j, node_b in enumerate(this_seq_out):
+            overlap_coords = get_overlap(node.start, node.end, node_b.start, node_b.end, 1)
+            if overlap_coords:
+                overlap_amount = overlap_coords[1] - overlap_coords[0]
+                overlap_percent = overlap_amount / (node.end - node.start)
+                if overlap_percent > merge_percent:
+                    kmer_a = node.sequence[overlap_coords[0]:overlap_coords[1]]
+                    kmer_b = node_b.sequence[overlap_coords[0]:overlap_coords[1]]
 
-                        if not is_same_kmer(kmer_a, kmer_b):
-                            continue
+                    if not is_same_kmer(kmer_a, kmer_b):
+                        continue
 
-                        overlap_coord = overlap_coords[0]
+                    overlap_coord = overlap_coords[0]
 
-                        node.extend(node_b, overlap_coord)
-                        merge_occured = True
-                        this_seq_out.pop(j)
+                    before = len(node.sequence) - node.sequence.count("-")
+
+                    node.extend(node_b, overlap_coord)
+                    this_seq_out.pop(j)
+
+                    if (len(node.sequence) - node.sequence.count("-")) > before:
+                        has_unambig_merge = True
+
+                        
 
         this_length = len(node.sequence) - node.sequence.count("-")
-        if best_length is None or this_length > best_length:
+        if best_length is None or (this_length > best_length and has_unambig_merge):
             best_length = this_length
             best_index = i
 
