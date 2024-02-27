@@ -500,13 +500,13 @@ def process_batch(
             aa_out_dupes = aa_output
             nt_out_dupes = nt_sequences
 
-        aa_has_ref = False
+        aa_has_candidate = False
         for header, sequence in aa_output:
-            if header.endswith("."):
-                aa_has_ref = True
+            if not header.endswith("."):
+                aa_has_candidate = True
                 break
 
-        if aa_has_ref:
+        if aa_has_candidate:
             writeFasta(aa_out, aa_out_dupes, batch_args.compress)
             writeFasta(nt_out, nt_out_dupes, batch_args.compress)
 
