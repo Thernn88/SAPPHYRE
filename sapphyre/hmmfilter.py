@@ -119,8 +119,10 @@ def internal_filter_gene(nodes, debug, gene, min_overlap_internal, score_diff_in
                 continue
             if hit_a.bh_id == hit_b.bh_id:
                 continue
-            if ((hit_a.score / hit_b.score) if hit_b.score != 0 else 0) < score_diff_internal:
-                continue  
+            if hit_b.score == 0:
+                continue
+            if hit_a.score / hit_b.score < score_diff_internal:
+                break
 
             overlap_coords = get_overlap(
                 hit_a.start,
