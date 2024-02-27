@@ -318,11 +318,12 @@ def process_batch(
 
             start, end = find_index_pair(sequence, "-")
             base = header.split("|")[3]
+            score_key = "_".join(base.split("_")[0:2])
             nodes.append(
                 NODE(
                     header=header,
                     bh_id = base_to_id.setdefault(base, len(nodes)),
-                    score=this_gene_scores.get(base, 0),
+                    score=this_gene_scores.get(score_key, 0),
                     sequence=sequence,
                     start=start,
                     end=end,
