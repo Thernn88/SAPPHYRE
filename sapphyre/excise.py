@@ -431,11 +431,19 @@ def log_excised_consensus(
                 log_output.extend([f">{node.contig_header()}_{'kept' if i == best_index else 'kicked'}\n{node.sequence}" for i, node in enumerate(nodes_in_region)])
                 log_output.append("\n")
 
-    nt_output = [(header, seq) for header, seq in raw_sequences if header not in kicked_headers]
-    writeFasta(nt_out, nt_output, compress_intermediates)
     aa_output = [(header, seq) for header, seq in parseFasta(str(aa_in)) if header not in kicked_headers]
-    writeFasta(aa_out, aa_output, compress_intermediates)
-    
+
+    aa_has_candidate = False
+    for header, _ in aa_output:
+        if not header.endswith("."):
+            aa_has_candidate = True
+            break
+
+    if aa_has_candidate:
+        writeFasta(aa_out, aa_output, compress_intermediates)
+        nt_output = [(header, seq) for header, seq in raw_sequences if header not in kicked_headers]
+        writeFasta(nt_out, nt_output, compress_intermediates)
+
     return log_output, bad_regions != [], len(kicked_headers)
 
 
@@ -499,11 +507,6 @@ def main(args, override_cut, sub_dir):
             )
 
     folder = args.INPUT
-    if override_cut is None:
-        cut = args.cut
-    else:
-        cut = override_cut
-
     input_folder = Path(folder, "outlier", sub_dir)
     output_folder = Path(folder, "outlier", "excise")
 
