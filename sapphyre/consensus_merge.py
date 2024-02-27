@@ -23,10 +23,6 @@ from .utils import parseFasta, printv, writeFasta
 
 def get_IUPAC(combination_set):
     combinations = {
-        "A":"A",
-        "C":"C",
-        "G":"G",
-        "T":"T",
         "AG": "R",
         "CT": "Y",
         "CG": "S",
@@ -71,7 +67,7 @@ def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
             is None
         ):
             if current_group:
-                result.append((current_region, current_group))
+                result.append(current_group)
             current_region = (sequence.start, sequence.end)
             current_group = [sequence]
         else:
@@ -81,7 +77,7 @@ def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
             )
 
     if current_group:
-        result.append((current_region, current_group))
+        result.append(current_group)
 
     return result
 
@@ -105,8 +101,6 @@ def do_consensus(nodes, threshold):
 
     length = len(nodes[0].sequence)
     consensus_sequence = ""
-    cand_coverage = {}
-
     for i in range(length):
         counts = {}
 
@@ -117,21 +111,16 @@ def do_consensus(nodes, threshold):
 
         if not counts:
             consensus_sequence += "-"
-            cand_coverage[i] = 0
             continue
-
 
         max_count = max(counts.values())
         total_count = sum(counts.values())
-
-        cand_coverage[i] = total_count
-
-        if max_count / total_count > threshold:
+        if max_count / total_count >= threshold:
             consensus_sequence += max(counts, key=counts.get)
         else:
             consensus_sequence += 'X'
 
-    return consensus_sequence, cand_coverage
+    return consensus_sequence
 
 
 class do_gene():
@@ -181,8 +170,10 @@ class do_gene():
         candidates.sort(key=lambda x: x.start)
 
         overlap_groups = disperse_into_overlap_groups(candidates)
+        ambig_columns = defaultdict(set)
         
-        for region, group in overlap_groups:
+        for group in overlap_groups:
+            new_node, new_ref, old_taxa = get_header_parts([i.header for i in group])
             coverage = [0] * len(candidates[0].sequence)
             columns = defaultdict(list)
             for node in group:
@@ -234,11 +225,13 @@ class do_gene():
                     out_seq[i] = "-"
                     continue
 
+                ambig_columns[new_node].add((i - (i % 3)) // 3)
+
                 out_seq[i] = get_IUPAC(column)
             
             new_seq = "".join(out_seq)
 
-            new_node, new_ref, old_taxa = get_header_parts([i.header for i in group])
+            
 
             new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}"
       
@@ -265,7 +258,7 @@ class do_gene():
 
         overlap_groups = disperse_into_overlap_groups(candidates)
 
-        for region, group in overlap_groups:
+        for group in overlap_groups:
             new_node, new_ref, old_taxa = get_header_parts([i.header for i in group])
 
             new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}"
@@ -273,7 +266,11 @@ class do_gene():
             new_seq = []
             
 
-            cand_seq, x = do_consensus(group, 1-self.threshold)
+            cand_seq = list(do_consensus(group, 1-self.threshold))
+            for i in ambig_columns[new_node]:
+                cand_seq[i] = "X"
+
+            cand_seq = "".join(cand_seq)
 
             aa_out.append((new_header, cand_seq))
 
@@ -281,7 +278,8 @@ class do_gene():
 
 
 def do_folder(input_folder, args):
-    print("Processing:", input_folder)
+    printv(f"Processing: {input_folder}", args.verbose, 0)
+    folder_tk = TimeKeeper(KeeperMode.DIRECT)
     gene_input_folder = None
     for folder in ["excise","internal","hmmfilter", "blosum"]:
         if path.exists(path.join(input_folder, "outlier", folder)):
@@ -333,7 +331,8 @@ def do_folder(input_folder, args):
     else:
         for argument in arguments:
             gene_func(*argument)
-
+    
+    printv(f"Done! Took {folder_tk.differential():.2f}s", args.verbose, 0)
 
 
 def main(args):
