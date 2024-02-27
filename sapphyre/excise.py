@@ -124,39 +124,33 @@ def check_bad_regions(
                 output[b] = (a, b)
     return [*output.values()]
 
-
-def check_covered_bad_regions(
-    consensus: str, excise_minimum_ambig: float, ambiguous="X", window_stretch=16,
-) -> list:
+def check_covered_bad_regions(consensus, min_ambiguous, ambig_char='X', max_distance=16):
+    x_regions = []
+    x_indices = []
+    current_group = []
 
     start, stop = find_index_pair(consensus, "X")
-    regions = []
-    first_i = None
-    ambig_count = 0
-    current_window_allowance = 0
-    for i, char in enumerate(consensus[start: stop], start):
-        
-        if char == ambiguous:
-            if first_i is None:
-                first_i = i
-                ambig_count = 0
-            ambig_count += 1
-            current_window_allowance = 0
+
+    for i, base in enumerate(consensus[start:stop], start):
+        if base == ambig_char:
+            x_indices.append(i)
+
+    for num in x_indices:
+        if not current_group:
+            current_group.append(num)
+        elif num - current_group[-1] <= max_distance:
+            current_group.append(num)
         else:
+            if len(current_group) >= min_ambiguous:
+                x_regions.append((current_group[0], current_group[-1] + 1))
+            current_group = [num]
 
-            current_window_allowance += 1
-            if current_window_allowance >= window_stretch and first_i is not None:
-                if ambig_count >= excise_minimum_ambig:
-                    regions.append((first_i, i-current_window_allowance))
-                first_i = None
-                ambig_count = 0
+    if current_group:
+        if len(current_group) >= min_ambiguous:
+            x_regions.append((current_group[0], current_group[-1] + 1))
 
-    if first_i is not None:
-        if ambig_count >= excise_minimum_ambig:
-            regions.append((start, len(consensus)))
-    
-    return regions
 
+    return x_regions
 
 def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_counts):
     output = []
@@ -311,6 +305,7 @@ def longest_merge_index(nodes, sequences_out_of_region, merge_percent):
                     kmer_a = node.sequence[overlap_coords[0]:overlap_coords[1]]
                     kmer_b = node_b.sequence[overlap_coords[0]:overlap_coords[1]]
 
+
                     if not is_same_kmer(kmer_a, kmer_b):
                         continue
 
@@ -392,6 +387,8 @@ def log_excised_consensus(
     else:
         consensus_seq = dumb_consensus(sequences, excise_consensus, 0)
 
+    consensus_seq = convert_consensus(sequences, consensus_seq)
+
 
     # Search for slices of the consensus seq with a high ratio of 'X' to total characters
     bad_regions = check_covered_bad_regions(consensus_seq, excise_minimum_ambig)
@@ -402,8 +399,7 @@ def log_excised_consensus(
         for region in bad_regions:
             sequences_in_region = []
             sequences_out_of_region = []
-            a, b = region
-            
+            a, b = region         
 
             for i, node in enumerate(nodes):
                 overlap_coords = get_overlap(a, b, node.start, node.end, 1)
