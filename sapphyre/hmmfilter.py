@@ -64,7 +64,7 @@ class NODE(Struct):
 
 def do_consensus(nodes, threshold, prepare_dupe_counts, reporter_dupe_counts):
     if not nodes:
-        return ""
+        return "", False
     
     if prepare_dupe_counts or reporter_dupe_counts:
         bundle = [(node.header, node.sequence) for node in nodes]
@@ -500,9 +500,14 @@ def process_batch(
             aa_out_dupes = aa_output
             nt_out_dupes = nt_sequences
 
-        if aa_out_dupes:
+        aa_has_ref = False
+        for header, sequence in aa_output:
+            if header.endswith("."):
+                aa_has_ref = True
+                break
+
+        if aa_has_ref:
             writeFasta(aa_out, aa_out_dupes, batch_args.compress)
-        if nt_out_dupes:
             writeFasta(nt_out, nt_out_dupes, batch_args.compress)
 
         total_x_before += has_x_before
