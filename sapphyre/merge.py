@@ -482,7 +482,7 @@ def do_protein(
                     if total_characters >= minimum_mr_amount:
                         # Translate all NT triplets into AA
                         translated_characters = [
-                            DNA_CODONS[j] for j in candidate_characters
+                            DNA_CODONS.get(j, "X") for j in candidate_characters
                         ]
 
                         # Figure out what AA occurs the most
@@ -499,7 +499,7 @@ def do_protein(
                             candidate_chars_mapping_to_same_dna = [
                                 j
                                 for j in candidate_characters
-                                if DNA_CODONS[j] == most_occuring_translated_char
+                                if DNA_CODONS.get(j, "X") == most_occuring_translated_char
                             ]
 
                             # Grab the most occurring NT that maps to that AA from the current seq
