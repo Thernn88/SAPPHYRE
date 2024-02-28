@@ -451,7 +451,7 @@ def outlier_args(par):
     par.add_argument(
         "-emd",
         "--excise_maximum_depth",
-        default=5,
+        default=10,
         type=int,
         help="Maximum depth for excise assembly",
     )
