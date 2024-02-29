@@ -216,9 +216,8 @@ class do_gene():
                     out_seq.append(most_common[0])
                     continue
 
-                column = set(column)
-                if column == set():
-                    out_seq.append("-")
+                if len(set(column) - {"---"}) == 1:
+                    out_seq.append("---")
                     continue
 
                 for x in range(0,3):
@@ -324,7 +323,7 @@ def do_folder(input_folder, args):
 
     arguments = []
     for aa_gene in listdir(aa_gene_input):
-        # if "EOG57H451" in aa_gene:
+        # if "EOG5SXKTH" in aa_gene:
         nt_gene = make_nt(aa_gene)
         
         arguments.append((aa_gene, nt_gene))
