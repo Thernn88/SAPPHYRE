@@ -100,7 +100,7 @@ def get_header_parts(headers):
     return node_part, ref_part, headers[0].split("|")[2]
 
 
-def do_consensus(nodes, threshold):
+def do_consensus(nodes, threshold, ambig_regions):
     if not nodes:
         return ""
 
@@ -128,7 +128,12 @@ def do_consensus(nodes, threshold):
         cand_coverage[i] = total_count
 
         if max_count / total_count > threshold:
+            if len(counts.keys()) == 1 and i * 3 in ambig_regions:
+                consensus_sequence += 'X'
+                continue
             consensus_sequence += max(counts, key=counts.get)
+
+
         elif len(set(counts.keys()) - {"-"}) == 1:
             consensus_sequence += "-"
         else:
@@ -185,8 +190,13 @@ class do_gene():
         candidates.sort(key=lambda x: x.start)
 
         overlap_groups = disperse_into_overlap_groups(candidates)
+
+        head_to_ambig = defaultdict(list)
         
         for region, group in overlap_groups:
+            new_node, new_ref, old_taxa = get_header_parts([i.header for i in group])
+
+            new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}"
             triplets = defaultdict(list)
             
             min_start = min(node.start for node in group)
@@ -211,16 +221,19 @@ class do_gene():
                     out_seq.append("-")
                     continue
 
-                for i in range(0,3):
-                    out_seq.append(get_IUPAC({char[i] for char in column}))
+                for x in range(0,3):
+                    triplet_column = {char[x] for char in column}
+                    if len(triplet_column) == 1:
+                        out_seq.append(triplet_column.pop())
+                    else:
+                        head_to_ambig[new_header].append(i)
+                        out_seq.append(get_IUPAC(triplet_column))
             
             new_seq = ("-" * min_start) + "".join(out_seq)
             new_seq = new_seq + ("-" * (len(new_seq) - msa_end))
             
 
-            new_node, new_ref, old_taxa = get_header_parts([i.header for i in group])
-
-            new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}"
+            
             nt_out.append((new_header, new_seq))
             if self.debug:
                 for node in group:
@@ -257,7 +270,7 @@ class do_gene():
             new_seq = []
             
 
-            cand_seq, x = do_consensus(group, self.threshold)
+            cand_seq, x = do_consensus(group, self.threshold, head_to_ambig[new_header])
 
             aa_out.append((new_header, cand_seq))
 
@@ -311,7 +324,7 @@ def do_folder(input_folder, args):
 
     arguments = []
     for aa_gene in listdir(aa_gene_input):
-        # if "EOG5CZ8WT" in aa_gene:
+        # if "EOG57H451" in aa_gene:
         nt_gene = make_nt(aa_gene)
         
         arguments.append((aa_gene, nt_gene))
