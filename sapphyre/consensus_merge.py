@@ -94,6 +94,7 @@ class Node(Struct):
     end: int
 
 def get_header_parts(headers):
+    headers.sort()
     node_part = "&&".join(header.split("|")[3] for header in headers)
     ref_part = Counter(header.split("|")[1] for header in headers).most_common(1)[0][0]
     return node_part, ref_part, headers[0].split("|")[2]
@@ -128,6 +129,8 @@ def do_consensus(nodes, threshold):
 
         if max_count / total_count > threshold:
             consensus_sequence += max(counts, key=counts.get)
+        elif len(set(counts.keys()) - {"-"}) == 1:
+            consensus_sequence += "-"
         else:
             consensus_sequence += 'X'
 
@@ -135,7 +138,7 @@ def do_consensus(nodes, threshold):
 
 
 class do_gene():
-    def __init__(self, aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, compress, prepare_dupe_counts, reporter_dupe_counts) -> None:
+    def __init__(self, aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, compress, debug, prepare_dupe_counts, reporter_dupe_counts) -> None:
         self.aa_gene_input = aa_gene_input
         self.nt_gene_input = nt_gene_input
 
@@ -143,8 +146,9 @@ class do_gene():
         self.nt_gene_output = nt_gene_output
 
         self.compress = compress
+        self.debug = debug
 
-        self.threshold = 0.25
+        self.threshold = 0.5
 
         self.prepare_dupes = prepare_dupe_counts
         self.reporter_dupes = reporter_dupe_counts
@@ -183,66 +187,46 @@ class do_gene():
         overlap_groups = disperse_into_overlap_groups(candidates)
         
         for region, group in overlap_groups:
-            coverage = [0] * len(candidates[0].sequence)
-            columns = defaultdict(list)
-            for node in group:
-                for i, let in enumerate(node.sequence[node.start:], node.start):
-                    if i < node.end:
-                        columns[i].extend([let] * node.count)
-                for i in range(node.start, node.end):
-                    coverage[i] += 1
+            triplets = defaultdict(list)
+            
+            min_start = min(node.start for node in group)
+            msa_end = len(group[0].sequence)
 
-            out_seq = [""] * len(candidates[0].sequence)
-            for i, column in columns.items():
+            for node in group:
+
+                for i in range(node.start, node.end, 3):
+                    triplets[i].extend([node.sequence[i: i+3]] * node.count)
+
+            out_seq = []
+            for i, column in triplets.items():
                 column_counts = Counter(column)
 
                 most_common = column_counts.most_common(1)[0]
-                coverage_on_highest_aa = most_common[1] / coverage[i]
-                coverage_on_other_codons = 1 - coverage_on_highest_aa
-
-                
-                
-
-                if coverage_on_other_codons <= self.threshold:
-                    out_seq[i] = most_common[0]
+                if most_common[1] / sum(column_counts.values()) > self.threshold:
+                    out_seq.append(most_common[0])
                     continue
 
                 column = set(column)
                 if column == set():
-                    out_seq[i] = "-"
-                    continue
-                
-                column = {char for char in column}
-
-                if column == {"A"}:
-                    out_seq[i] = "A"
+                    out_seq.append("-")
                     continue
 
-                if column == {"C"}:
-                    out_seq[i] = "C"
-                    continue
-
-                if column == {"G"}:
-                    out_seq[i] = "G"
-                    continue
-                
-                if column == {"T"}:
-                    out_seq[i] = "T"
-                    continue
-
-                if column == {"-"}:
-                    out_seq[i] = "-"
-                    continue
-
-                out_seq[i] = get_IUPAC(column)
+                for i in range(0,3):
+                    out_seq.append(get_IUPAC({char[i] for char in column}))
             
-            new_seq = "".join(out_seq)
+            new_seq = ("-" * min_start) + "".join(out_seq)
+            new_seq = new_seq + ("-" * (len(new_seq) - msa_end))
+            
 
             new_node, new_ref, old_taxa = get_header_parts([i.header for i in group])
 
             new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}"
-      
             nt_out.append((new_header, new_seq))
+            if self.debug:
+                for node in group:
+                    nt_out.append((node.header.split("|")[3], node.sequence))
+
+            
 
         writeFasta(path.join(self.nt_gene_output, nt_gene), nt_out, self.compress)
 
@@ -273,9 +257,13 @@ class do_gene():
             new_seq = []
             
 
-            cand_seq, x = do_consensus(group, 1-self.threshold)
+            cand_seq, x = do_consensus(group, self.threshold)
 
             aa_out.append((new_header, cand_seq))
+
+            if self.debug:
+                for node in group:
+                    aa_out.append((node.header.split("|")[3], node.sequence))
 
         writeFasta(path.join(self.aa_gene_output, aa_gene), aa_out, self.compress)
 
@@ -319,10 +307,11 @@ def do_folder(input_folder, args):
         )
         del nt_db
 
-    gene_func = do_gene(aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, args.compress, prepare_dupe_counts, reporter_dupe_counts)
+    gene_func = do_gene(aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, args.compress, args.debug, prepare_dupe_counts, reporter_dupe_counts)
 
     arguments = []
     for aa_gene in listdir(aa_gene_input):
+        # if "EOG5CZ8WT" in aa_gene:
         nt_gene = make_nt(aa_gene)
         
         arguments.append((aa_gene, nt_gene))
