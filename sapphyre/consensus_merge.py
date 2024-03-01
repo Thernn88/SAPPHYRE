@@ -142,6 +142,84 @@ def do_consensus(nodes, threshold, ambig_regions):
     return consensus_sequence, cand_coverage
 
 
+def detect_ambig_with_gaps(nodes, gap_percentage=0.25):
+    if not nodes:
+        return []
+
+    length = len(nodes[0].sequence)
+    indices = []
+    prev_indx_target_or_internal_gap = False
+
+    for i in range(length):
+        
+        counts = {}
+
+        for node in nodes:
+            if i >= node.start and i < node.end:
+                counts.setdefault(node.sequence[i], 0)
+                counts[node.sequence[i]] += node.count
+
+        if not counts:
+            continue
+
+        if prev_indx_target_or_internal_gap and "-" in counts and len(counts.keys()) == 1:
+            indices.append((i,False))
+            prev_indx_target_or_internal_gap = True
+            continue
+
+        prev_indx_target_or_internal_gap = False
+
+        total_count = sum(counts.values())
+
+        if "-" in counts and len(counts.keys()) > 1:
+            if counts["-"] / total_count >= gap_percentage:
+                indices.append((i,True))
+                prev_indx_target_or_internal_gap = True
+        
+        
+    
+    if len(indices) <= 1:
+        return []
+    
+    flag_start = None
+    flag_end = None
+    flag_regions = []
+
+    start = None
+    end = None
+
+    regions = []
+
+    for index, flag in indices:
+        if flag:
+            if flag_start is None:
+                flag_start = index
+            elif flag_end is None:
+                flag_end = index
+            elif flag_end + 1 == index:
+                flag_end = index
+        if flag_end is not None and (not flag or flag_end + 1 != index):
+            flag_regions.append((flag_start, flag_end))
+            flag_start = None
+            flag_end = None
+        
+        if start is None:
+            start = index
+        elif end is None:
+            end = index
+        elif end + 1 == index:
+            end = index
+        else:
+            regions.append(((start, end), flag_regions))
+            start = None
+            end = None
+            flag_regions = []
+    
+    if start is not None and end is not None:
+        regions.append(((start, end), flag_regions))
+
+    return regions
+
 class do_gene():
     def __init__(self, aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, compress, debug, prepare_dupe_counts, reporter_dupe_counts) -> None:
         self.aa_gene_input = aa_gene_input
@@ -172,6 +250,69 @@ class do_gene():
         
 
         nt_seqs = parseFasta(nt_gene_path)
+        aa_seqs = parseFasta(aa_gene_path)
+
+        aa_out = []
+        aa_candidates = []
+        for header, seq in aa_seqs:
+            if header.endswith("."):
+                aa_out.append((header, seq))
+            else:
+                node = header.split("|")[3]
+                count = self.prepare_dupes.get(node, 1) + sum(
+                    self.prepare_dupes.get(node, 1)
+                    for node in self.reporter_dupes.get(node, [])
+                )
+                aa_candidates.append(Node(header, seq, count, *find_index_pair(seq, "-")))
+
+        aa_candidates.sort(key=lambda x: x.start)
+
+        aa_overlap_groups = disperse_into_overlap_groups(aa_candidates)
+
+        move_record = defaultdict(list)
+        for region, group in aa_overlap_groups:
+            gap_regions = detect_ambig_with_gaps(group)
+            
+            for gap_region, kmers in gap_regions:
+                for i in range(len(kmers)-1, -1, -1):
+                    if i - 1 < 0:
+                        continue
+
+                    kmer_right_start, kmer_right_end = kmers[i]
+                    kmer_left_start, kmer_left_end = kmers[i-1]
+
+                    kmer_left_distance = kmer_left_end - kmer_left_start
+                    kmer_right_distance = kmer_right_end - kmer_right_start
+
+                    if kmer_left_distance != kmer_right_distance:
+                        continue
+
+                    # If sequence has overlap with the gap_region generate a flex consensus using left kmer and check if right kmers merge
+                    left_consensus = set()
+                    check_again_for_right = []
+                    for i, node in enumerate(group):
+                        if get_overlap(node.start, node.end, gap_region[0], gap_region[1], 0) is not None:
+                            kmer = node.sequence[kmer_left_start:kmer_left_end + 1].replace("-", "")
+                            if kmer:
+                                left_consensus.add(kmer)
+                            else:
+                                check_again_for_right.append(i)
+
+                    for i in check_again_for_right:
+                        node = group[i]
+                        
+                        right_kmer = node.sequence[kmer_right_start:kmer_right_end + 1].replace("-", "")
+                        if right_kmer in left_consensus:
+
+                            this_sequence = list(node.sequence)
+
+                            for x, i in zip(range(kmer_right_start, kmer_right_end+1), range(kmer_left_start, kmer_left_end+1)):
+                                this_sequence[i] = this_sequence[x]
+                                this_sequence[x] = "-"
+                                move_record[node.header].append((i,x))
+                        
+                            node.sequence = "".join(this_sequence)
+                        
 
         nt_out = []
         candidates = []
@@ -185,6 +326,18 @@ class do_gene():
                     self.prepare_dupes.get(node, 1)
                     for node in self.reporter_dupes.get(node, [])
                 )
+
+                moves = move_record[header]
+                if moves:
+                    seq_as_triplets = [seq[i:i+3] for i in range(0, len(seq), 3)]
+
+                    for i, x in moves:
+                        seq_as_triplets[i] = seq_as_triplets[x]
+                        seq_as_triplets[x] = "---"
+
+                    seq = "".join(seq_as_triplets)
+                
+
                 candidates.append(Node(header, seq, count, *find_index_pair(seq, "-")))
         
         candidates.sort(key=lambda x: x.start)
@@ -242,26 +395,7 @@ class do_gene():
 
         writeFasta(path.join(self.nt_gene_output, nt_gene), nt_out, self.compress)
 
-        aa_seqs = parseFasta(aa_gene_path)
-
-        aa_out = []
-        candidates = []
-        for header, seq in aa_seqs:
-            if header.endswith("."):
-                aa_out.append((header, seq))
-            else:
-                node = header.split("|")[3]
-                count = self.prepare_dupes.get(node, 1) + sum(
-                    self.prepare_dupes.get(node, 1)
-                    for node in self.reporter_dupes.get(node, [])
-                )
-                candidates.append(Node(header, seq, count, *find_index_pair(seq, "-")))
-
-        candidates.sort(key=lambda x: x.start)
-
-        overlap_groups = disperse_into_overlap_groups(candidates)
-
-        for region, group in overlap_groups:
+        for _, group in aa_overlap_groups:
             new_node, new_ref, old_taxa = get_header_parts([i.header for i in group])
 
             new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}"
@@ -323,11 +457,11 @@ def do_folder(input_folder, args):
 
     arguments = []
     for aa_gene in listdir(aa_gene_input):
-        # if "EOG5SXKTH" in aa_gene:
+        # if "EOG59ZW48" in aa_gene:
         nt_gene = make_nt(aa_gene)
         
         arguments.append((aa_gene, nt_gene))
-    
+        
     if args.processes > 1:
         with Pool(args.processes) as pool:
             pool.starmap(gene_func, arguments)
