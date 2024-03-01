@@ -392,7 +392,7 @@ class do_gene():
 
             
             new_seq = ("-" * min_start) + "".join(out_seq)
-            new_seq = new_seq + ("-" * (len(new_seq) - msa_end))
+            new_seq = new_seq + ("-" * (msa_end - len(new_seq)))
             
 
             
