@@ -319,6 +319,7 @@ class do_gene():
                                 move_record[node.header].append((i,x))
                         
                             node.sequence = "".join(this_sequence)
+                            node.start, node.end = find_index_pair(node.sequence, "-")
                         
 
         nt_out = []
@@ -464,7 +465,7 @@ def do_folder(input_folder, args):
 
     arguments = []
     for aa_gene in listdir(aa_gene_input):
-        # if "EOG59ZW48" in aa_gene:
+        # if "EOG52NGGC" in aa_gene:
         nt_gene = make_nt(aa_gene)
         
         arguments.append((aa_gene, nt_gene))
