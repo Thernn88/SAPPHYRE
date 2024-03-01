@@ -178,7 +178,7 @@ def detect_ambig_with_gaps(nodes, gap_percentage=0.25):
         
         
     
-    if len(indices) <= 1:
+    if not indices:
         return []
     
     flag_start = None
@@ -190,6 +190,8 @@ def detect_ambig_with_gaps(nodes, gap_percentage=0.25):
 
     regions = []
 
+    # print(indices)
+
     for index, flag in indices:
         if flag:
             if flag_start is None:
@@ -197,7 +199,12 @@ def detect_ambig_with_gaps(nodes, gap_percentage=0.25):
                 flag_end = index
             elif flag_end + 1 == index:
                 flag_end = index
-        if flag_end is not None and (not flag or flag_end + 1 != index):
+            else:
+                flag_regions.append((flag_start, flag_end))
+                flag_start = index
+                flag_end = index
+
+        elif flag_end is not None:
             flag_regions.append((flag_start, flag_end))
             flag_start = None
             flag_end = None
@@ -213,7 +220,9 @@ def detect_ambig_with_gaps(nodes, gap_percentage=0.25):
             end = None
             flag_regions = []
     
-    if start is not None and end is not None:
+    if start is not None:
+        if flag_start is not None:
+            flag_regions.append((flag_start, flag_end))
         regions.append(((start, end), flag_regions))
 
     return regions
@@ -455,7 +464,7 @@ def do_folder(input_folder, args):
 
     arguments = []
     for aa_gene in listdir(aa_gene_input):
-        # if "EOG5HT779" in aa_gene:
+        # if "EOG59ZW48" in aa_gene:
         nt_gene = make_nt(aa_gene)
         
         arguments.append((aa_gene, nt_gene))
