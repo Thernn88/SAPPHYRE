@@ -574,8 +574,8 @@ def merge_args(par):
     par.add_argument(
         "-d",
         "--debug",
-        action="store_true",
-        help="Enable debug. When enabled displays each component of merged headers.",
+        action="count",
+        help="Enable debug. When enabled Output log of culls.",
     )
     par.add_argument(
         "-sr",

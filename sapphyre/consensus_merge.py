@@ -245,7 +245,7 @@ class do_gene():
         self.reporter_dupes = reporter_dupe_counts
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
-        self.do_gene(*args, **kwds)
+        return self.do_gene(*args, **kwds)
 
     def do_gene(self, aa_gene, nt_gene):
         raw_gene = aa_gene.split('.')[0]
@@ -325,6 +325,7 @@ class do_gene():
 
         nt_out = []
         candidates = []
+        move_log = []
 
         for header, seq in nt_seqs:
             if header.endswith("."):
@@ -343,6 +344,10 @@ class do_gene():
                     for i, x in moves:
                         seq_as_triplets[i] = seq_as_triplets[x]
                         seq_as_triplets[x] = "---"
+
+                    if self.debug:
+                        move_log.append((header+"_Before", seq))
+                        move_log.append((header+"_After", "".join(seq_as_triplets)))
 
                     seq = "".join(seq_as_triplets)
                 
@@ -397,7 +402,7 @@ class do_gene():
 
             
             nt_out.append((new_header, new_seq))
-            if self.debug:
+            if self.debug > 1:
                 for node in group:
                     nt_out.append((node.header.split("|")[3], node.sequence))
 
@@ -417,12 +422,13 @@ class do_gene():
 
             aa_out.append((new_header, cand_seq))
 
-            if self.debug:
+            if self.debug > 1:
                 for node in group:
                     aa_out.append((node.header.split("|")[3], node.sequence))
 
         writeFasta(path.join(self.aa_gene_output, aa_gene), aa_out, self.compress)
 
+        return move_log
 
 def do_folder(input_folder, args):
     print("Processing:", input_folder)
@@ -467,17 +473,24 @@ def do_folder(input_folder, args):
 
     arguments = []
     for aa_gene in listdir(aa_gene_input):
-        # if "EOG52NGGC" in aa_gene:
         nt_gene = make_nt(aa_gene)
         
         arguments.append((aa_gene, nt_gene))
         
     if args.processes > 1:
         with Pool(args.processes) as pool:
-            pool.starmap(gene_func, arguments)
+            logs = pool.starmap(gene_func, arguments)
     else:
+        logs = []
         for argument in arguments:
-            gene_func(*argument)
+            logs.append(gene_func(*argument))
+
+    if args.debug:
+        log_output = []
+        for log in logs:
+            if log:
+                log_output.extend(log)
+        writeFasta(path.join(input_folder, "move_log.fa"), log_output)
 
 
 
