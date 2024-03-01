@@ -261,7 +261,7 @@ def do_protein(
 
     for sequences_to_merge in taxa_groups.values():
         # Sort by start position
-        sequences_to_merge.sort(key=lambda x: x.start)
+        sequences_to_merge.sort(key=lambda x: (x.start, x.end))
         # Disperse sequences into clusters of overlap
         if special_merge:
             overlap_groups = non_overlap_chunks(sequences_to_merge)
