@@ -194,7 +194,6 @@ def detect_ambig_with_gaps(nodes, gap_percentage=0.25):
         if flag:
             if flag_start is None:
                 flag_start = index
-            elif flag_end is None:
                 flag_end = index
             elif flag_end + 1 == index:
                 flag_end = index
@@ -205,7 +204,6 @@ def detect_ambig_with_gaps(nodes, gap_percentage=0.25):
         
         if start is None:
             start = index
-        elif end is None:
             end = index
         elif end + 1 == index:
             end = index
@@ -457,7 +455,7 @@ def do_folder(input_folder, args):
 
     arguments = []
     for aa_gene in listdir(aa_gene_input):
-        # if "EOG59ZW48" in aa_gene:
+        # if "EOG5HT779" in aa_gene:
         nt_gene = make_nt(aa_gene)
         
         arguments.append((aa_gene, nt_gene))
