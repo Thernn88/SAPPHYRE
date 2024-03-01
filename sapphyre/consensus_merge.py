@@ -127,10 +127,11 @@ def do_consensus(nodes, threshold, ambig_regions):
 
         cand_coverage[i] = total_count
 
+        if len(set(counts.keys()) - {"-"}) == 1 and i * 3 in ambig_regions:
+            consensus_sequence += 'X'
+            continue
+
         if max_count / total_count > threshold:
-            if len(counts.keys()) == 1 and i * 3 in ambig_regions:
-                consensus_sequence += 'X'
-                continue
             consensus_sequence += max(counts, key=counts.get)
 
 
@@ -352,7 +353,7 @@ class do_gene():
 
         overlap_groups = disperse_into_overlap_groups(candidates)
 
-        head_to_ambig = defaultdict(list)
+        head_to_ambig = defaultdict(set)
         
         for region, group in overlap_groups:
             new_node, new_ref, old_taxa = get_header_parts([i.header for i in group])
@@ -386,8 +387,9 @@ class do_gene():
                     if len(triplet_column) == 1:
                         out_seq.append(triplet_column.pop())
                     else:
-                        head_to_ambig[new_header].append(i)
+                        head_to_ambig[new_header].add(i)
                         out_seq.append(get_IUPAC(triplet_column))
+
             
             new_seq = ("-" * min_start) + "".join(out_seq)
             new_seq = new_seq + ("-" * (len(new_seq) - msa_end))
