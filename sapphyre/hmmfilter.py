@@ -3,11 +3,12 @@ from itertools import combinations
 from math import ceil
 from multiprocessing import Pool
 from os import listdir, mkdir, path
-import re
+# import re
+from typing import Optional
 
 from msgspec import Struct
 from sapphyre_tools import (
-    constrained_distance,
+    #    constrained_distance,
     convert_consensus,
     dumb_consensus,
     dumb_consensus_dupe,
@@ -149,6 +150,29 @@ def compare_same_start(start_group, score_diff_internal,
     return [node for node in start_group if node is not None]
 
 
+def find_max_group(target_start: int, starts: list,
+                   min_index: int) -> Optional[int]:
+    lo, hi = min_index, len(starts) - 1
+    result = None
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        found_start = starts[mid]
+        if found_start <= target_start:
+            result = mid
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return result + 1  # exclusive, so incrememnt
+
+
+def compare_hit_to_group(hit_a, group_b, score_diff_internal,
+                         kicks, safe, gene, debug,
+                         filtered_sequences_log
+                         ) -> None:
+    for _b, hit_b in
+    return
+
+
 def internal_filter_gene2(nodes, debud, gene, min_overlap_internal, score_diff_internal, length):
     nodes_by_start = []
     for _ in range(length):
@@ -158,8 +182,30 @@ def internal_filter_gene2(nodes, debud, gene, min_overlap_internal, score_diff_i
     nodes_by_start = [group for group in nodes_by_start if group]
     for i in range(len(nodes_by_start)):
         nodes_by_start[i].sort(key=lambda node: node.end)
+    # everything with the same start index will overlap from that index
+    # so compare each group to itself and skip the range checks
     for start, start_group in enumerate(nodes_by_start):
         nodes_by_start[start] = compare_same_start(start_group)
+    # nodes_by_start = [group for group in nodes_by_start if group]  unneeded
+    # hopefully, the low hanging fruit has been culled
+    # coord search the remaining nodes for any more comparisons
+    # grab max start index for each group
+    starts = [group[0].start for group in nodes_by_start]
+    # candidates often share coordinates, so memoize the search result
+    # this should cut down on the number of redundant searches
+    memoized_group_indices = {}
+    for _a, group_a in enumerate(start_group[0:-1]):
+        if not group_a:
+            continue
+        for hit_a in group_a:
+            target_start = hit_a.end - min_overlap_internal
+            if target_start in memoized_group_indices:
+                max_group_index = memoized_group_indices[target_start]
+            else:
+                max_group_index = find_max_group(target_start, starts, _a)
+                memoized_group_indices[target_start] = max_group_index
+            for _b, group_b in enumerate(nodes_by_start[_a+1:], a+1):
+                compare_hit_to_group(hit_a, group_b)
 
 
 def internal_filter_gene(nodes, debug, gene, min_overlap_internal, score_diff_internal):
