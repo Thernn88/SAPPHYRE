@@ -23,12 +23,16 @@ def get_aln_path(orthoset_dir: str) -> str:
     """
     ALN_FOLDER = "aln"
     TRIMMED_FOLDER = "trimmed"
+    RAW_FOLDER = "raw"
 
     trimmed = path.join(orthoset_dir, TRIMMED_FOLDER)
+    aln = path.join(orthoset_dir, ALN_FOLDER)
     if path.exists(trimmed):
         return trimmed
-    else:
+    elif path.exists(aln):    
         return path.join(orthoset_dir, ALN_FOLDER)
+    else:
+        return path.join(orthoset_dir, RAW_FOLDER)
 
 
 def get_start(sequence: str) -> int:
