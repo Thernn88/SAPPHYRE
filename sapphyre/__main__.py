@@ -575,6 +575,7 @@ def merge_args(par):
         "-d",
         "--debug",
         action="count",
+        default=0,
         help="Enable debug. When enabled Output log of culls.",
     )
     par.add_argument(
