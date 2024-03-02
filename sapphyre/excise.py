@@ -124,7 +124,7 @@ def check_bad_regions(
                 output[b] = (a, b)
     return [*output.values()]
 
-def check_covered_bad_regions(consensus, min_ambiguous, ambig_char='X', max_distance=16):
+def check_covered_bad_regions(consensus, min_ambiguous, ambig_char='X', max_distance=18):
     x_regions = []
     x_indices = []
     current_group = []
@@ -377,7 +377,14 @@ def log_excised_consensus(
     raw_sequences = list(parseFasta(str(nt_in)))
     sequences = [x[1] for x in raw_sequences if x[0][-1] != "."]
 
-    nodes = [NODE(header, seq, *find_index_pair(seq, "-"), []) for header, seq in raw_sequences if header[-1] != "."]
+    nodes = []
+    for header, seq in raw_sequences:
+        if header[-1] == ".":
+            continue
+        start, end = find_index_pair(seq, "-")
+        nodes.append(
+            NODE(header, seq, start, end,  [])
+        )
 
     # Make consensus sequence. Use dupe counts if available.
     if prepare_dupes and reporter_dupes:
@@ -395,7 +402,6 @@ def log_excised_consensus(
 
     kicked_headers = set()
     if bad_regions:
-
         for region in bad_regions:
             sequences_in_region = []
             sequences_out_of_region = []
@@ -411,7 +417,7 @@ def log_excised_consensus(
                     else:
                         sequences_out_of_region.append(nodes[i].clone())
 
-            if len(sequences_in_region) > excise_maximum_depth or len(sequences_in_region) < 2:
+            if len(sequences_in_region) > excise_maximum_depth:
                 continue
 
             # Simple assembly of ambig sequences
