@@ -100,7 +100,7 @@ def get_header_parts(headers):
     return node_part, ref_part, headers[0].split("|")[2]
 
 
-def do_consensus(nodes, threshold, ambig_regions):
+def do_consensus(nodes, threshold):
     if not nodes:
         return ""
 
@@ -127,10 +127,6 @@ def do_consensus(nodes, threshold, ambig_regions):
 
         cand_coverage[i] = total_count
 
-        if len(set(counts.keys()) - {"-"}) == 1 and i * 3 in ambig_regions:
-            consensus_sequence += 'X'
-            continue
-
         if max_count / total_count > threshold:
             consensus_sequence += max(counts, key=counts.get)
 
@@ -140,7 +136,7 @@ def do_consensus(nodes, threshold, ambig_regions):
         else:
             consensus_sequence += 'X'
 
-    return consensus_sequence, cand_coverage
+    return consensus_sequence
 
 
 def detect_ambig_with_gaps(nodes, gap_percentage=0.25):
@@ -358,9 +354,7 @@ class do_gene():
 
         overlap_groups = disperse_into_overlap_groups(candidates)
 
-        head_to_ambig = defaultdict(set)
-        
-        for region, group in overlap_groups:
+        for _, group in overlap_groups:
             new_node, new_ref, old_taxa = get_header_parts([i.header for i in group])
 
             new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}"
@@ -392,7 +386,6 @@ class do_gene():
                     if len(triplet_column) == 1:
                         out_seq.append(triplet_column.pop())
                     else:
-                        head_to_ambig[new_header].add(i)
                         out_seq.append(get_IUPAC(triplet_column))
 
             
@@ -418,7 +411,7 @@ class do_gene():
             new_seq = []
             
 
-            cand_seq, x = do_consensus(group, self.threshold, head_to_ambig[new_header])
+            cand_seq = do_consensus(group, self.threshold)
 
             aa_out.append((new_header, cand_seq))
 
