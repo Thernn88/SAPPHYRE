@@ -131,10 +131,12 @@ def do_consensus(nodes, threshold):
             consensus_sequence += max(counts, key=counts.get)
 
 
-        elif len(set(counts.keys()) - {"-"}) == 1:
-            consensus_sequence += "-"
         else:
-            consensus_sequence += 'X'
+            key_set = set(counts.keys()) - {"-"}
+            if len(key_set) == 1:
+                consensus_sequence += key_set.pop()
+            else:
+                consensus_sequence += 'X'
 
     return consensus_sequence
 
@@ -377,8 +379,10 @@ class do_gene():
                     out_seq.append(most_common[0])
                     continue
 
-                if len(set(column) - {"---"}) == 1:
-                    out_seq.append("---")
+                key_set = set(column) - {"---"}
+
+                if len(key_set) == 1:
+                    out_seq.append(key_set.pop())
                     continue
 
                 for x in range(0,3):
