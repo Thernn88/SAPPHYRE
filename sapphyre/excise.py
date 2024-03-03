@@ -408,6 +408,10 @@ def log_excised_consensus(
             a, b = region         
 
             for i, node in enumerate(nodes):
+
+                if node.header in kicked_headers:
+                    continue
+
                 overlap_coords = get_overlap(a, b, node.start, node.end, 1)
                 if overlap_coords:
                     overlap_amount = overlap_coords[1] - overlap_coords[0]
