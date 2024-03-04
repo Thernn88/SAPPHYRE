@@ -263,6 +263,11 @@ def hmmsearch_args(par):
         action="store_true",
         help="Overwrite existing files.",
     )
+    par.add_argument(
+        "--full",
+        action="store_true",
+        help="Pass the full parent sequences to hmmsearch",
+    )
 
 def hmmsearch(args):
     from . import hmmsearch

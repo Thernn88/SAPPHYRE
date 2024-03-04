@@ -132,7 +132,7 @@ def internal_filter_gene(this_gene_hits, debug, min_overlap_internal=0.9, score_
     return [i[0] for i in this_gene_hits if i[0] is not None], filtered_sequences_log
 
 
-def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location, overwrite, debug, verbose):
+def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_location, overwrite, debug, verbose):
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     printv(f"Processing: {gene}", verbose, 2)
     aligned_sequences = []
@@ -145,30 +145,72 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location
     nt_sequences = {}
     parents = {}
     children = {}
-    node_has_frames_already = hits_have_frames_already.copy()
-    for hit in diamond_hits:
-        unaligned_sequences = []
-        raw_sequence = hit.seq
-        frame = hit.frame
-        query = f"{hit.node}|{frame}"
-        unaligned_sequences.append((query, raw_sequence))
-        parents[query] = hit
+    unaligned_sequences = []
+    if is_full:
+        fallback = {}
+        nodes_in_gene = set()
+        for hit in diamond_hits:
+            nodes_in_gene.add(hit.node)
+            query = f"{hit.node}|{hit.frame}"
+            parents[query] = hit
 
-        for shift_by in [1, 2]:
-            shifted = shift(frame, shift_by)
-            if not shifted in node_has_frames_already[hit.node]:
-                new_query = f"{hit.node}|{shifted}"
-                unaligned_sequences.append((new_query, raw_sequence[shift_by:]))
-                node_has_frames_already[hit.node].add(shifted)
-                children[new_query] = hit
-            
+            if hit.node not in fallback:
+                fallback[hit.node] = hit
         
-        new_sequences = []
-        for header, seq in unaligned_sequences:
-            nt_sequences[header] = seq
-            new_sequences.append((header, str(Seq(seq).translate())))
+        for node in nodes_in_gene:
+            parent_seq = this_seqs[node]
 
-        aligned_sequences.extend(new_sequences)  #
+            # Forward frame 1
+            query = f"{node}|1"
+            nt_sequences[query] = parent_seq
+            unaligned_sequences.append((query, parent_seq))
+
+            # Forward 2 & 3
+            for shift_by in [1, 2]:
+                shifted = shift(1, shift_by)
+                new_query = f"{node}|{shifted}"
+                nt_sequences[new_query] = parent_seq[shift_by:]
+                unaligned_sequences.append((new_query, parent_seq[shift_by:]))
+                if new_query in parents:
+                    continue
+                children[new_query] = fallback[node]
+
+            # Reversed frame 1
+            bio_revcomp_seq = bio_revcomp(parent_seq)
+            query = f"{node}|-1"
+            nt_sequences[query] = bio_revcomp_seq
+            unaligned_sequences.append((query, bio_revcomp_seq))
+
+            # Reversed 2 & 3
+            for shift_by in [1, 2]:
+                shifted = shift(-1, shift_by)
+                new_query = f"{node}|{shifted}"
+                nt_sequences[new_query] = bio_revcomp_seq[shift_by:]
+                unaligned_sequences.append((new_query, bio_revcomp_seq[shift_by:]))
+                if new_query in parents:
+                    continue
+                children[new_query] = fallback[node]
+
+
+    else:
+        for hit in diamond_hits:
+            raw_sequence = hit.seq
+            frame = hit.frame
+            query = f"{hit.node}|{frame}"
+            unaligned_sequences.append((query, raw_sequence))
+            parents[query] = hit
+
+            for shift_by in [1, 2]:
+                shifted = shift(frame, shift_by)
+                if not shifted in hits_have_frames_already[hit.node]:
+                    new_query = f"{hit.node}|{shifted}"
+                    unaligned_sequences.append((new_query, raw_sequence[shift_by:]))
+                    hits_have_frames_already[hit.node].add(shifted)
+                    children[new_query] = hit
+                
+    for header, seq in unaligned_sequences:
+        nt_sequences[header] = seq
+        aligned_sequences.append((header, str(Seq(seq).translate())))
         
     top_file = path.join(top_location, f"{gene}.aln.fa")
     if debug > 1 or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
@@ -221,7 +263,10 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location
 
                     sequence = nt_sequences[query][start: end]
 
-                    new_qstart = hit.qstart + start
+                    if is_full:
+                        new_qstart = start
+                    else:
+                        new_qstart = hit.qstart + start
 
 
                     parents_done.add(f"{hit.node}|{hit.frame}")
@@ -238,7 +283,10 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location
 
                 sequence = nt_sequences[query][start: end]
 
-                new_qstart = parent.qstart + start
+                if is_full:
+                    new_qstart = start
+                else:
+                    new_qstart = hit.qstart + start
 
 
                 clone = HmmHit(node=parent.node, score=score, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=parent.gene, query=parent.query, uid=parent.uid, refs=parent.refs, seq=sequence)
@@ -256,9 +304,13 @@ def hmm_search(gene, diamond_hits, hmm_output_folder, top_location, hmm_location
 
     return gene, [i[0] for i in output], new_outs, kick_log, filtered_sequences_log
 
-def get_arg(transcripts_mapped_to, hmm_output_folder, top_location, hmm_location, overwrite, debug, verbose):
+def get_arg(transcripts_mapped_to, head_to_seq, is_full, hmm_output_folder, top_location, overwrite, debug, verbose):
     for gene, transcript_hits in transcripts_mapped_to:
-        yield gene, transcript_hits, hmm_output_folder, top_location, hmm_location, overwrite, debug, verbose
+        this_seqs = {}
+        if is_full:
+            for hit in transcript_hits:
+                this_seqs[hit.node] = head_to_seq[hit.node]
+        yield gene, transcript_hits, this_seqs, is_full, hmm_output_folder, top_location, overwrite, debug, verbose
 
 
 def get_head_to_seq(nt_db, recipe):
@@ -293,6 +345,12 @@ def do_folder(input_folder, args):
         hits_db
     )
 
+    head_to_seq = {}
+    if args.full:
+        seq_db = RocksDB(path.join(input_folder, "rocksdb", "sequences", "nt"))
+        recipe = seq_db.get("getall:batches").split(",")
+        head_to_seq = get_head_to_seq(seq_db, recipe)
+
     hmm_output_folder = path.join(input_folder, "hmmsearch")
     
     if (args.debug or args.overwrite) and path.exists(hmm_output_folder):
@@ -303,7 +361,7 @@ def do_folder(input_folder, args):
     hmm_location = path.join(args.orthoset_input, args.orthoset, "hmms")
     top_location = path.join(input_folder, "top")
 
-    arguments = get_arg(transcripts_mapped_to, hmm_output_folder, top_location, hmm_location, args.overwrite, args.debug, args.verbose)
+    arguments = get_arg(transcripts_mapped_to, head_to_seq, args.full, hmm_output_folder, top_location, args.overwrite, args.debug, args.verbose)
 
     all_hits = []
 
