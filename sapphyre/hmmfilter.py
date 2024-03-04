@@ -363,7 +363,6 @@ def process_batch(
         for node in nodes:
             header_to_hits[node.bh_id].append(node)
         
-        kicked_headers = set()
         for node, hits in header_to_hits.items():
             for (i, hit), (j, hit_b) in combinations(enumerate(hits), 2):
 
