@@ -159,7 +159,7 @@ def do_internal(
 
     # if no candidates found, return from function
     if not candidates:
-        return [], set(), references
+        return candidates, failing, references, failing_dict, ""
 
     # make consensus sequences, use dupe counts if available
     if no_dupes:
