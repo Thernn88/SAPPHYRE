@@ -169,7 +169,10 @@ def compare_hit_to_group(hit_a, group_b, score_diff_internal,
                          kicks, safe, gene, debug,
                          filtered_sequences_log
                          ) -> None:
-    for _b, hit_b in
+    for _b, hit_b in enumerate(group_b):
+        if hit_a.bh_id == hit_b.bh_id:
+            continue
+
     return
 
 
