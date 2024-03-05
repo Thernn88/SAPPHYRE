@@ -226,14 +226,12 @@ def do_protein(
     ignore_overlap_chunks,
     special_merge,
     DNA_CODONS,
-    debug=None,
+    debug,
+    aa_order_feed = {},
 ):
     references, candidates = parse_fasta(gene_path)
 
     gene_out = []
-
-    def get_ref(header: str) -> str:
-        return header.split("|")[1]
 
     # Grab all the reference sequences
     comparison_sequences = defaultdict(list)
@@ -259,9 +257,15 @@ def do_protein(
         taxa = get_taxa(header)
         taxa_groups.setdefault(taxa, []).append(this_object)
 
-    for sequences_to_merge in taxa_groups.values():
+    for group_taxa, sequences_to_merge in taxa_groups.items():
         # Sort by start position
-        sequences_to_merge.sort(key=lambda x: (x.start, x.end))
+        if protein == "aa":
+            sequences_to_merge.sort(key=lambda x: (x.start, x.end))
+            aa_order = [i.header for i in sequences_to_merge]
+            aa_order_feed[group_taxa] = aa_order
+        else:
+            this_order = aa_order_feed[group_taxa]
+            sequences_to_merge.sort(key=lambda x: this_order.index(x.header))
         # Disperse sequences into clusters of overlap
         if special_merge:
             overlap_groups = non_overlap_chunks(sequences_to_merge)
@@ -552,7 +556,7 @@ def do_protein(
 
     output_path = path.join(output_dir, f"{protein}_merged", gene.rstrip(".gz"))
 
-    return output_path, gene_out
+    return output_path, gene_out, aa_order_feed
 
 
 def do_gene(
@@ -643,7 +647,7 @@ def do_gene(
         "---": "---",
     }
 
-    aa_path, aa_data = do_protein(
+    aa_path, aa_data, aa_order_feed = do_protein(
         "aa",
         aa_path,
         output_dir,
@@ -657,10 +661,10 @@ def do_gene(
         ignore_overlap_chunks,
         special_merge,
         DNA_CODONS,
-        debug=debug,
+        debug,
     )
 
-    nt_path, nt_data = do_protein(
+    nt_path, nt_data, _ = do_protein(
         "nt",
         nt_path,
         output_dir,
@@ -674,7 +678,8 @@ def do_gene(
         ignore_overlap_chunks,
         special_merge,
         DNA_CODONS,
-        debug=debug,
+        debug,
+        aa_order_feed = aa_order_feed,
     )
 
     if nt_data:
