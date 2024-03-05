@@ -61,6 +61,7 @@ class NODE(Struct):
     sequence: str | list
     start: int
     end: int
+    required: int
 
 
 def do_consensus(nodes, threshold, prepare_dupe_counts, reporter_dupe_counts):
@@ -132,51 +133,98 @@ def compare_same_start(start_group, score_diff_internal,
                 higher, lower = hit_a, hit_b
             else:
                 higher, lower = hit_b, hit_a
-            if lower.score == 0:
-                continue
-
-            if higher.score / lower.score < score_diff_internal:
-                if not is_same_kmer(hit_a.sequence[hit_a.start: hit_a.end],
-                                    hit_b.sequence[hit_a.start: hit_a.end]):
-                    kicks.add(lower.header)
-                    start_group[b] = None
-                    if debug:
-                        filtered_sequences_log.append(make_log_line, higher,
-                                                      lower, hit_a.start,
-                                                      hit_a.end, gene)
-                else:
-                    safe.add(lower.header)
+            if lower.score and higher.score / lower.score < score_diff_internal:
+                continue  # guard:
+            if not is_same_kmer(hit_a.sequence[hit_a.start: hit_a.end],
+                                hit_b.sequence[hit_a.start: hit_a.end]):
+                kicks.add(lower.header)
+                start_group[b] = None
+                if debug:
+                    filtered_sequences_log.append(make_log_line(higher,
+                                                  lower, hit_a.start,
+                                                  hit_a.end, gene))
+            else:
+                safe.add(lower.header)
 
     return [node for node in start_group if node is not None]
 
 
-def find_max_group(target_start: int, starts: list,
-                   min_index: int) -> Optional[int]:
-    lo, hi = min_index, len(starts) - 1
+def find_max_group(a_required: int, a_end: int, start_groups: list, lo: int) -> Optional[int]:
+    """
+    Finds the index of the last start group which can pass an overlap check
+    with the provided values for hit_a. Returns the index + 1 as an int, or None
+    if no matches are found.
+    Good candidate for caching. Might require abusing lexical scope
+    to access start groups without passing it as an arg.
+    """
+    hi = len(start_groups) - 1
     result = None
     while lo <= hi:
         mid = (lo + hi) // 2
-        found_start = starts[mid]
-        if found_start <= target_start:
+        hit_b = start_groups[mid][0]
+        if hit_b.end > a_end:
+            if hit_b.required < a_required:
+                required = hit_b.required
+            else:
+                required = a_required
+            # we only reach this variant if a_end is less than b_end,
+            # so we can assume the overlap ends at a_end without a comparison
+            # the start sort and the order of iteration guarantees that
+            # hit_b.start > hit_a.start, so use hit_b.start
+            if a_end - hit_b.start >= required:
+                result = mid
+                lo = mid + 1
+            else:
+                hi = mid - 1
+        else:  # overlap is 100% of hit_b, check cannot fail
             result = mid
             lo = mid + 1
-        else:
-            hi = mid - 1
-    return result + 1  # exclusive, so incrememnt
-
+    return result + 1
 
 def compare_hit_to_group(hit_a, group_b, score_diff_internal,
                          kicks, safe, gene, debug,
                          filtered_sequences_log
                          ) -> None:
     for _b, hit_b in enumerate(group_b):
-        if hit_a.bh_id == hit_b.bh_id:
+        if hit_a.bh_id == hit_b.bh_id or hit_b.header in kicks:
             continue
+        if hit_a.score > hit_b.score:
+            higher, lower = hit_a, hit_b
+        else:
+            higher, lower = hit_b, hit_a
+        if hit_b.end > hit_a.end:
+            if hit_b.required > hit_a.required:
+                required = hit_b.required
+            else:
+                required = hit_a.required
+            # The secondary sort ensures any sequence will have an equal or
+            # greater end coord then this one. The primary sort ensures both
+            # hit_b will have the same start coord, which is the start of the
+            # overlap. Same start and longer end means the length is longer,
+            # which means the required overlap is larger. If some overlap n
+            # cannot satisfy the check now, it never will, so return.
+            if hit_a.end - hit_b.start > required:
+                return
 
+        if hit_a.score > hit_b.score:
+            higher, lower = hit_a, hit_b
+        else:
+            higher, lower = hit_b, hit_a
+        if lower.score and higher.score / lower.score < score_diff_internal:
+            continue  # guard:
+        if not is_same_kmer(hit_a.sequence[hit_a.start: hit_a.end],
+                            hit_b.sequence[hit_a.start: hit_a.end]):
+            kicks.add(lower.header)
+            if debug:
+                filtered_sequences_log.append(make_log_line(higher,
+                                              lower, hit_a.start,
+                                              hit_a.end, gene))
+        else:
+            safe.add(lower.header)
     return
 
 
-def internal_filter_gene2(nodes, debud, gene, min_overlap_internal, score_diff_internal, length):
+def internal_filter_gene2(nodes, debug, gene, min_overlap_internal, score_diff_internal, length):
     nodes_by_start = []
     for _ in range(length):
         nodes_by_start.append([])
@@ -185,31 +233,35 @@ def internal_filter_gene2(nodes, debud, gene, min_overlap_internal, score_diff_i
     nodes_by_start = [group for group in nodes_by_start if group]
     for i in range(len(nodes_by_start)):
         nodes_by_start[i].sort(key=lambda node: node.end)
+    kicks = set()
+    safe = set()
+    filtered_sequences_log = []
     # everything with the same start index will overlap from that index
     # so compare each group to itself and skip the range checks
     for start, start_group in enumerate(nodes_by_start):
-        nodes_by_start[start] = compare_same_start(start_group)
-    # nodes_by_start = [group for group in nodes_by_start if group]  unneeded
+        nodes_by_start[start] = compare_same_start(start_group, score_diff_internal, kicks,
+                                                   safe, gene, debug, filtered_sequences_log)
     # hopefully, the low hanging fruit has been culled
     # coord search the remaining nodes for any more comparisons
-    # grab max start index for each group
-    starts = [group[0].start for group in nodes_by_start]
-    # candidates often share coordinates, so memoize the search result
-    # this should cut down on the number of redundant searches
-    memoized_group_indices = {}
-    for _a, group_a in enumerate(start_group[0:-1]):
+    for _a, group_a in enumerate(nodes_by_start[0:-1]):
+        previous_tup = None
+        previous_index = None
         if not group_a:
             continue
         for hit_a in group_a:
-            target_start = hit_a.end - min_overlap_internal
-            if target_start in memoized_group_indices:
-                max_group_index = memoized_group_indices[target_start]
+            overlap_tup = (hit_a.required, hit_a.end)
+            if overlap_tup == previous_tup:
+                max_group_index = previous_index
             else:
-                max_group_index = find_max_group(target_start, starts, _a)
-                memoized_group_indices[target_start] = max_group_index
-            for _b, group_b in enumerate(nodes_by_start[_a+1:], a+1):
-                compare_hit_to_group(hit_a, group_b)
-
+                previous_tup = overlap_tup
+                max_group_index = find_max_group(hit_a.required, hit_a.end, nodes_by_start, _a)
+                previous_index = max_group_index
+            if max_group_index is None:  # guard: no viable overlaps
+                continue
+            for _b, group_b in enumerate(nodes_by_start[_a+1:max_group_index], _a+1):
+                compare_hit_to_group(hit_a, group_b, score_diff_internal, kicks, safe,
+                                     gene, debug, filtered_sequences_log)
+    return [node for node in nodes if node.header not in kicks], filtered_sequences_log, kicks
 
 def internal_filter_gene(nodes, debug, gene, min_overlap_internal, score_diff_internal):
     nodes.sort(key=lambda hit: hit.score, reverse=True)
@@ -441,6 +493,7 @@ def process_batch(
                     sequence=sequence,
                     start=start,
                     end=end,
+                    required=ceil((end-start) * args.min_overlap_internal)
                 )
             )
 
@@ -500,8 +553,8 @@ def process_batch(
         length = len(ref_consensus)
         nodes, internal_log, internal_header_kicks = internal_filter_gene2(
             nodes, args.debug, gene, args.min_overlap_internal, args.score_diff_internal, length)
-        nodes, internal_log, internal_header_kicks = internal_filter_gene(
-            nodes, args.debug, gene, args.min_overlap_internal, args.score_diff_internal)
+        # nodes, internal_log, internal_header_kicks = internal_filter_gene(
+        #     nodes, args.debug, gene, args.min_overlap_internal, args.score_diff_internal)
         kicked_headers.update(internal_header_kicks)
         internal_kicks.extend(internal_log)
 
