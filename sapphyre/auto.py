@@ -123,6 +123,8 @@ def main(args):
             if not pal2nal.main(this_args):
                 print("Error in Pal2Nal.")
         elif script == "flexcull":
+            if args.map:
+                continue
             from . import flexcull
 
             if not flexcull.main(this_args):

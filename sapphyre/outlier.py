@@ -34,6 +34,9 @@ def main(argsobj):
             return
         from_folder = "blosum"
 
+        if argsobj.map:
+            return True
+
         printv("Simple Assembly To Ensure Consistency.", argsobj.verbose)
         if not hmmfilter.main(this_args, from_folder):
             print()

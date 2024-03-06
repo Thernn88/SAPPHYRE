@@ -132,7 +132,7 @@ def internal_filter_gene(this_gene_hits, debug, min_overlap_internal=0.9, score_
     return [i[0] for i in this_gene_hits if i[0] is not None], filtered_sequences_log
 
 
-def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_location, overwrite, debug, verbose):
+def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose):
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     printv(f"Processing: {gene}", verbose, 2)
     aligned_sequences = []
@@ -248,6 +248,18 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
 
             data[query].append((start - 1, end, score, ali_start, ali_end))
 
+    if map_mode:
+        high_score = 0
+        for query, results in data.items():
+            for result in results:
+                if result[2] > high_score:
+                    high_score = result[2]
+
+        score_thresh = high_score * 0.9
+
+        for query, results in data.items():
+            data[query] = [i for i in results if i[2] >= score_thresh]
+
     output = []
     new_outs = []
     parents_done = set()
@@ -261,7 +273,13 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                     start = start * 3
                     end = end * 3
 
-                    sequence = nt_sequences[query][start: end]
+                    if map_mode:
+                        sequence = nt_sequences[query]
+                        if len(sequence) % 3 != 0:
+                            sequence += ("N" * (3 - len(sequence) % 3))
+                        start = 0
+                    else:
+                        sequence = nt_sequences[query][start: end]
 
                     if is_full:
                         new_qstart = start
@@ -281,7 +299,13 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                 start = start * 3
                 end = end * 3
 
-                sequence = nt_sequences[query][start: end]
+                if map_mode:
+                    sequence = nt_sequences[query]
+                    if len(sequence) % 3 != 0:
+                        sequence += ("N" * (3 - len(sequence) % 3))
+                    start = 0
+                else:
+                    sequence = nt_sequences[query][start: end]
 
                 if is_full:
                     new_qstart = start
@@ -304,13 +328,13 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
 
     return gene, [i[0] for i in output], new_outs, kick_log, filtered_sequences_log
 
-def get_arg(transcripts_mapped_to, head_to_seq, is_full, hmm_output_folder, top_location, overwrite, debug, verbose):
+def get_arg(transcripts_mapped_to, head_to_seq, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose):
     for gene, transcript_hits in transcripts_mapped_to:
         this_seqs = {}
         if is_full:
             for hit in transcript_hits:
                 this_seqs[hit.node] = head_to_seq[hit.node]
-        yield gene, transcript_hits, this_seqs, is_full, hmm_output_folder, top_location, overwrite, debug, verbose
+        yield gene, transcript_hits, this_seqs, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose
 
 
 def get_head_to_seq(nt_db, recipe):
@@ -361,7 +385,7 @@ def do_folder(input_folder, args):
     hmm_location = path.join(args.orthoset_input, args.orthoset, "hmms")
     top_location = path.join(input_folder, "top")
 
-    arguments = get_arg(transcripts_mapped_to, head_to_seq, args.full, hmm_output_folder, top_location, args.overwrite, args.debug, args.verbose)
+    arguments = get_arg(transcripts_mapped_to, head_to_seq, args.full, hmm_output_folder, top_location, args.overwrite, args.map, args.debug, args.verbose)
 
     all_hits = []
 

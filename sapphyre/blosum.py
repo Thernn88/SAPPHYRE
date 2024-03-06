@@ -727,7 +727,7 @@ def do_folder(folder, args):
 
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     wanted_aa_path = Path(folder, "trimmed", "aa")
-    if wanted_aa_path.exists():
+    if not args.map and wanted_aa_path.exists():
         aa_input = wanted_aa_path
         nt_input = Path(folder, "trimmed", "nt")
     else:

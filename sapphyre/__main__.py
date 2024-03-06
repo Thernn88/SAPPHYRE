@@ -1361,14 +1361,6 @@ def subcmd_internal(subparser):
         help="Compress intermediate files",
     )
     parser.add_argument(
-        "-c",
-        "--compress",
-        default=False,
-        action="store_false",
-        dest="uncompress_intermediates",
-        help="Compress intermediate files",
-    )
-    parser.add_argument(
         "-out",
         "--output",
         type=str,
@@ -1456,6 +1448,12 @@ def main():
         action="store_false",
         default=True,
         help="Output fasta files as compressed files using gzip",
+    )
+    parser.add_argument(
+        "--map",
+        action="store_true",
+        default=True,
+        help="Enables map mode logic",
     )
     parser.add_argument(
         "-v",
