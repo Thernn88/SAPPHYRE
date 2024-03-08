@@ -8,7 +8,7 @@ from shutil import rmtree
 from tempfile import NamedTemporaryFile
 from time import time
 from typing import Any
-
+from json import loads
 import sapphyre_tools
 import wrap_rocks
 import xxhash
@@ -141,7 +141,7 @@ class SeqDeduplicator:
         CHOMP_LEN = 750
         CHOMP_CUTOFF = 10000
         ASSEMBLY_LEN = 750
-        for line_index, (header, parent_seq) in enumerate(parseFasta(fa_file_path, True)):
+        for line_index, (raw_header, parent_seq) in enumerate(parseFasta(fa_file_path, False)):
             if len(parent_seq) < self.minimum_sequence_length:
                 continue
             parent_seq = parent_seq.upper()
@@ -156,7 +156,9 @@ class SeqDeduplicator:
                 if self.rename:
                     header = f"NODE_{this_index}"
                 else:
-                    header = header.split(" ")[0]
+                    
+                    data = loads(" ".join(raw_header.split(" ")[1:]))
+                    header = f'{data["pub_og_id"]}|{data["organism_name"]}|{raw_header.split(" ")[0]}'
                 seq_hash = xxhash.xxh3_64(seq).hexdigest()
 
                 # Check for dupe, if so save how many times that sequence occured
