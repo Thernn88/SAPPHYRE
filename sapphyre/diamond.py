@@ -705,7 +705,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             if not extension_found:
                 out_path += ".tsv"
             system(
-                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {precision} --compress 1 --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --min-orf {min_orf} --max-hsps 0 -p {num_threads}",
+                f"diamond blastp -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {precision} --compress 1 --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --min-orf {min_orf} --max-hsps 0 -p {num_threads}",
             )
             out_path += ".gz"
             input_file.seek(0)
@@ -1037,6 +1037,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 output = [convert_and_cull(arg) for arg in arguments]
         passes = 0
         encoder = json.Encoder()
+        resthisult = set()
         for result in output:
             if is_assembly_or_genome:
                 hits, gene = result.hits, result.gene
@@ -1045,6 +1046,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
             out = []
             for hit in hits:
+                if hit.score > 100:
+                    resthisult.add(hit.node.split("|")[0])
                 if not is_assembly_or_genome:
                     hit = ReporterHit(
                         hit.node,
@@ -1056,6 +1059,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                         hit.uid,
                         hit.refs,
                     )
+                
                 hit.seq = head_to_seq[hit.node][hit.qstart - 1 : hit.qend]
                 if hit.frame < 0:
                     hit.seq = bio_revcomp(hit.seq)
@@ -1064,7 +1068,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
             passes += len(out)
             db.put_bytes(f"gethits:{gene}", encoder.encode(out))
-
+        with open(path.join(input_path, "genes_with_score.txt"), "w") as fp:
+            fp.write("\n".join(list(resthisult)))
         del head_to_seq
         if global_log:
             with open(path.join(input_path, "multi.log"), "w") as fp:
