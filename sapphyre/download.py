@@ -8,35 +8,16 @@ from subprocess import PIPE, Popen
 import openpyxl
 import requests
 from bs4 import BeautifulSoup
-from shutil import rmtree
 
 from .utils import printv
 
 
 def download_parallel_srr(arguments):
-    path_to_bin, srr_acession, path_to_download, verbose, fast, keep_prefetch, skip_prefetch = arguments
+    command, srr_acession, path_to_download, verbose = arguments
     printv(f"Download {srr_acession} to {path_to_download}...", verbose)
 
-    command = "fasterq-dump" if fast else "fastq-dump --gzip"
-
-    if skip_prefetch:
-        path_of_download = srr_acession
-    else:
-        with Popen(
-            f"{path_to_bin}prefetch {srr_acession} -O {path_to_download}",
-            shell=True,
-            stdout=PIPE,
-        ) as p:
-            try:
-                print(p.stdout.read().decode())
-            except UnicodeDecodeError:
-                print(
-                    "ErrUnicode decoding error, UTF-8 charset does not contain the bytecode for gotten character",
-                )
-                sys.exit(1)
-        path_of_download = os.path.join(path_to_download, f"{srr_acession}")
     with Popen(
-        f"{path_to_bin}{command} {path_of_download} --split-3 -O {path_to_download}",
+        f"{command} {srr_acession} -O {path_to_download}",
         shell=True,
         stdout=PIPE,
     ) as p:
@@ -47,9 +28,6 @@ def download_parallel_srr(arguments):
                 "ErrUnicode decoding error, UTF-8 charset does not contain the bytecode for gotten character",
             )
             sys.exit(1)
-    
-    if not keep_prefetch:
-        rmtree(path_of_download)
 
 
 def download_parallel_wgs(arguments):
@@ -66,9 +44,10 @@ def download_parallel_wgs(arguments):
 
 
 def main(args):
-    path_to_bin = ""
+    cmd = "fastq-dump --split-3 --gzip"
     if args.bin:
-        path_to_bin = args.bin
+        cmd = Path(args.bin, cmd)
+
     csvfile = Path(args.INPUT)
     this_suffix = csvfile.suffix
 
@@ -154,7 +133,7 @@ def main(args):
 
                         # TODO: verify download is successful
                         arguments.append(
-                            (path_to_bin, srr_acession, path_to_download, args.verbose, args.fast, args.keep_prefetch, args.skip_prefetch,),
+                            (cmd, srr_acession, path_to_download, args.verbose),
                         )
     elif "xls" in this_suffix:
         workbook = openpyxl.load_workbook(csvfile)
@@ -186,12 +165,8 @@ def main(args):
 
                     # TODO: verify download is successful
                     arguments.append(
-                        (path_to_bin, srr_accession, path_to_download, args.verbose, args.fast, args.keep_prefetch, args.skip_prefetch,)
+                        (cmd, srr_accession, path_to_download, args.verbose)
                     )
-    elif not this_suffix:
-        arguments = [
-            (path_to_bin, args.INPUT, path_to_download, args.verbose, args.fast, args.keep_prefetch, args.skip_prefetch,)
-        ]
     func = download_parallel_srr if not args.wgs else download_parallel_wgs
     with ThreadPoolExecutor(args.processes) as pool:
         pool.map(func, arguments, chunksize=1)
