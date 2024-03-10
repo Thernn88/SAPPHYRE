@@ -429,7 +429,7 @@ def process_folder(args, input_path):
                 to_kick.add(line.strip())
 
     target = set()
-    if args.target_file:
+    if args.sort:
         with open(taxa_folder.joinpath(args.target_file), encoding="utf-8-sig") as fp:
             for line in fp:
                 target.add(line.strip())
