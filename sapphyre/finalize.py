@@ -29,7 +29,6 @@ class GeneConfig:
     minimum_bp: int
     stopcodon: bool
     rename: bool
-    sort: bool
     taxa_folder: Path
     aa_file: Path
     nt_file: Path
@@ -429,7 +428,7 @@ def process_folder(args, input_path):
                 to_kick.add(line.strip())
 
     target = set()
-    if args.sort:
+    if args.target_file:
         with open(taxa_folder.joinpath(args.target_file), encoding="utf-8-sig") as fp:
             for line in fp:
                 target.add(line.strip())
@@ -464,7 +463,6 @@ def process_folder(args, input_path):
             args.minimum_bp,
             args.stopcodon,
             args.rename,
-            args.sort,
             taxa_folder,
             aa_file,
             nt_file,
