@@ -914,8 +914,8 @@ def subcmd_finalize(subparsers):
         "-t",
         "--target_file",
         type=str,
-        default="TARGET_GENES_SYRPHID.txt",
-        help="Percent",
+        default="",
+        help="Target file for sorting output genes",
     )
     par.add_argument("-n", "--names_csv", type=str, default="names.csv", help="Percent")
     par.add_argument(
@@ -931,12 +931,6 @@ def subcmd_finalize(subparsers):
         type=int,
         default=30,
         help="Adjustable value for kick columns. Integer value of minimum base pairs",
-    )
-    par.add_argument(
-        "-s",
-        "--sort",
-        action="store_true",
-        help="Sort taxa based on target file provided.",
     )
     par.add_argument(
         "-no-ref",
