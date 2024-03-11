@@ -270,7 +270,7 @@ def map_taxa_runs(
     this_index = IndexIter()
 
     printv(
-        f"Got rocksdb database. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Processing sequences",
+        f"Got rocksdb database. Took {time_keeper.lap():.2f}s. Processing sequences",
         verbose,
     )
 
