@@ -142,7 +142,7 @@ class SeqDeduplicator:
         this_index: IndexIter,
     ):
         CHOMP_LEN = 750
-        CHOMP_CUTOFF = 10000
+        CHOMP_CUTOFF = 200000
         ASSEMBLY_LEN = 750
 
         self.original_inputs.append(str(fa_file_path))
