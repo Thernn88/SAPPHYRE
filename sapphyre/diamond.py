@@ -621,7 +621,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             print("Aborting")
             return False
     printv(
-        f"Done! Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Grabbing reference data from Orthoset DB",
+        f"Done! Took: {time_keeper.lap():.2f}s. Grabbing reference data from Orthoset DB",
         args.verbose,
     )
     orthoset_db = RocksDB(orthoset_db_path)
