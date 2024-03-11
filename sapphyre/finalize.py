@@ -249,7 +249,7 @@ def clean_gene(gene_config: GeneConfig):
     column_stats = {}
     candidate_count = 0
 
-    if gene_config.gene in gene_config.target or not gene_config.sort:
+    if not gene_config.target or gene_config.gene in gene_config.target:
         if gene_config.count_taxa or gene_config.generating_names:
             taxon_count, gene_taxon_to_taxa, gene_taxa_present = taxon_present(
                 aa_content
