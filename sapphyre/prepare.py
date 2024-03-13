@@ -150,7 +150,10 @@ class SeqDeduplicator:
         if self.verbose > 1:
             for_loop = list(for_loop)
 
-        for line_index, (header, parent_seq) in tqdm(for_loop):
+        if self.verbose:
+            for_loop = tqdm(for_loop)
+
+        for line_index, (header, parent_seq) in for_loop:
             if len(parent_seq) < self.minimum_sequence_length:
                 continue
             parent_seq = parent_seq.upper()
