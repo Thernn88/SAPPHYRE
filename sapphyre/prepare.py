@@ -8,6 +8,7 @@ from shutil import rmtree
 from tempfile import NamedTemporaryFile
 from time import time
 from typing import Any
+from tqdm import tqdm
 
 import sapphyre_tools
 import wrap_rocks
@@ -120,7 +121,9 @@ class SeqDeduplicator:
         rename,
     ) -> None:
         self.original_positions = {}
+        self.original_inputs = []
         self.lines = []
+        self.file_index = 0
         self.minimum_sequence_length = minimum_sequence_length
         self.verbose = verbose
         self.nt_db = db
@@ -139,9 +142,18 @@ class SeqDeduplicator:
         this_index: IndexIter,
     ):
         CHOMP_LEN = 750
-        CHOMP_CUTOFF = 10000
+        CHOMP_CUTOFF = 200000
         ASSEMBLY_LEN = 750
-        for line_index, (header, parent_seq) in enumerate(parseFasta(fa_file_path, True)):
+
+        self.original_inputs.append(str(fa_file_path))
+        for_loop = enumerate(parseFasta(fa_file_path, True))
+        if self.verbose > 1:
+            for_loop = list(for_loop)
+
+        if self.verbose:
+            for_loop = tqdm(for_loop)
+
+        for line_index, (header, parent_seq) in for_loop:
             if len(parent_seq) < self.minimum_sequence_length:
                 continue
             parent_seq = parent_seq.upper()
@@ -207,11 +219,11 @@ class SeqDeduplicator:
                         this_header = f"{header}_{individual_index}"
                         next(individual_index)
 
-                    self.original_positions[this_header] = line_index
+                    self.original_positions[this_header] = (self.file_index, line_index)
 
                     self.lines.append(f">{this_header}\n{seq}\n")
                     next(this_index)
-
+        self.file_index += 1
 
 def map_taxa_runs(
     formatted_taxa_out,
@@ -261,7 +273,7 @@ def map_taxa_runs(
     this_index = IndexIter()
 
     printv(
-        f"Got rocksdb database. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Processing sequences",
+        f"Got rocksdb database. Took {time_keeper.lap():.2f}s. Processing sequences",
         verbose,
     )
 
@@ -286,6 +298,7 @@ def map_taxa_runs(
     this_is_assembly = deduper.this_assembly
     this_is_genome = deduper.this_genome
     original_positions = deduper.original_positions
+    original_inputs = deduper.original_inputs
     del deduper
     prior = len(fa_file_out)
     if not skip_entropy:
@@ -350,6 +363,7 @@ def map_taxa_runs(
     # Store the original positions
     if not (this_is_assembly or this_is_genome):
         nt_db.put_bytes("getall:original_positions", json.encode(original_positions))
+        nt_db.put_bytes("getall:original_inputs", json.encode(original_inputs))
 
     # Store the count of dupes in the database
     nt_db.put_bytes("getall:dupes", json.encode(duplicates))

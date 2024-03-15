@@ -522,9 +522,9 @@ def top_reference_realign(orthoset_raw_path, orthoset_aln_path, top_refs, target
         writeFasta(out_path, out)
         return
     
-    # if path.exists(out_path):
-    #     if len(out) == len(list(parseFasta(out_path, True))):
-    #         return
+    if path.exists(out_path):
+        if len(out) == len(list(parseFasta(out_path, True))):
+            return
     
     with NamedTemporaryFile(dir=gettempdir(), prefix=f"{gene}_") as tmp_prealign, NamedTemporaryFile(dir=gettempdir(), prefix=f"{gene}_") as tmp_result:
         tmp_prealign.write("\n".join([f">{i}\n{j}" for i, j in out]).encode())
@@ -621,7 +621,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             print("Aborting")
             return False
     printv(
-        f"Done! Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Grabbing reference data from Orthoset DB",
+        f"Done! Took: {time_keeper.lap():.2f}s. Grabbing reference data from Orthoset DB",
         args.verbose,
     )
     orthoset_db = RocksDB(orthoset_db_path)
