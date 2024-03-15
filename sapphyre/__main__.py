@@ -1428,7 +1428,7 @@ def main():
     parser.add_argument(
         "--map",
         action="store_true",
-        default=True,
+        default=False,
         help="Enables map mode logic",
     )
     parser.add_argument(

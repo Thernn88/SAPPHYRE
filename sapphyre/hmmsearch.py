@@ -234,6 +234,7 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
     if debug > 1:
         return "", [], [], [], []
     data = defaultdict(list)
+    high_score = 0
     with open(this_hmm_output) as f:
         for line in f:
             if line.startswith("#"):
@@ -246,24 +247,23 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
 
             start, end, ali_start, ali_end, score = int(line[17]), int(line[18]), int(line[15]), int(line[16]), float(line[7])
 
+            high_score = max(high_score, score)
+
             data[query].append((start - 1, end, score, ali_start, ali_end))
 
     if map_mode:
-        high_score = 0
-        for query, results in data.items():
-            for result in results:
-                if result[2] > high_score:
-                    high_score = result[2]
-
         score_thresh = high_score * 0.9
 
+        queries = []
         for query, results in data.items():
-            data[query] = [i for i in results if i[2] >= score_thresh]
+            queries.append((query, [i for i in results if i[2] >= score_thresh]))
+    else:
+        queries = data.items()
 
     output = []
     new_outs = []
     parents_done = set()
-    for query, results in data.items():
+    for query, results in queries:
         
         if query in parents:
             hit = parents[query]
