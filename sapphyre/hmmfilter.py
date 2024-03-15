@@ -62,6 +62,9 @@ class NODE(Struct):
     start: int
     end: int
     index: int
+    kicks: list
+    saves: list
+    has_been_saved: bool
 
 def do_consensus(nodes, threshold, prepare_dupe_counts, reporter_dupe_counts):
     if not nodes:
@@ -112,34 +115,33 @@ class Leaf:
         self.length = length
 
 
-def compare_hit_to_leaf(hit_a, leaf, overlap, score_diff, kicks, safe, debug, gene, filtered_sequences_log) -> None:
-    for b, hit_b in enumerate(leaf.children):
-        if hit_b is None:
-            continue
-        if hit_b.index in kicks:
-            continue
+def compare_hit_to_leaf(hit_a, targets, overlap, score_diff, kicks, safe, debug, gene, filtered_sequences_log) -> None:
+    for hit_b in targets:
+        # if hit_b is None:
+        #     continue
+        # if hit_b.index in kicks:
+        #     continue
         if hit_a.bh_id == hit_b.bh_id:
             continue
-        if hit_a.score > hit_b.score:
-            higher, lower = hit_a, hit_b
-        else:
-            higher, lower = hit_b, hit_a
-        if lower.index in safe:
-            continue
-        if higher.score / lower.score < score_diff:
+        # if hit_a.score > hit_b.score:
+        # higher, lower = hit_a, hit_b
+        # else:
+        #     higher, lower = hit_b, hit_a
+        # if lower.index in safe:
+        #     continue
+        if hit_a.score / hit_b.score < score_diff:
             continue
         kmer_a = hit_a.sequence[overlap[0]:overlap[1]]
         kmer_b = hit_b.sequence[overlap[0]:overlap[1]]
         if not is_same_kmer(kmer_b, kmer_a):
-            kicks.add(lower.index)
+            hit_a.kicks.a(hit_b.index)
             if debug:
                 filtered_sequences_log.append(
-                    f"{gene},{lower.header},{lower.score},{lower.start},{lower.end},Internal Overlapped with Highest Score,{gene},{higher.header},{higher.score},{higher.start},{higher.end}\nHit A Kmer: {kmer_a}\nHit B Kmer: {kmer_b}\n"
+                    f"{gene},{hit_b.header},{hit_b.score},{hit_b.start},{hit_b.end},Internal Overlapped with Highest Score,{gene},{hit_a.header},{hit_a.score},{hit_a.start},{hit_a.end}\nHit A Kmer: {kmer_a}\nHit B Kmer: {kmer_b}\n"
                 )
         else:
-            safe.add(lower.index)
+            safe.add(hit_b.index)
 
-# def is_valid_interval(node, interval, min_overlap) -> bool:
 
 def internal_filter_gene2(nodes, debug, gene, min_overlap_internal, score_diff_internal):
     intervals = {(node.start, node.end) for node in nodes}
@@ -148,22 +150,24 @@ def internal_filter_gene2(nodes, debug, gene, min_overlap_internal, score_diff_i
     for i, node in enumerate(nodes):
         node.index = i
         intervals[(node.start, node.end)].children.append(node)
-    kicks = set()
+    kicks = [False] * len()
     safe = set()
     filtered_sequence_log = []
     memoize = {}
-    for _index, node in enumerate(nodes):
+    for node in nodes:
         if node.index in kicks:
             continue
-        if (node.start, node.end) not in memoize:
-            overlap = tree.overlap(node.start, node.end)
+        index_tuple = (node.start, node.end)
+        if index_tuple not in memoize:
+            overlap = tree.overlap(*index_tuple)
             node_length = node.end - node.start
             working = []
+            # print(f"made for ({node.start}, {node.end})")
             for interval in overlap:
                 interval_start, interval_end = interval[0], interval[1]
-                interval_length = interval_end - interval_start
-                if interval_length < node_length:
-                    length = interval_length
+                i_length = interval.length()
+                if i_length < node_length:
+                    length = i_length
                 else:
                     length = node_length
                 coords = get_overlap(node.start, node.end, interval_start, interval_end, 0)
@@ -172,8 +176,15 @@ def internal_filter_gene2(nodes, debug, gene, min_overlap_internal, score_diff_i
                     continue
                 working.append(((interval[0], interval[1]), coords))
                 memoize[(node.start, node.end)] = working
+        # else:
+        #     print(f"hit for ({node.start}, {node.end})")
+        score_target = node.score / score_diff_internal
         for interval, coords in memoize[(node.start, node.end)]:
-                compare_hit_to_leaf(node, intervals[(interval[0], interval[1])], coords, score_diff_internal, kicks, safe, debug, gene, filtered_sequence_log)
+                targets = (hit_b for hit_b in intervals[(interval[0], interval[1])].children if
+                           hit_b.score <= score_target and
+                           hit_b.index not in kicks and
+                           hit_b.index not in safe)
+                compare_hit_to_leaf(node, targets, coords, score_diff_internal, kicks, safe, debug, gene, filtered_sequence_log)
 
     return [node for node in nodes if node.index not in kicks], [node.header for node in nodes if node.index in kicks], filtered_sequence_log
 
@@ -400,12 +411,15 @@ def process_batch(
             nodes.append(
                 NODE(
                     header=header,
-                    bh_id = base_to_id.setdefault(base, len(nodes)),
+                    bh_id=base_to_id.setdefault(base, len(nodes)),
                     score=this_gene_scores.get(score_key, 0),
                     sequence=sequence,
                     start=start,
                     end=end,
                     index=0,
+                    kicks=[],
+                    saves=[],
+                    has_been_saved=False
                 )
             )
 
@@ -458,8 +472,8 @@ def process_batch(
                             )
         
         nodes = [i for i in nodes if i.header not in kicked_headers]
-        # nodes, internal_header_kicks, internal_log = internal_filter_gene2(nodes, args.debug, gene, args.min_overlap_internal, args.score_diff_internal)
-        nodes, internal_log, internal_header_kicks = internal_filter_gene(nodes, args.debug, gene, args.min_overlap_internal, args.score_diff_internal)
+        nodes, internal_header_kicks, internal_log = internal_filter_gene2(nodes, args.debug, gene, args.min_overlap_internal, args.score_diff_internal)
+        # nodes, internal_log, internal_header_kicks = internal_filter_gene(nodes, args.debug, gene, args.min_overlap_internal, args.score_diff_internal)
         kicked_headers.update(internal_header_kicks)
         internal_kicks.extend(internal_log)
 
