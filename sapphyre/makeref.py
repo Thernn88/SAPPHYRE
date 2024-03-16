@@ -35,8 +35,8 @@ class Sequence:
     ) -> None:
         self.raw_head = raw_head
         self.header = header
-        self.aa_sequence = aa_sequence
-        self.nt_sequence = nt_sequence
+        self.aa_sequence = aa_sequence.replace("-","")
+        self.nt_sequence = nt_sequence.replace("-","")
         self.taxon = taxon
         self.gene = gene
         self.id = id
