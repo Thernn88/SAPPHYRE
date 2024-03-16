@@ -1,3 +1,4 @@
+import gzip
 import os
 import sqlite3
 from collections import Counter, defaultdict
@@ -5,7 +6,7 @@ from itertools import count
 from math import ceil
 from multiprocessing.pool import Pool
 from pathlib import Path
-from shutil import rmtree
+from shutil import copyfileobj, rmtree
 from tempfile import NamedTemporaryFile
 
 import wrap_rocks
@@ -15,7 +16,7 @@ from msgspec import json
 from sapphyre_tools import constrained_distance, find_index_pair, get_overlap
 
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import parseFasta, printv, writeFasta
+from .utils import gettempdir, parseFasta, printv, writeFasta
 
 
 class Sequence:
@@ -52,12 +53,15 @@ class Sequence:
         """
         return self.header, self.aa_sequence
 
-    def seq_with_regen_data(self):
+    def seq_with_regen_data(self, nt = False):
         """
         Returns the sequence with the organism name and pub_og_id present for regeneration
         """
+
+        sequence = self.nt_sequence if nt else self.aa_sequence
+
         if self.raw_head:
-            return f">{self.raw_head}\n{self.aa_sequence}\n"
+            return f">{self.raw_head}\n{sequence}\n"
 
         return (
             f">{self.header}"
@@ -66,7 +70,7 @@ class Sequence:
             + '", "pub_og_id": "'
             + self.gene
             + '"}'
-            + f"\n{self.aa_sequence}\n"
+            + f"\n{sequence}\n"
         )
 
     def __str__(self) -> str:
@@ -79,9 +83,12 @@ class Sequence_Set:
         self.sequences = []
         self.aligned_sequences = {}
         self.has_aligned = False
+        self.has_nt = False
 
     def add_sequence(self, seq: Sequence) -> None:
         """Adds a sequence to the set."""
+        if not self.has_nt and seq.nt_sequence:            
+            self.has_nt = True
         self.sequences.append(seq)
 
     def add_aligned_sequences(
@@ -141,7 +148,7 @@ class Sequence_Set:
 
         return list(data)
 
-    def get_gene_dict(self, raw=False) -> dict:
+    def get_gene_dict(self, raw=False, nt=False) -> dict:
         """Returns a dictionary with every gene and its corresponding sequences."""
         data = {}
         for sequence in self.sequences:
@@ -210,6 +217,10 @@ class Sequence_Set:
     def absorb(self, other):
         """Merges two sets together."""
         current_cursor = self.get_last_id() + 1
+        if not self.has_aligned and other.has_aligned:
+            self.has_aligned = other.has_aligned
+        if not self.has_nt and other.has_nt:
+            self.has_nt = other.has_nt
         for i, seq in enumerate(other.sequences):
             seq.id = current_cursor + i
             self.sequences.append(seq)
@@ -275,6 +286,7 @@ def generate_raw(
     pool,
     verbosity,
     raw_path,
+    raw_nt_path,
 ):
     """
     Generates the .fa files for each gene in the set.
@@ -283,12 +295,12 @@ def generate_raw(
 
     arguments = []
     for gene, fasta in sequences.items():
-        arguments.append((gene, fasta, raw_path, overwrite, verbosity))
+        arguments.append((gene, fasta, raw_path, raw_nt_path, overwrite, verbosity))
 
     pool.starmap(raw_function, arguments)
 
 
-def raw_function(gene, sequences, raw_path, overwrite, verbosity):
+def raw_function(gene, sequences, raw_path, raw_nt_path, overwrite, verbosity):
     """
     Writes the sequences to a .fa file.
     """
@@ -297,6 +309,12 @@ def raw_function(gene, sequences, raw_path, overwrite, verbosity):
         printv(f"Generating: {gene}", verbosity, 2)
         with raw_fa_file.open(mode="w") as fp:
             fp.write("".join([i.seq_with_regen_data() for i in sequences]))
+    if not raw_nt_path:
+        return
+    raw_nt_fa_file = raw_nt_path.joinpath(gene + ".nt.fa")
+    if not raw_nt_fa_file.exists() or overwrite:
+        with raw_nt_fa_file.open(mode="w") as fp:
+            fp.write("".join([i.seq_with_regen_data(nt=True) for i in sequences]))
 
 
 def generate_aln(
@@ -514,24 +532,44 @@ def make_diamonddb(set: Sequence_Set, overwrite, threads):
 SETS_DIR = None
 
 
-def generate_subset(file_paths, taxon_to_kick: set):
+def generate_subset(file_paths, taxon_to_kick: set, nt_input: str = None):
     """
     Grabs alls sequences in a fasta file and inserts them into a subset.
     """
     subset = Sequence_Set("subset")
     index = count()
-    for file in file_paths:
+    for raw_file in file_paths:
+
+        nt_seqs = {}
+        if nt_input:
+            gene_as_nt = os.path.join(nt_input, os.path.basename(raw_file).replace(".aa.",".nt."))
+            if os.path.exists(gene_as_nt):
+                nt_seqs = dict(parseFasta(gene_as_nt))
+
+        temp_file = None
+        if raw_file.endswith(".gz"):
+            temp_file = NamedTemporaryFile(dir = gettempdir())
+            with gzip.open(raw_file, 'rb') as f_in, open(temp_file.name, 'wb') as f_out:
+                copyfileobj(f_in, f_out)
+            file = temp_file.name
+        else:
+            file = raw_file
+            
+
         for seq_record in SeqIO.parse(file, "fasta"):
             if "|" in seq_record.description and " " not in seq_record.description:
                 #Assuming legacy GENE|TAXON|ID
-                gene, taxon, header = seq_record.description.split("|")
+                if seq_record.description.endswith("."):
+                    continue
+
+                gene, taxon, header = seq_record.description.split("|")[:3]
                 if taxon.lower() not in taxon_to_kick:
                     subset.add_sequence(
                         Sequence(
                             None, # Want to generate new style
                             header,
                             str(seq_record.seq),
-                            "",
+                            nt_seqs.get(seq_record.description),
                             taxon,
                             gene,
                             next(index),
@@ -554,13 +592,13 @@ def generate_subset(file_paths, taxon_to_kick: set):
                             seq_record.description,
                             header,
                             seq,
-                            "",
+                            nt_seqs.get(seq_record.description),
                             taxon,
                             gene,
                             next(index),
                         )
                     )
-
+        del temp_file
     return subset
 
 
@@ -618,6 +656,7 @@ def main(args):
         printv("Fatal: Input file not defined or does not exist (-i)", verbosity, 0)
         return False
     align_method = args.align_method  # "clustal"
+    nt_input = args.nt_input
     threads = args.processes  # 2
     overwrite = args.overwrite  # False
     do_align = args.align or args.all
@@ -686,7 +725,7 @@ def main(args):
         printv("Input Detected: Folder containing Fasta", verbosity)
         file_paths = []
         for file in os.listdir(input_file):
-            if file.endswith(".fa"):
+            if file.endswith(".fa") or file.endswith(".fa.gz"):
                 file_paths.append(os.path.join(input_file, file))
 
         per_thread = ceil(len(file_paths) / threads)
@@ -694,6 +733,7 @@ def main(args):
             (
                 file_paths[i : i + per_thread],
                 kick,
+                nt_input,
             )
             for i in range(0, len(file_paths), per_thread)
         ]
@@ -721,6 +761,12 @@ def main(args):
     raw_path = set_path.joinpath("raw")
     raw_path.mkdir(exist_ok=True)
 
+    raw_nt_path = None
+
+    if this_set.has_nt:
+        raw_nt_path = set_path.joinpath("raw_nt")
+        raw_nt_path.mkdir(exist_ok=True)
+
     with Pool(threads) as pool:
         printv("Generating raw", verbosity)
         generate_raw(
@@ -729,6 +775,7 @@ def main(args):
             pool,
             verbosity,
             raw_path,
+            raw_nt_path,
         )
 
         if do_align or do_cull or do_hmm:

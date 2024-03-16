@@ -1045,6 +1045,13 @@ def subcmd_makeref(sp):
         help="Input file for current set (Either folder containing .fa, .fa or .sqlite)",
     )
     par.add_argument(
+        "-nt",
+        "--nt_input",
+        type=str,
+        help="Path to NT input",
+        default=None,
+    )
+    par.add_argument(
         "-aln",
         "--align",
         action="store_true",
