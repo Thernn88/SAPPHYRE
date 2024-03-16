@@ -429,11 +429,12 @@ class do_gene():
 
 def do_folder(input_folder, args):
     print("Processing:", input_folder)
-    gene_input_folder = None
-    for folder in ["excise","internal","hmmfilter", "blosum"]:
-        if path.exists(path.join(input_folder, "outlier", folder)):
-            gene_input_folder = path.join(input_folder, "outlier", folder)
-            break
+    gene_input_folder = path.join(input_folder, "outlier", "blosum") if args.map else None
+    if gene_input_folder is None:
+        for folder in ["excise","internal","hmmfilter", "blosum"]:
+            if path.exists(path.join(input_folder, "outlier", folder)):
+                gene_input_folder = path.join(input_folder, "outlier", folder)
+                break
 
     if gene_input_folder is None:
         printv(f"No gene input folder found in {input_folder}", args.verbose, 2)
