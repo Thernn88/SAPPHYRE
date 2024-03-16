@@ -670,89 +670,109 @@ def main(args):
     set_path.mkdir(exist_ok=True)
 
     #special case for reconcile inputs
+    inputs = None
     if os.path.exists(os.path.join(input_file, "aa_merged")):
         nt_input = os.path.join(input_file, "nt_merged")
         input_file = os.path.join(input_file, "aa_merged")
-
-    if input_file.split(".")[-1] == "fa":
-        printv("Input Detected: Single fasta", verbosity)
-        subset = generate_subset([input_file], kick)
-        this_set.absorb(subset)
-
-    elif input_file.split(".")[-1] in {
-        "sql",
-        "sqlite",
-        "sqlite3",
-        "db",
-        "db3",
-        "s3db",
-        "sl3",
-    }:
-        printv("Input Detected: Legacy SQL database", verbosity)
-        input_path = Path(input_file)
-        if not input_path.exists():
-            input_path = SETS_DIR.joinpath(input_file)
-
-        orthoset_db_con = sqlite3.connect(input_path)
-        cursor = orthoset_db_con.cursor()
-
-        nt_data = {}
-        query = """SELECT n.id, n.sequence FROM orthograph_ntseqs AS n"""
-
-        rows = cursor.execute(query)
-
-        nt_data = dict(rows)
-
-        cursor = orthoset_db_con.cursor()
-
-        query = """SELECT p.nt_seq, t.name, o.ortholog_gene_id, a.header, a.sequence,  a.id
-                FROM orthograph_orthologs         AS o
-            INNER JOIN orthograph_sequence_pairs    AS p
-            ON o.sequence_pair = p.id
-            INNER JOIN orthograph_aaseqs      AS a
-            ON a.id = p.aa_seq
-            INNER JOIN orthograph_taxa AS t
-            ON a.taxid = t.id
-           """
-
-        rows = cursor.execute(query)
-
-        for row in rows:
-            nt_seq = None
-            nt_id, taxon, gene, header, aa_seq, id = row
-            if taxon not in kick:
-                if nt_id in nt_data:
-                    nt_seq = nt_data[nt_id]
-                this_set.add_sequence(
-                    Sequence(None, header, aa_seq, nt_seq, taxon, gene, id)
-                )
     else:
-        printv("Input Detected: Folder containing Fasta", verbosity)
-        file_paths = []
-        for file in os.listdir(input_file):
-            if file.endswith(".fa") or file.endswith(".fa.gz"):
-                file_paths.append(os.path.join(input_file, file))
+        #detect super dir
+        if any(os.path.exists(os.path.join(input_file, i, "aa_merged")) for i in os.listdir(input_file)):
+            inputs = [(os.path.join(
+                            input_file, i, "aa_merged"
+                        ), os.path.join(
+                            input_file, i, "nt_merged"
+                        )) 
+                        for i in os.listdir(input_file) 
+                        if os.path.exists(
+                            os.path.join(input_file, i, "aa_merged")
+                        )]
 
-        per_thread = ceil(len(file_paths) / threads)
-        distributed_files = [
-            (
-                file_paths[i : i + per_thread],
-                kick,
-                nt_input,
-            )
-            for i in range(0, len(file_paths), per_thread)
-        ]
+    if not inputs:
+        inputs = [(input_file, nt_input)]
 
-        printv(
-            f"Generating {threads} subsets containing {per_thread} fasta files each",
-            verbosity,
-        )
-        with Pool(threads) as pool:
-            subsets = pool.starmap(generate_subset, distributed_files)
-
-        printv("Merging subsets", verbosity)
-        for subset in subsets:
+    for input_file, nt_input in inputs:
+        printv(f"Reading files from {input_file}", verbosity)
+        if input_file.split(".")[-1] == "fa" and os.path.isfile(input_file):
+            printv("Input Detected: Single fasta", verbosity)
+            subset = generate_subset([input_file], kick)
             this_set.absorb(subset)
+
+        elif input_file.split(".")[-1] in {
+            "sql",
+            "sqlite",
+            "sqlite3",
+            "db",
+            "db3",
+            "s3db",
+            "sl3",
+        }:
+            printv("Input Detected: Legacy SQL database", verbosity)
+            input_path = Path(input_file)
+            if not input_path.exists():
+                input_path = SETS_DIR.joinpath(input_file)
+
+            orthoset_db_con = sqlite3.connect(input_path)
+            cursor = orthoset_db_con.cursor()
+
+            nt_data = {}
+            query = """SELECT n.id, n.sequence FROM orthograph_ntseqs AS n"""
+
+            rows = cursor.execute(query)
+
+            nt_data = dict(rows)
+
+            cursor = orthoset_db_con.cursor()
+
+            query = """SELECT p.nt_seq, t.name, o.ortholog_gene_id, a.header, a.sequence,  a.id
+                    FROM orthograph_orthologs         AS o
+                INNER JOIN orthograph_sequence_pairs    AS p
+                ON o.sequence_pair = p.id
+                INNER JOIN orthograph_aaseqs      AS a
+                ON a.id = p.aa_seq
+                INNER JOIN orthograph_taxa AS t
+                ON a.taxid = t.id
+            """
+
+            rows = cursor.execute(query)
+
+            for row in rows:
+                nt_seq = None
+                nt_id, taxon, gene, header, aa_seq, id = row
+                if taxon not in kick:
+                    if nt_id in nt_data:
+                        nt_seq = nt_data[nt_id]
+                    this_set.add_sequence(
+                        Sequence(None, header, aa_seq, nt_seq, taxon, gene, id)
+                    )
+        else:
+            printv("Input Detected: Folder containing Fasta", verbosity)
+            file_paths = []
+            for file in os.listdir(input_file):
+                if file.endswith(".fa") or file.endswith(".fa.gz"):
+                    file_paths.append(os.path.join(input_file, file))
+
+            per_thread = ceil(len(file_paths) / threads)
+            distributed_files = [
+                (
+                    file_paths[i : i + per_thread],
+                    kick,
+                    nt_input,
+                )
+                for i in range(0, len(file_paths), per_thread)
+            ]
+
+            printv(
+                f"Generating {threads} subsets containing {per_thread} fasta files each",
+                verbosity,
+            )
+            with Pool(threads) as pool:
+                subsets = pool.starmap(generate_subset, distributed_files)
+
+            printv("Merging subsets", verbosity)
+            for subset in subsets:
+                this_set.absorb(subset)
+
+    printv("Got input!", verbosity)
 
     if do_count:
         printv("Generating taxon stats", verbosity)
