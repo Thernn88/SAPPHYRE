@@ -669,6 +669,11 @@ def main(args):
     set_path = SETS_DIR.joinpath(set_name)
     set_path.mkdir(exist_ok=True)
 
+    #special case for reconcile inputs
+    if os.path.exists(os.path.join(input_file, "aa_merged")):
+        nt_input = os.path.join(input_file, "nt_merged")
+        input_file = os.path.join(input_file, "aa_merged")
+
     if input_file.split(".")[-1] == "fa":
         printv("Input Detected: Single fasta", verbosity)
         subset = generate_subset([input_file], kick)
