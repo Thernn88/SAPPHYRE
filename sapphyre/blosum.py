@@ -616,10 +616,12 @@ def main_process(
     true_cluster_raw.sort(key=lambda x: x[0])
     before_true_clusters = grab_index_cluster(true_cluster_threshold, true_cluster_raw)
 
-    if not assembly:
-        candidates_dict = find_index_groups(candidate_records)
-    else:
-        candidates_dict = find_asm_index_groups(candidate_records)
+    candidates_dict = find_index_groups(candidate_records)
+    # if not assembly:
+    #     candidates_dict = find_index_groups(candidate_records)
+    # else:
+    #     candidates_dict = find_asm_index_groups(candidate_records)
+
     # calculate indices that have valid data columns
     rejected_indices = set()
     # ref_seqs = reference_sequences[1::2]
