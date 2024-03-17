@@ -679,7 +679,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
     out_path = path.join(diamond_path, f"{sensitivity}")
     extension_found = False
-    for extension in [".tsv", ".tsv.gz", ".tsv.tar.gz"]:
+    for extension in [".tsv.gz", ".tsv.tar.gz", ".tsv"]:
         possible = out_path + extension
         if path.exists(possible):
             out_path = possible
@@ -701,12 +701,16 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
             quiet = "--quiet" if args.verbose == 0 else ""
 
-            time_keeper.lap()  # Reset timer
             if not extension_found:
                 out_path += ".tsv"
+
+            time_keeper.lap()  # Reset timer
             system(
                 f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {precision} --compress 1 --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --min-orf {min_orf} --max-hsps 0 -p {num_threads}",
             )
+            if not path.exists(path.join(out_path)) and path.exists(path.join(out_path+".gz")):
+                out_path += ".gz"
+                
             input_file.seek(0)
 
         printv(
