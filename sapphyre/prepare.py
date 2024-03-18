@@ -20,30 +20,6 @@ from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
 
 
-def N_trim(parent_sequence: str, minimum_sequence_length: int):
-    """
-    Breaks sequence into chunks at Ns, and yields chunks that are longer than the minimum sequence length.
-    """
-    if "N" in parent_sequence:
-        # Get N indices and start and end of sequence
-        indices = (
-            [0]
-            + [i for i, ltr in enumerate(parent_sequence) if ltr == "N"]
-            + [len(parent_sequence)]
-        )
-
-        for i in range(0, len(indices) - 1):
-            start = indices[i]
-            end = indices[i + 1]
-
-            length = (end - start) - 1
-            if length >= minimum_sequence_length:
-                raw_seq = parent_sequence[start + 1 : end]
-                yield raw_seq
-    else:
-        yield parent_sequence
-
-
 class IndexIter:
     """
     Utilize the itertools count function but with the ability to call the index without incrementing it
@@ -160,10 +136,10 @@ class SeqDeduplicator:
                 continue
             parent_seq = parent_seq.upper()
 
-            n_sequences = N_trim(parent_seq, self.minimum_sequence_length)
             if not self.rename:
-                n_sequences = list(n_sequences)
-
+                n_sequences = [chunk for chunk in parent_seq.split("N") if len(chunk) >= self.minimum_sequence_length]
+            else:
+                n_sequences = (chunk for chunk in parent_seq.split("N") if len(chunk) >= self.minimum_sequence_length)
             individual_index = IndexIter()
             header_template = "NODE_{}"
             append_index_template = "{}_{}"
