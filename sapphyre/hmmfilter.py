@@ -15,6 +15,8 @@ from sapphyre_tools import (
     find_index_pair,
     get_overlap,
     is_same_kmer,
+    del_cols,
+    OverlapTree,
 )
 from wrap_rocks import RocksDB
 from msgspec import json
@@ -93,7 +95,7 @@ def do_consensus(nodes, threshold, prepare_dupe_counts, reporter_dupe_counts):
     return (("-" * left) + converted.replace("?", "-") + ("-" * right)), has_consensus
 
 
-def del_cols(sequence, columns, nt=False):
+def _del_cols(sequence, columns, nt=False):
     if nt:
         seq = [sequence[i: i+3] for i in range(0, len(sequence), 3)]
         for i in columns:
@@ -182,7 +184,9 @@ def compare_hit_to_leaf(hit_a, targets, overlap, score_diff) -> None:
 def internal_filter_gene2(nodes, debug, gene, min_overlap_internal, score_diff_internal):
     intervals = {(node.start, node.end) for node in nodes}
     intervals = {tup: Leaf(tup[1] - tup[0]) for tup in intervals}
-    tree = IntervalTree.from_tuples(intervals)
+    tree = OverlapTree()
+    tree.insert_vector(list(intervals.keys()))
+    # tree = IntervalTree.from_tuples(intervals)
     for i, node in enumerate(nodes):
         node.index = i
         intervals[(node.start, node.end)].children.append(node)
@@ -197,13 +201,13 @@ def internal_filter_gene2(nodes, debug, gene, min_overlap_internal, score_diff_i
         #     continue
         index_tuple = (node.start, node.end)
         if index_tuple not in memoize:
-            overlap = tree.overlap(*index_tuple)
+            overlap = tree.query_overlap(index_tuple)
             node_length = node.end - node.start
             working = []
             # print(f"made for ({node.start}, {node.end})")
             for interval in overlap:
                 interval_start, interval_end = interval[0], interval[1]
-                i_length = interval.length()
+                i_length = interval[1] - interval[0]
                 if i_length < node_length:
                     length = i_length
                 else:
@@ -601,14 +605,19 @@ def process_batch(
                 has_x_after += 1
                 reported_regions.append(f"{gene},{i}")
 
-        aa_output = [(header, del_cols(seq, x_positions[header])) for header, seq in aa_output if header not in kicked_headers]
+        aa_output = [(header, del_cols(seq, x_positions[header], False)) for header, seq in aa_output if header not in kicked_headers]
+        # aa_output = [(header, _del_cols(seq, x_positions[header])) for header, seq in aa_output if header not in kicked_headers]
         # Align kicks to the NT
+        # nt_sequences = [
+        #     (header, _del_cols(sequence, x_positions[header], True))
+        #     for header, sequence in parseFasta(nt_in)
+        #     if header not in kicked_headers
+        # ]
         nt_sequences = [
             (header, del_cols(sequence, x_positions[header], True))
             for header, sequence in parseFasta(nt_in)
             if header not in kicked_headers
         ]
-
         aa_out_dupes = []
         nt_out_dupes = []
         if batch_args.add_hmmfilter_dupes and batch_args.has_dupes:
