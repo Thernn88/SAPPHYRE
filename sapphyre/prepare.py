@@ -1,3 +1,4 @@
+from collections import Counter, defaultdict
 import os
 import re
 from collections.abc import Callable, Generator
@@ -131,13 +132,14 @@ class SeqDeduplicator:
         self.this_genome = False
         self.overlap_length = overlap_length
         self.rename = rename
+        self.transcript_mapped_to = {}
+        self.hash_set = set()
 
     def __call__(
         self,
         fa_file_path: str,
         duplicates: dict[str, int],
         rev_comp_save: dict[str, int],
-        transcript_mapped_to: dict[str, str],
         dupes: count,
         this_index: IndexIter,
     ):
@@ -163,21 +165,24 @@ class SeqDeduplicator:
                 n_sequences = list(n_sequences)
 
             individual_index = IndexIter()
+            header_template = "NODE_{}"
+            append_index_template = "{}_{}"
+            sequence_template = ">{}\n{}\n"
 
             for seq in n_sequences:
                 if self.rename:
-                    header = f"NODE_{this_index}"
+                    header = header_template.format(this_index)
                 else:
                     header = header.split(" ")[0]
                 seq_hash = xxhash.xxh3_64(seq).hexdigest()
 
                 # Check for dupe, if so save how many times that sequence occured
-                if seq_hash in transcript_mapped_to:
-                    duplicates.setdefault(transcript_mapped_to[seq_hash], 1)
-                    duplicates[transcript_mapped_to[seq_hash]] += 1
+                if seq_hash in self.hash_set:
+                    duplicates[self.transcript_mapped_to[seq_hash]] += 1
                     next(dupes)
                     continue
-                transcript_mapped_to[seq_hash] = header
+                self.transcript_mapped_to[seq_hash] = header
+                self.hash_set.add(seq_hash)
 
                 # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
                 # sequence so we don't have to rev-comp this unique sequence again
@@ -190,12 +195,12 @@ class SeqDeduplicator:
                     rev_comp_save[seq_hash] = rev_seq_hash
 
                 # Check for revcomp dupe, if so save how many times that sequence occured
-                if rev_seq_hash in transcript_mapped_to:
-                    duplicates.setdefault(transcript_mapped_to[rev_seq_hash], 1)
-                    duplicates[transcript_mapped_to[rev_seq_hash]] += 1
+                if rev_seq_hash in self.hash_set:
+                    duplicates[self.transcript_mapped_to[rev_seq_hash]] += 1
                     next(dupes)
                     continue
-                transcript_mapped_to[rev_seq_hash] = header
+                self.transcript_mapped_to[rev_seq_hash] = header
+                self.hash_set.add(seq_hash)
 
                 if (not self.this_assembly and not self.this_genome) and len(seq) >= ASSEMBLY_LEN:
                     self.this_assembly = True
@@ -207,21 +212,21 @@ class SeqDeduplicator:
 
                     for i in range(0, len(seq), CHOMP_LEN - self.overlap_length):
                         if self.rename:
-                            this_header = f"NODE_{this_index}"
+                            this_header = header_template.format(this_index)
                         else:
-                            this_header = f"{header}_{individual_index}"
+                            this_header = append_index_template.format(header, individual_index)
                             next(individual_index)
-                        self.lines.append(f">{this_header}\n{seq[i:i+CHOMP_LEN]}\n")
+                        self.lines.append(sequence_template.format(this_header, seq[i:i+CHOMP_LEN]))
                         next(this_index)
                 else:
                     this_header = header
                     if not self.rename and len(n_sequences) > 1:
-                        this_header = f"{header}_{individual_index}"
+                        this_header = append_index_template.format(header, individual_index)
                         next(individual_index)
 
                     self.original_positions[this_header] = (self.file_index, line_index)
 
-                    self.lines.append(f">{this_header}\n{seq}\n")
+                    self.lines.append(sequence_template.format(this_header, seq))
                     next(this_index)
         self.file_index += 1
 
@@ -266,9 +271,8 @@ def map_taxa_runs(
     nt_db = wrap_rocks.RocksDB(str(nt_db_path))
     prepared_file_destination = taxa_destination_directory.joinpath(formatted_taxa_out)
 
-    duplicates = {}
+    duplicates = Counter()
     rev_comp_save = {}
-    transcript_mapped_to = {}
     dupes = count()
     this_index = IndexIter()
 
@@ -289,7 +293,6 @@ def map_taxa_runs(
             fa_file_path,
             duplicates,
             rev_comp_save,
-            transcript_mapped_to,
             dupes,
             this_index,
         )
