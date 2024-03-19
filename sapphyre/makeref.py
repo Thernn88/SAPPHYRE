@@ -457,8 +457,10 @@ def aln_function(
             raise FileNotFoundError(
                 msg
             )
-
-        if align_method == "clustal":
+        
+        if len(list(parseFasta(raw_fa_file))) == 1:
+            writeFasta(aln_file, parseFasta(raw_fa_file))
+        elif align_method == "clustal":
             os.system(
                 f"clustalo -i '{raw_fa_file}' -o '{aln_file}'  --full --iter=5 --threads=1 --full-iter --force",
             )  # --verbose
