@@ -103,8 +103,7 @@ class SeqDeduplicator:
         self.this_genome = False
         self.overlap_length = overlap_length
         self.rename = rename
-        self.transcript_mapped_to = {}
-        self.hash_set = set()
+        self.transcript_mapped_to = defaultdict(dict)
 
     def __call__(
         self,
@@ -146,19 +145,21 @@ class SeqDeduplicator:
             sequence_template = ">{}\n{}\n"
 
             for seq in n_sequences:
+                seq_len = len(seq)
                 if self.rename:
                     header = header_template.format(this_index.x)
                 else:
                     header = header.split(" ")[0]
                 seq_hash = xxhash.xxh3_64(seq).hexdigest()
 
+                this_hash_subset = self.transcript_mapped_to[seq_len]
+
                 # Check for dupe, if so save how many times that sequence occured
-                if seq_hash in self.hash_set:
-                    duplicates[self.transcript_mapped_to[seq_hash]] += 1
+                if seq_hash in this_hash_subset:
+                    duplicates[this_hash_subset[seq_hash]] += 1
                     next(dupes)
                     continue
-                self.transcript_mapped_to[seq_hash] = header
-                self.hash_set.add(seq_hash)
+                this_hash_subset[seq_hash] = header
 
                 # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
                 # sequence so we don't have to rev-comp this unique sequence again
@@ -171,12 +172,11 @@ class SeqDeduplicator:
                     rev_comp_save[seq_hash] = rev_seq_hash
 
                 # Check for revcomp dupe, if so save how many times that sequence occured
-                if rev_seq_hash in self.hash_set:
-                    duplicates[self.transcript_mapped_to[rev_seq_hash]] += 1
+                if rev_seq_hash in this_hash_subset:
+                    duplicates[this_hash_subset[rev_seq_hash]] += 1
                     next(dupes)
                     continue
-                self.transcript_mapped_to[rev_seq_hash] = header
-                self.hash_set.add(seq_hash)
+                this_hash_subset[rev_seq_hash] = header
 
                 if (not self.this_assembly and not self.this_genome) and len(seq) >= ASSEMBLY_LEN:
                     self.this_assembly = True
