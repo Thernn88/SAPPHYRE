@@ -563,6 +563,7 @@ def generate_subset(file_paths, taxon_to_kick: set, nt_input: str = None):
                     continue
 
                 gene, taxon, header = seq_record.description.split("|")[:3]
+                header = gene+"_"+header
                 if taxon.lower() not in taxon_to_kick:
                     subset.add_sequence(
                         Sequence(
