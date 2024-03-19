@@ -29,9 +29,6 @@ class IndexIter:
         self.counter = count(1)
         self.x = next(self.counter)
 
-    def __str__(self) -> str:
-        return str(self.x)
-
     def __next__(self):
         self.x = next(self.counter)
 
@@ -91,7 +88,6 @@ def group_taxa_in_glob(
 class SeqDeduplicator:
     def __init__(
         self,
-        db: Any,
         minimum_sequence_length: int,
         verbose: int,
         overlap_length,
@@ -103,7 +99,6 @@ class SeqDeduplicator:
         self.file_index = 0
         self.minimum_sequence_length = minimum_sequence_length
         self.verbose = verbose
-        self.nt_db = db
         self.this_assembly = False
         self.this_genome = False
         self.overlap_length = overlap_length
@@ -131,10 +126,15 @@ class SeqDeduplicator:
         if self.verbose:
             for_loop = tqdm(for_loop)
 
+        requires = False
         for line_index, (header, parent_seq) in for_loop:
+            if line_index == 0:
+                requires = any(l.islower() for l in parent_seq)
             if len(parent_seq) < self.minimum_sequence_length:
                 continue
-            parent_seq = parent_seq.upper()
+
+            if requires:
+                parent_seq = parent_seq.upper()
 
             if not self.rename:
                 n_sequences = [chunk for chunk in parent_seq.split("N") if len(chunk) >= self.minimum_sequence_length]
@@ -147,7 +147,7 @@ class SeqDeduplicator:
 
             for seq in n_sequences:
                 if self.rename:
-                    header = header_template.format(this_index)
+                    header = header_template.format(this_index.x)
                 else:
                     header = header.split(" ")[0]
                 seq_hash = xxhash.xxh3_64(seq).hexdigest()
@@ -181,6 +181,9 @@ class SeqDeduplicator:
                 if (not self.this_assembly and not self.this_genome) and len(seq) >= ASSEMBLY_LEN:
                     self.this_assembly = True
 
+                if (not self.rename and len(n_sequences)) > 1 or len(seq) > CHOMP_CUTOFF:
+                    individual_index = IndexIter()
+
                 if len(seq) > CHOMP_CUTOFF:
                     if not self.this_genome:
                         self.this_genome = True
@@ -188,9 +191,9 @@ class SeqDeduplicator:
 
                     for i in range(0, len(seq), CHOMP_LEN - self.overlap_length):
                         if self.rename:
-                            this_header = header_template.format(this_index)
+                            this_header = header_template.format(this_index.x)
                         else:
-                            this_header = append_index_template.format(header, individual_index)
+                            this_header = append_index_template.format(header, individual_index.x)
                             next(individual_index)
                         self.lines.append(sequence_template.format(this_header, seq[i:i+CHOMP_LEN]))
                         next(this_index)
@@ -258,7 +261,6 @@ def map_taxa_runs(
     )
 
     deduper = SeqDeduplicator(
-        nt_db,
         minimum_sequence_length,
         verbose,
         overlap_length,
@@ -279,7 +281,6 @@ def map_taxa_runs(
     original_positions = deduper.original_positions
     original_inputs = deduper.original_inputs
     del deduper
-    prior = len(fa_file_out)
     if not skip_entropy:
         fa_file_out = sapphyre_tools.entropy_filter(fa_file_out, 0.7)
     recipe = []
@@ -333,9 +334,8 @@ def map_taxa_runs(
     nt_db.put("get:isassembly", str(this_is_assembly))
     nt_db.put("get:isgenome", str(this_is_genome))
 
-    sequence_count = str(this_index)
     printv(
-        f"Inserted {sequence_count} sequences. Found {next(dupes)} duplicates. Entropy removed {prior + 1 - final.x}. Took {time_keeper.lap():.2f}s.",
+        f"Inserted {this_index.x} sequences. Found {next(dupes)} duplicates. Entropy removed {this_index.x - final.x}. Took {time_keeper.lap():.2f}s.",
         verbose,
     )
 
