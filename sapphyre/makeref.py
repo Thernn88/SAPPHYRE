@@ -204,8 +204,9 @@ class Sequence_Set:
         )
         for seq in from_sequence_list:
             aaseq = seq.raw_seq() if self.has_aligned else seq.aa_sequence
-            diamond_data.append(f">{seq.header}\n{aaseq}\n")
-            target_to_taxon[seq.header] = seq.gene, seq.taxon, len(aaseq)
+            key = f"{seq.gene}|{seq.header}"
+            diamond_data.append(f">{key}\n{aaseq}\n")
+            target_to_taxon[key] = seq.gene, seq.taxon, len(aaseq)
 
             taxon_to_sequences.setdefault(seq.gene, {})[seq.taxon] = aaseq
 
@@ -563,7 +564,7 @@ def generate_subset(file_paths, taxon_to_kick: set, nt_input: str = None):
                     continue
 
                 gene, taxon, header = seq_record.description.split("|")[:3]
-                header = gene+"_"+header
+                # header = gene+"_"+header
                 if taxon.lower() not in taxon_to_kick:
                     subset.add_sequence(
                         Sequence(
