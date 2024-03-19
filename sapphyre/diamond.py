@@ -360,7 +360,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
         hits = []
         for row in header_df.values:
             # These values are referenced multiple times
-            target = row[1]
+            key = row[1]
             sstart = row[7]
             send = row[8]
             frame = row[2]
@@ -377,7 +377,8 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                 qend, qstart = qstart, qend
 
             # Get the gene and taxon from the target orthoset data
-            gene, ref, _ = pargs.target_to_taxon[target]
+            target = key.split("|",1)[1]
+            gene, ref, _ = pargs.target_to_taxon[key]
 
             # Create a list of ReferenceHit objects starting with the
             # reference hit for the current row
@@ -509,11 +510,13 @@ def top_reference_realign(orthoset_raw_path, orthoset_aln_path, top_refs, target
         gene_path = path.join(orthoset_raw_path, gene+".fa")
         for header, seq in parseFasta(gene_path, True):
             header = header.split(" ")[0]
-            if target_to_taxon[header] in top_refs: 
+            key = f"{gene}|{header}"
+            if target_to_taxon[key] in top_refs: 
                 out.append((header, seq))
     else:
         for header, seq in parseFasta(gene_path, True):
-            if target_to_taxon[header] in top_refs: 
+            key = f"{gene}|{header}"
+            if target_to_taxon[key] in top_refs: 
                 out.append((header, seq.replace("-", "")))        
         
     out_path = path.join(top_path, gene+".aln.fa")
