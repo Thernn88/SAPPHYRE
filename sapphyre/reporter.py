@@ -100,6 +100,8 @@ class Hit(HmmHit, frozen=True):
             )
 
             # Get the aligned sequence with the highest score
+            if not hasattr(result, "traceback"):
+                continue #alignment failed, to investigate
             this_aa, ref_seq = result.traceback.query, result.traceback.ref
             if result.score > best_alignment_score:
                 best_alignment = (this_aa, ref_seq)
