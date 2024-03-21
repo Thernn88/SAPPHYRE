@@ -36,7 +36,7 @@ class Sequence:
         self.raw_head = raw_head
         self.header = header
         self.aa_sequence = aa_sequence.replace("-","")
-        self.nt_sequence = nt_sequence.replace("-","")
+        self.nt_sequence = nt_sequence if nt_sequence is None else nt_sequence.replace("-","")
         self.taxon = taxon
         self.gene = gene
         self.id = id
@@ -558,6 +558,20 @@ def generate_subset(file_paths, taxon_to_kick: set, nt_input: str = None):
         else:
             file = raw_file
             
+        this_counter = Counter()
+
+        #Grab headers
+        headers = set()
+        multiheaders = set()
+        with open(file) as fp:
+            for line in fp:
+                if line[0] != ">" or line[-1] == ".":
+                    continue
+                header = line.split("|")[2]
+                if header in headers:
+                    multiheaders.add(header)
+                    continue
+                headers.add(header)
 
         for seq_record in SeqIO.parse(file, "fasta"):
             if "|" in seq_record.description and " " not in seq_record.description:
@@ -566,6 +580,10 @@ def generate_subset(file_paths, taxon_to_kick: set, nt_input: str = None):
                     continue
 
                 gene, taxon, header = seq_record.description.split("|")[:3]
+                if header in multiheaders:
+                    this_counter[header] += 1
+                    header = f"{header}_{this_counter[header]}"
+                    
                 # header = gene+"_"+header
                 if taxon.lower() not in taxon_to_kick:
                     subset.add_sequence(
