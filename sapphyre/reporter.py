@@ -87,7 +87,6 @@ class Hit(HmmHit, frozen=True):
         best_alignment = None
         best_alignment_score = 0
         for number, ref in enumerate(self.refs):
-            # Trim to candidate alignment coords
             ref_seq = references[ref.query]
             ref_seq = ref_seq[ref.start - 1 : ref.end]
 
@@ -307,11 +306,12 @@ def print_core_sequences(
     for taxon, taxa_id, seq in sorted(core_sequences):
         # Filter out non-target hits and variants
         if target_taxon:
-            if taxa_id not in target_taxon:
+            if f"{gene}|{taxa_id}" not in target_taxon and taxa_id not in target_taxon: #TODO: Slow to handle both 
                 continue
         else:
             if taxon not in top_refs:
                 continue
+        
 
         header = gene + "|" + taxon + "|" + taxa_id + "|."
         result.append((header, seq))
