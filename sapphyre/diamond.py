@@ -511,12 +511,12 @@ def top_reference_realign(orthoset_raw_path, orthoset_aln_path, top_refs, target
         for header, seq in parseFasta(gene_path, True):
             header = header.split(" ")[0]
             key = f"{gene}|{header}"
-            if target_to_taxon[key] in top_refs: 
+            if target_to_taxon[key] in top_refs or header in target_to_taxon[key]: #TODO: Slow to handle both 
                 out.append((header, seq))
     else:
         for header, seq in parseFasta(gene_path, True):
             key = f"{gene}|{header}"
-            if target_to_taxon[key] in top_refs: 
+            if target_to_taxon[key] in top_refs or header in target_to_taxon[key]: #TODO: Slow to handle both 
                 out.append((header, seq.replace("-", "")))        
         
     out_path = path.join(top_path, gene+".aln.fa")
