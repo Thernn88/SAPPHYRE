@@ -614,7 +614,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         writeFasta(this_aa_path, aa_core_sequences + aa_output, oargs.compress)
 
         this_nt_path = path.join(oargs.nt_out_path, oargs.gene + ".nt.fa")
-        writeFasta(this_nt_path, nt_core_sequences + nt_output, oargs.compress)
+        writeFasta(this_nt_path, nt_output, oargs.compress)
 
     printv(
         f"{oargs.gene} took {t_gene_start.differential():.2f}s. Had {len(aa_output)} sequences",
