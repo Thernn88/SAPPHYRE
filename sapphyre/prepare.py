@@ -122,7 +122,7 @@ class SeqDeduplicator:
         if self.verbose > 1:
             for_loop = list(for_loop)
 
-        if self.verbose:
+        if self.verbose>1:
             for_loop = tqdm(for_loop)
 
         requires = False
