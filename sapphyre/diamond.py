@@ -358,7 +358,8 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
         pool_scores = {}
 
         hits = []
-        for row in header_df.values:
+        has_gene_key = False
+        for i, row in enumerate(header_df.values):
             # These values are referenced multiple times
             key = row[1]
             sstart = row[7]
@@ -367,6 +368,9 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             qstart = row[5]
             qend = row[6]
             evalue = row[3]
+
+            if i == 0:
+                has_gene_key = "|" in key
 
             # Skip if evalue is greater than threshold
             if evalue > pargs.evalue_threshold:
@@ -377,7 +381,11 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                 qend, qstart = qstart, qend
 
             # Get the gene and taxon from the target orthoset data
-            target = key.split("|",1)[1]
+            if has_gene_key:
+                target = key.split("|",1)[1]
+            else:
+                target = key
+
             gene, ref, _ = pargs.target_to_taxon[key]
 
             # Create a list of ReferenceHit objects starting with the
@@ -508,16 +516,14 @@ def top_reference_realign(orthoset_raw_path, orthoset_aln_path, top_refs, target
     gene_path = path.join(orthoset_aln_path, gene+".aln.fa")
     if not path.exists(gene_path):
         gene_path = path.join(orthoset_raw_path, gene+".fa")
-        for header, seq in parseFasta(gene_path, True):
-            header = header.split(" ")[0]
-            key = f"{gene}|{header}"
-            if target_to_taxon[key] in top_refs or header in target_to_taxon[key]: #TODO: Slow to handle both 
-                out.append((header, seq))
+        source = parseFasta(gene_path, True)
     else:
-        for header, seq in parseFasta(gene_path, True):
-            key = f"{gene}|{header}"
-            if target_to_taxon[key] in top_refs or header in target_to_taxon[key]: #TODO: Slow to handle both 
-                out.append((header, seq.replace("-", "")))        
+        source = parseFasta(gene_path, True)
+        
+    for header, seq in source:
+        key = f"{gene}|{header}"
+        if target_to_taxon.get(header, set()) in top_refs or target_to_taxon.get(key, set()) in top_refs:
+            out.append((header, seq.replace("-", "")))        
         
     out_path = path.join(top_path, gene+".aln.fa")
 
