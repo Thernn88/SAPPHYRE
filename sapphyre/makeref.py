@@ -586,6 +586,9 @@ def generate_subset(file_paths, taxon_to_kick: set, nt_input: str = None):
             for line in fp:
                 if line[0] != ">" or line[-1] == ".":
                     continue
+                if "{" in line:
+                    break
+                
                 header = line.split("|")[2]
                 if header in headers:
                     multiheaders.add(header)
