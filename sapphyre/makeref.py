@@ -230,7 +230,7 @@ class Sequence_Set:
             self.aligned_sequences[i] = seq
 
 
-def cull(sequences, percent):
+def cull(sequences, cull_result, percent):
     """
     Culls each edge of the sequences to a column where the percentage of non-gap characters is greater than or equal to the percent argument.
     """
@@ -245,10 +245,23 @@ def cull(sequences, percent):
         cull_end = i
         if sum(1 for seq in sequences if seq[1][i] != "-") / len(sequences) >= percent:
             break
+    
+    cull_end += 1 # include last bp
 
-    sequences = [(seq[0], seq[1][cull_start : cull_end + 1]) for seq in sequences]
+    out = []
+    for header, seq in sequences:
+        left_flank = seq[:cull_start]
+        right_flank = seq[cull_end:]
+        seq = seq[cull_start: cull_end]
 
-    return sequences
+        left_bp = len(left_flank) - left_flank.count("-")
+        right_bp = len(right_flank) - right_flank.count("-")
+
+        cull_result[header] = left_bp, right_bp
+
+        out.append(header, seq)
+
+    return out
 
 
 def generate_hmm(set: Sequence_Set, overwrite, threads, verbosity, set_path):
@@ -474,8 +487,9 @@ def aln_function(
         header = header.split(" ")[0]
         aligned_result.append((header, seq))
 
+    cull_result = {}
     if do_cull:
-        aligned_result = cull(aligned_result, cull_percent)
+        aligned_result = cull(aligned_result, cull_result, cull_percent)
 
     duped_headers = set()
     seq_hashes = set()
@@ -502,6 +516,11 @@ def aln_function(
     for seq in sequences:
         if seq.header in aligned_dict:
             seq.aa_sequence = aligned_dict[seq.header]
+            
+            if seq.nt_sequence and cull_result != {}:
+                left_bp_remove, right_bp_remove = cull_result[seq.header]
+                seq.nt_sequence = seq.nt_sequence[left_bp_remove:][:-right_bp_remove] # Ugly but works
+
             output.append(seq)
 
     return gene, output, duped_headers
