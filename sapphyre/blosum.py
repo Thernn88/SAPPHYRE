@@ -120,6 +120,7 @@ def find_index_groups(candidates: list) -> dict:
     for candidate in candidates:
         start, stop = find_index_pair(candidate.raw, "-")
         candidate.sequence = candidate.raw[start:stop]
+        candidate.id = candidate.id + f"$${start}$${stop}"
         candidate_dict[(start, stop)].append(candidate)
     return candidate_dict
 
@@ -131,16 +132,8 @@ def find_asm_index_groups(candidates: list) -> dict:
     candidate_dict = defaultdict(lst)
     for candidate in candidates:
         indices = asm_index_split(candidate.raw)
-        candidate_best = None
-        best_length = 0
         for index_pair in indices:
             start, stop = index_pair
-            length = stop - start
-            if length > best_length:
-                candidate_best = start, stop
-                best_length = length
-
-        if candidate_best:   
             header = candidate.id + f"$${start}$${stop}"
             intron_candidate = Record(header, candidate.raw)
             intron_candidate.sequence = intron_candidate.raw[start:stop]
@@ -624,10 +617,12 @@ def main_process(
     true_cluster_raw.sort(key=lambda x: x[0])
     before_true_clusters = grab_index_cluster(true_cluster_threshold, true_cluster_raw)
 
-    if not assembly:
-        candidates_dict = find_index_groups(candidate_records)
-    else:
-        candidates_dict = find_asm_index_groups(candidate_records)
+    candidates_dict = find_index_groups(candidate_records)
+    # if not assembly:
+    #     candidates_dict = find_index_groups(candidate_records)
+    # else:
+    #     candidates_dict = find_asm_index_groups(candidate_records)
+
     # calculate indices that have valid data columns
     rejected_indices = set()
     # ref_seqs = reference_sequences[1::2]
