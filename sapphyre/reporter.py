@@ -77,6 +77,9 @@ class Hit(HmmHit, frozen=True):
         GAP_PENALTY = 2
         EXTEND_PENALTY = 1
 
+        if not self.refs:
+            return 0, 0
+
         # Create blosum pairwise aligner profile
         profile = profile_create_16(this_aa, blosum62)
 
@@ -207,7 +210,10 @@ def get_diamondhits(
 
     gene_based_results = []
     for gene in genes_to_process:
-        gene_result = rocks_hits_db.get_bytes(f"gethmmhits:{gene}")
+        try:
+            gene_result = rocks_hits_db.get_bytes(f"gethmmhits:{gene}")
+        except:
+            continue
         if not gene_result:
             printv(
                 f"WARNING: No hits found for {gene}. If you are using a gene list file this may be a non-issue",
