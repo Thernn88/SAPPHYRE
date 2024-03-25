@@ -310,6 +310,8 @@ def compare_means(
             # Interquartile range (IQR)
             IQR = Q3 - Q1
             margin = 0.02
+            if IQR <= .2: margin = .05
+            if IQR <= .1: margin = .1
             new_threshold = threshold
             if index_pair[1] - index_pair[0] > ref_seq_len * 0.5:
                 new_threshold = new_threshold * 2
