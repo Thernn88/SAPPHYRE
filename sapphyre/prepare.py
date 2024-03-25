@@ -178,13 +178,13 @@ class SeqDeduplicator:
                     continue
                 this_hash_subset[rev_seq_hash] = header
 
-                if (not self.this_assembly and not self.this_genome) and len(seq) >= ASSEMBLY_LEN:
+                if (not self.this_assembly and not self.this_genome) and len(parent_seq) >= ASSEMBLY_LEN:
                     self.this_assembly = True
 
-                if (not self.rename and len(n_sequences)) > 1 or len(seq) > CHOMP_CUTOFF:
+                if (not self.rename and len(n_sequences)) > 1 or len(parent_seq) > CHOMP_CUTOFF:
                     individual_index = IndexIter()
 
-                if len(seq) > CHOMP_CUTOFF:
+                if len(parent_seq) > CHOMP_CUTOFF:
                     if not self.this_genome:
                         self.this_genome = True
                         self.this_assembly = False
