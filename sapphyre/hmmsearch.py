@@ -1,8 +1,9 @@
+from time import time
 import warnings
 from Bio import BiopythonWarning
 from collections import defaultdict
 from shutil import rmtree
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, TemporaryDirectory
 from .diamond import ReferenceHit, ReporterHit as Hit
 from wrap_rocks import RocksDB
 from .utils import printv, gettempdir, parseFasta, writeFasta
@@ -10,6 +11,7 @@ from os import path, system, stat
 from msgspec import Struct, json
 from multiprocessing import Pool
 from sapphyre_tools import translate, bio_revcomp, get_overlap
+from pyfastx import Fastq
 from Bio.Seq import Seq
 from .timekeeper import TimeKeeper, KeeperMode
 
@@ -46,7 +48,7 @@ def get_diamondhits(
         return None
     genes_to_process = present_genes.split(",")
 
-    gene_based_results = []
+    gene_based_results = {}
     for gene in genes_to_process:
         gene_result = rocks_hits_db.get_bytes(f"gethits:{gene}")
         this_hits = json.decode(gene_result, type=list[Hit])
@@ -56,7 +58,7 @@ def get_diamondhits(
                 0,
             )
             continue
-        gene_based_results.append((gene, this_hits))
+        gene_based_results[gene] = this_hits
 
     return gene_based_results
 
@@ -132,212 +134,153 @@ def internal_filter_gene(this_gene_hits, debug, min_overlap_internal=0.9, score_
     return [i[0] for i in this_gene_hits if i[0] is not None], filtered_sequences_log
 
 
-def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose):
+def hmm_search(gene, diamond_hits, this_seqs, top_location, verbose):
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     printv(f"Processing: {gene}", verbose, 2)
-    aligned_sequences = []
-    this_hmm_output = path.join(hmm_output_folder, f"{gene}.hmmout")
-    
+
+    unaligned_sequences = []
+    query_to_hit = {}
     hits_have_frames_already = defaultdict(set)
     for hit in diamond_hits:
-        hits_have_frames_already[hit.node].add(hit.frame)
+        raw_sequence = hit.seq
+        frame = hit.frame
+        query = f"{hit.node}|{frame}"
+        unaligned_sequences.append((query, raw_sequence))
+        query_to_hit[query] = hit
 
+        for shift_by in [1, 2]:
+            shifted = shift(frame, shift_by)
+            if not shifted in hits_have_frames_already[hit.node]:
+                new_query = f"{hit.node}|{shifted}"
+                unaligned_sequences.append((new_query, raw_sequence[shift_by:]))
+                hits_have_frames_already[hit.node].add(shifted)
+                query_to_hit[new_query] = hit
+            
     nt_sequences = {}
-    parents = {}
-    children = {}
-    unaligned_sequences = []
-    if is_full:
-        fallback = {}
-        nodes_in_gene = set()
-        for hit in diamond_hits:
-            nodes_in_gene.add(hit.node)
-            query = f"{hit.node}|{hit.frame}"
-            parents[query] = hit
-
-            if hit.node not in fallback:
-                fallback[hit.node] = hit
-        
-        for node in nodes_in_gene:
-            parent_seq = this_seqs[node]
-
-            # Forward frame 1
-            query = f"{node}|1"
-            nt_sequences[query] = parent_seq
-            unaligned_sequences.append((query, parent_seq))
-
-            # Forward 2 & 3
-            for shift_by in [1, 2]:
-                shifted = shift(1, shift_by)
-                new_query = f"{node}|{shifted}"
-                nt_sequences[new_query] = parent_seq[shift_by:]
-                unaligned_sequences.append((new_query, parent_seq[shift_by:]))
-                if new_query in parents:
-                    continue
-                children[new_query] = fallback[node]
-
-            # Reversed frame 1
-            bio_revcomp_seq = bio_revcomp(parent_seq)
-            query = f"{node}|-1"
-            nt_sequences[query] = bio_revcomp_seq
-            unaligned_sequences.append((query, bio_revcomp_seq))
-
-            # Reversed 2 & 3
-            for shift_by in [1, 2]:
-                shifted = shift(-1, shift_by)
-                new_query = f"{node}|{shifted}"
-                nt_sequences[new_query] = bio_revcomp_seq[shift_by:]
-                unaligned_sequences.append((new_query, bio_revcomp_seq[shift_by:]))
-                if new_query in parents:
-                    continue
-                children[new_query] = fallback[node]
-
-
-    else:
-        for hit in diamond_hits:
-            raw_sequence = hit.seq
-            frame = hit.frame
-            query = f"{hit.node}|{frame}"
-            unaligned_sequences.append((query, raw_sequence))
-            parents[query] = hit
-
-            for shift_by in [1, 2]:
-                shifted = shift(frame, shift_by)
-                if not shifted in hits_have_frames_already[hit.node]:
-                    new_query = f"{hit.node}|{shifted}"
-                    unaligned_sequences.append((new_query, raw_sequence[shift_by:]))
-                    hits_have_frames_already[hit.node].add(shifted)
-                    children[new_query] = hit
-                
+    aligned_sequences = []
     for header, seq in unaligned_sequences:
         nt_sequences[header] = seq
         aligned_sequences.append((header, str(Seq(seq).translate())))
-        
-    top_file = path.join(top_location, f"{gene}.aln.fa")
-    if debug > 1 or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
-        with NamedTemporaryFile(dir=gettempdir()) as hmm_temp_file:
-            system(f"hmmbuild '{hmm_temp_file.name}' '{top_file}' > /dev/null")
-
-            if debug > 1:
-                this_hmm_in = path.join(hmm_output_folder, f"{gene}_input.fa")
-                writeFasta(this_hmm_in, aligned_sequences)
-                system(
-                f"hmmsearch -o {this_hmm_output} --domT 10.0 {hmm_temp_file.name} {this_hmm_in} > /dev/null",
-                )
-            else:
-                with NamedTemporaryFile(dir=gettempdir()) as aligned_files:
-                    writeFasta(aligned_files.name, aligned_sequences)
-                    aligned_files.flush()
-                    system(
-                    f"hmmsearch --domtblout {this_hmm_output} --domT 10.0 {hmm_temp_file.name} {aligned_files.name} > /dev/null",
-                    )
-
-    if debug > 1:
-        return "", [], [], [], []
-    data = defaultdict(list)
-    high_score = 0
-    with open(this_hmm_output) as f:
-        for line in f:
-            if line.startswith("#"):
-                continue
-            while "  " in line:
-                line = line.replace("  ", " ")
-            line = line.strip().split()
-
-            query = line[0]
-
-            start, end, ali_start, ali_end, score = int(line[17]), int(line[18]), int(line[15]), int(line[16]), float(line[7])
-
-            high_score = max(high_score, score)
-
-            data[query].append((start - 1, end, score, ali_start, ali_end))
-
-    if map_mode:
-        score_thresh = high_score * 0.9
-
-        queries = []
-        for query, results in data.items():
-            queries.append((query, [i for i in results if i[2] >= score_thresh]))
-    else:
-        queries = data.items()
 
     output = []
-    new_outs = []
-    parents_done = set()
-    for query, results in queries:
+    
+    with TemporaryDirectory(dir=gettempdir()) as dir:
+        fastq_gene_file = path.join(dir, gene+".fastq")
+        with open(fastq_gene_file, "w") as fp:
+            for line in this_seqs:
+                fp.write(line)
+        system(f"spades --only-assembler --sc -k 33 -s {fastq_gene_file} -o {path.join(dir,gene)} > {path.join(dir, 'spades_log.txt')}")
+
+        this_hmm_fasta = path.join(dir, gene,"six_fold_and_aln.fasta")
+        contig_path = path.join(dir, gene,"contigs.fasta")
+
+        system(f"fastatranslate {contig_path} > {this_hmm_fasta}")
+
+        six_fold = list(parseFasta(this_hmm_fasta, True)) + aligned_sequences
+        writeFasta(this_hmm_fasta, six_fold)
         
-        if query in parents:
-            hit = parents[query]
-            if not f"{hit.node}|{hit.frame}" in parents_done:
+
+        this_hmm_output = path.join(dir, gene,"hmmresult.hmm")
+        hmm_temp_file = path.join(dir, gene,"temp_hmm.hmmdb")
+
+        top_file = path.join(top_location ,gene+".aln.fa")
+
+        system(f"hmmbuild '{hmm_temp_file}' '{top_file}' > /dev/null")
+
+        system(
+            f"hmmsearch --domtblout {this_hmm_output} --domT 10.0 {hmm_temp_file} {this_hmm_fasta} > {path.join(dir, 'hmm_log.txt')}",
+            )
+        
+        if not path.exists(this_hmm_output):
+            print(gene,"failed!")
+            return None, []
+
+        highest_score_headers = {}
+        data = defaultdict(list)
+        with open(this_hmm_output) as fp:
+            for line in fp:
+                if line[0] == "#":
+                    continue
+                while "  " in line:
+                    line = line.replace("  ", " ")
+                line = line.strip().split()
+
+                if line[-1] != "-":
+                    if line[0] in highest_score_headers:
+                        _, _, _, score = highest_score_headers[line[0]]
+                        if float(line[7]) > score:
+                            highest_score_headers[line[0]] = line[-1], int(line[17]), int(line[18]), float(line[7])
+                    else:
+                        highest_score_headers[line[0]] = line[-1], int(line[17]), int(line[18]), float(line[7])
+                else:
+                    query = line[0]
+
+                    start, end, ali_start, ali_end, score = int(line[17]), int(line[18]), int(line[15]), int(line[16]), float(line[7])
+
+                    data[query].append((start - 1, end, score, ali_start, ali_end))
+
+        headers = {header: (frame, start, end, score) for header, (frame, start, end, score) in highest_score_headers.items()}
+
+        queries = data.items()
+        hit_queries = []
+
+        for query, results in queries:
+            if query in query_to_hit:
+                hit = query_to_hit[query]
                 for result in results:
                     start, end, score, ali_start, ali_end = result
                     start = start * 3
                     end = end * 3
 
-                    if map_mode:
-                        sequence = nt_sequences[query]
-                        if len(sequence) % 3 != 0:
-                            sequence += ("N" * (3 - len(sequence) % 3))
-                        start = 0
-                    else:
-                        sequence = nt_sequences[query][start: end]
-
-                    if is_full:
-                        new_qstart = start
-                    else:
-                        new_qstart = hit.qstart + start
-
-
-                    parents_done.add(f"{hit.node}|{hit.frame}")
-                    new_hit = HmmHit(node=hit.node, score=score, frame=hit.frame, qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=sequence)
-                    output.append((new_hit, ali_start, ali_end))
-
-        if query in children:
-            _, frame = query.split("|")
-            parent = children[query]
-            for result in results:
-                start, end, score, ali_start, ali_end = result
-                start = start * 3
-                end = end * 3
-
-                if map_mode:
-                    sequence = nt_sequences[query]
-                    if len(sequence) % 3 != 0:
-                        sequence += ("N" * (3 - len(sequence) % 3))
-                    start = 0
-                else:
                     sequence = nt_sequences[query][start: end]
-
-                if is_full:
-                    new_qstart = start
-                else:
                     new_qstart = hit.qstart + start
 
+                    new_hit = HmmHit(node=hit.node, score=score, frame=hit.frame, qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=sequence)
+                    hit_queries.append(hit.query)
+                    output.append(new_hit)
 
-                clone = HmmHit(node=parent.node, score=score, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=parent.gene, query=parent.query, uid=parent.uid, refs=parent.refs, seq=sequence)
-                new_outs.append((f"{clone.gene},{clone.node},{clone.frame}"))
+        for header, seq in parseFasta(contig_path, True):
+            if header in headers:
+                frame,start,end,score = headers[header]
+                is_revcomp = False
+                if "rev" in frame:
+                    seq = bio_revcomp(seq)
+
+                    is_revcomp = True
+
+                frame = int(frame.split("translate(")[1].split(")")[0])
+                if is_revcomp:
+                    frame = frame // - 1
+
+                start = start * 3
+                end = end * 3
                 
-                output.append((clone, ali_start, ali_end))
+                seq = seq[(start):(end)]
 
-    kick_log = []
-    for hit in diamond_hits:
-        if not f"{hit.node}|{hit.frame}" in parents_done:
-            kick_log.append(f"{hit.gene},{hit.node},{hit.frame}")
+                output.append(
+                    HmmHit(
+                        None,
+                        score,
+                        frame,
+                        start,
+                        end,
+                        gene,
+                        max(set(hit_queries), key=hit_queries.count),
+                        abs(hash(time())),
+                        [],
+                        seq
+                    )
+                )
 
-    # output, filtered_sequences_log = internal_filter_gene(output, debug)
-    filtered_sequences_log = []
+    return gene, output
 
-    return gene, [i[0] for i in output], new_outs, kick_log, filtered_sequences_log
-
-def get_arg(transcripts_mapped_to, head_to_seq, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose):
-    for gene, transcript_hits in transcripts_mapped_to:
-        this_seqs = {}
-        if is_full:
-            for hit in transcript_hits:
-                this_seqs[hit.node] = head_to_seq[hit.node]
-        yield gene, transcript_hits, this_seqs, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose
+def get_arg(transcripts_mapped_to, gene_fastq_paths, top_location, verbose):
+    for gene, transcript_hits in transcripts_mapped_to.items():
+        # if "99" in gene:
+        yield gene, transcript_hits, gene_fastq_paths[gene], top_location, verbose
 
 
-def get_head_to_seq(nt_db, recipe):
+def get_head_to_seq(nt_db, recipe, is_full):
     """Get a dictionary of headers to sequences.
 
     Args:
@@ -360,7 +303,12 @@ def get_head_to_seq(nt_db, recipe):
             },
         )
 
-    return head_to_seq
+    last_id = int(list(head_to_seq.keys())[-1].split("_")[1])
+
+    if not is_full:
+        return {}, last_id
+
+    return head_to_seq, last_id
 
 def do_folder(input_folder, args):
     hits_db = RocksDB(path.join(input_folder, "rocksdb", "hits"))
@@ -369,11 +317,48 @@ def do_folder(input_folder, args):
         hits_db
     )
 
-    head_to_seq = {}
-    if args.full:
-        seq_db = RocksDB(path.join(input_folder, "rocksdb", "sequences", "nt"))
-        recipe = seq_db.get("getall:batches").split(",")
-        head_to_seq = get_head_to_seq(seq_db, recipe)
+    positions_to_keep = defaultdict(dict)
+    keep_set = defaultdict(set)
+    nt_db_path = path.join(input_folder, "rocksdb", "sequences", "nt")
+    nt_db = RocksDB(nt_db_path)
+
+    recipe = nt_db.get("getall:batches").split(",")
+    head_to_seq, last_id = get_head_to_seq(nt_db, recipe, args.full)
+    print(last_id)
+    try:
+        original_positons = json.decode(nt_db.get("getall:original_positions"), type=dict[str, int])
+    except:
+        try:
+            original_positons = json.decode(nt_db.get("getall:original_positions"), type=dict[str, tuple[int, int, tuple[int, int]|int|None]])
+        except:
+            original_positons = json.decode(nt_db.get("getall:original_positions"), type=dict[str, tuple[int, int]])
+
+    original_inputs = json.decode(nt_db.get("getall:original_inputs"), type=list[str])
+    present_genes = hits_db.get("getall:presentgenes").split(',')
+    file_index = 0
+    print("Generating Fastq dict")
+    for gene in present_genes:
+        this_hits = transcripts_mapped_to[gene]
+        for i, hit in enumerate(this_hits):
+            og_pos_entry = original_positons[hit.node]
+            if type(og_pos_entry) != tuple:
+                line_index = og_pos_entry
+            elif len(og_pos_entry) == 2:
+                file_index, line_index = og_pos_entry
+            else:
+                file_index, line_index, _ = og_pos_entry
+                    
+            keep_set[file_index].add(line_index)
+
+
+            positions_to_keep[file_index][line_index] = hit.gene, hit.node
+
+    out_dict = defaultdict(list)
+    for file_index, file in enumerate(original_inputs):
+        for i, (header, seq, qual) in enumerate(Fastq(file, build_index = False)):
+            if i in keep_set[file_index]:
+                gene, node = positions_to_keep[file_index][i]
+                out_dict[gene].append((f"@{node}\n{seq}\n+{node}\n{qual}\n"))
 
     hmm_output_folder = path.join(input_folder, "hmmsearch")
     
@@ -382,10 +367,9 @@ def do_folder(input_folder, args):
     if not path.exists(hmm_output_folder):
         system(f"mkdir {hmm_output_folder}")
 
-    hmm_location = path.join(args.orthoset_input, args.orthoset, "hmms")
     top_location = path.join(input_folder, "top")
 
-    arguments = get_arg(transcripts_mapped_to, head_to_seq, args.full, hmm_output_folder, top_location, args.overwrite, args.map, args.debug, args.verbose)
+    arguments = get_arg(transcripts_mapped_to, out_dict, top_location, args.verbose)
 
     all_hits = []
 
@@ -398,26 +382,21 @@ def do_folder(input_folder, args):
         with Pool(args.processes) as p:
             all_hits = p.starmap(hmm_search, arguments)
 
-    log = ["Gene,Node,Frame"]
-    klog = ["Gene,Node,Frame"]
-    ilog = ["Kicked Gene,Header,Frame,Score,Start,End,Reason,Master Gene,Header,Frame,Score,Start,End"]
-    for gene, hits, logs, klogs, ilogs in all_hits:
+    template = "NODE_{}"
+    for gene, hits in all_hits:
         if not gene:
             continue
+
+        for hit in hits:
+            if hit.node is None:
+                hit.node = template.format(last_id + 1)
+                last_id += 1
+
+        input(hits)
         
         hits_db.put_bytes(f"gethmmhits:{gene}", json.encode([i for i in hits]))
-        log.extend(logs)
-        klog.extend(klogs)
-        ilog.extend(ilogs)
 
     del hits_db
-
-    with open(path.join(input_folder, "hmmsearch_new.log"), "w") as f:
-        f.write("\n".join(log))
-    with open(path.join(input_folder, "hmmsearch_kick.log"), "w") as f:
-        f.write("\n".join(klog))
-    with open(path.join(input_folder, "hmmsearch_internal.log"), "w") as f:
-        f.write("\n".join(ilog))
 
     printv(f"Done with {input_folder}. Took {tk.lap():.2f}s", args.verbose, 1)
     return True
