@@ -120,7 +120,7 @@ def find_index_groups(candidates: list) -> dict:
     for candidate in candidates:
         start, stop = find_index_pair(candidate.raw, "-")
         candidate.sequence = candidate.raw[start:stop]
-        candidate.id = candidate.id + f"$${start}$${stop}"
+        # candidate.id = candidate.id + f"$${start}$${stop}"
         candidate_dict[(start, stop)].append(candidate)
     return candidate_dict
 
