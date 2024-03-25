@@ -2,7 +2,7 @@ import argparse
 import os
 from shutil import rmtree
 
-from . import blosum, excise, hmmfilter, internal
+from . import blosum, excise, hmmfilter, internal, collapser
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import printv
 
@@ -37,7 +37,15 @@ def main(argsobj):
         if argsobj.map:
             continue
 
-        printv("Simple Assembly To Ensure Consistency.", argsobj.verbose)
+        if is_genome:
+            printv("Simple Assembly To Ensure Consistency.", argsobj.verbose)
+            if not collapser.main(this_args, from_folder):
+                print()
+                print(argsobj.formathelp())
+                return
+            continue
+
+        printv("Filtering Using Hmmsearch Scores.", argsobj.verbose)
         if not hmmfilter.main(this_args, from_folder):
             print()
             print(argsobj.formathelp())
