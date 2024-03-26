@@ -84,7 +84,6 @@ def group_taxa_in_glob(
 
     return taxa_runs
 
-
 class SeqDeduplicator:
     def __init__(
         self,
@@ -118,6 +117,16 @@ class SeqDeduplicator:
         ASSEMBLY_LEN = 750
 
         self.original_inputs.append(str(fa_file_path))
+
+        if not self.this_genome:
+            for _, seq in parseFasta(fa_file_path, True):
+                if len(seq) > CHOMP_CUTOFF:
+                    self.this_genome = True
+                    self.this_assembly = False
+                    break
+
+                    
+
         for_loop = enumerate(parseFasta(fa_file_path, True))
         if self.verbose > 1:
             for_loop = list(for_loop)
@@ -178,26 +187,9 @@ class SeqDeduplicator:
                     continue
                 this_hash_subset[rev_seq_hash] = header
 
-                if (not self.this_assembly and not self.this_genome) and len(parent_seq) >= ASSEMBLY_LEN:
-                    self.this_assembly = True
-
-                if (not self.rename and len(n_sequences)) > 1 or len(parent_seq) > CHOMP_CUTOFF:
-                    individual_index = IndexIter()
-
-                if len(parent_seq) > CHOMP_CUTOFF:
-                    if not self.this_genome:
-                        self.this_genome = True
-                        self.this_assembly = False
-
-                    for i in range(0, len(seq), CHOMP_LEN - self.overlap_length):
-                        if self.rename:
-                            this_header = header_template.format(this_index.x)
-                        else:
-                            this_header = append_index_template.format(header, individual_index.x)
-                            next(individual_index)
-                        self.lines.append(sequence_template.format(this_header, seq[i:i+CHOMP_LEN]))
-                        next(this_index)
-                else:
+                if not self.this_genome:
+                    if not self.this_assembly and len(parent_seq) >= ASSEMBLY_LEN:
+                        self.this_assembly = True
                     this_header = header
                     if not self.rename and len(n_sequences) > 1:
                         this_header = append_index_template.format(header, individual_index)
@@ -207,6 +199,19 @@ class SeqDeduplicator:
 
                     self.lines.append(sequence_template.format(this_header, seq))
                     next(this_index)
+                else:
+                    individual_index = IndexIter()
+                    for i in range(0, len(seq), CHOMP_LEN - self.overlap_length):
+                        if self.rename:
+                            this_header = header_template.format(this_index.x)
+                        else:
+                            this_header = append_index_template.format(header, individual_index.x)
+                            next(individual_index)
+                        if len(seq[i:i+CHOMP_LEN]) < self.minimum_sequence_length:
+                            continue
+                        self.lines.append(sequence_template.format(this_header, seq[i:i+CHOMP_LEN]))
+                        next(this_index)
+
         self.file_index += 1
 
 def map_taxa_runs(
