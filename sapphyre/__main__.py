@@ -349,6 +349,63 @@ def outlier_args(par):
         default=0.7,
         help="Minimum overlap percent between reads in hmmfilter",
     )
+    # Collapser args
+    par.add_argument(
+        "-mo",
+        "--merge_overlap",
+        help="Minimum overlap distance for splicing reads",
+        type=int,
+        default=6,
+    )
+    par.add_argument(
+        "-gdp",
+        "--gross_diference_percent",
+        help="Similarity percent required if reads have gross difference",
+        type=float,
+        default=0.90,
+    )
+    par.add_argument(
+        "-ko",
+        "--kick_overlap",
+        help="Minimum overlap percent to check for a possible kick",
+        type=float,
+        default=0.35,
+    )
+    par.add_argument(
+        "-mp",
+        "--matching_percent",
+        help="Minimum percent for matching columns in kick check",
+        default=0.8,
+    )
+    par.add_argument(
+        "-sp",
+        "--sub_percent",
+        help="Percentage difference to allow for blosum substitution",
+        type=float,
+        default=0.1,
+    )
+    par.add_argument(
+        "-rmp",
+        "--rolling_matching_percent",
+        help="The percent the rolling window consensus has to match a read to pass",
+        type=float,
+        default=0.7,
+    )
+    par.add_argument(
+        "-rcp",
+        "--rolling_consensus_percent",
+        help="The consensus arg for generating the rolling window consensus sequence",
+        type=float,
+        default=0.5,
+    )
+    par.add_argument(
+        "-rws",
+        "--rolling_window_size",
+        help="Amount of bp to check at a time in the rolling window consensus",
+        type=int,
+        default=14,
+    )
+    #
     par.add_argument(
         "-mcp",
         "--matching_consensus_percent",

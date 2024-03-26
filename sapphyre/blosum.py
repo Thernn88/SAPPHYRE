@@ -120,6 +120,7 @@ def find_index_groups(candidates: list) -> dict:
     for candidate in candidates:
         start, stop = find_index_pair(candidate.raw, "-")
         candidate.sequence = candidate.raw[start:stop]
+        # candidate.id = candidate.id + f"$${start}$${stop}"
         candidate_dict[(start, stop)].append(candidate)
     return candidate_dict
 
@@ -131,16 +132,8 @@ def find_asm_index_groups(candidates: list) -> dict:
     candidate_dict = defaultdict(lst)
     for candidate in candidates:
         indices = asm_index_split(candidate.raw)
-        candidate_best = None
-        best_length = 0
         for index_pair in indices:
             start, stop = index_pair
-            length = stop - start
-            if length > best_length:
-                candidate_best = start, stop
-                best_length = length
-
-        if candidate_best:   
             header = candidate.id + f"$${start}$${stop}"
             intron_candidate = Record(header, candidate.raw)
             intron_candidate.sequence = intron_candidate.raw[start:stop]
@@ -317,6 +310,8 @@ def compare_means(
             # Interquartile range (IQR)
             IQR = Q3 - Q1
             margin = 0.02
+            if IQR <= .2: margin = .05
+            if IQR <= .1: margin = .1
             new_threshold = threshold
             if index_pair[1] - index_pair[0] > ref_seq_len * 0.5:
                 new_threshold = new_threshold * 2
@@ -624,10 +619,12 @@ def main_process(
     true_cluster_raw.sort(key=lambda x: x[0])
     before_true_clusters = grab_index_cluster(true_cluster_threshold, true_cluster_raw)
 
-    if not assembly:
-        candidates_dict = find_index_groups(candidate_records)
-    else:
-        candidates_dict = find_asm_index_groups(candidate_records)
+    candidates_dict = find_index_groups(candidate_records)
+    # if not assembly:
+    #     candidates_dict = find_index_groups(candidate_records)
+    # else:
+    #     candidates_dict = find_asm_index_groups(candidate_records)
+
     # calculate indices that have valid data columns
     rejected_indices = set()
     # ref_seqs = reference_sequences[1::2]
@@ -664,13 +661,13 @@ def main_process(
         ref_seq_len
     )
     logs = []
-    if passing:
-        if assembly:
-            # save any failed subseqs if the original seq had a passing segment
-            any_passed = get_passing_headers(passing)
-            to_save, failing = save_partial_fails(failing, any_passed)
-            passing.extend(to_save)
-            passing, header_to_indices = remake_introns(passing)
+    # if passing:
+    #     if assembly:
+    #         # save any failed subseqs if the original seq had a passing segment
+    #         any_passed = get_passing_headers(passing)
+    #         to_save, failing = save_partial_fails(failing, any_passed)
+    #         passing.extend(to_save)
+    #         passing, header_to_indices = remake_introns(passing)
     passing = original_order_sort(original_order, passing)
 
     after_data = []
@@ -694,10 +691,10 @@ def main_process(
     
     # regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
     regulars, allowed_columns = delete_empty_columns(raw_regulars)
-    if assembly:
-        to_be_excluded = make_asm_exclusions(passing, failing)
-    else:
-        to_be_excluded = {candidate.id for candidate in failing}
+    # if assembly:
+    #     to_be_excluded = make_asm_exclusions(passing, failing)
+    # else:
+    to_be_excluded = {candidate.id for candidate in failing}
 
     if passing:  # If candidate added to fasta
         write2Line2Fasta(aa_output, regulars, compress)
@@ -719,8 +716,8 @@ def main_process(
             lines.append(sequence)
 
         non_empty_lines = remove_excluded_sequences(lines, to_be_excluded)
-        if assembly:
-            non_empty_lines = align_intron_removal(non_empty_lines, header_to_indices)
+        # if assembly:
+        #     non_empty_lines = align_intron_removal(non_empty_lines, header_to_indices)
         non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
 
         write2Line2Fasta(nt_output_path, non_empty_lines, compress)
@@ -761,7 +758,7 @@ def do_folder(folder, args):
             args.verbose,
             0,
         )
-        return
+        return True, is_assembly, is_genome
 
     file_inputs = [
         gene
