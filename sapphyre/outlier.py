@@ -27,11 +27,12 @@ def main(argsobj):
         this_args["INPUT"] = folder
         this_args = argparse.Namespace(**this_args)
 
-        blosum_passed, is_assembly, is_genome = blosum.main(this_args)
-        if not blosum_passed:
+        blosum_return = blosum.main(this_args)
+        if not blosum_return:
             print()
             print(argsobj.formathelp())
             return
+        blosum_passed, is_assembly, is_genome = blosum_return
         from_folder = "blosum"
 
         if argsobj.map:
