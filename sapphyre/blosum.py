@@ -758,7 +758,7 @@ def do_folder(folder, args):
             args.verbose,
             0,
         )
-        return
+        return True, is_assembly, is_genome
 
     file_inputs = [
         gene
