@@ -661,13 +661,13 @@ def main_process(
         ref_seq_len
     )
     logs = []
-    if passing:
-        if assembly:
-            # save any failed subseqs if the original seq had a passing segment
-            any_passed = get_passing_headers(passing)
-            to_save, failing = save_partial_fails(failing, any_passed)
-            passing.extend(to_save)
-            passing, header_to_indices = remake_introns(passing)
+    # if passing:
+    #     if assembly:
+    #         # save any failed subseqs if the original seq had a passing segment
+    #         any_passed = get_passing_headers(passing)
+    #         to_save, failing = save_partial_fails(failing, any_passed)
+    #         passing.extend(to_save)
+    #         passing, header_to_indices = remake_introns(passing)
     passing = original_order_sort(original_order, passing)
 
     after_data = []
@@ -691,10 +691,10 @@ def main_process(
     
     # regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
     regulars, allowed_columns = delete_empty_columns(raw_regulars)
-    if assembly:
-        to_be_excluded = make_asm_exclusions(passing, failing)
-    else:
-        to_be_excluded = {candidate.id for candidate in failing}
+    # if assembly:
+    #     to_be_excluded = make_asm_exclusions(passing, failing)
+    # else:
+    to_be_excluded = {candidate.id for candidate in failing}
 
     if passing:  # If candidate added to fasta
         write2Line2Fasta(aa_output, regulars, compress)
@@ -716,8 +716,8 @@ def main_process(
             lines.append(sequence)
 
         non_empty_lines = remove_excluded_sequences(lines, to_be_excluded)
-        if assembly:
-            non_empty_lines = align_intron_removal(non_empty_lines, header_to_indices)
+        # if assembly:
+        #     non_empty_lines = align_intron_removal(non_empty_lines, header_to_indices)
         non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
 
         write2Line2Fasta(nt_output_path, non_empty_lines, compress)
