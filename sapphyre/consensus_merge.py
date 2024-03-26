@@ -431,7 +431,7 @@ def do_folder(input_folder, args):
     print("Processing:", input_folder)
     gene_input_folder = path.join(input_folder, "outlier", "blosum") if args.map else None
     if gene_input_folder is None:
-        for folder in ["excise","internal","hmmfilter", "blosum"]:
+        for folder in ["excise", "internal", "hmmfilter", "collapsed", "blosum"]:
             if path.exists(path.join(input_folder, "outlier", folder)):
                 gene_input_folder = path.join(input_folder, "outlier", folder)
                 break
