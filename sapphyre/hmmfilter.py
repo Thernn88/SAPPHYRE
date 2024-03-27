@@ -14,7 +14,7 @@ from sapphyre_tools import (
     find_index_pair,
     get_overlap,
     is_same_kmer,
-    del_cols,
+    # del_cols,
     OverlapTree,
 )
 from wrap_rocks import RocksDB
@@ -94,7 +94,7 @@ def do_consensus(nodes, threshold, prepare_dupe_counts, reporter_dupe_counts):
     return (("-" * left) + converted.replace("?", "-") + ("-" * right)), has_consensus
 
 
-def _del_cols(sequence, columns, nt=False):
+def del_cols(sequence, columns, nt=False):
     if nt:
         seq = [sequence[i: i+3] for i in range(0, len(sequence), 3)]
         for i in columns:
