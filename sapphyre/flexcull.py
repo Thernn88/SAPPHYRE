@@ -993,7 +993,7 @@ def cull_reference_outliers(reference_records: list, debug: int) -> list:
     # allowable = max(total_median * ALLOWABLE_COEFFICENT, 0.3)
 
     std = stdev(all_distances) if len(all_distances) > 1 else 0
-    allowable = total_median + std
+    allowable = total_median + (std*2)
 
     # if a record's mean is too high, cull it
     for index, distances in distances_by_index.items():
