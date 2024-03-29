@@ -323,7 +323,7 @@ def run_internal(
     )
 
 
-def main(args, after_collapser, from_folder):
+def main(args, from_folder):
     timer = TimeKeeper(KeeperMode.DIRECT)
     if (
         args.internal_consensus_threshold > 100
@@ -347,12 +347,9 @@ def main(args, after_collapser, from_folder):
 
     with Pool(args.processes) as pool:
         folder = args.INPUT
-        if after_collapser:
-            aa_input = Path(folder, "outlier", "hmmfilter", "aa")
-            nt_input = Path(folder, "outlier", "hmmfilter", "nt")
-        else:
-            aa_input = Path(folder, "outlier", from_folder, "aa")
-            nt_input = Path(folder, "outlier", from_folder, "nt")
+
+        aa_input = Path(folder, "outlier", from_folder, "aa")
+        nt_input = Path(folder, "outlier", from_folder, "nt")
         if not args.no_dupes:
             prepare_dupe_counts, reporter_dupe_counts = load_dupes(folder)
         file_inputs = [

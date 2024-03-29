@@ -65,7 +65,7 @@ def main(argsobj):
         #     continue
 
         printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
-        if not internal.main(this_args, True, from_folder):
+        if not internal.main(this_args, from_folder):
             print()
             print(argsobj.format)
         from_folder = "internal"
