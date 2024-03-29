@@ -234,7 +234,7 @@ def trim_around(
     -------
         range: Range of the trimmed slice"""
 
-    offset = amt_matches - 1
+    offset = amt_matches + 1
     cull_end = upper_limit
 
     # Trim to the right
@@ -1047,7 +1047,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
     codon_log = []
 
     follow_through = {}
-    offset = fargs.amt_matches - 1
+    offset = fargs.amt_matches + 1
 
     aa_out_path = path.join(fargs.output, "aa", fargs.aa_file.rstrip(".gz"))
     aa_out = references.copy()
