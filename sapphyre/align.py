@@ -624,7 +624,7 @@ def run_command(args: CmdArgs) -> None:
     this_intermediates = path.join("intermediates", args.gene)
     if debug and not path.exists(this_intermediates):
         mkdir(this_intermediates)
-    aln_file = path.join(args.aln_path, args.gene + ".aln.fa")
+    aln_file = path.join(args.aln_path, args.gene + ".fa" if "aln" not in args.aln_path else ".aln.fa")
 
     with TemporaryDirectory(dir=temp_dir) as parent_tmpdir, TemporaryDirectory(
         dir=parent_tmpdir,
