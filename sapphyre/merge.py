@@ -724,7 +724,7 @@ def do_folder(folder: Path, args):
         nt_input = Path(str(folder), "nt_aligned")
     else:
         input_path = None
-        for subfolder in ["excise", "internal", "hmmfilter", "collapsed", "blosum"]:
+        for subfolder in ["internal", "excise", "hmmfilter", "collapsed", "blosum"]:
             if Path(folder, "outlier", subfolder).exists():
                 input_path = Path(str(folder), "outlier", subfolder)
                 break
