@@ -789,7 +789,12 @@ def run_process(args: Namespace, input_path: str) -> bool:
     pairwise_refs = set()
     top_targets = set()
     most_common = combined_count.most_common()
+
     target_count = min(most_common[0:args.top_ref], key=lambda x: x[1])[1]
+    with open(path.join(input_path, "diamond_top_ref.csv"), "w") as fp:
+        for k, v in most_common:
+            fp.write(f"{k},{v}")
+        
     #target_count = min_count * (1 - args.top_ref)
     for taxa, count in most_common:
         if count >= target_count:
