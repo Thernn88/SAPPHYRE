@@ -2,7 +2,7 @@ from multiprocessing import Pool
 from os import listdir, mkdir, path
 from pathlib import Path
 from shutil import move
-
+import copy
 from msgspec import Struct, json
 from sapphyre_tools import (
     convert_consensus,
@@ -424,11 +424,12 @@ def log_excised_consensus(
             if len(sequences_in_region) > excise_maximum_depth:
                 continue
 
-            # Simple assembly of ambig sequences
             nodes_in_region = simple_assembly(sequences_in_region, excise_overlap_ambig)
 
-            best_index = longest_merge_index(nodes_in_region.copy(), sequences_out_of_region, excise_overlap_merge)
-            
+            copy_of_nodes_in_region = copy.deepcopy(nodes_in_region)
+
+            best_index = longest_merge_index(copy_of_nodes_in_region, sequences_out_of_region, excise_overlap_merge)
+
             for i, node in enumerate(nodes_in_region):
                 if i == best_index:
                     continue
