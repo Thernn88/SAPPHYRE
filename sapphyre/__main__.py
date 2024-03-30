@@ -499,7 +499,7 @@ def outlier_args(par):
     par.add_argument(
         "-ero",
         "--excise_region_overlap",
-        default=0.25,
+        default=0.15,
         type=float,
         help="Minimum overlap percent for sequences and ambigous regions",
     )

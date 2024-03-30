@@ -387,59 +387,65 @@ def log_excised_consensus(
         )
 
     # Make consensus sequence. Use dupe counts if available.
-    if prepare_dupes and reporter_dupes:
-        consensus_seq = make_duped_consensus(
-            raw_sequences, prepare_dupes, reporter_dupes, excise_consensus
-        )
-    else:
-        consensus_seq = dumb_consensus(sequences, excise_consensus, 0)
-
-    consensus_seq = convert_consensus(sequences, consensus_seq)
-
-
-    # Search for slices of the consensus seq with a high ratio of 'X' to total characters
-    bad_regions = check_covered_bad_regions(consensus_seq, excise_minimum_ambig)
-
+    bad_regions = True
+    had_region = False
+    recursion_time_out = 5
     kicked_headers = set()
-    if bad_regions:
-        for region in bad_regions:
-            sequences_in_region = []
-            sequences_out_of_region = []
-            a, b = region         
+    while bad_regions:
+        if prepare_dupes and reporter_dupes:
+            consensus_seq = make_duped_consensus(
+                raw_sequences, prepare_dupes, reporter_dupes, excise_consensus
+            )
+        else:
+            consensus_seq = dumb_consensus(sequences, excise_consensus, 0)
 
-            for i, node in enumerate(nodes):
+        consensus_seq = convert_consensus(sequences, consensus_seq)
 
-                if node.header in kicked_headers:
+        # Search for slices of the consensus seq with a high ratio of 'X' to total characters
+        bad_regions = check_covered_bad_regions(consensus_seq, excise_minimum_ambig)
+
+        if bad_regions:
+            recursion_time_out -= 1
+            if recursion_time_out < 0:
+                break
+            had_region = True
+            for region in bad_regions:
+                sequences_in_region = []
+                sequences_out_of_region = []
+                a, b = region         
+
+                for i, node in enumerate(nodes):
+
+                    if node.header in kicked_headers:
+                        continue
+
+                    overlap_coords = get_overlap(a, b, node.start, node.end, 1)
+                    if overlap_coords:
+                        overlap_amount = overlap_coords[1] - overlap_coords[0]
+                        overlap_percent = overlap_amount / (node.end - node.start)
+
+                        if overlap_percent >= excise_region_overlap: # Adjustable percent
+                            sequences_in_region.append(nodes[i].clone())
+                        else:
+                            sequences_out_of_region.append(nodes[i].clone())
+
+                if len(sequences_in_region) > excise_maximum_depth:
                     continue
 
-                overlap_coords = get_overlap(a, b, node.start, node.end, 1)
-                if overlap_coords:
-                    overlap_amount = overlap_coords[1] - overlap_coords[0]
-                    overlap_percent = overlap_amount / (node.end - node.start)
-                    if overlap_percent >= excise_region_overlap: # Adjustable percent
-                        sequences_in_region.append(nodes[i].clone())
-                    else:
-                        sequences_out_of_region.append(nodes[i].clone())
+                # Simple assembly of ambig sequences
+                nodes_in_region = simple_assembly(sequences_in_region, excise_overlap_ambig)
+                best_index = longest_merge_index(nodes_in_region.copy(), sequences_out_of_region, excise_overlap_merge)
+                for i, node in enumerate(nodes_in_region):
+                    if i == best_index:
+                        continue
 
-            if len(sequences_in_region) > excise_maximum_depth:
-                continue
+                    kicked_headers.add(node.header)
+                    kicked_headers.update(node.children)
 
-            # Simple assembly of ambig sequences
-            nodes_in_region = simple_assembly(sequences_in_region, excise_overlap_ambig)
-
-            best_index = longest_merge_index(nodes_in_region.copy(), sequences_out_of_region, excise_overlap_merge)
-            
-            for i, node in enumerate(nodes_in_region):
-                if i == best_index:
-                    continue
-
-                kicked_headers.add(node.header)
-                kicked_headers.update(node.children)
-
-            if nodes_in_region:
-                log_output.append(f">{gene}_ambig_{a}:{b}\n{consensus_seq}")
-                log_output.extend([f">{node.contig_header()}_{'kept' if i == best_index else 'kicked'}\n{node.sequence}" for i, node in enumerate(nodes_in_region)])
-                log_output.append("\n")
+                if nodes_in_region:
+                    log_output.append(f">{gene}_ambig_{a}:{b}\n{consensus_seq}")
+                    log_output.extend([f">{node.contig_header()}_{'kept' if i == best_index else 'kicked'}\n{node.sequence}" for i, node in enumerate(nodes_in_region)])
+                    log_output.append("\n")
 
     aa_output = [(header, seq) for header, seq in parseFasta(str(aa_in)) if header not in kicked_headers]
 
@@ -454,7 +460,7 @@ def log_excised_consensus(
         nt_output = [(header, seq) for header, seq in raw_sequences if header not in kicked_headers]
         writeFasta(nt_out, nt_output, compress_intermediates)
 
-    return log_output, bad_regions != [], len(kicked_headers)
+    return log_output, had_region, len(kicked_headers)
 
 
 def load_dupes(rocks_db_path: Path):
