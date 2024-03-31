@@ -506,7 +506,7 @@ def outlier_args(par):
     par.add_argument(
         "-ec",
         "--excise_consensus",
-        default=0.67,
+        default=0.85,
         type=float,
         help="Minimum percent of allowable X characters in consensus",
     )
