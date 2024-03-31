@@ -370,10 +370,13 @@ def do_folder(input_folder, args):
     )
 
     head_to_seq = {}
-    if args.full:
-        seq_db = RocksDB(path.join(input_folder, "rocksdb", "sequences", "nt"))
+    seq_db = RocksDB(path.join(input_folder, "rocksdb", "sequences", "nt"))
+    is_genome = seq_db.get("get:isgenome")
+    is_genome = is_genome == "True"
+    if is_genome or args.full:
         recipe = seq_db.get("getall:batches").split(",")
         head_to_seq = get_head_to_seq(seq_db, recipe)
+    del seq_db
 
     hmm_output_folder = path.join(input_folder, "hmmsearch")
     
