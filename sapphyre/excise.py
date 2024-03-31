@@ -11,6 +11,7 @@ from sapphyre_tools import (
     find_index_pair,
     get_overlap,
     is_same_kmer,
+    constrained_distance,
 )
 from wrap_rocks import RocksDB
 
@@ -285,7 +286,26 @@ def simple_assembly(nodes, min_merge_overlap_percent):
     return nodes
         
 
-def longest_merge_index(nodes, sequences_out_of_region, merge_percent):
+def identity(nodes_in_region, best_index, allowed_mismatches=5, length_percentage = 0):
+    indices = [i for i, node in enumerate(nodes_in_region) if i != best_index]
+    best_node = nodes_in_region[best_index]
+    best_length = len(best_node.sequence) - best_node.sequence.count("-")
+    extend_region = set()
+    for i in indices:
+        node = nodes_in_region[i]
+        distance = constrained_distance(best_node.sequence, node.sequence)
+        node_length = len(node.sequence) - node.sequence.count("-")
+
+        if node_length < best_length * (1 - length_percentage):
+            continue
+
+        if distance < allowed_mismatches:
+            extend_region.add(i)
+
+    return extend_region
+
+
+def indices_that_resolve(nodes, sequences_out_of_region, merge_percent):
     """
     This function is used to find the longest sequence in the list of sequences_out_of_region
     that can be merged into the list of nodes. If a sequence is found that can be merged,
@@ -293,18 +313,20 @@ def longest_merge_index(nodes, sequences_out_of_region, merge_percent):
     """
     best_index = None
     best_length = None
+    indices = []
     for i, node in enumerate(nodes):
         this_seq_out = sequences_out_of_region.copy()
         has_unambig_merge = False
         for j, node_b in enumerate(this_seq_out):
             overlap_coords = get_overlap(node.start, node.end, node_b.start, node_b.end, 1)
+            
             if overlap_coords:
                 overlap_amount = overlap_coords[1] - overlap_coords[0]
                 overlap_percent = overlap_amount / (node.end - node.start)
+                
                 if overlap_percent > merge_percent:
                     kmer_a = node.sequence[overlap_coords[0]:overlap_coords[1]]
                     kmer_b = node_b.sequence[overlap_coords[0]:overlap_coords[1]]
-
 
                     if not is_same_kmer(kmer_a, kmer_b):
                         continue
@@ -321,12 +343,9 @@ def longest_merge_index(nodes, sequences_out_of_region, merge_percent):
 
                         
 
-        this_length = len(node.sequence) - node.sequence.count("-")
-        if has_unambig_merge and (best_length is None or this_length > best_length):
-            best_length = this_length
-            best_index = i
+        indices.append(i)
 
-    return best_index
+    return indices
         
 
 
@@ -428,10 +447,22 @@ def log_excised_consensus(
 
             copy_of_nodes_in_region = copy.deepcopy(nodes_in_region)
 
-            best_index = longest_merge_index(copy_of_nodes_in_region, sequences_out_of_region, excise_overlap_merge)
+            node_indices = indices_that_resolve(copy_of_nodes_in_region, sequences_out_of_region, excise_overlap_merge)
+
+            if not node_indices:
+                continue
+            
+            best_index = max(node_indices, key=lambda x: len(nodes_in_region[x].sequence) - nodes_in_region[x].sequence.count("-"))
+
+            keep_indices = set()
+            if best_index is not None:
+                keep_indices.update([best_index])
+
+                # similar_indices = identity(nodes_in_region, best_index)
+                # keep_indices.update(similar_indices)
 
             for i, node in enumerate(nodes_in_region):
-                if i == best_index:
+                if i in keep_indices:
                     continue
 
                 kicked_headers.add(node.header)
@@ -439,7 +470,7 @@ def log_excised_consensus(
 
             if nodes_in_region:
                 log_output.append(f">{gene}_ambig_{a}:{b}\n{consensus_seq}")
-                log_output.extend([f">{node.contig_header()}_{'kept' if i == best_index else 'kicked'}\n{node.sequence}" for i, node in enumerate(nodes_in_region)])
+                log_output.extend([f">{node.contig_header()}_{'kept' if i in keep_indices else 'kicked'}\n{node.sequence}" for i, node in enumerate(nodes_in_region)])
                 log_output.append("\n")
 
     aa_output = [(header, seq) for header, seq in parseFasta(str(aa_in)) if header not in kicked_headers]
@@ -567,6 +598,8 @@ def main(args, override_cut, sub_dir):
     else:
         results = []
         for gene in genes:
+            # if "3at6656" != gene.split(".")[0]:
+            #    continue
             results.append(
                 log_excised_consensus(
                     gene,
