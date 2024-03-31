@@ -511,6 +511,13 @@ def outlier_args(par):
         help="Minimum percent of allowable X characters in consensus",
     )
     par.add_argument(
+        "-ead",
+        "--excise_allowed_distance",
+        default=3,
+        type=int,
+        help="# of bp allowed to deviate from a resolving master in excise",
+    )
+    par.add_argument(
         "-emd",
         "--excise_maximum_depth",
         default=100000,

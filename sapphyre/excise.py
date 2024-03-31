@@ -286,7 +286,7 @@ def simple_assembly(nodes, min_merge_overlap_percent):
     return nodes
         
 
-def identity(nodes_in_region, best_index, allowed_mismatches=5, length_percentage = 0):
+def identity(nodes_in_region, best_index, allowed_mismatches):
     indices = [i for i, node in enumerate(nodes_in_region) if i != best_index]
     best_node = nodes_in_region[best_index]
     best_length = len(best_node.sequence) - best_node.sequence.count("-")
@@ -296,8 +296,8 @@ def identity(nodes_in_region, best_index, allowed_mismatches=5, length_percentag
         distance = constrained_distance(best_node.sequence, node.sequence)
         node_length = len(node.sequence) - node.sequence.count("-")
 
-        if node_length < best_length * (1 - length_percentage):
-            continue
+        # if node_length < best_length * (1 - length_percentage):
+        #     continue
 
         if distance < allowed_mismatches:
             extend_region.add(i)
@@ -360,6 +360,7 @@ def log_excised_consensus(
     excise_consensus,
     excise_maximum_depth,
     excise_minimum_ambig,
+    allowed_distance,
     prepare_dupes: dict,
     reporter_dupes: dict,
 ):
@@ -458,8 +459,8 @@ def log_excised_consensus(
             if best_index is not None:
                 keep_indices.update([best_index])
 
-                # similar_indices = identity(nodes_in_region, best_index)
-                # keep_indices.update(similar_indices)
+                similar_indices = identity(nodes_in_region, best_index, allowed_distance)
+                keep_indices.update(similar_indices)
 
             for i, node in enumerate(nodes_in_region):
                 if i in keep_indices:
@@ -588,6 +589,7 @@ def main(args, override_cut, sub_dir):
                 args.excise_consensus,
                 args.excise_maximum_depth,
                 args.excise_minimum_ambig,
+                args.excise_allowed_distance,
                 prepare_dupes.get(gene.split(".")[0], {}),
                 reporter_dupes.get(gene.split(".")[0], {}),
             )
@@ -598,8 +600,8 @@ def main(args, override_cut, sub_dir):
     else:
         results = []
         for gene in genes:
-            # if "3at6656" != gene.split(".")[0]:
-            #    continue
+            if "3at6656" != gene.split(".")[0]:
+               continue
             results.append(
                 log_excised_consensus(
                     gene,
@@ -612,6 +614,7 @@ def main(args, override_cut, sub_dir):
                     args.excise_consensus,
                     args.excise_maximum_depth,
                     args.excise_minimum_ambig,
+                    args.excise_allowed_distance,
                     prepare_dupes.get(gene.split(".")[0], {}),
                     reporter_dupes.get(gene.split(".")[0], {}),
                 )
