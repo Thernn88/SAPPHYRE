@@ -36,6 +36,7 @@ def process_folder(args, superfolder_path):
             "excise",
             "internal",
             "trimmed",
+            "hmmfilter",
             "aa_merged",
             "nt_merged",
             "hmmsearch",
@@ -43,6 +44,7 @@ def process_folder(args, superfolder_path):
             "blast",
             "aa",
             "nt",
+            "top",
             "very.tsv",
         ]
     else:
