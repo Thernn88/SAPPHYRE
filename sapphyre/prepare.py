@@ -114,7 +114,7 @@ class SeqDeduplicator:
     ):
         CHOMP_LEN = 750
         CHOMP_CUTOFF = 50000
-        ASSEMBLY_LEN = 750
+        ASSEMBLY_LEN = 1250
 
         self.original_inputs.append(str(fa_file_path))
 
