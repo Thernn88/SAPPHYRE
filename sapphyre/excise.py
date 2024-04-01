@@ -600,8 +600,6 @@ def main(args, override_cut, sub_dir):
     else:
         results = []
         for gene in genes:
-            if "3at6656" != gene.split(".")[0]:
-               continue
             results.append(
                 log_excised_consensus(
                     gene,
