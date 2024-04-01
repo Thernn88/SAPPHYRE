@@ -346,7 +346,7 @@ def outlier_args(par):
         "-moi",
         "--min_overlap_internal",
         type=float,
-        default=0.7,
+        default=0.6,
         help="Minimum overlap percent between reads in hmmfilter",
     )
     # Collapser args
