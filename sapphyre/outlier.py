@@ -38,13 +38,21 @@ def main(argsobj):
         if argsobj.map:
             continue
 
-        if is_genome:
-            printv("Simple Assembly To Ensure Consistency.", argsobj.verbose)
-            if not collapser.main(this_args, from_folder):
+        
+        # printv("Simple Assembly To Ensure Consistency.", argsobj.verbose)
+        # if not collapser.main(this_args, from_folder):
+        #     print()
+        #     print(argsobj.formathelp())
+        #     return
+        # continue
+
+        if is_assembly or is_genome:
+            printv("Filtering Using Hmmsearch Scores.", argsobj.verbose)
+            if not hmmfilter.main(this_args, from_folder):
                 print()
                 print(argsobj.formathelp())
                 return
-            continue
+            from_folder = "hmmfilter"
             
         if not argsobj.no_excise:
             printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
@@ -54,15 +62,8 @@ def main(argsobj):
                 print(argsobj.formathelp())
             from_folder = "excise"
 
-        # printv("Filtering Using Hmmsearch Scores.", argsobj.verbose)
-        # if not hmmfilter.main(this_args, from_folder):
-        #     print()
-        #     print(argsobj.formathelp())
-        #     return
-        # from_folder = "hmmfilter"
-
-        # if debug > 1 or this_args.add_hmmfilter_dupes:
-        #     continue
+        if debug > 1 or this_args.add_hmmfilter_dupes:
+            continue
 
         printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
         if not internal.main(this_args, from_folder):
