@@ -94,19 +94,6 @@ def do_consensus(nodes, threshold, prepare_dupe_counts, reporter_dupe_counts):
     return (("-" * left) + converted.replace("?", "-") + ("-" * right)), has_consensus
 
 
-def del_cols(sequence, columns, nt=False):
-    if nt:
-        seq = [sequence[i: i+3] for i in range(0, len(sequence), 3)]
-        for i in columns:
-            seq[i] = "---"
-        return "".join(seq)
-    else:
-        seq = list(sequence)
-        for i in columns:
-            seq[i] = "-"
-        return "".join(seq)
-
-
 class Leaf:
 
     __slots__ = "children", "length"
@@ -417,9 +404,6 @@ def process_batch(
     overlap_kicks = []
     internal_kicks = []
 
-    total_x_before = 0
-    total_x_after = 0
-
     for input_gene in batch_args.genes:
         gene = input_gene.split('.')[0]
         prepare_dupe_count = batch_args.prepare_dupe_counts.get(gene, {})
@@ -525,93 +509,20 @@ def process_batch(
         kicked_headers.update(internal_header_kicks)
         internal_kicks.extend(internal_log)
 
-        x_cand_consensus, has_ambig = do_consensus(
-            nodes, args.consensus, prepare_dupe_count, reporter_dupe_count
-        )
-        
-        trimmed_pos = 0
-        x_positions = defaultdict(set)
-
-        has_x_before = 0
-        has_x_after = 0
-
-        if has_ambig:
-            for let in x_cand_consensus:
-                if let == 'X': has_x_before += 1
-
-            TRIM_MAX = 6
-
-            for node in nodes:
-                new_start = node.start
-                new_end = node.end
-
-                this_positions = set()
-
-                for i, bp in enumerate(node.sequence):
-                    let = x_cand_consensus[i]
-                    if let == "X":
-                        if (i <= new_start + 2 and i >= new_start):
-                            new_start = i
-                            if new_start - node.start >= TRIM_MAX:
-                                break
-                        if (i >= new_end - 2 and i <= new_end):
-                            new_end = i
-                            if node.end - new_end >= TRIM_MAX:
-                                break
-
-                if new_start != node.start or new_end != node.end:
-                    for i in range(node.start, new_start):
-                        this_positions.add(i)
-                        trimmed_pos += 1
-                        x_positions[node.header].add(i)
-                    for i in range(new_end, node.end):
-                        this_positions.add(i)
-                        trimmed_pos += 1
-                        x_positions[node.header].add(i)
-                    node.start = new_start
-                    node.end = new_end
-
-                node.sequence = "".join(let if i not in this_positions else "-" for i, let in enumerate(node.sequence))
-        
-            for node in nodes:
-                this_positions = set()
-                i = None
-                for poss_i in range(node.start, node.start + 3):
-                    if node.sequence[poss_i] != x_cand_consensus[poss_i]:
-                        i = poss_i
-
-                if not i is None:
-                    for x in range(node.start , i + 1):
-                        trimmed_pos += 1
-                        x_positions[node.header].add(x)
-                    node.start = i+1
-
-                i = None
-                for poss_i in range(node.end -1, node.end - 4, -1):
-                    if node.sequence[poss_i] != x_cand_consensus[poss_i]:
-                        i = poss_i
-
-                if not i is None:
-                    for x in range(i, node.end):
-                        trimmed_pos += 1
-                        x_positions[node.header].add(x)
-                    node.end = i
-
         x_cand_consensus, _ = do_consensus(
             nodes, args.consensus, prepare_dupe_count, reporter_dupe_count
         )
 
         for i, let in enumerate(x_cand_consensus):
             if let == "X":
-                has_x_after += 1
                 reported_regions.append(f"{gene},{i}")
 
-        aa_output = [(header, del_cols(seq, x_positions[header], False)) for header, seq in aa_output if header not in kicked_headers]
+        aa_output = [(header, seq) for header, seq in aa_output if header not in kicked_headers]
         # aa_output = [(header, _del_cols(seq, x_positions[header])) for header, seq in aa_output if header not in kicked_headers]
         # assert aa_output == aa_output2, "aa_output has changed"
         # Align kicks to the NT
         nt_sequences = [
-            (header, del_cols(sequence, x_positions[header], True))
+            (header, sequence)
             for header, sequence in parseFasta(nt_in)
             if header not in kicked_headers
         ]
@@ -655,15 +566,11 @@ def process_batch(
             writeFasta(aa_out, aa_out_dupes, batch_args.compress)
             writeFasta(nt_out, nt_out_dupes, batch_args.compress)
 
-        total_x_before += has_x_before
-        total_x_after += has_x_after
 
     return (
         consensus_kicks,
         internal_kicks,
         reported_regions,
-        total_x_before,
-        total_x_after,
         overlap_kicks,
     )
 
@@ -756,18 +663,11 @@ def do_folder(args: HmmfilterArgs, input_path: str):
     internal_log = []
     reported_regions = []
     overlap_log = []
-    total_x_before = 0
-    total_x_after = 0
-    for consensus_kicks, internal_kicks, reported_regions, chunk_x_before, chunk_x_after, overlap_kicks in results:
+    for consensus_kicks, internal_kicks, reported_regions, overlap_kicks in results:
         consensus_log.extend(consensus_kicks)
         internal_log.extend(internal_kicks)
         reported_regions.extend(reported_regions)
         overlap_log.extend(overlap_kicks)
-        total_x_before += chunk_x_before
-        total_x_after += chunk_x_after
-
-    print("Ambig columns before trim:", total_x_before, "Ambig columns after trim:", total_x_after)
-    
 
     if args.debug:        
         print(f"Internal Kicks: {len(internal_log)}")

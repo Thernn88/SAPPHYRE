@@ -1,3 +1,4 @@
+from collections import defaultdict
 from multiprocessing import Pool
 from os import listdir, mkdir, path
 from pathlib import Path
@@ -348,6 +349,18 @@ def indices_that_resolve(nodes, sequences_out_of_region, merge_percent):
     return indices
         
 
+def del_cols(sequence, columns, nt=False):
+    if nt:
+        seq = [sequence[i: i+3] for i in range(0, len(sequence), 3)]
+        for i in columns:
+            seq[i] = "---"
+        return "".join(seq)
+    else:
+        seq = list(sequence)
+        for i in columns:
+            seq[i] = "-"
+        return "".join(seq)
+
 
 def log_excised_consensus(
     gene: str,
@@ -394,7 +407,74 @@ def log_excised_consensus(
     nt_in = input_path.joinpath("nt", gene.replace(".aa.", ".nt."))
     nt_out = output_path.joinpath("nt", gene.replace(".aa.", ".nt."))
 
-    raw_sequences = list(parseFasta(str(nt_in)))
+    x_positions = defaultdict(set)
+
+    raw_aa = list(parseFasta(str(aa_in)))
+    aa_nodes = [NODE(header, seq, *find_index_pair(seq,"-"), []) for header, seq in raw_aa if header[-1] != "."]
+    aa_sequences = [x.sequence for x in aa_nodes]
+
+    if prepare_dupes and reporter_dupes:
+        consensus_seq = make_duped_consensus(
+            raw_aa, prepare_dupes, reporter_dupes, excise_consensus
+        )
+    else:
+        consensus_seq = dumb_consensus(aa_sequences, excise_consensus, 0)
+
+    TRIM_MAX = 6
+
+    for node in aa_nodes:
+        new_start = node.start
+        new_end = node.end
+
+        this_positions = set()
+
+        for i, bp in enumerate(node.sequence):
+            let = consensus_seq[i]
+            if let == "X":
+                if (i <= new_start + 2 and i >= new_start):
+                    new_start = i
+                    if new_start - node.start >= TRIM_MAX:
+                        break
+                if (i >= new_end - 2 and i <= new_end):
+                    new_end = i
+                    if node.end - new_end >= TRIM_MAX:
+                        break
+
+        if new_start != node.start or new_end != node.end:
+            for i in range(node.start, new_start):
+                this_positions.add(i)
+                x_positions[node.header].add(i)
+            for i in range(new_end, node.end):
+                this_positions.add(i)
+                x_positions[node.header].add(i)
+            node.start = new_start
+            node.end = new_end
+
+        node.sequence = "".join(let if i not in this_positions else "-" for i, let in enumerate(node.sequence))
+
+    for node in aa_nodes:
+        this_positions = set()
+        i = None
+        for poss_i in range(node.start, node.start + 3):
+            if node.sequence[poss_i] != consensus_seq[poss_i]:
+                i = poss_i
+
+        if not i is None:
+            for x in range(node.start , i + 1):
+                x_positions[node.header].add(x)
+            node.start = i+1
+
+        i = None
+        for poss_i in range(node.end -1, node.end - 4, -1):
+            if node.sequence[poss_i] != consensus_seq[poss_i]:
+                i = poss_i
+
+        if not i is None:
+            for x in range(i, node.end):
+                x_positions[node.header].add(x)
+            node.end = i
+
+    raw_sequences = [(header, del_cols(seq, x_positions[header], True)) for header, seq in parseFasta(str(nt_in))]
     sequences = [x[1] for x in raw_sequences if x[0][-1] != "."]
 
     nodes = []
@@ -406,7 +486,6 @@ def log_excised_consensus(
             NODE(header, seq, start, end,  [])
         )
 
-    # Make consensus sequence. Use dupe counts if available.
     if prepare_dupes and reporter_dupes:
         consensus_seq = make_duped_consensus(
             raw_sequences, prepare_dupes, reporter_dupes, excise_consensus
@@ -415,7 +494,6 @@ def log_excised_consensus(
         consensus_seq = dumb_consensus(sequences, excise_consensus, 0)
 
     consensus_seq = convert_consensus(sequences, consensus_seq)
-
 
     # Search for slices of the consensus seq with a high ratio of 'X' to total characters
     bad_regions = check_covered_bad_regions(consensus_seq, excise_minimum_ambig)
@@ -474,7 +552,7 @@ def log_excised_consensus(
                 log_output.extend([f">{node.contig_header()}_{'kept' if i in keep_indices else 'kicked'}\n{node.sequence}" for i, node in enumerate(nodes_in_region)])
                 log_output.append("\n")
 
-    aa_output = [(header, seq) for header, seq in parseFasta(str(aa_in)) if header not in kicked_headers]
+    aa_output = [(header, del_cols(seq, x_positions[header])) for header, seq in raw_aa if header not in kicked_headers]
 
     aa_has_candidate = False
     for header, _ in aa_output:
@@ -484,7 +562,7 @@ def log_excised_consensus(
 
     if aa_has_candidate:
         writeFasta(aa_out, aa_output, compress_intermediates)
-        nt_output = [(header, seq) for header, seq in raw_sequences if header not in kicked_headers]
+        nt_output = [(header, del_cols(seq, x_positions[header], True)) for header, seq in raw_sequences if header not in kicked_headers]
         writeFasta(nt_out, nt_output, compress_intermediates)
 
     return log_output, bad_regions != [], len(kicked_headers)
