@@ -33,6 +33,7 @@ def main(argsobj):
             print(argsobj.formathelp())
             return
         blosum_passed, is_assembly, is_genome = blosum_return
+        print(f"blosum_passed: {blosum_passed}, is_assembly: {is_assembly}, is_genome: {is_genome}")
         from_folder = "blosum"
 
         if argsobj.map:
