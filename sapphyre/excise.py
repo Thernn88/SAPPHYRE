@@ -431,7 +431,7 @@ def log_excised_consensus(
     req_coverage = 0.4 if is_assembly_or_genome else 0.01
     if gene_coverage < req_coverage:
         log_output.append(f">{gene}_kicked_coverage_{gene_coverage}_of_{req_coverage}\n{consensus_seq}")
-        return log_output, True, len(aa_nodes)
+        return log_output, False, True, len(aa_nodes)
 
     TRIM_MAX = 6
 
@@ -578,7 +578,7 @@ def log_excised_consensus(
         nt_output = [(header, del_cols(seq, x_positions[header], True)) for header, seq in raw_sequences if header not in kicked_headers]
         writeFasta(nt_out, nt_output, compress_intermediates)
 
-    return log_output, bad_regions != [], len(kicked_headers)
+    return log_output, bad_regions != [], False, len(kicked_headers)
 
 
 def load_dupes(rocks_db_path: Path):
@@ -712,10 +712,11 @@ def main(args, override_cut, sub_dir, is_assembly_or_genome):
             )
 
     log_output = ["\n".join(x[0]) for x in results]
-    loci_containing_bad_regions = len([x[1] for x in results if x[1]])
-    kicked_sequences = sum(x[2] for x in results if x[1])
+    loci_containing_bad_regions = len([1 for x in results if x[1]])
+    kicked_coverage = len([1 for x in results if x[2]])
+    kicked_sequences = sum(x[3] for x in results)
     printv(
-        f"{input_folder}: {loci_containing_bad_regions} bad loci found. Kicked {kicked_sequences} sequences",
+        f"{input_folder}: {loci_containing_bad_regions} ambiguous loci found. {kicked_coverage} genes kicked due to low coverage. Kicked {kicked_sequences} sequences total.",
         args.verbose,
     )
 
