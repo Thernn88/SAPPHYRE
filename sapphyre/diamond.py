@@ -775,15 +775,28 @@ def run_process(args: Namespace, input_path: str) -> bool:
         f"Done! Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Calculating targets.",
         args.verbose,
     )
+
     target_counts = df["target"].value_counts()
-    combined_count = Counter()
     taxon_to_targets = defaultdict(list)
     target_to_gene = {}
+
+    if is_assembly_or_genome:
+        filtered_df = df[df["score"] > 300]
+        target_counts = filtered_df["target"].value_counts()
+        combined_count = Counter()
+        for target, count in target_counts.to_dict().items():
+            gene, ref_taxa, _ = target_to_taxon[target]
+            taxon_to_targets[ref_taxa].append(target)
+            target_to_gene[target] = gene
+            combined_count[ref_taxa] += count
+    target_counts = df["target"].value_counts()
+    
     for target, count in target_counts.to_dict().items():
         gene, ref_taxa, _ = target_to_taxon[target]
         taxon_to_targets[ref_taxa].append(target)
         target_to_gene[target] = gene
-        combined_count[ref_taxa] += count
+        if not is_assembly_or_genome:
+            combined_count[ref_taxa] += count
 
     top_refs = set()
     pairwise_refs = set()
@@ -793,7 +806,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     target_count = min(most_common[0:args.top_ref], key=lambda x: x[1])[1]
     with open(path.join(input_path, "diamond_top_ref.csv"), "w") as fp:
         for k, v in most_common:
-            fp.write(f"{k},{v}")
+            fp.write(f"{k},{v} \n")
         
     #target_count = min_count * (1 - args.top_ref)
     for taxa, count in most_common:
