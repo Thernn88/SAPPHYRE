@@ -362,8 +362,21 @@ def del_cols(sequence, columns, nt=False):
         return "".join(seq)
 
 
+def get_coverage(consensus_seq, aa_nodes, ref_avg_len):
+    cons_start, cons_end = find_index_pair(consensus_seq, "-")
+    data_cols = 0
+    for i in range(cons_start, cons_end):
+        for node in aa_nodes:
+            if i >= node.start and i < node.end:
+                data_cols += 1
+                break
+
+    return data_cols / ref_avg_len
+
+
 def log_excised_consensus(
     gene: str,
+    is_assembly_or_genome: bool,
     input_path: Path,
     output_path: Path,
     compress_intermediates: bool,
@@ -409,16 +422,33 @@ def log_excised_consensus(
 
     x_positions = defaultdict(set)
 
-    raw_aa = list(parseFasta(str(aa_in)))
-    aa_nodes = [NODE(header, seq, *find_index_pair(seq,"-"), []) for header, seq in raw_aa if header[-1] != "."]
-    aa_sequences = [x.sequence for x in aa_nodes]
+    bp_count = lambda x: len(x) - x.count("-")
 
+    raw_aa = list(parseFasta(str(aa_in)))
+
+    ref_lens = []
+    for header, seq in raw_aa:
+        if header.endswith('.'):
+            ref_lens.append(bp_count(seq))
+
+    ref_avg_len = sum(ref_lens) / len(ref_lens)
+
+    aa_nodes = [NODE(header, seq, *find_index_pair(seq,"-"), []) for header, seq in raw_aa if header[-1] != "."]
+    
     if prepare_dupes and reporter_dupes:
         consensus_seq = make_duped_consensus(
             raw_aa, prepare_dupes, reporter_dupes, excise_consensus
         )
     else:
+        aa_sequences = [x.sequence for x in aa_nodes]
         consensus_seq = dumb_consensus(aa_sequences, excise_consensus, 0)
+        
+    
+    gene_coverage = get_coverage(consensus_seq, aa_nodes, ref_avg_len)
+    req_coverage = 0.4 if is_assembly_or_genome else 0.01
+    if gene_coverage < req_coverage:
+        log_output.append(f">{gene}_kicked_coverage_{gene_coverage}_of_{req_coverage}\n{consensus_seq}")
+        return log_output, True, len(aa_nodes)
 
     TRIM_MAX = 6
 
@@ -596,7 +626,7 @@ def move_flagged(to_move, processes):
 ###
 
 
-def main(args, override_cut, sub_dir):
+def main(args, override_cut, sub_dir, is_assembly_or_genome):
     timer = TimeKeeper(KeeperMode.DIRECT)
     if not (0 < args.excise_overlap_merge < 1.0):
         if 0 < args.excise_overlap_merge <= 100:
@@ -658,6 +688,7 @@ def main(args, override_cut, sub_dir):
         arguments = [
             (
                 gene,
+                is_assembly_or_genome,
                 input_folder,
                 output_folder,
                 compress,
@@ -681,6 +712,7 @@ def main(args, override_cut, sub_dir):
             results.append(
                 log_excised_consensus(
                     gene,
+                    is_assembly_or_genome,
                     input_folder,
                     output_folder,
                     compress,

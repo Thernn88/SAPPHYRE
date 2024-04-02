@@ -57,7 +57,7 @@ def main(argsobj):
 
         if not argsobj.no_excise:
             printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
-            module_return_tuple = excise.main(this_args, True, from_folder)
+            module_return_tuple = excise.main(this_args, True, from_folder, is_assembly or is_genome)
             if not module_return_tuple:
                 print()
                 print(argsobj.formathelp())
