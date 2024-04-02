@@ -1,6 +1,6 @@
 from collections import defaultdict
 from multiprocessing import Pool
-from os import listdir, mkdir, path
+from os import listdir, makedirs, mkdir, path
 from pathlib import Path
 from shutil import move
 import copy
@@ -432,7 +432,7 @@ def log_excised_consensus(
     req_coverage = 0.4 if is_assembly_or_genome else 0.01
     if gene_coverage < req_coverage:
         log_output.append(f">{gene}_kicked_coverage_{gene_coverage}_of_{req_coverage}\n{consensus_seq}")
-        return log_output, False, True, len(aa_nodes)
+        return log_output, False, False, gene, False, len(aa_nodes)
 
     TRIM_MAX = 6
 
@@ -576,7 +576,8 @@ def log_excised_consensus(
         nt_output = [(header, del_cols(seq, x_positions[header], True)) for header, seq in raw_sequences if header not in kicked_headers]
         writeFasta(nt_out, nt_output, compress_intermediates)
 
-    return log_output, bad_regions != [], False, len(kicked_headers)
+        return log_output, bad_regions != [], False, False, gene, len(kicked_headers)
+    return log_output, bad_regions != [], gene, False, None, len(kicked_headers)
 
 
 def load_dupes(rocks_db_path: Path):
@@ -645,10 +646,9 @@ def main(args, override_cut, sub_dir, is_assembly_or_genome):
     output_aa_folder = output_folder.joinpath("aa")
     output_nt_folder = output_folder.joinpath("nt")
 
-    if not path.exists(output_folder):
-        mkdir(str(output_folder))
-        mkdir(str(output_aa_folder))
-        mkdir(str(output_nt_folder))
+    if not path.exists(output_aa_folder):
+        makedirs(str(output_aa_folder), exist_ok=True)
+        makedirs(str(output_nt_folder), exist_ok=True)
 
     aa_input = input_folder.joinpath("aa")
 
@@ -665,6 +665,7 @@ def main(args, override_cut, sub_dir, is_assembly_or_genome):
 
     genes = [fasta for fasta in listdir(aa_input) if ".fa" in fasta]
     log_path = Path(output_folder, "excise_regions.txt")
+    gene_log_path = Path(output_folder, "excise_genes.txt")
     if args.processes > 1:
         arguments = [
             (
@@ -709,19 +710,54 @@ def main(args, override_cut, sub_dir, is_assembly_or_genome):
                 )
             )
 
-    log_output = ["\n".join(x[0]) for x in results]
-    loci_containing_bad_regions = len([1 for x in results if x[1]])
-    kicked_coverage = len([1 for x in results if x[2]])
-    kicked_sequences = sum(x[3] for x in results)
+    kicked_sequences = 0
+    log_output = []
+    loci_containing_bad_regions = 0
+    kicked_no_resolve = []
+    kicked_coverage = []
+    has_resolution = []
+    no_ambig = []
+
+    for glog, ghas_ambig, ghas_no_resolution, gcoverage_kick, g_has_resolution, gkicked_seq in results:
+        log_output.extend(glog)
+        if ghas_ambig:
+            loci_containing_bad_regions += 1
+        kicked_sequences += gkicked_seq
+        if ghas_no_resolution:
+            kicked_no_resolve.append(ghas_no_resolution)
+        if gcoverage_kick:
+            kicked_coverage.append(gcoverage_kick)
+        if g_has_resolution:
+            if ghas_ambig:
+                has_resolution.append(g_has_resolution)
+            else:
+                no_ambig.append(g_has_resolution)
+
+
+
     printv(
-        f"{input_folder}: {loci_containing_bad_regions} ambiguous loci found. {kicked_coverage} genes kicked due to low coverage. Kicked {kicked_sequences} sequences total.",
+        f"{input_folder}: {loci_containing_bad_regions} ambiguous loci found. {len(kicked_coverage)} genes kicked due to low coverage. Kicked {kicked_sequences} sequences total.",
         args.verbose,
     )
 
     if args.debug:
         with open(log_path, "w") as f:
             f.write("Gene,Cut-Indices,Consensus Sequence\n")
-            f.write("".join(log_output))
+            f.write("\n".join(log_output))
+        with open(gene_log_path, "w") as f:
+            f.write(f"{len(kicked_no_resolve)} gene(s) kicked due to no seqs with resolution:\n")
+            f.write("\n".join(kicked_no_resolve))
+            f.write("\n\n")
+            f.write(f"{len(kicked_coverage)} gene(s) kicked due to low coverage:\n")
+            f.write("\n".join(kicked_coverage))
+            f.write("\n\n")
+            f.write(f"{len(has_resolution)} gene(s) with resolution and ambig:\n")
+            f.write("\n".join(has_resolution))
+            f.write("\n\n")
+            f.write(f"{len(no_ambig)} gene(s) resolve with no ambig:\n")
+            f.write("\n".join(no_ambig))
+            f.write("\n\n")
+
 
     printv(f"Done! Took {timer.differential():.2f} seconds", args.verbose)
     if len(genes) == 0:
