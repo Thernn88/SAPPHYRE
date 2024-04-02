@@ -405,13 +405,14 @@ def log_excised_consensus(
 
     x_positions = defaultdict(set)
 
+    bp_count = lambda x: len(x) - x.count("-")
+
     raw_aa = list(parseFasta(str(aa_in)))
 
     ref_lens = []
     for header, seq in raw_aa:
         if header.endswith('.'):
-            start, end = find_index_pair(seq, "-")
-            ref_lens.append(end - start)
+            ref_lens.append(bp_count(seq))
 
     ref_avg_len = sum(ref_lens) / len(ref_lens)
 
@@ -564,7 +565,7 @@ def log_excised_consensus(
 
     if aa_has_candidate:
         gene_coverage = get_coverage([seq for header, seq in aa_output if header[-1] != "."], ref_avg_len)
-        req_coverage = 0.5 if is_assembly_or_genome else 0.01
+        req_coverage = 0.4 if is_assembly_or_genome else 0.01
         if gene_coverage < req_coverage:
             log_output.append(f">{gene}_kicked_coverage_{gene_coverage}_of_{req_coverage}\n{consensus_seq}")
             return log_output, False, False, gene, False, len(aa_nodes)
