@@ -294,8 +294,11 @@ def identity(nodes_in_region, best_index, allowed_mismatches):
     extend_region = set()
     for i in indices:
         node = nodes_in_region[i]
-        distance = constrained_distance(best_node.sequence, node.sequence)
-        node_length = len(node.sequence) - node.sequence.count("-")
+        overlap_coords = get_overlap(best_node.start, best_node.end, node.start, node.end, 1)
+        kmer_node = node.sequence[overlap_coords[0]:overlap_coords[1]]
+        kmer_best = best_node.sequence[overlap_coords[0]:overlap_coords[1]]
+        distance = constrained_distance(kmer_node, kmer_best)
+        # node_length = len(node.sequence) - node.sequence.count("-")
 
         # if node_length < best_length * (1 - length_percentage):
         #     continue
