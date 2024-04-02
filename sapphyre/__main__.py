@@ -450,7 +450,7 @@ def outlier_args(par):
     par.add_argument(
         "-ead",
         "--excise_allowed_distance",
-        default=3,
+        default=4,
         type=int,
         help="# of bp allowed to deviate from a resolving master in excise",
     )
