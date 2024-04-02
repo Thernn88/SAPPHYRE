@@ -11,7 +11,6 @@ from sys import exit
 from msgspec import Struct
 from numpy import float16, isnan, nanpercentile,nanmedian
 from sapphyre_tools import (
-    asm_index_split,
     blosum62_candidate_to_reference,
     blosum62_distance,
     delete_empty_columns,

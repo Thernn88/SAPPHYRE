@@ -1,13 +1,10 @@
 from collections import Counter, defaultdict
 import os
 import re
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from itertools import count
 from pathlib import Path
-from queue import Queue
 from shutil import rmtree
-from tempfile import NamedTemporaryFile
-from time import time
 from typing import Any
 from tqdm import tqdm
 
@@ -17,7 +14,7 @@ import xxhash
 from msgspec import json
 
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import parseFasta, printv, writeFasta
+from .utils import parseFasta, printv
 
 
 class IndexIter:

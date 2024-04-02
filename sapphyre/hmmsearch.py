@@ -1,16 +1,16 @@
 import warnings
-from Bio import BiopythonWarning
 from collections import defaultdict
 from shutil import rmtree
 from tempfile import NamedTemporaryFile
-from .diamond import ReferenceHit, ReporterHit as Hit
-from wrap_rocks import RocksDB
-from .utils import printv, gettempdir, parseFasta, writeFasta
 from os import path, system, stat
-from msgspec import Struct, json
 from multiprocessing import Pool
-from sapphyre_tools import translate, bio_revcomp, get_overlap
+from wrap_rocks import RocksDB
+from msgspec import Struct, json
+from sapphyre_tools import bio_revcomp, get_overlap
+from Bio import BiopythonWarning
 from Bio.Seq import Seq
+from .utils import printv, gettempdir, writeFasta
+from .diamond import ReferenceHit, ReporterHit as Hit
 from .timekeeper import TimeKeeper, KeeperMode
 
 
@@ -97,7 +97,7 @@ def get_overlap_amount(a_start: int, a_end: int, b_start: int, b_end: int) -> in
         b_end,
         1,
     )
-    if overlap_coords == None:
+    if overlap_coords is None:
         return 0
 
     return overlap_coords[1] - overlap_coords[0]
@@ -385,7 +385,6 @@ def do_folder(input_folder, args):
     if not path.exists(hmm_output_folder):
         system(f"mkdir {hmm_output_folder}")
 
-    hmm_location = path.join(args.orthoset_input, args.orthoset, "hmms")
     top_location = path.join(input_folder, "top")
 
     arguments = get_arg(transcripts_mapped_to, head_to_seq, args.full, hmm_output_folder, top_location, args.overwrite, args.map, args.debug, args.verbose)

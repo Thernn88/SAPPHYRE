@@ -5,17 +5,13 @@ PyLint 9.61/10
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from itertools import islice
 from multiprocessing.pool import Pool
-from os import makedirs, mkdir, path, remove, listdir
-from pathlib import Path
+from os import mkdir, path, listdir
 from shutil import rmtree
-from typing import Any, Literal
+from typing import Any
 
-from Bio.Seq import Seq
 from msgspec import Struct, json
-from numpy import uint8
-from sapphyre_tools import find_index_pair, get_overlap, score_splits
+from sapphyre_tools import find_index_pair, get_overlap
 from wrap_rocks import RocksDB
 
 from .timekeeper import KeeperMode, TimeKeeper

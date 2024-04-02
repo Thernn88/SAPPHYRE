@@ -3,11 +3,9 @@ from itertools import combinations
 from math import ceil
 from multiprocessing import Pool
 from os import listdir, mkdir, path
-import re
 
 from msgspec import Struct
 from sapphyre_tools import (
-    constrained_distance,
     convert_consensus,
     dumb_consensus,
     dumb_consensus_dupe,

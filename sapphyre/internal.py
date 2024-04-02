@@ -4,7 +4,6 @@ from pathlib import Path
 
 from msgspec import Struct, json
 from sapphyre_tools import (
-    constrained_distance,
     dumb_consensus,
     dumb_consensus_dupe,
     consensus_distance,

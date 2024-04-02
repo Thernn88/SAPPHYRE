@@ -1,6 +1,6 @@
 from collections import defaultdict
 from multiprocessing import Pool
-from os import listdir, makedirs, mkdir, path
+from os import listdir, makedirs, path
 from pathlib import Path
 from shutil import move
 import copy
@@ -290,7 +290,7 @@ def simple_assembly(nodes, min_merge_overlap_percent):
 def identity(nodes_in_region, best_index, allowed_mismatches):
     indices = [i for i, node in enumerate(nodes_in_region) if i != best_index]
     best_node = nodes_in_region[best_index]
-    best_length = len(best_node.sequence) - best_node.sequence.count("-")
+    #best_length = len(best_node.sequence) - best_node.sequence.count("-")
     extend_region = set()
     for i in indices:
         node = nodes_in_region[i]
@@ -342,11 +342,10 @@ def del_cols(sequence, columns, nt=False):
         for i in columns:
             seq[i] = "---"
         return "".join(seq)
-    else:
-        seq = list(sequence)
-        for i in columns:
-            seq[i] = "-"
-        return "".join(seq)
+    seq = list(sequence)
+    for i in columns:
+        seq[i] = "-"
+    return "".join(seq)
 
 
 def get_coverage(aa_seqs, ref_avg_len):
@@ -577,8 +576,8 @@ def log_excised_consensus(
         nt_output = [(header, del_cols(seq, x_positions[header], True)) for header, seq in raw_sequences if header not in kicked_headers]
         writeFasta(nt_out, nt_output, compress_intermediates)
 
-        return log_output, bad_regions != [], False, False, gene, len(kicked_headers)
-    return log_output, bad_regions != [], gene, False, None, len(kicked_headers)
+        return log_output, bad_regions, False, False, gene, len(kicked_headers)
+    return log_output, bad_regions, gene, False, None, len(kicked_headers)
 
 
 def load_dupes(rocks_db_path: Path):
@@ -609,7 +608,7 @@ def move_flagged(to_move, processes):
 ###
 
 
-def main(args, override_cut, sub_dir, is_assembly_or_genome):
+def main(args, sub_dir, is_assembly_or_genome):
     timer = TimeKeeper(KeeperMode.DIRECT)
     if not (0 < args.excise_overlap_merge < 1.0):
         if 0 < args.excise_overlap_merge <= 100:

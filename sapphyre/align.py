@@ -4,11 +4,11 @@ from collections import Counter, defaultdict, namedtuple
 from math import ceil
 from multiprocessing.pool import Pool
 from os import listdir, mkdir, path, stat, system
-from psutil import Process
 from shutil import rmtree
 from subprocess import Popen, run
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-from time import sleep, time
+from time import time
+from psutil import Process
 from sapphyre_tools import find_index_pair, sigclust
 from xxhash import xxh3_64
 

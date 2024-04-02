@@ -9,23 +9,18 @@ from multiprocessing.pool import Pool
 from os import listdir, makedirs, path
 from shutil import rmtree
 import warnings
-from Bio import BiopythonWarning
 from statistics import median, stdev
+from Bio import BiopythonWarning
 from blosum import BLOSUM
-from msgspec import json
-from parasail import blosum62, nw_trace_scan_profile_16, profile_create_16
 from sapphyre_tools import (
     find_index_pair,
     join_by_tripled_index,
     join_triplets_with_exclusions,
     join_with_exclusions,
-    bio_revcomp,
     blosum62_distance,
 )
 from wrap_rocks import RocksDB
-from Bio.Seq import Seq
 
-from .diamond import ReporterHit as Hit
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
 

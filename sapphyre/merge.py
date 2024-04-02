@@ -5,7 +5,6 @@ PyLint 9.61/10
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from itertools import islice
 from multiprocessing.pool import Pool
 from os import makedirs, mkdir, path, remove
 from pathlib import Path
@@ -15,7 +14,7 @@ from typing import Literal
 from Bio.Seq import Seq
 from msgspec import Struct, json
 from numpy import uint8
-from sapphyre_tools import find_index_pair, get_overlap, score_splits
+from sapphyre_tools import find_index_pair, get_overlap
 from wrap_rocks import RocksDB
 
 from .timekeeper import KeeperMode, TimeKeeper
@@ -349,7 +348,6 @@ def do_protein(
             sequences_dict, current_point_seqs = make_seq_dict(this_sequences)
 
             # Create a hashmap to store the split quality taxons
-            quality_taxons_here = {}
 
             for cursor in range(data_start, data_end):
                 headers_at_current_point = current_point_seqs[cursor]
@@ -698,7 +696,6 @@ def do_folder(folder: Path, args):
     tmp_dir = directory_check(folder)
     dupe_tmp_file = Path(tmp_dir, "DupeSeqs.tmp")
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
-    is_assembly_or_genome = False
     if rocks_db_path.exists():
         rocksdb_db = RocksDB(str(rocks_db_path))
         prepare_dupe_counts = json.decode(
@@ -708,11 +705,6 @@ def do_folder(folder: Path, args):
             rocksdb_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]]
         )
 
-        dbis_assembly = rocksdb_db.get("get:isassembly") == "True"
-        dbis_genome = rocksdb_db.get("get:isgenome") == "True"
-
-        if dbis_assembly or dbis_genome:
-            is_assembly_or_genome = True
         ref_stats = rocksdb_db.get("getall:valid_refs").split(",")
     else:
         prepare_dupe_counts = {}

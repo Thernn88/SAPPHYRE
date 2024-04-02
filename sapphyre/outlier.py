@@ -2,14 +2,13 @@ import argparse
 import os
 from shutil import rmtree
 
-from . import blosum, excise, hmmfilter, internal, collapser
+from . import blosum, excise, hmmfilter, internal
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import printv
 
 
 def main(argsobj):
     timer = TimeKeeper(KeeperMode.DIRECT)
-    to_move = []
     debug = 0 if argsobj.debug is None else argsobj.debug
     if debug > 1:
         printv("Debug Mode Enabled, Skipping final Excise.", argsobj.verbose, 0)
@@ -56,7 +55,7 @@ def main(argsobj):
             
 
         printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
-        module_return_tuple = excise.main(this_args, True, from_folder, is_assembly or is_genome)
+        module_return_tuple = excise.main(this_args, from_folder, is_assembly or is_genome)
         if not module_return_tuple:
             print()
             print(argsobj.formathelp())

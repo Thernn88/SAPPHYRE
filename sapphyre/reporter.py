@@ -10,7 +10,7 @@ from typing import TextIO
 from blosum import BLOSUM
 from msgspec import json
 from parasail import blosum62, nw_trace_scan_profile_16, profile_create_16
-from sapphyre_tools import translate
+#from sapphyre_tools import translate
 from wrap_rocks import RocksDB
 from xxhash import xxh3_64
 from Bio.Seq import Seq
@@ -18,7 +18,7 @@ from Bio.Seq import Seq
 from . import rocky
 from .hmmsearch import HmmHit
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import gettempdir, printv, writeFasta
+from .utils import printv, writeFasta
 
 MainArgs = namedtuple(
     "MainArgs",

@@ -4,7 +4,7 @@ from decimal import Decimal
 from itertools import combinations, count
 from math import ceil
 from multiprocessing.pool import Pool
-from os import makedirs, path, remove, stat, system
+from os import makedirs, path, stat, system
 from shutil import rmtree
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from time import time
@@ -122,7 +122,7 @@ def get_overlap_amount(a_start: int, a_end: int, b_start: int, b_end: int) -> in
         b_end,
         1,
     )
-    if overlap_coords == None:
+    if overlap_coords is None:
         return 0
 
     return overlap_coords[1] - overlap_coords[0]

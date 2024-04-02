@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Generator
 from multiprocessing import Pool
 from os import path as ospath
 from pathlib import Path
 from shutil import rmtree
-from typing import Any
 
 from sapphyre_tools import find_index_pair
 from pr2codon import pn2codon
