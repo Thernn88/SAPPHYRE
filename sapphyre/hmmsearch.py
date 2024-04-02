@@ -363,6 +363,7 @@ def get_head_to_seq(nt_db, recipe):
     return head_to_seq
 
 def do_folder(input_folder, args):
+    printv(f"Processing {input_folder}", args.verbose, 1)
     hits_db = RocksDB(path.join(input_folder, "rocksdb", "hits"))
     tk = TimeKeeper(KeeperMode.DIRECT)
     transcripts_mapped_to = get_diamondhits(
@@ -373,7 +374,10 @@ def do_folder(input_folder, args):
     seq_db = RocksDB(path.join(input_folder, "rocksdb", "sequences", "nt"))
     is_genome = seq_db.get("get:isgenome")
     is_genome = is_genome == "True"
-    if is_genome or args.full:
+    is_assembly = seq_db.get("get:isassembly")
+    is_assembly = is_assembly == "True"
+    is_full = is_genome or is_assembly or args.full
+    if is_full:
         recipe = seq_db.get("getall:batches").split(",")
         head_to_seq = get_head_to_seq(seq_db, recipe)
     del seq_db
@@ -387,11 +391,9 @@ def do_folder(input_folder, args):
 
     top_location = path.join(input_folder, "top")
 
-    arguments = get_arg(transcripts_mapped_to, head_to_seq, args.full, hmm_output_folder, top_location, args.overwrite, args.map, args.debug, args.verbose)
+    arguments = get_arg(transcripts_mapped_to, head_to_seq, is_full, hmm_output_folder, top_location, args.overwrite, args.map, args.debug, args.verbose)
 
     all_hits = []
-
-    printv(f"Processing {input_folder}", args.verbose, 1)
 
     if args.processes <= 1:
         for this_arg in arguments:
