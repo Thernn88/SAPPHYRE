@@ -316,7 +316,7 @@ def indices_that_resolve(nodes, sequences_out_of_region, merge_percent):
     for i, node in enumerate(nodes):
         this_seq_out = sequences_out_of_region.copy()
         has_unambig_overlap = False
-        for j, node_b in enumerate(this_seq_out):
+        for node_b in this_seq_out:
             overlap_coords = get_overlap(node.start, node.end, node_b.start, node_b.end, 1)
             
             if overlap_coords:
@@ -325,6 +325,7 @@ def indices_that_resolve(nodes, sequences_out_of_region, merge_percent):
                 
                 if overlap_percent > merge_percent:
                     has_unambig_overlap = True
+                    break
 
         if has_unambig_overlap:
             indices.append(i)
@@ -541,13 +542,10 @@ def log_excised_consensus(
 
             node_indices = indices_that_resolve(copy_of_nodes_in_region, sequences_out_of_region, excise_overlap_merge)
 
-            if not node_indices:
-                continue
-            
-            best_index = max(node_indices, key=lambda x: len(nodes_in_region[x].sequence) - nodes_in_region[x].sequence.count("-"))
 
             keep_indices = set()
-            if best_index is not None:
+            if node_indices:
+                best_index = max(node_indices, key=lambda x: len(nodes_in_region[x].sequence) - nodes_in_region[x].sequence.count("-"))
                 keep_indices.update([best_index])
 
                 similar_indices = identity(nodes_in_region, best_index, allowed_distance)
