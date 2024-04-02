@@ -137,6 +137,12 @@ def diamond_args(par):
         action="store_true",
         help="Overwrite existing files.",
     )
+    par.add_argument(
+        "-ot",
+        "--overwrite_top",
+        action="store_true",
+        help="Force overwrite top reference files.",
+    )
     par.add_argument("-d", "--debug", action="store_true", help="Enable debug outputs.")
     par.add_argument(
         "-s",

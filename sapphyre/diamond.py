@@ -779,24 +779,20 @@ def run_process(args: Namespace, input_path: str) -> bool:
     target_counts = df["target"].value_counts()
     taxon_to_targets = defaultdict(list)
     target_to_gene = {}
+    combined_count = Counter()
+
+    for target in target_counts.to_dict().keys():
+        gene, ref_taxa, _ = target_to_taxon[target]
+        taxon_to_targets[ref_taxa].append(target)
+        target_to_gene[target] = gene
 
     if is_assembly_or_genome:
         filtered_df = df[df["score"] > 300]
         target_counts = filtered_df["target"].value_counts()
-        combined_count = Counter()
-        for target, count in target_counts.to_dict().items():
-            gene, ref_taxa, _ = target_to_taxon[target]
-            taxon_to_targets[ref_taxa].append(target)
-            target_to_gene[target] = gene
-            combined_count[ref_taxa] += count
-    target_counts = df["target"].value_counts()
-    
+
     for target, count in target_counts.to_dict().items():
         gene, ref_taxa, _ = target_to_taxon[target]
-        taxon_to_targets[ref_taxa].append(target)
-        target_to_gene[target] = gene
-        if not is_assembly_or_genome:
-            combined_count[ref_taxa] += count
+        combined_count[ref_taxa] += count
 
     top_refs = set()
     pairwise_refs = set()
@@ -1120,7 +1116,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             args.verbose,
         )
 
-        if path.exists(top_path):
+        if args.overwrite_top and path.exists(top_path):
             rmtree(top_path)
         makedirs(top_path, exist_ok=True)
 
