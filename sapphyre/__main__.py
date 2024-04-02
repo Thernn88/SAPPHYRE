@@ -803,7 +803,7 @@ def flexcull_args(par):
         "-cc",
         "--column_cull",
         type=float,
-        default=0.1,
+        default=0.0,
         help="Percentage of reference columns that must contain data.",
     )
     par.add_argument(
