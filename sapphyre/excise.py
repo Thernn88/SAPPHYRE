@@ -312,12 +312,10 @@ def indices_that_resolve(nodes, sequences_out_of_region, merge_percent):
     that can be merged into the list of nodes. If a sequence is found that can be merged,
     it is removed from the list of sequences_out_of_region and added to the list of nodes.
     """
-    best_index = None
-    best_length = None
     indices = []
     for i, node in enumerate(nodes):
         this_seq_out = sequences_out_of_region.copy()
-        has_unambig_merge = False
+        has_unambig_overlap = False
         for j, node_b in enumerate(this_seq_out):
             overlap_coords = get_overlap(node.start, node.end, node_b.start, node_b.end, 1)
             
@@ -326,25 +324,10 @@ def indices_that_resolve(nodes, sequences_out_of_region, merge_percent):
                 overlap_percent = overlap_amount / (node.end - node.start)
                 
                 if overlap_percent > merge_percent:
-                    kmer_a = node.sequence[overlap_coords[0]:overlap_coords[1]]
-                    kmer_b = node_b.sequence[overlap_coords[0]:overlap_coords[1]]
+                    has_unambig_overlap = True
 
-                    if not is_same_kmer(kmer_a, kmer_b):
-                        continue
-
-                    overlap_coord = overlap_coords[0]
-
-                    before = len(node.sequence) - node.sequence.count("-")
-
-                    node.extend(node_b, overlap_coord)
-                    this_seq_out.pop(j)
-
-                    if (len(node.sequence) - node.sequence.count("-")) > before:
-                        has_unambig_merge = True
-
-                        
-
-        indices.append(i)
+        if has_unambig_overlap:
+            indices.append(i)
 
     return indices
         
