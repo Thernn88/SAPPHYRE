@@ -9,7 +9,7 @@ from pathlib import Path
 from sys import exit
 
 from msgspec import Struct
-from numpy import float16, isnan, nanmean, nanpercentile,nanmedian
+from numpy import float16, isnan, nanpercentile,nanmedian
 from sapphyre_tools import (
     asm_index_split,
     blosum62_candidate_to_reference,
@@ -123,56 +123,6 @@ def find_index_groups(candidates: list) -> dict:
         # candidate.id = candidate.id + f"$${start}$${stop}"
         candidate_dict[(start, stop)].append(candidate)
     return candidate_dict
-
-
-def find_asm_index_groups(candidates: list) -> dict:
-    def lst():
-        return []
-
-    candidate_dict = defaultdict(lst)
-    for candidate in candidates:
-        indices = asm_index_split(candidate.raw)
-        for index_pair in indices:
-            start, stop = index_pair
-            header = candidate.id + f"$${start}$${stop}"
-            intron_candidate = Record(header, candidate.raw)
-            intron_candidate.sequence = intron_candidate.raw[start:stop]
-            candidate_dict[(start, stop)].append(intron_candidate)
-
-    return candidate_dict
-
-
-def remake_introns(passing: list) -> tuple:
-    def lst():
-        return []
-
-    result = {}
-    header_to_intron_records = defaultdict(lst)
-    # first pass to find passing indices
-    for record in passing:
-        header, start, stop = record.id.split("$$")
-        start = int(start)
-        stop = int(stop)
-        header_to_intron_records[header].append((start, stop))
-    # second pass to reconstruct records with only valid indices
-    for record in passing:
-        header, start, stop = record.id.split("$$")
-        if header in result:
-            continue
-        indices_list = header_to_intron_records[header]
-        # make a single set of all sites to use
-        valid_indices = set()
-        for index_pair in indices_list:
-            valid_indices.update(set(range(index_pair[0], index_pair[1])))
-        seq = list(record.raw)
-        for i, _ in enumerate(seq):
-            if i not in valid_indices:
-                seq[i] = "-"
-        record.raw = "".join(seq)
-        record.id = header
-        result[header] = record
-    return list(result.values()), header_to_intron_records
-
 
 def candidate_pairwise_calls(candidate: Record, refs: list) -> list:
     """Calls calc._pairwise on a candidate and each ref sequence in the list.
@@ -370,39 +320,6 @@ def aa_to_nt(index: int):
     return [index * 3, index * 3 + 1, index * 3 + 2]
 
 
-def align_intron_removal(lines: list, header_to_indices: dict) -> list:
-    """Replaces failing introns with hyphens.
-
-    Iterates over the nt lines. For each two lines, pulls the header and
-    checks the aa indices, translates those to nt indices, and then gaps
-    the appropriate sites. Returns the altered list of nt lines. This should
-    only be called when the assembly flag is found in the nt database.
-    """
-
-    def set_shim():
-        return set()
-
-    nt_indices = defaultdict(set_shim)
-    # convert aa index pairs to nt indices
-    for header, index_list in header_to_indices.items():
-        for start, stop in index_list:
-            index_set = sum([aa_to_nt(index) for index in range(start, stop)], [])
-            nt_indices[header].update(index_set)
-    # gap introns at any index not present in nt_indices
-    for i in range(0, len(lines), 2):
-        header = lines[i].strip()
-        if header not in nt_indices:
-            continue
-        indices = nt_indices[header]
-        sequence = list(lines[i + 1].strip())
-
-        for j, _ in enumerate(sequence):
-            if j not in indices:
-                sequence[j] = "-"
-        lines[i + 1] = "".join(sequence)
-    return lines
-
-
 def remove_excluded_sequences(lines: list, excluded: set) -> list:
     """Given a list of fasta lines and a set of headers to be excluded from output,
     returns a list of all valid headers and sequences. Use before the delete_column
@@ -424,64 +341,6 @@ def original_order_sort(original: list, candidate_records: list) -> list:
     output = [candidates.get(header, False) for header in original]
     return [x for x in output if x]
 
-
-def make_asm_exclusions(passing: list, failing: list) -> set:
-    """Makes to_be_excluded set for assembly files.
-
-    Finds failing - passing. These names need to be
-    excluded from the nt files. This function is required because
-    the intron location has been appended to the record's id, so
-    it's possible to have a single name in both passing and failing.
-    """
-    failing_set = {record.id.split("$$")[0] for record in failing}
-    passing_set = {record.id.split("$$")[0] for record in passing}
-
-    return failing_set.difference(passing_set)
-
-
-def get_passing_headers(passing: list) -> dict:
-    """
-    Iterate over a list of passing assembly records and get the headers.
-    Return a set containing all original headers that had at least one
-    subsequence pass.
-    """
-    any_passed = {}
-    for candidate in passing:
-        header, start, stop = candidate.id.split("$$")
-        start = int(start)
-        stop = int(stop)
-        if header not in any_passed:
-            any_passed[header] = [float('inf'), 0]
-            current = any_passed[header]
-            if start < current[0]:
-                current[0] = start
-            if stop > current[1]:
-                current[1] = stop
-    return any_passed
-
-
-def save_partial_fails(failing: list, any_passing: dict) -> tuple:
-    """
-    Find all failing assembly headers that had a passing subsequence at
-    a different index. Saves the failing sequence if it is between two
-    passing sequences.
-    Takes a list of failing candidate records and a set
-    of passing headers.
-    Returns a list of records.
-    """
-    output = []
-    for i, cand in enumerate(failing):
-        header, start, stop = cand.id.split("$$")
-        start = int(start)
-        stop = int(stop)
-        if header not in any_passing:
-            continue
-        current = any_passing[header]
-        if start > current[0] and stop < current[1]:
-            output.append(cand)
-            failing[i] = None
-    failing = [candidate for candidate in failing if candidate is not None]
-    return output, failing
 
 
 def find_ref_len(ref: str) -> int:
@@ -725,7 +584,7 @@ def main_process(
 
 
 def do_folder(folder, args):
-    ALLOWED_EXTENSIONS = {".fa", ".fas", ".fasta", ".fa", ".gz", ".fq", ".fastq"}
+    ALLOWED_EXTENSIONS = {".fa", ".fas", ".fasta", ".gz", ".fq", ".fastq"}
     reference_kick_path = Path(folder, "reference_kicks.log")
     if path.exists(reference_kick_path):
         remove(reference_kick_path)
