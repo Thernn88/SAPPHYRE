@@ -795,6 +795,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         combined_count[ref_taxa] += count
 
     top_refs = set()
+    top_ref_in_order = []
     pairwise_refs = set()
     top_targets = set()
     most_common = combined_count.most_common()
@@ -807,6 +808,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     #target_count = min_count * (1 - args.top_ref)
     for taxa, count in most_common:
         if count >= target_count:
+            top_ref_in_order.append(taxa)
             top_refs.add(taxa)
             top_targets.update(taxon_to_targets[taxa])
 
@@ -1042,7 +1044,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         )
 
         del variant_filter
-        nt_db.put("getall:valid_refs", ",".join(list(top_refs)))
+        nt_db.put("getall:valid_refs", ",".join(top_ref_in_order))
 
         head_to_seq = get_head_to_seq(nt_db, recipe)
 
