@@ -582,7 +582,7 @@ def process_refs(
         data_present = 1 - (chars.count("-") / len(chars))
         all_dashes_by_index[i] = data_present == 0
         gap_present_threshold[i] = data_present >= gap_threshold
-        cut_gap_present[i] = data_present and not all_dashes_by_index[i]
+        cut_gap_present[i] = gap_present_threshold[i] and not all_dashes_by_index[i]
         if data_present < column_cull_percent:
             column_cull.add(i * 3)
 
