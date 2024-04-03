@@ -787,7 +787,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         target_to_gene[target] = gene
 
     if is_assembly_or_genome:
-        filtered_df = df[df["score"] > 300]
+        filtered_df = df[df["score"] > 200]
         target_counts = filtered_df["target"].value_counts()
 
     for target, count in target_counts.to_dict().items():
