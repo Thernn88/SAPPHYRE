@@ -568,7 +568,7 @@ def process_refs(
     character_at_each_pos = defaultdict(list)
     gap_present_threshold = {}
     column_cull = set()
-
+    cut_gap_present = {}
     # Get the length of the longest reference and create
     # a dict with a default value for every index covered by the references
     max_ref_length = max(len(sequence) for _, sequence in references)
@@ -582,6 +582,7 @@ def process_refs(
         data_present = 1 - (chars.count("-") / len(chars))
         all_dashes_by_index[i] = data_present == 0
         gap_present_threshold[i] = data_present >= gap_threshold
+        cut_gap_present[i] = data_present and not all_dashes_by_index[i]
         if data_present < column_cull_percent:
             column_cull.add(i * 3)
 
@@ -595,6 +596,7 @@ def process_refs(
         gap_present_threshold,
         all_dashes_by_index,
         column_cull,
+        cut_gap_present,
     )
 
 
@@ -647,6 +649,7 @@ def cull_codons(
     all_dashes_by_index: dict,
     character_at_each_pos: dict,
     gap_present_threshold: dict,
+    cut_gap_present: dict,
 ):
     positions_to_trim = set()
     codons = []
@@ -755,7 +758,8 @@ def cull_codons(
         non_trimmed_codons.remove(i)
 
         if not cut_left and not cut_right:
-            if gap_present_threshold[i]:
+            # if gap_present_threshold[i]:
+            if cut_gap_present[i]:
                 kick = True, i
                 return out_line, positions_to_trim, kick
 
@@ -1034,6 +1038,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
         gap_present_threshold,
         all_dashes_by_index,
         column_cull,
+        cut_gap_present,
     ) = process_refs(
         references, fargs.gap_threshold, fargs.column_cull_percent, fargs.filtered_mat
     )
@@ -1090,6 +1095,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                     all_dashes_by_index,
                     character_at_each_pos,
                     gap_present_threshold,
+                    cut_gap_present,
                 )
                 if kick:
                     follow_through[header] = True, 0, 0, []
