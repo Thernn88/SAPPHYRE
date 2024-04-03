@@ -1177,7 +1177,6 @@ def do_gene(fargs: FlexcullArgs) -> None:
             post_gap_present_threshold,
             post_all_dashes_by_index,
             _,
-            _,
         ) = process_refs(
             post_references,
             fargs.gap_threshold,
