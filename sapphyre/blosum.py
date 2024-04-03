@@ -165,6 +165,7 @@ def compare_means(
     ref_gap_percent: float,
     ref_min_percent: float,
     ref_seq_len: int,
+    top_refs: set,
 ) -> tuple:
     """For each candidate record, finds the index of the first non-gap bp and makes
     matching cuts in the reference sequences. Afterwards finds the mean of the trimmed
@@ -271,6 +272,8 @@ def compare_means(
         for candidate in candidates_at_index:
             mean_distance = "No refs"
             candidate.grade = "Ref Fail"
+            cupper_bound = upper_bound * 2 if candidate.id.split("|")[1] in top_refs else upper_bound
+
             if has_ref_distances:
                 candidate_distances = candidate_pairwise_calls(
                     candidate,
@@ -278,8 +281,9 @@ def compare_means(
                 )
                 candidate.mean_distance = nanmedian(candidate_distances)
                 candidate.iqr = IQR
-                candidate.upper_bound = upper_bound
-                if candidate.mean_distance <= upper_bound:
+
+                candidate.upper_bound = cupper_bound
+                if candidate.mean_distance <= cupper_bound:
                     candidate.grade = "Pass"
                     passing.append(candidate)
                 else:
@@ -287,7 +291,7 @@ def compare_means(
             else:
                 candidate.mean_distance = mean_distance
                 candidate.iqr = IQR
-                candidate.upper_bound = upper_bound
+                candidate.upper_bound = cupper_bound
                 failing.append(candidate)
 
     return regulars, passing, failing
@@ -457,6 +461,7 @@ def main_process(
     ref_gap_percent: float,
     ref_min_percent: int,
     assembly: bool,
+    top_refs: set,
     ref_kick_path,
 ):
     keep_refs = not args_references
@@ -516,7 +521,8 @@ def main_process(
         index_group_min_bp,
         ref_gap_percent,
         ref_min_percent,
-        ref_seq_len
+        ref_seq_len,
+        top_refs,
     )
     logs = []
     # if passing:
@@ -597,19 +603,21 @@ def do_folder(folder, args):
         aa_input = Path(folder, "align")
         nt_input = Path(folder, "nt_aligned")
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
-    if rocks_db_path.exists():
-        rocksdb_db = RocksDB(str(rocks_db_path))
-        is_assembly = rocksdb_db.get("get:isassembly")
-        is_assembly = is_assembly == "True"
-        is_genome = rocksdb_db.get("get:isgenome")
-        is_genome = is_genome == "True"
-        # debugging lines, uncomment to manually set a flag
-        # is_assembly = False
-        # is_genome = False
-        del rocksdb_db
-    else:
+    if not rocks_db_path.exists():
         err = f"cannot find dupe databases for {folder}"
         raise FileNotFoundError(err)
+    rocksdb_db = RocksDB(str(rocks_db_path))
+    is_assembly = rocksdb_db.get("get:isassembly")
+    is_assembly = is_assembly == "True"
+    is_genome = rocksdb_db.get("get:isgenome")
+    is_genome = is_genome == "True"
+    top_refs = set(rocksdb_db.get("getall:valid_refs").split(",")[:1])
+
+    # debugging lines, uncomment to manually set a flag
+    # is_assembly = False
+    # is_genome = False
+    del rocksdb_db
+
     if not aa_input.exists():  # exit early
         printv(
             f"WARNING: Can't find aa folder for taxa {folder}: '{wanted_aa_path}'. Aborting",
@@ -681,6 +689,7 @@ def do_folder(folder, args):
                     # args.internal_consensus_threshold,
                     # args.internal_kick_threshold,
                     is_genome or is_assembly,
+                    top_refs,
                     reference_kick_path,
                 ),
             )
@@ -709,6 +718,7 @@ def do_folder(folder, args):
                     # args.internal_consensus_threshold,
                     # args.internal_kick_threshold,
                     is_genome or is_assembly,
+                    top_refs,
                     reference_kick_path,
                 ),
             )
