@@ -421,6 +421,7 @@ def log_excised_consensus(
     ref_avg_len = sum(ref_lens) / len(ref_lens)
 
     aa_nodes = [NODE(header, seq, *find_index_pair(seq,"-"), []) for header, seq in raw_aa if header[-1] != "."]
+    kicked_headers = set()
     
     if prepare_dupes and reporter_dupes:
         consensus_seq = make_duped_consensus(
@@ -431,7 +432,6 @@ def log_excised_consensus(
         consensus_seq = dumb_consensus(aa_sequences, excise_consensus, 0)
 
     TRIM_MAX = 6
-
     for node in aa_nodes:
         new_start = node.start
         new_end = node.end
@@ -442,13 +442,13 @@ def log_excised_consensus(
             let = consensus_seq[i]
             if let == "X":
                 if (i <= new_start + 2 and i >= new_start):
+                    if i - node.start > TRIM_MAX:
+                        break
                     new_start = i
-                    if new_start - node.start >= TRIM_MAX:
-                        break
                 if (i >= new_end - 2 and i <= new_end):
-                    new_end = i
-                    if node.end - new_end >= TRIM_MAX:
+                    if node.end - i > TRIM_MAX:
                         break
+                    new_end = i
 
         if new_start != node.start or new_end != node.end:
             for i in range(node.start, new_start):
@@ -484,6 +484,12 @@ def log_excised_consensus(
                 x_positions[node.header].add(x)
             node.end = i
 
+    for node in aa_nodes:
+        node_kmer = node.sequence[node.start:node.end]
+        data_len = bp_count(node_kmer)
+        if data_len < 15:
+            kicked_headers.add(node.header)
+
     raw_sequences = [(header, del_cols(seq, x_positions[header], True)) for header, seq in parseFasta(str(nt_in))]
     sequences = [x[1] for x in raw_sequences if x[0][-1] != "."]
 
@@ -508,7 +514,6 @@ def log_excised_consensus(
     # Search for slices of the consensus seq with a high ratio of 'X' to total characters
     bad_regions = check_covered_bad_regions(consensus_seq, excise_minimum_ambig)
 
-    kicked_headers = set()
     if bad_regions:
         for region in bad_regions:
             sequences_in_region = []
