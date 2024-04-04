@@ -1096,7 +1096,8 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
                     if fargs.debug:
                         codon_log.append(f"{header},{kick[1]}\n")
-                    continue
+                    kick = False
+                    # continue
 
             # Join sequence and check bp after cull
             out_line = "".join(out_line)
