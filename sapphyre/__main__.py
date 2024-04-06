@@ -998,7 +998,7 @@ def subcmd_download(sp):
 
 
 def download(argsobj):
-    from . import download
+    from .tools import download
 
     if not download.main(argsobj):
         print()
@@ -1431,7 +1431,9 @@ def subcmd_toolset(subparser):
         "toolset", help="A set of useful tools developed with integration to the pipeline."
     )
     sub_sub_parser = parser.add_subparsers()
+
     subcmd_taxonomy_filler(sub_sub_parser)
+    subcmd_download(sub_sub_parser)
 
 def main():
     # Check mafft exists
@@ -1524,7 +1526,6 @@ def main():
     subcmd_internal(subparsers)
     subcmd_Merge(subparsers)
     subcmd_Combine(subparsers)
-    subcmd_download(subparsers)
     subcmd_archive(subparsers)
 
     # Finalize
@@ -1539,7 +1540,7 @@ def main():
     # Auto
     subcmd_auto(subparsers)
 
-    # Auto
+    # Toolset
     subcmd_toolset(subparsers)
 
     args = parser.parse_args()

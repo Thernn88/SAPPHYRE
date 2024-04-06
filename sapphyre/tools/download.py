@@ -9,7 +9,7 @@ import openpyxl
 import requests
 from bs4 import BeautifulSoup
 
-from .utils import printv
+from ..utils import printv
 
 
 def download_parallel_srr(arguments):
