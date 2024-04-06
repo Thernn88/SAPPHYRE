@@ -817,7 +817,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         gene_target_to_taxa[gene][target] = taxa
 
     target_has_hit = set(df["target"].unique())
-    df = df[(df["target"].isin(top_targets))]
+    # df = df[(df["target"].isin(top_targets))]
     headers = df["header"].unique()
     if len(headers) > 0:
         per_thread = ceil(len(headers) / post_threads)

@@ -51,6 +51,7 @@ class Hit(HmmHit, frozen=True):
         header: str,
         mat: dict,
         exact_match_amount: int,
+        top_refs: set,
     ) -> tuple[int, int]:
         """Get the bp to trim from each end so that the alignment matches for 'matches' bp.
 
@@ -87,6 +88,8 @@ class Hit(HmmHit, frozen=True):
         best_alignment = None
         best_alignment_score = 0
         for number, ref in enumerate(self.refs):
+            if not ref.ref in top_refs:
+                continue
             ref_seq = references[ref.query]
             ref_seq = ref_seq[ref.start - 1 : ref.end]
 
@@ -333,6 +336,7 @@ def print_unmerged_sequences(
     mat: dict,
     is_assembly_or_genome: bool,
     exact_match_amount: int,
+    top_refs: set,
 ) -> tuple[dict[str, list], list[tuple[str, str]], list[tuple[str, str]]]:
     """Returns a list of unique trimmed sequences for a given gene with formatted headers.
 
@@ -396,6 +400,7 @@ def print_unmerged_sequences(
                 header,
                 mat,
                 exact_match_amount,
+                top_refs,
             )
             if r_start is None or r_end is None:
                 printv(f"WARNING: Trim kicked: {hit.node}|{hit.frame}", verbose, 2)
@@ -591,6 +596,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         mat,
         oargs.is_assembly_or_genome,
         oargs.EXACT_MATCH_AMOUNT,
+        oargs.top_refs,
     )
     if debug_alignments:
         debug_alignments.close()
