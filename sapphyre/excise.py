@@ -376,6 +376,7 @@ def log_excised_consensus(
     allowed_distance,
     prepare_dupes: dict,
     reporter_dupes: dict,
+    true_cluster_threshold = 50,
 ):
     """
     By default, this does non-dupe consensus. If you pass "dupes=True", it will call
@@ -400,6 +401,7 @@ def log_excised_consensus(
     first removed character, inclusive. The end is the length of the string, which is exclusive.
     """
     log_output = []
+    this_rescues = []
 
     aa_in = input_path.joinpath("aa", gene)
     aa_out = output_path.joinpath("aa", gene)
@@ -493,14 +495,40 @@ def log_excised_consensus(
     raw_sequences = [(header, del_cols(seq, x_positions[header], True)) for header, seq in parseFasta(str(nt_in))]
     sequences = [x[1] for x in raw_sequences if x[0][-1] != "."]
 
+    true_cluster_raw = []
+
     nodes = []
     for header, seq in raw_sequences:
         if header[-1] == ".":
             continue
         start, end = find_index_pair(seq, "-")
+
+        id = header.split("|")[3].split("_")[1]
+        true_cluster_raw.append((int(id), header))
+
         nodes.append(
             NODE(header, seq, start, end,  [])
         )
+
+    true_cluster_raw.sort(key = lambda x: x[0])
+    before_true_clusters = []
+
+    current_cluster = []
+    for child_index, child_full in true_cluster_raw:
+        if not current_cluster:
+            current_cluster.append(child_full)
+            current_index = child_index
+        else:
+            if child_index - current_index <= true_cluster_threshold:
+                current_cluster.append(child_full)
+                current_index = child_index
+            else:
+                before_true_clusters.append(current_cluster)
+                current_cluster = [child_full]
+                current_index = child_index
+    
+    if current_cluster:
+        before_true_clusters.append(current_cluster)
 
     if prepare_dupes and reporter_dupes:
         consensus_seq = make_duped_consensus(
@@ -564,6 +592,46 @@ def log_excised_consensus(
                 log_output.extend([f">{node.contig_header()}_{'kept' if i in keep_indices else 'kicked'}\n{node.sequence}" for i, node in enumerate(nodes_in_region)])
                 log_output.append("\n")
 
+        after_data = []
+        for node in nodes:
+            if node.header in kicked_headers:
+                continue
+            after_data.append((node.header.split("|")[3].split("_")[1], node.header))
+
+        after_data.sort(key = lambda x: x[0])
+        after_true_clusters = []
+
+        current_cluster = []
+        for child_index, child_full in true_cluster_raw:
+            if not current_cluster:
+                current_cluster.append(child_full)
+                current_index = child_index
+            else:
+                if child_index - current_index <= true_cluster_threshold:
+                    current_cluster.append(child_full)
+                    current_index = child_index
+                else:
+                    after_true_clusters.append(current_cluster)
+                    current_cluster = [child_full]
+                    current_index = child_index
+        
+        if is_assembly_or_genome:
+            if current_cluster:
+                after_true_clusters.append(current_cluster)
+
+            after_true_cluster = set(max(after_true_clusters, key=lambda x: len(x)))
+            matches = []
+            for i, cluster in enumerate(before_true_clusters):
+                matches.append((len(after_true_cluster.intersection(set(cluster))) / len( cluster), i))
+            matches.sort(key=lambda x: x[0], reverse= True)
+            
+            best_match = max(matches, key=lambda x: x[0])[1]
+            this_rescues = [f"Rescued in gene: {gene}"]
+            for header in before_true_clusters[best_match]:
+                if header in kicked_headers:
+                    kicked_headers.remove(header)
+                    this_rescues.append(header)
+
     aa_output = [(header, del_cols(seq, x_positions[header])) for header, seq in raw_aa if header not in kicked_headers]
 
     aa_has_candidate = False
@@ -577,14 +645,14 @@ def log_excised_consensus(
         req_coverage = 0.4 if is_assembly_or_genome else 0.01
         if gene_coverage < req_coverage:
             log_output.append(f">{gene}_kicked_coverage_{gene_coverage}_of_{req_coverage}\n{consensus_seq}")
-            return log_output, False, False, gene, False, len(aa_nodes)
+            return log_output, False, False, gene, False, len(aa_nodes), this_rescues
         
         writeFasta(aa_out, aa_output, compress_intermediates)
         nt_output = [(header, del_cols(seq, x_positions[header], True)) for header, seq in raw_sequences if header not in kicked_headers]
         writeFasta(nt_out, nt_output, compress_intermediates)
 
-        return log_output, bad_regions, False, False, gene, len(kicked_headers)
-    return log_output, bad_regions, gene, False, None, len(kicked_headers)
+        return log_output, bad_regions, False, False, gene, len(kicked_headers), this_rescues
+    return log_output, bad_regions, gene, False, None, len(kicked_headers), this_rescues
 
 
 def load_dupes(rocks_db_path: Path):
@@ -724,9 +792,11 @@ def main(args, sub_dir, is_assembly_or_genome):
     kicked_coverage = []
     has_resolution = []
     no_ambig = []
+    rescues = []
 
-    for glog, ghas_ambig, ghas_no_resolution, gcoverage_kick, g_has_resolution, gkicked_seq in results:
+    for glog, ghas_ambig, ghas_no_resolution, gcoverage_kick, g_has_resolution, gkicked_seq, grescues in results:
         log_output.extend(glog)
+        rescues.extend(grescues)
         if ghas_ambig:
             loci_containing_bad_regions += 1
         kicked_sequences += gkicked_seq
@@ -764,6 +834,8 @@ def main(args, sub_dir, is_assembly_or_genome):
             f.write(f"{len(no_ambig)} gene(s) resolve with no ambig:\n")
             f.write("\n".join(no_ambig))
             f.write("\n\n")
+        with open(Path(output_folder, "rescues.txt"), "w") as f:
+            f.write("\n".join(rescues))
 
 
     printv(f"Done! Took {timer.differential():.2f} seconds", args.verbose)
