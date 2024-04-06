@@ -1391,6 +1391,47 @@ def subcmd_internal(subparser):
 
     parser.set_defaults(func=internal, formathelp=parser.format_help)
 
+def subcmd_taxonomy_filler(subparser):
+    parser = subparser.add_parser(
+        "taxonomy_filler", help="Fill in missing taxonomy information from NCBI."
+    )
+    parser.add_argument("INPUT", help="Input csv or excel file", type=str)
+    parser.add_argument(
+        "-of",
+        "--output_fails",
+        type=str,
+        default=None,
+        help="A path to a file to write failed organisms to.",
+    )
+    parser.add_argument(
+        "-out",
+        "--output",
+        type=str,
+        default=None,
+        help="Overwrite the results file output path",
+    )
+    parser.add_argument(
+        "-col",
+        "--organism_col",
+        type=str,
+        default="organism name",
+        help="The column in which the organism names are located",
+    )
+    parser.set_defaults(func=taxonomy_filler, formathelp=parser.format_help)
+
+def taxonomy_filler(args):
+    from .tools import taxonomy_filler
+
+    if not taxonomy_filler.main(args):
+        print()
+        print(args.formathelp())
+
+def subcmd_toolset(subparser):
+    parser = subparser.add_parser(
+        "toolset", help="A set of useful tools developed with integration to the pipeline."
+    )
+    sub_sub_parser = parser.add_subparsers()
+    subcmd_taxonomy_filler(sub_sub_parser)
 
 def main():
     # Check mafft exists
@@ -1497,6 +1538,9 @@ def main():
 
     # Auto
     subcmd_auto(subparsers)
+
+    # Auto
+    subcmd_toolset(subparsers)
 
     args = parser.parse_args()
     if not hasattr(args, "func"):
