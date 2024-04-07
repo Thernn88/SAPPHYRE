@@ -516,6 +516,9 @@ def do_folder(input_folder, args):
             hits.sort(key=lambda hit: hit.score, reverse=True)
             
             multi_filter_args.append((hits, args.debug))
+        else:
+            for hit in hits:
+                gene_based_results[hit.gene].append(hit)
             
     if args.processes <= 1:
         result = []
