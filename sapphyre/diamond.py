@@ -216,36 +216,36 @@ def multi_filter(this_args: MultiArgs) -> tuple[list, int, list]:
                             master.qend,
                         ),
                     )
-            else:
-                # If the score difference is not greater than 5% trigger miniscule score.
-                # Miniscule score means hits map to loosely to multiple genes thus
-                # we can't determine a viable hit on a single gene and must kick all.
-                if this_args.debug:
-                    log.extend(
-                        [
-                            (
-                                hit.gene,
-                                hit.node,
-                                hit.ref,
-                                hit.score,
-                                hit.qstart,
-                                hit.qend,
-                                "Kicked due to miniscule score",
-                                master.gene,
-                                master.node,
-                                master.ref,
-                                master.score,
-                                master.qstart,
-                                master.qend,
-                            )
-                            for hit in this_args.hits
-                            if hit
-                        ],
-                    )
+            # else:
+            #     # If the score difference is not greater than 5% trigger miniscule score.
+            #     # Miniscule score means hits map to loosely to multiple genes thus
+            #     # we can't determine a viable hit on a single gene and must kick all.
+            #     if this_args.debug:
+            #         log.extend(
+            #             [
+            #                 (
+            #                     hit.gene,
+            #                     hit.node,
+            #                     hit.ref,
+            #                     hit.score,
+            #                     hit.qstart,
+            #                     hit.qend,
+            #                     "Kicked due to miniscule score",
+            #                     master.gene,
+            #                     master.node,
+            #                     master.ref,
+            #                     master.score,
+            #                     master.qstart,
+            #                     master.qend,
+            #                 )
+            #                 for hit in this_args.hits
+            #                 if hit
+            #             ],
+            #         )
 
-                kicks = set(hit.uid for hit in this_args.hits)
+            #     kicks = set(hit.uid for hit in this_args.hits)
 
-                return MultiReturn(len(this_args.hits), log, kicks)
+            #     return MultiReturn(len(this_args.hits), log, kicks)
 
     return MultiReturn(len(this_args.hits) - passes, log, kicks)
 

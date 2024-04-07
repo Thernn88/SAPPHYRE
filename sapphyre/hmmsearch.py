@@ -27,6 +27,25 @@ class HmmHit(Struct):
     seq: str = None
     
 
+def get_score_difference(score_a: float, score_b: float) -> float:
+    """Get the decimal difference between two scores.
+
+    Args:
+    ----
+        score_a (float): The first score.
+        score_b (float): The second score.
+
+    Returns:
+    -------
+        float: The decimal difference between the two scores.
+    """
+    # If either score is zero return zero.
+    if score_a == 0.0 or score_b == 0.0:
+        return 0.0
+
+    # Return the decimal difference between the largest score and the smallest score.
+    return max(score_a, score_b) / min(score_a, score_b)
+
 
 def get_diamondhits(
     rocks_hits_db: RocksDB,
@@ -286,9 +305,11 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                     else:
                         new_qstart = hit.qstart + start
 
+                    new_uid = hit.uid + start + end
+
 
                     parents_done.add(f"{hit.node}|{hit.frame}")
-                    new_hit = HmmHit(node=hit.node, score=score, frame=hit.frame, qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=sequence)
+                    new_hit = HmmHit(node=hit.node, score=score, frame=hit.frame, qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=new_uid, refs=hit.refs, seq=sequence)
                     output.append((new_hit, ali_start, ali_end))
 
         if query in children:
@@ -312,8 +333,10 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                 else:
                     new_qstart = hit.qstart + start
 
+                new_uid = parent.uid + start + end
 
-                clone = HmmHit(node=parent.node, score=score, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=parent.gene, query=parent.query, uid=parent.uid, refs=parent.refs, seq=sequence)
+
+                clone = HmmHit(node=parent.node, score=score, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=parent.gene, query=parent.query, uid=new_uid, refs=parent.refs, seq=sequence)
                 new_outs.append((f"{clone.gene},{clone.node},{clone.frame}"))
                 
                 output.append((clone, ali_start, ali_end))
@@ -362,6 +385,70 @@ def get_head_to_seq(nt_db, recipe):
 
     return head_to_seq
 
+
+def miniscule_multi_filter(hits, debug):
+    MULTI_PERCENTAGE_OF_OVERLAP = 0.3
+    MULTI_SCORE_DIFFERENCE = 1.1
+
+    log = []
+
+    # Assign the highest scoring hit as the 'master'
+    master = hits[0]
+
+    # Assign all the lower scoring hits as 'candidates'
+    candidates = hits[1:]
+
+    for i, candidate in enumerate(candidates, 1):
+        # Skip if the candidate has been kicked already or if master and candidate are internal hits:
+        if not candidate or master.gene == candidate.gene:
+            continue
+
+        # Get the distance between the master and candidate
+        distance = master.qend - master.qstart
+
+        # Get the amount and percentage overlap between the master and candidate
+        amount_of_overlap = get_overlap_amount(
+            master.qstart,
+            master.qend,
+            candidate.qstart,
+            candidate.qend,
+        )
+        percentage_of_overlap = amount_of_overlap / distance
+
+        # If the overlap is greater than 30% and the score difference is greater than 5%
+        if percentage_of_overlap >= MULTI_PERCENTAGE_OF_OVERLAP:
+            score_difference = get_score_difference(master.score, candidate.score)
+            if score_difference < MULTI_SCORE_DIFFERENCE:
+                # If the score difference is not greater than 5% trigger miniscule score.
+                # Miniscule score means hits map to loosely to multiple genes thus
+                # we can't determine a viable hit on a single gene and must kick all.
+                if debug:
+                    log.extend(
+                        [
+                            (
+                                hit.gene,
+                                hit.node,
+                                hit.ref,
+                                hit.score,
+                                hit.qstart,
+                                hit.qend,
+                                "Kicked due to miniscule score",
+                                master.gene,
+                                master.node,
+                                master.ref,
+                                master.score,
+                                master.qstart,
+                                master.qend,
+                            )
+                            for hit in hits
+                            if hit
+                        ],
+                    )
+
+                return [], len(hits), log
+    return hits, 0, log
+
+
 def do_folder(input_folder, args):
     printv(f"Processing {input_folder}", args.verbose, 1)
     hits_db = RocksDB(path.join(input_folder, "rocksdb", "hits"))
@@ -402,17 +489,56 @@ def do_folder(input_folder, args):
         with Pool(args.processes) as p:
             all_hits = p.starmap(hmm_search, arguments)
 
+    printv(f"Running miniscule score filter", args.verbose, 1)
+
     log = ["Gene,Node,Frame"]
     klog = ["Gene,Node,Frame"]
     ilog = ["Kicked Gene,Header,Frame,Score,Start,End,Reason,Master Gene,Header,Frame,Score,Start,End"]
+    header_based_results = defaultdict(list)
     for gene, hits, logs, klogs, ilogs in all_hits:
         if not gene:
             continue
+
+        for hit in hits:
+            header_based_results[hit.node].append(hit)
         
-        hits_db.put_bytes(f"gethmmhits:{gene}", json.encode([i for i in hits]))
         log.extend(logs)
         klog.extend(klogs)
         ilog.extend(ilogs)
+
+    mlog = ["Gene,Node,Frame,Score,Start,End,Reason,Master Gene,Header,Frame,Score,Start,End"]
+    mkicks = 0
+
+    multi_filter_args = []
+
+    gene_based_results = defaultdict(list)
+    for header, hits in header_based_results.items():
+        genes_present = {hit.gene for hit in hits}
+        if len(genes_present) > 1:
+            hits.sort(key=lambda hit: hit.score, reverse=True)
+            
+            multi_filter_args.append((hits, args.debug))
+            
+    if args.processes <= 1:
+        result = []
+        for hits, debug in multi_filter_args:
+            result.append(miniscule_multi_filter(hits, debug))
+    else:
+        with Pool(args.processes) as p:
+            result = p.starmap(miniscule_multi_filter, multi_filter_args)
+    
+    for hits, kicked_count, this_log in result:
+        mlog.extend(this_log)
+        if kicked_count:
+            mkicks += kicked_count
+
+        for hit in hits:
+            gene_based_results[hit.gene].append(hit)
+        
+    printv(f"Kicked {mkicks} hits due to miniscule score", args.verbose, 1)
+    printv(f"Writing results to db", args.verbose, 1)
+    for gene, hits in gene_based_results.items():
+        hits_db.put_bytes(f"gethmmhits:{gene}", json.encode(hits))
 
     del hits_db
 
@@ -422,6 +548,8 @@ def do_folder(input_folder, args):
         f.write("\n".join(klog))
     with open(path.join(input_folder, "hmmsearch_internal.log"), "w") as f:
         f.write("\n".join(ilog))
+    with open(path.join(input_folder, "hmmsearch_multi.log"), "w") as f:
+        f.write("\n".join(mlog))
 
     printv(f"Done with {input_folder}. Took {tk.lap():.2f}s", args.verbose, 1)
     return True
