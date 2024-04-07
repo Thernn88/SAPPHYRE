@@ -520,9 +520,11 @@ def top_reference_realign(orthoset_raw_path, orthoset_aln_path, top_refs, target
     else:
         source = parseFasta(gene_path, True)
         
+    header_set = set()
     for header, seq in source:
         key = f"{gene}|{header}"
         if target_to_taxon.get(header, set()) in top_refs or target_to_taxon.get(key, set()) in top_refs:
+            header_set.add(header)
             out.append((header, seq.replace("-", "")))        
         
     out_path = path.join(top_path, gene+".aln.fa")
@@ -532,7 +534,7 @@ def top_reference_realign(orthoset_raw_path, orthoset_aln_path, top_refs, target
         return
     
     if path.exists(out_path):
-        if len(out) == len(list(parseFasta(out_path, True))):
+        if header_set == set(header for header, _ in parseFasta(out_path, True)):
             return
     
     with NamedTemporaryFile(dir=gettempdir(), prefix=f"{gene}_") as tmp_prealign, NamedTemporaryFile(dir=gettempdir(), prefix=f"{gene}_") as tmp_result:
