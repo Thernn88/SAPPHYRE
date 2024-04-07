@@ -471,7 +471,7 @@ def do_folder(input_folder, args):
 
     hmm_output_folder = path.join(input_folder, "hmmsearch")
     
-    if (args.debug or args.overwrite) and path.exists(hmm_output_folder):
+    if (args.debug > 1 or args.overwrite) and path.exists(hmm_output_folder):
         rmtree(hmm_output_folder, ignore_errors=True)
     if not path.exists(hmm_output_folder):
         system(f"mkdir {hmm_output_folder}")
