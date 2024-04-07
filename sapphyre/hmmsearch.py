@@ -126,6 +126,8 @@ def internal_filter_gene(this_gene_hits, debug, min_overlap_internal=0.9, score_
     this_gene_hits.sort(key=lambda hit: hit[0].score, reverse=True)
     filtered_sequences_log = []
 
+    internal_log_template = "{},{},{},{},{},{},Internal Overlapped with Highest Score,{},{},{},{},{},{}"
+
     for i, (hit_a, start_a, end_a) in enumerate(this_gene_hits):
         if not hit_a:
             continue
@@ -144,7 +146,20 @@ def internal_filter_gene(this_gene_hits, debug, min_overlap_internal=0.9, score_
                         this_gene_hits[j] = None, None, None
                         if debug:
                             filtered_sequences_log.append(
-                                f"{hit_b.gene},{hit_b.node},{hit_b.frame},{hit_b.score},{start_b},{end_b},Internal Overlapped with Highest Score,{hit_a.gene},{hit_a.node},{hit_a.frame},{hit_a.score},{start_a},{end_a}"
+                                internal_log_template.format(
+                                    hit_b.gene,
+                                    hit_b.node,
+                                    hit_b.frame,
+                                    hit_b.score,
+                                    start_b,
+                                    end_b,
+                                    hit_a.gene,
+                                    hit_a.node,
+                                    hit_a.frame,
+                                    hit_a.score,
+                                    start_a,
+                                    end_a,
+                                )
                             )
 
 
@@ -342,9 +357,10 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                 output.append((clone, ali_start, ali_end))
 
     kick_log = []
+    kick_template = "{},{},{}"
     for hit in diamond_hits:
         if not f"{hit.node}|{hit.frame}" in parents_done:
-            kick_log.append(f"{hit.gene},{hit.node},{hit.frame}")
+            kick_log.append(kick_template.format(hit.gene, hit.node, hit.frame))
 
     # output, filtered_sequences_log = internal_filter_gene(output, debug)
     filtered_sequences_log = []
@@ -398,6 +414,8 @@ def miniscule_multi_filter(hits, debug):
     # Assign all the lower scoring hits as 'candidates'
     candidates = hits[1:]
 
+    internal_template = "{},{},{},{},{},Kicked due to miniscule score,{},{},{},{},{}"
+
     for i, candidate in enumerate(candidates, 1):
         # Skip if the candidate has been kicked already or if master and candidate are internal hits:
         if not candidate or master.gene == candidate.gene:
@@ -423,27 +441,7 @@ def miniscule_multi_filter(hits, debug):
                 # Miniscule score means hits map to loosely to multiple genes thus
                 # we can't determine a viable hit on a single gene and must kick all.
                 if debug:
-                    log.extend(
-                        [
-                            (
-                                hit.gene,
-                                hit.node,
-                                hit.ref,
-                                hit.score,
-                                hit.qstart,
-                                hit.qend,
-                                "Kicked due to miniscule score",
-                                master.gene,
-                                master.node,
-                                master.ref,
-                                master.score,
-                                master.qstart,
-                                master.qend,
-                            )
-                            for hit in hits
-                            if hit
-                        ],
-                    )
+                    log = [internal_template.format(hit.gene, hit.node, hit.score, hit.qstart, hit.qend, master.gene, master.node, master.score, master.qstart, master.qend) for hit in hits if hit]
 
                 return [], len(hits), log
     return hits, 0, log
@@ -506,7 +504,7 @@ def do_folder(input_folder, args):
         klog.extend(klogs)
         ilog.extend(ilogs)
 
-    mlog = ["Gene,Node,Frame,Score,Start,End,Reason,Master Gene,Header,Frame,Score,Start,End"]
+    mlog = ["Gene,Node,Score,Start,End,Reason,Master Gene,Header,Score,Start,End"]
     mkicks = 0
 
     multi_filter_args = []
