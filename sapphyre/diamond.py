@@ -702,7 +702,43 @@ def run_process(args: Namespace, input_path: str) -> bool:
         args.verbose,
     )
 
-    if not path.exists(out_path) or stat(out_path).st_size == 0:
+    df = None
+    if path.exists(out_path) and stat(out_path).st_size > 0:
+        try:
+            df = read_csv(
+                out_path,
+                engine="pyarrow",
+                delimiter="\t",
+                header=None,
+                names=[
+                    "header",
+                    "target",
+                    "frame",
+                    "evalue",
+                    "score",
+                    "qstart",
+                    "qend",
+                    "sstart",
+                    "send",
+                ],
+                dtype={
+                    "header": str,
+                    "target": str,
+                    "frame": int8,
+                    "evalue": float64,
+                    "score": float32,
+                    "qstart": uint16,
+                    "qend": uint16,
+                    "sstart": uint16,
+                    "send": uint16,
+                },
+            )
+        except EOFError as e:
+            printv("Failed to read csv due to EOFError. Diamond will now regenerate", args.verbose, 0)
+            if args.verbose > 1:
+                print(e)
+
+    if df is None or stat(out_path).st_size == 0:
         with TemporaryDirectory(dir=gettempdir()) as dir, NamedTemporaryFile(
             dir=dir,
         ) as input_file:
@@ -730,9 +766,13 @@ def run_process(args: Namespace, input_path: str) -> bool:
         )
     else:
         printv(
-            f"Found existing Diamond output. Elapsed time {time_keeper.differential():.2f}s. Reading file to memory",
+            f"Found existing Diamond output. Elapsed time {time_keeper.differential():.2f}s. Calculating targets.",
             args.verbose,
         )
+
+    if stat(out_path).st_size == 0:
+        printv("Diamond returned zero hits.", args.verbose, 0)
+        return True
 
     db = RocksDB(path.join(input_path, "rocksdb", "hits"))
     output = defaultdict(list)
@@ -740,43 +780,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
     global_log = []
     dupe_divy_headers = defaultdict(set)
-
-    if stat(out_path).st_size == 0:
-        printv("Diamond returned zero hits.", args.verbose, 0)
-        return True
-
-    df = read_csv(
-        out_path,
-        engine="pyarrow",
-        delimiter="\t",
-        header=None,
-        names=[
-            "header",
-            "target",
-            "frame",
-            "evalue",
-            "score",
-            "qstart",
-            "qend",
-            "sstart",
-            "send",
-        ],
-        dtype={
-            "header": str,
-            "target": str,
-            "frame": int8,
-            "evalue": float64,
-            "score": float32,
-            "qstart": uint16,
-            "qend": uint16,
-            "sstart": uint16,
-            "send": uint16,
-        },
-    )
-    printv(
-        f"Done! Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Calculating targets.",
-        args.verbose,
-    )
 
     target_counts = df["target"].value_counts()
     taxon_to_targets = defaultdict(list)
