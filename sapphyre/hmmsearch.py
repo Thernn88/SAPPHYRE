@@ -77,7 +77,7 @@ def get_diamondhits(
             continue
         gene_based_results.append((gene, this_hits))
 
-    return gene_based_results
+    return genes_to_process, gene_based_results
 
 
 def shift(frame, by):
@@ -451,7 +451,7 @@ def do_folder(input_folder, args):
     printv(f"Processing {input_folder}", args.verbose, 1)
     hits_db = RocksDB(path.join(input_folder, "rocksdb", "hits"))
     tk = TimeKeeper(KeeperMode.DIRECT)
-    transcripts_mapped_to = get_diamondhits(
+    diamond_genes, transcripts_mapped_to = get_diamondhits(
         hits_db
     )
 
@@ -509,7 +509,7 @@ def do_folder(input_folder, args):
 
     multi_filter_args = []
 
-    gene_based_results = defaultdict(list)
+    gene_based_results = {gene: [] for gene in diamond_genes}
     for header, hits in header_based_results.items():
         genes_present = {hit.gene for hit in hits}
         if len(genes_present) > 1:
