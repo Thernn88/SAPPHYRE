@@ -557,6 +557,37 @@ def top_reference_realign(orthoset_raw_path, orthoset_aln_path, top_refs, target
         writeFasta(out_path, out)
 
 
+def parse_csv(out_path: str) -> DataFrame:
+    return read_csv(
+                out_path,
+                engine="pyarrow",
+                delimiter="\t",
+                header=None,
+                names=[
+                    "header",
+                    "target",
+                    "frame",
+                    "evalue",
+                    "score",
+                    "qstart",
+                    "qend",
+                    "sstart",
+                    "send",
+                ],
+                dtype={
+                    "header": str,
+                    "target": str,
+                    "frame": int8,
+                    "evalue": float64,
+                    "score": float32,
+                    "qstart": uint16,
+                    "qend": uint16,
+                    "sstart": uint16,
+                    "send": uint16,
+                },
+            )
+
+
 def run_process(args: Namespace, input_path: str) -> bool:
     """Run the main process on the input path.
 
@@ -705,34 +736,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     df = None
     if path.exists(out_path) and stat(out_path).st_size > 0:
         try:
-            df = read_csv(
-                out_path,
-                engine="pyarrow",
-                delimiter="\t",
-                header=None,
-                names=[
-                    "header",
-                    "target",
-                    "frame",
-                    "evalue",
-                    "score",
-                    "qstart",
-                    "qend",
-                    "sstart",
-                    "send",
-                ],
-                dtype={
-                    "header": str,
-                    "target": str,
-                    "frame": int8,
-                    "evalue": float64,
-                    "score": float32,
-                    "qstart": uint16,
-                    "qend": uint16,
-                    "sstart": uint16,
-                    "send": uint16,
-                },
-            )
+            df = parse_csv(out_path)
         except EOFError as e:
             printv("Failed to read csv due to EOFError. Diamond will now regenerate", args.verbose, 0)
             if args.verbose > 1:
@@ -764,15 +768,17 @@ def run_process(args: Namespace, input_path: str) -> bool:
             f"Diamond completed successfully. Took: {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Reading file to memory",
             args.verbose,
         )
+
+        if stat(out_path).st_size == 0:
+            printv("Diamond returned zero hits.", args.verbose, 0)
+            return True
+        
+        df = parse_csv(out_path)
     else:
         printv(
             f"Found existing Diamond output. Elapsed time {time_keeper.differential():.2f}s. Calculating targets.",
             args.verbose,
         )
-
-    if stat(out_path).st_size == 0:
-        printv("Diamond returned zero hits.", args.verbose, 0)
-        return True
 
     db = RocksDB(path.join(input_path, "rocksdb", "hits"))
     output = defaultdict(list)
