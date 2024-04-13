@@ -376,6 +376,7 @@ def log_excised_consensus(
     allowed_distance,
     prepare_dupes: dict,
     reporter_dupes: dict,
+    excise_trim_consensus,
     true_cluster_threshold = 50,
 ):
     """
@@ -427,11 +428,11 @@ def log_excised_consensus(
     
     if prepare_dupes and reporter_dupes:
         consensus_seq = make_duped_consensus(
-            raw_aa, prepare_dupes, reporter_dupes, excise_consensus
+            raw_aa, prepare_dupes, reporter_dupes, excise_trim_consensus
         )
     else:
         aa_sequences = [x.sequence for x in aa_nodes]
-        consensus_seq = dumb_consensus(aa_sequences, excise_consensus, 0)
+        consensus_seq = dumb_consensus(aa_sequences, excise_trim_consensus, 0)
 
     TRIM_MAX = 6
     for node in aa_nodes:
@@ -758,6 +759,7 @@ def main(args, sub_dir, is_assembly_or_genome):
                 args.excise_allowed_distance,
                 prepare_dupes.get(gene.split(".")[0], {}),
                 reporter_dupes.get(gene.split(".")[0], {}),
+                args.excise_trim_consensus,
             )
             for gene in genes
         ]
@@ -782,6 +784,7 @@ def main(args, sub_dir, is_assembly_or_genome):
                     args.excise_allowed_distance,
                     prepare_dupes.get(gene.split(".")[0], {}),
                     reporter_dupes.get(gene.split(".")[0], {}),
+                    args.excise_trim_consensus,
                 )
             )
 

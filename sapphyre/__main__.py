@@ -441,6 +441,13 @@ def outlier_args(par):
         help="Minimum overlap percent for sequences and ambigous regions",
     )
     par.add_argument(
+        "-etc",
+        "--excise_trim_consensus",
+        default=0.65,
+        type=float,
+        help="Minimum percent of allowable X characters in edge trim for excise",
+    )
+    par.add_argument(
         "-ec",
         "--excise_consensus",
         default=0.85,
