@@ -88,6 +88,7 @@ class SeqDeduplicator:
         verbose: int,
         overlap_length,
         rename,
+        skip_ntrim,
     ) -> None:
         self.original_positions = {}
         self.original_inputs = []
@@ -98,6 +99,7 @@ class SeqDeduplicator:
         self.this_assembly = False
         self.this_genome = False
         self.overlap_length = overlap_length
+        self.skip_ntrim = skip_ntrim
         self.rename = rename
         self.transcript_mapped_to = defaultdict(dict)
 
@@ -141,7 +143,9 @@ class SeqDeduplicator:
             if requires:
                 parent_seq = parent_seq.upper()
 
-            if not self.rename:
+            if self.skip_ntrim:
+                n_sequences = [parent_seq]
+            elif not self.rename:
                 n_sequences = [chunk for chunk in parent_seq.split("N") if len(chunk) >= self.minimum_sequence_length]
             else:
                 n_sequences = (chunk for chunk in parent_seq.split("N") if len(chunk) >= self.minimum_sequence_length)
@@ -223,6 +227,7 @@ def map_taxa_runs(
     keep_prepared,
     chunk_size,
     skip_entropy,
+    skip_ntrim,
 ):
     """
     Removes duplicate sequences, renames them and inserts them into the taxa database.
@@ -267,6 +272,7 @@ def map_taxa_runs(
         verbose,
         overlap_length,
         rename,
+        skip_ntrim,
     )
     for fa_file_path in components:
         deduper(
@@ -390,6 +396,7 @@ def main(args):
             args.keep_prepared,
             args.chunk_size,
             args.skip_entropy,
+            args.skip_ntrim,
         )
 
     printv(

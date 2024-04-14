@@ -59,6 +59,12 @@ def prepare_args(par):
         help="Overwrite existing rocksdb database.",
     )
     par.add_argument(
+        "-sn",
+        "--skip_ntrim",
+        action="store_true",
+        help="Skip ntrim and allow N seqs to pass through.",
+    )
+    par.add_argument(
         "-skip",
         "--skip_entropy",
         help="Skip entropy calculation.",
