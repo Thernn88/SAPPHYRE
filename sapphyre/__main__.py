@@ -830,7 +830,7 @@ def flexcull_args(par):
         "-bp",
         "--base-pair",
         type=int,
-        default=20,
+        default=15,
         help="Minimum bp after cull.",
     )
     par.add_argument(
