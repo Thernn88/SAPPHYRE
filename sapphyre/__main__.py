@@ -449,7 +449,7 @@ def outlier_args(par):
     par.add_argument(
         "-etc",
         "--excise_trim_consensus",
-        default=0.65,
+        default=0.85,
         type=float,
         help="Minimum percent of allowable X characters in edge trim for excise",
     )
