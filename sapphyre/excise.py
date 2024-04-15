@@ -417,13 +417,20 @@ def log_excised_consensus(
     raw_aa = list(parseFasta(str(aa_in)))
 
     ref_lens = []
+    aa_nodes = []
+    ref_consensus = defaultdict(list)
     for header, seq in raw_aa:
         if header.endswith('.'):
+            start, end = find_index_pair(seq, "-")
+            for i, bp in enumerate(seq[start:end], start):
+                ref_consensus[i].append(bp)
+                
             ref_lens.append(bp_count(seq))
+            continue
+
+        aa_nodes.append(NODE(header, seq, *find_index_pair(seq, "-"), []))
 
     ref_avg_len = sum(ref_lens) / len(ref_lens)
-
-    aa_nodes = [NODE(header, seq, *find_index_pair(seq,"-"), []) for header, seq in raw_aa if header[-1] != "."]
     kicked_headers = set()
     
     if prepare_dupes and reporter_dupes:
@@ -434,39 +441,64 @@ def log_excised_consensus(
         aa_sequences = [x.sequence for x in aa_nodes]
         consensus_seq = dumb_consensus(aa_sequences, excise_trim_consensus, 0)
 
-    TRIM_MAX = 6
+    cstart, cend = find_index_pair(consensus_seq, "X")
+
+    for i, maj_bp in enumerate(consensus_seq[cstart:cend], cstart):
+        if maj_bp != "X":
+            continue
+
+        in_region = []
+        out_of_region = []
+        for x, node in enumerate(aa_nodes):
+            # within 3 bp
+            within_left = i >= node.start and i <= node.start + 3
+            within_right = i <= node.end and i >= node.end - 3
+
+            if within_left or within_right:
+                in_region.append((x, node.sequence[i], within_right))
+            elif i >= node.start and i <= node.end:
+                out_of_region.append((x, node.sequence[i], within_right))
+
+        if not out_of_region and not in_region:
+            continue
+
+        if not out_of_region and in_region:
+            for node_index, bp, on_end in in_region:
+                if bp in ref_consensus[i]:
+                    continue
+                
+                if on_end:
+                    for x in range(i, aa_nodes[node_index].end):
+                        x_positions[aa_nodes[node_index].header].add(x)
+                else:
+                    for x in range(aa_nodes[node_index].start, i + 1):
+                        x_positions[aa_nodes[node_index].header].add(x)
+
+        if out_of_region and in_region:
+            for node_index, bp, on_end in in_region:
+                if on_end:
+                    for x in range(i, aa_nodes[node_index].end):
+                        x_positions[aa_nodes[node_index].header].add(x)
+                else:
+                    for x in range(aa_nodes[node_index].start, i + 1):
+                        x_positions[aa_nodes[node_index].header].add(x)
+            pass
+
+    #refresh aa
+    if x_positions:
+        for node in aa_nodes:
+            node.sequence = del_cols(node.sequence, x_positions[node.header])
+            node.start, node.end = find_index_pair(node.sequence, "-")
+
+    if prepare_dupes and reporter_dupes:
+        consensus_seq = make_duped_consensus(
+            raw_aa, prepare_dupes, reporter_dupes, excise_trim_consensus
+        )
+    else:
+        aa_sequences = [x.sequence for x in aa_nodes]
+        consensus_seq = dumb_consensus(aa_sequences, excise_trim_consensus, 0)
+
     for node in aa_nodes:
-        new_start = node.start
-        new_end = node.end
-
-        this_positions = set()
-
-        for i, bp in enumerate(node.sequence):
-            let = consensus_seq[i]
-            if let == "X":
-                if (i <= new_start + 2 and i >= new_start):
-                    if i - node.start > TRIM_MAX:
-                        break
-                    new_start = i
-                if (i >= new_end - 2 and i <= new_end):
-                    if node.end - i > TRIM_MAX:
-                        break
-                    new_end = i
-
-        if new_start != node.start or new_end != node.end:
-            for i in range(node.start, new_start):
-                this_positions.add(i)
-                x_positions[node.header].add(i)
-            for i in range(new_end, node.end):
-                this_positions.add(i)
-                x_positions[node.header].add(i)
-            node.start = new_start
-            node.end = new_end
-
-        node.sequence = "".join(let if i not in this_positions else "-" for i, let in enumerate(node.sequence))
-
-    for node in aa_nodes:
-        this_positions = set()
         i = None
         for poss_i in range(node.start, node.start + 3):
             if node.sequence[poss_i] != consensus_seq[poss_i]:
