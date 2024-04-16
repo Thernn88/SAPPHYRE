@@ -215,7 +215,7 @@ def reporter_args(par):
         "-bp",
         "--minimum_bp",
         type=int,
-        default=20,
+        default=15,
         help="Amount of bp required after trim.",
     )
     par.add_argument(
@@ -407,7 +407,7 @@ def outlier_args(par):
         "-imp",
         "--index_group_min_bp",
         type=int,
-        default=20,
+        default=15,
         help="Minimum bp for index group after column cull.",
     )
     # Collapser commands
