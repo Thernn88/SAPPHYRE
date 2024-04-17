@@ -259,7 +259,7 @@ def cull(sequences, cull_result, percent):
 
         cull_result[header] = left_bp, right_bp
 
-        out.append(header, seq)
+        out.append((header, seq))
 
     return out
 
