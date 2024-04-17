@@ -230,41 +230,47 @@ class Sequence_Set:
             self.aligned_sequences[i] = seq
 
 
-def cull(sequences, percent, cull_internal, has_nt):
+def internal_cull(sequences, cull_internal, has_nt):
+    """
+    Culls internal columns where the percentage of non-gap characters is greater than or equal to the percent argument.
+    """
+    msa_length = len(sequences[0][1])
+    out = []
+    cull_result = {}
+    cull_positions = set()
+    for i in range(msa_length):
+        if sum(1 for seq in sequences if seq[1][i] != "-") / len(sequences) >= cull_internal:
+            continue
+        cull_positions.add(i)
+
+    for header, seq in sequences:
+        if has_nt:
+            start, end = find_index_pair(seq, "-")
+            actual_i = 0
+            this_actual_culls = set()
+            for i, let in enumerate(seq[start:end], start):
+                if let == "-":
+                    continue
+
+                if i in cull_positions:
+                    this_actual_culls.add(actual_i * 3)
+                
+                actual_i += 1
+
+            cull_result[header] = this_actual_culls
+
+        new_seq = "".join([seq[i] for i in range(msa_length) if i not in cull_positions])
+        out.append((header, new_seq))
+    
+    return cull_result, out
+
+def cull(sequences, percent, has_nt):
     """
     Culls each edge of the sequences to a column where the percentage of non-gap characters is greater than or equal to the percent argument.
     """
     msa_length = len(sequences[0][1])
     out = []
     cull_result = {}
-    if cull_internal:
-        cull_positions = set()
-        for i in range(msa_length):
-            if sum(1 for seq in sequences if seq[1][i] != "-") / len(sequences) >= percent:
-                continue
-            cull_positions.add(i)
-
-        for header, seq in sequences:
-
-            if has_nt:
-                start, end = find_index_pair(seq, "-")
-                actual_i = 0
-                this_actual_culls = set()
-                for i, let in enumerate(seq[start:end], start):
-                    if let == "-":
-                        continue
-
-                    if i in cull_positions:
-                        this_actual_culls.add(actual_i * 3)
-                    
-                    actual_i += 1
-
-                cull_result[header] = this_actual_culls
-
-            new_seq = "".join([seq[i] for i in range(msa_length) if i not in cull_positions])
-            out.append((header, new_seq))
-        
-        return cull_result, out
 
     for i in range(msa_length):
         cull_start = i
@@ -369,6 +375,7 @@ def generate_aln(
     set_path,
     raw_path,
     do_cull,
+    do_internal,
     cull_internal,
     cull_percent,
     has_nt,
@@ -408,6 +415,7 @@ def generate_aln(
                 overwrite,
                 verbosity,
                 do_cull,
+                do_internal,
                 cull_percent,
                 cull_internal,
                 has_nt,
@@ -496,6 +504,7 @@ def aln_function(
     overwrite,
     verbosity,
     do_cull,
+    do_internal,
     cull_percent,
     cull_internal,
     has_nt,
@@ -534,7 +543,11 @@ def aln_function(
 
     cull_result = {}
     if do_cull:
-        cull_result, aligned_result = cull(aligned_result, cull_percent, cull_internal, has_nt)
+        cull_result, aligned_result = cull(aligned_result, cull_percent, has_nt)
+
+    internal_result = {}
+    if do_internal:
+        internal_result, aligned_result = internal_cull(aligned_result, cull_internal, has_nt)
 
     duped_headers = set()
     seq_hashes = set()
@@ -565,16 +578,16 @@ def aln_function(
             
             if has_nt:
                 if cull_result != {}:
-                    if cull_internal:
-                        remove_set = cull_result[seq.header]
-                        seq.nt_sequence = "".join([seq.nt_sequence[i:i+3] for i in range(0, len(seq.nt_sequence), 3) if i not in remove_set])
-                    else:
-                        left_bp_remove, right_bp_remove = cull_result[seq.header]
-                        if left_bp_remove:
-                            seq.nt_sequence = seq.nt_sequence[left_bp_remove:]
-                        if right_bp_remove:
-                            seq.nt_sequence = seq.nt_sequence[:-right_bp_remove] # Ugly but works
-                    nt_result.append((seq.header, seq.nt_sequence))
+                    left_bp_remove, right_bp_remove = cull_result[seq.header]
+                    if left_bp_remove:
+                        seq.nt_sequence = seq.nt_sequence[left_bp_remove:]
+                    if right_bp_remove:
+                        seq.nt_sequence = seq.nt_sequence[:-right_bp_remove] # Ugly but works
+                if internal_result != {}:
+                    remove_set = cull_result[seq.header]
+                    seq.nt_sequence = "".join([seq.nt_sequence[i:i+3] for i in range(0, len(seq.nt_sequence), 3) if i not in remove_set])
+                nt_result.append((seq.header, seq.nt_sequence))
+                
             output.append(seq)
 
     if nt_result:
@@ -767,6 +780,7 @@ def main(args):
     cull_percent = args.cull_percent
     do_cull = cull_percent != 0
     cull_internal = args.cull_internal
+    do_internal = cull_internal != 0
     this_set = Sequence_Set(set_name)
     set_path = SETS_DIR.joinpath(set_name)
     set_path.mkdir(exist_ok=True)
@@ -916,6 +930,7 @@ def main(args):
                 set_path,
                 raw_path,
                 do_cull,
+                do_internal,
                 cull_internal,
                 cull_percent,
                 this_set.has_nt

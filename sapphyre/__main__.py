@@ -1082,16 +1082,16 @@ def subcmd_makeref(sp):
     par.add_argument(
         "-cp",
         "--cull_percent",
-        help="Percentage of non-gap characters required (percent of non gap characters >= this arg)",
+        help="Percentage of non-gap characters required for edge trim (percent of non gap characters >= this arg)",
         type=float,
         default=0,
     )
     par.add_argument(
         "-ci",
         "--cull_internal",
-        action="store_true",
-        help="Cull internal characters that do not meet the required cull_percent value specified.",
-        default=False,
+        help="Percentage of non-gap characters required internally (percent of non gap characters >= this arg)",
+        type=float,
+        default=0,
     )
     par.add_argument(
         "-ncg",
