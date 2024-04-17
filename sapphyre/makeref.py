@@ -587,7 +587,7 @@ def aln_function(
                     remove_set = cull_result[seq.header]
                     seq.nt_sequence = "".join([seq.nt_sequence[i:i+3] for i in range(0, len(seq.nt_sequence), 3) if i not in remove_set])
                 nt_result.append((seq.header, seq.nt_sequence))
-                
+
             output.append(seq)
 
     if nt_result:
@@ -778,8 +778,14 @@ def main(args):
     do_diamond = args.diamond or args.all
     do_hmm = args.hmmer or args.all
     cull_percent = args.cull_percent
+    if cull_percent > 1:
+        cull_percent = cull_percent / 100
+
     do_cull = cull_percent != 0
     cull_internal = args.cull_internal
+    if cull_internal > 1:
+        cull_internal = cull_internal / 100
+
     do_internal = cull_internal != 0
     this_set = Sequence_Set(set_name)
     set_path = SETS_DIR.joinpath(set_name)
