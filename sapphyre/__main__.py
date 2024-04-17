@@ -1087,6 +1087,13 @@ def subcmd_makeref(sp):
         default=0,
     )
     par.add_argument(
+        "-ci",
+        "--cull_internal",
+        action="store_true",
+        help="Cull internal characters that do not meet the required cull_percent value specified.",
+        default=False,
+    )
+    par.add_argument(
         "-ncg",
         "--non_coding_genes",
         type=str,
