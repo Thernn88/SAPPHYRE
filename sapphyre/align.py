@@ -300,7 +300,7 @@ def generate_tmp_aln(
 
             if align_method == "clustal":
                 system(
-                    f"clustalo -i '{tmp_prealign.name}' -o '{dest.name}' --thread=1 --force"
+                    f"clustalo -i '{tmp_prealign.name}' -o '{dest.name}' --thread=1 --full --force"
                 )
             else:
                 system(
