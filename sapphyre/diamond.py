@@ -542,7 +542,7 @@ def top_reference_realign(orthoset_raw_path, orthoset_aln_path, top_refs, target
         tmp_prealign.flush()
 
         system(
-            f"clustalo -i '{tmp_prealign.name}' -o '{tmp_result.name}' --thread=1 --full --force"
+            f"clustalo -i '{tmp_prealign.name}' -o '{tmp_result.name}' --thread=1 --force"
         )
 
         recs = list(parseFasta(tmp_result.name, True))
