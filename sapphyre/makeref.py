@@ -91,16 +91,6 @@ class Sequence_Set:
             self.has_nt = True
         self.sequences.append(seq)
 
-    def add_aligned_sequences(
-        self, gene: str, aligned_sequences: list[Sequence]
-    ) -> None:
-        """
-        Adds a list of aligned sequences to the set.
-        """
-        if not self.has_aligned:
-            self.has_aligned = True
-        self.aligned_sequences[gene] = aligned_sequences
-
     def get_aligned_sequences(self) -> dict:
         """
         Returns the aligned sequences dict
@@ -424,9 +414,12 @@ def generate_aln(
 
     aligned_sequences_components = pool.starmap(aln_function, arguments)
 
+    set.has_aligned = True
+
     for gene, aligned_sequences, dupe_headers in aligned_sequences_components:
-        set.kick_dupes(dupe_headers)
-        set.add_aligned_sequences(gene, aligned_sequences)
+        if dupe_headers:
+            set.kick_dupes(dupe_headers)
+        set.aligned_sequences[gene] = aligned_sequences
 
 
 def do_merge(sequences):
@@ -566,7 +559,6 @@ def aln_function(
 
     aligned_result = do_merge(aligned_result)
 
-    writeFasta(trimmed_path, aligned_result, False)
     for header, seq in aligned_result:
         aligned_dict[header] = seq
 
@@ -590,6 +582,7 @@ def aln_function(
 
             output.append(seq)
 
+    writeFasta(trimmed_path, aligned_result, False)
     if nt_result:
         writeFasta(nt_trimmed_path, nt_result, False)
 
@@ -941,7 +934,6 @@ def main(args):
                 cull_percent,
                 this_set.has_nt
             )
-
     if do_hmm:
         generate_hmm(this_set, overwrite, threads, verbosity, set_path)
 
