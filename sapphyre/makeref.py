@@ -292,7 +292,7 @@ def cull(sequences, percent, has_nt):
             left_bp = len(left_flank) - left_flank.count("-")
             right_bp = len(right_flank) - right_flank.count("-")
 
-        cull_result[header] = left_bp, right_bp
+            cull_result[header] = left_bp, right_bp
 
         out.append((header, seq))
 
@@ -584,7 +584,7 @@ def aln_function(
                     if right_bp_remove:
                         seq.nt_sequence = seq.nt_sequence[:-right_bp_remove] # Ugly but works
                 if internal_result != {}:
-                    remove_set = cull_result[seq.header]
+                    remove_set = internal_result[seq.header]
                     seq.nt_sequence = "".join([seq.nt_sequence[i:i+3] for i in range(0, len(seq.nt_sequence), 3) if i not in remove_set])
                 nt_result.append((seq.header, seq.nt_sequence))
 
