@@ -522,7 +522,7 @@ def aln_function(
             writeFasta(aln_file, parseFasta(raw_fa_file))
         elif align_method == "clustal":
             os.system(
-                f"clustalo -i '{raw_fa_file}' -o '{aln_file}'  --full --iter=5 --threads=1 --full-iter --force",
+                f"clustalo -i '{raw_fa_file}' -o '{aln_file}' --threads=1 --force",
             )  # --verbose
         else:
             os.system(f"mafft-linsi --thread 1 '{raw_fa_file}' > '{aln_file}'")
@@ -544,8 +544,8 @@ def aln_function(
         else:
             seq_hashes.add(seq_hash)
 
-    if duped_headers:
-        aligned_result = [i for i in aligned_result if i[0] not in duped_headers]
+    # if duped_headers:
+    #     aligned_result = [i for i in aligned_result if i[0] not in duped_headers]
 
     cull_result = {}
     if do_cull:
@@ -555,9 +555,9 @@ def aln_function(
     if do_internal:
         internal_result, aligned_result = internal_cull(aligned_result, cull_internal, has_nt)
 
-    aligned_result = [i for i in aligned_result if len(i[1]) != i[1].count("-")]
+    # aligned_result = [i for i in aligned_result if len(i[1]) != i[1].count("-")]
 
-    aligned_result = do_merge(aligned_result)
+    # aligned_result = do_merge(aligned_result)
 
     for header, seq in aligned_result:
         aligned_dict[header] = seq
