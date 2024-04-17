@@ -541,14 +541,6 @@ def aln_function(
         header = header.split(" ")[0]
         aligned_result.append((header, seq))
 
-    cull_result = {}
-    if do_cull:
-        cull_result, aligned_result = cull(aligned_result, cull_percent, has_nt)
-
-    internal_result = {}
-    if do_internal:
-        internal_result, aligned_result = internal_cull(aligned_result, cull_internal, has_nt)
-
     duped_headers = set()
     seq_hashes = set()
     for header, seq in aligned_result:
@@ -561,6 +553,14 @@ def aln_function(
 
     if duped_headers:
         aligned_result = [i for i in aligned_result if i[0] not in duped_headers]
+
+    cull_result = {}
+    if do_cull:
+        cull_result, aligned_result = cull(aligned_result, cull_percent, has_nt)
+
+    internal_result = {}
+    if do_internal:
+        internal_result, aligned_result = internal_cull(aligned_result, cull_internal, has_nt)
 
     aligned_result = [i for i in aligned_result if len(i[1]) != i[1].count("-")]
 
