@@ -510,15 +510,16 @@ def get_head_to_seq(nt_db, recipe):
     return head_to_seq
 
 
-def top_reference_realign(orthoset_raw_path, orthoset_aln_path, top_refs, target_to_taxon, top_path, gene):
+def top_reference_realign(orthoset_raw_path, orthoset_aln_path, orthoset_trimmed_path, top_refs, target_to_taxon, top_path, gene):
     out = []
 
-    gene_path = path.join(orthoset_aln_path, gene+".aln.fa")
+    gene_path = path.join(orthoset_trimmed_path, gene+".aln.fa")
+    if not path.exists(gene_path):
+        gene_path = path.join(orthoset_aln_path, gene+".fa")
+        #source = parseFasta(gene_path, True
     if not path.exists(gene_path):
         gene_path = path.join(orthoset_raw_path, gene+".fa")
-        source = parseFasta(gene_path, True)
-    else:
-        source = parseFasta(gene_path, True)
+    source = parseFasta(gene_path, True)
         
     header_set = set()
     for header, seq in source:
@@ -757,7 +758,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
             time_keeper.lap()  # Reset timer
             system(
-                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {precision} --compress 1 --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --min-orf {min_orf} --max-hsps 0 -p {num_threads}",
+                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --more-sensitive --masking 0 -e {precision} --compress 1 --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --min-orf {min_orf} --max-hsps 0 -p {num_threads}",
             )
             if not path.exists(path.join(out_path)) and path.exists(path.join(out_path+".gz")):
                 out_path += ".gz"
@@ -1122,6 +1123,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         )
         orthoset_raw_path = path.join(orthosets_dir, orthoset, "raw")
         orthoset_aln_path = path.join(orthosets_dir, orthoset, "aln")
+        orthoset_trimmed_path = path.join(orthosets_dir, orthoset, "trimmed")
         top_path = path.join(input_path, "top")
 
         printv(
@@ -1136,7 +1138,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         arguments = []
         for gene in present_genes:
             arguments.append(
-                (orthoset_raw_path, orthoset_aln_path, top_refs, gene_target_to_taxa[gene], top_path, gene)
+                (orthoset_raw_path, orthoset_aln_path, orthoset_trimmed_path, top_refs, gene_target_to_taxa[gene], top_path, gene)
             )
 
         if post_threads > 1:
