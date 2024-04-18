@@ -510,23 +510,25 @@ def get_head_to_seq(nt_db, recipe):
     return head_to_seq
 
 
-def top_reference_realign(orthoset_raw_path, orthoset_aln_path, orthoset_trimmed_path, top_refs, target_to_taxon, top_path, gene):
+def top_reference_realign(orthoset_raw_path, orthoset_aln_path, top_refs, target_to_taxon, top_path, gene):
     out = []
 
-    gene_path = path.join(orthoset_trimmed_path, gene+".aln.fa")
-    if not path.exists(gene_path):
-        gene_path = path.join(orthoset_aln_path, gene+".fa")
-        #source = parseFasta(gene_path, True
+    gene_path = path.join(orthoset_aln_path, gene+".aln.fa")
     if not path.exists(gene_path):
         gene_path = path.join(orthoset_raw_path, gene+".fa")
-    source = parseFasta(gene_path, True)
+        source = parseFasta(gene_path, True)
+    else:
+        source = parseFasta(gene_path, True)
         
     header_set = set()
     for header, seq in source:
         key = f"{gene}|{header}"
         if target_to_taxon.get(header, set()) in top_refs or target_to_taxon.get(key, set()) in top_refs:
             header_set.add(header)
-            out.append((header, seq.replace("-", "")))        
+            out.append((header, seq.replace("-", ""))) 
+
+    if len(out) == 0:
+        return     
         
     out_path = path.join(top_path, gene+".aln.fa")
 
@@ -543,7 +545,7 @@ def top_reference_realign(orthoset_raw_path, orthoset_aln_path, orthoset_trimmed
         tmp_prealign.flush()
 
         system(
-            f"clustalo -i '{tmp_prealign.name}' -o '{tmp_result.name}' --thread=1 --force"
+            f"clustalo -i '{tmp_prealign.name}' -o '{tmp_result.name}' --thread=1 --full --force"
         )
 
         recs = list(parseFasta(tmp_result.name, True))
@@ -758,7 +760,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
             time_keeper.lap()  # Reset timer
             system(
-                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --more-sensitive --masking 0 -e {precision} --compress 1 --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --min-orf {min_orf} --max-hsps 0 -p {num_threads}",
+                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity}-sensitive --masking 0 -e {precision} --compress 1 --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --min-orf {min_orf} --max-hsps 0 -p {num_threads}",
             )
             if not path.exists(path.join(out_path)) and path.exists(path.join(out_path+".gz")):
                 out_path += ".gz"
@@ -798,9 +800,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
         taxon_to_targets[ref_taxa].append(target)
         target_to_gene[target] = gene
 
-    if is_assembly_or_genome:
-        filtered_df = df[df["score"] > 200]
-        target_counts = filtered_df["target"].value_counts()
+    # if is_assembly_or_genome:
+    #     filtered_df = df[df["score"] > 200]
+    #     target_counts = filtered_df["target"].value_counts()
 
     for target, count in target_counts.to_dict().items():
         gene, ref_taxa, _ = target_to_taxon[target]
@@ -812,7 +814,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     top_targets = set()
     most_common = combined_count.most_common()
 
-    target_count = min(most_common[0:args.top_ref], key=lambda x: x[1])[1]
+    target_count = 0#min(most_common[0:args.top_ref], key=lambda x: x[1])[1]
     with open(path.join(input_path, "diamond_top_ref.csv"), "w") as fp:
         for k, v in most_common:
             fp.write(f"{k},{v} \n")
@@ -1123,7 +1125,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
         )
         orthoset_raw_path = path.join(orthosets_dir, orthoset, "raw")
         orthoset_aln_path = path.join(orthosets_dir, orthoset, "aln")
-        orthoset_trimmed_path = path.join(orthosets_dir, orthoset, "trimmed")
         top_path = path.join(input_path, "top")
 
         printv(
@@ -1138,7 +1139,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         arguments = []
         for gene in present_genes:
             arguments.append(
-                (orthoset_raw_path, orthoset_aln_path, orthoset_trimmed_path, top_refs, gene_target_to_taxa[gene], top_path, gene)
+                (orthoset_raw_path, orthoset_aln_path, top_refs, gene_target_to_taxa[gene], top_path, gene)
             )
 
         if post_threads > 1:
