@@ -262,7 +262,7 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                     writeFasta(aligned_files.name, aligned_sequences)
                     aligned_files.flush()
                     system(
-                    f"hmmsearch --domtblout {this_hmm_output} --domT 10.0 {hmm_temp_file.name} {aligned_files.name} > /dev/null",
+                    f"hmmsearch --nobias --domtblout {this_hmm_output} --domT 10.0 {hmm_temp_file.name} {aligned_files.name} > /dev/null",
                     )
 
     if debug > 1:
