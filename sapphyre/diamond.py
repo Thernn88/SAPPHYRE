@@ -523,10 +523,10 @@ def top_reference_realign(orthoset_raw_path, orthoset_aln_path, orthoset_trimmed
         
     header_set = set()
     for header, seq in source:
-        key = f"{gene}|{header}"
-        if target_to_taxon.get(header, set()) in top_refs or target_to_taxon.get(key, set()) in top_refs:
-            header_set.add(header)
-            out.append((header, seq.replace("-", "")))        
+        # key = f"{gene}|{header}"
+        # if target_to_taxon.get(header, set()) in top_refs or target_to_taxon.get(key, set()) in top_refs:
+        header_set.add(header)
+        out.append((header, seq.replace("-", "")))        
         
     out_path = path.join(top_path, gene+".aln.fa")
 
@@ -819,10 +819,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
         
     #target_count = min_count * (1 - args.top_ref)
     for taxa, count in most_common:
-        if count >= target_count:
-            top_ref_in_order.append(taxa)
-            top_refs.add(taxa)
-            top_targets.update(taxon_to_targets[taxa])
+        #if count >= target_count:
+        top_ref_in_order.append(taxa)
+        top_refs.add(taxa)
+        top_targets.update(taxon_to_targets[taxa])
 
     gene_target_to_taxa = defaultdict(dict)
     for target, (gene, taxa, _) in target_to_taxon.items():
