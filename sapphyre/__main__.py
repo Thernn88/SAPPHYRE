@@ -153,9 +153,9 @@ def diamond_args(par):
     par.add_argument(
         "-s",
         "--sensitivity",
-        choices=["very", "ultra"],
-        default="very",
-        help="Diamond sensitivty.",
+        choices=["fast", "sensitive", "mid", "more", "very", "ultra"],
+        default="more",
+        help="Diamond sensitivty argument.",
     )
     par.add_argument(
         "-e",
