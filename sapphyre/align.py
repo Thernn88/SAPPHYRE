@@ -254,9 +254,9 @@ def generate_tmp_aln(
     ) as tmp_prealign:
         sequences = []
         for header, sequence in parseFasta(aln_file, True):
-            if header in targets:
+            if header.split(" ")[0] in targets:
                 if len(sequence) != sequence.count("-"):
-                    sequences.append((targets[header], sequence))
+                    sequences.append((targets[header.split(" ")[0]], sequence))
 
         if align_method == "base":
             empty_columns = None
@@ -814,10 +814,10 @@ def run_command(args: CmdArgs) -> None:
     inserted = 0
     for header, sequence in final_sequences:
         if "|" not in header:
-            if header not in targets:
+            if header.split(" ")[0] not in targets:
                 continue
             
-            header = targets[header]
+            header = targets[header.split(" ")[0]]
         elif not header.endswith("."):
             header = trimmed_header_to_full[header[:127]]
 
