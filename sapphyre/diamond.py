@@ -525,12 +525,15 @@ def top_reference_realign(orthoset_raw_path, orthoset_aln_path, orthoset_trimmed
         
     header_set = set()
     for header, seq in source:
-        # key = f"{gene}|{header}"
-        # if target_to_taxon.get(header, set()) in top_refs or target_to_taxon.get(key, set()) in top_refs:
-        header_set.add(header)
-        out.append((header, seq.replace("-", "")))        
+        key = f"{gene}|{header}"
+        if target_to_taxon.get(header, set()) in top_refs or target_to_taxon.get(key, set()) in top_refs:
+            header_set.add(header)
+            out.append((header, seq.replace("-", "")))        
         
     out_path = path.join(top_path, gene+".aln.fa")
+
+    if len(out) == 0:
+        return
 
     if len(out) == 1:
         writeFasta(out_path, out)
