@@ -48,6 +48,7 @@ class ReporterHit(Struct):
     frame: int
     qstart: int
     qend: int
+    evalue: float
     gene: str
     query: str
     uid: int
@@ -325,6 +326,7 @@ def convert_and_cull(this_args: ConvertArgs) -> ConvertReturn:
                 hit.frame,
                 hit.qstart,
                 hit.qend,
+                hit.evalue,
                 hit.gene,
                 hit.ref,
                 hit.uid,
@@ -1091,6 +1093,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                         hit.frame,
                         hit.qstart,
                         hit.qend,
+                        hit.evalue,
                         hit.gene,
                         hit.ref,
                         hit.uid,
