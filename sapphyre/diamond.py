@@ -802,9 +802,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
         taxon_to_targets[ref_taxa].append(target)
         target_to_gene[target] = gene
 
-    if is_assembly_or_genome:
-        filtered_df = df[df["score"] > 200]
-        target_counts = filtered_df["target"].value_counts()
+    # if is_assembly_or_genome:
+    #     filtered_df = df[df["score"] > 200]
+    #     target_counts = filtered_df["target"].value_counts()
 
     for target, count in target_counts.to_dict().items():
         gene, ref_taxa, _ = target_to_taxon[target]
