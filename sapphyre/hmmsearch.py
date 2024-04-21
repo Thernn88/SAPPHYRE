@@ -345,6 +345,9 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
     else:
         queries = data.items()
 
+    hmm_log = []
+    hmm_log_template = "{},{},{},{}"
+
     output = []
     new_outs = []
     parents_done = set()
@@ -365,6 +368,7 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                     passed_ids.add(get_id(hit.node))
                     parents_done.add(query)
                     new_hit = HmmHit(node=node, score=score, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=gene, query=cluster_query, uid=None, refs=[], seq=sequence)
+                    hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, "Found in Cluster Full"))
                     output.append(new_hit)
             continue
         
@@ -429,8 +433,6 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
         evalue_threshold,
     )
 
-    kick_log = []
-    kick_template = "{},{},{}"
     for hit in diamond_hits:
         if not f"{hit.node}|{hit.frame}" in parents_done:
 
@@ -446,15 +448,15 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                     new_hit = HmmHit(node=hit.node, score=0, frame=hit.frame, qstart=hit.qstart, qend=hit.qend, gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=hit.seq)
                     output.append(new_hit)
                     parents_done.add(f"{hit.node}|{hit.frame}")
-                    kick_log.append(kick_template.format(hit.gene, hit.node, hit.frame))
+                    hmm_log.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, "Rescued"))
                     continue
 
-            kick_log.append(kick_template.format(hit.gene, hit.node, hit.frame))
+            hmm_log.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, "Kicked"))
 
     # output, filtered_sequences_log = internal_filter_gene(output, debug)
     filtered_sequences_log = []
 
-    return gene, output, new_outs, kick_log, filtered_sequences_log
+    return gene, output, new_outs, hmm_log, filtered_sequences_log
 
 def get_arg(transcripts_mapped_to, head_to_seq, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
     for gene, transcript_hits in transcripts_mapped_to:
@@ -632,9 +634,7 @@ def do_folder(input_folder, args):
 
     del hits_db
 
-    with open(path.join(input_folder, "hmmsearch_new.log"), "w") as f:
-        f.write("\n".join(log))
-    with open(path.join(input_folder, "hmmsearch_kick.log"), "w") as f:
+    with open(path.join(input_folder, "hmmsearch_log.log"), "w") as f:
         f.write("\n".join(klog))
     with open(path.join(input_folder, "hmmsearch_internal.log"), "w") as f:
         f.write("\n".join(ilog))
