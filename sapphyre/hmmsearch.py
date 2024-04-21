@@ -1,4 +1,5 @@
 from decimal import Decimal
+from time import time
 import warnings
 from collections import defaultdict
 from shutil import rmtree
@@ -23,7 +24,7 @@ class HmmHit(Struct):
     qend: int
     gene: str
     query: str
-    uid: int
+    uid: int|None
     refs: list[ReferenceHit]
     seq: str = None
     
@@ -172,25 +173,73 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
     printv(f"Processing: {gene}", verbose, 2)
     aligned_sequences = []
     this_hmm_output = path.join(hmm_output_folder, f"{gene}.hmmout")
+
+    get_id = lambda header: int(header.split("_")[1])
     
     hits_have_frames_already = defaultdict(set)
+    diamond_ids = list()
     for hit in diamond_hits:
+        diamond_ids.append(get_id(hit.node))
         hits_have_frames_already[hit.node].add(hit.frame)
 
+
+    diamond_ids.sort()
+    clusters = []
+    current_cluster = []
+    for child_index in diamond_ids:
+        if not current_cluster:
+            current_cluster.append(child_index)
+            current_index = child_index
+        else:
+            if child_index - current_index <= chomp_max_distance:
+                current_cluster.append(child_index)
+                current_index = child_index
+            else:
+                clusters.append(current_cluster)
+                current_cluster = [child_index]
+                current_index = child_index
+    
+    if current_cluster:
+        clusters.append(current_cluster)
+
+    biggest_cluster = max(clusters, key=len)
+    biggest_cluster_range = (biggest_cluster[0], biggest_cluster[-1])
+    
     nt_sequences = {}
     parents = {}
+
+    cluster_full = set()
+    cluster_queries = []
+
     children = {}
     unaligned_sequences = []
     if is_full:
         fallback = {}
         nodes_in_gene = set()
         for hit in diamond_hits:
+            id = get_id(hit.node)
+
+            if id >= biggest_cluster_range[0] and id <= biggest_cluster_range[1]:
+                cluster_queries.append(hit.query)
+
             nodes_in_gene.add(hit.node)
             query = f"{hit.node}|{hit.frame}"
             parents[query] = hit
 
             if hit.node not in fallback:
                 fallback[hit.node] = hit
+
+        #grab most occuring query
+        cluster_query = max(set(cluster_queries), key=cluster_queries.count)
+
+        for header in this_seqs:
+            if not header in nodes_in_gene:
+                continue
+            id = get_id(header)
+            if id < biggest_cluster_range[0] or id > biggest_cluster_range[1]:
+                continue
+            nodes_in_gene.add(header)
+            cluster_full.add(header)
         
         for node in nodes_in_gene:
             parent_seq = this_seqs[node]
@@ -268,8 +317,6 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
 
     if debug > 1:
         return "", [], [], [], []
-    
-    get_id = lambda header: int(header.split("_")[1])
 
     data = defaultdict(list)
     high_score = 0
@@ -303,6 +350,23 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
     parents_done = set()
     passed_ids = set()
     for query, results in queries:
+        node, frame = query.split("|")
+        if node in cluster_full:
+            if not query in parents_done:
+                for result in results:
+                    start, end, score, ali_start, ali_end = result
+                    start = start * 3
+                    end = end * 3
+
+                    sequence = nt_sequences[query][start: end]
+
+                    new_qstart = start
+
+                    passed_ids.add(get_id(hit.node))
+                    parents_done.add(query)
+                    new_hit = HmmHit(node=node, score=score, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=gene, query=cluster_query, uid=None, refs=[], seq=sequence)
+                    output.append(new_hit)
+            continue
         
         if query in parents:
             hit = parents[query]

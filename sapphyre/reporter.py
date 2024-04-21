@@ -402,9 +402,9 @@ def print_unmerged_sequences(
                 exact_match_amount,
                 top_refs,
             )
-            if r_start is None or r_end is None:
-                printv(f"WARNING: Trim kicked: {hit.node}|{hit.frame}", verbose, 2)
-                continue
+            # if r_start is None or r_end is None:
+            #     printv(f"WARNING: Trim kicked: {hit.node}|{hit.frame}", verbose, 2)
+            #     continue
 
             if r_end == 0:
                 nt_seq = nt_seq[(r_start * 3) :]
