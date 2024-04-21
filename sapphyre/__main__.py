@@ -280,6 +280,20 @@ def hmmsearch_args(par):
         action="store_true",
         help="Pass the full parent sequences to hmmsearch",
     )
+    par.add_argument(
+        "-et",
+        "--evalue_threshold",
+        type=int,
+        default=10,
+        help="Magnitude evalue threshold for rescue",
+    )
+    par.add_argument(
+        "-cd",
+        "--chomp_max_distance",
+        type=int,
+        default=25,
+        help="Max distance for merging cluster in chomp",
+    )
 
 def hmmsearch(args):
     from . import hmmsearch

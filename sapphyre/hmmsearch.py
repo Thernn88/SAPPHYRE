@@ -1,3 +1,4 @@
+from decimal import Decimal
 import warnings
 from collections import defaultdict
 from shutil import rmtree
@@ -166,7 +167,7 @@ def internal_filter_gene(this_gene_hits, debug, min_overlap_internal=0.9, score_
     return [i[0] for i in this_gene_hits if i[0] is not None], filtered_sequences_log
 
 
-def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose):
+def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     printv(f"Processing: {gene}", verbose, 2)
     aligned_sequences = []
@@ -262,11 +263,14 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                     writeFasta(aligned_files.name, aligned_sequences)
                     aligned_files.flush()
                     system(
-                    f"hmmsearch --nobias --domtblout {this_hmm_output} --domT 10.0 {hmm_temp_file.name} {aligned_files.name} > /dev/null",
+                    f"hmmsearch --domtblout {this_hmm_output} --domT 10.0 {hmm_temp_file.name} {aligned_files.name} > /dev/null",
                     )
 
     if debug > 1:
         return "", [], [], [], []
+    
+    get_id = lambda header: int(header.split("_")[1])
+
     data = defaultdict(list)
     high_score = 0
     with open(this_hmm_output) as f:
@@ -297,6 +301,7 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
     output = []
     new_outs = []
     parents_done = set()
+    passed_ids = set()
     for query, results in queries:
         
         if query in parents:
@@ -322,10 +327,10 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
 
                     new_uid = hit.uid + start + end
 
-
+                    passed_ids.add(get_id(hit.node))
                     parents_done.add(f"{hit.node}|{hit.frame}")
                     new_hit = HmmHit(node=hit.node, score=score, frame=hit.frame, qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=new_uid, refs=hit.refs, seq=sequence)
-                    output.append((new_hit, ali_start, ali_end))
+                    output.append(new_hit)
 
         if query in children:
             _, frame = query.split("|")
@@ -350,30 +355,50 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
 
                 new_uid = parent.uid + start + end
 
-
+                passed_ids.add(get_id(hit.node))
                 clone = HmmHit(node=parent.node, score=score, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=parent.gene, query=parent.query, uid=new_uid, refs=parent.refs, seq=sequence)
                 new_outs.append((f"{clone.gene},{clone.node},{clone.frame}"))
                 
-                output.append((clone, ali_start, ali_end))
+                output.append(clone)
+
+    precision = Decimal("1") * Decimal("0.1") ** Decimal(
+        evalue_threshold,
+    )
 
     kick_log = []
     kick_template = "{},{},{}"
     for hit in diamond_hits:
         if not f"{hit.node}|{hit.frame}" in parents_done:
+
+            if hit.evalue >= precision:
+                this_id = get_id(hit.node)
+                has_neighbour = False
+                for id in passed_ids:
+                    has_neighbour = True
+                    break
+
+                if has_neighbour and abs(this_id - id) <= chomp_max_distance:
+                    printv(f"Rescued {hit.node}", verbose, 2)
+                    new_hit = HmmHit(node=hit.node, score=0, frame=hit.frame, qstart=hit.qstart, qend=hit.qend, gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=hit.seq)
+                    output.append(new_hit)
+                    parents_done.add(f"{hit.node}|{hit.frame}")
+                    kick_log.append(kick_template.format(hit.gene, hit.node, hit.frame))
+                    continue
+
             kick_log.append(kick_template.format(hit.gene, hit.node, hit.frame))
 
     # output, filtered_sequences_log = internal_filter_gene(output, debug)
     filtered_sequences_log = []
 
-    return gene, [i[0] for i in output], new_outs, kick_log, filtered_sequences_log
+    return gene, output, new_outs, kick_log, filtered_sequences_log
 
-def get_arg(transcripts_mapped_to, head_to_seq, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose):
+def get_arg(transcripts_mapped_to, head_to_seq, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
     for gene, transcript_hits in transcripts_mapped_to:
         this_seqs = {}
         if is_full:
             for hit in transcript_hits:
                 this_seqs[hit.node] = head_to_seq[hit.node]
-        yield gene, transcript_hits, this_seqs, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose
+        yield gene, transcript_hits, this_seqs, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance
 
 
 def get_head_to_seq(nt_db, recipe):
@@ -476,7 +501,7 @@ def do_folder(input_folder, args):
 
     top_location = path.join(input_folder, "top")
 
-    arguments = get_arg(transcripts_mapped_to, head_to_seq, is_full, hmm_output_folder, top_location, args.overwrite, args.map, args.debug, args.verbose)
+    arguments = get_arg(transcripts_mapped_to, head_to_seq, is_full, hmm_output_folder, top_location, args.overwrite, args.map, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance)
 
     all_hits = []
 
