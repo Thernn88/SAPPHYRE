@@ -231,8 +231,12 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
 
         #grab most occuring query
         cluster_query = max(set(cluster_queries), key=cluster_queries.count)
+        exonerate_region = [] 
+        for header, seq in this_seqs.items():
+            id = get_id(header)
+            if id >= biggest_cluster_range[0] and id <= biggest_cluster_range[1]:
+                exonerate_region.append((header, seq))
 
-        for header in this_seqs:
             if header in nodes_in_gene:
                 continue
             
@@ -293,14 +297,10 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                     hits_have_frames_already[hit.node].add(shifted)
                     children[new_query] = hit
 
-    exonerate_region = [] 
     for header, seq in unaligned_sequences:
         nt_sequences[header] = seq
         translate = str(Seq(seq).translate())
         aligned_sequences.append((header, translate))
-        id = int(header.split("_")[1].split("|")[0])
-        if id >= biggest_cluster_range[0] and id <= biggest_cluster_range[1]:
-            exonerate_region.append((header, translate))
 
     top_file = path.join(top_location, f"{gene}.aln.fa")
     output = []
@@ -311,37 +311,63 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
     hmm_log_template = "{},{},{},{}"
     seq_template = ">{}\n{}\n"
 
-    with NamedTemporaryFile(dir=gettempdir(), suffix=f"_{gene}_query.fa") as tmp_query, NamedTemporaryFile(dir=gettempdir(), suffix=f"_{gene}_target.fa") as tmp_target,  NamedTemporaryFile(dir=gettempdir(), suffix=f"_{gene}_output.txt") as tmp_output:
-        for header, seq in parseFasta(top_file):
-            tmp_query.write(seq_template.format(header, seq.replace("-","")).encode())
-        tmp_query.flush()
+    if exonerate_region:
+        exonerate_out = path.join(hmm_output_folder, f"{gene}_exonerate.fa")
+        if not path.exists(exonerate_out) or stat(exonerate_out).st_size == 0 or overwrite:
+            with NamedTemporaryFile(dir=gettempdir(), suffix=f"_{gene}_query.fa") as tmp_query, NamedTemporaryFile(dir=gettempdir(), suffix=f"_{gene}_target.fa") as tmp_target:
+                for header, seq in parseFasta(top_file):
+                    tmp_query.write(seq_template.format(header, seq.replace("-","")).encode())
+                tmp_query.flush()
 
-        for header, seq in exonerate_region:
-            tmp_target.write(seq_template.format(header, seq).encode())
-        tmp_target.flush()
+                for header, seq in exonerate_region:
+                    tmp_target.write(seq_template.format(header, seq).encode())
+                tmp_target.flush()
+                
+                ryo = ">%ti|%tab-%tae|%s\n%tas\n"
 
-        system(f'exonerate --score 20 --ryo "%ti > %tab-%tae > %s > %qi\n" --subopt 0 --geneticcode 1 --model affine:local --refine full --querytype protein --targettype protein --verbose 0 --showvulgar no --showalignment no --query {tmp_query.name} --target {tmp_target.name} > {tmp_output.name}')
-        
-        exonerate_results = []
-        with open(tmp_output.name) as f:
-            for line in f:
-                query, coords, score, ref = line.strip().split(" > ")
-                node, frame = query.split("|")
-                start, end = map(int, coords.split("-"))
-                exonerate_results.append((query, node, int(frame), start, end, float(score), ref))
+                system(f'exonerate --score 50 --ryo "{ryo}" --subopt 0 --geneticcode 1 --model protein2genome --refine full --querytype protein --targettype dna --verbose 0 --showvulgar no --showalignment no --query {tmp_query.name} --target {tmp_target.name} > {exonerate_out}')
+                # input(tmp_output.name)
 
-        query_top_scores = {k: max([i[5] for i in exonerate_results if i[0] == k]) for k in set([i[0] for i in exonerate_results])}
+        # exonerate_results = []
+        # with open(exonerate_out) as f:
+        #     for line in f:
+        #         if line.startswith(">"):
+        #             # try:
+        #             node,coords,score = line[1:].split("|")
+                    
 
-        for query, node, frame, start, end, score, ref in exonerate_results:
-            sequence = nt_sequences[query][start*3: end*3]
-            new_qstart = start
+        #             start, end = map(int, coords.split("-"))
+        #             parent_seq = this_seqs[node]
+        #             # print(node, coords)
+        #             # print(parent_seq)
+        #             # print(bio_revcomp(parent_seq))
+        #             # print()
+                    
+        #             exonerate_results.append((node, start, end, float(score)))
+        #         # else:
+        #             # input(line)
 
-            if score < query_top_scores[query] * 0.8:
-                continue
+        # for node, start, end, score in exonerate_results:
+        for header, seq in parseFasta(exonerate_out, True):
+            node,coords,score = header.split("|")
+            start, end = map(int, coords.split("-"))
+            score = float(score)
+            
+            frame_shift = 1
+            if start > end:
+                frame_shift = -1
+                parent_seq = this_seqs[node]
+                start = len(parent_seq) - start
+                end = len(parent_seq) - end
+                seq = bio_revcomp(parent_seq)[start:end]
+            else:
+                seq = this_seqs[node][start:end]
+
+            frame = (start % 3 + 1) * frame_shift
 
             passed_ids.add(get_id(node))
             parents_done.add(query) 
-            new_hit = HmmHit(node=node, score=score, frame=frame, qstart=new_qstart, qend=new_qstart + len(sequence), gene=gene, query=cluster_query, uid=None, refs=[], seq=sequence)
+            new_hit = HmmHit(node=node, score=score, frame=frame, qstart=start, qend=start + len(seq), gene=gene, query=cluster_query, uid=None, refs=[], seq=seq)
             hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, "Found in Exonerate Cluster"))
             output.append(new_hit)
 
