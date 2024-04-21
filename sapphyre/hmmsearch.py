@@ -368,7 +368,7 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
 
                     new_qstart = start
 
-                    passed_ids.add(get_id(hit.node))
+                    passed_ids.add(get_id(node))
                     parents_done.add(query)
                     new_hit = HmmHit(node=node, score=score, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=gene, query=cluster_query, uid=None, refs=[], seq=sequence)
                     hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, "Found in Cluster Full"))
