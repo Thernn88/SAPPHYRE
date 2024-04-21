@@ -233,8 +233,9 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
         cluster_query = max(set(cluster_queries), key=cluster_queries.count)
 
         for header in this_seqs:
-            if not header in nodes_in_gene:
+            if header in nodes_in_gene:
                 continue
+            
             id = get_id(header)
             if id < biggest_cluster_range[0] or id > biggest_cluster_range[1]:
                 continue
