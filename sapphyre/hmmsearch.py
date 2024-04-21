@@ -349,6 +349,8 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
     hmm_log = []
     hmm_log_template = "{},{},{},{}"
 
+    print(cluster_full)
+
     output = []
     new_outs = []
     parents_done = set()
@@ -440,16 +442,19 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
             if hit.evalue >= precision:
                 this_id = get_id(hit.node)
                 has_neighbour = False
+                neighbour = None
                 for id in passed_ids:
-                    has_neighbour = True
-                    break
+                    if abs(this_id - id) <= chomp_max_distance:
+                        neighbour = str(id)
+                        has_neighbour = True
+                        break
 
-                if has_neighbour and abs(this_id - id) <= chomp_max_distance:
+                if has_neighbour:
                     printv(f"Rescued {hit.node}", verbose, 2)
                     new_hit = HmmHit(node=hit.node, score=0, frame=hit.frame, qstart=hit.qstart, qend=hit.qend, gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=hit.seq)
                     output.append(new_hit)
                     parents_done.add(f"{hit.node}|{hit.frame}")
-                    hmm_log.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, "Rescued"))
+                    hmm_log.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, f"Rescued by NODE_{neighbour}"))
                     continue
 
             hmm_log.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, "Kicked"))
