@@ -11,7 +11,7 @@ from msgspec import Struct, json
 from sapphyre_tools import bio_revcomp, get_overlap
 from Bio import BiopythonWarning
 from Bio.Seq import Seq
-from .utils import printv, gettempdir, writeFasta
+from .utils import parseFasta, printv, gettempdir, writeFasta
 from .diamond import ReferenceHit, ReporterHit as Hit
 from .timekeeper import TimeKeeper, KeeperMode
 
@@ -292,12 +292,60 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                     unaligned_sequences.append((new_query, raw_sequence[shift_by:]))
                     hits_have_frames_already[hit.node].add(shifted)
                     children[new_query] = hit
-                
+
+    exonerate_region = [] 
     for header, seq in unaligned_sequences:
         nt_sequences[header] = seq
-        aligned_sequences.append((header, str(Seq(seq).translate())))
-        
+        translate = str(Seq(seq).translate())
+        aligned_sequences.append((header, translate))
+        id = int(header.split("_")[1].split("|")[0])
+        if id >= biggest_cluster_range[0] and id <= biggest_cluster_range[1]:
+            exonerate_region.append((header, translate))
+
     top_file = path.join(top_location, f"{gene}.aln.fa")
+    output = []
+    new_outs = []
+    parents_done = set()
+    passed_ids = set()
+    hmm_log = []
+    hmm_log_template = "{},{},{},{}"
+    seq_template = ">{}\n{}\n"
+
+    with NamedTemporaryFile(dir=gettempdir(), suffix=f"_{gene}_query.fa") as tmp_query, NamedTemporaryFile(dir=gettempdir(), suffix=f"_{gene}_target.fa") as tmp_target,  NamedTemporaryFile(dir=gettempdir(), suffix=f"_{gene}_output.txt") as tmp_output:
+        for header, seq in parseFasta(top_file):
+            tmp_query.write(seq_template.format(header, seq.replace("-","")).encode())
+        tmp_query.flush()
+
+        for header, seq in exonerate_region:
+            tmp_target.write(seq_template.format(header, seq).encode())
+        tmp_target.flush()
+
+        system(f'exonerate --score 20 --ryo "%ti > %tab-%tae > %s > %qi\n" --subopt 0 --geneticcode 1 --model affine:local --refine full --querytype protein --targettype protein --verbose 0 --showvulgar no --showalignment no --query {tmp_query.name} --target {tmp_target.name} > {tmp_output.name}')
+        
+        exonerate_results = []
+        with open(tmp_output.name) as f:
+            for line in f:
+                query, coords, score, ref = line.strip().split(" > ")
+                node, frame = query.split("|")
+                start, end = map(int, coords.split("-"))
+                exonerate_results.append((query, node, int(frame), start, end, float(score), ref))
+
+        query_top_scores = {k: max([i[5] for i in exonerate_results if i[0] == k]) for k in set([i[0] for i in exonerate_results])}
+
+        for query, node, frame, start, end, score, ref in exonerate_results:
+            sequence = nt_sequences[query][start*3: end*3]
+            new_qstart = start
+
+            if score < query_top_scores[query] * 0.8:
+                continue
+
+            passed_ids.add(get_id(node))
+            parents_done.add(query) 
+            new_hit = HmmHit(node=node, score=score, frame=frame, qstart=new_qstart, qend=new_qstart + len(sequence), gene=gene, query=cluster_query, uid=None, refs=[], seq=sequence)
+            hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, "Found in Exonerate Cluster"))
+            output.append(new_hit)
+
+    
     if debug > 1 or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
         with NamedTemporaryFile(dir=gettempdir()) as hmm_temp_file:
             system(f"hmmbuild '{hmm_temp_file.name}' '{top_file}' > /dev/null")
@@ -346,15 +394,6 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
     else:
         queries = data.items()
 
-    hmm_log = []
-    hmm_log_template = "{},{},{},{}"
-
-    print(cluster_full)
-
-    output = []
-    new_outs = []
-    parents_done = set()
-    passed_ids = set()
     for query, results in queries:
         node, frame = query.split("|")
         if node in cluster_full:
