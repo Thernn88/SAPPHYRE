@@ -306,14 +306,14 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                 this_hmm_in = path.join(hmm_output_folder, f"{gene}_input.fa")
                 writeFasta(this_hmm_in, aligned_sequences)
                 system(
-                f"hmmsearch -o {this_hmm_output} --domT 10.0 {hmm_temp_file.name} {this_hmm_in} > /dev/null",
+                f"hmmsearch -o {this_hmm_output} --nobias --domT 10.0 {hmm_temp_file.name} {this_hmm_in} > /dev/null",
                 )
             else:
                 with NamedTemporaryFile(dir=gettempdir()) as aligned_files:
                     writeFasta(aligned_files.name, aligned_sequences)
                     aligned_files.flush()
                     system(
-                    f"hmmsearch --domtblout {this_hmm_output} --domT 10.0 {hmm_temp_file.name} {aligned_files.name} > /dev/null",
+                    f"hmmsearch --nobias --domtblout {this_hmm_output} --domT 10.0 {hmm_temp_file.name} {aligned_files.name} > /dev/null",
                     )
 
     if debug > 1:
