@@ -376,6 +376,8 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                     seq = this_seqs[node][start:end]
 
                 frame = (start % 3 + 1) * frame_shift
+                if len(seq) % 3 != 0:
+                    seq += "N" * (3 - len(seq) % 3)
 
                 passed_ids.add(get_id(node))
                 parents_done.add(f"{node}|{frame}") 
