@@ -282,6 +282,12 @@ def hmmsearch_args(par):
         help="Skip running Exonerate.",
     )
     par.add_argument(
+        "-io",
+        "--include_originals",
+        action="store_true",
+        help="Include hits .",
+    )
+    par.add_argument(
         "--full",
         action="store_true",
         help="Pass the full parent sequences to hmmsearch",
