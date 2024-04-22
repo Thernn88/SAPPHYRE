@@ -327,7 +327,7 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                 
                 ryo = ">%ti|%tab-%tae|%s\n%tas\n"
 
-                system(f'exonerate --score 50 --ryo "{ryo}" --subopt 0 --geneticcode 1 --model protein2genome --refine full --querytype protein --targettype dna --verbose 0 --showvulgar no --showalignment no --query {tmp_query.name} --target {exonerate_target} > {exonerate_out}')
+                system(f'exonerate --score 100 --ryo "{ryo}" --subopt 0 --geneticcode 1 --model protein2genome --refine full --querytype protein --targettype dna --verbose 0 --showvulgar no --showalignment no --query {tmp_query.name} --target {exonerate_target} > {exonerate_out}')
                 # input(tmp_output.name)
 
         # exonerate_results = []
