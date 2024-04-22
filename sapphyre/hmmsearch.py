@@ -247,7 +247,7 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                     source_clusters[header] = cluster_range
                     if header in nodes_in_gene:
                         break
-                    
+
                     cluster_full.add(header)
                     nodes_in_gene.add(header)
                     break
@@ -408,11 +408,11 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                 output.append(new_hit)
 
     
-    if debug > 1 or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
+    if debug > 2 or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
         with NamedTemporaryFile(dir=gettempdir()) as hmm_temp_file:
             system(f"hmmbuild '{hmm_temp_file.name}' '{top_file}' > /dev/null")
 
-            if debug > 1:
+            if debug > 2:
                 this_hmm_in = path.join(hmm_output_folder, f"{gene}_input.fa")
                 writeFasta(this_hmm_in, aligned_sequences)
                 system(
@@ -426,7 +426,7 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                     f"hmmsearch --nobias --domtblout {this_hmm_output} --domT 10.0 {hmm_temp_file.name} {aligned_files.name} > /dev/null",
                     )
 
-    if debug > 1:
+    if debug > 2:
         return "", [], [], [], []
 
     data = defaultdict(list)
