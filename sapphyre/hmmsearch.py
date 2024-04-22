@@ -1,4 +1,5 @@
 from decimal import Decimal
+import math
 from time import time
 import warnings
 from collections import defaultdict
@@ -497,14 +498,9 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                 
                 output.append(clone)
 
-    precision = Decimal("1") * Decimal("0.1") ** Decimal(
-        evalue_threshold,
-    )
-
     for hit in diamond_hits:
         if not f"{hit.node}|{hit.frame}" in parents_done:
-
-            if hit.evalue >= precision:
+            if math.floor(math.log10(abs(hit.evalue))) <= -evalue_threshold:
                 this_id = get_id(hit.node)
                 has_neighbour = False
                 neighbour = None
@@ -513,7 +509,7 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                         neighbour = str(id)
                         has_neighbour = True
                         break
-                    
+
                 if has_neighbour:
                     printv(f"Rescued {hit.node}", verbose, 2)
                     new_hit = HmmHit(node=hit.node, score=0, frame=hit.frame, qstart=hit.qstart, qend=hit.qend, gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=hit.seq)
