@@ -349,8 +349,16 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
         #             # input(line)
 
         # for node, start, end, score in exonerate_results:
+
+        highest_score = defaultdict(list)
         for header, seq in parseFasta(exonerate_out, True):
             node,coords,score = header.split("|")
+            highest_score[node].append((coords, score, seq))
+        
+        for node, results in highest_score.items():
+            highest_result = max(results, key=lambda x: x[1])
+
+            coords, score, seq = highest_result
             start, end = map(int, coords.split("-"))
             score = float(score)
 
