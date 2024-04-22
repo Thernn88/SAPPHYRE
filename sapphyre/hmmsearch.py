@@ -314,19 +314,21 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
 
     if exonerate_region:
         exonerate_out = path.join(hmm_output_folder, f"{gene}_exonerate.fa")
+        exonerate_target = path.join(hmm_output_folder, f"{gene}_exonerate_input.fa")
         if not path.exists(exonerate_out) or stat(exonerate_out).st_size == 0 or overwrite:
-            with NamedTemporaryFile(dir=gettempdir(), suffix=f"_{gene}_query.fa") as tmp_query, NamedTemporaryFile(dir=gettempdir(), suffix=f"_{gene}_target.fa") as tmp_target:
+            with NamedTemporaryFile(dir=gettempdir(), suffix=f"_{gene}_query.fa") as tmp_query:
                 for header, seq in parseFasta(top_file):
                     tmp_query.write(seq_template.format(header, seq.replace("-","")).encode())
                 tmp_query.flush()
 
-                for header, seq in exonerate_region:
-                    tmp_target.write(seq_template.format(header, seq).encode())
-                tmp_target.flush()
+                with open(exonerate_target, "w") as fp:
+                    for header, seq in exonerate_region:
+                        fp.write(seq_template.format(header, seq))
+                    fp.flush()
                 
                 ryo = ">%ti|%tab-%tae|%s\n%tas\n"
 
-                system(f'exonerate --score 50 --ryo "{ryo}" --subopt 0 --geneticcode 1 --model protein2genome --refine full --querytype protein --targettype dna --verbose 0 --showvulgar no --showalignment no --query {tmp_query.name} --target {tmp_target.name} > {exonerate_out}')
+                system(f'exonerate --score 50 --ryo "{ryo}" --subopt 0 --geneticcode 1 --model protein2genome --refine full --querytype protein --targettype dna --verbose 0 --showvulgar no --showalignment no --query {tmp_query.name} --target {exonerate_target} > {exonerate_out}')
                 # input(tmp_output.name)
 
         # exonerate_results = []
