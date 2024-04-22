@@ -239,11 +239,8 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
             id = get_id(header)
             if id >= biggest_cluster_range[0] - chomp_max_distance and id <= biggest_cluster_range[1] + chomp_max_distance:
                 exonerate_region.append((header, seq))
-            
-            id = get_id(header)
-            if id < biggest_cluster_range[0] or id > biggest_cluster_range[1]:
-                continue
-            cluster_full.add(header)
+                cluster_full.add(header)
+                nodes_in_gene.add(header)
         
         for node in nodes_in_gene:
             parent_seq = this_seqs[node]
@@ -261,6 +258,8 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                 unaligned_sequences.append((new_query, parent_seq[shift_by:]))
                 if new_query in parents:
                     continue
+                if node in cluster_full:
+                    continue
                 children[new_query] = fallback[node]
 
             # Reversed frame 1
@@ -276,6 +275,8 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                 nt_sequences[new_query] = bio_revcomp_seq[shift_by:]
                 unaligned_sequences.append((new_query, bio_revcomp_seq[shift_by:]))
                 if new_query in parents:
+                    continue
+                if node in cluster_full:
                     continue
                 children[new_query] = fallback[node]
 
@@ -377,7 +378,7 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                 frame = (start % 3 + 1) * frame_shift
 
                 passed_ids.add(get_id(node))
-                parents_done.add(query) 
+                parents_done.add(f"{node}|{frame}") 
                 new_hit = HmmHit(node=node, score=score, frame=frame, qstart=start, qend=start + len(seq), gene=gene, query=cluster_query, uid=None, refs=[], seq=seq)
                 hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, "Found in Exonerate Cluster"))
                 output.append(new_hit)
