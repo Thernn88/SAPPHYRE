@@ -3,7 +3,7 @@ from __future__ import annotations
 from argparse import Namespace
 from collections import Counter, defaultdict, namedtuple
 from multiprocessing.pool import Pool
-from os import makedirs, path
+from os import listdir, makedirs, path
 from shutil import rmtree
 from typing import TextIO
 
@@ -522,6 +522,8 @@ OutputArgs = namedtuple(
         "minimum_bp",
         "debug",
         "is_assembly_or_genome",
+        "original_coords",
+        "coords_path",
     ],
 )
 
@@ -539,6 +541,24 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     """
     t_gene_start = TimeKeeper(KeeperMode.DIRECT)
     printv(f"Doing output for: {oargs.gene}", oargs.verbose, 2)
+
+    # Unpack the hits
+    this_hits = json.decode(oargs.list_of_hits, type=list[Hit])
+
+    out_data = defaultdict(list)
+    with open(path.join(oargs.coords_path,oargs.gene+".txt"), "w") as fp:
+        for node in {hit.node for hit in this_hits}:
+            tup = oargs.original_coords.get(node, None)
+            if tup:
+                out_data[tup[0]].append((node, tup[1], tup[2]))
+                #out_data.append((node, tup[0], tup[1], tup[2]))
+            
+        if out_data:
+            for og, data in out_data.items():
+                data.sort(key = lambda x: (x[1]))
+                fp.write(f">{og}\n")
+                for node, start, end in data:
+                    fp.write(f"{node}\t{start}-{end}\n")
 
     # Get reference sequences
     core_sequences, core_sequences_nt = get_core_sequences(
@@ -578,8 +598,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         def dist(bp_a, bp_b, mat):
             return mat[bp_a][bp_b] >= 0.0 and bp_a != "-" and bp_b != "-"
 
-    # Unpack the hits
-    this_hits = json.decode(oargs.list_of_hits, type=list[Hit])
+    
 
     # Trim and save the sequences
     this_gene_dupes, aa_output, nt_output, header_to_score = print_unmerged_sequences(
@@ -686,6 +705,16 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
 
     target_taxon = get_gene_variants(rocky.get_rock("rocks_hits_db"))
     top_refs, is_assembly, is_genome = get_toprefs(rocky.get_rock("rocks_nt_db"))
+    raw_data = rocky.get_rock("rocks_nt_db").get("getall:original_coords")
+    original_coords = {}
+    if raw_data:
+        original_coords = json.decode(raw_data, type = dict[str, tuple[str, int, int]])
+
+    coords_path = path.join(taxa_path, "coords")
+    if path.exists(coords_path):
+        rmtree(coords_path)
+
+    makedirs(coords_path, exist_ok=True)
 
     printv(
         f"Got reference data. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Trimming hits to alignment coords.",
@@ -712,6 +741,8 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
                     args.minimum_bp,
                     args.debug,
                     is_assembly or is_genome,
+                    original_coords,
+                    coords_path,
                 ),
             ),
         )
@@ -723,6 +754,16 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
             recovered = pool.starmap(trim_and_write, arguments, chunksize=1)
     else:
         recovered = [trim_and_write(i[0]) for i in arguments]
+
+    global_out = []
+    for item in listdir(coords_path):
+        with open(path.join(coords_path, item)) as fp:
+            tgene = item.split(".")[0]
+            global_out.append(f"### {tgene} ###")
+            global_out.extend(fp.read().split("\n"))
+
+    with open(path.join(taxa_path, "coords.txt"), "w") as fp:
+        fp.write("\n".join(global_out))
 
     final_count = 0
     this_gene_based_dupes = {}

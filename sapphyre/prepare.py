@@ -90,6 +90,7 @@ class SeqDeduplicator:
         rename,
         skip_ntrim,
     ) -> None:
+        self.original_coords = {}
         self.original_positions = {}
         self.original_inputs = []
         self.lines = []
@@ -134,7 +135,7 @@ class SeqDeduplicator:
             for_loop = tqdm(for_loop)
 
         requires = False
-        for line_index, (header, parent_seq) in for_loop:
+        for line_index, (raw_header, parent_seq) in for_loop:
             if line_index == 0:
                 requires = any(l.islower() for l in parent_seq)
             if len(parent_seq) < self.minimum_sequence_length:
@@ -159,7 +160,7 @@ class SeqDeduplicator:
                 if self.rename:
                     header = header_template.format(this_index.x)
                 else:
-                    header = header.split(" ")[0]
+                    header = raw_header.split(" ")[0]
                 seq_hash = xxhash.xxh3_64(seq).hexdigest()
 
                 this_hash_subset = self.transcript_mapped_to[seq_len]
@@ -210,6 +211,7 @@ class SeqDeduplicator:
                             next(individual_index)
                         if len(seq[i:i+CHOMP_LEN]) < self.minimum_sequence_length:
                             continue
+                        self.original_coords[this_header] = (raw_header, i, i+CHOMP_LEN-1)
                         self.lines.append(sequence_template.format(this_header, seq[i:i+CHOMP_LEN]))
                         next(this_index)
 
@@ -286,6 +288,7 @@ def map_taxa_runs(
     fa_file_out = deduper.lines
     this_is_assembly = deduper.this_assembly
     this_is_genome = deduper.this_genome
+    original_coords = deduper.original_coords
     original_positions = deduper.original_positions
     original_inputs = deduper.original_inputs
     del deduper
@@ -351,6 +354,8 @@ def map_taxa_runs(
     if not (this_is_assembly or this_is_genome):
         nt_db.put_bytes("getall:original_positions", json.encode(original_positions))
         nt_db.put_bytes("getall:original_inputs", json.encode(original_inputs))
+    elif this_is_genome:
+        nt_db.put_bytes("getall:original_coords", json.encode(original_coords))
 
     # Store the count of dupes in the database
     nt_db.put_bytes("getall:dupes", json.encode(duplicates))
