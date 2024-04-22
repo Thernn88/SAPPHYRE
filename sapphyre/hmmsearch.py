@@ -349,36 +349,38 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
         #             # input(line)
 
         # for node, start, end, score in exonerate_results:
+        if stat(exonerate_out).st_size == 0:
+            printv(f"Exonerate returned no hits for {gene}", verbose, 2)
+        else:
+            highest_score = defaultdict(list)
+            for header, seq in parseFasta(exonerate_out, True):
+                node,coords,score = header.split("|")
+                highest_score[node].append((coords, score, seq))
+            
+            for node, results in highest_score.items():
+                highest_result = max(results, key=lambda x: x[1])
 
-        highest_score = defaultdict(list)
-        for header, seq in parseFasta(exonerate_out, True):
-            node,coords,score = header.split("|")
-            highest_score[node].append((coords, score, seq))
-        
-        for node, results in highest_score.items():
-            highest_result = max(results, key=lambda x: x[1])
+                coords, score, seq = highest_result
+                start, end = map(int, coords.split("-"))
+                score = float(score)
 
-            coords, score, seq = highest_result
-            start, end = map(int, coords.split("-"))
-            score = float(score)
+                frame_shift = 1
+                if start > end:
+                    frame_shift = -1
+                    parent_seq = this_seqs[node]
+                    start = len(parent_seq) - start
+                    end = len(parent_seq) - end
+                    seq = bio_revcomp(parent_seq)[start:end]
+                else:
+                    seq = this_seqs[node][start:end]
 
-            frame_shift = 1
-            if start > end:
-                frame_shift = -1
-                parent_seq = this_seqs[node]
-                start = len(parent_seq) - start
-                end = len(parent_seq) - end
-                seq = bio_revcomp(parent_seq)[start:end]
-            else:
-                seq = this_seqs[node][start:end]
+                frame = (start % 3 + 1) * frame_shift
 
-            frame = (start % 3 + 1) * frame_shift
-
-            passed_ids.add(get_id(node))
-            parents_done.add(query) 
-            new_hit = HmmHit(node=node, score=score, frame=frame, qstart=start, qend=start + len(seq), gene=gene, query=cluster_query, uid=None, refs=[], seq=seq)
-            hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, "Found in Exonerate Cluster"))
-            output.append(new_hit)
+                passed_ids.add(get_id(node))
+                parents_done.add(query) 
+                new_hit = HmmHit(node=node, score=score, frame=frame, qstart=start, qend=start + len(seq), gene=gene, query=cluster_query, uid=None, refs=[], seq=seq)
+                hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, "Found in Exonerate Cluster"))
+                output.append(new_hit)
 
     
     if debug > 1 or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
