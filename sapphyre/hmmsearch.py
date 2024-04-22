@@ -196,21 +196,20 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                 current_cluster.append(child_index)
                 current_index = child_index
             else:
-                clusters.append(current_cluster)
+                if len(current_cluster) > 2:
+                    clusters.append((current_cluster[0], current_cluster[-1]))
                 current_cluster = [child_index]
                 current_index = child_index
     
     if current_cluster:
-        clusters.append(current_cluster)
-
-    biggest_cluster = max(clusters, key=len)
-    biggest_cluster_range = (biggest_cluster[0], biggest_cluster[-1])
+        if len(current_cluster) > 2:
+            clusters.append((current_cluster[0], current_cluster[-1]))
     
     nt_sequences = {}
     parents = {}
 
     cluster_full = set()
-    cluster_queries = []
+    cluster_queries = defaultdict(list)
 
     children = {}
     unaligned_sequences = []
@@ -220,8 +219,10 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
         for hit in diamond_hits:
             id = get_id(hit.node)
 
-            if id >= biggest_cluster_range[0] and id <= biggest_cluster_range[1]:
-                cluster_queries.append(hit.query)
+
+            for cluster_range in clusters:
+                if id >= cluster_range[0] - chomp_max_distance and id <= cluster_range[1] + chomp_max_distance:
+                    cluster_queries[cluster_range].append(hit.query)
 
             nodes_in_gene.add(hit.node)
             query = f"{hit.node}|{hit.frame}"
@@ -231,18 +232,23 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                 fallback[hit.node] = hit
 
         #grab most occuring query
-        cluster_query = max(set(cluster_queries), key=cluster_queries.count)
+        cluster_queries = {k: max(set(v), key=v.count) for k, v in cluster_queries.items()}
+
         exonerate_region = [] 
+        source_clusters = {}
         for header, seq in this_seqs.items():
             if header in nodes_in_gene or header in cluster_full:
                 continue
             id = get_id(header)
-            if id >= biggest_cluster_range[0] - chomp_max_distance and id <= biggest_cluster_range[1] + chomp_max_distance:
-                if not no_exonerate:
-                    exonerate_region.append((header, seq))
-                cluster_full.add(header)
-                nodes_in_gene.add(header)
-        
+            for cluster_range in clusters:
+                if id >= cluster_range[0] - chomp_max_distance and id <= cluster_range[1] + chomp_max_distance:
+                    if not no_exonerate:
+                        exonerate_region.append((header, seq))
+                    source_clusters[header] = cluster_range
+                    cluster_full.add(header)
+                    nodes_in_gene.add(header)
+                    break
+
         for node in nodes_in_gene:
             parent_seq = this_seqs[node]
 
@@ -390,9 +396,11 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                 if len(seq) % 3 != 0:
                     seq += "N" * (3 - len(seq) % 3)
 
+                cquery = cluster_queries[source_clusters[node]]
+
                 passed_ids.add(get_id(node))
                 parents_done.add(f"{node}|{frame}") 
-                new_hit = HmmHit(node=node, score=score, frame=frame, qstart=start, qend=start + len(seq), gene=gene, query=cluster_query, uid=None, refs=[], seq=seq)
+                new_hit = HmmHit(node=node, score=score, frame=frame, qstart=start, qend=start + len(seq), gene=gene, query=cquery, uid=None, refs=[], seq=seq)
                 hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, "Found in Exonerate Cluster"))
                 output.append(new_hit)
 
@@ -460,7 +468,10 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
 
                     passed_ids.add(get_id(node))
                     parents_done.add(query)
-                    new_hit = HmmHit(node=node, score=score, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=gene, query=cluster_query, uid=None, refs=[], seq=sequence)
+
+                    cquery = cluster_queries[source_clusters[node]]
+
+                    new_hit = HmmHit(node=node, score=score, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=gene, query=cquery, uid=None, refs=[], seq=sequence)
                     hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, "Found in Cluster Full"))
                     output.append(new_hit)
             continue
