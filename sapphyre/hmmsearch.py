@@ -234,17 +234,15 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
         cluster_query = max(set(cluster_queries), key=cluster_queries.count)
         exonerate_region = [] 
         for header, seq in this_seqs.items():
-            id = get_id(header)
-            if id >= biggest_cluster_range[0] and id <= biggest_cluster_range[1]:
-                exonerate_region.append((header, seq))
-
-            if header in nodes_in_gene:
+            if header in nodes_in_gene or header in cluster_full:
                 continue
+            id = get_id(header)
+            if id >= biggest_cluster_range[0] - chomp_max_distance and id <= biggest_cluster_range[1] + chomp_max_distance:
+                exonerate_region.append((header, seq))
             
             id = get_id(header)
             if id < biggest_cluster_range[0] or id > biggest_cluster_range[1]:
                 continue
-            nodes_in_gene.add(header)
             cluster_full.add(header)
         
         for node in nodes_in_gene:
@@ -537,11 +535,7 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
 
 def get_arg(transcripts_mapped_to, head_to_seq, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
     for gene, transcript_hits in transcripts_mapped_to:
-        this_seqs = {}
-        if is_full:
-            for hit in transcript_hits:
-                this_seqs[hit.node] = head_to_seq[hit.node]
-        yield gene, transcript_hits, this_seqs, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance
+        yield gene, transcript_hits, head_to_seq, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance
 
 
 def get_head_to_seq(nt_db, recipe):
