@@ -628,58 +628,64 @@ def log_excised_consensus(
                 log_output.extend([f">{node.contig_header()}_{'kept' if i in keep_indices else 'kicked'}\n{node.sequence}" for i, node in enumerate(nodes_in_region)])
                 log_output.append("\n")
 
-        after_data = []
-        for node in nodes:
-            if node.header in kicked_headers:
-                continue
-            after_data.append((node.header.split("|")[3].split("_")[1], node.header))
+    get_id = lambda header: header.split("|")[3].split("_")[1]
+    after_data = []
+    for node in nodes:
+        if node.header in kicked_headers:
+            continue
+        after_data.append((get_id(node.header), node.header))
 
-        after_data.sort(key = lambda x: x[0])
-        after_true_clusters = []
+    after_data.sort(key = lambda x: x[0])
+    after_true_clusters = []
 
-        current_cluster = []
-        for child_index, child_full in true_cluster_raw:
-            if not current_cluster:
+    current_cluster = []
+    for child_index, child_full in true_cluster_raw:
+        if not current_cluster:
+            current_cluster.append(child_full)
+            current_index = child_index
+        else:
+            if child_index - current_index <= true_cluster_threshold:
                 current_cluster.append(child_full)
                 current_index = child_index
             else:
-                if child_index - current_index <= true_cluster_threshold:
-                    current_cluster.append(child_full)
-                    current_index = child_index
-                else:
-                    after_true_clusters.append(current_cluster)
-                    current_cluster = [child_full]
-                    current_index = child_index
-        
-        if is_assembly_or_genome:
-            if current_cluster:
                 after_true_clusters.append(current_cluster)
+                current_cluster = [child_full]
+                current_index = child_index
 
-            after_true_cluster = set(max(after_true_clusters, key=lambda x: len(x)))
-            matches = []
-            for i, cluster in enumerate(before_true_clusters):
-                matches.append((len(after_true_cluster.intersection(set(cluster))) / len( cluster), i))
-            matches.sort(key=lambda x: x[0], reverse= True)
-            
-            best_match = max(matches, key=lambda x: x[0])[1]
-            this_rescues = [f"Rescued in gene: {gene}"]
-            for header in before_true_clusters[best_match]:
-                if header in kicked_headers:
+    if current_cluster:
+        after_true_clusters.append(current_cluster)
 
-                    this_sequence = aa_sequence[header]
-                    start, end = find_index_pair(this_sequence, "-")
-                    matching_char = 0
-                    for i, let in enumerate(this_sequence[start: end], start):
-                        if let in ref_consensus[i]:
-                            matching_char += 1
+    after_true_clusters.sort(key=lambda x: x[0])
+    cluster_string = ",".join([f"{get_id(cluster[0])}-{get_id(cluster[-1])}" for cluster in after_true_clusters])
+    
+    if is_assembly_or_genome:
+        after_true_cluster = set(max(after_true_clusters, key=lambda x: len(x)))
+        matches = []
+        for i, cluster in enumerate(before_true_clusters):
+            matches.append((len(after_true_cluster.intersection(set(cluster))) / len( cluster), i))
+        matches.sort(key=lambda x: x[0], reverse= True)
+        
+        best_match = max(matches, key=lambda x: x[0])[1]
+        this_rescues = [f"Rescued in gene: {gene}"]
+        for header in before_true_clusters[best_match]:
+            if header in kicked_headers:
 
-                    if matching_char / (end - start) < excise_rescue_match:
-                        continue
+                this_sequence = aa_sequence[header]
+                start, end = find_index_pair(this_sequence, "-")
+                matching_char = 0
+                for i, let in enumerate(this_sequence[start: end], start):
+                    if let in ref_consensus[i]:
+                        matching_char += 1
 
-                    kicked_headers.remove(header)
-                    this_rescues.append(header)
+                if matching_char / (end - start) < excise_rescue_match:
+                    continue
+
+                kicked_headers.remove(header)
+                this_rescues.append(header)
 
     aa_output = [(header, del_cols(seq, x_positions[header])) for header, seq in raw_aa if header not in kicked_headers]
+
+    cluster_log = (after_true_clusters[0][0], f"{gene},{len(aa_output)},{len(after_true_clusters)},{cluster_string}\n")
 
     aa_has_candidate = False
     for header, _ in aa_output:
@@ -692,14 +698,14 @@ def log_excised_consensus(
         req_coverage = 0.4 if is_assembly_or_genome else 0.01
         if gene_coverage < req_coverage:
             log_output.append(f">{gene}_kicked_coverage_{gene_coverage}_of_{req_coverage}\n{consensus_seq}")
-            return log_output, False, False, gene, False, len(aa_nodes), this_rescues
+            return log_output,cluster_log, False, False, gene, False, len(aa_nodes), this_rescues
         
         writeFasta(aa_out, aa_output, compress_intermediates)
         nt_output = [(header, del_cols(seq, x_positions[header], True)) for header, seq in raw_sequences if header not in kicked_headers]
         writeFasta(nt_out, nt_output, compress_intermediates)
 
-        return log_output, bad_regions, False, False, gene, len(kicked_headers), this_rescues
-    return log_output, bad_regions, gene, False, None, len(kicked_headers), this_rescues
+        return log_output, cluster_log, bad_regions, False, False, gene, len(kicked_headers), this_rescues
+    return log_output, cluster_log, bad_regions, gene, False, None, len(kicked_headers), this_rescues
 
 
 def load_dupes(rocks_db_path: Path):
@@ -788,6 +794,7 @@ def main(args, sub_dir, is_assembly_or_genome):
     genes = [fasta for fasta in listdir(aa_input) if ".fa" in fasta]
     log_path = Path(output_folder, "excise_regions.txt")
     gene_log_path = Path(output_folder, "excise_genes.txt")
+    cluster_log_path = Path(output_folder, "excise_clusters.csv")
     if args.processes > 1:
         arguments = [
             (
@@ -844,10 +851,12 @@ def main(args, sub_dir, is_assembly_or_genome):
     has_resolution = []
     no_ambig = []
     rescues = []
+    cluster_log = []
 
-    for glog, ghas_ambig, ghas_no_resolution, gcoverage_kick, g_has_resolution, gkicked_seq, grescues in results:
+    for glog, clog, ghas_ambig, ghas_no_resolution, gcoverage_kick, g_has_resolution, gkicked_seq, grescues in results:
         log_output.extend(glog)
         rescues.extend(grescues)
+        cluster_log.append(clog)
         if ghas_ambig:
             loci_containing_bad_regions += 1
         kicked_sequences += gkicked_seq
@@ -869,6 +878,9 @@ def main(args, sub_dir, is_assembly_or_genome):
     )
 
     if args.debug:
+        with open(cluster_log_path, "w") as f:
+            f.write("Gene,Total Sequences,Total Clusters,Cluster Ranges\n")
+            f.write("\n".join([string for _, string in cluster_log]))
         with open(log_path, "w") as f:
             f.write("Gene,Cut-Indices,Consensus Sequence\n")
             f.write("\n".join(log_output))
