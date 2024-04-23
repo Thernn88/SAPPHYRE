@@ -507,7 +507,13 @@ def outlier_args(par):
         type=int,
         help="Minimum ambigous characters for excise assembly",
     )
-
+    par.add_argument(
+        "-erm",
+        "--excise_rescue_match",
+        default=0.75,
+        type=float,
+        help="Minimum ambigous characters for excise assembly",
+    )
     par.add_argument(
         "-nd",
         "--no_dupes",

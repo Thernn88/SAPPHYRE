@@ -373,6 +373,7 @@ def log_excised_consensus(
     excise_consensus,
     excise_maximum_depth,
     excise_minimum_ambig,
+    excise_rescue_match,
     allowed_distance,
     prepare_dupes: dict,
     reporter_dupes: dict,
@@ -519,7 +520,9 @@ def log_excised_consensus(
                 x_positions[node.header].add(x)
             node.end = i
 
+    aa_sequence = {}
     for node in aa_nodes:
+        aa_sequence[node.header] = node.sequence
         node_kmer = node.sequence[node.start:node.end]
         data_len = bp_count(node_kmer)
         if data_len < 15:
@@ -662,6 +665,17 @@ def log_excised_consensus(
             this_rescues = [f"Rescued in gene: {gene}"]
             for header in before_true_clusters[best_match]:
                 if header in kicked_headers:
+
+                    this_sequence = aa_sequence[header]
+                    start, end = find_index_pair(this_sequence, "-")
+                    matching_char = 0
+                    for i, let in enumerate(this_sequence[start: end], start):
+                        if let in ref_consensus[i]:
+                            matching_char += 1
+
+                    if matching_char / (end - start) < excise_rescue_match:
+                        continue
+
                     kicked_headers.remove(header)
                     this_rescues.append(header)
 
@@ -789,6 +803,7 @@ def main(args, sub_dir, is_assembly_or_genome):
                 args.excise_maximum_depth,
                 args.excise_minimum_ambig,
                 args.excise_allowed_distance,
+                args.excise_rescue_match,
                 prepare_dupes.get(gene.split(".")[0], {}),
                 reporter_dupes.get(gene.split(".")[0], {}),
                 args.excise_trim_consensus,
@@ -814,6 +829,7 @@ def main(args, sub_dir, is_assembly_or_genome):
                     args.excise_maximum_depth,
                     args.excise_minimum_ambig,
                     args.excise_allowed_distance,
+                    args.excise_rescue_match,
                     prepare_dupes.get(gene.split(".")[0], {}),
                     reporter_dupes.get(gene.split(".")[0], {}),
                     args.excise_trim_consensus,
