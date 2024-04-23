@@ -595,10 +595,13 @@ def get_head_to_seq(nt_db, recipe):
 
 
 def miniscule_multi_filter(hits, debug):
+    hits.sort(key=lambda hit: hit.score, reverse=True)
+    
     MULTI_PERCENTAGE_OF_OVERLAP = 0.3
     MULTI_SCORE_DIFFERENCE = 1.1
 
     log = []
+    kicked_indices = set()
 
     # Assign the highest scoring hit as the 'master'
     master = hits[0]
@@ -607,10 +610,11 @@ def miniscule_multi_filter(hits, debug):
     candidates = hits[1:]
 
     internal_template = "{},{},{},{},{},Kicked due to miniscule score,{},{},{},{},{}"
+    internal_template_kick = "{},{},{},{},{},Kicked due to not being in highest scoring gene: {},{},{},{},{},{}"
 
     for i, candidate in enumerate(candidates, 1):
         # Skip if the candidate has been kicked already or if master and candidate are internal hits:
-        if not candidate or master.gene == candidate.gene:
+        if i in kicked_indices or master.gene == candidate.gene:
             continue
 
         # Get the distance between the master and candidate
@@ -629,14 +633,20 @@ def miniscule_multi_filter(hits, debug):
         if percentage_of_overlap >= MULTI_PERCENTAGE_OF_OVERLAP:
             score_difference = get_score_difference(master.score, candidate.score)
             if score_difference < MULTI_SCORE_DIFFERENCE:
-                # If the score difference is not greater than 5% trigger miniscule score.
+                # If the score difference is not greater than 10% trigger miniscule score.
                 # Miniscule score means hits map to loosely to multiple genes thus
                 # we can't determine a viable hit on a single gene and must kick all.
                 if debug:
                     log = [internal_template.format(hit.gene, hit.node, hit.score, hit.qstart, hit.qend, master.gene, master.node, master.score, master.qstart, master.qend) for hit in hits if hit]
 
                 return [], len(hits), log
-    return hits, 0, log
+
+        # If the score difference is great enough
+        # kick the candidate and log the kick.
+        log.append(internal_template_kick.format(candidate.gene, candidate.node, candidate.score, candidate.qstart, candidate.qend, master.gene, master.gene, master.node, master.score, master.qstart, master.qend))
+        kicked_indices.add(i)
+
+    return [hit for i, hit in enumerate(hits) if i not in kicked_indices], len(list(kicked_indices)), log
 
 
 def do_folder(input_folder, args):
@@ -705,8 +715,6 @@ def do_folder(input_folder, args):
     for header, hits in header_based_results.items():
         genes_present = {hit.gene for hit in hits}
         if len(genes_present) > 1:
-            hits.sort(key=lambda hit: hit.score, reverse=True)
-            
             multi_filter_args.append((hits, args.debug))
         else:
             for hit in hits:
