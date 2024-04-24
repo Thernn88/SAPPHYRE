@@ -473,7 +473,8 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
 
 def get_arg(transcripts_mapped_to, head_to_seq, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
     for gene, transcript_hits in transcripts_mapped_to:
-        yield gene, transcript_hits, head_to_seq, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance
+        if "43237at8457" in gene:
+            yield gene, transcript_hits, head_to_seq, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance
 
 
 def get_head_to_seq(nt_db, recipe):
@@ -668,15 +669,15 @@ def do_folder(input_folder, args):
                     current_cluster = [child_index]
                     current_index = child_index
 
+        if current_cluster:
+            if len(current_cluster) > 2:
+                clusters.append((current_cluster[0], current_cluster[-1]))
+
         clusters.sort(key=lambda x: x[0])
 
         cluster_string = ", ".join([f"{cluster[0]}-{cluster[1]}" for cluster in clusters])
 
         hmmsearch_cluster_log.append((len(clusters), f"{gene},{len(hits)},{len(clusters)},{cluster_string}"))
-        
-        if current_cluster:
-            if len(current_cluster) > 2:
-                clusters.append((current_cluster[0], current_cluster[-1]))
 
         hits_db.put_bytes(f"gethmmhits:{gene}", json.encode(hits))
 
