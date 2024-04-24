@@ -604,12 +604,12 @@ def do_folder(input_folder, args):
 
     all_hits = []
 
-    # if args.processes <= 1:
-    for this_arg in arguments:
-        all_hits.append(hmm_search(*this_arg))
-    # else:
-    #     with Pool(args.processes) as p:
-    #         all_hits = p.starmap(hmm_search, arguments)
+    if args.processes <= 1:
+        for this_arg in arguments:
+            all_hits.append(hmm_search(*this_arg))
+    else:
+        with Pool(args.processes) as p:
+            all_hits = p.starmap(hmm_search, arguments)
 
     printv(f"Running miniscule score filter", args.verbose, 1)
 
