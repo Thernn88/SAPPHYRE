@@ -169,7 +169,7 @@ def internal_filter_gene(this_gene_hits, debug, min_overlap_internal=0.9, score_
     return [i[0] for i in this_gene_hits if i[0] is not None], filtered_sequences_log
 
 
-def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance, no_exonerate, include_originals):
+def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     printv(f"Processing: {gene}", verbose, 2)
     aligned_sequences = []
@@ -234,19 +234,14 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
         #grab most occuring query
         cluster_queries = {k: max(set(v), key=v.count) for k, v in cluster_queries.items()}
 
-        exonerate_region = [] 
         source_clusters = {}
         for header, seq in this_seqs.items():
-            if header in nodes_in_gene and not include_originals:
+            if header in nodes_in_gene:
                 continue
             id = get_id(header)
             for cluster_range in clusters:
                 if id >= cluster_range[0] - chomp_max_distance and id <= cluster_range[1] + chomp_max_distance:
-                    if not no_exonerate:
-                        exonerate_region.append((header, seq))
                     source_clusters[header] = cluster_range
-                    if header in nodes_in_gene:
-                        break
 
                     cluster_full.add(header)
                     nodes_in_gene.add(header)
@@ -321,93 +316,6 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
     hmm_log_template = "{},{},{},{}"
     seq_template = ">{}\n{}\n"
 
-    if exonerate_region:
-        exonerate_out = path.join(hmm_output_folder, f"{gene}_exonerate.fa")
-        
-        if not path.exists(exonerate_out) or stat(exonerate_out).st_size == 0 or overwrite:
-            with NamedTemporaryFile(dir=gettempdir(), suffix=f"_{gene}_query.fa") as tmp_query:
-                for header, seq in parseFasta(top_file):
-                    tmp_query.write(seq_template.format(header, seq.replace("-","")).encode())
-                tmp_query.flush()
-
-                ryo = ">%ti|%tab-%tae|%s\n%tas\n"
-                command = 'exonerate --score 100 --ryo "{}" --subopt 0 --geneticcode 1 --model protein2genome --refine full --querytype protein --targettype dna --verbose 0 --showvulgar no --showalignment no --query {} --target {} > {}'
-
-                if debug <= 1:
-                    with NamedTemporaryFile(dir=gettempdir(), suffix=f"_{gene}_exonerate_input.fa") as tmp_target, open(tmp_target.name, "w") as fp:
-                        for header, seq in exonerate_region:
-                            fp.write(seq_template.format(header, seq))
-                        fp.flush()
-                    
-                        system(command.format(ryo, tmp_query.name, tmp_target.name, exonerate_out))
-                else:
-                    exonerate_target = path.join(hmm_output_folder, f"{gene}_exonerate_input.fa")
-                    with open(exonerate_target, "w") as fp:
-                        for header, seq in exonerate_region:
-                            fp.write(seq_template.format(header, seq))
-                        fp.flush()
-                    
-                        system(command.format(ryo, tmp_query.name, exonerate_target, exonerate_out))
-                # input(tmp_output.name)
-
-        # exonerate_results = []
-        # with open(exonerate_out) as f:
-        #     for line in f:
-        #         if line.startswith(">"):
-        #             # try:
-        #             node,coords,score = line[1:].split("|")
-                    
-
-        #             start, end = map(int, coords.split("-"))
-        #             parent_seq = this_seqs[node]
-        #             # print(node, coords)
-        #             # print(parent_seq)
-        #             # print(bio_revcomp(parent_seq))
-        #             # print()
-                    
-        #             exonerate_results.append((node, start, end, float(score)))
-        #         # else:
-        #             # input(line)
-
-        # for node, start, end, score in exonerate_results:
-        if stat(exonerate_out).st_size == 0:
-            printv(f"Exonerate returned no hits for {gene}", verbose, 2)
-        else:
-            highest_score = defaultdict(list)
-            for header, seq in parseFasta(exonerate_out, True):
-                node,coords,score = header.split("|")
-                highest_score[node].append((coords, score, seq))
-            
-            for node, results in highest_score.items():
-                highest_result = max(results, key=lambda x: x[1])
-
-                coords, score, seq = highest_result
-                start, end = map(int, coords.split("-"))
-                score = float(score)
-
-                frame_shift = 1
-                if start > end:
-                    frame_shift = -1
-                    parent_seq = this_seqs[node]
-                    start = len(parent_seq) - start
-                    end = len(parent_seq) - end
-                    seq = bio_revcomp(parent_seq)[start:end]
-                else:
-                    seq = this_seqs[node][start:end]
-
-                frame = (start % 3 + 1) * frame_shift
-                if len(seq) % 3 != 0:
-                    seq += "N" * (3 - len(seq) % 3)
-
-                cquery = cluster_queries[source_clusters[node]]
-
-                passed_ids.add(get_id(node))
-                parents_done.add(f"{node}|{frame}") 
-                new_hit = HmmHit(node=node, score=score, frame=frame, qstart=start, qend=start + len(seq), gene=gene, query=cquery, uid=None, refs=[], seq=seq)
-                hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, "Found in Exonerate Cluster"))
-                output.append(new_hit)
-
-    
     if debug > 2 or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
         with NamedTemporaryFile(dir=gettempdir()) as hmm_temp_file:
             system(f"hmmbuild '{hmm_temp_file.name}' '{top_file}' > /dev/null")
@@ -563,9 +471,9 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
 
     return gene, output, new_outs, hmm_log, filtered_sequences_log
 
-def get_arg(transcripts_mapped_to, head_to_seq, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance, no_exonerate, include_originals):
+def get_arg(transcripts_mapped_to, head_to_seq, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
     for gene, transcript_hits in transcripts_mapped_to:
-        yield gene, transcript_hits, head_to_seq, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance, no_exonerate, include_originals
+        yield gene, transcript_hits, head_to_seq, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance
 
 
 def get_head_to_seq(nt_db, recipe):
@@ -678,7 +586,7 @@ def do_folder(input_folder, args):
 
     top_location = path.join(input_folder, "top")
 
-    arguments = get_arg(transcripts_mapped_to, head_to_seq, is_full, hmm_output_folder, top_location, args.overwrite, args.map, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance, args.no_exonerate, args.include_originals)
+    arguments = get_arg(transcripts_mapped_to, head_to_seq, is_full, hmm_output_folder, top_location, args.overwrite, args.map, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance)
 
     all_hits = []
 
