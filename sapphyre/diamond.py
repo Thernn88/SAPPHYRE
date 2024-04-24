@@ -46,9 +46,9 @@ class Hit(Struct, frozen=True):
 class ReporterHit(Struct):
     node: str
     frame: int
+    evalue: float
     qstart: int
     qend: int
-    evalue: float
     gene: str
     query: str
     uid: int
@@ -324,9 +324,9 @@ def convert_and_cull(this_args: ConvertArgs) -> ConvertReturn:
             ReporterHit(
                 hit.node,
                 hit.frame,
+                hit.evalue,
                 hit.qstart,
                 hit.qend,
-                hit.evalue,
                 hit.gene,
                 hit.ref,
                 hit.uid,
@@ -525,15 +525,13 @@ def top_reference_realign(orthoset_raw_path, orthoset_aln_path, orthoset_trimmed
         
     header_set = set()
     for header, seq in source:
+        header = header.split(" ")[0]
         key = f"{gene}|{header}"
         if target_to_taxon.get(header, set()) in top_refs or target_to_taxon.get(key, set()) in top_refs:
             header_set.add(header)
             out.append((header, seq.replace("-", "")))        
         
     out_path = path.join(top_path, gene+".aln.fa")
-
-    if len(out) == 0:
-        return
 
     if len(out) == 1:
         writeFasta(out_path, out)
@@ -828,7 +826,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         for k, v in most_common:
             fp.write(f"{k},{v} \n")
         
-    # target_count = min_count * (1 - args.top_ref)
+    #target_count = min_count * (1 - args.top_ref)
     for taxa, count in most_common:
         if count >= target_count:
             top_ref_in_order.append(taxa)
@@ -840,8 +838,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         gene_target_to_taxa[gene][target] = taxa
 
     target_has_hit = set(df["target"].unique())
-    if args.top_ref != -1:
-        df = df[(df["target"].isin(top_targets))]
+    # df = df[(df["target"].isin(top_targets))]
     headers = df["header"].unique()
     if len(headers) > 0:
         per_thread = ceil(len(headers) / post_threads)
@@ -1101,9 +1098,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
                     hit = ReporterHit(
                         hit.node,
                         hit.frame,
+                        hit.evalue,
                         hit.qstart,
                         hit.qend,
-                        hit.evalue,
                         hit.gene,
                         hit.ref,
                         hit.uid,
