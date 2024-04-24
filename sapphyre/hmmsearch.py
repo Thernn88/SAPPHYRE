@@ -427,7 +427,7 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
 
                     passed_ids.add(get_id(hit.node))
                     parents_done.add(f"{hit.node}|{hit.frame}")
-                    new_hit = HmmHit(node=hit.node, score=score, frame=hit.frame, evalue=hit.evalue qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=new_uid, refs=hit.refs, seq=sequence)
+                    new_hit = HmmHit(node=hit.node, score=score, frame=hit.frame, evalue=hit.evalue, qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=new_uid, refs=hit.refs, seq=sequence)
                     output.append(new_hit)
 
         if query in children:
@@ -563,7 +563,7 @@ def miniscule_multi_filter(hits, debug):
                     if debug:
                         log = [internal_template.format(hit.gene, hit.node, hit.score, hit.qstart, hit.qend, master.gene, master.node, master.score, master.qstart, master.qend) for hit in hits if hit]
 
-                    return [], len(hits), log
+                    return [], len(hits), log, edge_log
             else:
                 edge_log.append(f"{candidate.gene},{candidate.node},{candidate.frame},{candidate.evalue},{master.gene}")
 
