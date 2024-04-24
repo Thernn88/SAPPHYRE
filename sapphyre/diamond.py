@@ -516,11 +516,14 @@ def top_reference_realign(orthoset_raw_path, orthoset_aln_path, orthoset_trimmed
     out = []
 
     gene_path = path.join(orthoset_trimmed_path, gene+".aln.fa")
-    if not path.exists(gene_path):
-        gene_path = path.join(orthoset_aln_path, gene+".fa")
+    gene_raw_path = path.join(orthoset_raw_path, gene+".fa")
+    gene_aln_path = path.join(orthoset_aln_path, gene+".aln.fa")
+    if not path.exists(gene_path) and path.exists(gene_aln_path):
+        gene_path = gene_aln_path
         #source = parseFasta(gene_path, True
-    if not path.exists(gene_path):
-        gene_path = path.join(orthoset_raw_path, gene+".fa")
+    else:
+        gene_path = gene_raw_path
+        
     source = parseFasta(gene_path, True)
         
     header_set = set()
