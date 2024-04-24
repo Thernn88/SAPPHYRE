@@ -473,7 +473,6 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
 
 def get_arg(transcripts_mapped_to, head_to_seq, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
     for gene, transcript_hits in transcripts_mapped_to:
-        
         yield gene, transcript_hits, head_to_seq, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance
 
 
@@ -540,15 +539,16 @@ def miniscule_multi_filter(hits, debug):
 
         # If the overlap is greater than 30% and the score difference is greater than 5%
         if percentage_of_overlap >= MULTI_PERCENTAGE_OF_OVERLAP:
-            score_difference = get_score_difference(master.score, candidate.score)
-            if score_difference < MULTI_SCORE_DIFFERENCE:
-                # If the score difference is not greater than 10% trigger miniscule score.
-                # Miniscule score means hits map to loosely to multiple genes thus
-                # we can't determine a viable hit on a single gene and must kick all.
-                if debug:
-                    log = [internal_template.format(hit.gene, hit.node, hit.score, hit.qstart, hit.qend, master.gene, master.node, master.score, master.qstart, master.qend) for hit in hits if hit]
+            if master.score and candidate.score:
+                score_difference = get_score_difference(master.score, candidate.score)
+                if score_difference < MULTI_SCORE_DIFFERENCE:
+                    # If the score difference is not greater than 10% trigger miniscule score.
+                    # Miniscule score means hits map to loosely to multiple genes thus
+                    # we can't determine a viable hit on a single gene and must kick all.
+                    if debug:
+                        log = [internal_template.format(hit.gene, hit.node, hit.score, hit.qstart, hit.qend, master.gene, master.node, master.score, master.qstart, master.qend) for hit in hits if hit]
 
-                return [], len(hits), log
+                    return [], len(hits), log
 
         # If the score difference is great enough
         # kick the candidate and log the kick.
