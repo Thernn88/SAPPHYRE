@@ -458,6 +458,7 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                 
                 output.append(clone)
 
+    diamond_kicks = []
     for hit in diamond_hits:
         if not f"{hit.node}|{hit.frame}" in parents_done:
             if math.floor(math.log10(abs(hit.evalue))) <= -evalue_threshold:
@@ -478,12 +479,10 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                     hmm_log.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, f"Rescued by NODE_{neighbour}. Evalue: {hit.evalue}"))
                     continue
 
-            hmm_log.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, f"Kicked. Evalue: {hit.evalue}"))
+            diamond_kicks.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, f"Kicked. Evalue: {hit.evalue}"))
 
-    # output, filtered_sequences_log = internal_filter_gene(output, debug)
-    filtered_sequences_log = []
 
-    return gene, output, new_outs, hmm_log, filtered_sequences_log
+    return gene, output, new_outs, hmm_log, diamond_kicks
 
 def get_arg(transcripts_mapped_to, head_to_seq, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
     for gene, transcript_hits in transcripts_mapped_to:
@@ -616,9 +615,9 @@ def do_folder(input_folder, args):
 
     log = ["Gene,Node,Frame"]
     klog = ["Gene,Node,Frame"]
-    ilog = ["Kicked Gene,Header,Frame,Score,Start,End,Reason,Master Gene,Header,Frame,Score,Start,End"]
+    kick_log = ["Gene,Node,Frame"]
     header_based_results = defaultdict(list)
-    for gene, hits, logs, klogs, ilogs in all_hits:
+    for gene, hits, logs, klogs, dkicks in all_hits:
         if not gene:
             continue
 
@@ -627,7 +626,7 @@ def do_folder(input_folder, args):
         
         log.extend(logs)
         klog.extend(klogs)
-        ilog.extend(ilogs)
+        kick_log.extend(dkicks)
 
     mlog = ["Gene,Node,Score,Start,End,Reason,Master Gene,Header,Score,Start,End"]
     mkicks = 0
@@ -703,8 +702,8 @@ def do_folder(input_folder, args):
         f.write("\n".join([i[1] for i in hmmsearch_cluster_log]))
     with open(path.join(input_folder, "hmmsearch_log.log"), "w") as f:
         f.write("\n".join(klog))
-    with open(path.join(input_folder, "hmmsearch_internal.log"), "w") as f:
-        f.write("\n".join(ilog))
+    with open(path.join(input_folder, "hmmsearch_kick.log"), "w") as f:
+        f.write("\n".join(kick_log))
     with open(path.join(input_folder, "hmmsearch_multi.log"), "w") as f:
         f.write("\n".join(mlog))
 
