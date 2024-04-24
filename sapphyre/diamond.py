@@ -638,6 +638,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         rmtree(diamond_path)
     makedirs(diamond_path, exist_ok=True)
 
+    genome_score_filter = args.genome_score_filter
     num_threads = args.processes
     post_threads = args.processes if args.processes < THREAD_CAP else THREAD_CAP
     if post_threads > 1:
@@ -805,9 +806,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
         taxon_to_targets[ref_taxa].append(target)
         target_to_gene[target] = gene
 
-    # if is_assembly_or_genome:
-    #     filtered_df = df[df["score"] > 200]
-    #     target_counts = filtered_df["target"].value_counts()
+    if is_assembly_or_genome and genome_score_filter:
+        filtered_df = df[df["score"] > genome_score_filter]
+        target_counts = filtered_df["target"].value_counts()
 
     for target, count in target_counts.to_dict().items():
         gene, ref_taxa, _ = target_to_taxon[target]
@@ -819,24 +820,28 @@ def run_process(args: Namespace, input_path: str) -> bool:
     top_targets = set()
     most_common = combined_count.most_common()
 
-    target_count = min(most_common[0:args.top_ref], key=lambda x: x[1])[1]
+    if args.top_ref == -1:
+        target_count = 0
+    else:
+        target_count = min(most_common[0:args.top_ref], key=lambda x: x[1])[1]
     with open(path.join(input_path, "diamond_top_ref.csv"), "w") as fp:
         for k, v in most_common:
             fp.write(f"{k},{v} \n")
         
-    #target_count = min_count * (1 - args.top_ref)
+    # target_count = min_count * (1 - args.top_ref)
     for taxa, count in most_common:
-        #if count >= target_count:
-        top_ref_in_order.append(taxa)
-        top_refs.add(taxa)
-        top_targets.update(taxon_to_targets[taxa])
+        if count >= target_count:
+            top_ref_in_order.append(taxa)
+            top_refs.add(taxa)
+            top_targets.update(taxon_to_targets[taxa])
 
     gene_target_to_taxa = defaultdict(dict)
     for target, (gene, taxa, _) in target_to_taxon.items():
         gene_target_to_taxa[gene][target] = taxa
 
     target_has_hit = set(df["target"].unique())
-    # df = df[(df["target"].isin(top_targets))]
+    if args.top_ref != -1:
+        df = df[(df["target"].isin(top_targets))]
     headers = df["header"].unique()
     if len(headers) > 0:
         per_thread = ceil(len(headers) / post_threads)

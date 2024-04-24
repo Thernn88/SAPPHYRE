@@ -158,6 +158,13 @@ def diamond_args(par):
         help="Diamond sensitivty argument.",
     )
     par.add_argument(
+        "-gsf",
+        "--genome_score_filter",
+        type=float,
+        default=200,
+        help="Filter assembly and genomic diamond tsvs to require this minimum score.",
+    )
+    par.add_argument(
         "-e",
         "--evalue",
         type=int,
