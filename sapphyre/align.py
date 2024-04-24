@@ -875,7 +875,7 @@ def run_command(args: CmdArgs) -> None:
             
     printv(f"Done. Took {keeper.differential():.2f}", args.verbose, 3)  # Debug
 
-    return (clusters[0][0], f"{args.gene},{len(ids)},{len(clusters)},{cluster_string}")
+    return (clusters[0][0] if clusters else 0, f"{args.gene},{len(ids)},{len(clusters)},{cluster_string}")
 
 
 def do_folder(folder, args):
