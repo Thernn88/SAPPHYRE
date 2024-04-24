@@ -748,6 +748,13 @@ def align_args(par):
         default="clustal",
         help="What alignment method to use.",
     )
+    par.add_argument(
+        "-cd",
+        "--chomp_max_distance",
+        type=int,
+        default=25,
+        help="Max distance for merging cluster in chomp",
+    )
 
 
 def align(args):

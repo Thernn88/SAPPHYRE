@@ -338,6 +338,7 @@ CmdArgs = namedtuple(
         "align_method",
         "second_run",
         "top_folder",
+        "chomp_max_distance",
     ],
 )
 
@@ -620,222 +621,261 @@ def run_command(args: CmdArgs) -> None:
     temp_dir = gettempdir()
 
     aligned_ingredients = []
+    get_id = lambda header: int(header.split("|")[3].split("_")[1])
 
-    this_intermediates = path.join("intermediates", args.gene)
-    if debug and not path.exists(this_intermediates):
-        mkdir(this_intermediates)
-    aln_file = path.join(args.aln_path, args.gene + ".fa" if "raw" in args.aln_path else ".aln.fa")
+    if not path.exists(args.result_file) or stat(args.result_file).st_size == 0:
+        this_intermediates = path.join("intermediates", args.gene)
+        if debug and not path.exists(this_intermediates):
+            mkdir(this_intermediates)
+        aln_file = path.join(args.aln_path, args.gene + ".fa" if "raw" in args.aln_path else ".aln.fa")
 
-    with TemporaryDirectory(dir=temp_dir) as parent_tmpdir, TemporaryDirectory(
-        dir=parent_tmpdir,
-    ) as raw_files_tmp, TemporaryDirectory(dir=parent_tmpdir) as aligned_files_tmp:
-        printv(
-            f"Cleaning AA file. Elapsed time: {keeper.differential():.2f}",
-            args.verbose,
-            3,
-        )  # Debug
-
-        # Grab sequences, reinsertions, trimmed header to full header dict and targets
-        (
-            seq_count,
-            data,
-            targets,
-            reinsertions,
-            trimmed_header_to_full,
-        ) = process_genefile(args.gene_file)
-
-        cluster_time = 0
-        align_time = 0
-        merge_time = 0
-
-        # If only one sequence is present we can just output the singleton
-        if seq_count == 1:
+        with TemporaryDirectory(dir=temp_dir) as parent_tmpdir, TemporaryDirectory(
+            dir=parent_tmpdir,
+        ) as raw_files_tmp, TemporaryDirectory(dir=parent_tmpdir) as aligned_files_tmp:
             printv(
-                f"Outputting singleton alignment. Elapsed time: {keeper.differential():.2f}",
-                args.verbose,
-                3,
-            )  # Debug
-            aligned_file = path.join(aligned_files_tmp, f"{args.gene}_cluster_1_0")
-            sequences = list(data.items())
-            writeFasta(aligned_file, sequences)
-            if debug:
-                writeFasta(path.join(this_intermediates, aligned_file), sequences)
-                unaligned_path = path.join(
-                    this_intermediates, f"unaligned_cluster_singleton"
-                )
-                writeFasta(unaligned_path, sequences)
-            aligned_ingredients.append((aligned_file, len(sequences), 0))
-        # Otherwise if align method is frags
-        elif args.align_method == "frags":
-            aligned_file = path.join(aligned_files_tmp, f"{args.gene}_sequences")
-
-            sequences = list(data.items())
-
-            if debug:
-                writeFasta(
-                    path.join(this_intermediates, f"{args.gene}_sequences"),
-                    sequences,
-                )
-
-            # Write the aligned ingredients to a temp file and set the aligned ingredients
-            # to equal just this file
-            writeFasta(aligned_file, sequences)
-
-            aligned_ingredients = [(aligned_file, len(sequences), 0)]
-        # Else any other method is selected
-        else:
-            printv(
-                f"Generating Cluster. Elapsed time: {keeper.differential():.2f}",
+                f"Cleaning AA file. Elapsed time: {keeper.differential():.2f}",
                 args.verbose,
                 3,
             )  # Debug
 
-            # Seperate into clusters if more than 5 sequences are present
-            if len(data) < 5:
-                cluster_children = [[i] for i in data]
-            else:
-                cluster_children = generate_clusters(data, args.second_run)
-            clusters = seperate_into_clusters(cluster_children, data)
-            cluster_time = keeper.differential()
+            # Grab sequences, reinsertions, trimmed header to full header dict and targets
+            (
+                seq_count,
+                data,
+                targets,
+                reinsertions,
+                trimmed_header_to_full,
+            ) = process_genefile(args.gene_file)
 
-            if debug:
-                for i, cluster in enumerate(clusters):
-                    unaligned_path = path.join(
-                        this_intermediates, f"unaligned_cluster_{i}"
-                    )
-                    test_output = [(header, data[header]) for header in cluster]
-                    writeFasta(unaligned_path, test_output)
+            cluster_time = 0
+            align_time = 0
+            merge_time = 0
 
-            printv(
-                f"Found {seq_count} sequences over {len(clusters)} clusters. Elapsed time: {keeper.differential():.2f}",
-                args.verbose,
-                3,
-            )
-            printv(
-                f"Aligning Clusters. Elapsed time: {keeper.differential():.2f}",
-                args.verbose,
-                3,
-            )
-
-            # Align each cluster
-            for cluster_i, cluster in enumerate(clusters):
-                cluster_seqs = [(header, data[header]) for header in cluster]
-
+            # If only one sequence is present we can just output the singleton
+            if seq_count == 1:
                 printv(
-                    f"Aligning cluster {cluster_i}. Elapsed time: {keeper.differential():.2f}",
+                    f"Outputting singleton alignment. Elapsed time: {keeper.differential():.2f}",
+                    args.verbose,
+                    3,
+                )  # Debug
+                aligned_file = path.join(aligned_files_tmp, f"{args.gene}_cluster_1_0")
+                sequences = list(data.items())
+                writeFasta(aligned_file, sequences)
+                if debug:
+                    writeFasta(path.join(this_intermediates, aligned_file), sequences)
+                    unaligned_path = path.join(
+                        this_intermediates, f"unaligned_cluster_singleton"
+                    )
+                    writeFasta(unaligned_path, sequences)
+                aligned_ingredients.append((aligned_file, len(sequences), 0))
+            # Otherwise if align method is frags
+            elif args.align_method == "frags":
+                aligned_file = path.join(aligned_files_tmp, f"{args.gene}_sequences")
+
+                sequences = list(data.items())
+
+                if debug:
+                    writeFasta(
+                        path.join(this_intermediates, f"{args.gene}_sequences"),
+                        sequences,
+                    )
+
+                # Write the aligned ingredients to a temp file and set the aligned ingredients
+                # to equal just this file
+                writeFasta(aligned_file, sequences)
+
+                aligned_ingredients = [(aligned_file, len(sequences), 0)]
+            # Else any other method is selected
+            else:
+                printv(
+                    f"Generating Cluster. Elapsed time: {keeper.differential():.2f}",
                     args.verbose,
                     3,
                 )  # Debug
 
-                aligned_ingredients.append(
-                    align_cluster(
-                        cluster_seqs,
-                        cluster_i,
-                        args.gene,
-                        raw_files_tmp,
-                        aligned_files_tmp,
-                        debug,
-                        this_intermediates,
-                        args.string,
-                    )
-                )
+                # Seperate into clusters if more than 5 sequences are present
+                if len(data) < 5:
+                    cluster_children = [[i] for i in data]
+                else:
+                    cluster_children = generate_clusters(data, args.second_run)
+                clusters = seperate_into_clusters(cluster_children, data)
+                cluster_time = keeper.differential()
 
-        align_time = keeper.differential() - cluster_time
+                if debug:
+                    for i, cluster in enumerate(clusters):
+                        unaligned_path = path.join(
+                            this_intermediates, f"unaligned_cluster_{i}"
+                        )
+                        test_output = [(header, data[header]) for header in cluster]
+                        writeFasta(unaligned_path, test_output)
 
-        if aligned_ingredients:
-            # Merge subalignments in order by seq count
-            aligned_ingredients = [
-                i for i in sorted(aligned_ingredients, key=lambda x: x[1])
-            ]
-            printv(
-                f"Merging Alignments. Elapsed time: {keeper.differential():.2f}",
-                args.verbose,
-                3,
-            )  # Debug
-
-            # Grab target reference sequences
-            top_aln_path = path.join(args.top_folder, args.gene + ".aln.fa")
-
-            if args.second_run:
-                tmp_aln = NamedTemporaryFile(dir=parent_tmpdir, mode="w+", prefix="References_")
-                generate_tmp_aln(
-                    aln_file,
-                    targets,
-                    tmp_aln,
-                    parent_tmpdir,
-                    debug,
-                    this_intermediates,
-                    args.align_method,
-                )
-
-            for i, (file, seq_count, cluster_i) in enumerate(aligned_ingredients):
                 printv(
-                    f"Creating reference subalignment {i+1} of {len(aligned_ingredients)}.",
+                    f"Found {seq_count} sequences over {len(clusters)} clusters. Elapsed time: {keeper.differential():.2f}",
                     args.verbose,
                     3,
                 )
-                # If frags we want to save the final_sequences from the aligned result
-                final_sequences = create_subalignment(
-                    args.align_method,
-                    parent_tmpdir,
-                    file,
-                    tmp_aln.name if args.second_run else top_aln_path,
-                    cluster_i,
-                    seq_count,
-                    debug,
-                    this_intermediates,
+                printv(
+                    f"Aligning Clusters. Elapsed time: {keeper.differential():.2f}",
+                    args.verbose,
+                    3,
                 )
 
-            # Otherwise we want to do insertion logic
-            if args.align_method != "frags":
-                # Grab insertions in each subalignment
-                alignment_insertion_coords, subalignments, refs = get_insertions(
-                    parent_tmpdir, targets, tmp_aln.name if args.second_run else top_aln_path
-                )
+                # Align each cluster
+                for cluster_i, cluster in enumerate(clusters):
+                    cluster_seqs = [(header, data[header]) for header in cluster]
 
-                # Insert into refs
-                final_refs = insert_refs(refs, alignment_insertion_coords)
+                    printv(
+                        f"Aligning cluster {cluster_i}. Elapsed time: {keeper.differential():.2f}",
+                        args.verbose,
+                        3,
+                    )  # Debug
 
-                # Insert into each subalignment
-                sequences = insert_sequences(
-                    subalignments, alignment_insertion_coords
-                )
+                    aligned_ingredients.append(
+                        align_cluster(
+                            cluster_seqs,
+                            cluster_i,
+                            args.gene,
+                            raw_files_tmp,
+                            aligned_files_tmp,
+                            debug,
+                            this_intermediates,
+                            args.string,
+                        )
+                    )
 
-                # Consolidate output
-                final_sequences = final_refs + sequences
-            
-            if args.second_run:
-                del tmp_aln
+            align_time = keeper.differential() - cluster_time
 
-    merge_time = keeper.differential() - align_time - cluster_time
-    # Reinsert and sort by start position
-    to_write = []
-    references = []
-    inserted = 0
-    for header, sequence in final_sequences:
-        if "|" not in header:
-            if header.split(" ")[0] not in targets:
+            if aligned_ingredients:
+                # Merge subalignments in order by seq count
+                aligned_ingredients = [
+                    i for i in sorted(aligned_ingredients, key=lambda x: x[1])
+                ]
+                printv(
+                    f"Merging Alignments. Elapsed time: {keeper.differential():.2f}",
+                    args.verbose,
+                    3,
+                )  # Debug
+
+                # Grab target reference sequences
+                top_aln_path = path.join(args.top_folder, args.gene + ".aln.fa")
+
+                if args.second_run:
+                    tmp_aln = NamedTemporaryFile(dir=parent_tmpdir, mode="w+", prefix="References_")
+                    generate_tmp_aln(
+                        aln_file,
+                        targets,
+                        tmp_aln,
+                        parent_tmpdir,
+                        debug,
+                        this_intermediates,
+                        args.align_method,
+                    )
+
+                for i, (file, seq_count, cluster_i) in enumerate(aligned_ingredients):
+                    printv(
+                        f"Creating reference subalignment {i+1} of {len(aligned_ingredients)}.",
+                        args.verbose,
+                        3,
+                    )
+                    # If frags we want to save the final_sequences from the aligned result
+                    final_sequences = create_subalignment(
+                        args.align_method,
+                        parent_tmpdir,
+                        file,
+                        tmp_aln.name if args.second_run else top_aln_path,
+                        cluster_i,
+                        seq_count,
+                        debug,
+                        this_intermediates,
+                    )
+
+                # Otherwise we want to do insertion logic
+                if args.align_method != "frags":
+                    # Grab insertions in each subalignment
+                    alignment_insertion_coords, subalignments, refs = get_insertions(
+                        parent_tmpdir, targets, tmp_aln.name if args.second_run else top_aln_path
+                    )
+
+                    # Insert into refs
+                    final_refs = insert_refs(refs, alignment_insertion_coords)
+
+                    # Insert into each subalignment
+                    sequences = insert_sequences(
+                        subalignments, alignment_insertion_coords
+                    )
+
+                    # Consolidate output
+                    final_sequences = final_refs + sequences
+                
+                if args.second_run:
+                    del tmp_aln
+
+        merge_time = keeper.differential() - align_time - cluster_time
+        # Reinsert and sort by start position
+        to_write = []
+        references = []
+        inserted = 0
+        for header, sequence in final_sequences:
+            if "|" not in header:
+                if header.split(" ")[0] not in targets:
+                    continue
+                
+                header = targets[header.split(" ")[0]]
+            elif not header.endswith("."):
+                header = trimmed_header_to_full[header[:127]]
+
+            if header.endswith('.'):
+                references.append((header, sequence))
                 continue
+
+            if header in reinsertions:
+                for insertion_header in reinsertions[header]:
+                    inserted += 1
+                    to_write.append((insertion_header, sequence))
+            to_write.append((header, sequence))
+
+        to_write.sort(key=lambda x: int(x[0].split("|")[3].split("_")[1]), reverse=True)
+        writeFasta(args.result_file, references + to_write, compress=args.compress)
+        
+        ids = []
+        for header, _ in to_write:
+            ids.append(get_id(header))
+    else:
+        ids = []
+        for header, _ in parseFasta(args.result_file):
+            if header.endswith("."):
+                continue
+            ids.append(get_id(header))
             
-            header = targets[header.split(" ")[0]]
-        elif not header.endswith("."):
-            header = trimmed_header_to_full[header[:127]]
+    ids.sort()
 
-        if header.endswith('.'):
-            references.append((header, sequence))
-            continue
+    clusters = []
+    current_cluster = []
+    for child_index in ids:
+        if not current_cluster:
+            current_cluster.append(child_index)
+            current_index = child_index
+        else:
+            if child_index - current_index <= args.chomp_max_distance:
+                current_cluster.append(child_index)
+                current_index = child_index
+            else:
+                if len(current_cluster) > 2:
+                    clusters.append((current_cluster[0], current_cluster[-1]))
+                current_cluster = [child_index]
+                current_index = child_index
 
-        if header in reinsertions:
-            for insertion_header in reinsertions[header]:
-                inserted += 1
-                to_write.append((insertion_header, sequence))
-        to_write.append((header, sequence))
+    if current_cluster:
+        if len(current_cluster) > 2:
+            clusters.append((current_cluster[0], current_cluster[-1]))
 
-    to_write.sort(key=lambda x: int(x[0].split("|")[3].split("_")[1]), reverse=True)
-    writeFasta(args.result_file, references + to_write, compress=args.compress)
+    clusters.sort(key=lambda x: x[0])
+
+    cluster_string = ", ".join([f"{cluster[0]}-{cluster[1]}" for cluster in clusters])         
+            
     printv(f"Done. Took {keeper.differential():.2f}", args.verbose, 3)  # Debug
 
-    return args.gene, cluster_time, align_time, merge_time, keeper.differential()
+    return (clusters[0][0], f"{args.gene},{len(ids)},{len(clusters)},{cluster_string}")
 
 
 def do_folder(folder, args):
@@ -888,37 +928,37 @@ def do_folder(folder, args):
         gene_file = path.join(aa_path, file)
         compress_result_file = path.join(align_path, file)
         result_file = compress_result_file.rstrip(".gz")
-
-        exst_file = result_file if path.exists(result_file) else None
-        if not exst_file:
-            exst_file = (
-                compress_result_file if path.exists(compress_result_file) else None
-            )
-
-        if not exst_file or stat(exst_file).st_size == 0:
-            func_args.append(
-                (
-                    CmdArgs(
-                        command,
-                        gene_file,
-                        result_file,
-                        gene,
-                        args.verbose,
-                        args.compress,
-                        aln_path,
-                        args.debug,
-                        args.align_method.lower(),
-                        args.second_run,
-                        top_folder,
-                    ),
+        func_args.append(
+            (
+                CmdArgs(
+                    command,
+                    gene_file,
+                    result_file,
+                    gene,
+                    args.verbose,
+                    args.compress,
+                    aln_path,
+                    args.debug,
+                    args.align_method.lower(),
+                    args.second_run,
+                    top_folder,
+                    args.chomp_max_distance,
                 ),
-            )
+            ),
+        )
 
     if args.processes > 1:
         with Pool(args.processes) as pool:
-            pool.starmap(run_command, func_args, chunksize=1)
+            cluster_logs = pool.starmap(run_command, func_args, chunksize=1)
     else:
-        [run_command(arg[0]) for arg in func_args]
+        cluster_logs = [run_command(arg[0]) for arg in func_args]
+        
+    cluster_logs.sort(key=lambda x: x[0])
+    cluster_logs = [x[1] for x in cluster_logs]
+        
+    with open(path.join(folder, "align_clusters.csv"), "w") as f:
+        f.write("Gene,Seq count,Cluster count,Cluster ranges\n")
+        f.write("\n".join(cluster_logs))
 
     printv(f"Done! Took {time_keeper.differential():.2f}s overall", args.verbose, 0)
     return True
