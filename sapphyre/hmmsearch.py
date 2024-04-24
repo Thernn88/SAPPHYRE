@@ -71,14 +71,13 @@ def get_diamondhits(
     gene_based_results = []
     for gene in genes_to_process:
         gene_result = rocks_hits_db.get_bytes(f"gethits:{gene}")
-        this_hits = json.decode(gene_result, type=list[Hit])
         if not gene_result:
             printv(
                 f"WARNING: No hits found for {gene}. If you are using a gene list file this may be a non-issue",
                 0,
             )
             continue
-        gene_based_results.append((gene, this_hits))
+        gene_based_results.append((gene, gene_result))
 
     return genes_to_process, gene_based_results
 
@@ -171,6 +170,7 @@ def internal_filter_gene(this_gene_hits, debug, min_overlap_internal=0.9, score_
 
 def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
     warnings.filterwarnings("ignore", category=BiopythonWarning)
+    diamond_hits = json.decode(diamond_hits, type=list[Hit])
     printv(f"Processing: {gene}", verbose, 2)
     aligned_sequences = []
     this_hmm_output = path.join(hmm_output_folder, f"{gene}.hmmout")
@@ -204,6 +204,11 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
     if current_cluster:
         if len(current_cluster) > 2:
             clusters.append((current_cluster[0], current_cluster[-1]))
+            
+    cluster_dict = {}
+    for cluster in clusters:
+        for i in range(cluster[0], cluster[1] + 1):
+            cluster_dict[i] = cluster
     
     nt_sequences = {}
     parents = {}
@@ -220,9 +225,9 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
             id = get_id(hit.node)
 
 
-            for cluster_range in clusters:
-                if id >= cluster_range[0] - chomp_max_distance and id <= cluster_range[1] + chomp_max_distance:
-                    cluster_queries[cluster_range].append(hit.query)
+            this_crange = cluster_dict.get(id)
+            if this_crange:
+                cluster_queries[this_crange].append(hit.query)
 
             nodes_in_gene.add(hit.node)
             query = f"{hit.node}|{hit.frame}"
@@ -232,21 +237,27 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                 fallback[hit.node] = hit
 
         #grab most occuring query
-        cluster_queries = {k: max(set(v), key=v.count) for k, v in cluster_queries.items()}
+        if clusters:
+            cluster_queries = {k: max(set(v), key=v.count) for k, v in cluster_queries.items()}
+            smallest_cluster_in_range = min([i[0] for i in clusters]) - 25
+            largest_cluster_in_range = max([i[1] for i in clusters]) + 25
 
-        source_clusters = {}
-        for header, seq in this_seqs.items():
-            if header in nodes_in_gene:
-                continue
-            id = get_id(header)
-            for cluster_range in clusters:
-                if id >= cluster_range[0] - chomp_max_distance and id <= cluster_range[1] + chomp_max_distance:
-                    source_clusters[header] = cluster_range
 
+            source_clusters = {}
+            for header, seq in this_seqs.items():
+                if header in nodes_in_gene:
+                    continue
+                id = get_id(header)
+                if id < smallest_cluster_in_range or id > largest_cluster_in_range:
+                    continue
+                
+                this_crange = cluster_dict.get(id)
+                
+                if this_crange:
+                    source_clusters[header] = this_crange
                     cluster_full.add(header)
                     nodes_in_gene.add(header)
-                    break
-
+            
         for node in nodes_in_gene:
             parent_seq = this_seqs[node]
 
@@ -304,8 +315,7 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
 
     for header, seq in unaligned_sequences:
         nt_sequences[header] = seq
-        translate = str(Seq(seq).translate())
-        aligned_sequences.append((header, translate))
+        
 
     top_file = path.join(top_location, f"{gene}.aln.fa")
     output = []
@@ -317,6 +327,10 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
     seq_template = ">{}\n{}\n"
 
     if debug > 2 or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
+        for header, seq in unaligned_sequences:
+            translate = str(Seq(seq).translate())
+            aligned_sequences.append((header, translate))
+            
         with NamedTemporaryFile(dir=gettempdir()) as hmm_temp_file:
             system(f"hmmbuild '{hmm_temp_file.name}' '{top_file}' > /dev/null")
 
@@ -591,12 +605,12 @@ def do_folder(input_folder, args):
 
     all_hits = []
 
-    if args.processes <= 1:
-        for this_arg in arguments:
-            all_hits.append(hmm_search(*this_arg))
-    else:
-        with Pool(args.processes) as p:
-            all_hits = p.starmap(hmm_search, arguments)
+    # if args.processes <= 1:
+    for this_arg in arguments:
+        all_hits.append(hmm_search(*this_arg))
+    # else:
+    #     with Pool(args.processes) as p:
+    #         all_hits = p.starmap(hmm_search, arguments)
 
     printv(f"Running miniscule score filter", args.verbose, 1)
 
