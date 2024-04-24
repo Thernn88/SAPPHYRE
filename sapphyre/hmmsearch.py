@@ -208,7 +208,7 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
             
     cluster_dict = {}
     for cluster in clusters:
-        for i in range(cluster[0], cluster[1] + 1):
+        for i in range(cluster[0]-chomp_max_distance, cluster[1] + chomp_max_distance + 1):
             cluster_dict[i] = cluster
     
     nt_sequences = {}
@@ -240,8 +240,8 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
         #grab most occuring query
         if clusters:
             cluster_queries = {k: max(set(v), key=v.count) for k, v in cluster_queries.items()}
-            smallest_cluster_in_range = min([i[0] for i in clusters]) - 25
-            largest_cluster_in_range = max([i[1] for i in clusters]) + 25
+            smallest_cluster_in_range = min([i[0] for i in clusters]) - chomp_max_distance
+            largest_cluster_in_range = max([i[1] for i in clusters]) + chomp_max_distance
 
 
             source_clusters = {}
@@ -481,8 +481,7 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                     continue
 
             diamond_kicks.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, f"Kicked. Evalue: {hit.evalue}"))
-
-
+            
     return gene, output, new_outs, hmm_log, diamond_kicks
 
 def get_arg(transcripts_mapped_to, head_to_seq, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
