@@ -522,8 +522,6 @@ OutputArgs = namedtuple(
         "minimum_bp",
         "debug",
         "is_assembly_or_genome",
-        "original_coords",
-        "coords_path",
     ],
 )
 
@@ -544,21 +542,6 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
 
     # Unpack the hits
     this_hits = json.decode(oargs.list_of_hits, type=list[Hit])
-
-    out_data = defaultdict(list)
-    with open(path.join(oargs.coords_path,oargs.gene+".txt"), "w") as fp:
-        for node in {hit.node for hit in this_hits}:
-            tup = oargs.original_coords.get(node, None)
-            if tup:
-                out_data[tup[0]].append((node, tup[1], tup[2]))
-                #out_data.append((node, tup[0], tup[1], tup[2]))
-            
-        if out_data:
-            for og, data in out_data.items():
-                data.sort(key = lambda x: (x[1]))
-                fp.write(f">{og}\n")
-                for node, start, end in data:
-                    fp.write(f"{node}\t{start}-{end}\n")
 
     # Get reference sequences
     core_sequences, core_sequences_nt = get_core_sequences(
@@ -646,7 +629,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.verbose,
         2,
     )
-    return oargs.gene, this_gene_dupes, len(aa_output), header_to_score
+    return oargs.gene, this_gene_dupes, len(aa_output), header_to_score, {hit.node for hit in this_hits}
 
 
 def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: int):
@@ -741,8 +724,6 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
                     args.minimum_bp,
                     args.debug,
                     is_assembly or is_genome,
-                    original_coords,
-                    coords_path,
                 ),
             ),
         )
@@ -754,25 +735,44 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
             recovered = pool.starmap(trim_and_write, arguments, chunksize=1)
     else:
         recovered = [trim_and_write(i[0]) for i in arguments]
+        
+    if original_coords:
+        printv(
+            f"Done! Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Writing coord data.",
+            args.verbose,
+        )    
+            
+        final_count = 0
+        this_gene_based_dupes = {}
+        this_gene_based_scores = {}
+        global_out = []
+        
+        for gene, dupes, amount, scores, nodes in recovered:
+            out_data = defaultdict(list)
+            with open(path.join(coords_path,gene+".txt"), "w") as fp:
+                for node in nodes:
+                    tup = original_coords.get(node, None)
+                    if tup:
+                        out_data[tup[0]].append((node, tup[1], tup[2]))
+                        #out_data.append((node, tup[0], tup[1], tup[2]))
+                    
+                if out_data:
+                    global_out.append(f"### {gene} ###")
+                    for og, data in out_data.items():
+                        data.sort(key = lambda x: (x[1]))
+                        fp.write(f">{og}\n")
+                        global_out.append(f">{og}\n")
+                        for node, start, end in data:
+                            fp.write(f"{node}\t{start}-{end}\n")
+                            global_out.append(f"{node}\t{start}-{end}\n")
+        
+            final_count += amount
+            this_gene_based_dupes[gene] = dupes
+            this_gene_based_scores[gene] = scores
+            
+        with open(path.join(taxa_path, "coords.txt"), "w") as fp:
+            fp.write("\n".join(global_out))
 
-    global_out = []
-    for item in listdir(coords_path):
-        with open(path.join(coords_path, item)) as fp:
-            tgene = item.split(".")[0]
-            global_out.append(f"### {tgene} ###")
-            global_out.extend(fp.read().split("\n"))
-
-    with open(path.join(taxa_path, "coords.txt"), "w") as fp:
-        fp.write("\n".join(global_out))
-
-    final_count = 0
-    this_gene_based_dupes = {}
-    this_gene_based_scores = {}
-
-    for gene, dupes, amount, scores in recovered:
-        final_count += amount
-        this_gene_based_dupes[gene] = dupes
-        this_gene_based_scores[gene] = scores
 
     key = "getall:reporter_dupes"
     data = json.encode(this_gene_based_dupes)
