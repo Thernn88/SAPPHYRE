@@ -21,6 +21,7 @@ class HmmHit(Struct):
     node: str
     score: float
     frame: int
+    evalue: float|None
     qstart: int
     qend: int
     gene: str
@@ -396,7 +397,7 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
 
                     cquery = cluster_queries[source_clusters[node]]
 
-                    new_hit = HmmHit(node=node, score=score, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=gene, query=cquery, uid=None, refs=[], seq=sequence)
+                    new_hit = HmmHit(node=node, score=score, frame=int(frame), evalue=0, qstart=new_qstart, qend=new_qstart + len(sequence), gene=gene, query=cquery, uid=None, refs=[], seq=sequence)
                     hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, "Found in Cluster Full"))
                     output.append(new_hit)
             continue
@@ -426,7 +427,7 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
 
                     passed_ids.add(get_id(hit.node))
                     parents_done.add(f"{hit.node}|{hit.frame}")
-                    new_hit = HmmHit(node=hit.node, score=score, frame=hit.frame, qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=new_uid, refs=hit.refs, seq=sequence)
+                    new_hit = HmmHit(node=hit.node, score=score, frame=hit.frame, evalue=hit.evalue qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=new_uid, refs=hit.refs, seq=sequence)
                     output.append(new_hit)
 
         if query in children:
@@ -453,7 +454,7 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
                 new_uid = parent.uid + start + end
 
                 passed_ids.add(get_id(hit.node))
-                clone = HmmHit(node=parent.node, score=score, frame=int(frame), qstart=new_qstart, qend=new_qstart + len(sequence), gene=parent.gene, query=parent.query, uid=new_uid, refs=parent.refs, seq=sequence)
+                clone = HmmHit(node=parent.node, score=score, frame=int(frame), evalue=parent.evalue, qstart=new_qstart, qend=new_qstart + len(sequence), gene=parent.gene, query=parent.query, uid=new_uid, refs=parent.refs, seq=sequence)
                 new_outs.append((f"{clone.gene},{clone.node},{clone.frame}"))
                 
                 output.append(clone)
@@ -473,7 +474,7 @@ def hmm_search(gene, diamond_hits, this_seqs, is_full, hmm_output_folder, top_lo
 
                 if has_neighbour:
                     printv(f"Rescued {hit.node}", verbose, 2)
-                    new_hit = HmmHit(node=hit.node, score=0, frame=hit.frame, qstart=hit.qstart, qend=hit.qend, gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=hit.seq)
+                    new_hit = HmmHit(node=hit.node, score=0, frame=hit.frame, evalue=hit.evalue, qstart=hit.qstart, qend=hit.qend, gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=hit.seq)
                     output.append(new_hit)
                     parents_done.add(f"{hit.node}|{hit.frame}")
                     hmm_log.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, f"Rescued by NODE_{neighbour}. Evalue: {hit.evalue}"))
@@ -521,6 +522,7 @@ def miniscule_multi_filter(hits, debug):
     MULTI_PERCENTAGE_OF_OVERLAP = 0.3
     MULTI_SCORE_DIFFERENCE = 1.1
 
+    edge_log = []
     log = []
     kicked_indices = set()
 
@@ -562,13 +564,15 @@ def miniscule_multi_filter(hits, debug):
                         log = [internal_template.format(hit.gene, hit.node, hit.score, hit.qstart, hit.qend, master.gene, master.node, master.score, master.qstart, master.qend) for hit in hits if hit]
 
                     return [], len(hits), log
+            else:
+                edge_log.append(f"{candidate.gene},{candidate.node},{candidate.frame},{candidate.evalue},{master.gene}")
 
         # If the score difference is great enough
         # kick the candidate and log the kick.
         log.append(internal_template_kick.format(candidate.gene, candidate.node, candidate.score, candidate.qstart, candidate.qend, master.gene, master.gene, master.node, master.score, master.qstart, master.qend))
         kicked_indices.add(i)
 
-    return [hit for i, hit in enumerate(hits) if i not in kicked_indices], len(list(kicked_indices)), log
+    return [hit for i, hit in enumerate(hits) if i not in kicked_indices], len(list(kicked_indices)), log, edge_log
 
 
 def do_folder(input_folder, args):
@@ -616,6 +620,7 @@ def do_folder(input_folder, args):
     log = ["Gene,Node,Frame"]
     klog = ["Gene,Node,Frame"]
     kick_log = ["Gene,Node,Frame"]
+    multi_causing_log = ["Gene,Node,Frame,Evalue,Master Gene"]
     header_based_results = defaultdict(list)
     for gene, hits, logs, klogs, dkicks in all_hits:
         if not gene:
@@ -650,8 +655,9 @@ def do_folder(input_folder, args):
         with Pool(args.processes) as p:
             result = p.starmap(miniscule_multi_filter, multi_filter_args)
     
-    for hits, kicked_count, this_log in result:
+    for hits, kicked_count, this_log, edge_log in result:
         mlog.extend(this_log)
+        multi_causing_log.extend(edge_log)
         if kicked_count:
             mkicks += kicked_count
 
@@ -706,6 +712,8 @@ def do_folder(input_folder, args):
         f.write("\n".join(kick_log))
     with open(path.join(input_folder, "hmmsearch_multi.log"), "w") as f:
         f.write("\n".join(mlog))
+    with open(path.join(input_folder, "hmmsearch_zero_multis.log"), "w") as f:
+        f.write("\n".join(multi_causing_log))
 
     printv(f"Done with {input_folder}. Took {tk.lap():.2f}s", args.verbose, 1)
     return True
