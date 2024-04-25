@@ -618,6 +618,7 @@ def do_folder(input_folder, args):
     kick_log = ["Gene,Node,Frame"]
     multi_causing_log = ["Gene,Node,Frame,Evalue,Master Gene"]
     header_based_results = defaultdict(list)
+    printv(f"Processing results", args.verbose, 1)
     for batch in all_hits:
         for gene, hits, logs, klogs, dkicks in batch:
             if not gene:
