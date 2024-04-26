@@ -87,6 +87,10 @@ class Hit(HmmHit, frozen=True):
         # For each reference sequence
         best_alignment = None
         best_alignment_score = 0
+
+        if not self.refs:
+            return 0, 0
+
         for number, ref in enumerate(self.refs):
             if not ref.ref in top_refs:
                 continue
@@ -402,9 +406,9 @@ def print_unmerged_sequences(
                 exact_match_amount,
                 top_refs,
             )
-            # if r_start is None or r_end is None:
-            #     printv(f"WARNING: Trim kicked: {hit.node}|{hit.frame}", verbose, 2)
-            #     continue
+            if r_start is None or r_end is None:
+                printv(f"WARNING: Trim kicked: {hit.node}|{hit.frame}", verbose, 2)
+                continue
 
             if r_end == 0:
                 nt_seq = nt_seq[(r_start * 3) :]
@@ -736,19 +740,19 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     else:
         recovered = [trim_and_write(i[0]) for i in arguments]
         
-    if original_coords:
-        printv(
-            f"Done! Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Writing coord data.",
-            args.verbose,
-        )    
-            
-        final_count = 0
-        this_gene_based_dupes = {}
-        this_gene_based_scores = {}
-        global_out = []
+    
+    printv(
+        f"Done! Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Writing coord data.",
+        args.verbose,
+    )    
         
-        for gene, dupes, amount, scores, nodes in recovered:
-            out_data = defaultdict(list)
+    final_count = 0
+    this_gene_based_dupes = {}
+    this_gene_based_scores = {}
+    global_out = []
+    for gene, dupes, amount, scores, nodes in recovered:
+        out_data = defaultdict(list)
+        if is_genome and original_coords:
             with open(path.join(coords_path,gene+".txt"), "w") as fp:
                 for node in nodes:
                     tup = original_coords.get(node, None)
@@ -766,10 +770,11 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
                             fp.write(f"{node}\t{start}-{end}\n")
                             global_out.append(f"{node}\t{start}-{end}\n")
         
-            final_count += amount
-            this_gene_based_dupes[gene] = dupes
-            this_gene_based_scores[gene] = scores
-            
+        final_count += amount
+        this_gene_based_dupes[gene] = dupes
+        this_gene_based_scores[gene] = scores
+        
+    if is_genome:
         with open(path.join(taxa_path, "coords.txt"), "w") as fp:
             fp.write("\n".join(global_out))
 
