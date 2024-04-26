@@ -853,7 +853,8 @@ def run_command(args: CmdArgs) -> None:
             if header.endswith("."):
                 continue
             ids.append(get_id(header))
-            
+
+    clusters = []
     if args.is_genome:
         ids.sort()
 
