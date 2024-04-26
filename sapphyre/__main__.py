@@ -679,6 +679,10 @@ def subcmd_Combine(subparsers):
     )
     par = subparsers.add_parser("Combine", help=dsc, description=dsc)
     par.add_argument("INPUT", help="Paths of directories.", action="extend", nargs="+")
+    combine_args(par)
+    par.set_defaults(func=Combine, formathelp=par.format_help)
+
+def combine_args(par):
     par.add_argument(
         "-t",
         "--prepend-directory",
@@ -694,8 +698,6 @@ def subcmd_Combine(subparsers):
         required=True,
         help="Target directory for merged output. (Example: MergedGenes)",
     )
-    par.set_defaults(func=Combine, formathelp=par.format_help)
-
 
 def Combine(args):
     from . import combine
@@ -1202,97 +1204,9 @@ def makeref(argsobj):
 def subcmd_wrap_final(sp):
     par = sp.add_parser("reconcile", help="Wrapper for Second Run")  # TODO add me
     par.add_argument("INPUT", help="Paths of directories.", action="extend", nargs="+")
-    par.add_argument(
-        "-pd",
-        "--prepend-directory",
-        action="store",
-        type=str,
-        dest="DIRECTORY",
-        help="Prepend DIRECTORY to the list of INPUT.",
-    )
-    par.add_argument(
-        "-out",
-        "--output-directory",
-        type=str,
-        required=True,
-        help="Target directory for merged output. (Example: MergedGenes)",
-    )
-    par.add_argument("-t", "--table", type=int, default=1, help="Table ID.")
-    par.add_argument(
-        "-aa",
-        "--aa_input",
-        type=str,
-        default="align",
-        help="Path to directory of AA folder",
-    )
-    par.add_argument(
-        "-nt",
-        "--nt_input",
-        type=str,
-        default="nt_aligned",
-        help="Path to directory of NT folder",
-    )
-    par.add_argument(
-        "-sr",
-        "--second_run",
-        action="store_false",
-        default=True,
-        help="Enable second run logic",
-    )
-    par.add_argument(
-        "-exp",
-        "--experimental",
-        action="store_true",
-        default=False,
-        help="Use experimental align method",
-    )
-    par.add_argument(
-        "-d",
-        "--debug",
-        action="store_true",
-        help="Enable debug. When enabled displays each component of merged headers.",
-    )
-    par.add_argument(
-        "-sm",
-        "--special_merge",
-        action="store_true",
-        help="Enable special merge.",
-        default=False,
-    )
-    par.add_argument(
-        "-io",
-        "--ignore_overlap_chunks",
-        action="store_false",
-        default=True,
-        help="Ignore overlapping chunks and merge all candidates for a reference taxon.",
-    )
-    par.add_argument(
-        "-m",
-        "--majority",
-        type=float,
-        default=0.55,
-        help="Percentage for majority ruling.",
-    )
-    par.add_argument(
-        "-mc",
-        "--majority_count",
-        type=int,
-        default=4,
-        help="Sites required for majority ruling.",
-    )
-    par.add_argument(
-        "-alm",
-        "--align_method",
-        choices=["clustal", "mafft", "base", "frags"],
-        default="clustal",
-        help="What alignment method to use.",
-    )
-    par.add_argument(
-        "-ovw",
-        "--overwrite",
-        action="store_true",
-        help="Overwrite existing files.",
-    )
+    combine_args(par)
+    align_args(par)
+    merge_args(par)
     par.set_defaults(func=wrap_final, formathelp=par.format_help)
 
 
