@@ -626,6 +626,13 @@ def subcmd_Merge(subparsers):
         default=False,
         help="Enable second run logic",
     )
+    par.add_argument(
+        "-io",
+        "--ignore_overlap_chunks",
+        action="store_true",
+        default=False,
+        help="Ignore overlapping chunks and merge all candidates for a reference taxon.",
+    )
     merge_args(par)
     par.set_defaults(func=Merge, formathelp=par.format_help)
 
@@ -637,13 +644,6 @@ def merge_args(par):
         action="store_true",
         help="Enable special merge.",
         default=False,
-    )
-    par.add_argument(
-        "-io",
-        "--ignore_overlap_chunks",
-        action="store_true",
-        default=False,
-        help="Ignore overlapping chunks and merge all candidates for a reference taxon.",
     )
     par.add_argument(
         "-m",
@@ -1217,6 +1217,13 @@ def subcmd_wrap_final(sp):
         action="store_false",
         default=True,
         help="Enable second run logic",
+    )
+    par.add_argument(
+        "-io",
+        "--ignore_overlap_chunks",
+        action="store_false",
+        default=True,
+        help="Ignore overlapping chunks and merge all candidates for a reference taxon.",
     )
     combine_args(par)
     pal2nal_args(par)
