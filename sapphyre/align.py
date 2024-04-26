@@ -11,7 +11,7 @@ from time import time
 from psutil import Process
 from sapphyre_tools import find_index_pair, sigclust
 from xxhash import xxh3_64
-
+from wrap_rocks import RocksDB
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import gettempdir, parseFasta, printv, writeFasta
 
@@ -339,6 +339,7 @@ CmdArgs = namedtuple(
         "second_run",
         "top_folder",
         "chomp_max_distance",
+        "is_genome",
     ],
 )
 
@@ -834,7 +835,10 @@ def run_command(args: CmdArgs) -> None:
                     to_write.append((insertion_header, sequence))
             to_write.append((header, sequence))
 
-        to_write.sort(key=lambda x: int(x[0].split("|")[3].split("_")[1]), reverse=True)
+        if args.is_genome:
+            to_write.sort(key=lambda x: int(x[0].split("|")[3].split("_")[1]), reverse=True)
+        else:
+            to_write.sort(key=lambda x: find_index_pair(x[1], "-")[0])
         writeFasta(args.result_file, references + to_write, compress=args.compress)
         
         ids = []
@@ -923,6 +927,16 @@ def do_folder(folder, args):
         f"Aligning AA Files. Elapsed time: {time_keeper.differential():.2f}s",
         args.verbose,
     )
+
+    rocks_db_path = path.join(folder, "rocksdb", "sequences", "nt")
+    if not path.exists(rocks_db_path):
+        printv(f"WARNING: Can't find rocksdb folder in {folder}. Unable to determine if datsets is genomic", args.verbose, 0)
+    else:
+        rocksdb_db = RocksDB(str(rocks_db_path))
+        is_genome = rocksdb_db.get("get:isgenome")
+        is_genome = is_genome == "True"
+        del rocksdb_db
+    
     for file, _ in genes:
         gene = file.split(".")[0]
         gene_file = path.join(aa_path, file)
@@ -943,6 +957,7 @@ def do_folder(folder, args):
                     args.second_run,
                     top_folder,
                     args.chomp_max_distance,
+                    is_genome,
                 ),
             ),
         )
