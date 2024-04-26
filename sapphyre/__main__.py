@@ -1214,8 +1214,8 @@ def subcmd_wrap_final(sp):
     par.add_argument(
         "-sr",
         "--second_run",
-        action="store_true",
-        default=False,
+        action="store_false",
+        default=True,
         help="Enable second run logic",
     )
     combine_args(par)
