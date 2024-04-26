@@ -612,32 +612,33 @@ def subcmd_Merge(subparsers):
         action="extend",
         nargs="+",
     )
-    par.add_argument(
-        "-d",
-        "--debug",
-        action="count",
-        default=0,
-        help="Enable debug. When enabled Output log of culls.",
-    )
-    par.add_argument(
-        "-sr",
-        "--second_run",
-        action="store_true",
-        default=False,
-        help="Enable second run logic",
-    )
-    par.add_argument(
-        "-io",
-        "--ignore_overlap_chunks",
-        action="store_true",
-        default=False,
-        help="Ignore overlapping chunks and merge all candidates for a reference taxon.",
-    )
     merge_args(par)
     par.set_defaults(func=Merge, formathelp=par.format_help)
 
 
-def merge_args(par):
+def merge_args(par, skip_reconcile_overlap=False):
+    if not skip_reconcile_overlap:
+        par.add_argument(
+            "-d",
+            "--debug",
+            action="count",
+            default=0,
+            help="Enable debug. When enabled Output log of culls.",
+        )
+        par.add_argument(
+            "-sr",
+            "--second_run",
+            action="store_true",
+            default=False,
+            help="Enable second run logic",
+        )
+        par.add_argument(
+            "-io",
+            "--ignore_overlap_chunks",
+            action="store_true",
+            default=False,
+            help="Ignore overlapping chunks and merge all candidates for a reference taxon.",
+        )
     par.add_argument(
         "-sm",
         "--special_merge",
@@ -718,25 +719,26 @@ def subcmd_align(subparsers):
         action="extend",
         nargs="+",
     )
-    par.add_argument(
-        "-d",
-        "--debug",
-        action="store_true",
-        default=False,
-        help="Output intermediate files for debug",
-    )
-    par.add_argument(
-        "-sr",
-        "--second_run",
-        action="store_true",
-        default=False,
-        help="Enable second run logic",
-    )
     align_args(par)
     par.set_defaults(func=align, formathelp=par.format_help)
 
 
-def align_args(par):
+def align_args(par, skip_reconcile_overlap = False):
+    if not skip_reconcile_overlap:
+        par.add_argument(
+            "-d",
+            "--debug",
+            action="store_true",
+            default=False,
+            help="Output intermediate files for debug",
+        )
+        par.add_argument(
+            "-sr",
+            "--second_run",
+            action="store_true",
+            default=False,
+            help="Enable second run logic",
+        )
     par.add_argument(
         "-ovw",
         "--overwrite",
@@ -1227,8 +1229,8 @@ def subcmd_wrap_final(sp):
     )
     combine_args(par)
     pal2nal_args(par)
-    align_args(par)
-    merge_args(par)
+    align_args(par, True)
+    merge_args(par, True)
     par.set_defaults(func=wrap_final, formathelp=par.format_help)
 
 
