@@ -169,7 +169,7 @@ def internal_filter_gene(this_gene_hits, debug, min_overlap_internal=0.9, score_
     return [i[0] for i in this_gene_hits if i[0] is not None], filtered_sequences_log
 
 
-def hmm_search(batches, this_seqs, is_full, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
+def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
     batch_result = []
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     for gene, diamond_hits in batches:
@@ -186,32 +186,32 @@ def hmm_search(batches, this_seqs, is_full, hmm_output_folder, top_location, ove
             diamond_ids.append(get_id(hit.node))
             hits_have_frames_already[hit.node].add(hit.frame)
 
-
-        diamond_ids.sort()
-        clusters = []
-        current_cluster = []
-        for child_index in diamond_ids:
-            if not current_cluster:
-                current_cluster.append(child_index)
-                current_index = child_index
-            else:
-                if child_index - current_index <= chomp_max_distance:
+        if is_genome:
+            diamond_ids.sort()
+            clusters = []
+            current_cluster = []
+            for child_index in diamond_ids:
+                if not current_cluster:
                     current_cluster.append(child_index)
                     current_index = child_index
                 else:
-                    if len(current_cluster) > 2:
-                        clusters.append((current_cluster[0], current_cluster[-1]))
-                    current_cluster = [child_index]
-                    current_index = child_index
-        
-        if current_cluster:
-            if len(current_cluster) > 2:
-                clusters.append((current_cluster[0], current_cluster[-1]))
-                
-        cluster_dict = {}
-        for cluster in clusters:
-            for i in range(cluster[0]-chomp_max_distance, cluster[1] + chomp_max_distance + 1):
-                cluster_dict[i] = cluster
+                    if child_index - current_index <= chomp_max_distance:
+                        current_cluster.append(child_index)
+                        current_index = child_index
+                    else:
+                        if len(current_cluster) > 2:
+                            clusters.append((current_cluster[0], current_cluster[-1]))
+                        current_cluster = [child_index]
+                        current_index = child_index
+            
+            if current_cluster:
+                if len(current_cluster) > 2:
+                    clusters.append((current_cluster[0], current_cluster[-1]))
+                    
+            cluster_dict = {}
+            for cluster in clusters:
+                for i in range(cluster[0]-chomp_max_distance, cluster[1] + chomp_max_distance + 1):
+                    cluster_dict[i] = cluster
         
         nt_sequences = {}
         parents = {}
@@ -225,22 +225,23 @@ def hmm_search(batches, this_seqs, is_full, hmm_output_folder, top_location, ove
             fallback = {}
             nodes_in_gene = set()
             for hit in diamond_hits:
-                id = get_id(hit.node)
-
-
-                this_crange = cluster_dict.get(id)
-                if this_crange:
-                    cluster_queries[this_crange].append(hit.query)
-
                 nodes_in_gene.add(hit.node)
                 query = f"{hit.node}|{hit.frame}"
                 parents[query] = hit
 
                 if hit.node not in fallback:
                     fallback[hit.node] = hit
+                
+                if not is_genome:
+                    continue
+
+                id = get_id(hit.node)
+                this_crange = cluster_dict.get(id)
+                if this_crange:
+                    cluster_queries[this_crange].append(hit.query)
 
             #grab most occuring query
-            if clusters:
+            if is_genome and clusters:
                 cluster_queries = {k: max(set(v), key=v.count) for k, v in cluster_queries.items()}
                 smallest_cluster_in_range = min([i[0] for i in clusters]) - chomp_max_distance
                 largest_cluster_in_range = max([i[1] for i in clusters]) + chomp_max_distance
@@ -464,7 +465,7 @@ def hmm_search(batches, this_seqs, is_full, hmm_output_folder, top_location, ove
         diamond_kicks = []
         for hit in diamond_hits:
             if not f"{hit.node}|{hit.frame}" in parents_done:
-                if math.floor(math.log10(abs(hit.evalue))) <= -evalue_threshold:
+                if is_genome and math.floor(math.log10(abs(hit.evalue))) <= -evalue_threshold:
                     this_id = get_id(hit.node)
                     has_neighbour = False
                     neighbour = None
@@ -602,7 +603,7 @@ def do_folder(input_folder, args):
     top_location = path.join(input_folder, "top")
 
     per_batch = math.ceil(len(transcripts_mapped_to) / args.processes)
-    batches = [(transcripts_mapped_to[i:i + per_batch], head_to_seq, is_full, hmm_output_folder, top_location, args.overwrite, args.map, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance) for i in range(0, len(transcripts_mapped_to), per_batch)]
+    batches = [(transcripts_mapped_to[i:i + per_batch], head_to_seq, is_full, is_genome, hmm_output_folder, top_location, args.overwrite, args.map, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance) for i in range(0, len(transcripts_mapped_to), per_batch)]
 
     if args.processes <= 1:
         for this_arg in batches:
