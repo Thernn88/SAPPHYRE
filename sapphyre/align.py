@@ -929,8 +929,10 @@ def do_folder(folder, args):
     )
 
     rocks_db_path = path.join(folder, "rocksdb", "sequences", "nt")
+    is_genome = False
     if not path.exists(rocks_db_path):
-        printv(f"WARNING: Can't find rocksdb folder in {folder}. Unable to determine if datsets is genomic", args.verbose, 0)
+        if not args.second_run:
+            printv(f"WARNING: Can't find rocksdb folder in {folder}. Unable to determine if datsets is genomic", args.verbose, 0)
     else:
         rocksdb_db = RocksDB(str(rocks_db_path))
         is_genome = rocksdb_db.get("get:isgenome")
