@@ -158,6 +158,13 @@ def diamond_args(par):
         help="Diamond sensitivty argument.",
     )
     par.add_argument(
+        "-gsf",
+        "--genome_score_filter",
+        type=float,
+        default=200,
+        help="Filter assembly and genomic diamond tsvs to require this minimum score.",
+    )
+    par.add_argument(
         "-e",
         "--evalue",
         type=int,
@@ -279,6 +286,20 @@ def hmmsearch_args(par):
         "--full",
         action="store_true",
         help="Pass the full parent sequences to hmmsearch",
+    )
+    par.add_argument(
+        "-et",
+        "--evalue_threshold",
+        type=int,
+        default=10,
+        help="Magnitude evalue threshold for rescue",
+    )
+    par.add_argument(
+        "-cd",
+        "--chomp_max_distance",
+        type=int,
+        default=25,
+        help="Max distance for merging cluster in chomp",
     )
 
 def hmmsearch(args):
@@ -481,7 +502,13 @@ def outlier_args(par):
         type=int,
         help="Minimum ambigous characters for excise assembly",
     )
-
+    par.add_argument(
+        "-erm",
+        "--excise_rescue_match",
+        default=0.75,
+        type=float,
+        help="Minimum ambigous characters for excise assembly",
+    )
     par.add_argument(
         "-nd",
         "--no_dupes",
@@ -720,6 +747,13 @@ def align_args(par):
         choices=["clustal", "mafft", "base", "frags"],
         default="clustal",
         help="What alignment method to use.",
+    )
+    par.add_argument(
+        "-cd",
+        "--chomp_max_distance",
+        type=int,
+        default=25,
+        help="Max distance for merging cluster in chomp",
     )
 
 

@@ -373,6 +373,7 @@ def log_excised_consensus(
     excise_consensus,
     excise_maximum_depth,
     excise_minimum_ambig,
+    excise_rescue_match,
     allowed_distance,
     prepare_dupes: dict,
     reporter_dupes: dict,
@@ -519,7 +520,9 @@ def log_excised_consensus(
                 x_positions[node.header].add(x)
             node.end = i
 
+    aa_sequence = {}
     for node in aa_nodes:
+        aa_sequence[node.header] = node.sequence
         node_kmer = node.sequence[node.start:node.end]
         data_len = bp_count(node_kmer)
         if data_len < 15:
@@ -649,6 +652,26 @@ def log_excised_consensus(
                     current_index = child_index
         
         if is_assembly_or_genome:
+            after_raw_aa = [(node.header, node.sequence) for node in aa_nodes if node.header not in kicked_headers]
+            aa_sequences = [x[1] for x in after_raw_aa]
+            
+            sequence_present = defaultdict(lambda : False)
+            for i in range(0, len(aa_sequences[0])):
+                for seq in aa_sequences:
+                    bp = seq[i]
+
+                    if bp != "-":
+                        sequence_present[i] = True
+                        break
+            
+            if prepare_dupes and reporter_dupes:
+                consensus_seq = make_duped_consensus(
+                    after_raw_aa, prepare_dupes, reporter_dupes, excise_consensus
+                )
+            else:
+                consensus_seq = dumb_consensus(aa_sequences, excise_consensus, 0)
+
+            consensus_seq = convert_consensus(aa_sequences, consensus_seq)
             if current_cluster:
                 after_true_clusters.append(current_cluster)
 
@@ -662,6 +685,44 @@ def log_excised_consensus(
             this_rescues = [f"Rescued in gene: {gene}"]
             for header in before_true_clusters[best_match]:
                 if header in kicked_headers:
+
+                    this_sequence = aa_sequence[header]
+                    start, end = find_index_pair(this_sequence, "-")
+                    MATCHES = 4
+                    current_matches = 0
+                    new_start = start
+                    for i, let in enumerate(this_sequence[start: end], start):
+                        if let == "-":
+                            continue
+                        if let == consensus_seq[i] or not sequence_present[i]:
+                            current_matches += 1
+                            if current_matches >= MATCHES:
+                                break
+                        else:
+                            new_start = i
+                            current_matches = 0
+
+                    current_matches = 0
+                    new_end = end
+                    for i in range(end - 1, start, -1):
+                        if this_sequence[i] == "-":
+                            continue
+                        if this_sequence[i] == consensus_seq[i] or not sequence_present[i]:
+                            current_matches += 1
+                            if current_matches >= MATCHES:
+                                break
+                        else:
+                            new_end = i
+                            current_matches = 0
+                    
+                    if not new_start or not new_end:
+                        continue
+
+                    # for i in range(start, new_start):
+                    #     x_positions[header].add(i)
+                    for i in range(new_end,  end):
+                        x_positions[header].add(i)
+
                     kicked_headers.remove(header)
                     this_rescues.append(header)
 
@@ -789,6 +850,7 @@ def main(args, sub_dir, is_assembly_or_genome):
                 args.excise_maximum_depth,
                 args.excise_minimum_ambig,
                 args.excise_allowed_distance,
+                args.excise_rescue_match,
                 prepare_dupes.get(gene.split(".")[0], {}),
                 reporter_dupes.get(gene.split(".")[0], {}),
                 args.excise_trim_consensus,
@@ -814,6 +876,7 @@ def main(args, sub_dir, is_assembly_or_genome):
                     args.excise_maximum_depth,
                     args.excise_minimum_ambig,
                     args.excise_allowed_distance,
+                    args.excise_rescue_match,
                     prepare_dupes.get(gene.split(".")[0], {}),
                     reporter_dupes.get(gene.split(".")[0], {}),
                     args.excise_trim_consensus,

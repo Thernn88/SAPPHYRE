@@ -44,14 +44,13 @@ def parseFasta(
     """Iterate over a Fasta file returning sequence records as string tuples.
     Designed in order to handle .gz and .fasta files with potential interleave.
     """
-    if has_interleave:
-        fa = pyfastx.Fastx(
-            str(path),
-            uppercase=True,
-        )
-        for tup in fa:
-            yield tup[0], tup[1]
-    elif str(path).rsplit(".", maxsplit=1)[-1] in {"fastq", "fq", "gz"}:
+    if has_interleave or str(path).rsplit(".", maxsplit=1)[-1] in {"fastq", "fq", "gz"}:
+        # fa = pyfastx.Fastx(
+        #     str(path),
+        #     uppercase=True,
+        # )
+        # for tup in fa:
+        #     yield tup[0], tup[1]
         fa = parse_fastx_file(str(path))
         for entry in fa:  # Deinterleave
             yield entry.id, entry.seq

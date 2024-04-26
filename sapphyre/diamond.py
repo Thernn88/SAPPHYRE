@@ -46,6 +46,7 @@ class Hit(Struct, frozen=True):
 class ReporterHit(Struct):
     node: str
     frame: int
+    evalue: float
     qstart: int
     qend: int
     gene: str
@@ -323,6 +324,7 @@ def convert_and_cull(this_args: ConvertArgs) -> ConvertReturn:
             ReporterHit(
                 hit.node,
                 hit.frame,
+                hit.evalue,
                 hit.qstart,
                 hit.qend,
                 hit.gene,
@@ -514,15 +516,19 @@ def top_reference_realign(orthoset_raw_path, orthoset_aln_path, orthoset_trimmed
     out = []
 
     gene_path = path.join(orthoset_trimmed_path, gene+".aln.fa")
-    if not path.exists(gene_path):
-        gene_path = path.join(orthoset_aln_path, gene+".fa")
+    gene_raw_path = path.join(orthoset_raw_path, gene+".fa")
+    gene_aln_path = path.join(orthoset_aln_path, gene+".aln.fa")
+    if not path.exists(gene_path) and path.exists(gene_aln_path):
+        gene_path = gene_aln_path
         #source = parseFasta(gene_path, True
-    if not path.exists(gene_path):
-        gene_path = path.join(orthoset_raw_path, gene+".fa")
+    else:
+        gene_path = gene_raw_path
+        
     source = parseFasta(gene_path, True)
         
     header_set = set()
     for header, seq in source:
+        header = header.split(" ")[0]
         key = f"{gene}|{header}"
         if target_to_taxon.get(header, set()) in top_refs or target_to_taxon.get(key, set()) in top_refs:
             header_set.add(header)
@@ -633,6 +639,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         rmtree(diamond_path)
     makedirs(diamond_path, exist_ok=True)
 
+    genome_score_filter = args.genome_score_filter
     num_threads = args.processes
     post_threads = args.processes if args.processes < THREAD_CAP else THREAD_CAP
     if post_threads > 1:
@@ -800,8 +807,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
         taxon_to_targets[ref_taxa].append(target)
         target_to_gene[target] = gene
 
-    if is_assembly_or_genome:
-        filtered_df = df[df["score"] > 200]
+    if is_assembly_or_genome and genome_score_filter:
+        filtered_df = df[df["score"] > genome_score_filter]
         target_counts = filtered_df["target"].value_counts()
 
     for target, count in target_counts.to_dict().items():
@@ -814,7 +821,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
     top_targets = set()
     most_common = combined_count.most_common()
 
-    target_count = min(most_common[0:args.top_ref], key=lambda x: x[1])[1]
+    if args.top_ref == -1:
+        target_count = 0
+    else:
+        target_count = min(most_common[0:args.top_ref], key=lambda x: x[1])[1]
     with open(path.join(input_path, "diamond_top_ref.csv"), "w") as fp:
         for k, v in most_common:
             fp.write(f"{k},{v} \n")
@@ -1091,6 +1101,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                     hit = ReporterHit(
                         hit.node,
                         hit.frame,
+                        hit.evalue,
                         hit.qstart,
                         hit.qend,
                         hit.gene,
