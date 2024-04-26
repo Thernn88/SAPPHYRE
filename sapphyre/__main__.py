@@ -612,11 +612,6 @@ def subcmd_Merge(subparsers):
         action="extend",
         nargs="+",
     )
-    merge_args(par)
-    par.set_defaults(func=Merge, formathelp=par.format_help)
-
-
-def merge_args(par):
     par.add_argument(
         "-d",
         "--debug",
@@ -631,6 +626,11 @@ def merge_args(par):
         default=False,
         help="Enable second run logic",
     )
+    merge_args(par)
+    par.set_defaults(func=Merge, formathelp=par.format_help)
+
+
+def merge_args(par):
     par.add_argument(
         "-sm",
         "--special_merge",
@@ -684,7 +684,7 @@ def subcmd_Combine(subparsers):
 
 def combine_args(par):
     par.add_argument(
-        "-t",
+        "-pd",
         "--prepend-directory",
         action="store",
         type=str,
@@ -718,6 +718,20 @@ def subcmd_align(subparsers):
         action="extend",
         nargs="+",
     )
+    par.add_argument(
+        "-d",
+        "--debug",
+        action="store_true",
+        default=False,
+        help="Output intermediate files for debug",
+    )
+    par.add_argument(
+        "-sr",
+        "--second_run",
+        action="store_true",
+        default=False,
+        help="Enable second run logic",
+    )
     align_args(par)
     par.set_defaults(func=align, formathelp=par.format_help)
 
@@ -728,20 +742,6 @@ def align_args(par):
         "--overwrite",
         action="store_true",
         help="Overwrite existing files.",
-    )
-    par.add_argument(
-        "-sr",
-        "--second_run",
-        action="store_true",
-        default=False,
-        help="Enable second run logic",
-    )
-    par.add_argument(
-        "-d",
-        "--debug",
-        action="store_true",
-        default=False,
-        help="Output intermediate files for debug",
     )
     par.add_argument(
         "-alm",
@@ -1204,7 +1204,22 @@ def makeref(argsobj):
 def subcmd_wrap_final(sp):
     par = sp.add_parser("reconcile", help="Wrapper for Second Run")  # TODO add me
     par.add_argument("INPUT", help="Paths of directories.", action="extend", nargs="+")
+    par.add_argument(
+        "-d",
+        "--debug",
+        action="count",
+        default=0,
+        help="Enable debug. When enabled Output log of culls.",
+    )
+    par.add_argument(
+        "-sr",
+        "--second_run",
+        action="store_true",
+        default=False,
+        help="Enable second run logic",
+    )
     combine_args(par)
+    pal2nal_args(par)
     align_args(par)
     merge_args(par)
     par.set_defaults(func=wrap_final, formathelp=par.format_help)
