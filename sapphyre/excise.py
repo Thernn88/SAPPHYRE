@@ -662,6 +662,8 @@ def log_excised_consensus(
                 tagged_in_region.sort(key=lambda x: x[0])
                 clusters = cluster(tagged_in_region, true_cluster_threshold)
 
+                log_output.append(f">{gene}_ambig_{a}:{b}\n{consensus_seq}")
+
                 for clust in clusters:
                     if len(clust) <= 1:
                         continue
@@ -690,6 +692,9 @@ def log_excised_consensus(
 
                             for x in range(node.start, splice_index):
                                 node_positions.add(x)
+
+                            log_output.append(f">{prev_node.header} vs {node.header}")
+                            log_output.append(f"Split at {splice_index}")
 
                             prev_node.sequence = del_cols(prev_node.sequence, prev_positions)
                             node.sequence = del_cols(node.sequence, node_positions)
