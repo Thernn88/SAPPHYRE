@@ -261,7 +261,7 @@ def simple_assembly(nodes, min_merge_overlap_percent):
                 if i == j:
                     continue
 
-                overlap_coords=  get_overlap(node.start, node.end, node_b.start, node_b.end, 1)
+                overlap_coords=  get_overlap(node.start*3, node.end*3, node_b.start*3, node_b.end*3, 1)
                 if overlap_coords:
                     overlap_amount = overlap_coords[1] - overlap_coords[0]
                     overlap_percent = overlap_amount / (node.end - node.start)
@@ -269,8 +269,8 @@ def simple_assembly(nodes, min_merge_overlap_percent):
                         continue
 
 
-                    kmer_a = node.sequence[overlap_coords[0]:overlap_coords[1]]
-                    kmer_b = node_b.sequence[overlap_coords[0]:overlap_coords[1]]
+                    kmer_a = node.nt_sequence[overlap_coords[0]:overlap_coords[1]]
+                    kmer_b = node_b.nt_sequence[overlap_coords[0]:overlap_coords[1]]
 
                     if not is_same_kmer(kmer_a, kmer_b):
                         continue
