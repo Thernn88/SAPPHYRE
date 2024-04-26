@@ -622,7 +622,10 @@ def run_command(args: CmdArgs) -> None:
     temp_dir = gettempdir()
 
     aligned_ingredients = []
-    get_id = lambda header: int(header.split("|")[3].split("_")[1])
+    if args.is_genome:
+        get_id = lambda header: int(header.split("|")[3].split("_")[1])
+    else:
+        get_id = lambda header: header
 
     if not path.exists(args.result_file) or stat(args.result_file).st_size == 0:
         this_intermediates = path.join("intermediates", args.gene)
@@ -851,35 +854,39 @@ def run_command(args: CmdArgs) -> None:
                 continue
             ids.append(get_id(header))
             
-    ids.sort()
+    if args.is_genome:
+        ids.sort()
 
-    clusters = []
-    current_cluster = []
-    for child_index in ids:
-        if not current_cluster:
-            current_cluster.append(child_index)
-            current_index = child_index
-        else:
-            if child_index - current_index <= args.chomp_max_distance:
+        
+        current_cluster = []
+        for child_index in ids:
+            if not current_cluster:
                 current_cluster.append(child_index)
                 current_index = child_index
             else:
-                if len(current_cluster) > 2:
-                    clusters.append((current_cluster[0], current_cluster[-1]))
-                current_cluster = [child_index]
-                current_index = child_index
+                if child_index - current_index <= args.chomp_max_distance:
+                    current_cluster.append(child_index)
+                    current_index = child_index
+                else:
+                    if len(current_cluster) > 2:
+                        clusters.append((current_cluster[0], current_cluster[-1]))
+                    current_cluster = [child_index]
+                    current_index = child_index
 
-    if current_cluster:
-        if len(current_cluster) > 2:
-            clusters.append((current_cluster[0], current_cluster[-1]))
+        if current_cluster:
+            if len(current_cluster) > 2:
+                clusters.append((current_cluster[0], current_cluster[-1]))
 
-    clusters.sort(key=lambda x: x[0])
+        clusters.sort(key=lambda x: x[0])
 
-    cluster_string = ", ".join([f"{cluster[0]}-{cluster[1]}" for cluster in clusters])         
+        cluster_string = ", ".join([f"{cluster[0]}-{cluster[1]}" for cluster in clusters])         
             
     printv(f"Done. Took {keeper.differential():.2f}", args.verbose, 3)  # Debug
 
-    return (clusters[0][0] if clusters else 0, f"{args.gene},{len(ids)},{len(clusters)},{cluster_string}")
+    if not args.is_genome:
+        return
+    else:
+        return (clusters[0][0] if clusters else 0, f"{args.gene},{len(ids)},{len(clusters)},{cluster_string}")
 
 
 def do_folder(folder, args):
@@ -930,9 +937,10 @@ def do_folder(folder, args):
 
     rocks_db_path = path.join(folder, "rocksdb", "sequences", "nt")
     is_genome = False
-    if not path.exists(rocks_db_path):
-        if not args.second_run:
-            printv(f"WARNING: Can't find rocksdb folder in {folder}. Unable to determine if datsets is genomic", args.verbose, 0)
+    if args.second_run:
+        pass
+    elif not path.exists(rocks_db_path):
+        printv(f"WARNING: Can't find rocksdb folder in {folder}. Unable to determine if datsets is genomic", args.verbose, 0)
     else:
         rocksdb_db = RocksDB(str(rocks_db_path))
         is_genome = rocksdb_db.get("get:isgenome")
@@ -970,12 +978,13 @@ def do_folder(folder, args):
     else:
         cluster_logs = [run_command(arg[0]) for arg in func_args]
         
-    cluster_logs.sort(key=lambda x: x[0])
-    cluster_logs = [x[1] for x in cluster_logs]
-        
-    with open(path.join(folder, "align_clusters.csv"), "w") as f:
-        f.write("Gene,Seq count,Cluster count,Cluster ranges\n")
-        f.write("\n".join(cluster_logs))
+    if any(cluster_logs):
+        cluster_logs.sort(key=lambda x: x[0])
+        cluster_logs = [x[1] for x in cluster_logs]
+            
+        with open(path.join(folder, "align_clusters.csv"), "w") as f:
+            f.write("Gene,Seq count,Cluster count,Cluster ranges\n")
+            f.write("\n".join(cluster_logs))
 
     printv(f"Done! Took {time_keeper.differential():.2f}s overall", args.verbose, 0)
     return True
