@@ -634,7 +634,7 @@ def log_excised_consensus(
     had_region = False
     recursion_max = 5
     last_region = -1
-    for _ in range(2):#while region:
+    while region:
         sequences = [node.nt_sequence for node in aa_nodes if node.header not in kicked_headers]
         if not sequences:
             break
