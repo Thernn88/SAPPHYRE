@@ -418,24 +418,26 @@ def calculate_split(node_a: str, node_b: str, overlapping_coords: tuple, ref_con
     """
     overlap_start, overlap_end = overlapping_coords
 
-    base_score = 0
+    highest_score = -1
     highest_scoring_pos = overlap_start
 
-    for i in range(overlap_start, overlap_end):
-        character = node_a.sequence[i]
-        if character in ref_consensus[i]:
-            base_score += ref_consensus[i].count(character)
-    highest_score = base_score
+    for i in range(overlap_start, overlap_end + 1):
+        prev_kmer = node_a.sequence[overlap_start:i]
+        next_kmer = node_b.sequence[i:overlap_end]
 
-    for i in range(overlap_start, overlap_end):
-        character_a = node_a.sequence[i]
-        character_b = node_b.sequence[i]
-        if character_b in ref_consensus[i]:
-            base_score -= ref_consensus[i].count(character_b)
-        if character_a in ref_consensus[i]:
-            base_score += ref_consensus[i].count(character_a)
-        if base_score >= highest_score:
-            highest_score = base_score
+        window = prev_kmer + next_kmer
+
+        this_window_score = 0
+        for x, let in enumerate(window, overlap_start):
+            if let in ref_consensus[x]:
+                this_window_score += ref_consensus[x].count(let)
+            else:
+                this_window_score -= 1
+            if let == "-":
+                this_window_score -= 1
+                
+        if this_window_score >= highest_score:
+            highest_score = this_window_score
             highest_scoring_pos = i
 
     return highest_scoring_pos
@@ -525,79 +527,80 @@ def log_excised_consensus(
 
     cstart, cend = find_index_pair(consensus_seq, "X")
 
-    for i, maj_bp in enumerate(consensus_seq[cstart:cend], cstart):
-        if maj_bp != "X":
-            continue
+    if not is_genome:
+        for i, maj_bp in enumerate(consensus_seq[cstart:cend], cstart):
+            if maj_bp != "X":
+                continue
 
-        in_region = []
-        out_of_region = []
-        for x, node in enumerate(aa_nodes):
-            # within 3 bp
-            within_left = i >= node.start and i <= node.start + 3
-            within_right = i <= node.end and i >= node.end - 3
+            in_region = []
+            out_of_region = []
+            for x, node in enumerate(aa_nodes):
+                # within 3 bp
+                within_left = i >= node.start and i <= node.start + 3
+                within_right = i <= node.end and i >= node.end - 3
 
-            if within_left or within_right:
-                in_region.append((x, node.sequence[i], within_right))
-            elif i >= node.start and i <= node.end:
-                out_of_region.append((x, node.sequence[i], within_right))
+                if within_left or within_right:
+                    in_region.append((x, node.sequence[i], within_right))
+                elif i >= node.start and i <= node.end:
+                    out_of_region.append((x, node.sequence[i], within_right))
 
-        if not out_of_region and not in_region:
-            continue
+            if not out_of_region and not in_region:
+                continue
 
-        if not out_of_region and in_region:
-            for node_index, bp, on_end in in_region:
-                if bp in ref_consensus[i]:
-                    continue
-                
-                if on_end:
-                    for x in range(i, aa_nodes[node_index].end):
-                        x_positions[aa_nodes[node_index].header].add(x)
-                else:
-                    for x in range(aa_nodes[node_index].start, i + 1):
-                        x_positions[aa_nodes[node_index].header].add(x)
+            if not out_of_region and in_region:
+                for node_index, bp, on_end in in_region:
+                    if bp in ref_consensus[i]:
+                        continue
+                    
+                    if on_end:
+                        for x in range(i, aa_nodes[node_index].end):
+                            x_positions[aa_nodes[node_index].header].add(x)
+                    else:
+                        for x in range(aa_nodes[node_index].start, i + 1):
+                            x_positions[aa_nodes[node_index].header].add(x)
 
-        if out_of_region and in_region:
-            for node_index, bp, on_end in in_region:
-                if on_end:
-                    for x in range(i, aa_nodes[node_index].end):
-                        x_positions[aa_nodes[node_index].header].add(x)
-                else:
-                    for x in range(aa_nodes[node_index].start, i + 1):
-                        x_positions[aa_nodes[node_index].header].add(x)
+            if out_of_region and in_region:
+                for node_index, bp, on_end in in_region:
+                    if on_end:
+                        for x in range(i, aa_nodes[node_index].end):
+                            x_positions[aa_nodes[node_index].header].add(x)
+                    else:
+                        for x in range(aa_nodes[node_index].start, i + 1):
+                            x_positions[aa_nodes[node_index].header].add(x)
 
 
-    #refresh aa
-    if x_positions:
+        #refresh aa
+        if x_positions:
+            for node in aa_nodes:
+                node.sequence = del_cols(node.sequence, x_positions[node.header])
+                node.start, node.end = find_index_pair(node.sequence, "-")
+
+        if prepare_dupes and reporter_dupes:
+            consensus_seq = make_duped_consensus(
+                raw_aa, prepare_dupes, reporter_dupes, excise_trim_consensus
+            )
+        else:
+            aa_sequences = [x.sequence for x in aa_nodes]
+            consensus_seq = dumb_consensus(aa_sequences, excise_trim_consensus, 0)
+
         for node in aa_nodes:
-            node.sequence = del_cols(node.sequence, x_positions[node.header])
-            node.start, node.end = find_index_pair(node.sequence, "-")
+            i = None
+            for poss_i in range(node.start, node.start + 3):
+                if node.sequence[poss_i] != consensus_seq[poss_i]:
+                    i = poss_i
 
-    if prepare_dupes and reporter_dupes:
-        consensus_seq = make_duped_consensus(
-            raw_aa, prepare_dupes, reporter_dupes, excise_trim_consensus
-        )
-    else:
-        aa_sequences = [x.sequence for x in aa_nodes]
-        consensus_seq = dumb_consensus(aa_sequences, excise_trim_consensus, 0)
+            if not i is None:
+                for x in range(node.start , i + 1):
+                    x_positions[node.header].add(x)
 
-    for node in aa_nodes:
-        i = None
-        for poss_i in range(node.start, node.start + 3):
-            if node.sequence[poss_i] != consensus_seq[poss_i]:
-                i = poss_i
+            i = None
+            for poss_i in range(node.end -1, node.end - 4, -1):
+                if node.sequence[poss_i] != consensus_seq[poss_i]:
+                    i = poss_i
 
-        if not i is None:
-            for x in range(node.start , i + 1):
-                x_positions[node.header].add(x)
-
-        i = None
-        for poss_i in range(node.end -1, node.end - 4, -1):
-            if node.sequence[poss_i] != consensus_seq[poss_i]:
-                i = poss_i
-
-        if not i is None:
-            for x in range(i, node.end):
-                x_positions[node.header].add(x)
+            if not i is None:
+                for x in range(i, node.end):
+                    x_positions[node.header].add(x)
 
     aa_sequence = {}
     for node in aa_nodes:
@@ -631,7 +634,7 @@ def log_excised_consensus(
     had_region = False
     recursion_max = 5
     last_region = -1
-    while region:
+    for _ in range(2):#while region:
         sequences = [node.nt_sequence for node in aa_nodes if node.header not in kicked_headers]
         if not sequences:
             break
@@ -704,15 +707,14 @@ def log_excised_consensus(
                                 continue
 
                             splice_index = calculate_split(prev_node, node, overlapping_coords, ref_consensus)
-
                             prev_positions = set()
                             node_positions = set()
 
-                            for x in range(splice_index, prev_node.end):
-                                prev_positions.add(x)
-
                             for x in range(node.start, splice_index):
                                 node_positions.add(x)
+
+                            for x in range(splice_index, prev_node.end):
+                                prev_positions.add(x)
 
                             log_output.append(f">{prev_node.header} vs {node.header}")
                             log_output.append(f"Split at {splice_index}")
