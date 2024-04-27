@@ -279,10 +279,7 @@ def compare_means(
             margin = 0.02
             if IQR <= .2: margin = .05
             if IQR <= .1: margin = .1
-            new_threshold = threshold
-            if index_pair[1] - index_pair[0] > ref_seq_len * 0.5:
-                new_threshold = new_threshold * 2
-            upper_bound = Q3 + (new_threshold * IQR) + margin
+            upper_bound = Q3 + (threshold * IQR) + margin
         else:  # if no ref_distances, this is an orthograph, so reject
             upper_bound = "N/A"
             IQR = "N/A"

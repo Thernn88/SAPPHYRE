@@ -371,7 +371,7 @@ def outlier_args(par):
         "-t",
         "--threshold",
         type=float,
-        default=0.5,
+        default=100,
         help="Greater than reference mean to be counted as an outlier. Default is 50%%.",
     )
     #
