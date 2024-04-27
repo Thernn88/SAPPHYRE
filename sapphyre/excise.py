@@ -751,9 +751,9 @@ def log_excised_consensus(
             if sequences_in_region:
                 log_output.append(f">{gene}_ambig_{a}:{b}\n{consensus_seq}")
                 if nodes_in_region:
-                    log_output.extend([f">{node.contig_header()}_{'kept' if i in keep_indices else 'kicked'}\n{node.sequence}" for i, node in enumerate(nodes_in_region)])
+                    log_output.extend([f">{node.contig_header()}_{'kept' if i in keep_indices else 'kicked'}\n{node.nt_sequence}" for i, node in enumerate(nodes_in_region)])
                 else:
-                    log_output.extend([f">{node.header}_{'kept' if node.header not in kicked_headers else 'kicked'}\n{node.sequence}" for node in sequences_in_region])
+                    log_output.extend([f">{node.header}_{'kept' if node.header not in kicked_headers else 'kicked'}\n{node.nt_sequence}" for node in sequences_in_region])
                 log_output.append("\n")
 
     if had_region:
