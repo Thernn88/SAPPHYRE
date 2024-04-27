@@ -26,6 +26,8 @@ from .utils import parseFasta, printv, write2Line2Fasta
 class Record(Struct):
     id: str
     raw: str
+    start: int
+    end: int
     sequence: str = None
     upper_bound: float16 = None
     iqr: float16 = None
@@ -82,19 +84,19 @@ def split_sequences(gene_path: str) -> tuple:
     try:
         for header, sequence in parseFasta(gene_path):
             header = ">" + header
-
+            start, end = find_index_pair(sequence, '-')
             if end_of_references is False:
                 # The reference header identifier is present in the header
                 if header[-1] == ".":
                     if header[-9] == ":":
                         ref_check.add(header[:-9])
 
-                    references.append(Record(header, sequence))
+                    references.append(Record(header, sequence, start, end))
                 else:
                     end_of_references = True
 
             if end_of_references is True:
-                candidates.append(Record(header, sequence))
+                candidates.append(Record(header, sequence, start, end))
     except ValueError as e:
         print(f"Error in file: {path}, Problem with {header},\n{e}")
         exit(1)
@@ -152,6 +154,20 @@ def has_minimum_data(
 
 def is_same_variant(header1, header2) -> bool:
     return header1[0:-8] == header2[0:-8]
+
+
+def calc_ref_distance(ref1, ref2, start, stop) -> float:
+    if ref1.start > start:
+        start = ref1.start
+    if ref2.start > start:
+        start = ref2.start
+
+    if ref1.end < stop:
+        stop = ref1.end
+    if ref2.end < stop:
+        stop = ref2.end
+
+    return blosum62_distance(ref1.raw[start:stop], ref2.raw[start:stop])
 
 
 def compare_means(
@@ -225,7 +241,8 @@ def compare_means(
             has_ref_distances = False
         else:
             ref_distances = [
-                blosum62_distance(ref1.sequence, ref2.sequence)
+                # blosum62_distance(ref1.sequence, ref2.sequence)
+                calc_ref_distance(ref1, ref2, index_pair[0], index_pair[1])
                 for ref1, ref2 in combinations(ref_alignments, 2)
                 if not is_same_variant(ref1.id, ref2.id)
             ]
