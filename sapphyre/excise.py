@@ -198,16 +198,29 @@ class NODE(Struct):
         # If node_2 is contained inside self
         if node_2.start >= self.start and node_2.end <= self.end:
             self.sequence = (
-                self.sequence[:overlap_coord]
-                + node_2.sequence[overlap_coord : node_2.end]
+                self.sequence[:overlap_coord // 3]
+                + node_2.sequence[overlap_coord // 3 : node_2.end]
                 + self.sequence[node_2.end :]
             )
+
+            self.nt_sequence = (
+                self.nt_sequence[:overlap_coord // 3]
+                + node_2.nt_sequence[overlap_coord // 3 : node_2.end * 3]
+                + self.nt_sequence[node_2.end * 3 :]
+            )
+
         # If node_2 contains self
         elif self.start >= node_2.start and self.end <= node_2.end:
             self.sequence = (
-                node_2.sequence[:overlap_coord]
-                + self.sequence[overlap_coord : self.end]
+                node_2.sequence[:overlap_coord // 3]
+                + self.sequence[overlap_coord // 3 : self.end]
                 + node_2.sequence[self.end :]
+            )
+
+            self.nt_sequence = (
+                node_2.nt_sequence[:overlap_coord // 3]
+                + self.nt_sequence[overlap_coord // 3 : self.end * 3]
+                + node_2.nt_sequence[self.end * 3 :]
             )
 
             self.start = node_2.start
@@ -215,14 +228,22 @@ class NODE(Struct):
         # If node_2 is to the right of self
         elif node_2.start >= self.start:
             self.sequence = (
-                self.sequence[:overlap_coord] + node_2.sequence[overlap_coord:]
+                self.sequence[:overlap_coord // 3] + node_2.sequence[overlap_coord // 3:]
+            )
+
+            self.nt_sequence = (
+                self.nt_sequence[:overlap_coord // 3] + node_2.nt_sequence[overlap_coord // 3:]
             )
 
             self.end = node_2.end
         # If node_2 is to the left of self
         else:
             self.sequence = (
-                node_2.sequence[:overlap_coord] + self.sequence[overlap_coord:]
+                node_2.sequence[:overlap_coord // 3] + self.sequence[overlap_coord // 3:]
+            )
+
+            self.nt_sequence = (
+                node_2.nt_sequence[:overlap_coord // 3] + self.nt_sequence[overlap_coord // 3:]
             )
 
             self.start = node_2.start
@@ -504,46 +525,46 @@ def log_excised_consensus(
 
     cstart, cend = find_index_pair(consensus_seq, "X")
 
-    for i, maj_bp in enumerate(consensus_seq[cstart:cend], cstart):
-        if maj_bp != "X":
-            continue
+    # for i, maj_bp in enumerate(consensus_seq[cstart:cend], cstart):
+    #     if maj_bp != "X":
+    #         continue
 
-        in_region = []
-        out_of_region = []
-        for x, node in enumerate(aa_nodes):
-            # within 3 bp
-            within_left = i >= node.start and i <= node.start + 3
-            within_right = i <= node.end and i >= node.end - 3
+    #     in_region = []
+    #     out_of_region = []
+    #     for x, node in enumerate(aa_nodes):
+    #         # within 3 bp
+    #         within_left = i >= node.start and i <= node.start + 3
+    #         within_right = i <= node.end and i >= node.end - 3
 
-            if within_left or within_right:
-                in_region.append((x, node.sequence[i], within_right))
-            elif i >= node.start and i <= node.end:
-                out_of_region.append((x, node.sequence[i], within_right))
+    #         if within_left or within_right:
+    #             in_region.append((x, node.sequence[i], within_right))
+    #         elif i >= node.start and i <= node.end:
+    #             out_of_region.append((x, node.sequence[i], within_right))
 
-        if not out_of_region and not in_region:
-            continue
+    #     if not out_of_region and not in_region:
+    #         continue
 
-        if not out_of_region and in_region:
-            for node_index, bp, on_end in in_region:
-                if bp in ref_consensus[i]:
-                    continue
+    #     if not out_of_region and in_region:
+    #         for node_index, bp, on_end in in_region:
+    #             if bp in ref_consensus[i]:
+    #                 continue
                 
-                if on_end:
-                    for x in range(i, aa_nodes[node_index].end):
-                        x_positions[aa_nodes[node_index].header].add(x)
-                else:
-                    for x in range(aa_nodes[node_index].start, i + 1):
-                        x_positions[aa_nodes[node_index].header].add(x)
+    #             if on_end:
+    #                 for x in range(i, aa_nodes[node_index].end):
+    #                     x_positions[aa_nodes[node_index].header].add(x)
+    #             else:
+    #                 for x in range(aa_nodes[node_index].start, i + 1):
+    #                     x_positions[aa_nodes[node_index].header].add(x)
 
-        if out_of_region and in_region:
-            for node_index, bp, on_end in in_region:
-                if on_end:
-                    for x in range(i, aa_nodes[node_index].end):
-                        x_positions[aa_nodes[node_index].header].add(x)
-                else:
-                    for x in range(aa_nodes[node_index].start, i + 1):
-                        x_positions[aa_nodes[node_index].header].add(x)
-            pass
+    #     if out_of_region and in_region:
+    #         for node_index, bp, on_end in in_region:
+    #             if on_end:
+    #                 for x in range(i, aa_nodes[node_index].end):
+    #                     x_positions[aa_nodes[node_index].header].add(x)
+    #             else:
+    #                 for x in range(aa_nodes[node_index].start, i + 1):
+    #                     x_positions[aa_nodes[node_index].header].add(x)
+
 
     #refresh aa
     if x_positions:
@@ -722,11 +743,9 @@ def log_excised_consensus(
 
                             x_positions[node.header].update(node_positions)
                             x_positions[prev_node.header].update(prev_positions)
-
-                            
-                
-                
+             
             if cluster_resolve_failed:
+                
                 sequences_in_region = copy.deepcopy(sequences_in_region)
                 nodes_in_region = simple_assembly(sequences_in_region, excise_overlap_ambig)
 
