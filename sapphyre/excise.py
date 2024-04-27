@@ -525,45 +525,45 @@ def log_excised_consensus(
 
     cstart, cend = find_index_pair(consensus_seq, "X")
 
-    # for i, maj_bp in enumerate(consensus_seq[cstart:cend], cstart):
-    #     if maj_bp != "X":
-    #         continue
+    for i, maj_bp in enumerate(consensus_seq[cstart:cend], cstart):
+        if maj_bp != "X":
+            continue
 
-    #     in_region = []
-    #     out_of_region = []
-    #     for x, node in enumerate(aa_nodes):
-    #         # within 3 bp
-    #         within_left = i >= node.start and i <= node.start + 3
-    #         within_right = i <= node.end and i >= node.end - 3
+        in_region = []
+        out_of_region = []
+        for x, node in enumerate(aa_nodes):
+            # within 3 bp
+            within_left = i >= node.start and i <= node.start + 3
+            within_right = i <= node.end and i >= node.end - 3
 
-    #         if within_left or within_right:
-    #             in_region.append((x, node.sequence[i], within_right))
-    #         elif i >= node.start and i <= node.end:
-    #             out_of_region.append((x, node.sequence[i], within_right))
+            if within_left or within_right:
+                in_region.append((x, node.sequence[i], within_right))
+            elif i >= node.start and i <= node.end:
+                out_of_region.append((x, node.sequence[i], within_right))
 
-    #     if not out_of_region and not in_region:
-    #         continue
+        if not out_of_region and not in_region:
+            continue
 
-    #     if not out_of_region and in_region:
-    #         for node_index, bp, on_end in in_region:
-    #             if bp in ref_consensus[i]:
-    #                 continue
+        if not out_of_region and in_region:
+            for node_index, bp, on_end in in_region:
+                if bp in ref_consensus[i]:
+                    continue
                 
-    #             if on_end:
-    #                 for x in range(i, aa_nodes[node_index].end):
-    #                     x_positions[aa_nodes[node_index].header].add(x)
-    #             else:
-    #                 for x in range(aa_nodes[node_index].start, i + 1):
-    #                     x_positions[aa_nodes[node_index].header].add(x)
+                if on_end:
+                    for x in range(i, aa_nodes[node_index].end):
+                        x_positions[aa_nodes[node_index].header].add(x)
+                else:
+                    for x in range(aa_nodes[node_index].start, i + 1):
+                        x_positions[aa_nodes[node_index].header].add(x)
 
-    #     if out_of_region and in_region:
-    #         for node_index, bp, on_end in in_region:
-    #             if on_end:
-    #                 for x in range(i, aa_nodes[node_index].end):
-    #                     x_positions[aa_nodes[node_index].header].add(x)
-    #             else:
-    #                 for x in range(aa_nodes[node_index].start, i + 1):
-    #                     x_positions[aa_nodes[node_index].header].add(x)
+        if out_of_region and in_region:
+            for node_index, bp, on_end in in_region:
+                if on_end:
+                    for x in range(i, aa_nodes[node_index].end):
+                        x_positions[aa_nodes[node_index].header].add(x)
+                else:
+                    for x in range(aa_nodes[node_index].start, i + 1):
+                        x_positions[aa_nodes[node_index].header].add(x)
 
 
     #refresh aa
