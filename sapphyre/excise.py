@@ -606,6 +606,9 @@ def log_excised_consensus(
     ref_avg_len = sum(ref_lens) / len(ref_lens)
     kicked_headers = set()
 
+    if not is_genome:
+        do_trim(aa_nodes, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
+
     aa_sequence = {}
     for node in aa_nodes:
 
@@ -781,7 +784,8 @@ def log_excised_consensus(
                     log_output.extend([f">{node.header}_{'kept' if node.header not in kicked_headers else 'kicked'}\n{node.nt_sequence}" for node in sequences_in_region])
                 log_output.append("\n")
 
-    do_trim(aa_nodes, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
+    if is_genome:
+        do_trim(aa_nodes, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
 
     if had_region:
         after_data = []
