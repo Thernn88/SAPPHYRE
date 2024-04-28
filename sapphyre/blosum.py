@@ -573,8 +573,13 @@ def main_process(
     #     to_be_excluded = make_asm_exclusions(passing, failing)
     # else:
     to_be_excluded = {candidate.id for candidate in failing}
-
+    ids = []
+    ref_lens = []
     if passing:  # If candidate added to fasta
+        for ref in reference_records:
+            ref_lens.append(len(ref.raw) - ref.raw.count("-"))
+        for candidate in passing:
+            ids.append((int(candidate.id.split("|")[3].split("_")[1]), len(candidate.sequence) - candidate.sequence.count("-")))
         write2Line2Fasta(aa_output, regulars, compress)
 
     # logging
@@ -599,7 +604,52 @@ def main_process(
         non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
 
         write2Line2Fasta(nt_output_path, non_empty_lines, compress)
-    return logs, reported
+
+    clusters = []
+    if ids:
+        ids.sort()
+
+        req_seq_coverage = 0.5
+
+        average_ref_len = sum(ref_lens) / len(ref_lens)
+
+        current_cluster = []
+        for child_index, seq_len in ids:
+            if not current_cluster:
+                current_cluster.append((child_index, seq_len / average_ref_len))
+                current_index = child_index
+            else:
+                if child_index - current_index <= 24:
+                    current_cluster.append((child_index, seq_len / average_ref_len))
+                    current_index = child_index
+                else:
+                    if len(current_cluster) >= 2:
+                        avg_cluster_coverage = sum([x[1] for x in current_cluster]) / len(current_cluster)
+                        clusters.append((current_cluster[0][0], current_cluster[-1][0], avg_cluster_coverage))
+                    elif len(current_cluster) == 1:
+                        if current_cluster[0][1] > req_seq_coverage:
+                            avg_cluster_coverage = sum([x[1] for x in current_cluster]) / len(current_cluster)
+                            clusters.append((current_cluster[0][0], current_cluster[0][0], avg_cluster_coverage))
+                            
+                    current_cluster = [(child_index, seq_len / average_ref_len)]
+                    current_index = child_index
+
+        if current_cluster:
+            if len(current_cluster) >= 2:
+                avg_cluster_coverage = sum([x[1] for x in current_cluster]) / len(current_cluster)
+                clusters.append((current_cluster[0][0], current_cluster[-1][0], avg_cluster_coverage))
+            elif len(current_cluster) == 1:
+                if current_cluster[0][1] > req_seq_coverage:
+                    avg_cluster_coverage = sum([x[1] for x in current_cluster]) / len(current_cluster)
+                    clusters.append((current_cluster[0][0], current_cluster[0][0], avg_cluster_coverage))
+                    
+        clusters.sort(key=lambda x: x[2], reverse=True)
+
+        cluster_string = ", ".join([f"{cluster[0]}-{cluster[1]} {(cluster[2]*100):.2f}%" for cluster in clusters])         
+        gene = filename.split(".")[0]
+        cluster_out = (clusters[0][2] if clusters else 0, f"{gene},{len(ids)},{len(clusters)},{cluster_string}")
+    
+    return logs, reported, cluster_out
 
 
 def do_folder(folder, args):
@@ -742,15 +792,23 @@ def do_folder(folder, args):
         with open(global_csv_path, "w", encoding="UTF-8") as global_csv:
             global_csv.write("Gene,Header,Mean_Dist,Ref_Mean,IQR\n")
             reported_nodes = ["True Node,Node,Overlap Percent"]
-
-            for log_data, reported_log in process_data:
+            cluster_data = []
+            for log_data, reported_log, cluster_line in process_data:
                 reported_nodes.extend(reported_log)
+                cluster_data.append(cluster_line)
                 for line in log_data:
                     if line.split(",")[-2] != "Pass":
                         if line[-1] != "\n":
                             line = f"{line}\n"
                         global_csv.write(line)
         
+        cluster_data.sort(key=lambda x: x[0], reverse=True)
+        cluster_data = [x[1] for x in cluster_data]
+            
+        with open(path.join(folder, "blosum_clusters.csv"), "w") as f:
+            f.write("Gene,Seq count,Cluster count,Cluster ranges\n")
+            f.write("\n".join(cluster_data))
+
         with open(path.join(log_folder_path, "outliers_reported.csv"), "w", encoding="UTF-8") as reported_csv:
             reported_csv.write("\n".join(reported_nodes))
 
