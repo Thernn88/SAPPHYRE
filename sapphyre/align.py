@@ -861,7 +861,7 @@ def run_command(args: CmdArgs) -> None:
 
     clusters = []
     if args.is_genome:
-        ids.sort()
+        ids.sort(key = lambda x: x[0])
 
         req_seq_coverage = 0.5
 

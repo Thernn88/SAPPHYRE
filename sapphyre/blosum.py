@@ -607,7 +607,7 @@ def main_process(
 
     clusters = []
     if ids:
-        ids.sort()
+        ids.sort(key = lambda x: x[0])
 
         req_seq_coverage = 0.5
 
