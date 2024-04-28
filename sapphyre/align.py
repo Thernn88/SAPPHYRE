@@ -866,42 +866,47 @@ def run_command(args: CmdArgs) -> None:
         req_seq_coverage = 0.5
 
         average_ref_len = sum(ref_lens) / len(ref_lens)
-        
+
         current_cluster = []
         for child_index, seq_len in ids:
             if not current_cluster:
-                current_cluster.append((child_index, seq_len))
+                current_cluster.append((child_index, seq_len / average_ref_len))
                 current_index = child_index
             else:
                 if child_index - current_index <= args.chomp_max_distance:
-                    current_cluster.append((child_index, seq_len))
+                    current_cluster.append((child_index, seq_len / average_ref_len))
                     current_index = child_index
                 else:
                     if len(current_cluster) >= 2:
-                        clusters.append((current_cluster[0][0], current_cluster[-1][0]))
+                        avg_cluster_coverage = sum([x[1] for x in current_cluster]) / len(current_cluster)
+                        clusters.append((current_cluster[0][0], current_cluster[-1][0], avg_cluster_coverage))
                     elif len(current_cluster) == 1:
-                        if current_cluster[0][1] / average_ref_len > req_seq_coverage:
-                            clusters.append((current_cluster[0][0], current_cluster[0][0]))
-                    current_cluster = [(child_index, seq_len)]
+                        if current_cluster[0][1] > req_seq_coverage:
+                            avg_cluster_coverage = sum([x[1] for x in current_cluster]) / len(current_cluster)
+                            clusters.append((current_cluster[0][0], current_cluster[0][0], avg_cluster_coverage))
+                            
+                    current_cluster = [(child_index, seq_len / average_ref_len)]
                     current_index = child_index
 
         if current_cluster:
             if len(current_cluster) >= 2:
-                clusters.append((current_cluster[0][0], current_cluster[-1][0]))
+                avg_cluster_coverage = sum([x[1] for x in current_cluster]) / len(current_cluster)
+                clusters.append((current_cluster[0][0], current_cluster[-1][0], avg_cluster_coverage))
             elif len(current_cluster) == 1:
-                if current_cluster[0][1] / average_ref_len > req_seq_coverage:
-                    clusters.append((current_cluster[0][0], current_cluster[0][0]))
+                if current_cluster[0][1] > req_seq_coverage:
+                    avg_cluster_coverage = sum([x[1] for x in current_cluster]) / len(current_cluster)
+                    clusters.append((current_cluster[0][0], current_cluster[0][0], avg_cluster_coverage))
+                    
+        clusters.sort(key=lambda x: x[2], reverse=True)
 
-        clusters.sort(key=lambda x: x[0])
-
-        cluster_string = ", ".join([f"{cluster[0]}-{cluster[1]}" for cluster in clusters])         
+        cluster_string = ", ".join([f"{cluster[0]}-{cluster[1]} {(cluster[2]*100):.2f}%" for cluster in clusters])         
             
     printv(f"Done. Took {keeper.differential():.2f}", args.verbose, 3)  # Debug
 
     if not args.is_genome:
         return
     else:
-        return (clusters[0][0] if clusters else 0, f"{args.gene},{len(ids)},{len(clusters)},{cluster_string}")
+        return (clusters[0][2] if clusters else 0, f"{args.gene},{len(ids)},{len(clusters)},{cluster_string}")
 
 
 def do_folder(folder, args):
@@ -994,7 +999,7 @@ def do_folder(folder, args):
         cluster_logs = [run_command(arg[0]) for arg in func_args]
 
     if any(cluster_logs):
-        cluster_logs.sort(key=lambda x: x[0])
+        cluster_logs.sort(key=lambda x: x[0], reverse=True)
         cluster_logs = [x[1] for x in cluster_logs]
             
         with open(path.join(folder, "align_clusters.csv"), "w") as f:
