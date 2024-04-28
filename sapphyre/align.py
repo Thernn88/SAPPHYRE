@@ -845,38 +845,52 @@ def run_command(args: CmdArgs) -> None:
         writeFasta(args.result_file, references + to_write, compress=args.compress)
         
         ids = []
-        for header, _ in to_write:
-            ids.append(get_id(header))
+        for header, seq in to_write:
+            ids.append((get_id(header), len(seq) - seq.count("-")))
+        ref_lens = []
+        for _, seq in references:
+            ref_lens.append(len(seq) - seq.count("-"))
     else:
         ids = []
-        for header, _ in parseFasta(args.result_file):
+        ref_lens = []
+        for header, seq in parseFasta(args.result_file):
             if header.endswith("."):
+                ref_lens.append(len(seq) - seq.count("-"))
                 continue
-            ids.append(get_id(header))
+            ids.append((get_id(header), len(seq) - seq.count("-")))
 
     clusters = []
     if args.is_genome:
         ids.sort()
 
+        req_seq_coverage = 0.5
+
+        average_ref_len = sum(ref_lens) / len(ref_lens)
         
         current_cluster = []
-        for child_index in ids:
+        for child_index, seq_len in ids:
             if not current_cluster:
-                current_cluster.append(child_index)
+                current_cluster.append((child_index, seq_len))
                 current_index = child_index
             else:
                 if child_index - current_index <= args.chomp_max_distance:
-                    current_cluster.append(child_index)
+                    current_cluster.append((child_index, seq_len))
                     current_index = child_index
                 else:
-                    if len(current_cluster) > 2:
-                        clusters.append((current_cluster[0], current_cluster[-1]))
-                    current_cluster = [child_index]
+                    if len(current_cluster) >= 2:
+                        clusters.append((current_cluster[0][0], current_cluster[-1][0]))
+                    elif len(current_cluster) == 1:
+                        if current_cluster[0][1] / average_ref_len > req_seq_coverage:
+                            clusters.append((current_cluster[0][0], current_cluster[0][0]))
+                    current_cluster = [(child_index, seq_len)]
                     current_index = child_index
 
         if current_cluster:
-            if len(current_cluster) > 2:
-                clusters.append((current_cluster[0], current_cluster[-1]))
+            if len(current_cluster) >= 2:
+                clusters.append((current_cluster[0][0], current_cluster[-1][0]))
+            elif len(current_cluster) == 1:
+                if current_cluster[0][1] / average_ref_len > req_seq_coverage:
+                    clusters.append((current_cluster[0][0], current_cluster[0][0]))
 
         clusters.sort(key=lambda x: x[0])
 
@@ -978,7 +992,7 @@ def do_folder(folder, args):
             cluster_logs = pool.starmap(run_command, func_args, chunksize=1)
     else:
         cluster_logs = [run_command(arg[0]) for arg in func_args]
-        
+
     if any(cluster_logs):
         cluster_logs.sort(key=lambda x: x[0])
         cluster_logs = [x[1] for x in cluster_logs]
