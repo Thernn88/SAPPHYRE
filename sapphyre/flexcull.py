@@ -385,6 +385,7 @@ def do_cull(
     mismatches: int,
     all_dashes_by_index: list[bool],
     character_at_each_pos: list[set[str]],
+    blosum_at_each_pos,
     gap_present_threshold: list[bool],
 ) -> tuple[int, int, bool]:
     """
@@ -411,6 +412,7 @@ def do_cull(
     for i, char in enumerate(sequence):
         mismatch = mismatches
         skip_first = 0
+        blosum_matches = 0
 
         # Scan will extend beyond the end of the sequence
         if i == sequence_length - offset:
@@ -437,6 +439,9 @@ def do_cull(
         # If mismatch exhausted, skip
         if mismatch < 0:
             continue
+
+        if char in blosum_at_each_pos[i]:
+            blosum_matches += 1
 
         pass_all = True
         checks = amt_matches - 1
@@ -467,10 +472,15 @@ def do_cull(
                 checks -= 1
             else:
                 # Match, move right by one and decrement checks
+                if sequence[i + match_i] in blosum_at_each_pos[i + match_i]:
+                    blosum_matches += 1
                 match_i += 1
                 checks -= 1
 
         if pass_all:
+            # 40% of matches are blosum matches
+            if blosum_matches / match_i >= 0.4:
+                continue
             cull_start = i + skip_first
 
             break
@@ -478,6 +488,7 @@ def do_cull(
     if not kick:
         # If not kicked from Cull Start Calc. Continue
         window_end = -1
+        blosum_matches = 0
         for i in range(len(sequence) - 1, -1, -1):
             mismatch = mismatches
             skip_last = 0
@@ -508,6 +519,9 @@ def do_cull(
             if mismatch < 0:
                 continue
 
+            if char in blosum_at_each_pos[i]:
+                blosum_matches += 1
+
             pass_all = True
             checks = amt_matches - 1
             match_i = 1
@@ -532,11 +546,15 @@ def do_cull(
                     match_i += 1
                     checks -= 1
                 else:
+                    if sequence[i - match_i] in blosum_at_each_pos[i - match_i]:
+                        blosum_matches += 1
                     # Match, move left by one and decrement checks
                     match_i += 1
                     checks -= 1
 
             if pass_all:
+                if blosum_matches / match_i >= 0.4:
+                    continue
                 cull_end = i - skip_last + 1  # Inclusive
                 break
 
@@ -566,6 +584,7 @@ def process_refs(
 
     """
     character_at_each_pos = defaultdict(list)
+    blosum_at_each_pos = defaultdict(set)
     gap_present_threshold = {}
     column_cull = set()
 
@@ -586,11 +605,12 @@ def process_refs(
             column_cull.add(i * 3)
 
         # Include all blosum subsitutions for each character in the column
-        character_at_each_pos[i] = set(chars).union(
-            blosum_sub for char in chars for blosum_sub in mat.get(char, {}).keys()
-        )
+        blosum_chars = {blosum_sub for char in chars for blosum_sub in mat.get(char, {}).keys()}
+        character_at_each_pos[i] = set(chars).union(blosum_chars)
+        blosum_at_each_pos[i] = blosum_chars
 
     return (
+        blosum_at_each_pos,
         character_at_each_pos,
         gap_present_threshold,
         all_dashes_by_index,
@@ -1030,6 +1050,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
         return [], 0, culled_references
 
     (
+        blosum_at_each_pos,
         character_at_each_pos,
         gap_present_threshold,
         all_dashes_by_index,
@@ -1067,6 +1088,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
             fargs.mismatches,
             all_dashes_by_index,
             character_at_each_pos,
+            blosum_at_each_pos,
             gap_present_threshold,
         )
 
@@ -1168,6 +1190,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
         post_references = [i for i in aa_out if i[0].endswith(".")]
 
         (
+            post_blosum_at_each_pos,
             post_character_at_each_pos,
             post_gap_present_threshold,
             post_all_dashes_by_index,
