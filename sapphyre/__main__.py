@@ -298,7 +298,7 @@ def hmmsearch_args(par):
         "-cd",
         "--chomp_max_distance",
         type=int,
-        default=25,
+        default=35,
         help="Max distance for merging cluster in chomp",
     )
 
@@ -756,7 +756,7 @@ def align_args(par, skip_reconcile_overlap = False):
         "-cd",
         "--chomp_max_distance",
         type=int,
-        default=25,
+        default=35,
         help="Max distance for merging cluster in chomp",
     )
 

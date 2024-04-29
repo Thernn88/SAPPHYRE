@@ -620,7 +620,7 @@ def main_process(
                 current_cluster.append((child_index, seq_len / average_ref_len))
                 current_index = child_index
             else:
-                if child_index - current_index <= 24:
+                if child_index - current_index <= 35:
                     current_cluster.append((child_index, seq_len / average_ref_len))
                     current_index = child_index
                 else:
