@@ -821,6 +821,14 @@ def flexcull_args(par):
         default="trimmed",
         help="Output Directory.",
     )
+
+    par.add_argument(
+        "-bmp",
+        "--blosum_max_percent",
+        type=float,
+        default=0.4,
+        help="Maximum percentage of blosum matches allowed in a matching window.",
+    )
     par.add_argument(
         "-aa",
         "--amino-acid",
@@ -913,6 +921,7 @@ def flexcull(args):
         args.orthoset,
         args.orthoset_input,
         args.keep_codons,
+        args.blosum_max_percent,
     )
     if not flexcull.main(flexargs):
         print()

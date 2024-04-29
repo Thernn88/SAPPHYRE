@@ -44,6 +44,7 @@ MainArgs = namedtuple(
         "orthoset",
         "orthoset_input",
         "keep_codons",
+        "blosum_max_percent",
     ],
 )
 
@@ -66,6 +67,7 @@ FlexcullArgs = namedtuple(
         "is_assembly_or_genome",
         "is_ncg",  # non coding gene
         "keep_codons",
+        "blosum_max_percent",
     ],
 )
 
@@ -385,6 +387,7 @@ def do_cull(
     mismatches: int,
     all_dashes_by_index: list[bool],
     character_at_each_pos: list[set[str]],
+    blosum_max_percent,
     blosum_at_each_pos,
     gap_present_threshold: list[bool],
 ) -> tuple[int, int, bool]:
@@ -479,7 +482,7 @@ def do_cull(
 
         if pass_all:
             # 40% of matches are blosum matches
-            if blosum_matches / match_i >= 0.4:
+            if blosum_matches / match_i > blosum_max_percent:
                 continue
             cull_start = i + skip_first
 
@@ -553,7 +556,7 @@ def do_cull(
                     checks -= 1
 
             if pass_all:
-                if blosum_matches / match_i >= 0.4:
+                if blosum_matches / match_i > blosum_max_percent:
                     continue
                 cull_end = i - skip_last + 1  # Inclusive
                 break
@@ -1088,6 +1091,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
             fargs.mismatches,
             all_dashes_by_index,
             character_at_each_pos,
+            fargs.blosum_max_percent,
             blosum_at_each_pos,
             gap_present_threshold,
         )
@@ -1354,6 +1358,7 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
                     is_assembly_or_genome,
                     input_gene in non_coding_gene,
                     args.keep_codons,
+                    args.blosum_max_percent,
                     
                 ),
             ),
