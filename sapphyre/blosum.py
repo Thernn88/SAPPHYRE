@@ -278,10 +278,10 @@ def compare_means(
             # Interquartile range (IQR)
             IQR = Q3 - Q1
             margin = 0.02
-            if IQR <= .2: margin = .05
-            if IQR <= .1: margin = .1
+            if IQR <= .2: margin = .025
+            if IQR <= .1: margin = .05
             upper_bound = Q3 + (threshold * IQR) + margin
-        else:  # if no ref_distances, this is an orthograph, so reject
+        else:  # if no ref_distances, reject
             upper_bound = "N/A"
             IQR = "N/A"
         for candidate in candidates_at_index:
