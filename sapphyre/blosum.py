@@ -731,13 +731,9 @@ def do_folder(folder, args):
 
     compress = not args.uncompress_intermediates or args.compress
 
-    if not (0 < args.threshold < 1.0):
-        if 0 < args.threshold <= 100:
-            args.threshold = args.threshold / 100
-        else:
-            raise ValueError(
-                "Cannot convert threshold to a percent. Use a decimal or a whole number between 0 and 100"
-            )
+    #  convert threshold to percent if necessary
+    if args.threshold > 1.0:
+        args.threshold = args.threshold / 100
     if not (0 < args.col_cull_percent < 1.0):
         if 0 < args.col_cull_percent <= 100:
             args.col_cull_percent = args.col_cull_percent / 100
