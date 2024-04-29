@@ -415,8 +415,6 @@ def do_cull(
     for i, char in enumerate(sequence):
         mismatch = mismatches
         skip_first = 0
-        blosum_matches = 0
-
         # Scan will extend beyond the end of the sequence
         if i == sequence_length - offset:
             kick = True
@@ -442,6 +440,8 @@ def do_cull(
         # If mismatch exhausted, skip
         if mismatch < 0:
             continue
+
+        blosum_matches = 0
 
         if char in blosum_at_each_pos[i]:
             blosum_matches += 1
@@ -482,7 +482,7 @@ def do_cull(
 
         if pass_all:
             # 40% of matches are blosum matches
-            if blosum_matches / match_i > blosum_max_percent:
+            if blosum_max_percent != -1 and blosum_matches / match_i > blosum_max_percent:
                 continue
             cull_start = i + skip_first
 
@@ -491,7 +491,6 @@ def do_cull(
     if not kick:
         # If not kicked from Cull Start Calc. Continue
         window_end = -1
-        blosum_matches = 0
         for i in range(len(sequence) - 1, -1, -1):
             mismatch = mismatches
             skip_last = 0
@@ -521,6 +520,8 @@ def do_cull(
             # If mismatch exhausted, skip
             if mismatch < 0:
                 continue
+            
+            blosum_matches = 0
 
             if char in blosum_at_each_pos[i]:
                 blosum_matches += 1
@@ -556,7 +557,7 @@ def do_cull(
                     checks -= 1
 
             if pass_all:
-                if blosum_matches / match_i > blosum_max_percent:
+                if blosum_max_percent != -1 and blosum_matches / match_i > blosum_max_percent:
                     continue
                 cull_end = i - skip_last + 1  # Inclusive
                 break
@@ -609,8 +610,9 @@ def process_refs(
 
         # Include all blosum subsitutions for each character in the column
         blosum_chars = {blosum_sub for char in chars for blosum_sub in mat.get(char, {}).keys()}
-        character_at_each_pos[i] = set(chars).union(blosum_chars)
-        blosum_at_each_pos[i] = blosum_chars
+        chars = set(chars)
+        character_at_each_pos[i] = chars.union(blosum_chars)
+        blosum_at_each_pos[i] = blosum_chars - chars
 
     return (
         blosum_at_each_pos,
@@ -1326,6 +1328,9 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
         if args.blosum_strictness == "strict"
         else 999999
     )
+
+    if blosum_mode_lower_threshold == -1:
+        blosum_max_percent = -1
 
     mat = BLOSUM(62)
     filtered_mat = {
