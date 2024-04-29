@@ -804,6 +804,7 @@ def do_folder(folder, args):
                         global_csv.write(line)
         
         if any(cluster_data):
+            cluster_data = [x for x in cluster_data if x]
             cluster_data.sort(key=lambda x: x[0], reverse=True)
             cluster_data = [x[1] for x in cluster_data]
                 
