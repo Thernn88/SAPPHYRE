@@ -1,7 +1,6 @@
 from argparse import Namespace
 from collections import Counter, defaultdict
 from decimal import Decimal
-import gzip
 from itertools import combinations, count
 from math import ceil
 from multiprocessing.pool import Pool
@@ -42,7 +41,6 @@ class Hit(Struct, frozen=True):
     uid: int
     ref: str
     refs: list[ReferenceHit]
-    coverage: float
 
 
 class ReporterHit(Struct):
@@ -396,8 +394,6 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             # reference hit for the current row
             refs = [ReferenceHit(target, ref, sstart, send)]
 
-            coverage = row[9]/100 if len(row) == 10 else 0.0
-
             this_hit = Hit(
                 row[0],
                 target,
@@ -412,7 +408,6 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                 abs(hash(time())) // (pargs.i + 1),
                 ref,
                 refs,
-                coverage,
             )
 
             # Used to calculate the sum of each targets' individual scores
@@ -570,70 +565,33 @@ def top_reference_realign(orthoset_raw_path, orthoset_aln_path, orthoset_trimmed
 
 
 def parse_csv(out_path: str) -> DataFrame:
-
-    # Get amount of tabs in the first line
-    if out_path.endswith(".gz"):
-        with gzip.open(out_path, "rt") as f:
-            tabs = f.readline().count("\t") + 1
-    else:
-        with open(out_path, "r") as f:
-            tabs = f.readline().count("\t") + 1
-    if tabs == 10:
-        names = [
-            "header",
-            "target",
-            "frame",
-            "evalue",
-            "score",
-            "qstart",
-            "qend",
-            "sstart",
-            "send",
-            "coverage",
-        ]
-        dtype = {
-            "header": str,
-            "target": str,
-            "frame": int8,
-            "evalue": float64,
-            "score": float32,
-            "qstart": uint16,
-            "qend": uint16,
-            "sstart": uint16,
-            "send": uint16,
-            "coverage": float32,
-        }
-    else:
-        names = [
-            "header",
-            "target",
-            "frame",
-            "evalue",
-            "score",
-            "qstart",
-            "qend",
-            "sstart",
-            "send",
-        ]
-        dtype = {
-            "header": str,
-            "target": str,
-            "frame": int8,
-            "evalue": float64,
-            "score": float32,
-            "qstart": uint16,
-            "qend": uint16,
-            "sstart": uint16,
-            "send": uint16,
-        }
-
     return read_csv(
                 out_path,
                 engine="pyarrow",
                 delimiter="\t",
                 header=None,
-                names=names,
-                dtype=dtype,
+                names=[
+                    "header",
+                    "target",
+                    "frame",
+                    "evalue",
+                    "score",
+                    "qstart",
+                    "qend",
+                    "sstart",
+                    "send",
+                ],
+                dtype={
+                    "header": str,
+                    "target": str,
+                    "frame": int8,
+                    "evalue": float64,
+                    "score": float32,
+                    "qstart": uint16,
+                    "qend": uint16,
+                    "sstart": uint16,
+                    "send": uint16,
+                },
             )
 
 
@@ -1113,55 +1071,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
         nt_db.put("getall:valid_refs", ",".join(top_ref_in_order))
 
         head_to_seq = get_head_to_seq(nt_db, recipe)
-
-        cluster_out = []
-        for gene, hits in output:
-            ids = [(int(hit.node.split("_")[1]), hit.coverage) for hit in hits]
-            ids.sort(key = lambda x: x[0])
-            clusters = []
-
-            req_seq_coverage = 0.5
-            current_cluster = []
-            for child_index, seq_coverage in ids:
-                if not current_cluster:
-                    current_cluster.append((child_index, seq_coverage))
-                    current_index = child_index
-                else:
-                    if child_index - current_index <= 24:
-                        current_cluster.append((child_index, seq_coverage))
-                        current_index = child_index
-                    else:
-                        if len(current_cluster) >= 2:
-                            avg_cluster_coverage = sum([x[1] for x in current_cluster]) / len(current_cluster)
-                            clusters.append((current_cluster[0][0], current_cluster[-1][0], avg_cluster_coverage))
-                        elif len(current_cluster) == 1:
-                            if current_cluster[0][1] > req_seq_coverage:
-                                avg_cluster_coverage = sum([x[1] for x in current_cluster]) / len(current_cluster)
-                                clusters.append((current_cluster[0][0], current_cluster[0][0], avg_cluster_coverage))
-                                
-                        current_cluster = [(child_index, seq_coverage)]
-                        current_index = child_index
-
-            if current_cluster:
-                if len(current_cluster) >= 2:
-                    avg_cluster_coverage = sum([x[1] for x in current_cluster]) / len(current_cluster)
-                    clusters.append((current_cluster[0][0], current_cluster[-1][0], avg_cluster_coverage))
-                elif len(current_cluster) == 1:
-                    if current_cluster[0][1] > req_seq_coverage:
-                        avg_cluster_coverage = sum([x[1] for x in current_cluster]) / len(current_cluster)
-                        clusters.append((current_cluster[0][0], current_cluster[0][0], avg_cluster_coverage))
-                        
-            clusters.sort(key=lambda x: x[2], reverse=True)
-
-            cluster_string = ", ".join([f"{cluster[0]}-{cluster[1]} {(cluster[2]*100):.2f}%" for cluster in clusters])         
-            cluster_out.append((clusters[0][2] if clusters else 0, f"{gene},{len(ids)},{len(clusters)},{cluster_string}"))
-
-        cluster_out.sort(key=lambda x: x[0], reverse=True)
-        with open(path.join(input_path, "diamond_clusters.csv"), "w") as fp:
-            fp.write("Gene,Seq count,Cluster count,Cluster ranges\n")
-            for line in cluster_out:
-                fp.write(line[1] + "\n")
-
 
         if is_assembly_or_genome:
             arguments = []
