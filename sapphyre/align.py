@@ -614,6 +614,70 @@ def insert_sequences(
     return out_seqs
 
 
+def do_cluster(ids, ref_lens, max_distance=35):
+    clusters = []
+    ids.sort(key = lambda x: x[0])
+
+    req_seq_coverage = 0.5
+
+    average_ref_len = sum(ref_lens) / len(ref_lens)
+
+    current_cluster = []
+    for i, (child_index, seq) in enumerate(ids):
+        seq_len = len(seq) - seq.count("-")
+
+        if not current_cluster:
+            current_cluster.append((child_index, seq_len / average_ref_len, i))
+            current_index = child_index
+        else:
+            if child_index - current_index <= max_distance:
+                current_cluster.append((child_index, seq_len / average_ref_len, i))
+                current_index = child_index
+            else:
+                if len(current_cluster) >= 2:
+                    columns_with_data = {}
+                    for _, _, index in current_cluster:
+                        this_seq = ids[index][1]
+                        start, end = find_index_pair(this_seq, "-")
+                        for x, char in enumerate(this_seq[start:end],start):
+                            if char != "-":
+                                columns_with_data[x] = 1
+
+                    cluster_coverage = sum(columns_with_data.values()) / average_ref_len
+
+                    clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage))
+                elif len(current_cluster) == 1:
+                    if current_cluster[0][1] > req_seq_coverage:
+                        cluster_coverage = current_cluster[0][1]
+                        clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage))
+                        
+                current_cluster = [(child_index, seq_len / average_ref_len, i)]
+                current_index = child_index
+
+    if current_cluster:
+        if len(current_cluster) >= 2:
+            
+            columns_with_data = {}
+            for _, _, index in current_cluster:
+                this_seq = ids[index][1]
+                start, end = find_index_pair(this_seq, "-")
+                for x, char in enumerate(this_seq[start:end],start):
+                    if char != "-":
+                        columns_with_data[x] = 1
+
+            cluster_coverage = sum(columns_with_data.values()) / average_ref_len
+
+            clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage))
+        elif len(current_cluster) == 1:
+            if current_cluster[0][1] > req_seq_coverage:
+                cluster_coverage = current_cluster[0][1]
+                clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage))
+                
+    clusters.sort(key=lambda x: x[2], reverse=True)
+
+    return clusters
+
+
 def run_command(args: CmdArgs) -> None:
     keeper = TimeKeeper(KeeperMode.DIRECT)
     debug = args.debug
@@ -846,7 +910,7 @@ def run_command(args: CmdArgs) -> None:
         
         ids = []
         for header, seq in to_write:
-            ids.append((get_id(header), len(seq) - seq.count("-")))
+            ids.append((get_id(header), seq))
         ref_lens = []
         for _, seq in references:
             ref_lens.append(len(seq) - seq.count("-"))
@@ -857,47 +921,11 @@ def run_command(args: CmdArgs) -> None:
             if header.endswith("."):
                 ref_lens.append(len(seq) - seq.count("-"))
                 continue
-            ids.append((get_id(header), len(seq) - seq.count("-")))
+            ids.append((get_id(header), seq))
 
     clusters = []
     if args.is_genome:
-        ids.sort(key = lambda x: x[0])
-
-        req_seq_coverage = 0.5
-
-        average_ref_len = sum(ref_lens) / len(ref_lens)
-
-        current_cluster = []
-        for child_index, seq_len in ids:
-            if not current_cluster:
-                current_cluster.append((child_index, seq_len / average_ref_len))
-                current_index = child_index
-            else:
-                if child_index - current_index <= args.chomp_max_distance:
-                    current_cluster.append((child_index, seq_len / average_ref_len))
-                    current_index = child_index
-                else:
-                    if len(current_cluster) >= 2:
-                        avg_cluster_coverage = sum([x[1] for x in current_cluster]) / len(current_cluster)
-                        clusters.append((current_cluster[0][0], current_cluster[-1][0], avg_cluster_coverage))
-                    elif len(current_cluster) == 1:
-                        if current_cluster[0][1] > req_seq_coverage:
-                            avg_cluster_coverage = sum([x[1] for x in current_cluster]) / len(current_cluster)
-                            clusters.append((current_cluster[0][0], current_cluster[0][0], avg_cluster_coverage))
-                            
-                    current_cluster = [(child_index, seq_len / average_ref_len)]
-                    current_index = child_index
-
-        if current_cluster:
-            if len(current_cluster) >= 2:
-                avg_cluster_coverage = sum([x[1] for x in current_cluster]) / len(current_cluster)
-                clusters.append((current_cluster[0][0], current_cluster[-1][0], avg_cluster_coverage))
-            elif len(current_cluster) == 1:
-                if current_cluster[0][1] > req_seq_coverage:
-                    avg_cluster_coverage = sum([x[1] for x in current_cluster]) / len(current_cluster)
-                    clusters.append((current_cluster[0][0], current_cluster[0][0], avg_cluster_coverage))
-                    
-        clusters.sort(key=lambda x: x[2], reverse=True)
+        clusters = do_cluster(ids, ref_lens, args.chomp_max_distance)
 
         cluster_string = ", ".join([f"{cluster[0]}-{cluster[1]} {(cluster[2]*100):.2f}%" for cluster in clusters])         
             
