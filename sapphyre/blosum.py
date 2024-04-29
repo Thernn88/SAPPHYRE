@@ -710,6 +710,7 @@ def do_folder(folder, args):
     # debugging lines, uncomment to manually set a flag
     # is_assembly = False
     # is_genome = False
+    # top_refs = set()
     del rocksdb_db
 
     if not aa_input.exists():  # exit early
@@ -815,7 +816,7 @@ def do_folder(folder, args):
         log_folder_path = path.join(output_path, "logs")
         global_csv_path = path.join(log_folder_path, "outliers_global.csv")
         with open(global_csv_path, "w", encoding="UTF-8") as global_csv:
-            global_csv.write("Gene,Header,Mean_Dist,Ref_Mean,IQR\n")
+            global_csv.write("Header,Candidate_Median,Upper_Bound, Grade, IQR\n")
             reported_nodes = ["True Node,Node,Overlap Percent"]
             cluster_data = []
             for log_data, reported_log, cluster_line in process_data:
