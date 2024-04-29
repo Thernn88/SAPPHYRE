@@ -372,7 +372,7 @@ def outlier_args(par):
         "--threshold",
         type=float,
         default=100,
-        help="Greater than reference mean to be counted as an outlier. Default is 50%%.",
+        help="Percent scaling IQR in upper bound calculation. Default is 100%.",
     )
     #
     par.add_argument(
