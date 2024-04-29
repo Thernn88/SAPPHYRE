@@ -229,7 +229,7 @@ def reporter_args(par):
         "-m",
         "--matches",
         type=int,
-        default=5,
+        default=0,
         help="Amount of matches for dynamic pairwise aligned edge trim.",
     )
     par.add_argument(
@@ -847,21 +847,21 @@ def flexcull_args(par):
         "-bs",
         "--blosum_strictness",
         choices=["exact", "strict", "lax"],
-        default="strict",
+        default="exact",
         help="Blosum strictness setting.",
     )
     par.add_argument(
         "-mm",
         "--mismatches",
         type=int,
-        default=0,
+        default=2,
         help="Amount mismatches allowed per trim.",
     )
     par.add_argument(
         "-m",
         "--matches",
         type=int,
-        default=5,
+        default=6,
         help="Amount of base pairs that have to match reference.",
     )  #
     par.add_argument(
