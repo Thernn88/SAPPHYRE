@@ -606,6 +606,7 @@ def main_process(
         write2Line2Fasta(nt_output_path, non_empty_lines, compress)
 
     clusters = []
+    cluster_out = None
     if ids:
         ids.sort(key = lambda x: x[0])
 
@@ -802,12 +803,13 @@ def do_folder(folder, args):
                             line = f"{line}\n"
                         global_csv.write(line)
         
-        cluster_data.sort(key=lambda x: x[0], reverse=True)
-        cluster_data = [x[1] for x in cluster_data]
-            
-        with open(path.join(folder, "blosum_clusters.csv"), "w") as f:
-            f.write("Gene,Seq count,Cluster count,Cluster ranges\n")
-            f.write("\n".join(cluster_data))
+        if any(cluster_data):
+            cluster_data.sort(key=lambda x: x[0], reverse=True)
+            cluster_data = [x[1] for x in cluster_data]
+                
+            with open(path.join(folder, "blosum_clusters.csv"), "w") as f:
+                f.write("Gene,Seq count,Cluster count,Cluster ranges\n")
+                f.write("\n".join(cluster_data))
 
         with open(path.join(log_folder_path, "outliers_reported.csv"), "w", encoding="UTF-8") as reported_csv:
             reported_csv.write("\n".join(reported_nodes))
