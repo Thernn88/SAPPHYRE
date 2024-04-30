@@ -28,29 +28,26 @@ def do_cluster(ids, ref_coords, max_distance=100):
 
     req_seq_coverage = 0.5
 
-    min_ref_start = min([x[0] for x in ref_coords])
-    max_ref_end = max([x[1] for x in ref_coords])
-    ref_len = max_ref_end - min_ref_start
-
     current_cluster = []
     for i, (child_index, seq_coords) in enumerate(ids):
-        seq_len = seq_coords[1] - seq_coords[0]
+
+        coverage = len(seq_coords.intersection(ref_coords)) / len(ref_coords)
+
 
         if not current_cluster:
-            current_cluster.append((child_index, seq_len / ref_len, i))
+            current_cluster.append((child_index, coverage, i))
             current_index = child_index
         else:
             if child_index - current_index <= max_distance:
-                current_cluster.append((child_index, seq_len / ref_len, i))
+                current_cluster.append((child_index, coverage, i))
                 current_index = child_index
             else:
                 if len(current_cluster) >= 2:
-                    cluster_coords = [ids[index][1] for _, _, index in current_cluster]
-
-                    min_start = min([x[0] for x in cluster_coords])
-                    max_end = max([x[1] for x in cluster_coords])
-                    coverage_len = max_end - min_start
-                    cluster_coverage = coverage_len / ref_len
+                    cluster_data_cols = set()
+                    for _, _, index in current_cluster:
+                        cluster_data_cols.update(ids[index][1])
+                        
+                    cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
 
                     clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage))
                 elif len(current_cluster) == 1:
@@ -58,17 +55,16 @@ def do_cluster(ids, ref_coords, max_distance=100):
                         cluster_coverage = current_cluster[0][1]
                         clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage))
                         
-                current_cluster = [(child_index, seq_len / ref_len, i)]
+                current_cluster = [(child_index, coverage, i)]
                 current_index = child_index
 
     if current_cluster:
         if len(current_cluster) >= 2:
-            cluster_coords = [ids[index][1] for _, _, index in current_cluster]
-
-            min_start = min([x[0] for x in cluster_coords])
-            max_end = max([x[1] for x in cluster_coords])
-            coverage_len = max_end - min_start
-            cluster_coverage = coverage_len / ref_len
+            cluster_data_cols = set()
+            for _, _, index in current_cluster:
+                cluster_data_cols.update(ids[index][1])
+                
+            cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
 
             clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage))
         elif len(current_cluster) == 1:
@@ -93,28 +89,33 @@ def within_highest_coverage(logs, clusters, within=0.1): # kick 10% less coverag
 
 
 def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene_output_path: str, nt_gene_output_path: str):
-    reference_cluster_data = []
+    reference_data_cols = set()
     ids = []
     logs = []
     cluster_consensi = {}
 
     get_id = lambda header: int(header.split("|")[3].split("_")[1])
     ref_consensus = defaultdict(set)
-    sequences = {}
+    sequences = defaultdict(list)
 
     for header, seq in parseFasta(path.join(aa_gene_input_path, gene)):
         if header.endswith("."):
-            reference_cluster_data.append(find_index_pair(seq, "-"))
-            for i,let in enumerate(seq):
+            start, end = find_index_pair(seq, "-")
+            for i,let in enumerate(seq[start:end], start):
                 if let != "-":
                     ref_consensus[i].add(let)
+                    reference_data_cols.add(i)
+                    
             continue
 
         this_id = get_id(header)
-        ids.append((this_id, find_index_pair(seq, "-")))
-        sequences[this_id] = (header, seq)
+        start, end = find_index_pair(seq, "-")
+        data_cols = {i for i, let in enumerate(seq[start:end], start) if let != "-"}
 
-    clusters = do_cluster(ids, reference_cluster_data)
+        ids.append((this_id, data_cols))
+        sequences[this_id].append((header, seq))
+
+    clusters = do_cluster(ids, reference_data_cols)
 
     if not clusters:
         if logs:
@@ -134,7 +135,8 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
             this_cluster_sequences = []
             for i in range(cluster[0], cluster[1] + 1):
                 if i in sequences:
-                    this_cluster_sequences.append(sequences[i][1])
+                    for seq in sequences[i]:
+                        this_cluster_sequences.append(seq[1])
 
             cluster_consensus = defaultdict(set)
             for seq in this_cluster_sequences:
@@ -174,20 +176,26 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
                     consensus_a = cluster_consensi[cluster_a[0]]
                     consensus_b = cluster_consensi[cluster_b[0]]
 
-                    indices = set(consensus_a.keys()).union(set(consensus_b.keys()))
-                    min_index = min(indices)
-                    max_index = max(indices)
+                    start_a = min(consensus_a.keys())
+                    start_b = min(consensus_b.keys())
+
+                    end_a = max(consensus_a.keys())
+                    end_b = max(consensus_b.keys())
+
+                    end_start = max(start_a, start_b)
+                    first_end = min(end_a, end_b)
 
                     matching = 0
                     checked = 0
-                    for i in range(min_index, max_index + 1):
+                    for i in range(end_start, first_end + 1):
                         checked += 1
+
                         if consensus_a[i].intersection(consensus_b[i]):
                             matching += 1
 
                     matching_percent = matching / checked
 
-                    if matching_percent <= (1 - 0.02): #Matching percent
+                    if matching_percent <= (1 - 0.1): #Matching percent
                         logs.append(f"Kicked due to cluster compare:\n{clusters[cluster_b[0]][0]}-{clusters[cluster_b[0]][1]}\nCluster coverage: {clusters[cluster_b[0]][2]:.2f}\nKicked by:\n{clusters[cluster_a[0]][0]}-{clusters[cluster_a[0]][1]}\nCluster coverage: {clusters[cluster_a[0]][2]:.2f}\nClusters matched by {matching_percent:.2f}")
                         cluster_consensi.pop(cluster_b[0])
 
