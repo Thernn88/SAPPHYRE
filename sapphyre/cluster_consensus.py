@@ -78,11 +78,18 @@ def do_cluster(ids, ref_coords, max_distance=100):
                 
     return clusters
 
-def within_highest_coverage(clusters, within=0.1):
+def within_highest_coverage(logs, clusters, within=0.1): # kick 10% less coverage
     highest_coverage_cluster = max([x[2] for x in clusters])
     req_coverage = highest_coverage_cluster * (1 - within)
 
-    return [x for x in clusters if x[2] >= req_coverage]
+    within = []
+    for cluster in clusters:
+        if cluster[2] >= req_coverage:
+            within.append(cluster)
+        else:
+            logs.append(f"Kicked due to not within 10% of max coverage:\n{cluster[0]}-{cluster[1]}\nCluster coverage: {cluster[2]:.2f}\nHighest matching cluster to references: {highest_coverage_cluster:.2f}")
+
+    return within
 
 
 def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene_output_path: str, nt_gene_output_path: str):
@@ -115,12 +122,12 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
         return logs
     
 
-    clusters = within_highest_coverage(clusters)
+    clusters = within_highest_coverage(logs, clusters)
 
     for i, cluster in enumerate(clusters):
         cluster_consensi[i] = None
    
-    if len(clusters) > 2: 
+    if len(clusters) >= 2: 
         cluster_percents = []
 
         for x, cluster in enumerate(clusters):
@@ -147,22 +154,18 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
             cluster_consensi[x] = cluster_consensus
             cluster_percents.append((x, cluster_match / cluster_cols))
 
-        if not clusters:
-            print("No clusters found in",gene)
-            logs.append(f"No clusters found in {gene}")
-            return logs
-
         max_cluster = max([i[1] for i in cluster_percents])
 
         for i, cluster_percent in cluster_percents:
-            if abs(cluster_percent - max_cluster) > 0.1:
+            if abs(cluster_percent - max_cluster) > 0.1: # 10% difference to reference matching percent
                 logs.append(f"Kicked due to not within 10% of top reference match:\n{clusters[i][0]}-{clusters[i][1]}\nCluster coverage: {clusters[i][2]:.2f}\nHighest matching cluster to references: {max_cluster:.2f}\nThis cluster matched by {cluster_percent:.2f}")
                 cluster_consensi.pop(i)
 
         cluster_percents = [(index, percent) for index, percent in cluster_percents if index in cluster_consensi]
         cluster_percents.sort(key = lambda x: x[1], reverse = True)
-        
-        if len(cluster_consensi) > 1:
+
+   
+        if len(cluster_percents) > 1:
             kicked = True
             while kicked:
                 kicked = False
@@ -184,7 +187,7 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
 
                     matching_percent = matching / checked
 
-                    if matching_percent <= 0.9:
+                    if matching_percent <= (1 - 0.02): #Matching percent
                         logs.append(f"Kicked due to cluster compare:\n{clusters[cluster_b[0]][0]}-{clusters[cluster_b[0]][1]}\nCluster coverage: {clusters[cluster_b[0]][2]:.2f}\nKicked by:\n{clusters[cluster_a[0]][0]}-{clusters[cluster_a[0]][1]}\nCluster coverage: {clusters[cluster_a[0]][2]:.2f}\nClusters matched by {matching_percent:.2f}")
                         cluster_consensi.pop(cluster_b[0])
 
