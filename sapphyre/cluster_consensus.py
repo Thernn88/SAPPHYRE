@@ -76,14 +76,14 @@ def do_cluster(ids, ref_coords, max_distance=100):
 
 def within_highest_coverage(logs, clusters, within=0.1): # kick 10% less coverage
     highest_coverage_cluster = max([x[2] for x in clusters])
-    req_coverage = highest_coverage_cluster * (1 - within)
+    req_coverage = highest_coverage_cluster - within
 
     within = []
     for cluster in clusters:
         if cluster[2] >= req_coverage:
             within.append(cluster)
         else:
-            logs.append(f"Kicked due to not within 10% of max coverage:\n{cluster[0]}-{cluster[1]}\nCluster coverage: {cluster[2]:.2f}\nHighest matching cluster to references: {highest_coverage_cluster:.2f}")
+            logs.append(f"Kicked due to not within 10% of max coverage:\n{cluster[0]}-{cluster[1]}\nCluster coverage: {cluster[2]:.2f}\nHighest coverage: {highest_coverage_cluster:.2f}")
 
     return within
 
