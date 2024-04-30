@@ -718,7 +718,7 @@ def do_folder(folder, args):
     file_inputs = [
         gene
         for gene in aa_input.iterdir()
-        if ".aa" in gene.suffixes and gene.suffix in ALLOWED_EXTENSIONS and "g4724" in str(gene)
+        if ".aa" in gene.suffixes and gene.suffix in ALLOWED_EXTENSIONS
     ]
     output_path = Path(folder, "outlier", "blosum")
     nt_output_path = path.join(output_path, "nt")
