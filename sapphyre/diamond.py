@@ -1,6 +1,7 @@
 from argparse import Namespace
 from collections import Counter, defaultdict
 from decimal import Decimal
+import gzip
 from itertools import combinations, count
 from math import ceil
 from multiprocessing.pool import Pool
@@ -41,7 +42,7 @@ class Hit(Struct, frozen=True):
     uid: int
     ref: str
     refs: list[ReferenceHit]
-
+    coverage: float
 
 class ReporterHit(Struct):
     node: str
@@ -53,7 +54,8 @@ class ReporterHit(Struct):
     query: str
     uid: int
     refs: list[ReferenceHit]
-    seq: str = None
+    seq: str | None
+    primary: bool
 
 
 class ProcessingArgs(Struct, frozen=True):
@@ -95,6 +97,7 @@ class MultiReturn(Struct, frozen=True):
 class ConvertArgs(Struct, frozen=True):
     hits: list[Hit]
     gene: str
+    primary_nodes: set
 
 
 class ConvertReturn(Struct, frozen=True):
@@ -320,6 +323,8 @@ def convert_and_cull(this_args: ConvertArgs) -> ConvertReturn:
     """
     output = []
     for hit in this_args.hits:
+        if hit.node in this_args.primary_nodes:
+            print(hit)
         output.append(
             ReporterHit(
                 hit.node,
@@ -331,6 +336,8 @@ def convert_and_cull(this_args: ConvertArgs) -> ConvertReturn:
                 hit.ref,
                 hit.uid,
                 hit.refs,
+                None,
+                hit.node in this_args.primary_nodes,
             ),
         )
     return ConvertReturn(this_args.gene, output)
@@ -394,6 +401,8 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             # reference hit for the current row
             refs = [ReferenceHit(target, ref, sstart, send)]
 
+            coverage = row[9]/100 if len(row) == 10 else 0.0
+
             this_hit = Hit(
                 row[0],
                 target,
@@ -408,6 +417,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                 abs(hash(time())) // (pargs.i + 1),
                 ref,
                 refs,
+                coverage,
             )
 
             # Used to calculate the sum of each targets' individual scores
@@ -535,7 +545,6 @@ def top_reference_realign(orthoset_raw_path, orthoset_aln_path, orthoset_trimmed
             out.append((header, seq.replace("-", "")))        
         
     out_path = path.join(top_path, gene+".aln.fa")
-
     if len(out) == 1:
         writeFasta(out_path, out)
         return
@@ -565,33 +574,70 @@ def top_reference_realign(orthoset_raw_path, orthoset_aln_path, orthoset_trimmed
 
 
 def parse_csv(out_path: str) -> DataFrame:
+
+    # Get amount of tabs in the first line
+    if out_path.endswith(".gz"):
+        with gzip.open(out_path, "rt") as f:
+            tabs = f.readline().count("\t") + 1
+    else:
+        with open(out_path, "r") as f:
+            tabs = f.readline().count("\t") + 1
+    if tabs == 10:
+        names = [
+            "header",
+            "target",
+            "frame",
+            "evalue",
+            "score",
+            "qstart",
+            "qend",
+            "sstart",
+            "send",
+            "coverage",
+        ]
+        dtype = {
+            "header": str,
+            "target": str,
+            "frame": int8,
+            "evalue": float64,
+            "score": float32,
+            "qstart": uint16,
+            "qend": uint16,
+            "sstart": uint16,
+            "send": uint16,
+            "coverage": float32,
+        }
+    else:
+        names = [
+            "header",
+            "target",
+            "frame",
+            "evalue",
+            "score",
+            "qstart",
+            "qend",
+            "sstart",
+            "send",
+        ]
+        dtype = {
+            "header": str,
+            "target": str,
+            "frame": int8,
+            "evalue": float64,
+            "score": float32,
+            "qstart": uint16,
+            "qend": uint16,
+            "sstart": uint16,
+            "send": uint16,
+        }
+
     return read_csv(
                 out_path,
                 engine="pyarrow",
                 delimiter="\t",
                 header=None,
-                names=[
-                    "header",
-                    "target",
-                    "frame",
-                    "evalue",
-                    "score",
-                    "qstart",
-                    "qend",
-                    "sstart",
-                    "send",
-                ],
-                dtype={
-                    "header": str,
-                    "target": str,
-                    "frame": int8,
-                    "evalue": float64,
-                    "score": float32,
-                    "qstart": uint16,
-                    "qend": uint16,
-                    "sstart": uint16,
-                    "send": uint16,
-                },
+                names=names,
+                dtype=dtype,
             )
 
 
@@ -1072,6 +1118,51 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         head_to_seq = get_head_to_seq(nt_db, recipe)
 
+        cluster_out = []
+        primary_nodes = set()
+        for gene, hits in output:
+            ids = [(int(hit.node.split("_")[1]), hit.node, hit.coverage) for hit in hits]
+            ids.sort(key = lambda x: x[0])
+            clusters = []
+
+            req_seq_coverage = 0.5
+            current_cluster = []
+            for child_index, node, seq_coverage in ids:
+                if not current_cluster:
+                    current_cluster.append((child_index, seq_coverage, node))
+                    current_index = child_index
+                else:
+                    if child_index - current_index <= 35:
+                        current_cluster.append((child_index, seq_coverage, node))
+                        current_index = child_index
+                    else:
+                        if len(current_cluster) == 1:
+                            if current_cluster[0][1] > req_seq_coverage:
+                                clusters.append((current_cluster[0][0], current_cluster[0][1]))
+                                primary_nodes.add(current_cluster[0][2])
+                                
+                        current_cluster = [(child_index, seq_coverage, node)]
+                        current_index = child_index
+
+            if current_cluster:
+                if len(current_cluster) == 1:
+                    if current_cluster[0][1] > req_seq_coverage:
+                        clusters.append((current_cluster[0][0], current_cluster[0][1]))
+                        primary_nodes.add(current_cluster[0][2])
+                        
+            clusters.sort(key=lambda x: x[1], reverse=True)
+
+            cluster_string = ", ".join([f"{cluster[0]} {(cluster[1]*100):.2f}%" for cluster in clusters])         
+            cluster_out.append((clusters[0][1] if clusters else 0, f"{gene},{len(ids)},{len(clusters)},{cluster_string}"))
+
+        if args.debug:
+            cluster_out.sort(key=lambda x: x[0], reverse=True)
+            with open(path.join(input_path, "diamond_clusters.csv"), "w") as fp:
+                fp.write("Gene,Seq count,Cluster count,Cluster ranges\n")
+                for line in cluster_out:
+                    fp.write(line[1] + "\n")
+
+
         if is_assembly_or_genome:
             arguments = []
             for gene, hits in output:
@@ -1079,6 +1170,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                     ConvertArgs(
                         hits,
                         gene,
+                        primary_nodes,
                     ),
                 )
 
@@ -1108,6 +1200,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
                         hit.ref,
                         hit.uid,
                         hit.refs,
+                        None,
+                        hit.node in primary_nodes,
                     )
                 hit.seq = head_to_seq[hit.node][hit.qstart - 1 : hit.qend]
                 if hit.frame < 0:

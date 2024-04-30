@@ -183,14 +183,21 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
         hits_have_frames_already = defaultdict(set)
         diamond_ids = list()
         for hit in diamond_hits:
-            diamond_ids.append(get_id(hit.node))
+            diamond_ids.append((get_id(hit.node), hit.primary))
             hits_have_frames_already[hit.node].add(hit.frame)
 
         if is_genome:
             diamond_ids.sort()
             clusters = []
+            primary_clusters = []
             current_cluster = []
-            for child_index in diamond_ids:
+            for child_index, is_primary in diamond_ids:
+                # If the hit is primary, we don't want to cluster it.
+                if is_primary:
+                    # Instead itself is a cluster with +- chomp distance
+                    primary_clusters.append((child_index - chomp_max_distance, child_index + chomp_max_distance))
+                    continue
+                
                 if not current_cluster:
                     current_cluster.append(child_index)
                     current_index = child_index
@@ -213,11 +220,18 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
                 for i in range(cluster[0]-chomp_max_distance, cluster[1] + chomp_max_distance + 1):
                     cluster_dict[i] = cluster
         
+            primary_cluster_dict = {}
+            for cluster in primary_clusters:
+                for i in range(cluster[0], cluster[1] + 1):
+                    primary_cluster_dict[i] = cluster
+        
         nt_sequences = {}
         parents = {}
 
         cluster_full = set()
         cluster_queries = defaultdict(list)
+        primary_query = {}
+        
 
         children = {}
         unaligned_sequences = []
@@ -239,6 +253,10 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
                 this_crange = cluster_dict.get(id)
                 if this_crange:
                     cluster_queries[this_crange].append(hit.query)
+                
+                if hit.primary:
+                    this_prange = primary_cluster_dict.get(id)
+                    primary_query[this_prange] = hit.query
 
             #grab most occuring query
             if is_genome and clusters:
@@ -252,13 +270,20 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
                     if header in nodes_in_gene:
                         continue
                     id = get_id(header)
+                    
+                    if id in primary_cluster_dict:
+                        source_clusters[header] = (True, primary_cluster_dict[id])
+                        cluster_full.add(header)
+                        nodes_in_gene.add(header)
+                        continue
+                    
                     if id < smallest_cluster_in_range or id > largest_cluster_in_range:
                         continue
                     
                     this_crange = cluster_dict.get(id)
                     
                     if this_crange:
-                        source_clusters[header] = this_crange
+                        source_clusters[header] = (False, this_crange)
                         cluster_full.add(header)
                         nodes_in_gene.add(header)
                 
@@ -398,10 +423,16 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
                         passed_ids.add(get_id(node))
                         parents_done.add(query)
 
-                        cquery = cluster_queries[source_clusters[node]]
+                        is_primary_child, cluster_range = source_clusters[node]
+                        if is_primary_child:
+                            where_from = "Primary Cluster"
+                            cquery = primary_query[cluster_range]
+                        else:
+                            where_from = "Cluster Full"
+                            cquery = cluster_queries[cluster_range]
 
                         new_hit = HmmHit(node=node, score=score, frame=int(frame), evalue=0, qstart=new_qstart, qend=new_qstart + len(sequence), gene=gene, query=cquery, uid=None, refs=[], seq=sequence)
-                        hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, "Found in Cluster Full"))
+                        hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, where_from))
                         output.append(new_hit)
                 continue
             
