@@ -1151,10 +1151,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
             clusters.sort(key=lambda x: x[1], reverse=True)
 
             cluster_string = ", ".join([f"{cluster[0]} {(cluster[1]*100):.2f}%" for cluster in clusters])         
-            cluster_out.append((clusters[0][1] if clusters else 0, f"{gene},{len(ids)},{len(clusters)},{cluster_string}"))
+            cluster_out.append((gene, f"{gene},{len(ids)},{len(clusters)},{cluster_string}"))
 
         if args.debug:
-            cluster_out.sort(key=lambda x: x[0], reverse=True)
+            cluster_out.sort(key=lambda x: x[0] )
             with open(path.join(input_path, "diamond_clusters.csv"), "w") as fp:
                 fp.write("Gene,Seq count,Cluster count,Cluster ranges\n")
                 for line in cluster_out:

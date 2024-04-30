@@ -726,13 +726,13 @@ def do_folder(input_folder, args):
 
         cluster_string = ", ".join([f"{cluster[0]}-{cluster[1]}" for cluster in clusters])
 
-        hmmsearch_cluster_log.append((len(clusters), f"{gene},{len(hits)},{len(clusters)},{cluster_string}"))
+        hmmsearch_cluster_log.append((gene, f"{gene},{len(hits)},{len(clusters)},{cluster_string}"))
 
         hits_db.put_bytes(f"gethmmhits:{gene}", json.encode(hits))
 
     del hits_db
 
-    hmmsearch_cluster_log.sort(key=lambda x: x[0], reverse=True)
+    hmmsearch_cluster_log.sort(key=lambda x: x[0])
     with open(path.join(input_folder, "hmm_cluster.csv"), "w") as f:
         f.write("Gene,Sequence Count,Cluster Count,Clusters\n")
         f.write("\n".join([i[1] for i in hmmsearch_cluster_log]))

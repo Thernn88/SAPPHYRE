@@ -930,7 +930,7 @@ def run_command(args: CmdArgs) -> None:
     if not args.is_genome:
         return
     else:
-        return (clusters[0][2] if clusters else 0, f"{args.gene},{len(ids)},{len(clusters)},{cluster_string}")
+        return (args.gene, f"{args.gene},{len(ids)},{len(clusters)},{cluster_string}")
 
 
 def do_folder(folder, args):
@@ -1023,7 +1023,7 @@ def do_folder(folder, args):
         cluster_logs = [run_command(arg[0]) for arg in func_args]
 
     if any(cluster_logs):
-        cluster_logs.sort(key=lambda x: x[0], reverse=True)
+        cluster_logs.sort(key=lambda x: x[0])
         cluster_logs = [x[1] for x in cluster_logs]
             
         with open(path.join(folder, "align_clusters.csv"), "w") as f:

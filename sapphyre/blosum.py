@@ -672,7 +672,7 @@ def main_process(
 
         cluster_string = ", ".join([f"{cluster[0]}-{cluster[1]} {(cluster[2]*100):.2f}%" for cluster in clusters])         
         gene = filename.split(".")[0]
-        cluster_out = (clusters[0][2] if clusters else 0, f"{gene},{len(ids)},{len(clusters)},{cluster_string}")
+        cluster_out = (gene, f"{gene},{len(ids)},{len(clusters)},{cluster_string}")
     
     return logs, reported, cluster_out
 
@@ -825,7 +825,7 @@ def do_folder(folder, args):
         
         if any(cluster_data):
             cluster_data = [x for x in cluster_data if x]
-            cluster_data.sort(key=lambda x: x[0], reverse=True)
+            cluster_data.sort(key=lambda x: x[0])
             cluster_data = [x[1] for x in cluster_data]
                 
             with open(path.join(folder, "blosum_clusters.csv"), "w") as f:
