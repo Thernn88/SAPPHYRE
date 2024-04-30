@@ -668,7 +668,7 @@ def main_process(
     clusters = []
     cluster_out = None
     if ids:
-        clusters = do_cluster(ids, ref_coords)
+        clusters = do_cluster(ids, ref_coords, true_cluster_threshold)
 
         cluster_string = ", ".join([f"{cluster[0]}-{cluster[1]} {(cluster[2]*100):.2f}%" for cluster in clusters])         
         gene = filename.split(".")[0]
