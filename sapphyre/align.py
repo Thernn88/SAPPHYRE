@@ -614,35 +614,32 @@ def insert_sequences(
     return out_seqs
 
 
-def do_cluster(ids, ref_coords, max_distance=35):
+def do_cluster(ids, ref_coords, max_distance=100):
     clusters = []
     ids.sort(key = lambda x: x[0])
 
     req_seq_coverage = 0.5
 
-    min_ref_start = min([x[0] for x in ref_coords])
-    max_ref_end = max([x[1] for x in ref_coords])
-    ref_len = max_ref_end - min_ref_start
-
     current_cluster = []
     for i, (child_index, seq_coords) in enumerate(ids):
-        seq_len = seq_coords[1] - seq_coords[0]
+
+        coverage = len(seq_coords.intersection(ref_coords)) / len(ref_coords)
+
 
         if not current_cluster:
-            current_cluster.append((child_index, seq_len / ref_len, i))
+            current_cluster.append((child_index, coverage, i))
             current_index = child_index
         else:
             if child_index - current_index <= max_distance:
-                current_cluster.append((child_index, seq_len / ref_len, i))
+                current_cluster.append((child_index, coverage, i))
                 current_index = child_index
             else:
                 if len(current_cluster) >= 2:
-                    cluster_coords = [ids[index][1] for _, _, index in current_cluster]
-
-                    min_start = min([x[0] for x in cluster_coords])
-                    max_end = max([x[1] for x in cluster_coords])
-                    coverage_len = max_end - min_start
-                    cluster_coverage = coverage_len / ref_len
+                    cluster_data_cols = set()
+                    for _, _, index in current_cluster:
+                        cluster_data_cols.update(ids[index][1])
+                        
+                    cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
 
                     clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage))
                 elif len(current_cluster) == 1:
@@ -650,17 +647,16 @@ def do_cluster(ids, ref_coords, max_distance=35):
                         cluster_coverage = current_cluster[0][1]
                         clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage))
                         
-                current_cluster = [(child_index, seq_len / ref_len, i)]
+                current_cluster = [(child_index, coverage, i)]
                 current_index = child_index
 
     if current_cluster:
         if len(current_cluster) >= 2:
-            cluster_coords = [ids[index][1] for _, _, index in current_cluster]
-
-            min_start = min([x[0] for x in cluster_coords])
-            max_end = max([x[1] for x in cluster_coords])
-            coverage_len = max_end - min_start
-            cluster_coverage = coverage_len / ref_len
+            cluster_data_cols = set()
+            for _, _, index in current_cluster:
+                cluster_data_cols.update(ids[index][1])
+                
+            cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
 
             clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage))
         elif len(current_cluster) == 1:
@@ -668,8 +664,6 @@ def do_cluster(ids, ref_coords, max_distance=35):
                 cluster_coverage = current_cluster[0][1]
                 clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage))
                 
-    clusters.sort(key=lambda x: x[2], reverse=True)
-
     return clusters
 
 
@@ -906,18 +900,29 @@ def run_command(args: CmdArgs) -> None:
         
         ids = []
         for header, seq in to_write:
-            ids.append((get_id(header), find_index_pair(seq, "-")))
-        ref_coords = []
+            start, end = find_index_pair(seq, "-")
+            data_cols = {i for i, let in enumerate(seq[start:end], start) if let != "-"}
+            ids.append((get_id(header), data_cols))
+        ref_coords = set()
         for _, seq in references:
-            ref_coords.append(find_index_pair(seq, "-"))
+            start, end = find_index_pair(seq, "-")
+            for i, let in enumerate(seq[start:end], start):
+                if let != "-":
+                    ref_coords.add(i)
     else:
         ids = []
-        ref_coords = []
+        ref_coords = set()
         for header, seq in parseFasta(args.result_file):
             if header.endswith("."):
-                ref_coords.append(find_index_pair(seq, "-"))
+                start, end = find_index_pair(seq, "-")
+                for i, let in enumerate(seq[start:end], start):
+                    if let != "-":
+                        ref_coords.add(i)
                 continue
-            ids.append((get_id(header), find_index_pair(seq, "-")))
+
+            start, end = find_index_pair(seq, "-")
+            data_cols = {i for i, let in enumerate(seq[start:end], start) if let != "-"}
+            ids.append((get_id(header), data_cols))
 
     clusters = []
     if args.is_genome:

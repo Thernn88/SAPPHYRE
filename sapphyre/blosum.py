@@ -460,35 +460,32 @@ def report_overlaps(records, true_cluster_headers):
         return reported
 
 
-def do_cluster(ids, ref_coords, max_distance=35):
+def do_cluster(ids, ref_coords, max_distance=100):
     clusters = []
     ids.sort(key = lambda x: x[0])
 
     req_seq_coverage = 0.5
 
-    min_ref_start = min([x[0] for x in ref_coords])
-    max_ref_end = max([x[1] for x in ref_coords])
-    ref_len = max_ref_end - min_ref_start
-
     current_cluster = []
     for i, (child_index, seq_coords) in enumerate(ids):
-        seq_len = seq_coords[1] - seq_coords[0]
+
+        coverage = len(seq_coords.intersection(ref_coords)) / len(ref_coords)
+
 
         if not current_cluster:
-            current_cluster.append((child_index, seq_len / ref_len, i))
+            current_cluster.append((child_index, coverage, i))
             current_index = child_index
         else:
             if child_index - current_index <= max_distance:
-                current_cluster.append((child_index, seq_len / ref_len, i))
+                current_cluster.append((child_index, coverage, i))
                 current_index = child_index
             else:
                 if len(current_cluster) >= 2:
-                    cluster_coords = [ids[index][1] for _, _, index in current_cluster]
-
-                    min_start = min([x[0] for x in cluster_coords])
-                    max_end = max([x[1] for x in cluster_coords])
-                    coverage_len = max_end - min_start
-                    cluster_coverage = coverage_len / ref_len
+                    cluster_data_cols = set()
+                    for _, _, index in current_cluster:
+                        cluster_data_cols.update(ids[index][1])
+                        
+                    cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
 
                     clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage))
                 elif len(current_cluster) == 1:
@@ -496,17 +493,16 @@ def do_cluster(ids, ref_coords, max_distance=35):
                         cluster_coverage = current_cluster[0][1]
                         clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage))
                         
-                current_cluster = [(child_index, seq_len / ref_len, i)]
+                current_cluster = [(child_index, coverage, i)]
                 current_index = child_index
 
     if current_cluster:
         if len(current_cluster) >= 2:
-            cluster_coords = [ids[index][1] for _, _, index in current_cluster]
-
-            min_start = min([x[0] for x in cluster_coords])
-            max_end = max([x[1] for x in cluster_coords])
-            coverage_len = max_end - min_start
-            cluster_coverage = coverage_len / ref_len
+            cluster_data_cols = set()
+            for _, _, index in current_cluster:
+                cluster_data_cols.update(ids[index][1])
+                
+            cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
 
             clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage))
         elif len(current_cluster) == 1:
@@ -514,8 +510,6 @@ def do_cluster(ids, ref_coords, max_distance=35):
                 cluster_coverage = current_cluster[0][1]
                 clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage))
                 
-    clusters.sort(key=lambda x: x[2], reverse=True)
-
     return clusters
 
 
@@ -634,12 +628,17 @@ def main_process(
     # else:
     to_be_excluded = {candidate.id for candidate in failing}
     ids = []
-    ref_coords = []
+    ref_coords = set()
     if passing:  # If candidate added to fasta
         for ref in reference_records:
-            ref_coords.append(find_index_pair(ref.raw, "-"))
+            start, end = find_index_pair(ref.raw, "-")
+            for i, let in enumerate(ref.raw[start:end], start):
+                if let != "-":
+                    ref_coords.add(i)
         for candidate in passing:
-            ids.append((int(candidate.id.split("|")[3].split("_")[1]), find_index_pair(candidate.raw, "-")))
+            start, end = find_index_pair(candidate.raw, "-")
+            data_cols = {i for i, let in enumerate(candidate.raw[start:end], start) if let != "-"}
+            ids.append((int(candidate.id.split("|")[3].split("_")[1]), data_cols))
         write2Line2Fasta(aa_output, regulars, compress)
 
     # logging
@@ -719,7 +718,7 @@ def do_folder(folder, args):
     file_inputs = [
         gene
         for gene in aa_input.iterdir()
-        if ".aa" in gene.suffixes and gene.suffix in ALLOWED_EXTENSIONS
+        if ".aa" in gene.suffixes and gene.suffix in ALLOWED_EXTENSIONS and "g4724" in str(gene)
     ]
     output_path = Path(folder, "outlier", "blosum")
     nt_output_path = path.join(output_path, "nt")
