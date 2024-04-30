@@ -323,8 +323,6 @@ def convert_and_cull(this_args: ConvertArgs) -> ConvertReturn:
     """
     output = []
     for hit in this_args.hits:
-        if hit.node in this_args.primary_nodes:
-            print(hit)
         output.append(
             ReporterHit(
                 hit.node,
@@ -813,7 +811,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             if sensitivity in {"more", "very", "mid", "ultra"}:
                 sensitivity += "-sensitive"
             system(
-                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity} --masking 0 -e {precision} --compress 1 --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --min-orf {min_orf} --max-hsps 0 -p {num_threads}",
+                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity} --masking 0 -e {precision} --compress 1 --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send scovhsp {quiet} --top {top_amount} --min-orf {min_orf} --max-hsps 0 -p {num_threads}",
             )
             if not path.exists(path.join(out_path)) and path.exists(path.join(out_path+".gz")):
                 out_path += ".gz"
