@@ -22,7 +22,7 @@ from msgspec import json
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
 
-def do_cluster(ids, ref_coords, max_distance=35):
+def do_cluster(ids, ref_coords, max_distance=100):
     clusters = []
     ids.sort(key = lambda x: x[0])
 
