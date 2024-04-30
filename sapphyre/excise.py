@@ -713,9 +713,11 @@ def log_excised_consensus(
     # Search for slices of the consensus seq with a high ratio of 'X' to total characters
     region = True
     had_region = False
-    recursion_max = 5
+    recursion_max = 5 * len(cluster_sets)
     last_region = {}
     while region:
+        region = None
+
         for cluster_i, cluster_set in enumerate(cluster_sets):
             sequences = [node.nt_sequence for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_id(node.header) in cluster_set)]
             if not sequences:
@@ -733,7 +735,7 @@ def log_excised_consensus(
             region = check_covered_bad_regions(consensus_seq, excise_minimum_ambig)
             if region == last_region.get(cluster_i, -1):
                 recursion_max -= 1
-                if recursion_max == 0:
+                if recursion_max <= 0:
                     region = None
                     continue
             last_region[cluster_i] = region
@@ -858,6 +860,8 @@ def log_excised_consensus(
                     else:
                         log_output.extend([f">{node.header}_{'kept' if node.header not in kicked_headers else 'kicked'}\n{node.nt_sequence}" for node in sequences_in_region])
                     log_output.append("\n")
+        if recursion_max <= 0:
+            break
 
     if is_genome:
         do_trim(aa_nodes, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
