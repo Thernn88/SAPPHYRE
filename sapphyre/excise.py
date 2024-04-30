@@ -532,6 +532,60 @@ def do_trim(aa_nodes, x_positions, ref_consensus, kicked_headers, prepare_dupes,
                     x_positions[node.header].add(x)
 
 
+def do_cluster(ids, ref_coords, max_distance=100):
+    clusters = []
+    ids.sort(key = lambda x: x[0])
+
+    req_seq_coverage = 0.5
+
+    current_cluster = []
+    for i, (child_index, seq_coords) in enumerate(ids):
+
+        coverage = len(seq_coords.intersection(ref_coords)) / len(ref_coords)
+
+
+        if not current_cluster:
+            current_cluster.append((child_index, coverage, i))
+            current_index = child_index
+        else:
+            if child_index - current_index <= max_distance:
+                current_cluster.append((child_index, coverage, i))
+                current_index = child_index
+            else:
+                if len(current_cluster) >= 2:
+                    cluster_data_cols = set()
+                    for _, _, index in current_cluster:
+                        cluster_data_cols.update(ids[index][1])
+                        
+                    cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
+
+                    clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage))
+                elif len(current_cluster) == 1:
+                    if current_cluster[0][1] > req_seq_coverage:
+                        cluster_coverage = current_cluster[0][1]
+                        clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage))
+                        
+                current_cluster = [(child_index, coverage, i)]
+                current_index = child_index
+
+    if current_cluster:
+        if len(current_cluster) >= 2:
+            cluster_data_cols = set()
+            for _, _, index in current_cluster:
+                cluster_data_cols.update(ids[index][1])
+                
+            cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
+
+            clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage))
+        elif len(current_cluster) == 1:
+            if current_cluster[0][1] > req_seq_coverage:
+                cluster_coverage = current_cluster[0][1]
+                clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage))
+                
+    return clusters
+
+
+
 def log_excised_consensus(
     gene: str,
     is_assembly_or_genome: bool,
@@ -591,11 +645,14 @@ def log_excised_consensus(
 
     ref_lens = []
     aa_nodes = []
+    reference_cluster_data = set()
     ref_consensus = defaultdict(list)
     for header, seq in raw_aa:
         if header.endswith('.'):
             start, end = find_index_pair(seq, "-")
             for i, bp in enumerate(seq[start:end], start):
+                if bp != "-":
+                    reference_cluster_data.add(i)
                 ref_consensus[i].append(bp)
                 
             ref_lens.append(bp_count(seq))
@@ -636,153 +693,171 @@ def log_excised_consensus(
     true_cluster_raw.sort(key = lambda x: x[0])
     before_true_clusters = cluster(true_cluster_raw, true_cluster_threshold)
 
+
+    # 
+    cluster_sets = [None]
+    if is_genome:
+        ids = []
+        get_id = lambda x: int(x.split("|")[3].split("_")[1])
+        for node in aa_nodes:
+            if node.header not in kicked_headers:
+                this_id = get_id(node.header)
+                start, end = find_index_pair(node.sequence, "-")
+                data_cols = {i for i, let in enumerate(node.sequence[start:end], start) if let != "-"}
+                ids.append((this_id, data_cols))
+    
+        clusters = do_cluster(ids, reference_cluster_data)
+        if clusters:
+            cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
+
     # Search for slices of the consensus seq with a high ratio of 'X' to total characters
     region = True
     had_region = False
     recursion_max = 5
-    last_region = -1
+    last_region = {}
     while region:
-        sequences = [node.nt_sequence for node in aa_nodes if node.header not in kicked_headers]
-        if not sequences:
-            break
-
-        if prepare_dupes and reporter_dupes:
-            nt_sequences = [(node.header, node.nt_sequence) for node in aa_nodes if node.header not in kicked_headers]
-            consensus_seq = make_duped_consensus(
-                nt_sequences, prepare_dupes, reporter_dupes, excise_consensus
-            )
-        else:
-            consensus_seq = dumb_consensus(sequences, excise_consensus, 0)
-
-        consensus_seq = convert_consensus(sequences, consensus_seq)
-        region = check_covered_bad_regions(consensus_seq, excise_minimum_ambig)
-
-        if region == last_region:
-            recursion_max -= 1
-            if recursion_max == 0:
+        for cluster_i, cluster_set in enumerate(cluster_sets):
+            sequences = [node.nt_sequence for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_id(node.header) in cluster_set)]
+            if not sequences:
                 break
-        last_region = region
 
-        if region:
-            had_region = True
-            sequences_in_region = []
-            sequences_out_of_region = []
-            a, b = region         
+            if prepare_dupes and reporter_dupes:
+                nt_sequences = [(node.header, node.nt_sequence) for node in aa_nodes if node.header not in kicked_headers]
+                consensus_seq = make_duped_consensus(
+                    nt_sequences, prepare_dupes, reporter_dupes, excise_consensus
+                )
+            else:
+                consensus_seq = dumb_consensus(sequences, excise_consensus, 0)
 
-            for i, node in enumerate(aa_nodes):
+            consensus_seq = convert_consensus(sequences, consensus_seq)
+            region = check_covered_bad_regions(consensus_seq, excise_minimum_ambig)
+            if region == last_region.get(cluster_i, -1):
+                recursion_max -= 1
+                if recursion_max == 0:
+                    region = None
+                    continue
+            last_region[cluster_i] = region
 
-                if node.header in kicked_headers:
+            if region:
+                had_region = True
+                sequences_in_region = []
+                sequences_out_of_region = []
+                a, b = region         
+
+                for i, node in enumerate(aa_nodes):
+
+                    if node.header in kicked_headers:
+                        continue
+
+                    overlap_coords = get_overlap(a, b, node.start * 3, node.end * 3, 1)
+                    if overlap_coords:
+                        overlap_amount = overlap_coords[1] - overlap_coords[0]
+                        overlap_percent = overlap_amount / (node.end - node.start)
+                        if overlap_percent >= excise_region_overlap: # Adjustable percent
+                            sequences_in_region.append(aa_nodes[i])
+                        else:
+                            sequences_out_of_region.append(aa_nodes[i])
+
+                if len(sequences_in_region) > excise_maximum_depth:
                     continue
 
-                overlap_coords = get_overlap(a, b, node.start * 3, node.end * 3, 1)
-                if overlap_coords:
-                    overlap_amount = overlap_coords[1] - overlap_coords[0]
-                    overlap_percent = overlap_amount / (node.end - node.start)
-                    if overlap_percent >= excise_region_overlap: # Adjustable percent
-                        sequences_in_region.append(aa_nodes[i])
-                    else:
-                        sequences_out_of_region.append(aa_nodes[i])
+                cluster_resolve_failed = True
+                nodes_in_region = None
+                if is_genome:
+                    tagged_in_region = [(int(node.header.split("|")[3].split("_")[1]), node) for node in sequences_in_region]
+                    tagged_in_region.sort(key=lambda x: x[0])
+                    clusters = cluster(tagged_in_region, true_cluster_threshold)
 
-            if len(sequences_in_region) > excise_maximum_depth:
-                continue
+                    log_output.append(f">{gene}_ambig_{a}:{b}\n{consensus_seq}")
 
-            cluster_resolve_failed = True
-            nodes_in_region = None
-            if is_genome:
-                tagged_in_region = [(int(node.header.split("|")[3].split("_")[1]), node) for node in sequences_in_region]
-                tagged_in_region.sort(key=lambda x: x[0])
-                clusters = cluster(tagged_in_region, true_cluster_threshold)
-
-                log_output.append(f">{gene}_ambig_{a}:{b}\n{consensus_seq}")
-
-                for clust in clusters:
-                    if len(clust) <= 1:
-                        continue
-
-                    clust.sort(key = lambda node: node.start)
-                    for i, node in enumerate(clust):
-                        if i == 0:
+                    for clust in clusters:
+                        if len(clust) <= 1:
                             continue
-                        
-                        prev_node = clust[i-1]
-                        overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, 1)
-                        if overlapping_coords:
-                            kmer = node.sequence[overlapping_coords[0]:overlapping_coords[1]]
-                            prev_kmer = prev_node.sequence[overlapping_coords[0]:overlapping_coords[1]]
 
-                            if is_same_kmer(kmer, prev_kmer):
+                        clust.sort(key = lambda node: node.start)
+                        for i, node in enumerate(clust):
+                            if i == 0:
                                 continue
+                            
+                            prev_node = clust[i-1]
+                            overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, 1)
+                            if overlapping_coords:
+                                kmer = node.sequence[overlapping_coords[0]:overlapping_coords[1]]
+                                prev_kmer = prev_node.sequence[overlapping_coords[0]:overlapping_coords[1]]
 
-                            splice_index = calculate_split(prev_node, node, overlapping_coords, ref_consensus)
-                            prev_positions = set()
-                            node_positions = set()
+                                if is_same_kmer(kmer, prev_kmer):
+                                    continue
 
-                            for x in range(node.start, splice_index):
-                                node_positions.add(x)
+                                splice_index = calculate_split(prev_node, node, overlapping_coords, ref_consensus)
+                                prev_positions = set()
+                                node_positions = set()
 
-                            for x in range(splice_index, prev_node.end):
-                                prev_positions.add(x)
+                                for x in range(node.start, splice_index):
+                                    node_positions.add(x)
 
-                            log_output.append(f">{prev_node.header} vs {node.header}")
-                            log_output.append(f"Split at {splice_index}")
+                                for x in range(splice_index, prev_node.end):
+                                    prev_positions.add(x)
 
-                            prev_node.sequence = del_cols(prev_node.sequence, prev_positions)
-                            node.sequence = del_cols(node.sequence, node_positions)
+                                log_output.append(f">{prev_node.header} vs {node.header}")
+                                log_output.append(f"Split at {splice_index}")
 
-                            cluster_resolve_failed = False
+                                prev_node.sequence = del_cols(prev_node.sequence, prev_positions)
+                                node.sequence = del_cols(node.sequence, node_positions)
 
-                            either_kicked = False
-                            if len(prev_node.sequence) - prev_node.sequence.count("-") < 15:
-                                kicked_headers.add(prev_node.header)
-                                either_kicked = True
-                                
+                                cluster_resolve_failed = False
 
-                            if len(node.sequence) - node.sequence.count("-") < 15:
-                                kicked_headers.add(node.header)
-                                either_kicked = True
+                                either_kicked = False
+                                if len(prev_node.sequence) - prev_node.sequence.count("-") < 15:
+                                    kicked_headers.add(prev_node.header)
+                                    either_kicked = True
+                                    
 
-                            if either_kicked:
-                                break
+                                if len(node.sequence) - node.sequence.count("-") < 15:
+                                    kicked_headers.add(node.header)
+                                    either_kicked = True
 
-                            prev_node.nt_sequence = del_cols(prev_node.nt_sequence, prev_positions, True)
-                            node.nt_sequence = del_cols(node.nt_sequence, node_positions, True)
+                                if either_kicked:
+                                    break
 
-                            node.start, node.end = find_index_pair(node.sequence, "-")
-                            prev_node.start, prev_node.end = find_index_pair(prev_node.sequence, "-")
+                                prev_node.nt_sequence = del_cols(prev_node.nt_sequence, prev_positions, True)
+                                node.nt_sequence = del_cols(node.nt_sequence, node_positions, True)
 
-                            x_positions[node.header].update(node_positions)
-                            x_positions[prev_node.header].update(prev_positions)
-             
-            if cluster_resolve_failed:
+                                node.start, node.end = find_index_pair(node.sequence, "-")
+                                prev_node.start, prev_node.end = find_index_pair(prev_node.sequence, "-")
+
+                                x_positions[node.header].update(node_positions)
+                                x_positions[prev_node.header].update(prev_positions)
                 
-                sequences_in_region = copy.deepcopy(sequences_in_region)
-                nodes_in_region = simple_assembly(sequences_in_region, excise_overlap_ambig)
+                if cluster_resolve_failed:
+                    
+                    sequences_in_region = copy.deepcopy(sequences_in_region)
+                    nodes_in_region = simple_assembly(sequences_in_region, excise_overlap_ambig)
 
-                node_indices = indices_that_resolve(nodes_in_region, sequences_out_of_region, excise_overlap_merge)
+                    node_indices = indices_that_resolve(nodes_in_region, sequences_out_of_region, excise_overlap_merge)
 
 
-                keep_indices = set()
-                if node_indices:
-                    best_index = max(node_indices, key=lambda x: len(nodes_in_region[x].sequence) - nodes_in_region[x].sequence.count("-"))
-                    keep_indices.update([best_index])
+                    keep_indices = set()
+                    if node_indices:
+                        best_index = max(node_indices, key=lambda x: len(nodes_in_region[x].sequence) - nodes_in_region[x].sequence.count("-"))
+                        keep_indices.update([best_index])
 
-                    similar_indices = identity(nodes_in_region, best_index, allowed_distance)
-                    keep_indices.update(similar_indices)
+                        similar_indices = identity(nodes_in_region, best_index, allowed_distance)
+                        keep_indices.update(similar_indices)
 
-                for i, node in enumerate(nodes_in_region):
-                    if i in keep_indices:
-                        continue
+                    for i, node in enumerate(nodes_in_region):
+                        if i in keep_indices:
+                            continue
 
-                    kicked_headers.add(node.header)
-                    kicked_headers.update(node.children)
+                        kicked_headers.add(node.header)
+                        kicked_headers.update(node.children)
 
-            if sequences_in_region:
-                log_output.append(f">{gene}_ambig_{a}:{b}\n{consensus_seq}")
-                if nodes_in_region:
-                    log_output.extend([f">{node.contig_header()}_{'kept' if i in keep_indices else 'kicked'}\n{node.nt_sequence}" for i, node in enumerate(nodes_in_region)])
-                else:
-                    log_output.extend([f">{node.header}_{'kept' if node.header not in kicked_headers else 'kicked'}\n{node.nt_sequence}" for node in sequences_in_region])
-                log_output.append("\n")
+                if sequences_in_region:
+                    log_output.append(f">{gene}_ambig_{a}:{b}\n{consensus_seq}")
+                    if nodes_in_region:
+                        log_output.extend([f">{node.contig_header()}_{'kept' if i in keep_indices else 'kicked'}\n{node.nt_sequence}" for i, node in enumerate(nodes_in_region)])
+                    else:
+                        log_output.extend([f">{node.header}_{'kept' if node.header not in kicked_headers else 'kicked'}\n{node.nt_sequence}" for node in sequences_in_region])
+                    log_output.append("\n")
 
     if is_genome:
         do_trim(aa_nodes, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
