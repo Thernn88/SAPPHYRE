@@ -2,7 +2,7 @@ import argparse
 import os
 from shutil import rmtree
 
-from . import blosum, excise, hmmfilter, internal
+from . import blosum, excise, hmmfilter, internal, cluster_consensus
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import printv
 
@@ -45,13 +45,21 @@ def main(argsobj):
         #     return
         # continue
 
-        if is_assembly or is_genome:
+        if is_assembly:
             printv("Filtering Using Hmmsearch Scores.", argsobj.verbose)
             if not hmmfilter.main(this_args, from_folder):
                 print()
                 print(argsobj.formathelp())
                 return
             from_folder = "hmmfilter"
+        
+        if is_genome:
+            printv("Filtering Clusters.", argsobj.verbose)
+            if not cluster_consensus.main(this_args, from_folder):
+                print()
+                print(argsobj.formathelp())
+                return
+            from_folder = "clusters"
             
 
         printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
