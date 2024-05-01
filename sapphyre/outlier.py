@@ -52,14 +52,7 @@ def main(argsobj):
                 print(argsobj.formathelp())
                 return
             from_folder = "hmmfilter"
-            
-        printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
-        module_return_tuple = excise.main(this_args, from_folder, is_genome, is_assembly or is_genome)
-        if not module_return_tuple:
-            print()
-            print(argsobj.formathelp())
-        from_folder = "excise"
-
+        
         if is_genome:
             printv("Filtering Clusters.", argsobj.verbose)
             if not cluster_consensus.main(this_args, from_folder):
@@ -67,6 +60,14 @@ def main(argsobj):
                 print(argsobj.formathelp())
                 return
             from_folder = "clusters"
+            
+
+        printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
+        module_return_tuple = excise.main(this_args, from_folder, is_genome, is_assembly or is_genome)
+        if not module_return_tuple:
+            print()
+            print(argsobj.formathelp())
+        from_folder = "excise"
 
         if debug > 1 or this_args.add_hmmfilter_dupes:
             continue
