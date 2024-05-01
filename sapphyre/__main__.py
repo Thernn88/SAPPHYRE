@@ -654,6 +654,12 @@ def merge_args(par, skip_reconcile_overlap=False):
         help="Percentage for majority ruling.",
     )
     par.add_argument(
+        "-t",
+        "--threshold",
+        dedault=0.5,
+        help="Consensus Merge threshold"
+    )
+    par.add_argument(
         "-mc",
         "--majority_count",
         type=int,

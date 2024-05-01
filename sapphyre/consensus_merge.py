@@ -223,7 +223,7 @@ def detect_ambig_with_gaps(nodes, gap_percentage=0.25):
     return regions
 
 class do_gene():
-    def __init__(self, aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, compress, debug, prepare_dupe_counts, reporter_dupe_counts) -> None:
+    def __init__(self, aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, compress, debug, threshold, prepare_dupe_counts, reporter_dupe_counts) -> None:
         self.aa_gene_input = aa_gene_input
         self.nt_gene_input = nt_gene_input
 
@@ -233,7 +233,7 @@ class do_gene():
         self.compress = compress
         self.debug = debug
 
-        self.threshold = 0.5
+        self.threshold = threshold
 
         self.prepare_dupes = prepare_dupe_counts
         self.reporter_dupes = reporter_dupe_counts
@@ -463,7 +463,7 @@ def do_folder(input_folder, args):
         )
         del nt_db
 
-    gene_func = do_gene(aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, args.compress, args.debug, prepare_dupe_counts, reporter_dupe_counts)
+    gene_func = do_gene(aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, args.compress, args.debug, args.threshold, prepare_dupe_counts, reporter_dupe_counts)
 
     arguments = []
     for aa_gene in listdir(aa_gene_input):
