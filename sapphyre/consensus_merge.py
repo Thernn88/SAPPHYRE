@@ -463,7 +463,7 @@ def do_folder(input_folder, args):
         )
         del nt_db
 
-    gene_func = do_gene(aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, args.compress, args.debug, args.threshold, prepare_dupe_counts, reporter_dupe_counts)
+    gene_func = do_gene(aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, args.compress, args.debug, args.consensus_threshold, prepare_dupe_counts, reporter_dupe_counts)
 
     arguments = []
     for aa_gene in listdir(aa_gene_input):
