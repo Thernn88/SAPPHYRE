@@ -737,7 +737,7 @@ def log_excised_consensus(
                 break
 
             if prepare_dupes and reporter_dupes:
-                nt_sequences = [(node.header, node.nt_sequence) for node in aa_nodes if node.header not in kicked_headers]
+                nt_sequences = [(node.header, node.nt_sequence) for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_id(node.header) in cluster_set)]
                 consensus_seq = make_duped_consensus(
                     nt_sequences, prepare_dupes, reporter_dupes, excise_consensus
                 )
@@ -1017,7 +1017,7 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
     input_folder = Path(folder, "outlier", sub_dir)
     if not input_folder.exists():
         input_folder = Path(folder, sub_dir)
-        
+
     output_folder = Path(folder, "outlier", "excise")
 
     output_aa_folder = output_folder.joinpath("aa")
