@@ -708,10 +708,10 @@ def do_folder(folder, args, is_assembly, is_genome, gene_source):
         remove(reference_kick_path)
 
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
-    wanted_aa_path = Path(folder, gene_source, "aa")
+    wanted_aa_path = Path(folder, "outlier", gene_source, "aa")
     if not args.map and wanted_aa_path.exists():
         aa_input = wanted_aa_path
-        nt_input = Path(folder, gene_source, "nt")
+        nt_input = Path(folder, "outlier", gene_source, "nt")
     else:
         aa_input = Path(folder, "align")
         nt_input = Path(folder, "nt_aligned")
