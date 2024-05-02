@@ -678,9 +678,9 @@ def log_excised_consensus(
     kicked_headers = set()
 
     cluster_sets = [None]
+    get_id = lambda x: int(x.split("|")[3].split("_")[1])
     if is_genome:
         ids = []
-        get_id = lambda x: int(x.split("|")[3].split("_")[1])
         for node in aa_nodes:
             if node.header not in kicked_headers:
                 this_id = get_id(node.header)
