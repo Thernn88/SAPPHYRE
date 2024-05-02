@@ -68,6 +68,7 @@ FlexcullArgs = namedtuple(
         "is_ncg",  # non coding gene
         "keep_codons",
         "blosum_max_percent",
+        "genome",
     ],
 )
 
@@ -977,6 +978,59 @@ def align_to_aa_order(nt_out, aa_content):
         yield (header, nt_out[header])
 
 
+def do_cluster(ids, ref_coords, max_distance=100):
+    clusters = []
+    ids.sort(key = lambda x: x[0])
+
+    req_seq_coverage = 0.5
+
+    current_cluster = []
+    for i, (child_index, seq_coords) in enumerate(ids):
+
+        coverage = len(seq_coords.intersection(ref_coords)) / len(ref_coords)
+
+
+        if not current_cluster:
+            current_cluster.append((child_index, coverage, i))
+            current_index = child_index
+        else:
+            if child_index - current_index <= max_distance:
+                current_cluster.append((child_index, coverage, i))
+                current_index = child_index
+            else:
+                if len(current_cluster) >= 2:
+                    cluster_data_cols = set()
+                    for _, _, index in current_cluster:
+                        cluster_data_cols.update(ids[index][1])
+                        
+                    cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
+
+                    clusters.append((current_cluster[0][0], current_cluster[-1][0]))
+                elif len(current_cluster) == 1:
+                    if current_cluster[0][1] > req_seq_coverage:
+                        cluster_coverage = current_cluster[0][1]
+                        clusters.append((current_cluster[0][0], current_cluster[0][0]))
+                        
+                current_cluster = [(child_index, coverage, i)]
+                current_index = child_index
+
+    if current_cluster:
+        if len(current_cluster) >= 2:
+            cluster_data_cols = set()
+            for _, _, index in current_cluster:
+                cluster_data_cols.update(ids[index][1])
+                
+            cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
+
+            clusters.append((current_cluster[0][0], current_cluster[-1][0]))
+        elif len(current_cluster) == 1:
+            if current_cluster[0][1] > req_seq_coverage:
+                cluster_coverage = current_cluster[0][1]
+                clusters.append((current_cluster[0][0], current_cluster[0][0]))
+                
+    return clusters
+
+
 def cull_reference_outliers(reference_records: list, debug: int) -> list:
     """
     Removes reference sequences which have an unusually large mean
@@ -1074,6 +1128,28 @@ def do_gene(fargs: FlexcullArgs) -> None:
     aa_out = references.copy()
     this_seqs = []
 
+    get_id = lambda header: int(header.split("|")[3].split("_")[1])
+
+    flattened_set = set()
+    if fargs.genome:
+        ids = []
+        for header, raw_sequence in candidates:
+            start, end = find_index_pair(raw_sequence, "-")
+            data_cols = {i for i, let in enumerate(raw_sequence[start:end], start) if let != "-"}
+            ids.append((get_id(header), data_cols))
+
+        ref_coords = set()
+        for header, sequence in references:
+            start, end = find_index_pair(sequence, "-")
+            for i, let in enumerate(sequence[start:end], start):
+                if let != "-":
+                    ref_coords.add(i)
+
+        clusters = do_cluster(ids, ref_coords)
+        if clusters:
+            cluster_sets = [set(range(start, end+1)) for start, end in clusters]
+            flattened_set = set.union(*cluster_sets)
+
     for header, raw_sequence in candidates:
         sequence = list(raw_sequence)
 
@@ -1133,7 +1209,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
             data_length = cull_end - cull_start
             bp_after_cull = len(out_line) - out_line.count("-")
 
-            if bp_after_cull >= fargs.bp:
+            if get_id(header) in flattened_set or bp_after_cull >= fargs.bp:
                 follow_through[header] = (
                     False,
                     cull_start,
@@ -1364,6 +1440,7 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
                     input_gene in non_coding_gene,
                     args.keep_codons,
                     args.blosum_max_percent,
+                    dbis_genome,
                     
                 ),
             ),
