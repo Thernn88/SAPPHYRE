@@ -345,7 +345,7 @@ def outlier_args(par):
         "-rpc",
         "--rescue_passing_cluster",
         type=float,
-        default=0.75,
+        default=0.5,
     )
     par.add_argument(
         "-aid",
