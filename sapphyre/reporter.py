@@ -519,6 +519,7 @@ OutputArgs = namedtuple(
         "verbose",
         "compress",
         "target_taxon",
+        "prepare_dupes",
         "top_refs",
         "matches",
         "blosum_strictness",
@@ -528,6 +529,30 @@ OutputArgs = namedtuple(
         "is_assembly_or_genome",
     ],
 )
+
+
+def tag(sequences: list[tuple[str, str]], prepare_dupes: dict[str, dict[str, int]], reporter_dupes: dict[str, list[str]]) -> list[tuple[str, str]]:
+    """Tags the output with the prepare dupes and the dupes.
+
+    Args:
+    ----
+        sequences (list): List of sequences
+        prepare_dupes (dict): Prepare dupes
+        dupes (dict): Dupes
+    Returns:
+        list: Tagged output
+    """
+    output = []
+    for header, sequence in sequences:
+        node = header.split("|")[3]
+        dupes = prepare_dupes.get(node, 1) + sum(
+            prepare_dupes.get(node, 1)
+            for node in reporter_dupes.get(node, [])
+        )
+        header = f"{header}|{dupes}"
+        output.append((header, sequence))
+
+    return output
 
 
 def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
@@ -607,6 +632,10 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     if debug_alignments:
         debug_alignments.close()
         debug_dupes.close()
+
+    aa_output = tag(aa_output, oargs.prepare_dupes, this_gene_dupes)
+    nt_output = tag(nt_output, oargs.prepare_dupes, this_gene_dupes)
+
     if aa_output:
         # If valid sequences were found, insert the present references
         aa_core_sequences = print_core_sequences(
@@ -634,6 +663,13 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         2,
     )
     return oargs.gene, this_gene_dupes, len(aa_output), header_to_score, {hit.node for hit in this_hits}
+
+
+def get_prepare_dupes(rocks_nt_db: RocksDB) -> dict[str, dict[str, int]]:
+    prepare_dupe_counts = json.decode(
+        rocks_nt_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]]
+    )
+    return prepare_dupe_counts
 
 
 def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: int):
@@ -692,6 +728,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
 
     target_taxon = get_gene_variants(rocky.get_rock("rocks_hits_db"))
     top_refs, is_assembly, is_genome = get_toprefs(rocky.get_rock("rocks_nt_db"))
+    gene_dupes = get_prepare_dupes(rocky.get_rock("rocks_nt_db"))
     raw_data = rocky.get_rock("rocks_nt_db").get("getall:original_coords")
     original_coords = {}
     if raw_data:
@@ -721,6 +758,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
                     args.verbose,
                     args.compress,
                     set(target_taxon.get(gene, [])),
+                    gene_dupes.get(gene, {}),
                     top_refs,
                     args.matches,
                     args.blosum_strictness,
