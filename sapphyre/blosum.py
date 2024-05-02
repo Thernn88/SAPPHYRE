@@ -467,48 +467,50 @@ def do_cluster(ids, ref_coords, max_distance=100):
     req_seq_coverage = 0.5
 
     current_cluster = []
-    for i, (child_index, seq_coords) in enumerate(ids):
+    for i, (child_index, seq_coords, passed) in enumerate(ids):
 
         coverage = len(seq_coords.intersection(ref_coords)) / len(ref_coords)
 
 
         if not current_cluster:
-            current_cluster.append((child_index, coverage, i))
+            current_cluster.append((child_index, coverage, i, passed))
             current_index = child_index
         else:
             if child_index - current_index <= max_distance:
-                current_cluster.append((child_index, coverage, i))
+                current_cluster.append((child_index, coverage, i, passed))
                 current_index = child_index
             else:
+                amt_passed = sum([passed for _, _, _, passed in current_cluster])
                 if len(current_cluster) >= 2:
                     cluster_data_cols = set()
-                    for _, _, index in current_cluster:
+                    for _, _, index, _ in current_cluster:
                         cluster_data_cols.update(ids[index][1])
                         
                     cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
 
-                    clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage))
+                    clusters.append((current_cluster[0][0], current_cluster[-1][0],  cluster_coverage,amt_passed / len(current_cluster)))
                 elif len(current_cluster) == 1:
                     if current_cluster[0][1] > req_seq_coverage:
                         cluster_coverage = current_cluster[0][1]
-                        clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage))
+                        clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage, amt_passed / len(current_cluster)))
                         
-                current_cluster = [(child_index, coverage, i)]
+                current_cluster = [(child_index, coverage, i, passed)]
                 current_index = child_index
 
     if current_cluster:
+        amt_passed = sum([passed for _, _, _, passed in current_cluster])
         if len(current_cluster) >= 2:
             cluster_data_cols = set()
-            for _, _, index in current_cluster:
+            for _, _, index, _ in current_cluster:
                 cluster_data_cols.update(ids[index][1])
                 
             cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
 
-            clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage))
+            clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage, amt_passed / len(current_cluster)))
         elif len(current_cluster) == 1:
             if current_cluster[0][1] > req_seq_coverage:
                 cluster_coverage = current_cluster[0][1]
-                clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage))
+                clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage, amt_passed / len(current_cluster)))
                 
     return clusters
 
@@ -531,6 +533,7 @@ def main_process(
     assembly: bool,
     top_refs: set,
     ref_kick_path,
+    passing_rescue_percent,
 ):
     keep_refs = not args_references
 
@@ -620,33 +623,61 @@ def main_process(
         best_match = max(matches, key=lambda x: x[0])[1]
 
         reported = report_overlaps(passing, before_true_clusters[best_match])
-    
-    # regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
-    regulars, allowed_columns = delete_empty_columns(raw_regulars)
-    # if assembly:
-    #     to_be_excluded = make_asm_exclusions(passing, failing)
-    # else:
-    to_be_excluded = {candidate.id for candidate in failing}
+
     ids = []
+    passed = {candidate.id for candidate in passing}
     ref_coords = set()
-    if passing:  # If candidate added to fasta
-        for ref in reference_records:
-            start, end = find_index_pair(ref.raw, "-")
-            for i, let in enumerate(ref.raw[start:end], start):
-                if let != "-":
-                    ref_coords.add(i)
-        for candidate in passing:
-            start, end = find_index_pair(candidate.raw, "-")
-            data_cols = {i for i, let in enumerate(candidate.raw[start:end], start) if let != "-"}
-            ids.append((int(candidate.id.split("|")[3].split("_")[1]), data_cols))
-        write2Line2Fasta(aa_output, regulars, compress)
+    get_id = lambda x: int(x.split("|")[3].split("_")[1])
+    for ref in reference_records:
+        start, end = find_index_pair(ref.raw, "-")
+        for i, let in enumerate(ref.raw[start:end], start):
+            if let != "-":
+                ref_coords.add(i)
+    for candidate in candidate_records:
+        start, end = find_index_pair(candidate.raw, "-")
+        data_cols = {i for i, let in enumerate(candidate.raw[start:end], start) if let != "-"}
+        ids.append((get_id(candidate.id), data_cols, candidate.id in passed))
+
+    clusters = []
+    cluster_out = None
+    cluster_sets = set()
+    if ids:
+        clusters = do_cluster(ids, ref_coords, true_cluster_threshold)
+        cluster_sets = [set(range(start, end+1)) for start, end, perc_passed, _ in clusters if perc_passed > passing_rescue_percent]
+        if cluster_sets:
+            flattened_set = set.union(*cluster_sets)
+
+        cluster_string = ", ".join([f"{cluster[0]}-{cluster[1]} {(cluster[2]*100):.2f}%" for cluster in clusters])         
+        gene = filename.split(".")[0]
+        cluster_out = (gene, f"{gene},{len(ids)},{len(clusters)},{cluster_string}")
+
+    saved_fails = set()
+    if cluster_sets:
+        for i, candidate in enumerate(failing):
+            if get_id(candidate.id) in flattened_set:
+                candidate.grade = "Saved By Cluster / " + candidate.grade
+                raw_regulars.extend([candidate.id, candidate.raw])
+                saved_fails.add(i)
+
 
     # logging
     if debug:
         logs = [candidate.get_result() for candidate in failing]
 
-    # if valid candidates found, do nt output
-    if passing:
+    if saved_fails:
+        failing = [candidate for i, candidate in enumerate(failing) if i not in saved_fails]
+
+    # regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
+    regulars, allowed_columns = delete_empty_columns(raw_regulars)
+    # if assembly:
+    #     to_be_excluded = make_asm_exclusions(passing, failing)
+    # else:
+
+    to_be_excluded = {candidate.id for candidate in failing}
+
+    if passing:  # If candidate added to fasta
+        write2Line2Fasta(aa_output, regulars, compress)
+
         nt_file = filename.replace(".aa.", ".nt.")
         nt_input_path = path.join(nt_input, nt_file)
         if not path.exists(nt_output_path):
@@ -664,14 +695,7 @@ def main_process(
 
         write2Line2Fasta(nt_output_path, non_empty_lines, compress)
 
-    clusters = []
-    cluster_out = None
-    if ids:
-        clusters = do_cluster(ids, ref_coords, true_cluster_threshold)
-
-        cluster_string = ", ".join([f"{cluster[0]}-{cluster[1]} {(cluster[2]*100):.2f}%" for cluster in clusters])         
-        gene = filename.split(".")[0]
-        cluster_out = (gene, f"{gene},{len(ids)},{len(clusters)},{cluster_string}")
+    
     
     return logs, reported, cluster_out
 
@@ -775,6 +799,7 @@ def do_folder(folder, args):
                     is_genome or is_assembly,
                     top_refs,
                     reference_kick_path,
+                    args.rescue_passing_cluster,
                 ),
             )
 
@@ -804,6 +829,7 @@ def do_folder(folder, args):
                     is_genome or is_assembly,
                     top_refs,
                     reference_kick_path,
+                    args.rescue_passing_cluster,
                 ),
             )
     if args.debug:

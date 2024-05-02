@@ -342,6 +342,12 @@ def subcmd_outlier(subparsers):
 
 def outlier_args(par):
     par.add_argument(
+        "-rpc",
+        "--rescue_passing_cluster",
+        type=float,
+        default=0.75,
+    )
+    par.add_argument(
         "-aid",
         "--add_internal_dupes",
         action="store_true",
@@ -828,7 +834,6 @@ def flexcull_args(par):
         default="trimmed",
         help="Output Directory.",
     )
-
     par.add_argument(
         "-bmp",
         "--blosum_max_percent",
