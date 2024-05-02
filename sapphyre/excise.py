@@ -732,12 +732,15 @@ def log_excised_consensus(
         region = None
 
         for cluster_i, cluster_set in enumerate(cluster_sets):
-            sequences = [node.nt_sequence for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_id(node.header) in cluster_set)]
+
+            aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_id(node.header) in cluster_set)]
+
+            sequences = [node.nt_sequence for node in aa_subset]
             if not sequences:
                 break
 
             if prepare_dupes and reporter_dupes:
-                nt_sequences = [(node.header, node.nt_sequence) for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_id(node.header) in cluster_set)]
+                nt_sequences = [(node.header, node.nt_sequence) for node in aa_subset]
                 consensus_seq = make_duped_consensus(
                     nt_sequences, prepare_dupes, reporter_dupes, excise_consensus
                 )
@@ -759,7 +762,7 @@ def log_excised_consensus(
                 sequences_out_of_region = []
                 a, b = region         
 
-                for i, node in enumerate(aa_nodes):
+                for i, node in enumerate(aa_subset):
 
                     if node.header in kicked_headers:
                         continue
@@ -769,9 +772,9 @@ def log_excised_consensus(
                         overlap_amount = overlap_coords[1] - overlap_coords[0]
                         overlap_percent = overlap_amount / (node.end - node.start)
                         if overlap_percent >= excise_region_overlap: # Adjustable percent
-                            sequences_in_region.append(aa_nodes[i])
+                            sequences_in_region.append(aa_subset[i])
                         else:
-                            sequences_out_of_region.append(aa_nodes[i])
+                            sequences_out_of_region.append(aa_subset[i])
 
                 if len(sequences_in_region) > excise_maximum_depth:
                     continue
