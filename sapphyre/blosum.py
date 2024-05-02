@@ -701,17 +701,17 @@ def main_process(
     return logs, reported, cluster_out
 
 
-def do_folder(folder, args):
+def do_folder(folder, args, is_assembly, is_genome, gene_source):
     ALLOWED_EXTENSIONS = {".fa", ".fas", ".fasta", ".gz", ".fq", ".fastq"}
     reference_kick_path = Path(folder, "reference_kicks.log")
     if path.exists(reference_kick_path):
         remove(reference_kick_path)
 
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
-    wanted_aa_path = Path(folder, "trimmed", "aa")
+    wanted_aa_path = Path(folder, gene_source, "aa")
     if not args.map and wanted_aa_path.exists():
         aa_input = wanted_aa_path
-        nt_input = Path(folder, "trimmed", "nt")
+        nt_input = Path(folder, gene_source, "nt")
     else:
         aa_input = Path(folder, "align")
         nt_input = Path(folder, "nt_aligned")
@@ -720,10 +720,6 @@ def do_folder(folder, args):
         err = f"cannot find dupe databases for {folder}"
         raise FileNotFoundError(err)
     rocksdb_db = RocksDB(str(rocks_db_path))
-    is_assembly = rocksdb_db.get("get:isassembly")
-    is_assembly = is_assembly == "True"
-    is_genome = rocksdb_db.get("get:isgenome")
-    is_genome = is_genome == "True"
     top_refs = set(rocksdb_db.get("getall:valid_refs").split(",")[:1])
 
     # debugging lines, uncomment to manually set a flag
@@ -738,7 +734,7 @@ def do_folder(folder, args):
             args.verbose,
             0,
         )
-        return True, is_assembly, is_genome
+        return True
 
     file_inputs = [
         gene
@@ -862,18 +858,16 @@ def do_folder(folder, args):
             reported_csv.write("\n".join(reported_nodes))
 
     printv(f"Done! Took {time_keeper.differential():.2f} seconds", args.verbose)
-    return True, is_assembly, is_genome
+    return True
 
 
-def main(args):
-    is_assembly = None
-    is_genome = None
+def main(args, is_assembly = False, is_genome = False, gene_source = "trimmed"):
     success = False
     if isinstance(args.INPUT, list):
-        success = all([do_folder(Path(folder), args)[0] for folder in args.INPUT])
+        success = all([do_folder(Path(folder), args, is_assembly, is_genome, gene_source)[0] for folder in args.INPUT])
     elif isinstance(args.INPUT, str):
-        success, is_assembly, is_genome = do_folder(Path(args.INPUT), args)
-    return success, is_assembly, is_genome
+        success = do_folder(Path(args.INPUT), args, is_assembly, is_genome, gene_source)
+    return success
 
 
 if __name__ == "__main__":

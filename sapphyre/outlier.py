@@ -1,11 +1,21 @@
 import argparse
 import os
 from shutil import rmtree
-
+from wrap_rocks import RocksDB
 from . import blosum, excise, hmmfilter, internal, cluster_consensus
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import printv
 
+
+def get_genome_assembly(folder):
+    rocks_db_path = os.path.join(folder, "rocksdb", "sequences", "nt")
+    rocksdb_db = RocksDB(str(rocks_db_path))
+    is_assembly = rocksdb_db.get("get:isassembly")
+    is_assembly = is_assembly == "True"
+    is_genome = rocksdb_db.get("get:isgenome")
+    is_genome = is_genome == "True"
+    del rocksdb_db
+    return is_genome, is_assembly
 
 def main(argsobj):
     timer = TimeKeeper(KeeperMode.DIRECT)
@@ -21,17 +31,29 @@ def main(argsobj):
 
         printv(f"Processing: {folder}", argsobj.verbose)
         rmtree(os.path.join(folder, "outlier"), ignore_errors=True)
-        printv("Blosum62 Outlier Removal.", argsobj.verbose)
+        
         this_args = vars(argsobj)
         this_args["INPUT"] = folder
         this_args = argparse.Namespace(**this_args)
 
-        blosum_return = blosum.main(this_args)
-        if not blosum_return:
+        is_genome, is_assembly = get_genome_assembly(folder)
+
+        from_folder = "trimmed"
+
+        if is_genome:
+            printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
+            excise_passed = excise.main(this_args, from_folder, is_genome, is_assembly or is_genome)
+            if not excise_passed:
+                print()
+                print(argsobj.formathelp())
+            from_folder = "excise"
+
+        printv("Blosum62 Outlier Removal.", argsobj.verbose)
+        blosum_passed = blosum.main(this_args, is_assembly, is_genome, from_folder)
+        if not blosum_passed:
             print()
             print(argsobj.formathelp())
             return
-        blosum_passed, is_assembly, is_genome = blosum_return
         from_folder = "blosum"
 
         if argsobj.map:
@@ -53,12 +75,13 @@ def main(argsobj):
                 return
             from_folder = "hmmfilter"    
 
-        printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
-        module_return_tuple = excise.main(this_args, from_folder, is_genome, is_assembly or is_genome)
-        if not module_return_tuple:
-            print()
-            print(argsobj.formathelp())
-        from_folder = "excise"
+        if not is_genome:
+            printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
+            excise_passed = excise.main(this_args, from_folder, is_genome, is_assembly or is_genome)
+            if not excise_passed:
+                print()
+                print(argsobj.formathelp())
+            from_folder = "excise"
 
         if is_genome:
             printv("Filtering Clusters.", argsobj.verbose)
