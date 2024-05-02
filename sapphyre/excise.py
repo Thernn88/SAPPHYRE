@@ -459,7 +459,11 @@ def do_trim(aa_nodes, get_id, cluster_sets, x_positions, ref_consensus, kicked_h
                 consensus_seq = dumb_consensus(aa_sequences, excise_trim_consensus, 0)
 
             cstart, cend = find_index_pair(consensus_seq, "X")
+            cstart, cend = find_index_pair(consensus_seq, "X")
 
+            for i, maj_bp in enumerate(consensus_seq[cstart:cend], cstart):
+                if maj_bp != "X":
+                    continue
             for i, maj_bp in enumerate(consensus_seq[cstart:cend], cstart):
                 if maj_bp != "X":
                     continue
@@ -475,7 +479,13 @@ def do_trim(aa_nodes, get_id, cluster_sets, x_positions, ref_consensus, kicked_h
                         in_region.append((x, node.sequence[i], within_right))
                     elif i >= node.start and i <= node.end:
                         out_of_region.append((x, node.sequence[i], within_right))
+                    if within_left or within_right:
+                        in_region.append((x, node.sequence[i], within_right))
+                    elif i >= node.start and i <= node.end:
+                        out_of_region.append((x, node.sequence[i], within_right))
 
+                if not out_of_region and not in_region:
+                    continue
                 if not out_of_region and not in_region:
                     continue
 
