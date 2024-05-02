@@ -172,12 +172,10 @@ class Sequence(Struct, frozen=True):
     end: uint8
     header: str
     sequence: str
-    is_old_header: bool
 
     def get_node(self) -> str:
-        if self.is_old_header:
-            return self.header.split("|")[-1]
-        return self.header.split("|")[-2]
+        return self.header.split("|")[3]
+
 
 
 def non_overlap_chunks(sequence_list: list) -> list[Sequence]:
@@ -245,14 +243,10 @@ def do_protein(
 
     def get_taxa(header: str) -> str:
         return header.split("|")[2]
-
-    is_old_header = True
-    if len(candidates[0][0].split("|")[-1]) <= 2:
-        is_old_header = False
-
+    
     for header, sequence in candidates:
         start, end = find_index_pair(sequence, "-")
-        this_object = Sequence(start, end, header, sequence, is_old_header)
+        this_object = Sequence(start, end, header, sequence)
         taxa = get_taxa(header)
         taxa_groups.setdefault(taxa, []).append(this_object)
 
@@ -532,7 +526,8 @@ def do_protein(
                         node = header.split("|")[-1]
                         frame = ""
                     else:
-                        node, frame = header.split("|")[-2:]
+                        node = header.split("|")[3]
+                        frame = header.split("|")[4]
                     gene_out.append((f"{node}|{frame}|{count}", sequence))
 
     # if protein == "nt" and gene_out:  # Remove empty columns
