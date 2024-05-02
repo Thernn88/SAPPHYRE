@@ -603,12 +603,10 @@ def main_process(
     #         to_save, failing = save_partial_fails(failing, any_passed)
     #         passing.extend(to_save)
     #         passing, header_to_indices = remake_introns(passing)
-    passing = original_order_sort(original_order, passing)
 
     after_data = []
     for candidate in passing:
         after_data.append((int(candidate.id.split("|")[3].split("_")[1]), candidate.id[1:]))
-        raw_regulars.extend([candidate.id, candidate.raw])
 
     reported = []
     if after_data:
@@ -656,9 +654,12 @@ def main_process(
         for i, candidate in enumerate(failing):
             if get_id(candidate.id) in flattened_set:
                 candidate.grade = "Saved By Cluster / " + candidate.grade
-                raw_regulars.extend([candidate.id, candidate.raw])
+                passing.append(candidate)
                 saved_fails.add(i)
 
+    passing = original_order_sort(original_order, passing)
+    for candidate in passing:
+        raw_regulars.extend([candidate.id, candidate.raw])
 
     # logging
     if debug:
