@@ -1221,12 +1221,13 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
                 # Log removed data
                 if fargs.debug:
+                    rescued = " - Rescued" if get_id(header) in flattened_set and bp_after_cull < fargs.bp else ""
                     removed_section = sequence[:cull_start] + sequence[cull_end:]
                     data_removed = len(removed_section) - removed_section.count("-")
                     log.append(
                         gene
                         + ","
-                        + header
+                        + header + rescued
                         + ","
                         + str(cull_start)
                         + ","
