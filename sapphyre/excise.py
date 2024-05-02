@@ -443,93 +443,97 @@ def calculate_split(node_a: str, node_b: str, overlapping_coords: tuple, ref_con
     return highest_scoring_pos
 
 
-def do_trim(aa_nodes, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus):
-    aa_sequences = [x.sequence for x in aa_nodes if x.header not in kicked_headers]
-    if aa_sequences:
-        if prepare_dupes and reporter_dupes:
-            current_raw_aa = [(node.header, node.sequence) for node in aa_nodes if node.header not in kicked_headers]
-            consensus_seq = make_duped_consensus(
-                current_raw_aa, prepare_dupes, reporter_dupes, excise_trim_consensus
-            )
-        else:
-            consensus_seq = dumb_consensus(aa_sequences, excise_trim_consensus, 0)
+def do_trim(aa_nodes, get_id, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus):
+    for cluster_set in cluster_sets:
+        
+        sub_aa_nodes = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_id(node.header) in cluster_set)]
 
-        cstart, cend = find_index_pair(consensus_seq, "X")
+        aa_sequences = [node.sequence for node in sub_aa_nodes]
+        if aa_sequences:
+            if prepare_dupes and reporter_dupes:
+                current_raw_aa = [(node.header, node.sequence) for node in sub_aa_nodes]
+                consensus_seq = make_duped_consensus(
+                    current_raw_aa, prepare_dupes, reporter_dupes, excise_trim_consensus
+                )
+            else:
+                consensus_seq = dumb_consensus(aa_sequences, excise_trim_consensus, 0)
 
-        for i, maj_bp in enumerate(consensus_seq[cstart:cend], cstart):
-            if maj_bp != "X":
-                continue
+            cstart, cend = find_index_pair(consensus_seq, "X")
 
-            in_region = []
-            out_of_region = []
-            for x, node in enumerate(aa_nodes):
-                # within 3 bp
-                within_left = i >= node.start and i <= node.start + 3
-                within_right = i <= node.end and i >= node.end - 3
+            for i, maj_bp in enumerate(consensus_seq[cstart:cend], cstart):
+                if maj_bp != "X":
+                    continue
 
-                if within_left or within_right:
-                    in_region.append((x, node.sequence[i], within_right))
-                elif i >= node.start and i <= node.end:
-                    out_of_region.append((x, node.sequence[i], within_right))
+                in_region = []
+                out_of_region = []
+                for x, node in enumerate(sub_aa_nodes):
+                    # within 3 bp
+                    within_left = i >= node.start and i <= node.start + 3
+                    within_right = i <= node.end and i >= node.end - 3
 
-            if not out_of_region and not in_region:
-                continue
+                    if within_left or within_right:
+                        in_region.append((x, node.sequence[i], within_right))
+                    elif i >= node.start and i <= node.end:
+                        out_of_region.append((x, node.sequence[i], within_right))
 
-            if not out_of_region and in_region:
-                for node_index, bp, on_end in in_region:
-                    if bp in ref_consensus[i]:
-                        continue
-                    
-                    if on_end:
-                        for x in range(i, aa_nodes[node_index].end):
-                            x_positions[aa_nodes[node_index].header].add(x)
-                    else:
-                        for x in range(aa_nodes[node_index].start, i + 1):
-                            x_positions[aa_nodes[node_index].header].add(x)
+                if not out_of_region and not in_region:
+                    continue
 
-            if out_of_region and in_region:
-                for node_index, bp, on_end in in_region:
-                    if on_end:
-                        for x in range(i, aa_nodes[node_index].end):
-                            x_positions[aa_nodes[node_index].header].add(x)
-                    else:
-                        for x in range(aa_nodes[node_index].start, i + 1):
-                            x_positions[aa_nodes[node_index].header].add(x)
+                if not out_of_region and in_region:
+                    for node_index, bp, on_end in in_region:
+                        if bp in ref_consensus[i]:
+                            continue
+                        
+                        if on_end:
+                            for x in range(i, sub_aa_nodes[node_index].end):
+                                x_positions[sub_aa_nodes[node_index].header].add(x)
+                        else:
+                            for x in range(sub_aa_nodes[node_index].start, i + 1):
+                                x_positions[sub_aa_nodes[node_index].header].add(x)
+
+                if out_of_region and in_region:
+                    for node_index, bp, on_end in in_region:
+                        if on_end:
+                            for x in range(i, sub_aa_nodes[node_index].end):
+                                x_positions[sub_aa_nodes[node_index].header].add(x)
+                        else:
+                            for x in range(sub_aa_nodes[node_index].start, i + 1):
+                                x_positions[sub_aa_nodes[node_index].header].add(x)
 
 
-        #refresh aa
-        if x_positions:
-            for node in aa_nodes:
-                node.sequence = del_cols(node.sequence, x_positions[node.header])
-                node.start, node.end = find_index_pair(node.sequence, "-")
+            #refresh aa
+            if x_positions:
+                for node in sub_aa_nodes:
+                    node.sequence = del_cols(node.sequence, x_positions[node.header])
+                    node.start, node.end = find_index_pair(node.sequence, "-")
 
-        if prepare_dupes and reporter_dupes:
-            current_raw_aa = [(node.header, node.sequence) for node in aa_nodes if node.header not in kicked_headers]
-            consensus_seq = make_duped_consensus(
-                current_raw_aa, prepare_dupes, reporter_dupes, excise_trim_consensus
-            )
-        else:
-            aa_sequences = [x.sequence for x in aa_nodes if x.header not in kicked_headers]
-            consensus_seq = dumb_consensus(aa_sequences, excise_trim_consensus, 0)
+            if prepare_dupes and reporter_dupes:
+                current_raw_aa = [(node.header, node.sequence) for node in sub_aa_nodes if node.header not in kicked_headers]
+                consensus_seq = make_duped_consensus(
+                    current_raw_aa, prepare_dupes, reporter_dupes, excise_trim_consensus
+                )
+            else:
+                aa_sequences = [x.sequence for x in sub_aa_nodes if x.header not in kicked_headers]
+                consensus_seq = dumb_consensus(aa_sequences, excise_trim_consensus, 0)
 
-        for node in aa_nodes:
-            i = None
-            for poss_i in range(node.start, node.start + 3):
-                if node.sequence[poss_i] != consensus_seq[poss_i]:
-                    i = poss_i
+            for node in sub_aa_nodes:
+                i = None
+                for poss_i in range(node.start, node.start + 3):
+                    if node.sequence[poss_i] != consensus_seq[poss_i]:
+                        i = poss_i
 
-            if not i is None:
-                for x in range(node.start , i + 1):
-                    x_positions[node.header].add(x)
+                if not i is None:
+                    for x in range(node.start , i + 1):
+                        x_positions[node.header].add(x)
 
-            i = None
-            for poss_i in range(node.end -1, node.end - 4, -1):
-                if node.sequence[poss_i] != consensus_seq[poss_i]:
-                    i = poss_i
+                i = None
+                for poss_i in range(node.end -1, node.end - 4, -1):
+                    if node.sequence[poss_i] != consensus_seq[poss_i]:
+                        i = poss_i
 
-            if not i is None:
-                for x in range(i, node.end):
-                    x_positions[node.header].add(x)
+                if not i is None:
+                    for x in range(i, node.end):
+                        x_positions[node.header].add(x)
 
 
 def do_cluster(ids, ref_coords, max_distance=100):
@@ -663,8 +667,23 @@ def log_excised_consensus(
     ref_avg_len = sum(ref_lens) / len(ref_lens)
     kicked_headers = set()
 
+    cluster_sets = [None]
+    if is_genome:
+        ids = []
+        get_id = lambda x: int(x.split("|")[3].split("_")[1])
+        for node in aa_nodes:
+            if node.header not in kicked_headers:
+                this_id = get_id(node.header)
+                start, end = find_index_pair(node.sequence, "-")
+                data_cols = {i for i, let in enumerate(node.sequence[start:end], start) if let != "-"}
+                ids.append((this_id, data_cols))
+    
+        clusters = do_cluster(ids, reference_cluster_data)
+        if clusters:
+            cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
+
     if not is_genome:
-        do_trim(aa_nodes, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
+        do_trim(aa_nodes, get_id, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
 
     aa_sequence = {}
     for node in aa_nodes:
@@ -693,22 +712,6 @@ def log_excised_consensus(
     true_cluster_raw.sort(key = lambda x: x[0])
     before_true_clusters = cluster(true_cluster_raw, true_cluster_threshold)
 
-
-    # 
-    cluster_sets = [None]
-    if is_genome:
-        ids = []
-        get_id = lambda x: int(x.split("|")[3].split("_")[1])
-        for node in aa_nodes:
-            if node.header not in kicked_headers:
-                this_id = get_id(node.header)
-                start, end = find_index_pair(node.sequence, "-")
-                data_cols = {i for i, let in enumerate(node.sequence[start:end], start) if let != "-"}
-                ids.append((this_id, data_cols))
-    
-        clusters = do_cluster(ids, reference_cluster_data)
-        if clusters:
-            cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
 
     # Search for slices of the consensus seq with a high ratio of 'X' to total characters
     region = True
@@ -864,7 +867,7 @@ def log_excised_consensus(
             break
 
     if is_genome:
-        do_trim(aa_nodes, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
+        do_trim(aa_nodes, get_id, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
 
     if had_region:
         after_data = []
