@@ -53,6 +53,7 @@ def do_folder(
 
     arguments = []
     for aa_path in aa_genes:
+        
         aa_path = str(aa_path).replace(".gz","")
         nt_path = make_nt(aa_path)
 
@@ -76,6 +77,16 @@ def do_folder(
 
 def make_nt(aa_path: str) -> str:
     return aa_path.replace(".aa.", ".nt.").replace("/align/", "/nt/")
+
+
+def original_order_sort(order: list, sequences: list) -> list:
+    """Accepts a list of headers and a list of Records. Returns a list of
+    Records in the order of the original list.
+    """
+    candidates = {header: (header, seq) for header, seq in sequences}
+    output = [candidates.get(header, False) for header in order]
+    return [x for x in output if x]
+
 
 
 def worker(
@@ -115,7 +126,7 @@ def worker(
         else:
             printv(f"ERROR CAUGHT in {gene}: NT file does not exist", verbose, 0)
             return False
-    seqs = read_and_convert_fasta_files(gene, aa_file, nt_file, verbose)
+    seqs, order = read_and_convert_fasta_files(gene, aa_file, nt_file, verbose)
 
     if seqs is False:
         return False
@@ -127,6 +138,8 @@ def worker(
     records = []
     for i in range(0, len(aligned_lines) - 1, 2):
         records.append((aligned_lines[i].lstrip(">"), aligned_lines[i + 1]))
+
+    records = original_order_sort(order, records)
 
     writeFasta(str(out_file), records, compress)
 
@@ -155,6 +168,8 @@ def read_and_convert_fasta_files(
     aas = []
     nts = {}
 
+    aa_order = []
+
     nt_has_refs = False
     for i, nt in enumerate(parseFasta(nt_file)):
         nt_header = nt[0]
@@ -169,6 +184,7 @@ def read_and_convert_fasta_files(
         if aa_header[-1] == ".":
             aas.append((aa_header.strip(), aa_seq.strip()))
         else:
+            aa_order.append(aa_header)
             aa_intermediate.append((aa_header.strip(), aa_seq.strip()))
     # sort aa candidates by first and last data bp
     aa_intermediate.sort(key=lambda x: find_index_pair(x[1], "-"))
@@ -187,7 +203,7 @@ def read_and_convert_fasta_files(
             verbose,
             0,
         )
-        return False
+        return False, []
 
     result = {}
     i = -1
@@ -203,8 +219,8 @@ def read_and_convert_fasta_files(
                 0,
             )
             printv(f"SEQUENCE MISSING: {e}", verbose, 0)
-            return False
-    return result
+            return False, []
+    return result, aa_order
 
 
 def main(args):
