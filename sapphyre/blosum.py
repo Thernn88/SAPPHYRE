@@ -641,7 +641,7 @@ def main_process(
     cluster_sets = set()
     if ids:
         clusters = do_cluster(ids, ref_coords, true_cluster_threshold)
-        cluster_sets = [set(range(start, end+1)) for start, end, perc_passed, _ in clusters if perc_passed > passing_rescue_percent]
+        cluster_sets = [set(range(start, end+1)) for start, end, _, perc_passed in clusters if perc_passed > passing_rescue_percent]
         if cluster_sets:
             flattened_set = set.union(*cluster_sets)
 
