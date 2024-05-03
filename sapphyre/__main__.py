@@ -378,7 +378,7 @@ def outlier_args(par):
         "--threshold",
         type=float,
         default=100,
-        help="Percent scaling IQR in upper bound calculation. Default is 100%.",
+        help="Percent scaling IQR in upper bound calculation. Default is 100%%.",
     )
     #
     par.add_argument(
