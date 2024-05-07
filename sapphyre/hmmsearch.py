@@ -294,6 +294,8 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
                 query = f"{node}|1"
                 nt_sequences[query] = parent_seq
                 unaligned_sequences.append((query, parent_seq))
+                if query not in parents and node not in cluster_full:
+                    children[query] = fallback[node]
 
                 # Forward 2 & 3
                 for shift_by in [1, 2]:
@@ -312,6 +314,8 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
                 query = f"{node}|-1"
                 nt_sequences[query] = bio_revcomp_seq
                 unaligned_sequences.append((query, bio_revcomp_seq))
+                if query not in parents and node not in cluster_full:
+                    children[query] = fallback[node]
 
                 # Reversed 2 & 3
                 for shift_by in [1, 2]:
