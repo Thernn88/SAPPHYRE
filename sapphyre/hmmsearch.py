@@ -641,6 +641,7 @@ def do_folder(input_folder, args):
     batches = [(transcripts_mapped_to[i:i + per_batch], head_to_seq, is_full, is_genome, hmm_output_folder, top_location, args.overwrite, args.map, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance) for i in range(0, len(transcripts_mapped_to), per_batch)]
 
     if args.processes <= 1:
+        all_hits = []
         for this_arg in batches:
             all_hits.append(hmm_search(*this_arg))
     else:
