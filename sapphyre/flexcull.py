@@ -18,6 +18,7 @@ from sapphyre_tools import (
     join_triplets_with_exclusions,
     join_with_exclusions,
     blosum62_distance,
+    get_overlap,
 )
 from wrap_rocks import RocksDB
 
@@ -978,49 +979,60 @@ def align_to_aa_order(nt_out, aa_content):
         yield (header, nt_out[header])
 
 
-def do_cluster(ids, ref_coords, max_distance=100):
+def do_cluster(ids, ref_coords, id_chomp_distance=100, max_distance=120):
     clusters = []
     ids.sort(key = lambda x: x[0])
+    grouped_ids = defaultdict(list)
+    for i, (child_index, seq_coords, start, end) in enumerate(ids):
+        id = int(child_index.split("_")[0])
+        grouped_ids[id].append((i, child_index, seq_coords, start, end))
+        
+    ids_ascending = sorted(grouped_ids.keys())
+    
 
     req_seq_coverage = 0.5
 
     current_cluster = []
-    for i, (child_index, seq_coords) in enumerate(ids):
-
-        coverage = len(seq_coords.intersection(ref_coords)) / len(ref_coords)
-
-
+    
+    for id in ids_ascending:
+        seq_list = grouped_ids[id]
         if not current_cluster:
-            current_cluster.append((child_index, coverage, i))
-            current_index = child_index
+            current_cluster = [(id, len(seq_coords.intersection(ref_coords)) / len(ref_coords), i) for i, _, seq_coords, _, _ in seq_list]
+            current_index = id
+            current_seqs = seq_list
         else:
-            if child_index - current_index <= max_distance:
-                current_cluster.append((child_index, coverage, i))
-                current_index = child_index
+            passed = False
+            
+            if id - current_index <= id_chomp_distance:
+                for i, child_index, seq_coords, start, end in seq_list:
+                    for _, _, _, current_start, current_end in current_seqs:
+                        distance = get_overlap(start, end, current_start, current_end, -max_distance)
+                        if distance is not None:
+                            distance = abs(distance[1] - distance[0])
+                        if distance is not None and distance < max_distance:
+                            passed = True
+                            break
+                    if passed:
+                        break
+            
+            if passed:
+                current_cluster.extend([(id, len(seq_coords.intersection(ref_coords)) / len(ref_coords), i) for i, _, seq_coords, _, _ in seq_list])
+                current_index = id
+                current_seqs = seq_list
+                
             else:
                 if len(current_cluster) >= 2:
-                    cluster_data_cols = set()
-                    for _, _, index in current_cluster:
-                        cluster_data_cols.update(ids[index][1])
-                        
-                    cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
-
                     clusters.append((current_cluster[0][0], current_cluster[-1][0]))
                 elif len(current_cluster) == 1:
                     if current_cluster[0][1] > req_seq_coverage:
-                        cluster_coverage = current_cluster[0][1]
                         clusters.append((current_cluster[0][0], current_cluster[0][0]))
                         
-                current_cluster = [(child_index, coverage, i)]
-                current_index = child_index
-
+                current_cluster = [(id, len(seq_coords.intersection(ref_coords)) / len(ref_coords), i) for i, _, seq_coords, _, _ in seq_list]
+                current_index = id
+                current_seqs = seq_list
+    
     if current_cluster:
         if len(current_cluster) >= 2:
-            cluster_data_cols = set()
-            for _, _, index in current_cluster:
-                cluster_data_cols.update(ids[index][1])
-                
-            cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
 
             clusters.append((current_cluster[0][0], current_cluster[-1][0]))
         elif len(current_cluster) == 1:
@@ -1128,7 +1140,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
     aa_out = references.copy()
     this_seqs = []
 
-    get_id = lambda header: int(header.split("|")[3].split("_")[1])
+    get_id = lambda header: header.split("|")[3].replace("NODE_","")
 
     flattened_set = set()
     if fargs.genome:
@@ -1136,7 +1148,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
         for header, raw_sequence in candidates:
             start, end = find_index_pair(raw_sequence, "-")
             data_cols = {i for i, let in enumerate(raw_sequence[start:end], start) if let != "-"}
-            ids.append((get_id(header), data_cols))
+            ids.append((get_id(header), data_cols, start, end))
 
         ref_coords = set()
         for header, sequence in references:
