@@ -938,7 +938,24 @@ def run_command(args: CmdArgs) -> None:
             to_write.append((header, sequence))
 
         if args.is_genome:
-            to_write.sort(key=lambda x: int(x[0].split("|")[3].split("_")[1]), reverse=True)
+            reordered = []
+            group = defaultdict(list)
+            for header, seq in to_write:
+                group[int(header.split("|")[3].split("_")[1])].append((header, seq))
+                
+            for key in sorted(group.keys()):
+                seqs = group[key]
+                
+                if len(seqs) == 1:
+                    reordered.append(seqs[0])
+                else:
+                    strand = int(seqs[0][0].split("|")[4])
+                    if strand < 0:
+                        seqs.reverse()
+                    
+                    reordered.extend(seqs)
+                
+            to_write = reordered
         else:
             to_write.sort(key=lambda x: find_index_pair(x[1], "-")[0])
         writeFasta(args.result_file, references + to_write, compress=args.compress)
