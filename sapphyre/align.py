@@ -656,6 +656,7 @@ def do_cluster(ids, ref_coords, id_chomp_distance=100, max_distance=120):
                                     this_direction = "forward"
                                 else:
                                     this_direction = "reverse"
+
                      
                         if current_direction == "bi" or this_direction == "bi" or this_direction == current_direction:
                             # distance = get_overlap(start, end, current_start, current_end, -max_distance)
@@ -672,7 +673,8 @@ def do_cluster(ids, ref_coords, id_chomp_distance=100, max_distance=120):
                 current_cluster.extend([(id, len(seq_coords.intersection(ref_coords)) / len(ref_coords), i) for i, _, seq_coords, _, _ in seq_list])
                 current_index = id
                 current_seqs = seq_list
-                current_direction = passing_direction
+                if passing_direction != "bi":
+                    current_direction = passing_direction
                 
             else:
                 if len(current_cluster) >= 2:
