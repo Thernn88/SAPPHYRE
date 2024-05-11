@@ -1000,16 +1000,22 @@ def do_cluster(ids, ref_coords, id_chomp_distance=100, max_distance=120):
             current_cluster = [(id, len(seq_coords.intersection(ref_coords)) / len(ref_coords), i) for i, _, seq_coords, _, _ in seq_list]
             current_index = id
             current_seqs = seq_list
+            current_direction = "bi"
         else:
             passed = False
+            passing_direction = None
             
             if id - current_index <= id_chomp_distance:
                 for i, child_index, seq_coords, start, end in seq_list:
                     for _, _, _, current_start, current_end in current_seqs:
-                        distance = get_overlap(start, end, current_start, current_end, -max_distance)
-                        if distance is not None:
-                            distance = abs(distance[1] - distance[0])
-                        if distance is not None and distance < max_distance:
+                        this_direction = "forward" if start > current_start else "backward"
+
+                        if current_direction == "bi" or this_direction == current_direction:
+                            # distance = get_overlap(start, end, current_start, current_end, -max_distance)
+                            # if distance is not None:
+                            #     distance = abs(distance[1] - distance[0])
+                            # if distance is not None and distance < max_distance:
+                            passing_direction = this_direction
                             passed = True
                             break
                     if passed:
@@ -1019,7 +1025,7 @@ def do_cluster(ids, ref_coords, id_chomp_distance=100, max_distance=120):
                 current_cluster.extend([(id, len(seq_coords.intersection(ref_coords)) / len(ref_coords), i) for i, _, seq_coords, _, _ in seq_list])
                 current_index = id
                 current_seqs = seq_list
-                
+                current_direction = passing_direction
             else:
                 if len(current_cluster) >= 2:
                     clusters.append((current_cluster[0][0], current_cluster[-1][0]))
@@ -1030,6 +1036,7 @@ def do_cluster(ids, ref_coords, id_chomp_distance=100, max_distance=120):
                 current_cluster = [(id, len(seq_coords.intersection(ref_coords)) / len(ref_coords), i) for i, _, seq_coords, _, _ in seq_list]
                 current_index = id
                 current_seqs = seq_list
+                current_direction = "bi"
     
     if current_cluster:
         if len(current_cluster) >= 2:
