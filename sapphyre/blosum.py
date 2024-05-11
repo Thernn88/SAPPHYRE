@@ -489,9 +489,22 @@ def do_cluster(ids, ref_coords, id_chomp_distance=100, max_distance=120):
             if id - current_index <= id_chomp_distance:
                 for i, child_index, seq_coords, start, end, _ in seq_list:
                     for _, _, _, current_start, current_end, _ in current_seqs:
-                        this_direction = "forward" if start >= current_start else "backward"
-
-                        if current_direction == "bi" or this_direction == current_direction:
+                        this_direction = None
+                        if start == current_start and end == current_end:
+                            this_direction = "bi"
+                        else:
+                            if start == current_start:
+                                if end >= current_end:
+                                    this_direction = "forward"
+                                else:
+                                    this_direction = "reverse"
+                            else:
+                                if start >= current_start:
+                                    this_direction = "forward"
+                                else:
+                                    this_direction = "reverse"
+                     
+                        if current_direction == "bi" or this_direction == "bi" or this_direction == current_direction:
                             # distance = get_overlap(start, end, current_start, current_end, -max_distance)
                             # if distance is not None:
                             #     distance = abs(distance[1] - distance[0])
