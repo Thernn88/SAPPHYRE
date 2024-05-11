@@ -443,10 +443,10 @@ def calculate_split(node_a: str, node_b: str, overlapping_coords: tuple, ref_con
     return highest_scoring_pos
 
 
-def do_trim(aa_nodes, get_id, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus):
+def do_trim(aa_nodes, get_parent_id, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus):
     for cluster_set in cluster_sets:
         
-        sub_aa_nodes = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_id(node.header) in cluster_set)]
+        sub_aa_nodes = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_parent_id(node.header) in cluster_set)]
 
         aa_sequences = [node.sequence for node in sub_aa_nodes]
         if aa_sequences:
@@ -708,6 +708,7 @@ def log_excised_consensus(
 
     cluster_sets = [None]
     get_id = lambda header: header.split("|")[3].replace("NODE_","")
+    get_parent_id = lambda header: int(header.split("|")[3].split("_")[1])
     if is_genome:
         ids = []
         for node in aa_nodes:
@@ -722,7 +723,7 @@ def log_excised_consensus(
             cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
 
     if not is_genome:
-        do_trim(aa_nodes, get_id, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
+        do_trim(aa_nodes, get_parent_id, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
 
     aa_sequence = {}
     for node in aa_nodes:
@@ -763,7 +764,7 @@ def log_excised_consensus(
 
         for cluster_i, cluster_set in enumerate(cluster_sets):
 
-            aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_id(node.header) in cluster_set)]
+            aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_parent_id(node.header) in cluster_set)]
 
             sequences = [node.nt_sequence for node in aa_subset]
             if not sequences:
@@ -910,7 +911,7 @@ def log_excised_consensus(
             break
 
     if is_genome:
-        do_trim(aa_nodes, get_id, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
+        do_trim(aa_nodes, get_parent_id, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
 
     if had_region:
         after_data = []
