@@ -9,7 +9,8 @@ from multiprocessing.pool import Pool
 from os import listdir, makedirs, path
 from shutil import rmtree
 import warnings
-from statistics import median, stdev
+from statistics import median
+from numpy import percentile
 from Bio import BiopythonWarning
 from blosum import BLOSUM
 from sapphyre_tools import (
@@ -1096,11 +1097,12 @@ def cull_reference_outliers(reference_records: list, debug: int) -> list:
         return reference_records, filtered, 0, 0, 0
 
     total_median = median(all_distances)
+    q3, q1 = percentile(all_distances, [75, 25])
+    iqr_coeff = 1
     # ALLOWABLE_COEFFICENT = 2
     # allowable = max(total_median * ALLOWABLE_COEFFICENT, 0.3)
 
-    std = stdev(all_distances) if len(all_distances) > 1 else 0
-    allowable = total_median + (std*2)
+    allowable = total_median + iqr_coeff * (q3-q1)
 
     # if a record's mean is too high, cull it
     for index, distances in distances_by_index.items():
