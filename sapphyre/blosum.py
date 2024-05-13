@@ -578,6 +578,7 @@ def main_process(
     ref_gap_percent: float,
     ref_min_percent: int,
     assembly: bool,
+    is_genome: bool,
     top_refs: set,
     ref_kick_path,
     passing_rescue_percent,
@@ -669,40 +670,39 @@ def main_process(
 
         reported = report_overlaps(passing, before_true_clusters[best_match])
 
+
     ids = []
-    passed = {candidate.id for candidate in passing}
-    ref_coords = set()
-    get_id = lambda header: header.split("|")[3].replace("NODE_","")
-    for ref in reference_records:
-        start, end = find_index_pair(ref.raw, "-")
-        for i, let in enumerate(ref.raw[start:end], start):
-            if let != "-":
-                ref_coords.add(i)
-    for candidate in candidate_records:
-        start, end = find_index_pair(candidate.raw, "-")
-        data_cols = {i for i, let in enumerate(candidate.raw[start:end], start) if let != "-"}
-        ids.append((get_id(candidate.id), data_cols, start, end, candidate.id in passed))
-
-    clusters = []
     cluster_out = None
-    cluster_sets = set()
-    if ids:
-        clusters = do_cluster(ids, ref_coords, true_cluster_threshold)
-        cluster_sets = [set(range(start, end+1)) for start, end, _, perc_passed in clusters if perc_passed > passing_rescue_percent]
-        if cluster_sets:
-            flattened_set = set.union(*cluster_sets)
-
-        cluster_string = ", ".join([f"{cluster[0]}-{cluster[1]} {(cluster[2]*100):.2f}%" for cluster in clusters])         
-        gene = filename.split(".")[0]
-        cluster_out = (gene, f"{gene},{len(ids)},{len(clusters)},{cluster_string}")
-
     saved_fails = set()
-    if cluster_sets:
-        for i, candidate in enumerate(failing):
-            if get_id(candidate.id) in flattened_set:
-                candidate.grade = "Saved By Cluster / " + candidate.grade
-                passing.append(candidate)
-                saved_fails.add(i)
+    save_data_cols = {}
+    if is_genome: # Rescue
+        passed = {candidate.id for candidate in passing}
+        ref_coords = set()
+        get_id = lambda header: header.split("|")[3].replace("NODE_","")
+        for ref in reference_records:
+            start, end = find_index_pair(ref.raw, "-")
+            for i, let in enumerate(ref.raw[start:end], start):
+                if let != "-":
+                    ref_coords.add(i)
+        for candidate in candidate_records:
+            data_cols = {i for i, let in enumerate(candidate.raw[candidate.start:candidate.end], candidate.start) if let != "-"}
+            save_data_cols[candidate.id] = data_cols
+            ids.append((get_id(candidate.id), data_cols, candidate.start, candidate.end, candidate.id in passed))
+
+        clusters = []
+        cluster_sets = set()
+        if ids:
+            clusters = do_cluster(ids, ref_coords, true_cluster_threshold)
+            cluster_sets = [set(range(start, end+1)) for start, end, _, perc_passed in clusters if perc_passed > passing_rescue_percent]
+            if cluster_sets:
+                flattened_set = set.union(*cluster_sets)
+
+        if cluster_sets:
+            for i, candidate in enumerate(failing):
+                if get_id(candidate.id) in flattened_set:
+                    candidate.grade = "Saved By Cluster / " + candidate.grade
+                    passing.append(candidate)
+                    saved_fails.add(i)
 
     passing = original_order_sort(original_order, passing)
     for candidate in passing:
@@ -714,6 +714,20 @@ def main_process(
 
     if saved_fails:
         failing = [candidate for i, candidate in enumerate(failing) if i not in saved_fails]
+
+    #update cluster
+    if is_genome:
+        ids = []
+        for candidate in passing:
+            data_cols = save_data_cols[candidate.id]
+            # data_cols = {i for i, let in enumerate(candidate.raw[candidate.start:candidate.end], candidate.start) if let != "-"}
+            ids.append((get_id(candidate.id), data_cols, candidate.start, candidate.end, candidate.id in passed))
+            
+        clusters = do_cluster(ids, ref_coords, true_cluster_threshold)
+
+        cluster_string = ", ".join([f"{cluster[0]}-{cluster[1]} {(cluster[2]*100):.2f}%" for cluster in clusters])         
+        gene = filename.split(".")[0]
+        cluster_out = (gene, f"{gene},{len(ids)},{len(clusters)},{cluster_string}")
 
     # regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
     regulars, allowed_columns = delete_empty_columns(raw_regulars)
@@ -841,6 +855,7 @@ def do_folder(folder, args, is_assembly, is_genome, gene_source):
                     # args.internal_consensus_threshold,
                     # args.internal_kick_threshold,
                     is_genome or is_assembly,
+                    is_genome,
                     top_refs,
                     reference_kick_path,
                     args.rescue_passing_cluster,
@@ -871,6 +886,7 @@ def do_folder(folder, args, is_assembly, is_genome, gene_source):
                     # args.internal_consensus_threshold,
                     # args.internal_kick_threshold,
                     is_genome or is_assembly,
+                    is_genome,
                     top_refs,
                     reference_kick_path,
                     args.rescue_passing_cluster,
