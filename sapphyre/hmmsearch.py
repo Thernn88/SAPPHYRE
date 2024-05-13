@@ -186,6 +186,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
             diamond_ids.append((get_id(hit.node), hit.primary))
             hits_have_frames_already[hit.node].add(hit.frame)
 
+        node_template = "NODE_{}"
         if is_genome:
             diamond_ids.sort()
             clusters = []
@@ -218,12 +219,12 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
             cluster_dict = {}
             for cluster in clusters:
                 for i in range(cluster[0]-chomp_max_distance, cluster[1] + chomp_max_distance + 1):
-                    cluster_dict[i] = cluster
+                    cluster_dict[node_template.format(i)] = cluster
         
             primary_cluster_dict = {}
             for cluster in primary_clusters:
                 for i in range(cluster[0], cluster[1] + 1):
-                    primary_cluster_dict[i] = cluster
+                    primary_cluster_dict[node_template.format(i)] = cluster
         
         nt_sequences = {}
         parents = {}
@@ -249,38 +250,36 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
                 if not is_genome:
                     continue
 
-                id = get_id(hit.node)
-                this_crange = cluster_dict.get(id)
+                this_crange = cluster_dict.get(hit.node)
                 if this_crange:
                     cluster_queries[this_crange].append(hit.query)
                 
                 if hit.primary:
-                    this_prange = primary_cluster_dict.get(id)
+                    this_prange = primary_cluster_dict.get(hit.node)
                     primary_query[this_prange] = hit.query
 
             #grab most occuring query
             if is_genome and clusters:
                 cluster_queries = {k: max(set(v), key=v.count) for k, v in cluster_queries.items()}
                 smallest_cluster_in_range = min([i[0] for i in clusters]) - chomp_max_distance
+                if smallest_cluster_in_range <= 1:
+                    smallest_cluster_in_range = 1
                 largest_cluster_in_range = max([i[1] for i in clusters]) + chomp_max_distance
-
-
                 source_clusters = {}
-                for header, seq in this_seqs.items():
+                
+                for i in range(smallest_cluster_in_range, largest_cluster_in_range + 1):
+                    header = node_template.format(i)
+                    
                     if header in nodes_in_gene:
                         continue
-                    id = get_id(header)
-                    
-                    if id in primary_cluster_dict:
-                        source_clusters[header] = (True, primary_cluster_dict[id])
+
+                    if header in primary_cluster_dict:
+                        source_clusters[header] = (True, primary_cluster_dict[header])
                         cluster_full.add(header)
                         nodes_in_gene.add(header)
                         continue
                     
-                    if id < smallest_cluster_in_range or id > largest_cluster_in_range:
-                        continue
-                    
-                    this_crange = cluster_dict.get(id)
+                    this_crange = cluster_dict.get(header)
                     
                     if this_crange:
                         source_clusters[header] = (False, this_crange)
@@ -288,7 +287,11 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
                         nodes_in_gene.add(header)
                 
             for node in nodes_in_gene:
-                parent_seq = this_seqs[node]
+                parent_seq = this_seqs.get(node)
+                if parent_seq is None:
+                    # Full cluster search introduced header not found in db.
+                    # Quicker to filter after the fact 
+                    continue
 
                 # Forward frame 1
                 query = f"{node}|1"
