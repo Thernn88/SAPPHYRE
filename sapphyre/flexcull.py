@@ -1112,7 +1112,7 @@ def cull_reference_outliers(reference_records: list, debug: int) -> list:
 
         allowable = max(total_median + iqr_coeff * iqr, 0.02)
         # allowable = (all_mean + 2*sd) ** 2
-
+        pass
         # if a record's mean is too high, cull it
 
         for index, distances in distances_by_index.items():
@@ -1124,7 +1124,7 @@ def cull_reference_outliers(reference_records: list, debug: int) -> list:
 
             if debug == 2:
                 filtered.append( (reference_records[index], this_median, "") )
-            reference_records = [reference_records[i] for i in range(len(reference_records)) if distances_by_index[i] is not None]
+        reference_records = [reference_records[i] for i in range(len(reference_records)) if distances_by_index[i] is not None]
             # else:
             #     distances_by_index[index] = mean
 # get all remaining records
