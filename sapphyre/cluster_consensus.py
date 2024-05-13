@@ -106,19 +106,17 @@ def within_highest_coverage(logs, clusters, overlap_perc, within=0.1): # kick 10
         end = cluster[4]
 
         overlap = get_overlap(start, end, highest_start, highest_end, 0)
-        if not overlap:
-            continue
+        percent = 0
+        if overlap:
+            amount = (overlap[1] - overlap[0])
+            percent = amount / min((end-start), (highest_end-highest_start))
 
-        amount = (overlap[1] - overlap[0])
-        percent = amount / min((end-start), (highest_end-highest_start))
-
-        if percent < overlap_perc:
-            continue
-
-        if cluster[2] >= req_coverage:
-            within.append(cluster)
-        else:
-            logs.append(f"Kicked due to not within 10% of max coverage:\n{cluster[0]}-{cluster[1]}\nCluster coverage: {cluster[2]:.2f}\nHighest coverage: {highest_coverage_cluster:.2f}")
+        if percent >= overlap_perc:
+            if cluster[2] < req_coverage:
+                logs.append(f"Kicked due to not within 10% of max coverage:\n{cluster[0]}-{cluster[1]}\nCluster coverage: {cluster[2]:.2f}\nHighest coverage: {highest_coverage_cluster:.2f}")
+                continue
+        
+        within.append(cluster)
 
     return within
 
@@ -210,7 +208,7 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
                 continue
 
             if abs(cluster_percent - max_percent) > 0.1: # 10% difference to reference matching percent
-                logs.append(f"Kicked due to not within 10% of top reference match:\n{clusters[i][0]}-{clusters[i][1]}\nCluster coverage: {clusters[i][2]:.2f}\nHighest matching cluster to references: {max_cluster:.2f}\nThis cluster matched by {cluster_percent:.2f}")
+                logs.append(f"Kicked due to not within 10% of top reference match:\n{clusters[i][0]}-{clusters[i][1]}\nCluster coverage: {clusters[i][2]:.2f}\nHighest matching cluster to references: {max_percent:.2f}\nThis cluster matched by {cluster_percent:.2f}")
                 cluster_consensi.pop(i)
 
         cluster_percents = [i for i in cluster_percents if i[0] in cluster_consensi]
