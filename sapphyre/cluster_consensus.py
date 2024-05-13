@@ -46,14 +46,22 @@ def do_cluster(ids, ref_coords, max_distance=100):
                     cluster_data_cols = set()
                     for _, _, index in current_cluster:
                         cluster_data_cols.update(ids[index][1])
+
+                    start = min(cluster_data_cols)
+                    end = max(cluster_data_cols)
                         
                     cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
 
-                    clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage))
+                    clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage, start, end))
                 elif len(current_cluster) == 1:
                     if current_cluster[0][1] > req_seq_coverage:
                         cluster_coverage = current_cluster[0][1]
-                        clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage))
+
+                        data_cols = ids[current_cluster[0][2]][1]
+                        start = min(data_cols)
+                        end = max(data_cols)
+
+                        clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage, start, end))
                         
                 current_cluster = [(child_index, coverage, i)]
                 current_index = child_index
@@ -63,23 +71,50 @@ def do_cluster(ids, ref_coords, max_distance=100):
             cluster_data_cols = set()
             for _, _, index in current_cluster:
                 cluster_data_cols.update(ids[index][1])
+
+            start = min(cluster_data_cols)
+            end = max(cluster_data_cols)
                 
             cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
 
-            clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage))
+            clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage, start, end))
         elif len(current_cluster) == 1:
             if current_cluster[0][1] > req_seq_coverage:
                 cluster_coverage = current_cluster[0][1]
-                clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage))
+
+                data_cols = ids[current_cluster[0][2]][1]
+                start = min(data_cols)
+                end = max(data_cols)
+                
+                clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage, start, end))
                 
     return clusters
 
-def within_highest_coverage(logs, clusters, within=0.1): # kick 10% less coverage
-    highest_coverage_cluster = max([x[2] for x in clusters])
+def within_highest_coverage(logs, clusters, overlap_perc, within=0.1): # kick 10% less coverage
+    highest_cluster = max(clusters, key = lambda x: x[2])
+    highest_coverage_cluster = highest_cluster[2]
+
+    highest_start = highest_cluster[3]
+    highest_end = highest_cluster[4]
+
     req_coverage = highest_coverage_cluster - within
 
     within = []
     for cluster in clusters:
+
+        start = cluster[3]
+        end = cluster[4]
+
+        overlap = get_overlap(start, end, highest_start, highest_end, 0)
+        if not overlap:
+            continue
+
+        amount = (overlap[1] - overlap[0])
+        percent = amount / min((end-start), (highest_end-highest_start))
+
+        if percent < overlap_perc:
+            continue
+
         if cluster[2] >= req_coverage:
             within.append(cluster)
         else:
@@ -124,7 +159,7 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
         return logs
     
 
-    clusters = within_highest_coverage(logs, clusters)
+    clusters = within_highest_coverage(logs, clusters, cluster_overlap_requirement)
 
     for i, cluster in enumerate(clusters):
         cluster_consensi[i] = None
@@ -155,16 +190,30 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
                     cluster_match += 1
             
             cluster_consensi[x] = cluster_consensus
-            cluster_percents.append((x, cluster_match / cluster_cols))
+            start = min(cluster_consensus.keys())
+            end = max(cluster_consensus.keys())
+            cluster_percents.append((x, start, end, cluster_match / cluster_cols))
 
-        max_cluster = max([i[1] for i in cluster_percents])
+        max_cluster = max(cluster_percents, key = lambda x: x[3])
+        max_percent = max_cluster[3]
+        max_start, max_end = max_cluster[1], max_cluster[2]
 
-        for i, cluster_percent in cluster_percents:
-            if abs(cluster_percent - max_cluster) > 0.1: # 10% difference to reference matching percent
+        for i, start, end, cluster_percent in cluster_percents:
+            cluster_overlap = get_overlap(start, end, max_start, max_end, 0)
+            if not cluster_overlap:
+                continue
+
+            amount = cluster_overlap[1] - cluster_overlap[0]
+            percent = amount / min((end - start), (max_end - max_start))
+
+            if percent < cluster_overlap_requirement:
+                continue
+
+            if abs(cluster_percent - max_percent) > 0.1: # 10% difference to reference matching percent
                 logs.append(f"Kicked due to not within 10% of top reference match:\n{clusters[i][0]}-{clusters[i][1]}\nCluster coverage: {clusters[i][2]:.2f}\nHighest matching cluster to references: {max_cluster:.2f}\nThis cluster matched by {cluster_percent:.2f}")
                 cluster_consensi.pop(i)
 
-        cluster_percents = [(index, percent) for index, percent in cluster_percents if index in cluster_consensi]
+        cluster_percents = [i for i in cluster_percents if i[0] in cluster_consensi]
         cluster_percents.sort(key = lambda x: x[1], reverse = True)
 
    
@@ -172,16 +221,16 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
             kicked = True
             while kicked:
                 kicked = False
-                cluster_percents = [(index, percent) for index, percent in cluster_percents if index in cluster_consensi]
+                cluster_percents = [i for i in cluster_percents if i[0] in cluster_consensi]
                 for cluster_a, cluster_b in combinations(cluster_percents, 2):
                     consensus_a = cluster_consensi[cluster_a[0]]
                     consensus_b = cluster_consensi[cluster_b[0]]
 
-                    start_a = min(consensus_a.keys())
-                    start_b = min(consensus_b.keys())
+                    start_a = cluster_a[1]
+                    end_a = cluster_a[2]
 
-                    end_a = max(consensus_a.keys())
-                    end_b = max(consensus_b.keys())
+                    start_b = cluster_b[1]
+                    end_b = cluster_b[2]
 
                     clusters_overlap = get_overlap(start_a, end_a, start_b, end_b, 0)
                     if not clusters_overlap:
