@@ -9,7 +9,7 @@ from multiprocessing.pool import Pool
 from os import listdir, makedirs, path
 from shutil import rmtree
 import warnings
-from statistics import median
+from statistics import mean, median, stdev
 from numpy import percentile
 from Bio import BiopythonWarning
 from blosum import BLOSUM
@@ -1088,7 +1088,7 @@ def cull_reference_outliers(reference_records: list, debug: int) -> list:
                 distances_by_index[i].append(1)
                 distances_by_index[j].append(1)
                 continue
-            dist = blosum62_distance(ref1[1][start:stop], ref2[1][start:stop])
+            dist = blosum62_distance(ref1[1][start:stop], ref2[1][start:stop]) ** 2
             distances_by_index[i].append(dist)
             distances_by_index[j].append(dist)
             all_distances.append(dist)
@@ -1097,13 +1097,16 @@ def cull_reference_outliers(reference_records: list, debug: int) -> list:
         return reference_records, filtered, 0, 0, 0
 
     total_median = median(all_distances)
-    q3, q1 = percentile(all_distances, [75, 25])
+    q3, median2, q1 = percentile(all_distances, [75, 50, 25])
     iqr = q3 -q1
     iqr_coeff = 1
+    # all_mean = mean(all_distances)
+    # sd = stdev(all_distances)
     # ALLOWABLE_COEFFICENT = 2
     # allowable = max(total_median * ALLOWABLE_COEFFICENT, 0.3)
 
-    allowable = total_median + iqr_coeff * iqr
+    allowable = max(0.02 + total_median + iqr_coeff * iqr, 0.05)
+    # allowable = (all_mean + 2*sd) ** 2
 
     # if a record's mean is too high, cull it
     for index, distances in distances_by_index.items():
