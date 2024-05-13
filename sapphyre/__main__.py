@@ -437,6 +437,13 @@ def outlier_args(par):
         default=15,
         help="Minimum bp for index group after column cull.",
     )
+    par.add_argument(
+        "-cor",
+        "--cluster_overlap_requirement",
+        help="Overlap requirement to compare clusters in cluster consensus for genome",
+        type=float,
+        default=0.5,
+    )
     # Collapser commands
     par.add_argument(
         "-tct",

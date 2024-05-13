@@ -88,7 +88,7 @@ def within_highest_coverage(logs, clusters, within=0.1): # kick 10% less coverag
     return within
 
 
-def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene_output_path: str, nt_gene_output_path: str, verbose: int):
+def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene_output_path: str, nt_gene_output_path: str, verbose: int, cluster_overlap_requirement: float):
     printv(f"Processing {gene}", verbose, 2)
     reference_data_cols = set()
     ids = []
@@ -183,6 +183,16 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
                     end_a = max(consensus_a.keys())
                     end_b = max(consensus_b.keys())
 
+                    clusters_overlap = get_overlap(start_a, end_a, start_b, end_b, 0)
+                    if not clusters_overlap:
+                        continue
+
+                    amount_overlap = clusters_overlap[1] - clusters_overlap[0]
+                    cluster_overlap_percent = amount_overlap / min((end_a - start_a), (end_b - start_b))
+
+                    if cluster_overlap_percent < cluster_overlap_requirement:
+                        continue
+
                     end_start = max(start_a, start_b)
                     first_end = min(end_a, end_b)
 
@@ -253,7 +263,7 @@ def do_folder(args, folder: str, from_folder: str):
     makedirs(nt_gene_output_path, exist_ok=True)
 
     for gene in listdir(aa_gene_input_path):
-        arguments.append((gene, aa_gene_input_path, nt_gene_input_path, aa_gene_output_path, nt_gene_output_path, args.verbose))
+        arguments.append((gene, aa_gene_input_path, nt_gene_input_path, aa_gene_output_path, nt_gene_output_path, args.verbose, args.cluster_overlap_requirement))
     
 
     if args.processes >= 1:
