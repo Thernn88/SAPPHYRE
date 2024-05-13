@@ -88,7 +88,8 @@ def within_highest_coverage(logs, clusters, within=0.1): # kick 10% less coverag
     return within
 
 
-def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene_output_path: str, nt_gene_output_path: str):
+def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene_output_path: str, nt_gene_output_path: str, verbose: int):
+    printv(f"Processing {gene}", verbose, 2)
     reference_data_cols = set()
     ids = []
     logs = []
@@ -252,7 +253,7 @@ def do_folder(args, folder: str, from_folder: str):
     makedirs(nt_gene_output_path, exist_ok=True)
 
     for gene in listdir(aa_gene_input_path):
-        arguments.append((gene, aa_gene_input_path, nt_gene_input_path, aa_gene_output_path, nt_gene_output_path))
+        arguments.append((gene, aa_gene_input_path, nt_gene_input_path, aa_gene_output_path, nt_gene_output_path, args.verbose))
     
 
     if args.processes >= 1:
@@ -275,7 +276,11 @@ def do_folder(args, folder: str, from_folder: str):
 
 
 def main(args, from_folder):
-    return do_folder(args, args.INPUT, from_folder)
+    global_time = TimeKeeper(KeeperMode.DIRECT)
+    # print(f"Processing: {path.basename(args.INPUT)}")
+    success = do_folder(args, args.INPUT, from_folder)
+    printv(f"Done! Took {global_time.differential():.2f} seconds", args.verbose, 0)
+    return success
 
 
 if __name__ == "__main__":
