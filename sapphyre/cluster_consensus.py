@@ -26,7 +26,7 @@ def do_cluster(ids, ref_coords, max_distance=100):
     clusters = []
     ids.sort(key = lambda x: x[0])
 
-    req_seq_coverage = 0.5
+    req_seq_coverage = 0
 
     current_cluster = []
     for i, (child_index, seq_coords) in enumerate(ids):
