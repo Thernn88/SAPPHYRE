@@ -1072,55 +1072,64 @@ def cull_reference_outliers(reference_records: list, debug: int) -> list:
     each reference pull any reference with a mean 1.5x higher than
     the group mean. Returns the remaining references in a list.
     """
-    distances_by_index = defaultdict(list)
-    all_distances = []
-    indices = {i:find_index_pair(reference_records[i][1], '-') for i in range(len(reference_records))}
+    needs_to_check = True
     filtered = []
-    # generate reference distances
-    for i, ref1 in enumerate(reference_records[:-1]):
-        start1, stop1 = indices[i]
-        for j, ref2 in enumerate(reference_records[i+1:],i+1):
-            start2, stop2 = indices[j]
-            start = max(start1, start2)
-            stop = min(stop1, stop2)
-            # avoid the occasional rust-nan result
-            if start >= stop:
-                distances_by_index[i].append(1)
-                distances_by_index[j].append(1)
-                continue
-            dist = blosum62_distance(ref1[1][start:stop], ref2[1][start:stop]) ** 2
-            distances_by_index[i].append(dist)
-            distances_by_index[j].append(dist)
-            all_distances.append(dist)
+    loop = 0
+    while needs_to_check:
+        loop += 1
+        needs_to_check = False
+        distances_by_index = defaultdict(list)
+        all_distances = []
+        indices = {i:find_index_pair(reference_records[i][1], '-') for i in range(len(reference_records))}
+        # generate reference distances
+        for i, ref1 in enumerate(reference_records[:-1]):
+            start1, stop1 = indices[i]
+            for j, ref2 in enumerate(reference_records[i+1:],i+1):
+                start2, stop2 = indices[j]
+                start = max(start1, start2)
+                stop = min(stop1, stop2)
+                # avoid the occasional rust-nan result
+                if start >= stop:
+                    distances_by_index[i].append(1)
+                    distances_by_index[j].append(1)
+                    continue
+                dist = blosum62_distance(ref1[1][start:stop], ref2[1][start:stop]) ** 2
+                distances_by_index[i].append(dist)
+                distances_by_index[j].append(dist)
+                all_distances.append(dist)
 
-    if not all_distances:
-        return reference_records, filtered, 0, 0, 0
+        if not all_distances:
+            return reference_records, filtered, 0, 0, 0
 
-    total_median = median(all_distances)
-    q3, median2, q1 = percentile(all_distances, [75, 50, 25])
-    iqr = q3 -q1
-    iqr_coeff = 1
-    # all_mean = mean(all_distances)
-    # sd = stdev(all_distances)
-    # ALLOWABLE_COEFFICENT = 2
-    # allowable = max(total_median * ALLOWABLE_COEFFICENT, 0.3)
+        total_median = median(all_distances)
+        q3, median2, q1 = percentile(all_distances, [75, 50, 25])
+        iqr = q3 - q1
+        iqr_coeff = 1
+        # all_mean = mean(all_distances)
+        # sd = stdev(all_distances)
+        # ALLOWABLE_COEFFICENT = 2
+        # allowable = max(total_median * ALLOWABLE_COEFFICENT, 0.3)
 
-    allowable = max(0.02 + total_median + iqr_coeff * iqr, 0.05)
-    # allowable = (all_mean + 2*sd) ** 2
+        allowable = max(total_median + iqr_coeff * iqr, 0.02)
+        # allowable = (all_mean + 2*sd) ** 2
 
-    # if a record's mean is too high, cull it
-    for index, distances in distances_by_index.items():
-        this_median = median(distances)
-        if this_median > allowable:# or mean > 1:
-            distances_by_index[index] = None
-            filtered.append( (reference_records[index], this_median, "kicked") )
-        
-        if debug == 2:
-            filtered.append( (reference_records[index], this_median, "") )
-        # else:
-        #     distances_by_index[index] = mean
-    # get all remaining records
+        # if a record's mean is too high, cull it
+
+        for index, distances in distances_by_index.items():
+            this_median = median(distances)
+            if this_median > allowable:# or mean > 1:
+                distances_by_index[index] = None
+                filtered.append( (reference_records[index], this_median, "kicked") )
+                needs_to_check = True
+
+            if debug == 2:
+                filtered.append( (reference_records[index], this_median, "") )
+            reference_records = [reference_records[i] for i in range(len(reference_records)) if distances_by_index[i] is not None]
+            # else:
+            #     distances_by_index[index] = mean
+# get all remaining records
     output = [reference_records[i] for i in range(len(reference_records)) if distances_by_index[i] is not None]
+
     return output, filtered, total_median, allowable, iqr
 
 
