@@ -1098,11 +1098,12 @@ def cull_reference_outliers(reference_records: list, debug: int) -> list:
 
     total_median = median(all_distances)
     q3, q1 = percentile(all_distances, [75, 25])
+    iqr = q3 -q1
     iqr_coeff = 1
     # ALLOWABLE_COEFFICENT = 2
     # allowable = max(total_median * ALLOWABLE_COEFFICENT, 0.3)
 
-    allowable = total_median + iqr_coeff * (q3-q1)
+    allowable = total_median + iqr_coeff * iqr
 
     # if a record's mean is too high, cull it
     for index, distances in distances_by_index.items():
@@ -1117,7 +1118,7 @@ def cull_reference_outliers(reference_records: list, debug: int) -> list:
         #     distances_by_index[index] = mean
     # get all remaining records
     output = [reference_records[i] for i in range(len(reference_records)) if distances_by_index[i] is not None]
-    return output, filtered, total_median, allowable, std
+    return output, filtered, total_median, allowable, iqr
 
 
 def do_gene(fargs: FlexcullArgs) -> None:
@@ -1130,12 +1131,12 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
     references, candidates = parse_fasta(gene_path)
 
-    references, filtered_refs, total_median, allowable, std = cull_reference_outliers(references, fargs.debug)
+    references, filtered_refs, total_median, allowable, iqr = cull_reference_outliers(references, fargs.debug)
     culled_references = []
     if filtered_refs:
         culled_references.append(f'{this_gene} total median: {total_median}\n')
         culled_references.append(f'{this_gene} threshold: {allowable}\n')
-        culled_references.append(f'{this_gene} standard deviation: {std}\n')
+        culled_references.append(f'{this_gene} standard deviation: {iqr}\n')
         for ref_kick, ref_median, kick in filtered_refs:
             culled_references.append(f'{ref_kick[0]},{ref_median},{kick}\n')
 
