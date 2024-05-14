@@ -790,6 +790,9 @@ def do_folder(folder, args, is_assembly, is_genome, gene_source):
     if not args.map and wanted_aa_path.exists():
         aa_input = wanted_aa_path
         nt_input = Path(folder, "outlier", gene_source, "nt")
+    elif gene_source == "trimmed":
+        aa_input = Path(folder, "trimmed", "aa")
+        nt_input = Path(folder, "trimmed", "nt")
     else:
         aa_input = Path(folder, "align")
         nt_input = Path(folder, "nt_aligned")

@@ -40,14 +40,6 @@ def main(argsobj):
 
         from_folder = "trimmed"
 
-        if is_genome:
-            printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
-            excise_passed = excise.main(this_args, from_folder, is_genome, is_assembly or is_genome)
-            if not excise_passed:
-                print()
-                print(argsobj.formathelp())
-            from_folder = "excise"
-
         printv("Blosum62 Outlier Removal.", argsobj.verbose)
         blosum_passed = blosum.main(this_args, is_assembly, is_genome, from_folder)
         if not blosum_passed:
@@ -99,6 +91,14 @@ def main(argsobj):
                 print()
                 print(argsobj.format)
             from_folder = "internal"
+            
+        if is_genome:
+            printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
+            excise_passed = excise.main(this_args, from_folder, is_genome, is_assembly or is_genome)
+            if not excise_passed:
+                print()
+                print(argsobj.formathelp())
+            from_folder = "excise"
 
     printv(f"Took {timer.differential():.2f} seconds overall.", argsobj.verbose)
 
