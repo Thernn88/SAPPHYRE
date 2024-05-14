@@ -581,7 +581,8 @@ def main_process(
     is_genome: bool,
     top_refs: set,
     ref_kick_path,
-    passing_rescue_percent,
+    passing_rescue_percent: float,
+    rescue_consensus_percent: float,
 ):
     keep_refs = not args_references
 
@@ -684,8 +685,15 @@ def main_process(
             for i, let in enumerate(ref.raw[start:end], start):
                 if let != "-":
                     ref_coords.add(i)
+        candidate_flex_consensus = defaultdict(set)
         for candidate in candidate_records:
-            data_cols = {i for i, let in enumerate(candidate.raw[candidate.start:candidate.end], candidate.start) if let != "-"}
+            data_cols = set()  
+            for i, let in enumerate(candidate.raw[candidate.start:candidate.end], candidate.start):
+                if let != "-":
+                    if candidate.id in passed:
+                        candidate_flex_consensus[i].add(let)
+                    data_cols.add(i)
+                    
             save_data_cols[candidate.id] = data_cols
             ids.append((get_id(candidate.id), data_cols, candidate.start, candidate.end, candidate.id in passed))
 
@@ -700,6 +708,15 @@ def main_process(
         if cluster_sets:
             for i, candidate in enumerate(failing):
                 if get_id(candidate.id) in flattened_set:
+                    
+                    matches = 0
+                    for x, let in enumerate(candidate.raw[candidate.start:candidate.end], candidate.start):
+                        if let in candidate_flex_consensus[x]:
+                            matches += 1
+                            
+                    if matches / candidate.end - candidate.start < rescue_consensus_percent:
+                        continue
+                    
                     candidate.grade = "Saved By Cluster / " + candidate.grade
                     passing.append(candidate)
                     saved_fails.add(i)
@@ -859,6 +876,7 @@ def do_folder(folder, args, is_assembly, is_genome, gene_source):
                     top_refs,
                     reference_kick_path,
                     args.rescue_passing_cluster,
+                    args.rescue_consensus_percent,
                 ),
             )
 
@@ -890,6 +908,7 @@ def do_folder(folder, args, is_assembly, is_genome, gene_source):
                     top_refs,
                     reference_kick_path,
                     args.rescue_passing_cluster,
+                    args.rescue_consensus_percent,
                 ),
             )
     if args.debug:

@@ -346,6 +346,14 @@ def outlier_args(par):
         "--rescue_passing_cluster",
         type=float,
         default=0.5,
+        help="Minimum percent of passing candidates in a cluster to rescue kicked sequences.",
+    )
+    par.add_argument(
+        "-rcp",
+        "--rescue_consensus_percent",
+        type=float,
+        default=0.5,
+        help="Minimum percent of matching columns of a sequence to the candidate consensus to rescue"
     )
     par.add_argument(
         "-aid",
