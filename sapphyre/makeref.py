@@ -289,7 +289,7 @@ def cull(sequences, percent, has_nt):
     return cull_result, out
 
 
-def generate_hmm(set: Sequence_Set, overwrite, threads, verbosity, set_path):
+def generate_hmm(set: Sequence_Set, overwrite, processes, verbosity, set_path):
     """
     Generates the .hmm files for each gene in the set.
     """
@@ -301,7 +301,7 @@ def generate_hmm(set: Sequence_Set, overwrite, threads, verbosity, set_path):
     for gene, sequences in aligned_sequences.items():
         arguments.append((gene, sequences, hmm_path, overwrite, verbosity))
 
-    with Pool(threads) as pool:
+    with Pool(processes) as pool:
         pool.starmap(hmm_function, arguments)
 
 
@@ -322,7 +322,7 @@ def hmm_function(gene, sequences, hmm_path, overwrite, verbosity):
 def generate_raw(
     set: Sequence_Set,
     overwrite,
-    pool,
+    processes,
     verbosity,
     raw_path,
     raw_nt_path,
@@ -336,7 +336,12 @@ def generate_raw(
     for gene, fasta in sequences.items():
         arguments.append((gene, fasta, raw_path, raw_nt_path, overwrite, verbosity))
 
-    pool.starmap(raw_function, arguments)
+    if processes > 1:
+        with Pool(processes) as pool:
+            pool.starmap(raw_function, arguments)
+    else:
+        for argument in arguments:
+            raw_function(*argument)
 
 
 def raw_function(gene, sequences, raw_path, raw_nt_path, overwrite, verbosity):
@@ -360,7 +365,7 @@ def generate_aln(
     set: Sequence_Set,
     align_method,
     overwrite,
-    pool,
+    processes,
     verbosity,
     set_path,
     raw_path,
@@ -412,7 +417,13 @@ def generate_aln(
             ),
         )
 
-    aligned_sequences_components = pool.starmap(aln_function, arguments)
+    if processes > 1:
+        with Pool(processes) as pool:
+            aligned_sequences_components = pool.starmap(aln_function, arguments)
+    else:
+        aligned_sequences_components = []
+        for argument in arguments:
+            aligned_sequences_components.append(aln_function(*argument))
 
     set.has_aligned = True
 
@@ -509,6 +520,11 @@ def aln_function(
     aln_file = aln_path.joinpath(gene + ".aln.fa")
     trimmed_path = trimmed_path.joinpath(gene + ".aln.fa")
     nt_trimmed_path = nt_trimmed_path.joinpath(gene + ".nt.aln.fa")
+
+    trimmed_header_to_full = {}
+    for header, _ in parseFasta(raw_fa_file):
+        trimmed_header_to_full[header[:127]] = header
+
     if not aln_file.exists() or overwrite:
         printv(f"Generating: {gene}", verbosity, 2)
 
@@ -529,10 +545,13 @@ def aln_function(
 
     aligned_result = []
     aligned_dict = {}
-    file = aln_file if aln_file.exists() else raw_fa_file  # No alignment required
-    for header, seq in parseFasta(file, True):
-        header = header.split(" ")[0]
+    for header, seq in parseFasta(aln_file, True):
+        header = trimmed_header_to_full[header[:127]]
         aligned_result.append((header, seq))
+
+    writeFasta(aln_file, aligned_result, False)
+    
+    aligned_result = [(header.split(" ")[0], seq) for header, seq in aligned_result]
 
     duped_headers = set()
     seq_hashes = set()
@@ -589,7 +608,7 @@ def aln_function(
     return gene, output, duped_headers
 
 
-def make_diamonddb(set: Sequence_Set, overwrite, threads):
+def make_diamonddb(set: Sequence_Set, overwrite, processes):
     """
     Calls the diamond makedb function and returns the data to insert into the rocksdb.
     """
@@ -608,7 +627,7 @@ def make_diamonddb(set: Sequence_Set, overwrite, threads):
         fp.flush()
 
         os.system(
-            f"diamond makedb --in '{fp.name}' --db '{db_file}' --threads {threads}",
+            f"diamond makedb --in '{fp.name}' --db '{db_file}' --threads {processes}",
         )
 
     return target_to_taxon, taxon_to_sequences
@@ -764,7 +783,7 @@ def main(args):
         return False
     align_method = args.align_method  # "clustal"
     nt_input = args.nt_input
-    threads = args.processes  # 2
+    processes = args.processes  # 2
     overwrite = args.overwrite  # False
     do_align = args.align or args.all
     do_count = args.count or args.all
@@ -866,7 +885,7 @@ def main(args):
                 if file.endswith(".fa") or file.endswith(".fa.gz"):
                     file_paths.append(os.path.join(input_file, file))
 
-            per_thread = ceil(len(file_paths) / threads)
+            per_thread = ceil(len(file_paths) / processes)
             distributed_files = [
                 (
                     file_paths[i : i + per_thread],
@@ -877,10 +896,10 @@ def main(args):
             ]
 
             printv(
-                f"Generating {threads} subsets containing {per_thread} fasta files each",
+                f"Generating {processes} subsets containing {per_thread} fasta files each",
                 verbosity,
             )
-            with Pool(threads) as pool:
+            with Pool(processes) as pool:
                 subsets = pool.starmap(generate_subset, distributed_files)
 
             printv("Merging subsets", verbosity)
@@ -907,40 +926,39 @@ def main(args):
         raw_nt_path = set_path.joinpath("raw_nt")
         raw_nt_path.mkdir(exist_ok=True)
 
-    with Pool(threads) as pool:
-        printv("Generating raw", verbosity)
-        generate_raw(
-            this_set,
-            overwrite,
-            pool,
-            verbosity,
-            raw_path,
-            raw_nt_path,
-        )
+    printv("Generating raw", verbosity)
+    generate_raw(
+        this_set,
+        overwrite,
+        processes,
+        verbosity,
+        raw_path,
+        raw_nt_path,
+    )
 
-        if do_align or do_cull or do_hmm:
-            printv("Generating aln", verbosity)
-            generate_aln(
-                this_set,
-                align_method,
-                overwrite,
-                pool,
-                verbosity,
-                set_path,
-                raw_path,
-                do_cull,
-                do_internal,
-                cull_internal,
-                cull_percent,
-                this_set.has_nt
-            )
+    if do_align or do_cull or do_hmm:
+        printv("Generating aln", verbosity)
+        generate_aln(
+            this_set,
+            align_method,
+            overwrite,
+            processes,
+            verbosity,
+            set_path,
+            raw_path,
+            do_cull,
+            do_internal,
+            cull_internal,
+            cull_percent,
+            this_set.has_nt
+        )
     if do_hmm:
-        generate_hmm(this_set, overwrite, threads, verbosity, set_path)
+        generate_hmm(this_set, overwrite, processes, verbosity, set_path)
 
     if do_diamond:
         printv("Making Diamond DB", verbosity)
         target_to_taxon, taxon_to_sequences = make_diamonddb(
-            this_set, overwrite, threads
+            this_set, overwrite, processes
         )
 
     printv("Writing to RocksDB", verbosity, 1)
