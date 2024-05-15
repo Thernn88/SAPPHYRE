@@ -40,7 +40,7 @@ MainArgs = namedtuple(
 
 
 # Extend hit with new functions
-class Hit(HmmHit, frozen=True):
+class Hit(HmmHit):#, frozen=True):
     def get_bp_trim(
         self,
         this_aa: str,
@@ -473,6 +473,8 @@ def print_unmerged_sequences(
                     if base_header in header_mapped_x_times:
                         # Make header unique
                         old_header = base_header
+                        base_header = base_header + f"_{header_mapped_x_times[old_header]}"
+                        hit.node = base_header
                         header = (
                             gene
                             + "|"
@@ -481,7 +483,6 @@ def print_unmerged_sequences(
                             + taxa_id
                             + "|"
                             + base_header
-                            + f"_{header_mapped_x_times[old_header]}"
                             + "|"
                             + reference_frame
                         )
@@ -505,7 +506,7 @@ def print_unmerged_sequences(
                 header_mapped_x_times.setdefault(base_header, 1)
                 exact_hit_mapped_already.add(unique_hit)
 
-    return dupes, aa_result, nt_result, header_to_score
+    return dupes, aa_result, nt_result, header_to_score, hits
 
 
 OutputArgs = namedtuple(
@@ -613,7 +614,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     
 
     # Trim and save the sequences
-    this_gene_dupes, aa_output, nt_output, header_to_score = print_unmerged_sequences(
+    this_gene_dupes, aa_output, nt_output, header_to_score, this_hits = print_unmerged_sequences(
         this_hits,
         oargs.gene,
         oargs.taxa_id,
@@ -662,7 +663,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.verbose,
         2,
     )
-    return oargs.gene, this_gene_dupes, len(aa_output), header_to_score, {hit.node for hit in this_hits}
+    return oargs.gene, this_gene_dupes, len(aa_output), header_to_score, [(hit.node, hit.qstart, hit.qend, hit.frame) for hit in this_hits]
 
 
 def get_prepare_dupes(rocks_nt_db: RocksDB) -> dict[str, dict[str, int]]:
@@ -732,7 +733,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     raw_data = rocky.get_rock("rocks_nt_db").get("getall:original_coords")
     original_coords = {}
     if raw_data:
-        original_coords = json.decode(raw_data, type = dict[str, tuple[str, int, int]])
+        original_coords = json.decode(raw_data, type = dict[str, tuple[str, int, int, int, int]])
 
     coords_path = path.join(taxa_path, "coords")
     if path.exists(coords_path):
@@ -788,16 +789,35 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     this_gene_based_dupes = {}
     this_gene_based_scores = {}
     global_out = []
+    parent_gff_output = defaultdict(list)
+    end_bp = {}
+    gff_output = ["##gff-version\t3"]
+    
     for gene, dupes, amount, scores, nodes in recovered:
         out_data = defaultdict(list)
         if is_genome and original_coords:
+            
             with open(path.join(coords_path,gene+".txt"), "w") as fp:
-                for node in nodes:
-                    tup = original_coords.get(node, None)
+                for node, start, end, frame in nodes:
+                    tup = original_coords.get(f"NODE_{node.split('_')[1]}", None)
                     if tup:
-                        out_data[tup[0]].append((node, tup[1], tup[2]))
-                        #out_data.append((node, tup[0], tup[1], tup[2]))
-                    
+                        parent, chomp_start, chomp_end, input_len, chomp_len = tup
+                        out_data[parent].append((node, chomp_start, chomp_end))
+                        #out_data.append((node, parent, chomp_start, chomp_end))
+                        strand = "-" if frame < 0 else "+"
+                        if frame < 0:
+                            strand = "-"
+                            act_start = (chomp_len - end) + (3 - abs(frame))  + chomp_start
+                            act_end = (chomp_len - start) + (3 - abs(frame))  + chomp_start - 1
+                        else:
+                            strand = "+"
+                            act_start = start + abs(frame) + chomp_start
+                            act_end = end + abs(frame) + chomp_start - 1
+
+                        parent_gff_output[parent].append(((act_start), f"{parent}\tSapphyre\texon\t{act_start}\t{act_end}\t.\t{strand}\t.\tID={node};Parent={gene};Note={frame};"))
+                        if parent not in end_bp:
+                            end_bp[parent] = input_len
+                        
                 if out_data:
                     global_out.append(f"### {gene} ###")
                     for og, data in out_data.items():
@@ -813,6 +833,16 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
         this_gene_based_scores[gene] = scores
         
     if is_genome:
+        
+        for parent, rows in parent_gff_output.items():
+            end = end_bp[parent]
+            gff_output.append(f"##sequence-region\t{parent}\t{1}\t{end}")
+            rows.sort(key = lambda x: (x[0]))
+            gff_output.extend(i[1] for i in rows)
+        
+        if gff_output:
+            with open(path.join(coords_path, "coords.gff"), "w") as fp:
+                fp.write("\n".join(gff_output))
         with open(path.join(taxa_path, "coords.txt"), "w") as fp:
             fp.write("\n".join(global_out))
 
@@ -862,6 +892,7 @@ def main(args):
             "rocks_nt_db",
             path.join(rocks_db_path, "sequences", "nt"),
         )
+
         rocky.create_pointer("rocks_hits_db", path.join(rocks_db_path, "hits"))
         result.append(
             do_taxa(

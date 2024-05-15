@@ -14,7 +14,7 @@ import xxhash
 from msgspec import json
 
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import parseFasta, printv
+from .utils import parseFasta, printv, writeFasta
 
 
 class IndexIter:
@@ -89,11 +89,13 @@ class SeqDeduplicator:
         overlap_length,
         rename,
         skip_ntrim,
+        prepared_output,
     ) -> None:
         self.original_coords = {}
         self.original_positions = {}
         self.original_inputs = []
         self.lines = []
+        self.prepared_output = prepared_output
         self.file_index = 0
         self.minimum_sequence_length = minimum_sequence_length
         self.verbose = verbose
@@ -136,6 +138,7 @@ class SeqDeduplicator:
 
         requires = False
         for line_index, (raw_header, parent_seq) in for_loop:
+            raw_header = raw_header.replace(" |", "|").replace("| ", "|").replace(" ", "_")
             if line_index == 0:
                 requires = any(l.islower() for l in parent_seq)
             if len(parent_seq) < self.minimum_sequence_length:
@@ -155,6 +158,9 @@ class SeqDeduplicator:
             append_index_template = "{}_{}"
             sequence_template = ">{}\n{}\n"
 
+            if self.prepared_output is not None:
+                self.prepared_output.write(sequence_template.format(raw_header, parent_seq))
+                
             for seq in n_sequences:
                 seq_len = len(seq)
                 if self.rename:
@@ -211,7 +217,7 @@ class SeqDeduplicator:
                             next(individual_index)
                         if len(seq[i:i+CHOMP_LEN]) < self.minimum_sequence_length:
                             continue
-                        self.original_coords[this_header] = (raw_header, i, i+CHOMP_LEN-1)
+                        self.original_coords[this_header] = (raw_header, i, i+CHOMP_LEN-1, seq_len, CHOMP_LEN - 1)
                         self.lines.append(sequence_template.format(this_header, seq[i:i+CHOMP_LEN]))
                         next(this_index)
 
@@ -258,6 +264,9 @@ def map_taxa_runs(
 
     nt_db = wrap_rocks.RocksDB(str(nt_db_path))
     prepared_file_destination = taxa_destination_directory.joinpath(formatted_taxa_out)
+    prepared_file = None
+    if keep_prepared:
+        prepared_file = prepared_file_destination.open("w")
 
     duplicates = Counter()
     rev_comp_save = {}
@@ -275,6 +284,7 @@ def map_taxa_runs(
         overlap_length,
         rename,
         skip_ntrim,
+        prepared_file,
     )
     for fa_file_path in components:
         deduper(
@@ -284,6 +294,9 @@ def map_taxa_runs(
             dupes,
             this_index,
         )
+        
+    if keep_prepared:
+        prepared_file.close()
 
     fa_file_out = deduper.lines
     this_is_assembly = deduper.this_assembly
@@ -300,9 +313,6 @@ def map_taxa_runs(
 
     current_count = IndexIter()
     current_batch = []
-    prepared_file = None
-    if keep_prepared:
-        prepared_file = prepared_file_destination.open("w")
 
     printv(
         f"Done! Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Inserting sequences into database.",
@@ -316,10 +326,6 @@ def map_taxa_runs(
         
         next(final)
         current_batch.append(line)
-
-        if prepared_file:
-            prepared_file.write(line)
-
         next(current_count)
 
         if current_count.x > chunk_size:
@@ -335,10 +341,6 @@ def map_taxa_runs(
         recipe.append(str(recipe_index.x))
 
         nt_db.put(f"ntbatch:{recipe_index.x}", "".join(current_batch))
-
-    if prepared_file:
-        prepared_file.close()
-
     recipe_data = ",".join(recipe)
     nt_db.put("getall:batches", recipe_data)
 
