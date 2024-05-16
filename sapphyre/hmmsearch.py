@@ -183,7 +183,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
         hits_have_frames_already = defaultdict(set)
         diamond_ids = list()
         for hit in diamond_hits:
-            diamond_ids.append((get_id(hit.node), hit.primary))
+            diamond_ids.append((get_id(hit.node), hit.primary, hit.frame))
             hits_have_frames_already[hit.node].add(hit.frame)
 
         node_template = "NODE_{}"
@@ -192,7 +192,10 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
             clusters = []
             primary_clusters = []
             current_cluster = []
-            for child_index, is_primary in diamond_ids:
+
+            strands_present = set()
+
+            for child_index, is_primary, frame in diamond_ids:
                 # If the hit is primary, we don't want to cluster it.
                 if is_primary:
                     # Instead itself is a cluster with +- chomp distance
@@ -202,24 +205,30 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
                 if not current_cluster:
                     current_cluster.append(child_index)
                     current_index = child_index
+                    strand = "+" if frame > 0 else "-"
+                    strands_present.add(strand)
                 else:
                     if child_index - current_index <= chomp_max_distance:
                         current_cluster.append(child_index)
                         current_index = child_index
+                        strand = "+" if frame > 0 else "-"
+                        strands_present.add(strand)
                     else:
                         if len(current_cluster) > 2:
-                            clusters.append((current_cluster[0], current_cluster[-1]))
+                            clusters.append(((current_cluster[0], current_cluster[-1]), strands_present))
                         current_cluster = [child_index]
+                        strand = "+" if frame > 0 else "-"
+                        strands_present = {strand}
                         current_index = child_index
             
             if current_cluster:
                 if len(current_cluster) > 2:
-                    clusters.append((current_cluster[0], current_cluster[-1]))
+                    clusters.append(((current_cluster[0], current_cluster[-1]), strands_present))
                     
             cluster_dict = {}
-            for cluster in clusters:
+            for cluster, strands_present in clusters:
                 for i in range(cluster[0]-chomp_max_distance, cluster[1] + chomp_max_distance + 1):
-                    cluster_dict[node_template.format(i)] = cluster
+                    cluster_dict[node_template.format(i)] = (cluster, strands_present)
         
             primary_cluster_dict = {}
             for cluster in primary_clusters:
@@ -229,7 +238,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
         nt_sequences = {}
         parents = {}
 
-        cluster_full = set()
+        cluster_full = {}
         cluster_queries = defaultdict(list)
         primary_query = {}
         
@@ -250,7 +259,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
                 if not is_genome:
                     continue
 
-                this_crange = cluster_dict.get(hit.node)
+                this_crange, _ = cluster_dict.get(hit.node, (None, None))
                 if this_crange:
                     cluster_queries[this_crange].append(hit.query)
                 
@@ -261,10 +270,10 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
             #grab most occuring query
             if is_genome and clusters:
                 cluster_queries = {k: max(set(v), key=v.count) for k, v in cluster_queries.items()}
-                smallest_cluster_in_range = min([i[0] for i in clusters]) - chomp_max_distance
+                smallest_cluster_in_range = min([i[0][0] for i in clusters]) - chomp_max_distance
                 if smallest_cluster_in_range <= 1:
                     smallest_cluster_in_range = 1
-                largest_cluster_in_range = max([i[1] for i in clusters]) + chomp_max_distance
+                largest_cluster_in_range = max([i[0]    [1] for i in clusters]) + chomp_max_distance
                 source_clusters = {}
                 
                 for i in range(smallest_cluster_in_range, largest_cluster_in_range + 1):
@@ -275,15 +284,15 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
 
                     if header in primary_cluster_dict:
                         source_clusters[header] = (True, primary_cluster_dict[header])
-                        cluster_full.add(header)
+                        cluster_full[header] = {"+", "-"}
                         nodes_in_gene.add(header)
                         continue
                     
-                    this_crange = cluster_dict.get(header)
+                    this_crange, strands_present = cluster_dict.get(header, (None, None))
                     
                     if this_crange:
                         source_clusters[header] = (False, this_crange)
-                        cluster_full.add(header)
+                        cluster_full[header] = strands_present
                         nodes_in_gene.add(header)
                 
             for node in nodes_in_gene:
@@ -293,44 +302,50 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
                     # Quicker to filter after the fact 
                     continue
 
-                # Forward frame 1
-                query = f"{node}|1"
-                nt_sequences[query] = parent_seq
-                unaligned_sequences.append((query, parent_seq))
-                if query not in parents and node not in cluster_full:
-                    children[query] = fallback[node]
+                strands_present = {"+", "-"}
+                if node in cluster_full:
+                    strands_present = cluster_full[node]
 
-                # Forward 2 & 3
-                for shift_by in [1, 2]:
-                    shifted = shift(1, shift_by)
-                    new_query = f"{node}|{shifted}"
-                    nt_sequences[new_query] = parent_seq[shift_by:]
-                    unaligned_sequences.append((new_query, parent_seq[shift_by:]))
-                    if new_query in parents:
-                        continue
-                    if node in cluster_full:
-                        continue
-                    children[new_query] = fallback[node]
+                if "+" in strands_present:
+                    # Forward frame 1
+                    query = f"{node}|1"
+                    nt_sequences[query] = parent_seq
+                    unaligned_sequences.append((query, parent_seq))
+                    if query not in parents and node not in cluster_full:
+                        children[query] = fallback[node]
 
-                # Reversed frame 1
-                bio_revcomp_seq = bio_revcomp(parent_seq)
-                query = f"{node}|-1"
-                nt_sequences[query] = bio_revcomp_seq
-                unaligned_sequences.append((query, bio_revcomp_seq))
-                if query not in parents and node not in cluster_full:
-                    children[query] = fallback[node]
+                    # Forward 2 & 3
+                    for shift_by in [1, 2]:
+                        shifted = shift(1, shift_by)
+                        new_query = f"{node}|{shifted}"
+                        nt_sequences[new_query] = parent_seq[shift_by:]
+                        unaligned_sequences.append((new_query, parent_seq[shift_by:]))
+                        if new_query in parents:
+                            continue
+                        if node in cluster_full:
+                            continue
+                        children[new_query] = fallback[node]
 
-                # Reversed 2 & 3
-                for shift_by in [1, 2]:
-                    shifted = shift(-1, shift_by)
-                    new_query = f"{node}|{shifted}"
-                    nt_sequences[new_query] = bio_revcomp_seq[shift_by:]
-                    unaligned_sequences.append((new_query, bio_revcomp_seq[shift_by:]))
-                    if new_query in parents:
-                        continue
-                    if node in cluster_full:
-                        continue
-                    children[new_query] = fallback[node]
+                if "-" in strands_present:
+                    # Reversed frame 1
+                    bio_revcomp_seq = bio_revcomp(parent_seq)
+                    query = f"{node}|-1"
+                    nt_sequences[query] = bio_revcomp_seq
+                    unaligned_sequences.append((query, bio_revcomp_seq))
+                    if query not in parents and node not in cluster_full:
+                        children[query] = fallback[node]
+
+                    # Reversed 2 & 3
+                    for shift_by in [1, 2]:
+                        shifted = shift(-1, shift_by)
+                        new_query = f"{node}|{shifted}"
+                        nt_sequences[new_query] = bio_revcomp_seq[shift_by:]
+                        unaligned_sequences.append((new_query, bio_revcomp_seq[shift_by:]))
+                        if new_query in parents:
+                            continue
+                        if node in cluster_full:
+                            continue
+                        children[new_query] = fallback[node]
 
 
         else:
