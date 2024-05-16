@@ -19,14 +19,19 @@ import numpy as np
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import gettempdir, parseFasta, printv, writeFasta
 
+
 class aligned_record:
-    __slots__ = "header", "seq", "start", "end", "distances", "mean", "all_mean", "gene", "half", "fail"
+    __slots__ = ("header", "seq", "start", "end", "distances", "mean", "all_mean",
+                 "gene", "first_start", "first_end", "second_start", "second_end", "fail")
 
     def __init__(self, header, seq, gene):
         self.header = header
         self.seq = seq
         self.start, self.end = find_index_pair(seq, '-')
-        self.half = (self.end + self.start) // 2
+        half = (self.end + self.start) // 2
+        self.first_start, self.first_end = find_index_pair(seq[self.start:half], '-')
+        s_start, s_end = find_index_pair(seq[half:self.end], '-')
+        self.second_start, self.second_end = s_start + half, s_end + half
         self.distances = []
         self.mean = None
         self.all_mean = None
@@ -538,7 +543,8 @@ def do_merge(sequences):
 
 def filter_deviation(
         records: list, repeats=2,
-        distance_exponent=2.0, iqr_coefficient=2.0, floor=0.05
+        distance_exponent=2.0, iqr_coefficient=1.0,
+        floor=0.03, min_aa=2
                      ) -> tuple:
     has_changed = True
     failed = []
@@ -566,7 +572,7 @@ def filter_deviation(
         q3, med, q1 = np.percentile(all_distances, [75, 50, 25])
         cutoff = max(med + iqr_coefficient*(q3 - q1), floor)
         for i, record in enumerate(records):
-            if not record.distances:
+            if record.end - record.start < min_aa or not record.distances:
                 continue
             avg = np.median(record.distances)
             record.mean = avg
@@ -580,28 +586,39 @@ def filter_deviation(
     return records, failed
 
 
-def check_halves(references: list, repeats=1, distance_exponent=2.0, iqr_coefficient=2.0, floor=0.05):
+def check_halves(references: list, repeats=1, distance_exponent=2.0, iqr_coefficient=2.0,
+                 floor=0.03, min_aa=15):
     # repeats is the number of checks to do during the filter
-    repeats = 1
     for ref in references:
-        ref.end, ref.half = ref.half, ref.end
+        ref.start, ref.end, ref_first_start, ref_first_end = ref.first_start, ref.first_end, ref.start, ref.end
     # run check on first half
-    references, first_failing = filter_deviation(references, repeats=repeats, distance_exponent=distance_exponent, iqr_coefficient=iqr_coefficient, floor=floor)
+    references, first_failing = filter_deviation(references,
+                                                 repeats=repeats,
+                                                distance_exponent=distance_exponent,
+                                                 iqr_coefficient=iqr_coefficient,
+                                                 floor=floor,
+                                                 min_aa=min_aa)
+    for ref in references:
+        ref.start, ref.end, ref_first_start, ref_first_end = ref.first_start, ref.first_end, ref.start, ref.end
     # remake failed seqs for debug output
     for fail in first_failing:
         fail.fail = "first half"
     # swap seq and saved half
     for ref in references:
-        ref.end, ref.half = ref.half, ref.end
-        ref.start, ref.half = ref.half, ref.start
+        ref.start, ref.end, ref_second_start, ref_second_end = ref.second_start, ref.second_end, ref.start, ref.end
     # check second half
-    references, second_failing = filter_deviation(references, repeats=repeats, distance_exponent=distance_exponent, iqr_coefficient=iqr_coefficient, floor=floor)
-    for ref in references:
-        ref.start, ref.half = ref.half, ref.start
+    references, second_failing = filter_deviation(references,
+                                                 repeats=repeats,
+                                                 distance_exponent=distance_exponent,
+                                                 iqr_coefficient=iqr_coefficient,
+                                                 floor=floor,
+                                                 min_aa=min_aa)
     # remake failed seqs for debug output
     for fail in second_failing:
         fail.fail = "second half"
     # remake passing refs for normal output
+    for ref in references:
+        ref.start, ref.end, ref_second_start, ref_second_end = ref.second_start, ref.second_end, ref.start, ref.end
     return references, first_failing, second_failing
 
 
@@ -763,7 +780,9 @@ def aln_function(
     # if no seq is kicked, the loop will always terminate
     FULLSEQ_REPEATS = 2
     HALFSEQ_REPEATS = 1
-        
+    # minimum distance between start and end indices
+    MIN_AA = 15
+
     passed, failed = filter_deviation(aligned_result, repeats=FULLSEQ_REPEATS, distance_exponent=FULLSEQ_DISTANCE_EXPONENT, iqr_coefficient=FULLSEQ_IQR_COEFFICIENT, floor=FULLSEQ_CUTOFF_FLOOR)
     #print(len(passed), len(failed))
     for fail in failed:
