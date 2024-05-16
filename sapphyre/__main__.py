@@ -1133,6 +1133,13 @@ def subcmd_makeref(sp):
         help="Input file for current set (Either folder containing .fa, .fa or .sqlite)",
     )
     par.add_argument(
+        "-nh",
+        "--no_halves",
+        default=False,
+        action="store_true",
+        help="Skip distance checks on the first half and last half of each sequence",
+    )
+    par.add_argument(
         "-nt",
         "--nt_input",
         type=str,

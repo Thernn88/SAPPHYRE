@@ -2,7 +2,7 @@ import gzip
 import os
 import sqlite3
 from collections import Counter, defaultdict
-from itertools import count
+from itertools import combinations, count
 from math import ceil
 from multiprocessing.pool import Pool
 from pathlib import Path
@@ -13,10 +13,25 @@ import wrap_rocks
 import xxhash
 from Bio import SeqIO
 from msgspec import json
-from sapphyre_tools import constrained_distance, find_index_pair, get_overlap
+from sapphyre_tools import constrained_distance, find_index_pair, get_overlap, blosum62_distance
+import numpy as np
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import gettempdir, parseFasta, printv, writeFasta
+
+class aligned_record:
+    __slots__ = "header", "seq", "start", "end", "distances", "mean", "all_mean", "gene", "half", "fail"
+
+    def __init__(self, header, seq, gene):
+        self.header = header
+        self.seq = seq
+        self.start, self.end = find_index_pair(seq, '-')
+        self.half = (self.end + self.start) // 2
+        self.distances = []
+        self.mean = None
+        self.all_mean = None
+        self.gene = gene
+        self.fail = None
 
 
 class Sequence:
@@ -220,25 +235,24 @@ class Sequence_Set:
             self.aligned_sequences[i] = seq
 
 
-def internal_cull(sequences, cull_internal, has_nt):
+def internal_cull(records, cull_internal, has_nt):
     """
     Culls internal columns where the percentage of non-gap characters is greater than or equal to the percent argument.
     """
-    msa_length = len(sequences[0][1])
+    msa_length = len(records[0].seq)
     out = []
     cull_result = {}
     cull_positions = set()
     for i in range(msa_length):
-        if sum(1 for seq in sequences if seq[1][i] != "-") / len(sequences) >= cull_internal:
+        if sum(1 for rec in records if rec.seq[i] != "-") / len(records) >= cull_internal:
             continue
         cull_positions.add(i)
 
-    for header, seq in sequences:
+    for rec in records:
         if has_nt:
-            start, end = find_index_pair(seq, "-")
             actual_i = 0
             this_actual_culls = set()
-            for i, let in enumerate(seq[start:end], start):
+            for i, let in enumerate(rec.seq[rec.start: rec.end], rec.start):
                 if let == "-":
                     continue
 
@@ -247,44 +261,47 @@ def internal_cull(sequences, cull_internal, has_nt):
                 
                 actual_i += 1
 
-            cull_result[header] = this_actual_culls
+            cull_result[rec.header] = this_actual_culls
 
-        new_seq = "".join([seq[i] for i in range(msa_length) if i not in cull_positions])
-        out.append((header, new_seq))
+        new_seq = "".join([rec.seq[i] for i in range(msa_length) if i not in cull_positions])
+        rec.seq = new_seq
+        rec.start, rec.end = find_index_pair(rec.seq, "-")
+        out.append(rec)
     
     return cull_result, out
 
-def cull(sequences, percent, has_nt):
+def cull(records, percent, has_nt):
     """
     Culls each edge of the sequences to a column where the percentage of non-gap characters is greater than or equal to the percent argument.
     """
-    msa_length = len(sequences[0][1])
+    msa_length = len(records[0].seq)
     out = []
     cull_result = {}
 
     for i in range(msa_length):
         cull_start = i
-        if sum(1 for seq in sequences if seq[1][i] != "-") / len(sequences) >= percent:
+        if sum(1 for rec in records if rec.seq[i] != "-") / len(records) >= percent:
             break
 
     for i in range(msa_length - 1, 0, -1):
         cull_end = i
-        if sum(1 for seq in sequences if seq[1][i] != "-") / len(sequences) >= percent:
+        if sum(1 for rec in records if rec.seq[i] != "-") / len(records) >= percent:
             break
     
     cull_end += 1 # include last bp
-    for header, seq in sequences:
-        seq = seq[cull_start: cull_end]
+    for rec in records:
+        rec.seq = rec.seq[cull_start: cull_end]
 
         if has_nt:
-            left_flank = seq[:cull_start]
-            right_flank = seq[cull_end:]
+            left_flank = rec.seq[:cull_start]
+            right_flank = rec.seq[cull_end:]
             left_bp = len(left_flank) - left_flank.count("-")
             right_bp = len(right_flank) - right_flank.count("-")
 
-            cull_result[header] = left_bp, right_bp
+            cull_result[rec.header] = left_bp, right_bp
 
-        out.append((header, seq))
+        rec.start, rec.end = find_index_pair(rec.seq, "-")
+        out.append(rec)
 
     return cull_result, out
 
@@ -374,6 +391,7 @@ def generate_aln(
     cull_internal,
     cull_percent,
     has_nt,
+    no_halves,
 ):
     """
     Generates the .aln.fa files for each gene in the set.
@@ -392,8 +410,21 @@ def generate_aln(
     nt_trimmed_path = set_path.joinpath("trimmed_nt")
     if os.path.exists(nt_trimmed_path):
         rmtree(nt_trimmed_path)
+        
+    cleaned_path = set_path.joinpath("cleaned")
+    if os.path.exists(cleaned_path):
+        rmtree(cleaned_path)
+        
+    cleaned_path.mkdir(exist_ok=True)
+    
+    cleaned_nt_path = set_path.joinpath("cleaned_nt")
+    if os.path.exists(cleaned_nt_path):
+        rmtree(cleaned_nt_path)
+        
+    clean_log = set_path.joinpath("cleaned.log")
 
     if has_nt:
+        cleaned_nt_path.mkdir(exist_ok=True)
         nt_trimmed_path.mkdir(exist_ok=True)
 
     arguments = []
@@ -406,6 +437,8 @@ def generate_aln(
                 aln_path,
                 trimmed_path,
                 nt_trimmed_path,
+                cleaned_path,
+                cleaned_nt_path,
                 align_method,
                 overwrite,
                 verbosity,
@@ -414,6 +447,7 @@ def generate_aln(
                 cull_percent,
                 cull_internal,
                 has_nt,
+                no_halves,
             ),
         )
 
@@ -427,10 +461,15 @@ def generate_aln(
 
     set.has_aligned = True
 
-    for gene, aligned_sequences, dupe_headers in aligned_sequences_components:
+    clean_log_out = []
+    for gene, aligned_sequences, dupe_headers, distance_log in aligned_sequences_components:
         if dupe_headers:
             set.kick_dupes(dupe_headers)
         set.aligned_sequences[gene] = aligned_sequences
+        clean_log_out.extend(distance_log)
+        
+    with open(str(clean_log), "w") as f:
+        f.write("".join(clean_log_out))
 
 
 def do_merge(sequences):
@@ -497,6 +536,106 @@ def do_merge(sequences):
     return sequences
 
 
+def filter_deviation(
+        records: list, repeats=2,
+        distance_exponent=2.0, iqr_coefficient=2.0, floor=0.05
+                     ) -> tuple:
+    has_changed = True
+    failed = []
+    while has_changed and repeats > 0:
+        if len(records) <= 1:
+            break
+        repeats -= 1
+        has_changed = False
+        all_distances = []
+        for rec1, rec2 in combinations(records, 2):
+            st, e = max(rec1.start, rec2.start), min(rec1.end, rec2.end)
+            if st >= e:  # nan filter 1
+                continue
+            distance = blosum62_distance(rec1.seq[st:e], rec2.seq[st:e])
+            if not distance >= 0:
+                continue  # nan filter 2, just to be safe
+            distance = distance ** distance_exponent
+            rec1.distances.append(distance)
+            rec2.distances.append(distance)
+            all_distances.append(distance)
+        if not all_distances:
+            # TODO Check if this is a bug
+            break
+        
+        q3, med, q1 = np.percentile(all_distances, [75, 50, 25])
+        cutoff = max(med + iqr_coefficient*(q3 - q1), floor)
+        for i, record in enumerate(records):
+            if not record.distances:
+                continue
+            avg = np.median(record.distances)
+            record.mean = avg
+            record.all_mean = cutoff
+            record.distances = []
+            if avg > cutoff:
+                failed.append(record)
+                records[i] = None
+                has_changed = True
+        records = [x for x in records if x]
+    return records, failed
+
+
+def check_halves(references: list, repeats=1, distance_exponent=2.0, iqr_coefficient=2.0, floor=0.05):
+    # repeats is the number of checks to do during the filter
+    repeats = 1
+    for ref in references:
+        ref.end, ref.half = ref.half, ref.end
+    # run check on first half
+    references, first_failing = filter_deviation(references, repeats=repeats, distance_exponent=distance_exponent, iqr_coefficient=iqr_coefficient, floor=floor)
+    # remake failed seqs for debug output
+    for fail in first_failing:
+        fail.fail = "first half"
+    # swap seq and saved half
+    for ref in references:
+        ref.end, ref.half = ref.half, ref.end
+        ref.start, ref.half = ref.half, ref.start
+    # check second half
+    references, second_failing = filter_deviation(references, repeats=repeats, distance_exponent=distance_exponent, iqr_coefficient=iqr_coefficient, floor=floor)
+    for ref in references:
+        ref.start, ref.half = ref.half, ref.start
+    # remake failed seqs for debug output
+    for fail in second_failing:
+        fail.fail = "second half"
+    # remake passing refs for normal output
+    return references, first_failing, second_failing
+
+
+def delete_empty_columns(references: list[aligned_record], verbose=True) -> None:
+    """Iterates over each sequence and deletes columns
+    that consist of 100% dashes.
+
+    Args:
+    ----
+        raw_fed_sequences (list): List of tuples containing header and sequence
+        verbose (bool): Whether to print verbose output
+    Returns:
+    -------
+        tuple[list, list]: List of tuples containing header and sequence with empty columns removed and a list of positions to keep
+    """
+    result = []
+    # if sequences:
+    sequence_length = len(references[0].seq)
+    positions_to_keep = []
+    for i in range(sequence_length):
+        if any(ref.seq[i] != "-" for ref in references):
+            positions_to_keep.append(i)
+
+    for ref in references:
+        try:
+            ref.seq = "".join(ref.seq[x] for x in positions_to_keep)
+        except IndexError:
+            if verbose:
+                print(
+                    f"WARNING: Sequence length is not the same as other sequences: {ref.header}"
+                )
+            continue
+
+
 def aln_function(
     gene,
     sequences,
@@ -504,6 +643,8 @@ def aln_function(
     aln_path,
     trimmed_path,
     nt_trimmed_path,
+    cleaned_path,
+    cleaned_nt_path,
     align_method,
     overwrite,
     verbosity,
@@ -512,6 +653,7 @@ def aln_function(
     cull_percent,
     cull_internal,
     has_nt,
+    no_halves,
 ):
     """
     Calls the alignment program, runs some additional logic on the result and returns the aligned sequences
@@ -551,15 +693,15 @@ def aln_function(
 
     writeFasta(aln_file, aligned_result, False)
     
-    aligned_result = [(header.split(" ")[0], seq) for header, seq in aligned_result]
-
+    aligned_result = [aligned_record(header, seq, gene) for header, seq in aligned_result]
+    
     duped_headers = set()
     seq_hashes = set()
-    for header, seq in aligned_result:
-        component = header.split(":")[0]
-        seq_hash = xxhash.xxh3_64(component + seq).hexdigest()
+    for record in aligned_result:
+        component = record.header.split(":")[0]
+        seq_hash = xxhash.xxh3_64(component + record.seq).hexdigest()
         if seq_hash in seq_hashes:
-            duped_headers.add(header)
+            duped_headers.add(record.header)
         else:
             seq_hashes.add(seq_hash)
 
@@ -577,9 +719,7 @@ def aln_function(
     # aligned_result = [i for i in aligned_result if len(i[1]) != i[1].count("-")]
 
     # aligned_result = do_merge(aligned_result)
-
-    for header, seq in aligned_result:
-        aligned_dict[header] = seq
+    aligned_dict = {rec.header: rec.seq for rec in aligned_result}
 
     output = []
     nt_result = []
@@ -600,12 +740,66 @@ def aln_function(
                 nt_result.append((seq.header, seq.nt_sequence))
 
             output.append(seq)
-
-    writeFasta(trimmed_path, aligned_result, False)
+            
+    trimmed_output = [(rec.header, rec.seq) for rec in aligned_result]
+    writeFasta(trimmed_path, trimmed_output, False)
     if nt_result:
         writeFasta(nt_trimmed_path, nt_result, False)
+        
+    # increasing the exponent will increase penalty on high distance scores
+    # lowering will decrease the penalty
+    FULLSEQ_DISTANCE_EXPONENT = 2.0
+    HALFSEQ_DISTANCE_EXPONENT = 2.0
+    # increasing the iqr coefficient will raise the acceptable distance score
+    # lower the iqr coefficient will raise the acceptable distance score
+    FULLSEQ_IQR_COEFFICIENT = 2
+    HALFSEQ_IQR_COEFFICIENT = 2
+    # floor is the minimum cutoff value
+    # raising this will make lower distance files pass more sequences
+    FULLSEQ_CUTOFF_FLOOR = 0.05
+    HALFSEQ_CUTOFF_FLOOR = 0.05
 
-    return gene, output, duped_headers
+    # repeats is the number of times a check will rerun numbers if a seq is kicked
+    # if no seq is kicked, the loop will always terminate
+    FULLSEQ_REPEATS = 2
+    HALFSEQ_REPEATS = 1
+        
+    passed, failed = filter_deviation(aligned_result, repeats=FULLSEQ_REPEATS, distance_exponent=FULLSEQ_DISTANCE_EXPONENT, iqr_coefficient=FULLSEQ_IQR_COEFFICIENT, floor=FULLSEQ_CUTOFF_FLOOR)
+    #print(len(passed), len(failed))
+    for fail in failed:
+        fail.fail = "full"
+        
+    if not no_halves:
+        passed, former, latter = check_halves(passed, repeats=HALFSEQ_REPEATS, distance_exponent=HALFSEQ_DISTANCE_EXPONENT, iqr_coefficient=HALFSEQ_IQR_COEFFICIENT, floor=HALFSEQ_CUTOFF_FLOOR)
+        failed.extend(former)
+        failed.extend(latter)
+    
+    # delete_empty_columns(passed) TODO Add NT Handling here
+    
+    
+    clean_dict = {rec.header: rec.seq for rec in passed}
+    
+    output = []
+    nt_result = []
+    for seq in sequences:
+        if seq.header in clean_dict:
+            seq.aa_sequence = clean_dict[seq.header]
+            
+            if has_nt:
+                nt_result.append((seq.header, seq.nt_sequence))
+
+            output.append(seq)
+    
+    clean_file = cleaned_path.joinpath(gene + ".aln.fa")
+    clean_nt_file = cleaned_nt_path.joinpath(gene + ".nt.aln.fa")
+    
+    writeFasta(clean_file, [(rec.header, rec.seq) for rec in passed], False)
+    if nt_result:
+        writeFasta(clean_nt_file, nt_result, False)
+        
+    log = [f">{r.header.split()[0]},{r.end-r.start},{r.fail},{r.mean},{r.all_mean},{r.gene}\n" for r in failed]
+
+    return gene, output, duped_headers, log
 
 
 def make_diamonddb(set: Sequence_Set, overwrite, processes):
@@ -789,6 +983,7 @@ def main(args):
     do_count = args.count or args.all
     do_diamond = args.diamond or args.all
     do_hmm = args.hmmer or args.all
+    no_halves = args.no_halves
     cull_percent = args.cull_percent
     if cull_percent > 1:
         cull_percent = cull_percent / 100
@@ -950,7 +1145,8 @@ def main(args):
             do_internal,
             cull_internal,
             cull_percent,
-            this_set.has_nt
+            this_set.has_nt,
+            no_halves,
         )
     if do_hmm:
         generate_hmm(this_set, overwrite, processes, verbosity, set_path)
