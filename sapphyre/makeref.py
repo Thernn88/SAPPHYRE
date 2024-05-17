@@ -542,10 +542,13 @@ def do_merge(sequences):
 
 
 def filter_deviation(
-        records: list, repeats=2,
-        distance_exponent=2.0, iqr_coefficient=1.0,
-        floor=0.03, min_aa=2
-                     ) -> tuple:
+            records: list, 
+            repeats,
+            distance_exponent,
+            iqr_coefficient,
+            floor, 
+            min_aa
+        ) -> tuple:
     has_changed = True
     failed = []
     while has_changed and repeats > 0:
@@ -586,18 +589,22 @@ def filter_deviation(
     return records, failed
 
 
-def check_halves(references: list, repeats=1, distance_exponent=2.0, iqr_coefficient=2.0,
-                 floor=0.03, min_aa=15):
+def check_halves(references: list,
+                 repeats,
+                 distance_exponent,
+                 iqr_coefficient,
+                 floor,
+                 min_aa):
     # repeats is the number of checks to do during the filter
     for ref in references:
         ref.start, ref.end, ref_first_start, ref_first_end = ref.first_start, ref.first_end, ref.start, ref.end
     # run check on first half
     references, first_failing = filter_deviation(references,
-                                                 repeats=repeats,
-                                                distance_exponent=distance_exponent,
-                                                 iqr_coefficient=iqr_coefficient,
-                                                 floor=floor,
-                                                 min_aa=min_aa)
+                                                repeats,
+                                                distance_exponent,
+                                                iqr_coefficient,
+                                                floor,
+                                                min_aa)
     for ref in references:
         ref.start, ref.end, ref_first_start, ref_first_end = ref.first_start, ref.first_end, ref.start, ref.end
     # remake failed seqs for debug output
@@ -608,11 +615,11 @@ def check_halves(references: list, repeats=1, distance_exponent=2.0, iqr_coeffic
         ref.start, ref.end, ref_second_start, ref_second_end = ref.second_start, ref.second_end, ref.start, ref.end
     # check second half
     references, second_failing = filter_deviation(references,
-                                                 repeats=repeats,
-                                                 distance_exponent=distance_exponent,
-                                                 iqr_coefficient=iqr_coefficient,
-                                                 floor=floor,
-                                                 min_aa=min_aa)
+                                                repeats,
+                                                distance_exponent,
+                                                iqr_coefficient,
+                                                floor,
+                                                min_aa)
     # remake failed seqs for debug output
     for fail in second_failing:
         fail.fail = "second half"
@@ -710,7 +717,7 @@ def aln_function(
 
     writeFasta(aln_file, aligned_result, False)
     
-    aligned_result = [aligned_record(header, seq, gene) for header, seq in aligned_result]
+    aligned_result = [aligned_record(header.split(" ")[0], seq, gene) for header, seq in aligned_result]
     
     duped_headers = set()
     seq_hashes = set()
@@ -783,13 +790,13 @@ def aln_function(
     # minimum distance between start and end indices
     MIN_AA = 15
 
-    passed, failed = filter_deviation(aligned_result, repeats=FULLSEQ_REPEATS, distance_exponent=FULLSEQ_DISTANCE_EXPONENT, iqr_coefficient=FULLSEQ_IQR_COEFFICIENT, floor=FULLSEQ_CUTOFF_FLOOR)
+    passed, failed = filter_deviation(aligned_result, FULLSEQ_REPEATS, FULLSEQ_DISTANCE_EXPONENT, FULLSEQ_IQR_COEFFICIENT, FULLSEQ_CUTOFF_FLOOR, MIN_AA)
     #print(len(passed), len(failed))
     for fail in failed:
         fail.fail = "full"
         
     if not no_halves:
-        passed, former, latter = check_halves(passed, repeats=HALFSEQ_REPEATS, distance_exponent=HALFSEQ_DISTANCE_EXPONENT, iqr_coefficient=HALFSEQ_IQR_COEFFICIENT, floor=HALFSEQ_CUTOFF_FLOOR)
+        passed, former, latter = check_halves(passed, HALFSEQ_REPEATS, HALFSEQ_DISTANCE_EXPONENT, HALFSEQ_IQR_COEFFICIENT, HALFSEQ_CUTOFF_FLOOR, MIN_AA)
         failed.extend(former)
         failed.extend(latter)
     
