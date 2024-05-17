@@ -735,8 +735,8 @@ def aln_function(
         else:
             seq_hashes.add(seq_hash)
 
-    # if duped_headers:
-    #     aligned_result = [i for i in aligned_result if i[0] not in duped_headers]
+    if duped_headers:
+        aligned_result = [i for i in aligned_result if i.header not in duped_headers]
 
     cull_result = {}
     if do_cull:
