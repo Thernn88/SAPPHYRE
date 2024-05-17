@@ -472,9 +472,10 @@ def print_unmerged_sequences(
 
                     if base_header in header_mapped_x_times:
                         # Make header unique
-                        old_header = base_header
-                        base_header = base_header + f"_{header_mapped_x_times[old_header]}"
-                        hit.node = base_header
+                        current_count = header_mapped_x_times[base_header]
+                        header_mapped_x_times[base_header] += 1
+                        modified_header = f"{base_header}_{current_count}"
+                        hit.node = modified_header
                         header = (
                             gene
                             + "|"
@@ -482,12 +483,10 @@ def print_unmerged_sequences(
                             + "|"
                             + taxa_id
                             + "|"
-                            + base_header
+                            + modified_header
                             + "|"
                             + reference_frame
                         )
-
-                        header_mapped_x_times[base_header] += 1
                 else:
                     base_header_mapped_already[base_header] = header, aa_seq
 
