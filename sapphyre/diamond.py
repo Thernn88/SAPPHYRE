@@ -29,7 +29,7 @@ class ReferenceHit(Struct, frozen=True):
 
 
 class Hit(Struct, frozen=True):
-    node: str
+    node: int
     target: str
     frame: int
     evalue: float
@@ -45,7 +45,7 @@ class Hit(Struct, frozen=True):
     coverage: float
 
 class ReporterHit(Struct):
-    node: str
+    node: int
     frame: int
     evalue: float
     qstart: int
@@ -402,7 +402,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             coverage = row[9]/100 if len(row) == 10 else 0.0
 
             this_hit = Hit(
-                row[0],
+                int(row[0]),
                 target,
                 row[2],
                 row[3],
@@ -511,7 +511,7 @@ def get_head_to_seq(nt_db, recipe):
         lines = nt_db.get_bytes(f"ntbatch:{i}").decode().split("\n")
         head_to_seq.update(
             {
-                lines[i][1:]: lines[i + 1]
+                int(lines[i][1:]): lines[i + 1]
                 for i in range(0, len(lines), 2)
                 if lines[i] != ""
             },
@@ -544,7 +544,7 @@ def top_reference_realign(orthoset_raw_path, orthoset_aln_path, orthoset_trimmed
         key = f"{gene}|{header}"
         if target_to_taxon.get(header, set()) in top_refs or target_to_taxon.get(key, set()) in top_refs:
             header_set.add(header)
-            out.append((header, seq.replace("-", "")))        
+            out.append((header, seq.replace("-", "")))   
         
     out_path = path.join(top_path, gene+".aln.fa")
     if len(out) == 1:
@@ -1123,34 +1123,34 @@ def run_process(args: Namespace, input_path: str) -> bool:
         cluster_out = []
         primary_nodes = set()
         for gene, hits in output:
-            ids = [(int(hit.node.split("_")[1]), hit.node, hit.coverage) for hit in hits]
+            ids = [(hit.node, hit.coverage) for hit in hits]
             ids.sort(key = lambda x: x[0])
             clusters = []
 
             req_seq_coverage = 0.5
             current_cluster = []
-            for child_index, node, seq_coverage in ids:
+            for node, seq_coverage in ids:
                 if not current_cluster:
-                    current_cluster.append((child_index, seq_coverage, node))
-                    current_index = child_index
+                    current_cluster.append((node, seq_coverage))
+                    current_index = node
                 else:
-                    if child_index - current_index <= 35:
-                        current_cluster.append((child_index, seq_coverage, node))
-                        current_index = child_index
+                    if node - current_index <= 35:
+                        current_cluster.append((node, seq_coverage))
+                        current_index = node
                     else:
                         if len(current_cluster) == 1:
                             if current_cluster[0][1] > req_seq_coverage:
                                 clusters.append((current_cluster[0][0], current_cluster[0][1]))
-                                primary_nodes.add(current_cluster[0][2])
+                                primary_nodes.add(current_cluster[0][0])
                                 
-                        current_cluster = [(child_index, seq_coverage, node)]
-                        current_index = child_index
+                        current_cluster = [(node, seq_coverage)]
+                        current_index = node
 
             if current_cluster:
                 if len(current_cluster) == 1:
                     if current_cluster[0][1] > req_seq_coverage:
                         clusters.append((current_cluster[0][0], current_cluster[0][1]))
-                        primary_nodes.add(current_cluster[0][2])
+                        primary_nodes.add(current_cluster[0][0])
                         
             clusters.sort(key=lambda x: x[1], reverse=True)
 

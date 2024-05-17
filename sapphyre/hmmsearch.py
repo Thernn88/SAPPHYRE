@@ -18,7 +18,7 @@ from .timekeeper import TimeKeeper, KeeperMode
 
 
 class HmmHit(Struct):
-    node: str
+    node: int
     score: float
     frame: int
     evalue: float|None
@@ -178,15 +178,13 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
         aligned_sequences = []
         this_hmm_output = path.join(hmm_output_folder, f"{gene}.hmmout")
 
-        get_id = lambda header: int(header.split("_")[1])
         
         hits_have_frames_already = defaultdict(set)
         diamond_ids = list()
         for hit in diamond_hits:
-            diamond_ids.append((get_id(hit.node), hit.primary, hit.frame))
+            diamond_ids.append((hit.node, hit.primary, hit.frame))
             hits_have_frames_already[hit.node].add(hit.frame)
 
-        node_template = "NODE_{}"
         if is_genome:
             diamond_ids.sort()
             clusters = []
@@ -228,13 +226,12 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
             cluster_dict = {}
             for cluster, strands_present in clusters:
                 for i in range(cluster[0]-chomp_max_distance, cluster[1] + chomp_max_distance + 1):
-                    cluster_dict[node_template.format(i)] = (cluster, strands_present)
+                    cluster_dict[i] = (cluster, strands_present)
         
             primary_cluster_dict = {}
             for cluster in primary_clusters:
                 for i in range(cluster[0], cluster[1] + 1):
-                    primary_cluster_dict[node_template.format(i)] = cluster
-        
+                    primary_cluster_dict[i] = cluster
         nt_sequences = {}
         parents = {}
 
@@ -277,7 +274,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
                 source_clusters = {}
                 
                 for i in range(smallest_cluster_in_range, largest_cluster_in_range + 1):
-                    header = node_template.format(i)
+                    header = i
                     
                     if header in nodes_in_gene:
                         continue
@@ -366,7 +363,6 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
 
         for header, seq in unaligned_sequences:
             nt_sequences[header] = seq
-            
 
         top_file = path.join(top_location, f"{gene}.aln.fa")
         output = []
@@ -442,7 +438,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
 
                         new_qstart = start
 
-                        passed_ids.add(get_id(node))
+                        passed_ids.add(int(node))
                         parents_done.add(query)
 
                         is_primary_child, cluster_range = source_clusters[node]
@@ -481,7 +477,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
 
                         new_uid = hit.uid + start + end
 
-                        passed_ids.add(get_id(hit.node))
+                        passed_ids.add(hit.node)
                         parents_done.add(f"{hit.node}|{hit.frame}")
                         new_hit = HmmHit(node=hit.node, score=score, frame=hit.frame, evalue=hit.evalue, qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=new_uid, refs=hit.refs, seq=sequence)
                         output.append(new_hit)
@@ -509,7 +505,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
 
                     new_uid = parent.uid + start + end
 
-                    passed_ids.add(get_id(hit.node))
+                    passed_ids.add(hit.node)
                     clone = HmmHit(node=parent.node, score=score, frame=int(frame), evalue=parent.evalue, qstart=new_qstart, qend=new_qstart + len(sequence), gene=parent.gene, query=parent.query, uid=new_uid, refs=parent.refs, seq=sequence)
                     new_outs.append((f"{clone.gene},{clone.node},{clone.frame}"))
                     
@@ -519,7 +515,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
         for hit in diamond_hits:
             if not f"{hit.node}|{hit.frame}" in parents_done:
                 if is_genome and math.floor(math.log10(abs(hit.evalue))) <= -evalue_threshold:
-                    this_id = get_id(hit.node)
+                    this_id = hit.node
                     has_neighbour = False
                     neighbour = None
                     for id in passed_ids:
@@ -533,7 +529,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
                         new_hit = HmmHit(node=hit.node, score=0, frame=hit.frame, evalue=hit.evalue, qstart=hit.qstart, qend=hit.qend, gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=hit.seq)
                         output.append(new_hit)
                         parents_done.add(f"{hit.node}|{hit.frame}")
-                        hmm_log.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, f"Rescued by NODE_{neighbour}. Evalue: {hit.evalue}"))
+                        hmm_log.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, f"Rescued by {neighbour}. Evalue: {hit.evalue}"))
                         continue
 
                 diamond_kicks.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, f"Kicked. Evalue: {hit.evalue}"))
@@ -558,7 +554,7 @@ def get_head_to_seq(nt_db, recipe):
         lines = nt_db.get_bytes(f"ntbatch:{i}").decode().split("\n")
         head_to_seq.update(
             {
-                lines[i][1:]: lines[i + 1]
+                int(lines[i][1:]): lines[i + 1]
                 for i in range(0, len(lines), 2)
                 if lines[i] != ""
             },
@@ -719,10 +715,9 @@ def do_folder(input_folder, args):
         
     printv(f"Kicked {mkicks} hits due to miniscule score", args.verbose, 1)
     printv(f"Writing results to db", args.verbose, 1)
-    get_id = lambda header: int(header.split("_")[1])
     hmmsearch_cluster_log = []
     for gene, hits in gene_based_results.items():
-        ids = [get_id(hit.node) for hit in hits]
+        ids = [hit.node for hit in hits]
         ids.sort()
 
         clusters = []

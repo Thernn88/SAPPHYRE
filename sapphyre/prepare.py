@@ -154,7 +154,6 @@ class SeqDeduplicator:
             else:
                 n_sequences = (chunk for chunk in parent_seq.split("N") if len(chunk) >= self.minimum_sequence_length)
             individual_index = IndexIter()
-            header_template = "NODE_{}"
             append_index_template = "{}_{}"
             sequence_template = ">{}\n{}\n"
 
@@ -164,7 +163,7 @@ class SeqDeduplicator:
             for seq in n_sequences:
                 seq_len = len(seq)
                 if self.rename:
-                    header = header_template.format(this_index.x)
+                    header = this_index.x
                 else:
                     header = raw_header.split(" ")[0]
                 seq_hash = xxhash.xxh3_64(seq).hexdigest()
@@ -211,7 +210,7 @@ class SeqDeduplicator:
                     individual_index = IndexIter()
                     for i in range(0, len(seq), CHOMP_LEN - self.overlap_length):
                         if self.rename:
-                            this_header = header_template.format(this_index.x)
+                            this_header = this_index.x
                         else:
                             this_header = append_index_template.format(header, individual_index.x)
                             next(individual_index)

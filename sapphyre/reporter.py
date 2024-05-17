@@ -362,6 +362,8 @@ def print_unmerged_sequences(
             Tuple containg a dict of removed duplicates,
             a list containing AA and a list containing NT sequences
     """
+    header_template = "{}|{}|{}|NODE_{}|{}"
+    base_header_template = "{}_{}"
     aa_result = []
     nt_result = []
     header_maps_to_where = {}
@@ -376,17 +378,7 @@ def print_unmerged_sequences(
         reference_frame = str(hit.frame)
 
         # Format header to gene|taxa_name|taxa_id|sequence_id|frame
-        header = (
-            gene
-            + "|"
-            + hit.query
-            + "|"
-            + taxa_id
-            + "|"
-            + base_header
-            + "|"
-            + reference_frame
-        )
+        header = header_template.format(gene, hit.query, taxa_id, base_header, reference_frame)
 
         # Translate to AA
         nt_seq = hit.seq
@@ -474,19 +466,17 @@ def print_unmerged_sequences(
                         # Make header unique
                         current_count = header_mapped_x_times[base_header]
                         header_mapped_x_times[base_header] += 1
-                        modified_header = f"{base_header}_{current_count}"
+                        modified_header = base_header_template.format(base_header, current_count)
                         hit.node = modified_header
-                        header = (
-                            gene
-                            + "|"
-                            + hit.query
-                            + "|"
-                            + taxa_id
-                            + "|"
-                            + modified_header
-                            + "|"
-                            + reference_frame
+                        header = header_template.format(
+                            gene,
+                            hit.query,
+                            taxa_id,
+                            modified_header,
+                            reference_frame,
                         )
+
+                        header_mapped_x_times[base_header] += 1
                 else:
                     base_header_mapped_already[base_header] = header, aa_seq
 
@@ -502,7 +492,8 @@ def print_unmerged_sequences(
 
                 header_to_score[hit.node] = max(header_to_score.get(hit.node, 0), hit.score)
 
-                header_mapped_x_times.setdefault(base_header, 1)
+                if base_header not in header_mapped_x_times:
+                    header_mapped_x_times[base_header] = 1
                 exact_hit_mapped_already.add(unique_hit)
 
     return dupes, aa_result, nt_result, header_to_score, hits
@@ -798,7 +789,8 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
             
             with open(path.join(coords_path,gene+".txt"), "w") as fp:
                 for node, start, end, frame in nodes:
-                    tup = original_coords.get(f"NODE_{node.split('_')[1]}", None)
+                    key = str(node) if type(node) == int else node.split("_")[0]
+                    tup = original_coords.get(key, None)
                     if tup:
                         parent, chomp_start, chomp_end, input_len, chomp_len = tup
                         out_data[parent].append((node, chomp_start, chomp_end))
