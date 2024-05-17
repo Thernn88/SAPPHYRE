@@ -397,6 +397,7 @@ def generate_aln(
     cull_percent,
     has_nt,
     no_halves,
+    skip_deviation_filter,
 ):
     """
     Generates the .aln.fa files for each gene in the set.
@@ -415,22 +416,23 @@ def generate_aln(
     nt_trimmed_path = set_path.joinpath("trimmed_nt")
     if os.path.exists(nt_trimmed_path):
         rmtree(nt_trimmed_path)
-        
+    
+   
     cleaned_path = set_path.joinpath("cleaned")
     if os.path.exists(cleaned_path):
         rmtree(cleaned_path)
         
-    cleaned_path.mkdir(exist_ok=True)
-    
     cleaned_nt_path = set_path.joinpath("cleaned_nt")
     if os.path.exists(cleaned_nt_path):
         rmtree(cleaned_nt_path)
-        
-    clean_log = set_path.joinpath("cleaned.log")
+            
+    if not skip_deviation_filter:
+        cleaned_path.mkdir(exist_ok=True)    
+        clean_log = set_path.joinpath("cleaned.log")
 
-    if has_nt:
-        cleaned_nt_path.mkdir(exist_ok=True)
-        nt_trimmed_path.mkdir(exist_ok=True)
+        if has_nt:
+            cleaned_nt_path.mkdir(exist_ok=True)
+            nt_trimmed_path.mkdir(exist_ok=True)
 
     arguments = []
     for gene, fasta in sequences.items():
@@ -453,6 +455,7 @@ def generate_aln(
                 cull_internal,
                 has_nt,
                 no_halves,
+                skip_deviation_filter,
             ),
         )
 
@@ -466,15 +469,17 @@ def generate_aln(
 
     set.has_aligned = True
 
+    printv("Writing Aln to RocksdDB", verbosity, 1)
     clean_log_out = []
     for gene, aligned_sequences, dupe_headers, distance_log in aligned_sequences_components:
         if dupe_headers:
             set.kick_dupes(dupe_headers)
         set.aligned_sequences[gene] = aligned_sequences
         clean_log_out.extend(distance_log)
-        
-    with open(str(clean_log), "w") as f:
-        f.write("".join(clean_log_out))
+
+    if not skip_deviation_filter:        
+        with open(str(clean_log), "w") as f:
+            f.write("".join(clean_log_out))
 
 
 def do_merge(sequences):
@@ -678,6 +683,7 @@ def aln_function(
     cull_internal,
     has_nt,
     no_halves,
+    skip_deviation_filter,
 ):
     """
     Calls the alignment program, runs some additional logic on the result and returns the aligned sequences
@@ -790,40 +796,42 @@ def aln_function(
     # minimum distance between start and end indices
     MIN_AA = 15
 
-    passed, failed = filter_deviation(aligned_result, FULLSEQ_REPEATS, FULLSEQ_DISTANCE_EXPONENT, FULLSEQ_IQR_COEFFICIENT, FULLSEQ_CUTOFF_FLOOR, MIN_AA)
-    #print(len(passed), len(failed))
-    for fail in failed:
-        fail.fail = "full"
-        
-    if not no_halves:
-        passed, former, latter = check_halves(passed, HALFSEQ_REPEATS, HALFSEQ_DISTANCE_EXPONENT, HALFSEQ_IQR_COEFFICIENT, HALFSEQ_CUTOFF_FLOOR, MIN_AA)
-        failed.extend(former)
-        failed.extend(latter)
-    
-    # delete_empty_columns(passed) TODO Add NT Handling here
-    
-    
-    clean_dict = {rec.header: rec.seq for rec in passed}
-    
-    output = []
-    nt_result = []
-    for seq in sequences:
-        if seq.header in clean_dict:
-            seq.aa_sequence = clean_dict[seq.header]
+    log = []
+    if not skip_deviation_filter:
+        passed, failed = filter_deviation(aligned_result, FULLSEQ_REPEATS, FULLSEQ_DISTANCE_EXPONENT, FULLSEQ_IQR_COEFFICIENT, FULLSEQ_CUTOFF_FLOOR, MIN_AA)
+        #print(len(passed), len(failed))
+        for fail in failed:
+            fail.fail = "full"
             
-            if has_nt:
-                nt_result.append((seq.header, seq.nt_sequence))
-
-            output.append(seq)
-    
-    clean_file = cleaned_path.joinpath(gene + ".aln.fa")
-    clean_nt_file = cleaned_nt_path.joinpath(gene + ".nt.aln.fa")
-    
-    writeFasta(clean_file, [(rec.header, rec.seq) for rec in passed], False)
-    if nt_result:
-        writeFasta(clean_nt_file, nt_result, False)
+        if not no_halves:
+            passed, former, latter = check_halves(passed, HALFSEQ_REPEATS, HALFSEQ_DISTANCE_EXPONENT, HALFSEQ_IQR_COEFFICIENT, HALFSEQ_CUTOFF_FLOOR, MIN_AA)
+            failed.extend(former)
+            failed.extend(latter)
         
-    log = [f">{r.header.split()[0]},{r.end-r.start},{r.fail},{r.mean},{r.all_mean},{r.gene}\n" for r in failed]
+        # delete_empty_columns(passed) TODO Add NT Handling here
+        
+        
+        clean_dict = {rec.header: rec.seq for rec in passed}
+        
+        output = []
+        nt_result = []
+        for seq in sequences:
+            if seq.header in clean_dict:
+                seq.aa_sequence = clean_dict[seq.header]
+                
+                if has_nt:
+                    nt_result.append((seq.header, seq.nt_sequence))
+
+                output.append(seq)
+        
+        clean_file = cleaned_path.joinpath(gene + ".aln.fa")
+        clean_nt_file = cleaned_nt_path.joinpath(gene + ".nt.aln.fa")
+        
+        writeFasta(clean_file, [(rec.header, rec.seq) for rec in passed], False)
+        if nt_result:
+            writeFasta(clean_nt_file, nt_result, False)
+            
+        log = [f">{r.header.split()[0]},{r.end-r.start},{r.fail},{r.mean},{r.all_mean},{r.gene}\n" for r in failed]
 
     return gene, output, duped_headers, log
 
@@ -1010,6 +1018,7 @@ def main(args):
     do_diamond = args.diamond or args.all
     do_hmm = args.hmmer or args.all
     no_halves = args.no_halves
+    skip_deviation_filter = args.skip_deviation_filter
     cull_percent = args.cull_percent
     if cull_percent > 1:
         cull_percent = cull_percent / 100
@@ -1173,6 +1182,7 @@ def main(args):
             cull_percent,
             this_set.has_nt,
             no_halves,
+            skip_deviation_filter,
         )
     if do_hmm:
         generate_hmm(this_set, overwrite, processes, verbosity, set_path)
@@ -1183,7 +1193,7 @@ def main(args):
             this_set, overwrite, processes
         )
 
-    printv("Writing to RocksDB", verbosity, 1)
+    printv("Writing core sequences to RocksDB", verbosity, 1)
     rocks_db_path = set_path.joinpath("rocksdb")
     rocksdb_db = wrap_rocks.RocksDB(str(rocks_db_path))
 

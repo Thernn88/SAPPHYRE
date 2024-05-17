@@ -1140,6 +1140,13 @@ def subcmd_makeref(sp):
         help="Skip distance checks on the first half and last half of each sequence",
     )
     par.add_argument(
+        "-sf",
+        "--skip_deviation_filter",
+        default=False,
+        action="store_true",
+        help="Skip reference deviation filter. (Alsko skips half checks)",
+    )
+    par.add_argument(
         "-nt",
         "--nt_input",
         type=str,
