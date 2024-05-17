@@ -59,7 +59,6 @@ class Sequence:
         self.nt_sequence = nt_sequence if nt_sequence is None else nt_sequence.replace("-","")
         self.taxon = taxon
         self.gene = gene
-        self.id = id
 
     def raw_seq(self):
         """
@@ -116,15 +115,7 @@ class Sequence_Set:
         Returns the aligned sequences dict
         """
         return self.aligned_sequences
-
-    def get_last_id(self) -> int:
-        """
-        Gets the last id of the current sequences in the set
-        """
-        if not self.sequences:
-            return 0
-        return self.sequences[-1].id
-
+    
     def get_gene_taxon_count(self) -> Counter:
         """
         Returns the count of genes present for each taxon
@@ -227,17 +218,36 @@ class Sequence_Set:
 
     def absorb(self, other):
         """Merges two sets together."""
-        current_cursor = self.get_last_id() + 1
         if not self.has_aligned and other.has_aligned:
             self.has_aligned = other.has_aligned
         if not self.has_nt and other.has_nt:
             self.has_nt = other.has_nt
         for i, seq in enumerate(other.sequences):
-            seq.id = current_cursor + i
             self.sequences.append(seq)
-        for i, seq in enumerate(other.aligned_sequences):
-            seq.id = current_cursor + i
-            self.aligned_sequences[i] = seq
+            
+        for gene, seqs in other.aligned_sequences.items():
+            self.aligned_sequences[gene] = seqs
+            
+    def seperate(self, amount_of_subsets):
+        """Splits the set into a number of subsets."""
+        subsets = []
+        
+        genes_present = self.get_genes()
+        
+        total_genes = len(genes_present)
+        amount_per_subset = ceil(total_genes / amount_of_subsets)
+        
+        sequences = self.get_gene_dict(True)
+        
+        for i in range(amount_of_subsets):
+            subset = Sequence_Set(f"{self.name}_{i}")
+            genes = genes_present[(amount_per_subset * i): (amount_per_subset * (i + 1))]
+            subset.sequences = [seq for gene in genes for seq in sequences.get(gene, [])]
+            
+            subset.has_nt = self.has_nt
+            subset.has_aligned = self.has_aligned
+            subsets.append((subset,genes))
+        return subsets
 
 
 def internal_cull(records, cull_internal, has_nt):
@@ -383,6 +393,22 @@ def raw_function(gene, sequences, raw_path, raw_nt_path, overwrite, verbosity):
             fp.write("".join([i.seq_with_regen_data(nt=True) for i in sequences]))
 
 
+def mine_aln(subset, genes, aligned_sequence_dict, dupes_in_genes):
+    """
+    Attempt at speeding up aln write to memory
+    """
+    for gene in genes:
+        dupe_headers = dupes_in_genes.get(gene)
+        sequences = aligned_sequence_dict.get(gene)
+        
+        if dupe_headers:
+            subset.kick_dupes(dupe_headers)
+        
+        subset.aligned_sequences[gene] = sequences
+        
+    return subset
+
+
 def generate_aln(
     set: Sequence_Set,
     align_method,
@@ -471,16 +497,39 @@ def generate_aln(
 
     printv("Writing Aln to RocksdDB", verbosity, 1)
     clean_log_out = []
+    aligned_genes = {}
+    dupes_in_genes = {}
     for gene, aligned_sequences, dupe_headers, distance_log in aligned_sequences_components:
-        if dupe_headers:
-            set.kick_dupes(dupe_headers)
-        set.aligned_sequences[gene] = aligned_sequences
+        dupes_in_genes[gene] = dupe_headers
+        aligned_genes[gene] = aligned_sequences
         clean_log_out.extend(distance_log)
+        
+    subsets = set.seperate(processes)
+    
+    arguments = []
+    for subset, genes in subsets:
+        this_align = {gene: aligned_genes[gene] for gene in genes}
+        dupes = {gene: dupes_in_genes[gene] for gene in genes}
+        
+        arguments.append((subset, genes, this_align, dupes))
+    
+    if processes > 1:
+        with Pool(processes) as pool:
+            subsets = pool.starmap(mine_aln, arguments)
+    else:
+        subsets = []
+        for arg in arguments:
+            subsets.append(mine_aln(*arg))
+        
+    print("Absord")
+    set = Sequence_Set(set.name)
+    for subset in subsets:
+        set.absorb(subset)
 
     if not skip_deviation_filter:        
         with open(str(clean_log), "w") as f:
             f.write("".join(clean_log_out))
-
+    return set
 
 def do_merge(sequences):
     """
@@ -1087,7 +1136,7 @@ def main(args):
 
             cursor = orthoset_db_con.cursor()
 
-            query = """SELECT p.nt_seq, t.name, o.ortholog_gene_id, a.header, a.sequence,  a.id
+            query = """SELECT p.nt_seq, t.name, o.ortholog_gene_id, a.header, a.sequence
                     FROM orthograph_orthologs         AS o
                 INNER JOIN orthograph_sequence_pairs    AS p
                 ON o.sequence_pair = p.id
@@ -1101,12 +1150,12 @@ def main(args):
 
             for row in rows:
                 nt_seq = None
-                nt_id, taxon, gene, header, aa_seq, id = row
+                nt_id, taxon, gene, header, aa_seq = row
                 if taxon not in kick:
                     if nt_id in nt_data:
                         nt_seq = nt_data[nt_id]
                     this_set.add_sequence(
-                        Sequence(None, header, aa_seq, nt_seq, taxon, gene, id)
+                        Sequence(None, header, aa_seq, nt_seq, taxon, gene)
                     )
         else:
             printv("Input Detected: Folder containing Fasta", verbosity)
@@ -1168,7 +1217,7 @@ def main(args):
 
     if do_align or do_cull or do_hmm:
         printv("Generating aln", verbosity)
-        generate_aln(
+        this_set = generate_aln(
             this_set,
             align_method,
             overwrite,
