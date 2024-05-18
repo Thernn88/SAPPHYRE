@@ -798,12 +798,12 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
                         strand = "-" if frame < 0 else "+"
                         if frame < 0:
                             strand = "-"
-                            act_start = (chomp_len - end) + (3 - abs(frame))  + chomp_start
-                            act_end = (chomp_len - start) + (3 - abs(frame))  + chomp_start - 1
+                            act_start = (chomp_len - end) + chomp_start
+                            act_end = (chomp_len - start) + chomp_start - 1
                         else:
                             strand = "+"
-                            act_start = start + abs(frame) + chomp_start
-                            act_end = end + abs(frame) + chomp_start - 1
+                            act_start = start + chomp_start
+                            act_end = end + chomp_start - 1
 
                         parent_gff_output[parent].append(((act_start), f"{parent}\tSapphyre\texon\t{act_start}\t{act_end}\t.\t{strand}\t.\tID={node};Parent={gene};Note={frame};"))
                         if parent not in end_bp:

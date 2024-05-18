@@ -454,37 +454,16 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
                         output.append(new_hit)
                 continue
             
-            if query in parents:
-                hit = parents[query]
-                if not f"{hit.node}|{hit.frame}" in parents_done:
-                    for result in results:
-                        start, end, score, ali_start, ali_end = result
-                        start = start * 3
-                        end = end * 3
-
-                        if map_mode:
-                            sequence = nt_sequences[query]
-                            if len(sequence) % 3 != 0:
-                                sequence += ("N" * (3 - len(sequence) % 3))
-                            start = 0
-                        else:
-                            sequence = nt_sequences[query][start: end]
-
-                        if is_full:
-                            new_qstart = start
-                        else:
-                            new_qstart = hit.qstart + start
-
-                        new_uid = hit.uid + start + end
-
-                        passed_ids.add(hit.node)
-                        parents_done.add(f"{hit.node}|{hit.frame}")
-                        new_hit = HmmHit(node=hit.node, score=score, frame=hit.frame, evalue=hit.evalue, qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=new_uid, refs=hit.refs, seq=sequence)
-                        output.append(new_hit)
-
-            if query in children:
-                _, frame = query.split("|")
-                parent = children[query]
+            if query in parents or query in children:
+                if query in parents:
+                    hit = parents[query]
+                    if f"{hit.node}|{hit.frame}" in parents_done:
+                        continue
+                    
+                    frame = hit.frame
+                else:
+                    hit = children[query]
+                    frame = int(query.split("|")[1])
                 for result in results:
                     start, end, score, ali_start, ali_end = result
                     start = start * 3
@@ -500,16 +479,21 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
 
                     if is_full:
                         new_qstart = start
+                        if frame < 0:
+                            new_qstart -= (3 - abs(frame))
+
+                        else:
+                            new_qstart += frame
+
                     else:
                         new_qstart = hit.qstart + start
 
-                    new_uid = parent.uid + start + end
+                    new_uid = hit.uid + start + end
 
                     passed_ids.add(hit.node)
-                    clone = HmmHit(node=parent.node, score=score, frame=int(frame), evalue=parent.evalue, qstart=new_qstart, qend=new_qstart + len(sequence), gene=parent.gene, query=parent.query, uid=new_uid, refs=parent.refs, seq=sequence)
-                    new_outs.append((f"{clone.gene},{clone.node},{clone.frame}"))
-                    
-                    output.append(clone)
+                    parents_done.add(f"{hit.node}|{frame}")
+                    new_hit = HmmHit(node=hit.node, score=score, frame=frame, evalue=hit.evalue, qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=new_uid, refs=hit.refs, seq=sequence)
+                    output.append(new_hit)
 
         diamond_kicks = []
         for hit in diamond_hits:
