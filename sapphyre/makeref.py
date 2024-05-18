@@ -305,8 +305,7 @@ def cull(records, percent, has_nt):
     
     cull_end += 1 # include last bp
     for rec in records:
-        rec.seq = rec.seq[cull_start: cull_end]
-
+        new_record = aligned_record(rec.header, rec.seq[cull_start: cull_end], rec.gene)
         if has_nt:
             left_flank = rec.seq[:cull_start]
             right_flank = rec.seq[cull_end:]
@@ -315,8 +314,7 @@ def cull(records, percent, has_nt):
 
             cull_result[rec.header] = left_bp, right_bp
 
-        rec.start, rec.end = find_index_pair(rec.seq, "-")
-        out.append(rec)
+        out.append(new_record)
 
     return cull_result, out
 
@@ -595,41 +593,56 @@ def do_merge(sequences):
     return sequences
 
 
+def short_seq_check(records: list, min_aa: int) -> tuple[list, list]:
+    too_short = []
+    regular = []
+    for record in records:
+        seq = record.seq[record.start: record.end]
+        data = len(seq) - seq.count('-')
+        if data >= min_aa:
+            regular.append(record)
+        else:
+            too_short.append(record)
+    return regular, too_short
+
+
 def filter_deviation(
-            records: list, 
-            repeats,
-            distance_exponent,
-            iqr_coefficient,
-            floor, 
-            min_aa
-        ) -> tuple:
+        records: list, repeats: int,
+        distance_exponent=2.0, iqr_coefficient=1.0,
+        floor=0.03, min_aa=0
+                     ) -> tuple:
     has_changed = True
     failed = []
+    too_short = []
+    if min_aa:
+        records, too_short = short_seq_check(records, min_aa)
+        if not records:
+            return too_short, failed
     while has_changed and repeats > 0:
-        if len(records) <= 1:
-            break
         repeats -= 1
         has_changed = False
         all_distances = []
         for rec1, rec2 in combinations(records, 2):
             st, e = max(rec1.start, rec2.start), min(rec1.end, rec2.end)
-            if st >= e:  # nan filter 1
+            if st >= e:  # nan filter 1, no overlap
                 continue
             distance = blosum62_distance(rec1.seq[st:e], rec2.seq[st:e])
             if not distance >= 0:
-                continue  # nan filter 2, just to be safe
+                continue  # nan filter 2
             distance = distance ** distance_exponent
             rec1.distances.append(distance)
             rec2.distances.append(distance)
             all_distances.append(distance)
         if not all_distances:
-            # TODO Check if this is a bug
+            print(len(records), len(failed), len(too_short))
             break
-        
-        q3, med, q1 = np.percentile(all_distances, [75, 50, 25])
+        q3,  med, q1 = np.percentile(all_distances, [75, 50, 25])
         cutoff = max(med + iqr_coefficient*(q3 - q1), floor)
+
         for i, record in enumerate(records):
-            if record.end - record.start < min_aa or not record.distances:
+            if not record.distances:
+                too_short.append(record)
+                records[i] = None
                 continue
             avg = np.median(record.distances)
             record.mean = avg
@@ -640,6 +653,8 @@ def filter_deviation(
                 records[i] = None
                 has_changed = True
         records = [x for x in records if x]
+    if min_aa:
+        records.extend(too_short)
     return records, failed
 
 
