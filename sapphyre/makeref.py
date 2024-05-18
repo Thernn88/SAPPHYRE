@@ -21,17 +21,17 @@ from .utils import gettempdir, parseFasta, printv, writeFasta
 
 
 class aligned_record:
-    __slots__ = ("header", "seq", "start", "end", "distances", "mean", "all_mean",
+    __slots__ = ("header", "seq", "start", "end", "distances", "mean", "all_mean", "half",
                  "gene", "first_start", "first_end", "second_start", "second_end", "fail")
 
     def __init__(self, header, seq, gene):
         self.header = header
         self.seq = seq
         self.start, self.end = find_index_pair(seq, '-')
-        half = (self.end + self.start) // 2
-        self.first_start, self.first_end = find_index_pair(seq[self.start:half], '-')
-        s_start, s_end = find_index_pair(seq[half:self.end], '-')
-        self.second_start, self.second_end = s_start + half, s_end + half
+        self.half = len(seq) // 2
+        self.first_start, self.first_end = find_index_pair(seq[self.start:self.half], '-')
+        s_start, s_end = find_index_pair(seq[self.half:self.end], '-')
+        self.second_start, self.second_end = s_start + self.half, s_end + self.half
         self.distances = []
         self.mean = None
         self.all_mean = None
@@ -648,10 +648,18 @@ def check_halves(references: list,
                  distance_exponent,
                  iqr_coefficient,
                  floor,
-                 min_aa):
-    # repeats is the number of checks to do during the filter
+                 min_aa,
+                 out_dir,
+                 fasta_name):
     for ref in references:
         ref.start, ref.end, ref_first_start, ref_first_end = ref.first_start, ref.first_end, ref.start, ref.end
+
+    os.makedirs(Path(out_dir, 'first'), exist_ok=True)
+    first_path = Path(out_dir, 'first', fasta_name)
+    with open(first_path, 'w') as f:
+        for rec in references:
+            f.write(f">{rec.header}\n{rec.seq[0:rec.half]}\n")
+
     # run check on first half
     references, first_failing = filter_deviation(references,
                                                 repeats,
@@ -667,6 +675,11 @@ def check_halves(references: list,
     # swap seq and saved half
     for ref in references:
         ref.start, ref.end, ref_second_start, ref_second_end = ref.second_start, ref.second_end, ref.start, ref.end
+    os.makedirs(Path(out_dir, 'second'), exist_ok=True)
+    second_path = Path(out_dir, 'second', fasta_name)
+    with open(second_path, 'w') as f:
+        for rec in references:
+            f.write(f">{rec.header}\n{rec.seq[rec.half:]}\n")
     # check second half
     references, second_failing = filter_deviation(references,
                                                 repeats,
@@ -853,7 +866,7 @@ def aln_function(
             fail.fail = "full"
             
         if not no_halves:
-            passed, former, latter = check_halves(passed, HALFSEQ_REPEATS, HALFSEQ_DISTANCE_EXPONENT, HALFSEQ_IQR_COEFFICIENT, HALFSEQ_CUTOFF_FLOOR, MIN_AA)
+            passed, former, latter = check_halves(passed, HALFSEQ_REPEATS, HALFSEQ_DISTANCE_EXPONENT, HALFSEQ_IQR_COEFFICIENT, HALFSEQ_CUTOFF_FLOOR, MIN_AA,cleaned_path,gene+'.fa')
             failed.extend(former)
             failed.extend(latter)
         
