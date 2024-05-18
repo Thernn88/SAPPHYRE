@@ -651,6 +651,7 @@ def check_halves(references: list,
                  min_aa,
                  out_dir,
                  fasta_name):
+    # repeats is the number of checks to do during the filter
     for ref in references:
         ref.start, ref.end, ref_first_start, ref_first_end = ref.first_start, ref.first_end, ref.start, ref.end
 
@@ -662,14 +663,16 @@ def check_halves(references: list,
 
     # run check on first half
     references, first_failing = filter_deviation(references,
-                                                repeats,
-                                                distance_exponent,
-                                                iqr_coefficient,
-                                                floor,
-                                                min_aa)
+                                                 repeats,
+                                                 distance_exponent,
+                                                 iqr_coefficient,
+                                                 floor,
+                                                 min_aa)
+
     for ref in references:
         ref.start, ref.end, ref_first_start, ref_first_end = ref.first_start, ref.first_end, ref.start, ref.end
     # remake failed seqs for debug output
+
     for fail in first_failing:
         fail.fail = "first half"
     # swap seq and saved half
@@ -682,11 +685,12 @@ def check_halves(references: list,
             f.write(f">{rec.header}\n{rec.seq[rec.half:]}\n")
     # check second half
     references, second_failing = filter_deviation(references,
-                                                repeats,
-                                                distance_exponent,
-                                                iqr_coefficient,
-                                                floor,
-                                                min_aa)
+                                                  repeats,
+                                                  distance_exponent,
+                                                  iqr_coefficient,
+                                                  floor,
+                                                  min_aa)
+
     # remake failed seqs for debug output
     for fail in second_failing:
         fail.fail = "second half"
@@ -696,7 +700,7 @@ def check_halves(references: list,
     return references, first_failing, second_failing
 
 
-def delete_empty_columns(references: list[aligned_record], verbose=True) -> None:
+def delete_empty_columns(references: list[aligned_record], verbose=True) -> list[int]:
     """Iterates over each sequence and deletes columns
     that consist of 100% dashes.
 
@@ -725,6 +729,16 @@ def delete_empty_columns(references: list[aligned_record], verbose=True) -> None
                     f"WARNING: Sequence length is not the same as other sequences: {ref.header}"
                 )
             continue
+    return positions_to_keep
+
+def delete_nt_columns(references: list[tuple[str, str]], to_keep: list[int]) -> list[tuple[str, str]]:
+    headers = [ref_tuple[0] for ref_tuple in references]
+    sequences = [ref_tuple[1] for ref_tuple in references]
+    output_seqs = []
+    for seq in sequences:
+        output_seqs.append("".join([seq[x:x+3] for x in to_keep]))
+    result = list(zip(headers, output_seqs))
+    return result
 
 
 def aln_function(
@@ -870,7 +884,7 @@ def aln_function(
             failed.extend(former)
             failed.extend(latter)
         
-        # delete_empty_columns(passed) TODO Add NT Handling here
+        to_keep = delete_empty_columns(passed)
         
         
         clean_dict = {rec.header: rec.seq for rec in passed}
@@ -885,7 +899,7 @@ def aln_function(
                     nt_result.append((seq.header, seq.nt_sequence))
 
                 output.append(seq)
-        
+        nt_result = delete_nt_columns(nt_result, to_keep)
         clean_file = cleaned_path.joinpath(gene + ".aln.fa")
         clean_nt_file = cleaned_nt_path.joinpath(gene + ".nt.aln.fa")
         
