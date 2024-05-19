@@ -194,9 +194,9 @@ def diamond_args(par):
     par.add_argument(
         "-th",
         "--top_hits",
-        type=int,
-        default=8,
-        help="Grab top X hits for each gene.",
+        type=float,
+        default=0.8,
+        help="Hit has to be within x% of top score.",
     )
     par.add_argument(
         "-ip",

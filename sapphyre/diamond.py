@@ -1032,7 +1032,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
         if args.top_hits > 0:
             for gene, hits in output.items():
                 hits.sort(key=lambda x: x.score, reverse=True)
-                output[gene] = hits[:args.top_hits]
+                required_score = max(hits, key=lambda x: x.score).score * (1 - args.top_hits)
+                output[gene] = [i for i in hits if i.score >= required_score]
 
         requires_internal = defaultdict(dict)
         internal_order = []
