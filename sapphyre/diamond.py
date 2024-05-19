@@ -1008,13 +1008,13 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         del arguments
         decoder = json.Decoder(tuple[str, int, dict[str, list[Hit]]])
+        x = set()
         for temp_file in temp_files:
             with open(temp_file.name, "rb") as fp:
                 this_log, mkicks, this_output = decoder.decode(fp.read())
 
             for gene, hits in this_output.items():
                 output[gene].extend(hits)
-
             multi_kicks += mkicks
 
             if args.debug:
@@ -1028,6 +1028,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
             f"Done! Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
             args.verbose,
         )
+        
+        if args.top_hits > 0:
+            for gene, hits in output.items():
+                hits.sort(key=lambda x: x.score, reverse=True)
+                output[gene] = hits[:args.top_hits]
 
         requires_internal = defaultdict(dict)
         internal_order = []
