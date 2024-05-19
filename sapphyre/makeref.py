@@ -894,14 +894,12 @@ def aln_function(
         #print(len(passed), len(failed))
         for fail in failed:
             fail.fail = "full"
-            
+        to_keep = delete_empty_columns(passed)
         if not no_halves:
             passed, former, latter = check_halves(passed, HALFSEQ_REPEATS, HALFSEQ_DISTANCE_EXPONENT, HALFSEQ_IQR_COEFFICIENT, HALFSEQ_CUTOFF_FLOOR, MIN_AA,cleaned_path,gene+'.fa')
             failed.extend(former)
             failed.extend(latter)
-        
-        to_keep = delete_empty_columns(passed)
-        
+            to_keep2 = delete_empty_columns(passed)
         
         clean_dict = {rec.header: rec.seq for rec in passed}
         
@@ -915,7 +913,10 @@ def aln_function(
                     nt_result.append((seq.header, seq.nt_sequence))
 
                 output.append(seq)
-        nt_result = delete_nt_columns(nt_result, to_keep)
+        if nt_result:
+            nt_result = delete_nt_columns(nt_result, to_keep)
+            if not no_halves:
+                nt_result = delete_nt_columns(nt_result, to_keep2)
         clean_file = cleaned_path.joinpath(gene + ".aln.fa")
         clean_nt_file = cleaned_nt_path.joinpath(gene + ".nt.aln.fa")
         
@@ -923,7 +924,7 @@ def aln_function(
         if nt_result:
             writeFasta(clean_nt_file, nt_result, False)
             
-        log = [f">{r.header.split()[0]},{r.end-r.start},{r.fail},{r.mean},{r.all_mean},{r.gene}\n" for r in failed]
+        log = [f"{r.header.split()[0]},{r.end-r.start},{r.fail},{r.mean},{r.all_mean},{r.gene}\n" for r in failed]
 
     return gene, output, duped_headers, log
 
