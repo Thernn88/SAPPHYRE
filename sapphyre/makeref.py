@@ -306,6 +306,8 @@ def cull(records, percent, has_nt):
     cull_end += 1 # include last bp
     for rec in records:
         new_record = aligned_record(rec.header, rec.seq[cull_start: cull_end], rec.gene)
+        if not any(letter != '-' for letter in rec.seq[cull_start: cull_end]) or cull_start >= cull_end:
+            continue
         if has_nt:
             left_flank = rec.seq[:cull_start]
             right_flank = rec.seq[cull_end:]
