@@ -879,7 +879,7 @@ def aln_function(
     # floor is the minimum cutoff value
     # raising this will make lower distance files pass more sequences
     FULLSEQ_CUTOFF_FLOOR = 0.03
-    HALFSEQ_CUTOFF_FLOOR = 0.03
+    HALFSEQ_CUTOFF_FLOOR = 0.05
 
     # repeats is the number of times a check will rerun numbers if a seq is kicked
     # if no seq is kicked, the loop will always terminate
