@@ -520,21 +520,34 @@ def get_head_to_seq(nt_db, recipe):
     return head_to_seq
 
 
-def top_reference_realign(orthoset_raw_path, orthoset_aln_path, orthoset_trimmed_path, orthoset_clean_path, top_refs, target_to_taxon, top_path, gene):
-    out = []
+def delete_empty_columns(records):
+    """Delete empty columns from an alignment.
 
-    gene_trimmed_path = path.join(orthoset_trimmed_path, gene+".aln.fa")
-    gene_raw_path = path.join(orthoset_raw_path, gene+".fa")
-    gene_aln_path = path.join(orthoset_aln_path, gene+".aln.fa")
-    gene_clean_path = path.join(orthoset_clean_path, gene+".aln.fa")
-    if path.exists(gene_clean_path):
-        gene_path = gene_clean_path
-    elif path.exists(gene_trimmed_path):
-        gene_path = gene_trimmed_path
-    elif path.exists(gene_aln_path):
-        gene_path = gene_aln_path
-    else:
-        gene_path = gene_raw_path
+    Args:
+    ----
+        records (list[tuple[str, str]]): A list of headers and sequences.
+    Returns:
+    -------
+        list[tuple[str, str]]: A list of headers and sequences with empty columns removed.
+    """
+    # Get the length of the first sequence
+    length = len(records[0][1])
+
+    # Create a set of indices to keep
+    keep_indices = set()
+
+    # Iterate over the columns
+    for i in range(length):
+        # If any sequence has a letter in the column, add it to the set
+        if any(seq[i] != "-" for _, seq in records):
+            keep_indices.add(i)
+
+    # Create a list of the filtered sequences
+    return [(header, "".join([seq[i] for i in keep_indices])) for header, seq in records]
+
+
+def top_reference_realign(gene_path, top_refs, target_to_taxon, top_path, gene, skip_realign):
+    out = []
         
     source = parseFasta(gene_path, True)
         
@@ -544,9 +557,18 @@ def top_reference_realign(orthoset_raw_path, orthoset_aln_path, orthoset_trimmed
         key = f"{gene}|{header}"
         if target_to_taxon.get(header, set()) in top_refs or target_to_taxon.get(key, set()) in top_refs:
             header_set.add(header)
-            out.append((header, seq.replace("-", "")))   
+            if not skip_realign:
+                seq = seq.replace("-", "")
+            out.append((header, seq))   
         
     out_path = path.join(top_path, gene+".aln.fa")
+    if skip_realign:
+        if len(out) > 0:
+            
+            out = delete_empty_columns(out)
+            
+            writeFasta(out_path, out)
+        return
     if len(out) == 1:
         writeFasta(out_path, out)
         return
@@ -562,7 +584,6 @@ def top_reference_realign(orthoset_raw_path, orthoset_aln_path, orthoset_trimmed
         system(
             f"clustalo -i '{tmp_prealign.name}' -o '{tmp_result.name}' --thread=1 --force"
         )
-
         recs = list(parseFasta(tmp_result.name, True))
         
         del_columns = set()
@@ -1236,22 +1257,33 @@ def run_process(args: Namespace, input_path: str) -> bool:
         orthoset_clean_path = path.join(orthosets_dir, orthoset, "cleaned")
         top_path = path.join(input_path, "top")
 
+        if args.overwrite_top and path.exists(top_path):
+            rmtree(top_path)
+            
         printv(
             f"Writing top reference alignments",
             args.verbose,
         )
-
-        if args.overwrite_top and path.exists(top_path):
-            rmtree(top_path)
+            
         makedirs(top_path, exist_ok=True)
 
         arguments = []
         for gene in present_genes:
+            gene_path = None if args.skip_realign else path.join(orthoset_raw_path, gene + ".fa")
+            for ortho_path in [orthoset_clean_path, orthoset_trimmed_path, orthoset_aln_path]:
+                potential = path.join(ortho_path, gene + ".aln.fa")
+                if path.exists(potential):
+                    gene_path = potential
+                    break
+            if gene_path is None:
+                printv(f"ERROR: Could not find Aln for {gene}.", args.verbose, 0)
+                return False
+            
             arguments.append(
-                (orthoset_raw_path, orthoset_aln_path, orthoset_trimmed_path, orthoset_clean_path, top_refs, gene_target_to_taxa[gene], top_path, gene)
+                (gene_path, top_refs, gene_target_to_taxa[gene], top_path, gene, args.skip_realign)
             )
 
-        if post_threads > 1:
+        if False: #post_threads > 1:
             pool.starmap(top_reference_realign, arguments)
         else:
             for arg in arguments:

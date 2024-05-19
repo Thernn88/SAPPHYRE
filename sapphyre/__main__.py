@@ -149,6 +149,12 @@ def diamond_args(par):
         action="store_true",
         help="Force overwrite top reference files.",
     )
+    par.add_argument(
+        "-sr",
+        "--skip_realign",
+        action="store_true",
+        help="Skip realigning top references.",
+    )
     par.add_argument("-d", "--debug", action="store_true", help="Enable debug outputs.")
     par.add_argument(
         "-s",
