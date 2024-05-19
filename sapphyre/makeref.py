@@ -521,7 +521,6 @@ def generate_aln(
         for arg in arguments:
             subsets.append(mine_aln(*arg))
         
-    print("Absord")
     set = Sequence_Set(set.name)
     for subset in subsets:
         set.absorb(subset)
