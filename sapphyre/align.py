@@ -23,16 +23,22 @@ def get_aln_path(orthoset_dir: str) -> str:
     """
     ALN_FOLDER = "aln"
     TRIMMED_FOLDER = "trimmed"
+    CLEAN_FOLDER = "cleaned"
     RAW_FOLDER = "raw"
+    
+    cleaned = path.join(orthoset_dir, CLEAN_FOLDER)
+    if path.exists(cleaned):
+        return cleaned
 
     trimmed = path.join(orthoset_dir, TRIMMED_FOLDER)
-    aln = path.join(orthoset_dir, ALN_FOLDER)
     if path.exists(trimmed):
         return trimmed
-    elif path.exists(aln):    
-        return path.join(orthoset_dir, ALN_FOLDER)
-    else:
-        return path.join(orthoset_dir, RAW_FOLDER)
+    
+    aln = path.join(orthoset_dir, ALN_FOLDER)
+    if path.exists(aln):    
+        return aln
+    
+    return path.join(orthoset_dir, RAW_FOLDER)
 
 
 def get_start(sequence: str) -> int:
@@ -730,7 +736,7 @@ def run_command(args: CmdArgs) -> None:
         this_intermediates = path.join("intermediates", args.gene)
         if debug and not path.exists(this_intermediates):
             mkdir(this_intermediates)
-        aln_file = path.join(args.aln_path, args.gene + ".fa" if "raw" in args.aln_path else ".aln.fa")
+        aln_file = path.join(args.aln_path, args.gene + ".fa" if "raw" in args.aln_path else args.gene + ".aln.fa")
 
         with TemporaryDirectory(dir=temp_dir) as parent_tmpdir, TemporaryDirectory(
             dir=parent_tmpdir,
@@ -861,9 +867,14 @@ def run_command(args: CmdArgs) -> None:
 
                 # Grab target reference sequences
                 top_aln_path = path.join(args.top_folder, args.gene + ".aln.fa")
+                realign_rec = args.second_run # Realign if required
+                if not path.exists(top_aln_path):
+                    realign_rec = True # Force realignment if the top alignment doesn't exist
+                    top_aln_path = path.join(args.aln_path, args.gene + ".aln.fa")
 
-                if args.second_run:
+                if realign_rec:
                     tmp_aln = NamedTemporaryFile(dir=parent_tmpdir, mode="w+", prefix="References_")
+                    print(aln_file)
                     generate_tmp_aln(
                         aln_file,
                         targets,
@@ -873,7 +884,7 @@ def run_command(args: CmdArgs) -> None:
                         this_intermediates,
                         args.align_method,
                     )
-
+                
                 for i, (file, seq_count, cluster_i) in enumerate(aligned_ingredients):
                     printv(
                         f"Creating reference subalignment {i+1} of {len(aligned_ingredients)}.",
@@ -885,7 +896,7 @@ def run_command(args: CmdArgs) -> None:
                         args.align_method,
                         parent_tmpdir,
                         file,
-                        tmp_aln.name if args.second_run else top_aln_path,
+                        tmp_aln.name if realign_rec else top_aln_path,
                         cluster_i,
                         seq_count,
                         debug,
@@ -896,7 +907,7 @@ def run_command(args: CmdArgs) -> None:
                 if args.align_method != "frags":
                     # Grab insertions in each subalignment
                     alignment_insertion_coords, subalignments, refs = get_insertions(
-                        parent_tmpdir, targets, tmp_aln.name if args.second_run else top_aln_path
+                        parent_tmpdir, targets, tmp_aln.name if realign_rec else top_aln_path
                     )
 
                     # Insert into refs
@@ -910,7 +921,7 @@ def run_command(args: CmdArgs) -> None:
                     # Consolidate output
                     final_sequences = final_refs + sequences
                 
-                if args.second_run:
+                if realign_rec:
                     del tmp_aln
 
         merge_time = keeper.differential() - align_time - cluster_time

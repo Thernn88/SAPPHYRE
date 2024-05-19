@@ -169,7 +169,7 @@ def internal_filter_gene(this_gene_hits, debug, min_overlap_internal=0.9, score_
     return [i[0] for i in this_gene_hits if i[0] is not None], filtered_sequences_log
 
 
-def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
+def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_ref_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
     batch_result = []
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     for gene, diamond_hits in batches:
@@ -364,7 +364,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
         for header, seq in unaligned_sequences:
             nt_sequences[header] = seq
 
-        top_file = path.join(top_location, f"{gene}.aln.fa")
+        aln_file = path.join(aln_ref_location, f"{gene}.aln.fa")
         output = []
         new_outs = []
         parents_done = set()
@@ -379,7 +379,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, top_lo
                 aligned_sequences.append((header, translate))
                 
             with NamedTemporaryFile(dir=gettempdir()) as hmm_temp_file:
-                system(f"hmmbuild '{hmm_temp_file.name}' '{top_file}' > /dev/null")
+                system(f"hmmbuild '{hmm_temp_file.name}' '{aln_file}' > /dev/null")
 
                 if debug > 2:
                     this_hmm_in = path.join(hmm_output_folder, f"{gene}_input.fa")
@@ -633,10 +633,20 @@ def do_folder(input_folder, args):
     if not path.exists(hmm_output_folder):
         system(f"mkdir {hmm_output_folder}")
 
-    top_location = path.join(input_folder, "top")
+    aln_ref_location = path.join(input_folder, "top")
+    if not path.exists(aln_ref_location):
+        orthoset_path = path.join(args.orthoset_input, args.orthoset)
+        aln_ref_location = None
+        for ortho_path in ["cleaned", "trimmed", "aln"]:
+            if path.exists(path.join(orthoset_path, ortho_path)):
+                aln_ref_location = ortho_path
+                break
+    if aln_ref_location is None:
+        printv("ERROR: Could not find alignment reference", args.verbose, 0)
+        return False
 
     per_batch = math.ceil(len(transcripts_mapped_to) / args.processes)
-    batches = [(transcripts_mapped_to[i:i + per_batch], head_to_seq, is_full, is_genome, hmm_output_folder, top_location, args.overwrite, args.map, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance) for i in range(0, len(transcripts_mapped_to), per_batch)]
+    batches = [(transcripts_mapped_to[i:i + per_batch], head_to_seq, is_full, is_genome, hmm_output_folder, aln_ref_location, args.overwrite, args.map, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance) for i in range(0, len(transcripts_mapped_to), per_batch)]
 
     if args.processes <= 1:
         all_hits = []
