@@ -242,6 +242,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
 
         children = {}
         unaligned_sequences = []
+        required_frames = defaultdict(set)
         if is_full:
             fallback = {}
             nodes_in_gene = set()
@@ -307,7 +308,8 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
                     # Forward frame 1
                     query = f"{node}|1"
                     nt_sequences[query] = parent_seq
-                    unaligned_sequences.append((query, parent_seq))
+                    required_frames[node].add(1)
+                    unaligned_sequences.append((node, parent_seq))
                     if query not in parents and node not in cluster_full:
                         children[query] = fallback[node]
 
@@ -316,7 +318,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
                         shifted = shift(1, shift_by)
                         new_query = f"{node}|{shifted}"
                         nt_sequences[new_query] = parent_seq[shift_by:]
-                        unaligned_sequences.append((new_query, parent_seq[shift_by:]))
+                        required_frames[node].add(shifted)
                         if new_query in parents:
                             continue
                         if node in cluster_full:
@@ -328,7 +330,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
                     bio_revcomp_seq = bio_revcomp(parent_seq)
                     query = f"{node}|-1"
                     nt_sequences[query] = bio_revcomp_seq
-                    unaligned_sequences.append((query, bio_revcomp_seq))
+                    required_frames[node].add(-1)
                     if query not in parents and node not in cluster_full:
                         children[query] = fallback[node]
 
@@ -337,7 +339,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
                         shifted = shift(-1, shift_by)
                         new_query = f"{node}|{shifted}"
                         nt_sequences[new_query] = bio_revcomp_seq[shift_by:]
-                        unaligned_sequences.append((new_query, bio_revcomp_seq[shift_by:]))
+                        required_frames[node].add(shifted)
                         if new_query in parents:
                             continue
                         if node in cluster_full:
@@ -374,10 +376,19 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
         seq_template = ">{}\n{}\n"
 
         if debug > 2 or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
-            for header, seq in unaligned_sequences:
-                translate = str(Seq(seq).translate())
-                aligned_sequences.append((header, translate))
-                
+            with NamedTemporaryFile(dir=gettempdir()) as unaligned_tmp, NamedTemporaryFile(dir=gettempdir()) as aln_tmp:
+                writeFasta(unaligned_tmp.name, unaligned_sequences)
+                system(f"fastatranslate {unaligned_tmp.name} > {aln_tmp.name}")
+
+                for header, seq in parseFasta(aln_tmp.name, True):
+                    frame = int(header.split("translate(")[1].replace(")]",""))
+                    if "revcomp" in header:
+                        frame = -frame
+                    header = header.split(" ")[0]
+                    if frame in required_frames[int(header)]:
+                        query = f"{header}|{frame}"
+                        aligned_sequences.append((query, seq))
+                        
             with NamedTemporaryFile(dir=gettempdir()) as hmm_temp_file:
                 system(f"hmmbuild '{hmm_temp_file.name}' '{aln_file}' > /dev/null")
 
