@@ -29,7 +29,7 @@ class aligned_record:
         self.seq = seq
         self.start, self.end = find_index_pair(seq, '-')
         self.half = len(seq) // 2
-        self.first_start, self.first_end = find_index_pair(seq[self.start:self.half], '-')
+        self.first_start, self.first_end = find_index_pair(seq[0:self.half], '-')
         s_start, s_end = find_index_pair(seq[self.half:self.end], '-')
         self.second_start, self.second_end = s_start + self.half, s_end + self.half
         self.distances = []
