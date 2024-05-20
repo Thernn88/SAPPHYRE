@@ -810,6 +810,7 @@ def calculate_splice(kmer_a, kmer_b, overlap_start, candidate_consensus):
 
 def splice_overlap(records: list[aligned_record], candidate_consensus) -> None:
     logs = []
+    merged_out = set()
     component_dict = defaultdict(list)
     for record in records:
         component = record.header.split(":")[0]
@@ -836,17 +837,14 @@ def splice_overlap(records: list[aligned_record], candidate_consensus) -> None:
                 splice_index = calculate_splice(kmer_a, kmer_b, overlap_coords[0], candidate_consensus)
                 
                 if splice_index is not None:
-                    a_cols = [x for x in range(splice_index, record_a.end)]
-                    b_cols = [x for x in range(record_b.start, splice_index)]
-
-                    record_a.seq = del_cols(record_a.seq, a_cols)
-                    record_b.seq = del_cols(record_b.seq, b_cols)
-                
+                    # TODO Handle NT splice
+                    record_a.seq = record_a.seq[:splice_index] + record_b.seq[splice_index:]
+                    record_a.header = f"{record_a.header}&&{record_b.header.split(':')[1]}"
                     record_a.remake_indices()
-                    record_b.remake_indices()
+                    merged_out.add(record_b.header)
                     logs.append(f"Spliced {record_a.gene}|{record_a.header} and {record_b.gene}|{record_b.header} at {splice_index}\n")
 
-    return records, logs
+    return [i for i in records if i.header not in merged_out], logs
 
 def aln_function(
     gene,
