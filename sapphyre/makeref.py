@@ -815,10 +815,10 @@ def splice_overlap(records: list[aligned_record], candidate_consensus) -> None:
         component = record.header.split(":")[0]
         component_dict[component].append(record)
         
-    for records in component_dict.values():
-        records.sort(key=lambda x: x.start)
+    for comp_records in component_dict.values():
+        comp_records.sort(key=lambda x: x.start)
         
-        for (i, record_a), (j, record_b) in combinations(enumerate(records), 2):                
+        for (i, record_a), (j, record_b) in combinations(enumerate(comp_records), 2):                
             overlap_coords = get_overlap(record_a.start, record_a.end, record_b.start, record_b.end, 1)
             if overlap_coords is None:
                 continue
