@@ -192,13 +192,6 @@ def diamond_args(par):
         help="How many references are sampled. We recommend lowering this number if you have a broadly sampled reference set with few closely related species.",
     )
     par.add_argument(
-        "-th",
-        "--top_hits",
-        type=float,
-        default=0.8,
-        help="Hit has to be within x% of top score.",
-    )
-    par.add_argument(
         "-ip",
         "--internal-percent",
         type=float,
