@@ -327,7 +327,7 @@ def cull(records, percent, has_nt):
     return cull_result, out
 
 
-def generate_hmm(set: Sequence_Set, overwrite, processes, verbosity, set_path):
+def generate_hmm(set: Sequence_Set, processes, verbosity, set_path):
     """
     Generates the .hmm files for each gene in the set.
     """
@@ -337,24 +337,23 @@ def generate_hmm(set: Sequence_Set, overwrite, processes, verbosity, set_path):
 
     arguments = []
     for gene, sequences in aligned_sequences.items():
-        arguments.append((gene, sequences, hmm_path, overwrite, verbosity))
+        arguments.append((gene, sequences, hmm_path, verbosity))
 
     with Pool(processes) as pool:
         pool.starmap(hmm_function, arguments)
 
 
-def hmm_function(gene, sequences, hmm_path, overwrite, verbosity):
+def hmm_function(gene, sequences, hmm_path, verbosity):
     """
     Calls the hmm build function and returns the result.
     """
     hmm_file = hmm_path.joinpath(gene + ".hmm")
-    if not hmm_file.exists() or overwrite:
-        printv(f"Generating: {gene}", verbosity, 2)
-        with NamedTemporaryFile(mode="w") as fp:
-            fp.write("".join([i.seq_with_regen_data() for i in sequences]))
-            fp.flush()
+    printv(f"Generating: {gene}", verbosity, 2)
+    with NamedTemporaryFile(mode="w") as fp:
+        fp.write("".join([i.seq_with_regen_data() for i in sequences]))
+        fp.flush()
 
-            os.system(f"hmmbuild '{hmm_file}' '{fp.name}'")
+        os.system(f"hmmbuild '{hmm_file}' '{fp.name}'")
 
 
 def generate_raw(
@@ -1042,7 +1041,7 @@ def aln_function(
     return gene, output, duped_headers, log, splice_log
 
 
-def make_diamonddb(set: Sequence_Set, overwrite, processes):
+def make_diamonddb(set: Sequence_Set, processes):
     """
     Calls the diamond makedb function and returns the data to insert into the rocksdb.
     """
@@ -1052,9 +1051,6 @@ def make_diamonddb(set: Sequence_Set, overwrite, processes):
     db_file = diamond_dir.joinpath(set.name + ".dmnd")
 
     diamond_db_data, target_to_taxon, taxon_to_sequences = set.get_diamond_data()
-
-    if db_file.exists() and not overwrite:
-        return target_to_taxon, taxon_to_sequences
 
     with NamedTemporaryFile(mode="w") as fp:
         fp.write(diamond_db_data)
@@ -1397,7 +1393,7 @@ def main(args):
     if do_diamond:
         printv("Making Diamond DB", verbosity)
         target_to_taxon, taxon_to_sequences = make_diamonddb(
-            this_set, overwrite, processes
+            this_set, processes
         )
 
     printv("Writing core sequences to RocksDB", verbosity, 1)
