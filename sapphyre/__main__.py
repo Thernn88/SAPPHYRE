@@ -1146,6 +1146,13 @@ def subcmd_makeref(sp):
         help="Input file for current set (Either folder containing .fa, .fa or .sqlite)",
     )
     par.add_argument(
+        "-ra",
+        "--realign",
+        default=False,
+        action="store_true",
+        help="Realign sequences after outlier removal",
+    )
+    par.add_argument(
         "-nh",
         "--no_halves",
         default=False,

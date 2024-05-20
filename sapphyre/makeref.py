@@ -429,6 +429,7 @@ def generate_aln(
     has_nt,
     no_halves,
     skip_deviation_filter,
+    realign,
     debug_halves
 ):
     """
@@ -463,6 +464,7 @@ def generate_aln(
     if os.path.exists(cleaned_nt_path):
         rmtree(cleaned_nt_path)
             
+    final_path = None
     if not skip_deviation_filter:
         cleaned_path.mkdir(exist_ok=True)    
         clean_log = set_path.joinpath("cleaned.log")
@@ -471,6 +473,12 @@ def generate_aln(
         if has_nt:
             cleaned_nt_path.mkdir(exist_ok=True)
             nt_trimmed_path.mkdir(exist_ok=True)
+
+        if realign:
+            final_path = set_path.joinpath("final")
+            if os.path.exists(final_path):
+                rmtree(final_path)
+            final_path.mkdir(exist_ok=True)
 
     arguments = []
     for gene, fasta in sequences.items():
@@ -494,6 +502,8 @@ def generate_aln(
                 has_nt,
                 no_halves,
                 skip_deviation_filter,
+                realign,
+                final_path,
                 debug_halves
             ),
         )
@@ -877,6 +887,8 @@ def aln_function(
     has_nt,
     no_halves,
     skip_deviation_filter,
+    realign,
+    final_path,
     debug_halves
 ):
     """
@@ -1037,6 +1049,34 @@ def aln_function(
             writeFasta(clean_nt_file, nt_result, False)
             
         log = [f"{r.header.split()[0]},{r.end-r.start},{r.fail},{r.mean},{r.all_mean},{r.gene}\n" for r in failed]
+
+        if realign:
+            final_file = final_path.joinpath(gene + ".aln.fa")
+            if len(list(parseFasta(raw_fa_file))) == 1:
+                writeFasta(final_file, [(rec.header, rec.seq.replace("-","")) for rec in passed])
+            else:
+                with NamedTemporaryFile(dir=gettempdir()) as temp:
+                    writeFasta(temp.name, [(rec.header, rec.seq.replace("-","")) for rec in passed], False)
+
+                    if align_method == "clustal":
+                        os.system(
+                            f"clustalo -i '{temp.name}' -o '{final_file}' --threads=1 --force",
+                        )  # --verbose
+                    else:
+                        os.system(f"mafft-linsi --thread 1 '{temp.name}' > '{final_file}'")
+
+            for header, seq in parseFasta(final_file, True):
+                aligned_result.append((header, seq))
+
+            aligned_dict = {rec.header: rec.seq for rec in aligned_result}
+
+            output = []
+            nt_result = []
+            for seq in sequences:
+                if seq.header in aligned_dict:
+                    seq.aa_sequence = aligned_dict[seq.header]
+
+                    output.append(seq)
 
     return gene, output, duped_headers, log, splice_log
 
@@ -1221,6 +1261,7 @@ def main(args):
     do_hmm = args.hmmer or args.all
     no_halves = args.no_halves
     skip_deviation_filter = args.skip_deviation_filter
+    realign = args.realign
     cull_percent = args.cull_percent
     if cull_percent > 1:
         cull_percent = cull_percent / 100
@@ -1385,6 +1426,7 @@ def main(args):
             this_set.has_nt,
             no_halves,
             skip_deviation_filter,
+            realign,
             args.debug
         )
     if do_hmm:

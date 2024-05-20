@@ -648,7 +648,7 @@ def do_folder(input_folder, args):
     if not path.exists(aln_ref_location):
         orthoset_path = path.join(args.orthoset_input, args.orthoset)
         aln_ref_location = None
-        for ortho_path in ["cleaned", "trimmed", "aln"]:
+        for ortho_path in ["final", "cleaned", "trimmed", "aln"]:
             if path.exists(path.join(orthoset_path, ortho_path)):
                 aln_ref_location = ortho_path
                 break

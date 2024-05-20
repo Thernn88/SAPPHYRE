@@ -1261,6 +1261,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         orthoset_aln_path = path.join(orthosets_dir, orthoset, "aln")
         orthoset_trimmed_path = path.join(orthosets_dir, orthoset, "trimmed")
         orthoset_clean_path = path.join(orthosets_dir, orthoset, "cleaned")
+        orthoset_final_path = path.join(orthosets_dir, orthoset, "final")
         top_path = path.join(input_path, "top")
 
         if args.overwrite_top and path.exists(top_path):
@@ -1276,7 +1277,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         arguments = []
         for gene in present_genes:
             gene_path = None if args.skip_realign else path.join(orthoset_raw_path, gene + ".fa")
-            for ortho_path in [orthoset_clean_path, orthoset_trimmed_path, orthoset_aln_path]:
+            for ortho_path in [orthoset_final_path, orthoset_clean_path, orthoset_trimmed_path, orthoset_aln_path]:
                 potential = path.join(ortho_path, gene + ".aln.fa")
                 if path.exists(potential):
                     gene_path = potential

@@ -24,7 +24,12 @@ def get_aln_path(orthoset_dir: str) -> str:
     ALN_FOLDER = "aln"
     TRIMMED_FOLDER = "trimmed"
     CLEAN_FOLDER = "cleaned"
+    FINAL_FOLDER = "final"
     RAW_FOLDER = "raw"
+
+    final = path.join(orthoset_dir, FINAL_FOLDER)
+    if path.exists(final):
+        return final
     
     cleaned = path.join(orthoset_dir, CLEAN_FOLDER)
     if path.exists(cleaned):
