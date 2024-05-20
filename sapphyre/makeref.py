@@ -38,6 +38,12 @@ class aligned_record:
         self.gene = gene
         self.fail = None
 
+    def remake_indices(self):
+        self.start, self.end = find_index_pair(self.seq, '-')
+        self.half = len(self.seq) // 2
+        self.first_start, self.first_end = find_index_pair(self.seq[0:self.half], '-')
+        s_start, s_end = find_index_pair(self.seq[self.half:self.end], '-')
+        self.second_start, self.second_end = s_start + self.half, s_end + self.half
 
 class Sequence:
     __slots__ = (
@@ -738,8 +744,6 @@ def delete_empty_columns(references: list[aligned_record], verbose=True) -> list
     -------
         tuple[list, list]: List of tuples containing header and sequence with empty columns removed and a list of positions to keep
     """
-    result = []
-    # if sequences:
     sequence_length = len(references[0].seq)
     positions_to_keep = []
     for i in range(sequence_length):
@@ -749,6 +753,7 @@ def delete_empty_columns(references: list[aligned_record], verbose=True) -> list
     for ref in references:
         try:
             ref.seq = "".join(ref.seq[x] for x in positions_to_keep)
+            ref.remake_indices()
         except IndexError:
             if verbose:
                 print(
@@ -902,7 +907,6 @@ def aln_function(
     log = []
     if not skip_deviation_filter:
         passed, failed = filter_deviation(aligned_result, FULLSEQ_REPEATS, FULLSEQ_DISTANCE_EXPONENT, FULLSEQ_IQR_COEFFICIENT, FULLSEQ_CUTOFF_FLOOR, MIN_AA)
-        #print(len(passed), len(failed))
         for fail in failed:
             fail.fail = "full"
         to_keep = delete_empty_columns(passed)
