@@ -1289,7 +1289,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 (gene_path, top_refs, gene_target_to_taxa[gene], top_path, gene, args.skip_realign)
             )
 
-        if False: #post_threads > 1:
+        if post_threads > 1:
             pool.starmap(top_reference_realign, arguments)
         else:
             for arg in arguments:
