@@ -654,7 +654,7 @@ def filter_deviation(
             rec2.distances.append(distance)
             all_distances.append(distance)
         if not all_distances:
-            print(len(records), len(failed), len(too_short))
+            # print(len(records), len(failed), len(too_short))
             break
         q3,  med, q1 = np.percentile(all_distances, [75, 50, 25])
         cutoff = max(med + iqr_coefficient*(q3 - q1), floor)
