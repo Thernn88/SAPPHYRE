@@ -1255,6 +1255,12 @@ def subcmd_makeref(sp):
         action="store_true",
         help="Overwrite existing files.",
     )
+    par.add_argument(
+        '-dbg',
+        '--debug',
+        default=False,
+        action="store_true",
+        help="Produce logs for half seqs")
     par.set_defaults(func=makeref, formathelp=par.format_help)
 
 

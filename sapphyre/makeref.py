@@ -424,6 +424,7 @@ def generate_aln(
     has_nt,
     no_halves,
     skip_deviation_filter,
+    debug_halves
 ):
     """
     Generates the .aln.fa files for each gene in the set.
@@ -447,7 +448,12 @@ def generate_aln(
     cleaned_path = set_path.joinpath("cleaned")
     if os.path.exists(cleaned_path):
         rmtree(cleaned_path)
-        
+    cleaned_first = Path(cleaned_path, 'first')
+    cleaned_second = Path(cleaned_path, 'second')
+    if os.path.exists(cleaned_first):
+        rmtree(cleaned_first)
+    if os.path.exists(cleaned_second):
+        rmtree(cleaned_second)
     cleaned_nt_path = set_path.joinpath("cleaned_nt")
     if os.path.exists(cleaned_nt_path):
         rmtree(cleaned_nt_path)
@@ -482,6 +488,7 @@ def generate_aln(
                 has_nt,
                 no_halves,
                 skip_deviation_filter,
+                debug_halves
             ),
         )
 
@@ -666,16 +673,18 @@ def check_halves(references: list,
                  floor,
                  min_aa,
                  out_dir,
-                 fasta_name):
+                 fasta_name,
+                 debug_halves):
     # repeats is the number of checks to do during the filter
     for ref in references:
         ref.start, ref.end, ref_first_start, ref_first_end = ref.first_start, ref.first_end, ref.start, ref.end
 
-    os.makedirs(Path(out_dir, 'first'), exist_ok=True)
-    first_path = Path(out_dir, 'first', fasta_name)
-    with open(first_path, 'w') as f:
-        for rec in references:
-            f.write(f">{rec.header}\n{rec.seq[0:rec.half]}\n")
+    if debug_halves:
+        os.makedirs(Path(out_dir, 'first'), exist_ok=True)
+        first_path = Path(out_dir, 'first', fasta_name)
+        with open(first_path, 'w') as f:
+            for rec in references:
+                f.write(f">{rec.header}\n{rec.seq[0:rec.half]}\n")
 
     # run check on first half
     references, first_failing = filter_deviation(references,
@@ -694,11 +703,12 @@ def check_halves(references: list,
     # swap seq and saved half
     for ref in references:
         ref.start, ref.end, ref_second_start, ref_second_end = ref.second_start, ref.second_end, ref.start, ref.end
-    os.makedirs(Path(out_dir, 'second'), exist_ok=True)
-    second_path = Path(out_dir, 'second', fasta_name)
-    with open(second_path, 'w') as f:
-        for rec in references:
-            f.write(f">{rec.header}\n{rec.seq[rec.half:]}\n")
+    if debug_halves:
+        os.makedirs(Path(out_dir, 'second'), exist_ok=True)
+        second_path = Path(out_dir, 'second', fasta_name)
+        with open(second_path, 'w') as f:
+            for rec in references:
+                f.write(f">{rec.header}\n{rec.seq[rec.half:]}\n")
     # check second half
     references, second_failing = filter_deviation(references,
                                                   repeats,
@@ -776,6 +786,7 @@ def aln_function(
     has_nt,
     no_halves,
     skip_deviation_filter,
+    debug_halves
 ):
     """
     Calls the alignment program, runs some additional logic on the result and returns the aligned sequences
@@ -896,7 +907,7 @@ def aln_function(
             fail.fail = "full"
         to_keep = delete_empty_columns(passed)
         if not no_halves:
-            passed, former, latter = check_halves(passed, HALFSEQ_REPEATS, HALFSEQ_DISTANCE_EXPONENT, HALFSEQ_IQR_COEFFICIENT, HALFSEQ_CUTOFF_FLOOR, MIN_AA,cleaned_path,gene+'.fa')
+            passed, former, latter = check_halves(passed, HALFSEQ_REPEATS, HALFSEQ_DISTANCE_EXPONENT, HALFSEQ_IQR_COEFFICIENT, HALFSEQ_CUTOFF_FLOOR, MIN_AA,cleaned_path,gene+'.fa', debug_halves)
             failed.extend(former)
             failed.extend(latter)
             to_keep2 = delete_empty_columns(passed)
@@ -1276,6 +1287,7 @@ def main(args):
             this_set.has_nt,
             no_halves,
             skip_deviation_filter,
+            args.debug
         )
     if do_hmm:
         generate_hmm(this_set, overwrite, processes, verbosity, set_path)
