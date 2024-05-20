@@ -546,7 +546,7 @@ def delete_empty_columns(records):
     return [(header, "".join([seq[i] for i in keep_indices])) for header, seq in records]
 
 
-def top_reference_realign(gene_path, top_refs, target_to_taxon, top_path, gene, skip_realign, top_ref_arg):
+def top_reference_realign(gene_path, top_refs, target_to_taxon, refs_in_gene, top_path, gene, skip_realign, top_ref_arg):
     out = []
         
     source = parseFasta(gene_path, True)
@@ -556,6 +556,9 @@ def top_reference_realign(gene_path, top_refs, target_to_taxon, top_path, gene, 
         header = header.split(" ")[0]
         key = f"{gene}|{header}"
         if (top_ref_arg <= -1) or (target_to_taxon.get(header, set()) in top_refs or target_to_taxon.get(key, set()) in top_refs):
+            # print(refs_in_gene)
+            if refs_in_gene and not (header in refs_in_gene or key in refs_in_gene):
+                continue
             header_set.add(header)
             if not skip_realign:
                 seq = seq.replace("-", "")
@@ -1143,7 +1146,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         cluster_out = []
         primary_nodes = set()
+        tr_genes = defaultdict(list)
         for gene, hits in output:
+            if args.tr_genes:
+                for hit in hits:
+                    tr_genes[hit.gene].append(hit.target)
             ids = [(hit.node, hit.coverage) for hit in hits]
             ids.sort(key = lambda x: x[0])
             clusters = []
@@ -1279,9 +1286,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
             if gene_path is None:
                 printv(f"ERROR: Could not find Aln for {gene}.", args.verbose, 0)
                 return False
-            
             arguments.append(
-                (gene_path, top_refs, gene_target_to_taxa[gene], top_path, gene, args.skip_realign, args.top_ref)
+                (gene_path, top_refs, gene_target_to_taxa[gene], tr_genes[gene], top_path, gene, args.skip_realign, args.top_ref)
             )
 
         if post_threads > 1:

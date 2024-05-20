@@ -192,6 +192,13 @@ def diamond_args(par):
         help="How many references are sampled. We recommend lowering this number if you have a broadly sampled reference set with few closely related species.",
     )
     par.add_argument(
+        "-trg",
+        "--tr_genes",
+        action="store_true",
+        default=False,
+        help="Top ref is now independent to genes.",
+    )
+    par.add_argument(
         "-ip",
         "--internal-percent",
         type=float,
