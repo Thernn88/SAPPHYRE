@@ -13,7 +13,7 @@ import wrap_rocks
 import xxhash
 from Bio import SeqIO
 from msgspec import json
-from sapphyre_tools import constrained_distance, find_index_pair, get_overlap, blosum62_distance
+from sapphyre_tools import constrained_distance, find_index_pair, get_overlap, blosum62_distance, dumb_consensus
 import numpy as np
 
 from .timekeeper import KeeperMode, TimeKeeper
@@ -467,6 +467,7 @@ def generate_aln(
     if not skip_deviation_filter:
         cleaned_path.mkdir(exist_ok=True)    
         clean_log = set_path.joinpath("cleaned.log")
+        splice_log_path = set_path.joinpath("splice.log")
 
         if has_nt:
             cleaned_nt_path.mkdir(exist_ok=True)
@@ -510,12 +511,14 @@ def generate_aln(
 
     printv("Writing Aln to RocksdDB", verbosity, 1)
     clean_log_out = []
+    splice_log_out = []
     aligned_genes = {}
     dupes_in_genes = {}
-    for gene, aligned_sequences, dupe_headers, distance_log in aligned_sequences_components:
+    for gene, aligned_sequences, dupe_headers, distance_log, splice_log in aligned_sequences_components:
         dupes_in_genes[gene] = dupe_headers
         aligned_genes[gene] = aligned_sequences
         clean_log_out.extend(distance_log)
+        splice_log_out.extend(splice_log)
         
     subsets = set.seperate(processes)
     
@@ -541,6 +544,9 @@ def generate_aln(
     if not skip_deviation_filter:        
         with open(str(clean_log), "w") as f:
             f.write("".join(clean_log_out))
+            
+    with open(str(splice_log_path), "w") as f:
+        f.write("".join(splice_log_out))
     return set
 
 def do_merge(sequences):
@@ -772,6 +778,77 @@ def delete_nt_columns(references: list[tuple[str, str]], to_keep: list[int]) -> 
     return result
 
 
+def del_cols(sequence, columns, nt=False):
+    if nt:
+        seq = [sequence[i: i+3] for i in range(0, len(sequence), 3)]
+        for i in columns:
+            seq[i] = "---"
+        return "".join(seq)
+    seq = list(sequence)
+    for i in columns:
+        seq[i] = "-"
+    return "".join(seq)
+
+
+def calculate_splice(kmer_a, kmer_b, overlap_start, candidate_consensus):
+    best_index = None
+    best_score = -1
+    for i in range(len(kmer_a) + 1):
+        joined = kmer_a[:i] + kmer_b[i:]
+    
+        score = sum(candidate_consensus[j].count(let) for j, let in enumerate(joined, overlap_start))
+        
+        if score > best_score:
+            best_score = score
+            best_index = i
+            
+            
+            
+    return best_index + overlap_start
+        
+        
+
+
+def splice_overlap(records: list[aligned_record], candidate_consensus) -> None:
+    logs = []
+    component_dict = defaultdict(list)
+    for record in records:
+        component = record.header.split(":")[0]
+        component_dict[component].append(record)
+        
+    for records in component_dict.values():
+        records.sort(key=lambda x: x.start)
+        
+        for (i, record_a), (j, record_b) in combinations(enumerate(records), 2):                
+            overlap_coords = get_overlap(record_a.start, record_a.end, record_b.start, record_b.end, 1)
+            if overlap_coords is None:
+                continue
+            
+            amount = overlap_coords[1] - overlap_coords[0]
+            percent = amount / min((record_b.end - record_b.start), (record_a.end - record_a.start))
+            
+            if percent > 0.5:
+                continue
+            
+            kmer_a = record_a.seq[overlap_coords[0] : overlap_coords[1]]
+            kmer_b = record_b.seq[overlap_coords[0] : overlap_coords[1]]
+            
+            if constrained_distance(kmer_a, kmer_b) != 0:
+                splice_index = calculate_splice(kmer_a, kmer_b, overlap_coords[0], candidate_consensus)
+                
+                if splice_index is not None:
+                    a_cols = [x for x in range(splice_index, record_a.end)]
+                    b_cols = [x for x in range(record_b.start, splice_index)]
+
+                    record_a.seq = del_cols(record_a.seq, a_cols)
+                    record_b.seq = del_cols(record_b.seq, b_cols)
+                
+                    record_a.remake_indices()
+                    record_b.remake_indices()
+                    logs.append(f"Spliced {record_a.gene}|{record_a.header} and {record_b.gene}|{record_b.header} at {splice_index}\n")
+
+    return records, logs
+
 def aln_function(
     gene,
     sequences,
@@ -845,6 +922,14 @@ def aln_function(
 
     if duped_headers:
         aligned_result = [i for i in aligned_result if i.header not in duped_headers]
+        
+    cand_consensus = defaultdict(list)
+    for record in aligned_result:
+        for i, let in enumerate(record.seq[record.start: record.end], record.start):
+            if let != "-":
+                cand_consensus[i].append(let)
+        
+    aligned_result, splice_log = splice_overlap(aligned_result, cand_consensus)
 
     cull_result = {}
     if do_cull:
@@ -905,6 +990,7 @@ def aln_function(
     MIN_AA = 15
 
     log = []
+    passed = aligned_result
     if not skip_deviation_filter:
         passed, failed = filter_deviation(aligned_result, FULLSEQ_REPEATS, FULLSEQ_DISTANCE_EXPONENT, FULLSEQ_IQR_COEFFICIENT, FULLSEQ_CUTOFF_FLOOR, MIN_AA)
         for fail in failed:
@@ -941,7 +1027,7 @@ def aln_function(
             
         log = [f"{r.header.split()[0]},{r.end-r.start},{r.fail},{r.mean},{r.all_mean},{r.gene}\n" for r in failed]
 
-    return gene, output, duped_headers, log
+    return gene, output, duped_headers, log, splice_log
 
 
 def make_diamonddb(set: Sequence_Set, overwrite, processes):
