@@ -546,7 +546,7 @@ def delete_empty_columns(records):
     return [(header, "".join([seq[i] for i in keep_indices])) for header, seq in records]
 
 
-def top_reference_realign(gene_path, top_refs, target_to_taxon, top_path, gene, skip_realign):
+def top_reference_realign(gene_path, top_refs, target_to_taxon, top_path, gene, skip_realign, top_ref_arg):
     out = []
         
     source = parseFasta(gene_path, True)
@@ -555,7 +555,7 @@ def top_reference_realign(gene_path, top_refs, target_to_taxon, top_path, gene, 
     for header, seq in source:
         header = header.split(" ")[0]
         key = f"{gene}|{header}"
-        if target_to_taxon.get(header, set()) in top_refs or target_to_taxon.get(key, set()) in top_refs:
+        if (top_ref_arg <= -1) or (target_to_taxon.get(header, set()) in top_refs or target_to_taxon.get(key, set()) in top_refs):
             header_set.add(header)
             if not skip_realign:
                 seq = seq.replace("-", "")
@@ -890,7 +890,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     top_targets = set()
     most_common = combined_count.most_common()
 
-    if args.top_ref == -1:
+    if args.top_ref <= 0:
         target_count = 0
     else:
         target_count = min(most_common[0:args.top_ref], key=lambda x: x[1])[1]
@@ -1286,7 +1286,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 return False
             
             arguments.append(
-                (gene_path, top_refs, gene_target_to_taxa[gene], top_path, gene, args.skip_realign)
+                (gene_path, top_refs, gene_target_to_taxa[gene], top_path, gene, args.skip_realign, args.top_ref)
             )
 
         if post_threads > 1:
