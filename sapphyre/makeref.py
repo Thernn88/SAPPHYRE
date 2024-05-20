@@ -654,7 +654,6 @@ def filter_deviation(
             rec2.distances.append(distance)
             all_distances.append(distance)
         if not all_distances:
-            # print(len(records), len(failed), len(too_short))
             break
         q3,  med, q1 = np.percentile(all_distances, [75, 50, 25])
         cutoff = max(med + iqr_coefficient*(q3 - q1), floor)
@@ -738,7 +737,7 @@ def check_halves(references: list,
     return references, first_failing, second_failing
 
 
-def delete_empty_columns(references: list[aligned_record], verbose=True) -> list[int]:
+def delete_empty_columns(references: list[aligned_record], verbose=False) -> list[int]:
     """Iterates over each sequence and deletes columns
     that consist of 100% dashes.
 
