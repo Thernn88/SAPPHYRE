@@ -844,7 +844,7 @@ def splice_overlap(records: list[aligned_record], candidate_consensus, allowed_a
                     splice_index = calculate_splice(kmer_a, kmer_b, overlap_coords[0], candidate_consensus)
                 else:
                     splice_index = record_a.end
-                    print(record_a.gene, record_a.header)
+                    
 
                 if splice_index is not None:
                     # TODO Handle NT splice
