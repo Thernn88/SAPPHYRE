@@ -808,7 +808,7 @@ def calculate_splice(kmer_a, kmer_b, overlap_start, candidate_consensus):
         
 
 
-def splice_overlap(records: list[aligned_record], candidate_consensus) -> None:
+def splice_overlap(records: list[aligned_record], candidate_consensus, allowed_adjacency, maximum_overlap) -> None:
     logs = []
     merged_out = set()
     component_dict = defaultdict(list)
@@ -818,31 +818,44 @@ def splice_overlap(records: list[aligned_record], candidate_consensus) -> None:
         
     for comp_records in component_dict.values():
         comp_records.sort(key=lambda x: x.start)
-        
-        for (i, record_a), (j, record_b) in combinations(enumerate(comp_records), 2):                
-            overlap_coords = get_overlap(record_a.start, record_a.end, record_b.start, record_b.end, 1)
-            if overlap_coords is None:
-                continue
-            
-            amount = overlap_coords[1] - overlap_coords[0]
-            percent = amount / min((record_b.end - record_b.start), (record_a.end - record_a.start))
-            
-            if percent > 0.5:
-                continue
-            
-            kmer_a = record_a.seq[overlap_coords[0] : overlap_coords[1]]
-            kmer_b = record_b.seq[overlap_coords[0] : overlap_coords[1]]
-            
-            if constrained_distance(kmer_a, kmer_b) != 0:
-                splice_index = calculate_splice(kmer_a, kmer_b, overlap_coords[0], candidate_consensus)
+
+        merge_occured = True
+        while merge_occured:
+            merge_occured = False
+            for (i, record_a), (j, record_b) in combinations(enumerate(comp_records), 2):        
+                if record_a.header in merged_out or record_b.header in merged_out:
+                    continue        
+                overlap_coords = get_overlap(record_a.start, record_a.end, record_b.start, record_b.end, -allowed_adjacency + 1)
+                if overlap_coords is None:
+                    continue
                 
+                amount = overlap_coords[1] - overlap_coords[0]
+                percent = amount / min((record_b.end - record_b.start), (record_a.end - record_a.start))
+                
+                if percent > maximum_overlap:
+                    continue
+                
+                if amount > 0:
+                    kmer_a = record_a.seq[overlap_coords[0] : overlap_coords[1]]
+                    kmer_b = record_b.seq[overlap_coords[0] : overlap_coords[1]]
+                    
+                    if constrained_distance(kmer_a, kmer_b) == 0:
+                        continue
+
+                    splice_index = calculate_splice(kmer_a, kmer_b, overlap_coords[0], candidate_consensus)
+                else:
+                    splice_index = record_a.end
+                    print(record_a.gene, record_a.header)
+
                 if splice_index is not None:
                     # TODO Handle NT splice
                     record_a.seq = record_a.seq[:splice_index] + record_b.seq[splice_index:]
                     record_a.header = f"{record_a.header}&&{record_b.header.split(':')[1]}"
                     record_a.remake_indices()
                     merged_out.add(record_b.header)
+                    merge_occured = True
                     logs.append(f"Spliced {record_a.gene}|{record_a.header} and {record_b.gene}|{record_b.header} at {splice_index}\n")
+                    break
 
     return [i for i in records if i.header not in merged_out], logs
 
@@ -926,7 +939,9 @@ def aln_function(
             if let != "-":
                 cand_consensus[i].append(let)
         
-    aligned_result, splice_log = splice_overlap(aligned_result, cand_consensus)
+    allowed_adjacency = 3 # Allow x bp of non-overlapping adjacent bp to merge
+    maximum_overlap = 0.5
+    aligned_result, splice_log = splice_overlap(aligned_result, cand_consensus, allowed_adjacency, maximum_overlap)
 
     cull_result = {}
     if do_cull:
