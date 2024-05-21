@@ -5,7 +5,6 @@ from collections.abc import Generator
 from queue import Queue
 from threading import Thread
 
-import pyfastx
 from needletail import parse_fastx_file
 
 

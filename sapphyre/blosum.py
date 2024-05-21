@@ -6,7 +6,6 @@ from itertools import combinations
 from multiprocessing.pool import Pool
 from os import mkdir, path, remove
 from pathlib import Path
-from blosum import BLOSUM
 from sys import exit
 
 from msgspec import Struct
@@ -280,7 +279,7 @@ def compare_means(
             margin = 0.02
             #if IQR <= .2: margin = .025
             #if IQR <= .1: margin = .05
-            if IQR <=.05: IQR = .05
+            IQR = max(IQR, 0.05)
             upper_bound = Q3 + (threshold * IQR) + margin
         else:  # if no ref_distances, reject
             upper_bound = "N/A"
@@ -435,30 +434,30 @@ def grab_index_cluster(true_cluster_threshold, true_cluster_raw):
 
 
 def report_overlaps(records, true_cluster_headers):
-        THRESHOLD = 0
-        true, not_true = [], []
-        reported = []
+    THRESHOLD = 0
+    true, not_true = [], []
+    reported = []
 
-        for rec in records:
-            if rec.id in true_cluster_headers:
-                true.append((rec, *find_index_pair(rec.sequence, "-")))
-            else:
-                not_true.append((rec, *find_index_pair(rec.sequence, "-")))
+    for rec in records:
+        if rec.id in true_cluster_headers:
+            true.append((rec, *find_index_pair(rec.sequence, "-")))
+        else:
+            not_true.append((rec, *find_index_pair(rec.sequence, "-")))
 
-        for node_2, start_2, end_2 in not_true:
-            for node, start, end in true:
-                overlap_coords = get_overlap(
-                    start_2, end_2, start, end, 1
-                )
-                if overlap_coords:
-                    overlap_amount = overlap_coords[1] - overlap_coords[0]
-                    percent = overlap_amount / min((end_2 - start_2), (end - start))
+    for node_2, start_2, end_2 in not_true:
+        for node, start, end in true:
+            overlap_coords = get_overlap(
+                start_2, end_2, start, end, 1
+            )
+            if overlap_coords:
+                overlap_amount = overlap_coords[1] - overlap_coords[0]
+                percent = overlap_amount / min((end_2 - start_2), (end - start))
 
-                    if percent > THRESHOLD:
-                        reported.append(f"{node.id},{node_2.id},{percent}")
-                        break
+                if percent > THRESHOLD:
+                    reported.append(f"{node.id},{node_2.id},{percent}")
+                    break
 
-        return reported
+    return reported
 
 
 def do_cluster(ids, ref_coords, max_distance=100):

@@ -13,7 +13,7 @@ import wrap_rocks
 import xxhash
 from Bio import SeqIO
 from msgspec import json
-from sapphyre_tools import constrained_distance, find_index_pair, get_overlap, blosum62_distance, dumb_consensus
+from sapphyre_tools import constrained_distance, find_index_pair, get_overlap, blosum62_distance
 import numpy as np
 
 from .timekeeper import KeeperMode, TimeKeeper

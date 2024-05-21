@@ -9,7 +9,7 @@ from subprocess import Popen, run
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from time import time
 from psutil import Process
-from sapphyre_tools import find_index_pair, sigclust, get_overlap
+from sapphyre_tools import find_index_pair, sigclust
 from xxhash import xxh3_64
 from wrap_rocks import RocksDB
 from .timekeeper import KeeperMode, TimeKeeper

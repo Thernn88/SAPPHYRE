@@ -1,23 +1,11 @@
 from collections import defaultdict
 from itertools import combinations
-from math import ceil
 from multiprocessing import Pool
-from os import listdir, makedirs, mkdir, path
-from shutil import rmtree
-
-from msgspec import Struct
+from os import listdir, makedirs, path
 from sapphyre_tools import (
-    convert_consensus,
-    dumb_consensus,
-    dumb_consensus_dupe,
     find_index_pair,
     get_overlap,
-    is_same_kmer,
-    # del_cols,
-    OverlapTree,
 )
-from wrap_rocks import RocksDB
-from msgspec import json
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta

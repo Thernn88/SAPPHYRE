@@ -3,7 +3,7 @@ from __future__ import annotations
 from argparse import Namespace
 from collections import Counter, defaultdict, namedtuple
 from multiprocessing.pool import Pool
-from os import listdir, makedirs, path
+from os import makedirs, path
 from shutil import rmtree
 from typing import TextIO
 

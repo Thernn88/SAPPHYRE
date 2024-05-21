@@ -9,7 +9,7 @@ from multiprocessing.pool import Pool
 from os import listdir, makedirs, path
 from shutil import rmtree
 import warnings
-from statistics import mean, median, stdev
+from statistics import median
 from numpy import percentile
 from Bio import BiopythonWarning
 from blosum import BLOSUM
@@ -19,7 +19,6 @@ from sapphyre_tools import (
     join_triplets_with_exclusions,
     join_with_exclusions,
     blosum62_distance,
-    get_overlap,
 )
 from wrap_rocks import RocksDB
 

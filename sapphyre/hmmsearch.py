@@ -1,6 +1,4 @@
-from decimal import Decimal
 import math
-from time import time
 import warnings
 from collections import defaultdict
 from shutil import rmtree
@@ -11,7 +9,6 @@ from wrap_rocks import RocksDB
 from msgspec import Struct, json
 from sapphyre_tools import bio_revcomp, get_overlap
 from Bio import BiopythonWarning
-from Bio.Seq import Seq
 from .utils import parseFasta, printv, gettempdir, writeFasta
 from .diamond import ReferenceHit, ReporterHit as Hit
 from .timekeeper import TimeKeeper, KeeperMode

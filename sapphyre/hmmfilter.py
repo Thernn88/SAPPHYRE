@@ -4,7 +4,7 @@ from math import ceil
 from multiprocessing import Pool
 from os import listdir, mkdir, path
 
-from msgspec import Struct
+from msgspec import Struct, json
 from sapphyre_tools import (
     convert_consensus,
     dumb_consensus,
@@ -16,7 +16,6 @@ from sapphyre_tools import (
     OverlapTree,
 )
 from wrap_rocks import RocksDB
-from msgspec import json
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
@@ -208,11 +207,11 @@ def internal_filter_gene2(nodes, debug, gene, min_overlap_internal, score_diff_i
         score_target = node.score / score_diff_internal
         for interval, coords in memoize[(node.start, node.end)]:
                 targets = (hit_b for hit_b in intervals[(interval[0], interval[1])].children if
-                           hit_b.score <= score_target)
+                    hit_b.score <= score_target)
 
-                           # hit_b.score <= score_target and
-                           # hit_b.index not in kicks and
-                           # hit_b.index not in safe)
+                    # hit_b.score <= score_target and
+                    # hit_b.index not in kicks and
+                    # hit_b.index not in safe)
                 # compare_hit_to_leaf(node, targets, coords, score_diff_internal, kicks, safe, debug, gene, filtered_sequence_log)
                 compare_hit_to_leaf(node, targets, coords, score_diff_internal)
 
@@ -493,11 +492,11 @@ def process_batch(
                 percentage_of_overlap = amount_of_overlap / distance
 
                 if percentage_of_overlap >= 0.8:
-                        kicked_headers.add(hit_b.header)
-                        if args.debug:
-                            overlap_kicks.append(
-                                f"{hit_b.header},{hit_b.score},{hit_b.start},{hit_b.end},Same Header Overlap Lowest Score,{hit.header},{hit.score},{start},{end}"
-                            )
+                    kicked_headers.add(hit_b.header)
+                    if args.debug:
+                        overlap_kicks.append(
+                            f"{hit_b.header},{hit_b.score},{hit_b.start},{hit_b.end},Same Header Overlap Lowest Score,{hit.header},{hit.score},{start},{end}"
+                        )
         
         nodes = [i for i in nodes if i.header not in kicked_headers]
         nodes, internal_header_kicks, internal_log = internal_filter_gene2(nodes.copy(), args.debug, gene, args.min_overlap_internal, args.score_diff_internal)

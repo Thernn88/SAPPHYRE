@@ -14,7 +14,7 @@ import xxhash
 from msgspec import json
 
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import parseFasta, printv, writeFasta
+from .utils import parseFasta, printv
 
 
 class IndexIter:
