@@ -476,7 +476,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                         ref_seqs = [
                             ReferenceHit(hit.target, None, hit.sstart, hit.send)
                             for hit in hits[1:]
-                            if hit.ref in pargs.pairwise_refs
+                            #if hit.ref in pargs.pairwise_refs TODO Check if this is used
                         ]
                     top_hit.refs.extend(ref_seqs)
 
@@ -546,7 +546,7 @@ def delete_empty_columns(records):
     return [(header, "".join([seq[i] for i in keep_indices])) for header, seq in records]
 
 
-def top_reference_realign(gene_path, top_refs, target_to_taxon, refs_in_gene, top_path, gene, skip_realign, top_ref_arg):
+def top_reference_realign(gene_path, top_refs, target_to_taxon, top_path, gene, skip_realign, top_ref_arg):
     out = []
         
     source = parseFasta(gene_path, True)
@@ -556,9 +556,6 @@ def top_reference_realign(gene_path, top_refs, target_to_taxon, refs_in_gene, to
         header = header.split(" ")[0]
         key = f"{gene}|{header}"
         if (top_ref_arg <= -1) or (target_to_taxon.get(header, set()) in top_refs or target_to_taxon.get(key, set()) in top_refs):
-            # print(refs_in_gene)
-            if refs_in_gene and not (header in refs_in_gene or key in refs_in_gene):
-                continue
             header_set.add(header)
             if not skip_realign:
                 seq = seq.replace("-", "")
@@ -887,29 +884,21 @@ def run_process(args: Namespace, input_path: str) -> bool:
         gene, ref_taxa, _ = target_to_taxon[target]
         combined_count[ref_taxa] += count
 
-    top_refs = set()
-    top_ref_in_order = []
-    pairwise_refs = set()
-    top_targets = set()
-    most_common = combined_count.most_common()
+    pairwise_refs = set() # TODO Check if this is used
 
-    if args.top_ref <= 0:
-        target_count = 0
-    else:
-        target_count = min(most_common[0:args.top_ref], key=lambda x: x[1])[1]
-    with open(path.join(input_path, "diamond_top_ref.csv"), "w") as fp:
-        for k, v in most_common:
-            fp.write(f"{k},{v} \n")
-        
-    #target_count = min_count * (1 - args.top_ref)
-    for taxa, count in most_common:
-        if count >= target_count:
-            top_ref_in_order.append(taxa)
-            top_refs.add(taxa)
-            top_targets.update(taxon_to_targets[taxa])
+    top_refs = defaultdict(set)
+    top_ref_in_order = defaultdict(list)
+    
+    most_common = combined_count.most_common()
+    top_ref_csv = open(path.join(input_path, "diamond_top_ref.csv"), "w")
+    top_ref_csv.write("Global count\n")
+    for k, v in most_common:
+        top_ref_csv.write(f"{k},{v}\n")
 
     gene_target_to_taxa = defaultdict(dict)
     for target, (gene, taxa, _) in target_to_taxon.items():
+        if "|" in target:
+            target = target.split("|", 1)[1]
         gene_target_to_taxa[gene][target] = taxa
 
     target_has_hit = set(df["target"].unique())
@@ -1032,9 +1021,29 @@ def run_process(args: Namespace, input_path: str) -> bool:
             args.verbose,
         )
         
+        
         requires_internal = defaultdict(dict)
         internal_order = []
         for gene, hits in output.items():
+
+            this_targets = [hit.target for hit in hits]
+            this_taxa = {gene_target_to_taxa[gene][target] for target in this_targets}
+            gene_counts = Counter({taxa: combined_count[taxa] for taxa in this_taxa})
+
+            most_common = gene_counts.most_common()
+            if args.top_ref <= 0:
+                target_count = 0
+            else:
+                target_count = min(most_common[0:args.top_ref], key=lambda x: x[1])[1]
+                
+            #target_count = min_count * (1 - args.top_ref)
+            top_ref_csv.write(f"{gene}\n")
+            for taxa, count in most_common:
+                if count >= target_count:
+                    top_ref_in_order[gene].append(taxa)
+                    top_refs[gene].add(taxa)
+                    top_ref_csv.write(f"{taxa}\n")
+
             this_counter = Counter([i.node for i in hits]).most_common()
             if this_counter[0][1] > 1:
                 this_hits = sum(i[1] for i in this_counter if i[1] > 1)
@@ -1045,7 +1054,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 internal_order.append((gene, this_hits))
 
         internal_order.sort(key=lambda x: x[1], reverse=True)
-
+        del top_ref_csv
         if post_threads > 1:
             # with Pool(post_threads) as pool:
             internal_results = pool.map(
@@ -1096,7 +1105,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         for target, ref_tuple in target_to_taxon.items():
             gene, ref_taxon, data_length = ref_tuple
-            if ref_taxon in top_refs:
+            if ref_taxon in top_refs[gene]:
                 variant_filter[gene].append((ref_taxon, target, data_length))
 
         dict_items = list(variant_filter.items())
@@ -1140,7 +1149,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         )
 
         del variant_filter
-        nt_db.put("getall:valid_refs", ",".join(top_ref_in_order))
+        nt_db.put_bytes("getall:valid_refs", json.encode(top_ref_in_order))
 
         head_to_seq = get_head_to_seq(nt_db, recipe)
 
@@ -1283,7 +1292,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 printv(f"ERROR: Could not find Aln for {gene}.", args.verbose, 0)
                 return False
             arguments.append(
-                (gene_path, top_refs, gene_target_to_taxa[gene], top_path, gene, args.skip_realign, args.top_ref)
+                (gene_path, top_refs[gene], gene_target_to_taxa[gene], top_path, gene, args.skip_realign, args.top_ref)
             )
 
         if post_threads > 1:
