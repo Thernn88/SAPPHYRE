@@ -1146,11 +1146,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         cluster_out = []
         primary_nodes = set()
-        tr_genes = defaultdict(list)
         for gene, hits in output:
-            if args.tr_genes:
-                for hit in hits:
-                    tr_genes[hit.gene].append(hit.target)
             ids = [(hit.node, hit.coverage) for hit in hits]
             ids.sort(key = lambda x: x[0])
             clusters = []
@@ -1287,7 +1283,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 printv(f"ERROR: Could not find Aln for {gene}.", args.verbose, 0)
                 return False
             arguments.append(
-                (gene_path, top_refs, gene_target_to_taxa[gene], tr_genes[gene], top_path, gene, args.skip_realign, args.top_ref)
+                (gene_path, top_refs, gene_target_to_taxa[gene], top_path, gene, args.skip_realign, args.top_ref)
             )
 
         if post_threads > 1:
