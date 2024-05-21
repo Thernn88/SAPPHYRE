@@ -1065,10 +1065,9 @@ def aln_function(
                     else:
                         os.system(f"mafft-linsi --thread 1 '{temp.name}' > '{final_file}'")
 
+            aligned_dict = {}
             for header, seq in parseFasta(final_file, True):
-                aligned_result.append((header, seq))
-
-            aligned_dict = {rec.header: rec.seq for rec in aligned_result}
+                aligned_dict[header] = seq
 
             output = []
             nt_result = []
