@@ -770,7 +770,7 @@ def main_process(
                         if let in candidate_flex_consensus[x]:
                             matches += 1
                             
-                    if matches / candidate.end - candidate.start < rescue_consensus_percent:
+                    if matches / (candidate.end - candidate.start) < rescue_consensus_percent:
                         continue
                     
                     candidate.grade = "Saved By Cluster / " + candidate.grade
