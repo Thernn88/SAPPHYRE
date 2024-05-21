@@ -476,7 +476,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                         ref_seqs = [
                             ReferenceHit(hit.target, None, hit.sstart, hit.send)
                             for hit in hits[1:]
-                            #if hit.ref in pargs.pairwise_refs
+                            if hit.ref in pargs.pairwise_refs
                         ]
                     top_hit.refs.extend(ref_seqs)
 
@@ -546,7 +546,7 @@ def delete_empty_columns(records):
     return [(header, "".join([seq[i] for i in keep_indices])) for header, seq in records]
 
 
-def top_reference_realign(gene_path, top_refs, target_to_taxon, top_path, gene, skip_realign, top_ref_arg):
+def top_reference_realign(gene_path, top_refs, target_to_taxon, refs_in_gene, top_path, gene, skip_realign, top_ref_arg):
     out = []
         
     source = parseFasta(gene_path, True)
@@ -556,14 +556,14 @@ def top_reference_realign(gene_path, top_refs, target_to_taxon, top_path, gene, 
         header = header.split(" ")[0]
         key = f"{gene}|{header}"
         if (top_ref_arg <= -1) or (target_to_taxon.get(header, set()) in top_refs or target_to_taxon.get(key, set()) in top_refs):
+            # print(refs_in_gene)
+            if refs_in_gene and not (header in refs_in_gene or key in refs_in_gene):
+                continue
             header_set.add(header)
             if not skip_realign:
                 seq = seq.replace("-", "")
             out.append((header, seq))   
         
-    if len(out) <= 0:
-        return
-
     out_path = path.join(top_path, gene+".aln.fa")
     if skip_realign:
         if len(out) > 0:
@@ -868,8 +868,52 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
     global_log = []
     dupe_divy_headers = defaultdict(set)
+
+    target_counts = df["target"].value_counts()
+    taxon_to_targets = defaultdict(list)
+    target_to_gene = {}
+    combined_count = Counter()
+
+    for target in target_counts.to_dict().keys():
+        gene, ref_taxa, _ = target_to_taxon[target]
+        taxon_to_targets[ref_taxa].append(target)
+        target_to_gene[target] = gene
+
+    if is_assembly_or_genome and genome_score_filter:
+        filtered_df = df[df["score"] > genome_score_filter]
+        target_counts = filtered_df["target"].value_counts()
+
+    for target, count in target_counts.to_dict().items():
+        gene, ref_taxa, _ = target_to_taxon[target]
+        combined_count[ref_taxa] += count
+
+    top_refs = set()
+    top_ref_in_order = []
     pairwise_refs = set()
+    top_targets = set()
+    most_common = combined_count.most_common()
+
+    if args.top_ref <= 0:
+        target_count = 0
+    else:
+        target_count = min(most_common[0:args.top_ref], key=lambda x: x[1])[1]
+    with open(path.join(input_path, "diamond_top_ref.csv"), "w") as fp:
+        for k, v in most_common:
+            fp.write(f"{k},{v} \n")
+        
+    #target_count = min_count * (1 - args.top_ref)
+    for taxa, count in most_common:
+        if count >= target_count:
+            top_ref_in_order.append(taxa)
+            top_refs.add(taxa)
+            top_targets.update(taxon_to_targets[taxa])
+
+    gene_target_to_taxa = defaultdict(dict)
+    for target, (gene, taxa, _) in target_to_taxon.items():
+        gene_target_to_taxa[gene][target] = taxa
+
     target_has_hit = set(df["target"].unique())
+    # df = df[(df["target"].isin(top_targets))]
     headers = df["header"].unique()
     if len(headers) > 0:
         per_thread = ceil(len(headers) / post_threads)
@@ -983,50 +1027,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
             mkicks,
             this_log,
         )
-
-        target_counts = {}
-        for gene, hits in output.items():
-            target_counts[gene] = Counter([i.target for i in hits if i.score > genome_score_filter])
-
-        top_ref_csv = open(path.join(input_path, "diamond_top_ref.csv"), "w")
-        top_refs = defaultdict(set)
-        top_ref_in_order = defaultdict(list)
-        for gene, count in target_counts.items():
-            combined_count = Counter()
-            for target, c in count.items():
-                if target in target_to_taxon:
-                    _, ref_taxa, _ = target_to_taxon[target]
-                else:
-                    _, ref_taxa, _ = target_to_taxon[f"{gene}|{target}"]
-                combined_count[ref_taxa] += c
-
-            most_common = combined_count.most_common()
-            if not most_common:
-                top_ref_csv.write(f"{gene}\n")
-                continue
-
-            if args.top_ref <= 0:
-                target_count = 0
-            else:
-                target_count = min(most_common[0:args.top_ref], key=lambda x: x[1])[1]
-
-            top_ref_csv.write(f"{gene}\n")
-            
-            #target_count = min_count * (1 - args.top_ref)
-            for taxa, count in most_common:
-                top_ref_csv.write(f"{taxa},{count}")
-                if count >= target_count:
-                    top_ref_csv.write(",Top")
-                    top_ref_in_order[gene].append(taxa)
-                    top_refs[gene].add(taxa)
-                top_ref_csv.write("\n")
-
-        gene_target_to_taxa = defaultdict(dict)
-        for target, (gene, taxa, _) in target_to_taxon.items():
-            gene_target_to_taxa[gene][target] = taxa
-
-        del top_ref_csv
-        
         printv(
             f"Done! Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
             args.verbose,
@@ -1096,7 +1096,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         for target, ref_tuple in target_to_taxon.items():
             gene, ref_taxon, data_length = ref_tuple
-            if ref_taxon in top_refs[gene]:
+            if ref_taxon in top_refs:
                 variant_filter[gene].append((ref_taxon, target, data_length))
 
         dict_items = list(variant_filter.items())
@@ -1140,13 +1140,17 @@ def run_process(args: Namespace, input_path: str) -> bool:
         )
 
         del variant_filter
-        nt_db.put_bytes("getall:valid_refs", json.encode(top_ref_in_order))
+        nt_db.put("getall:valid_refs", ",".join(top_ref_in_order))
 
         head_to_seq = get_head_to_seq(nt_db, recipe)
 
         cluster_out = []
         primary_nodes = set()
+        tr_genes = defaultdict(list)
         for gene, hits in output:
+            if args.tr_genes:
+                for hit in hits:
+                    tr_genes[hit.gene].append(hit.target)
             ids = [(hit.node, hit.coverage) for hit in hits]
             ids.sort(key = lambda x: x[0])
             clusters = []
@@ -1283,7 +1287,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 printv(f"ERROR: Could not find Aln for {gene}.", args.verbose, 0)
                 return False
             arguments.append(
-                (gene_path, top_refs[gene], gene_target_to_taxa[gene], top_path, gene, args.skip_realign, args.top_ref)
+                (gene_path, top_refs, gene_target_to_taxa[gene], tr_genes[gene], top_path, gene, args.skip_realign, args.top_ref)
             )
 
         if post_threads > 1:

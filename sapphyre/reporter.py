@@ -251,7 +251,7 @@ def get_toprefs(rocks_nt_db: RocksDB) -> list[str]:
         list: List of top references
     """
     return (
-        json.decode(rocks_nt_db.get("getall:valid_refs"), type=dict[str, list]),
+        rocks_nt_db.get("getall:valid_refs").split(","),
         rocks_nt_db.get("get:isassembly") == "True",
         rocks_nt_db.get("get:isgenome") == "True",
     )
@@ -750,7 +750,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
                     args.compress,
                     set(target_taxon.get(gene, [])),
                     gene_dupes.get(gene, {}),
-                    top_refs.get(gene, []),
+                    top_refs,
                     args.matches,
                     args.blosum_strictness,
                     EXACT_MATCH_AMOUNT,
