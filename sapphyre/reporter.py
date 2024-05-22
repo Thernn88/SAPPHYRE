@@ -635,13 +635,6 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
             oargs.target_taxon,
             oargs.top_refs,
         )
-
-        nt_core_sequences = print_core_sequences(
-            oargs.gene,
-            core_sequences_nt,
-            oargs.target_taxon,
-            oargs.top_refs,
-        )
         # Write the output
         writeFasta(this_aa_path, aa_core_sequences + aa_output, oargs.compress)
 

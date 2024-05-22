@@ -979,7 +979,7 @@ def align_to_aa_order(nt_out, aa_content):
         yield (header, nt_out[header])
 
 
-def do_cluster(ids, ref_coords, id_chomp_distance=100, max_distance=120):
+def do_cluster(ids, ref_coords, id_chomp_distance=100):
     clusters = []
     ids.sort(key = lambda x: x[0])
     grouped_ids = defaultdict(list)
@@ -1024,10 +1024,6 @@ def do_cluster(ids, ref_coords, id_chomp_distance=100, max_distance=120):
                                     this_direction = "reverse"
                      
                         if current_direction == "bi" or this_direction == "bi" or this_direction == current_direction:
-                            # distance = get_overlap(start, end, current_start, current_end, -max_distance)
-                            # if distance is not None:
-                            #     distance = abs(distance[1] - distance[0])
-                            # if distance is not None and distance < max_distance:
                             passing_direction = this_direction
                             passed = True
                             break
@@ -1058,7 +1054,6 @@ def do_cluster(ids, ref_coords, id_chomp_distance=100, max_distance=120):
             clusters.append((current_cluster[0][0], current_cluster[-1][0]))
         elif len(current_cluster) == 1:
             if current_cluster[0][1] > req_seq_coverage:
-                cluster_coverage = current_cluster[0][1]
                 clusters.append((current_cluster[0][0], current_cluster[0][0]))
                 
     return clusters
@@ -1101,7 +1096,7 @@ def cull_reference_outliers(reference_records: list, debug: int) -> list:
             return reference_records, filtered, 0, 0, 0
 
         total_median = median(all_distances)
-        q3, median2, q1 = percentile(all_distances, [75, 50, 25])
+        q3, q1 = percentile(all_distances, [75, 25])
         iqr = q3 - q1
         iqr_coeff = 1
         # all_mean = mean(all_distances)
@@ -1110,10 +1105,8 @@ def cull_reference_outliers(reference_records: list, debug: int) -> list:
         # allowable = max(total_median * ALLOWABLE_COEFFICENT, 0.3)
 
         allowable = max(total_median + iqr_coeff * iqr, 0.02)
-        # allowable = (all_mean + 2*sd) ** 2
-        pass
-        # if a record's mean is too high, cull it
 
+        # if a record's mean is too high, cull it
         for index, distances in distances_by_index.items():
             this_median = median(distances)
             if this_median > allowable:# or mean > 1:
@@ -1452,9 +1445,6 @@ def do_folder(folder, args: MainArgs, non_coding_gene: set):
         if args.blosum_strictness == "strict"
         else 999999
     )
-
-    if blosum_mode_lower_threshold == -1:
-        blosum_max_percent = -1
 
     mat = BLOSUM(62)
     filtered_mat = {
