@@ -761,9 +761,6 @@ def run_command(args: CmdArgs) -> None:
                 trimmed_header_to_full,
             ) = process_genefile(args.gene_file)
 
-            cluster_time = 0
-            align_time = 0
-            merge_time = 0
 
             # If only one sequence is present we can just output the singleton
             if seq_count == 1:
@@ -813,7 +810,6 @@ def run_command(args: CmdArgs) -> None:
                 else:
                     cluster_children = generate_clusters(data, args.second_run)
                 clusters = seperate_into_clusters(cluster_children, data)
-                cluster_time = keeper.differential()
 
                 if debug:
                     for i, cluster in enumerate(clusters):
@@ -857,7 +853,6 @@ def run_command(args: CmdArgs) -> None:
                         )
                     )
 
-            align_time = keeper.differential() - cluster_time
 
             if aligned_ingredients:
                 # Merge subalignments in order by seq count
@@ -929,7 +924,6 @@ def run_command(args: CmdArgs) -> None:
                 if realign_rec:
                     del tmp_aln
 
-        merge_time = keeper.differential() - align_time - cluster_time
         # Reinsert and sort by start position
         to_write = []
         references = []
@@ -1012,8 +1006,7 @@ def run_command(args: CmdArgs) -> None:
 
     if not args.is_genome:
         return
-    else:
-        return (args.gene, f"{args.gene},{len(ids)},{len(clusters)},{cluster_string}")
+    return (args.gene, f"{args.gene},{len(ids)},{len(clusters)},{cluster_string}")
 
 
 def do_folder(folder, args):
