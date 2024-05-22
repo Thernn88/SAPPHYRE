@@ -486,7 +486,7 @@ def create_subalignment(
         list[tuple[str, str]]: The sequences in the subalignment
     """
     if align_method == "frags":
-        out_file = path.join(parent_tmpdir, f"aligned.fa")
+        out_file = path.join(parent_tmpdir, "aligned.fa")
         command = f"mafft --anysymbol --quiet --jtt 1 --addfragments {file} --thread 1 {tmp_aln} > {out_file}"
 
         system(command)
@@ -775,7 +775,7 @@ def run_command(args: CmdArgs) -> None:
                 if debug:
                     writeFasta(path.join(this_intermediates, aligned_file), sequences)
                     unaligned_path = path.join(
-                        this_intermediates, f"unaligned_cluster_singleton"
+                        this_intermediates, "unaligned_cluster_singleton"
                     )
                     writeFasta(unaligned_path, sequences)
                 aligned_ingredients.append((aligned_file, len(sequences), 0))
@@ -1019,7 +1019,7 @@ def do_folder(folder, args):
     aa_path = path.join(folder, AA_FOLDER)
     if not path.exists(aa_path):
         printv(f"ERROR: Can't find aa ({aa_path}) folder. Abort", args.verbose, 0)
-        printv(f"Please make sure Reporter finished succesfully", args.verbose, 0)
+        printv("Please make sure Reporter finished succesfully", args.verbose, 0)
         return False
     if args.overwrite:
         rmtree(align_path, ignore_errors=True)

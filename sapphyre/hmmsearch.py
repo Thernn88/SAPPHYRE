@@ -664,14 +664,14 @@ def do_folder(input_folder, args):
         with Pool(args.processes) as p:
             all_hits = p.starmap(hmm_search, batches)
 
-    printv(f"Running miniscule score filter", args.verbose, 1)
+    printv("Running miniscule score filter", args.verbose, 1)
 
     log = ["Gene,Node,Frame"]
     klog = ["Gene,Node,Frame"]
     kick_log = ["Gene,Node,Frame"]
     multi_causing_log = ["Gene,Node,Frame,Evalue,Master Gene"]
     header_based_results = defaultdict(list)
-    printv(f"Processing results", args.verbose, 1)
+    printv("Processing results", args.verbose, 1)
     for batch in all_hits:
         for gene, hits, logs, klogs, dkicks in batch:
             if not gene:
@@ -716,7 +716,7 @@ def do_folder(input_folder, args):
             gene_based_results[hit.gene].append(hit)
         
     printv(f"Kicked {mkicks} hits due to miniscule score", args.verbose, 1)
-    printv(f"Writing results to db", args.verbose, 1)
+    printv("Writing results to db", args.verbose, 1)
     hmmsearch_cluster_log = []
     for gene, hits in gene_based_results.items():
         ids = [hit.node for hit in hits]

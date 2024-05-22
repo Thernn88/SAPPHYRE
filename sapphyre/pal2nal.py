@@ -68,7 +68,7 @@ def do_folder(
             ]
         )
 
-    printv(f"Aligning NT Files", verbose)
+    printv("Aligning NT Files", verbose)
     with Pool(num_threads) as pool:
         result = pool.starmap(worker, arguments, chunksize=100)
 

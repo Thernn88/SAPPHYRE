@@ -580,7 +580,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
             "w",
         )
         debug_alignments.write(
-            f"GAP_PENALTY: 2\nEXTEND_PENALTY: 1\n",
+            "GAP_PENALTY: 2\nEXTEND_PENALTY: 1\n",
         )
         debug_dupes = open(f"align_debug/{oargs.gene}/{oargs.taxa_id}.dupes", "w")
 

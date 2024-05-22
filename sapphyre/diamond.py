@@ -1281,7 +1281,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             rmtree(top_path)
             
         printv(
-            f"Writing top reference alignments",
+            "Writing top reference alignments",
             args.verbose,
         )
             
