@@ -28,7 +28,7 @@ class Record(Struct):
         return (self.id, self.seq)
 
 
-def folder_check(taxa_path: Path, debug: bool) -> Path:
+def folder_check(taxa_path: Path) -> Path:
     """Create subfolders 'aa' and 'nt' to given path."""
     aa_folder = Path(taxa_path, "aa")
     nt_folder = Path(taxa_path, "nt")
@@ -359,7 +359,7 @@ def main(args, from_folder):
 
         output_path = Path(folder, "outlier", "internal")
         nt_output_path = path.join(output_path, "nt")
-        aa_log_path, nt_log_path = folder_check(output_path, args.debug)
+        aa_log_path, nt_log_path = folder_check(output_path)
         file_inputs.sort(key=lambda x: x.stat().st_size, reverse=True)
         arguments = []
             
