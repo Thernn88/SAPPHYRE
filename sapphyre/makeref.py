@@ -21,11 +21,12 @@ from .utils import gettempdir, parseFasta, printv, writeFasta
 
 
 class aligned_record:
-    __slots__ = ("header", "seq", "start", "end", "distances", "mean", "all_mean", "half",
+    __slots__ = ("header", "raw_header", "seq", "start", "end", "distances", "mean", "all_mean", "half",
                  "gene", "first_start", "first_end", "second_start", "second_end", "fail")
 
     def __init__(self, header, seq, gene):
         self.header = header
+        self.raw_header = header
         self.seq = seq
         self.start, self.end = find_index_pair(seq, '-')
         self.half = len(seq) // 2
@@ -286,7 +287,7 @@ def internal_cull(records, cull_internal, has_nt):
 
         new_seq = "".join([rec.seq[i] for i in range(msa_length) if i not in cull_positions])
         rec.seq = new_seq
-        rec.start, rec.end = find_index_pair(rec.seq, "-")
+        rec.remake_indices()
         out.append(rec)
     
     return cull_result, out
@@ -820,6 +821,7 @@ def calculate_splice(kmer_a, kmer_b, overlap_start, candidate_consensus):
 def splice_overlap(records: list[aligned_record], candidate_consensus, allowed_adjacency, maximum_overlap) -> None:
     logs = []
     merged_out = set()
+    has_merge = {}
     component_dict = defaultdict(list)
     for record in records:
         component = record.header.split(":")[0]
@@ -866,7 +868,12 @@ def splice_overlap(records: list[aligned_record], candidate_consensus, allowed_a
                     logs.append(f"Spliced {record_a.gene}|{record_a.header} and {record_b.gene}|{record_b.header} at {splice_index}\n")
                     break
 
-    return [i for i in records if i.header not in merged_out], logs
+    records = [i for i in records if i.header not in merged_out]
+    for record in records:
+        if "&&" in record.header:
+            has_merge[record.raw_header] = record.header
+
+    return records, has_merge, logs
 
 def aln_function(
     gene,
@@ -952,8 +959,12 @@ def aln_function(
         
     allowed_adjacency = 3 # Allow x bp of non-overlapping adjacent bp to merge
     maximum_overlap = 0.5
-    aligned_result, splice_log = splice_overlap(aligned_result, cand_consensus, allowed_adjacency, maximum_overlap)
+    aligned_result, merged_header, splice_log = splice_overlap(aligned_result, cand_consensus, allowed_adjacency, maximum_overlap)
 
+    for seq in sequences:
+        if seq.header in merged_header:
+            seq.header = merged_header[seq.header]
+            
     cull_result = {}
     if do_cull:
         cull_result, aligned_result = cull(aligned_result, cull_percent, has_nt)
