@@ -41,7 +41,7 @@ def main(argsobj):
         from_folder = "trimmed"
 
         printv("Blosum62 Outlier Removal.", argsobj.verbose)
-        blosum_passed = blosum.main(this_args, is_assembly, is_genome, from_folder)
+        blosum_passed = blosum.main(this_args, is_genome, from_folder)
         if not blosum_passed:
             print()
             print(argsobj.formathelp())

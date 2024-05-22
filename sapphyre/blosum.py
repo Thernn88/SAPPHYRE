@@ -180,7 +180,6 @@ def compare_means(
     index_group_min_bp: int,
     ref_gap_percent: float,
     ref_min_percent: float,
-    ref_seq_len: int,
     top_refs: set,
 ) -> tuple:
     """For each candidate record, finds the index of the first non-gap bp and makes
@@ -631,10 +630,8 @@ def main_process(
     index_group_min_bp: int,
     ref_gap_percent: float,
     ref_min_percent: int,
-    assembly: bool,
     is_genome: bool,
     top_refs: set,
-    ref_kick_path,
     passing_rescue_percent: float,
     rescue_consensus_percent: float,
 ):
@@ -672,8 +669,6 @@ def main_process(
         )
         if percent_of_non_dash <= col_cull_percent:
             rejected_indices.add(i)
-    ref_seq_len = sum(find_ref_len(ref) for ref in ref_seqs) / len(ref_seqs)
-    # ref_seq_len = len(ref_seqs[0]) - len(rejected_indices)
     # find number of unique reference variants in file, use for refs_in_file
     if ref_check:
         refs_in_file = len(ref_check)
@@ -695,7 +690,6 @@ def main_process(
         index_group_min_bp,
         ref_gap_percent,
         ref_min_percent,
-        ref_seq_len,
         top_refs,
     )
     logs = []
@@ -834,7 +828,7 @@ def main_process(
     return logs, reported, cluster_out
 
 
-def do_folder(folder, args, is_assembly, is_genome, gene_source):
+def do_folder(folder, args, is_genome, gene_source):
     ALLOWED_EXTENSIONS = {".fa", ".fas", ".fasta", ".gz", ".fq", ".fastq"}
     reference_kick_path = Path(folder, "reference_kicks.log")
     if path.exists(reference_kick_path):
@@ -885,21 +879,21 @@ def do_folder(folder, args, is_assembly, is_genome, gene_source):
 
     #  convert threshold to percent
     args.threshold = args.threshold / 100
-    if not (0 < args.col_cull_percent < 1.0):
+    if not 0 < args.col_cull_percent < 1.0:
         if 0 < args.col_cull_percent <= 100:
             args.col_cull_percent = args.col_cull_percent / 100
         else:
             raise ValueError(
                 "Cannot convert column cull percent to a percent. Use a decimal or a whole number between 0 and 100"
             )
-    if not (0 < args.ref_gap_percent < 1.0):
+    if not 0 < args.ref_gap_percent < 1.0:
         if 0 < args.ref_gap_percent <= 100:
             args.ref_gap_percent = args.ref_gap_percent / 100
         else:
             raise ValueError(
                 "Cannot convert ref gap percent to a percent. Use a decimal or a whole number between 0 and 100"
             )
-    if not (0 < args.ref_min_percent < 1.0):
+    if not 0 < args.ref_min_percent < 1.0:
         if 0 < args.ref_min_percent <= 100:
             args.ref_min_percent = args.ref_min_percent / 100
         else:
@@ -929,10 +923,8 @@ def do_folder(folder, args, is_assembly, is_genome, gene_source):
                     args.ref_min_percent,
                     # args.internal_consensus_threshold,
                     # args.internal_kick_threshold,
-                    is_genome or is_assembly,
                     is_genome,
                     top_refs,
-                    reference_kick_path,
                     args.rescue_passing_cluster,
                     args.rescue_consensus_percent,
                 ),
@@ -961,10 +953,8 @@ def do_folder(folder, args, is_assembly, is_genome, gene_source):
                     args.ref_min_percent,
                     # args.internal_consensus_threshold,
                     # args.internal_kick_threshold,
-                    is_genome or is_assembly,
                     is_genome,
                     top_refs,
-                    reference_kick_path,
                     args.rescue_passing_cluster,
                     args.rescue_consensus_percent,
                 ),
@@ -1001,12 +991,12 @@ def do_folder(folder, args, is_assembly, is_genome, gene_source):
     return True
 
 
-def main(args, is_assembly = False, is_genome = False, gene_source = "trimmed"):
+def main(args, is_genome = False, gene_source = "trimmed"):
     success = False
     if isinstance(args.INPUT, list):
-        success = all([do_folder(Path(folder), args, is_assembly, is_genome, gene_source)[0] for folder in args.INPUT])
+        success = all([do_folder(Path(folder), args, is_genome, gene_source)[0] for folder in args.INPUT])
     elif isinstance(args.INPUT, str):
-        success = do_folder(Path(args.INPUT), args, is_assembly, is_genome, gene_source)
+        success = do_folder(Path(args.INPUT), args, is_genome, gene_source)
     return success
 
 
