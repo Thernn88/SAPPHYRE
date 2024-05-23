@@ -410,28 +410,6 @@ def cull_reference_outliers(reference_records: list) -> list:
     return output, filtered, total_mean
 
 
-def grab_index_cluster(true_cluster_threshold, true_cluster_raw):
-    before_true_clusters = []
-
-    current_cluster = []
-    for child_index, child_full in true_cluster_raw:
-        if not current_cluster:
-            current_cluster.append(child_full)
-            current_index = child_index
-        else:
-            if child_index - current_index <= true_cluster_threshold:
-                current_cluster.append(child_full)
-                current_index = child_index
-            else:
-                before_true_clusters.append(current_cluster)
-                current_cluster = [child_full]
-                current_index = child_index
-        
-    if current_cluster:
-        before_true_clusters.append(current_cluster)
-    return before_true_clusters
-
-
 def report_overlaps(records, true_cluster_headers):
     THRESHOLD = 0
     true, not_true = [], []
@@ -649,10 +627,6 @@ def main_process(
     
     original_order = [candidate.id for candidate in candidate_records]
 
-    true_cluster_raw = [(int(header.split("|")[3].split("_")[1]), header[1:]) for header in original_order]
-    true_cluster_raw.sort(key=lambda x: x[0])
-    before_true_clusters = grab_index_cluster(true_cluster_threshold, true_cluster_raw)
-
     candidates_dict = find_index_groups(candidate_records)
     # if not assembly:
     #     candidates_dict = find_index_groups(candidate_records)
@@ -700,25 +674,6 @@ def main_process(
     #         to_save, failing = save_partial_fails(failing, any_passed)
     #         passing.extend(to_save)
     #         passing, header_to_indices = remake_introns(passing)
-
-    after_data = []
-    for candidate in passing:
-        after_data.append((int(candidate.id.split("|")[3].split("_")[1]), candidate.id[1:]))
-
-    reported = []
-    if after_data:
-        after_data.sort(key=lambda x: x[0])
-        after_true_clusters = grab_index_cluster(true_cluster_threshold, after_data)
-        after_true_cluster = set(max(after_true_clusters, key=lambda x: len(x)))
-        matches = []
-        for i, cluster in enumerate(before_true_clusters):
-            matches.append((len(after_true_cluster.intersection(set(cluster))) / len( cluster), i))
-        matches.sort(key=lambda x: x[0], reverse= True)
-        
-        best_match = max(matches, key=lambda x: x[0])[1]
-
-        reported = report_overlaps(passing, before_true_clusters[best_match])
-
 
     ids = []
     cluster_out = None
@@ -825,7 +780,7 @@ def main_process(
 
     
     
-    return logs, reported, cluster_out
+    return logs, cluster_out
 
 
 def do_folder(folder, args, is_genome, gene_source):
@@ -964,10 +919,8 @@ def do_folder(folder, args, is_genome, gene_source):
         global_csv_path = path.join(log_folder_path, "outliers_global.csv")
         with open(global_csv_path, "w", encoding="UTF-8") as global_csv:
             global_csv.write("Header,Candidate_Median,Upper_Bound, Grade, IQR\n")
-            reported_nodes = ["True Node,Node,Overlap Percent"]
             cluster_data = []
-            for log_data, reported_log, cluster_line in process_data:
-                reported_nodes.extend(reported_log)
+            for log_data, cluster_line in process_data:
                 cluster_data.append(cluster_line)
                 for line in log_data:
                     if line.split(",")[-2] != "Pass":
@@ -983,9 +936,6 @@ def do_folder(folder, args, is_genome, gene_source):
             with open(path.join(folder, "blosum_clusters.csv"), "w") as f:
                 f.write("Gene,Seq count,Cluster count,Cluster ranges\n")
                 f.write("\n".join(cluster_data))
-
-        with open(path.join(log_folder_path, "outliers_reported.csv"), "w", encoding="UTF-8") as reported_csv:
-            reported_csv.write("\n".join(reported_nodes))
 
     printv(f"Done! Took {time_keeper.differential():.2f} seconds", args.verbose)
     return True
