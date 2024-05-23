@@ -717,45 +717,11 @@ def do_folder(input_folder, args):
         
     printv(f"Kicked {mkicks} hits due to miniscule score", args.verbose, 1)
     printv("Writing results to db", args.verbose, 1)
-    hmmsearch_cluster_log = []
     for gene, hits in gene_based_results.items():
-        ids = [hit.node for hit in hits]
-        ids.sort()
-
-        clusters = []
-        current_cluster = []
-        for child_index in ids:
-            if not current_cluster:
-                current_cluster.append(child_index)
-                current_index = child_index
-            else:
-                if child_index - current_index <= args.chomp_max_distance:
-                    current_cluster.append(child_index)
-                    current_index = child_index
-                else:
-                    if len(current_cluster) > 2:
-                        clusters.append((current_cluster[0], current_cluster[-1]))
-                    current_cluster = [child_index]
-                    current_index = child_index
-
-        if current_cluster:
-            if len(current_cluster) > 2:
-                clusters.append((current_cluster[0], current_cluster[-1]))
-
-        clusters.sort(key=lambda x: x[0])
-
-        cluster_string = ", ".join([f"{cluster[0]}-{cluster[1]}" for cluster in clusters])
-
-        hmmsearch_cluster_log.append((gene, f"{gene},{len(hits)},{len(clusters)},{cluster_string}"))
-
         hits_db.put_bytes(f"gethmmhits:{gene}", json.encode(hits))
 
     del hits_db
 
-    hmmsearch_cluster_log.sort(key=lambda x: x[0])
-    with open(path.join(input_folder, "hmm_cluster.csv"), "w") as f:
-        f.write("Gene,Sequence Count,Cluster Count,Clusters\n")
-        f.write("\n".join([i[1] for i in hmmsearch_cluster_log]))
     with open(path.join(input_folder, "hmmsearch_log.log"), "w") as f:
         f.write("\n".join(klog))
     with open(path.join(input_folder, "hmmsearch_kick.log"), "w") as f:
