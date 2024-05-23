@@ -827,8 +827,9 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
         if gff_output:
             with open(path.join(coords_path, "coords.gff"), "w") as fp:
                 fp.write("\n".join(gff_output))
-        with open(path.join(taxa_path, "coords.txt"), "w") as fp:
-            fp.write("\n".join(global_out))
+        if args.debug:
+            with open(path.join(taxa_path, "coords.txt"), "w") as fp:
+                fp.write("\n".join(global_out))
 
 
     key = "getall:reporter_dupes"
