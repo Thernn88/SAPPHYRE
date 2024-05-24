@@ -1,4 +1,5 @@
 from collections import defaultdict
+from itertools import combinations
 from multiprocessing import Pool
 from os import listdir, makedirs, path
 from pathlib import Path
@@ -824,7 +825,7 @@ def log_excised_consensus(
 
                 if len(sequences_in_region) > excise_maximum_depth:
                     continue
-
+                
                 cluster_resolve_failed = True
                 nodes_in_region = None
                 if is_genome:
@@ -839,11 +840,7 @@ def log_excised_consensus(
                             continue
 
                         clust.sort(key = lambda node: node.start)
-                        for i, node in enumerate(clust):
-                            if i == 0:
-                                continue
-                            
-                            prev_node = clust[i-1]
+                        for (j, prev_node), (i, node) in combinations(enumerate(clust), 2):
                             overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, 1)
                             if overlapping_coords:
                                 kmer = node.sequence[overlapping_coords[0]:overlapping_coords[1]]
@@ -880,8 +877,8 @@ def log_excised_consensus(
                                     kicked_headers.add(node.header)
                                     either_kicked = True
 
-                                if either_kicked:
-                                    break
+                                # if either_kicked:
+                                #     break
 
                                 prev_node.nt_sequence = del_cols(prev_node.nt_sequence, prev_positions, True)
                                 node.nt_sequence = del_cols(node.nt_sequence, node_positions, True)
