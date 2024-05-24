@@ -200,7 +200,7 @@ def generate_clusters(data: dict[str, str], second_run) -> list[list[str]]:
                 run(terminal_args, check=False)
             cluster_children = defaultdict(list)
 
-        for line in tmp_result.read().split("\n"):
+        for line in tmp_result.read().splitlines():
             if line.strip():
                 master, child = line.split("\t")
                 cluster_children[master].append(child)

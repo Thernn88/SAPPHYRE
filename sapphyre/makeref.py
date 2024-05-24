@@ -7,7 +7,7 @@ from math import ceil
 from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import copyfileobj, rmtree
-from tempfile import NamedTemporaryFile
+from tempfile import NamedTemporaryFile, gettempdir
 
 import wrap_rocks
 import xxhash
@@ -985,15 +985,18 @@ def aln_function(
             seq.aa_sequence = aligned_dict[seq.header]
             
             if has_nt:
-                if cull_result != {}:
-                    left_bp_remove, right_bp_remove = cull_result[seq.header]
+                if cull_result:
+                    left_bp_remove, right_bp_remove = cull_result.get(seq.header, (0, 0))
                     if left_bp_remove:
                         seq.nt_sequence = seq.nt_sequence[left_bp_remove:]
                     if right_bp_remove:
-                        seq.nt_sequence = seq.nt_sequence[:-right_bp_remove] # Ugly but works
-                if internal_result != {}:
-                    remove_set = internal_result[seq.header]
-                    seq.nt_sequence = "".join([seq.nt_sequence[i:i+3] for i in range(0, len(seq.nt_sequence), 3) if i not in remove_set])
+                        seq.nt_sequence = seq.nt_sequence[:-right_bp_remove]
+
+                if internal_result:
+                    remove_set = internal_result.get(seq.header, set())
+                    seq.nt_sequence = "".join(
+                        seq.nt_sequence[i:i+3] for i in range(0, len(seq.nt_sequence), 3) if i not in remove_set
+                    )
                 nt_result.append((seq.header, seq.nt_sequence))
 
             output.append(seq)
@@ -1132,10 +1135,10 @@ def generate_subset(file_paths, taxon_to_kick: set, nt_input: str = None):
 
         temp_file = None
         if raw_file.endswith(".gz"):
-            temp_file = NamedTemporaryFile(dir = gettempdir())
-            with gzip.open(raw_file, 'rb') as f_in, open(temp_file.name, 'wb') as f_out:
-                copyfileobj(f_in, f_out)
-            file = temp_file.name
+            with NamedTemporaryFile(dir=gettempdir(), delete=False) as temp_file:
+                with gzip.open(raw_file, 'rb') as f_in, open(temp_file.name, 'wb') as f_out:
+                    copyfileobj(f_in, f_out)
+                file = temp_file.name
         else:
             file = raw_file
             
@@ -1236,7 +1239,7 @@ def main(args):
             kick = set()
         else:
             with open(kick) as fp:
-                kick = set([i.lower() for i in fp.read().split("\n") if i.strip()])
+                kick = {line.lower() for line in fp.read().splitlines() if line.strip()}
             printv(f"Found {len(kick)} taxon to kick.", verbosity)
     else:
         kick = set()
@@ -1252,7 +1255,7 @@ def main(args):
             nc_genes = set()
         else:
             with open(nc_genes) as fp:
-                nc_genes = set(fp.read().split("\n"))
+                nc_genes = set(fp.read().splitlines())
             printv(f"Found {len(nc_genes)} non-coding genes.", verbosity)
     else:
         nc_genes = set()

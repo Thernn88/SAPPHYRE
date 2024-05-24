@@ -133,7 +133,7 @@ def worker(
 
     outfile_stem = out_file.stem
     aligned_result = pn2codon(outfile_stem, specified_dna_table, seqs)
-    aligned_lines = aligned_result.split("\n")
+    aligned_lines = aligned_result.splitlines()
 
     records = []
     for i in range(0, len(aligned_lines) - 1, 2):

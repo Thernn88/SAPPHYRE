@@ -508,7 +508,7 @@ def get_head_to_seq(nt_db, recipe):
 
     head_to_seq = {}
     for i in recipe:
-        lines = nt_db.get_bytes(f"ntbatch:{i}").decode().split("\n")
+        lines = nt_db.get_bytes(f"ntbatch:{i}").decode().splitlines()
         head_to_seq.update(
             {
                 int(lines[i][1:]): lines[i + 1]

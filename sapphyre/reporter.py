@@ -676,7 +676,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     # Grab gene list file if present
     if args.gene_list_file:
         with open(args.gene_list_file) as fp:
-            list_of_wanted_genes = fp.read().split("\n")
+            list_of_wanted_genes = fp.read().splitlines()
     else:
         list_of_wanted_genes = []
 

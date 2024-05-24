@@ -4,7 +4,6 @@ from multiprocessing import Pool
 from os import listdir, makedirs, path
 from sapphyre_tools import (
     find_index_pair,
-    get_overlap,
 )
 
 from .timekeeper import KeeperMode, TimeKeeper
