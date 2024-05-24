@@ -7,7 +7,7 @@ from math import ceil
 from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import copyfileobj, rmtree
-from tempfile import NamedTemporaryFile, gettempdir
+from tempfile import NamedTemporaryFile
 
 import wrap_rocks
 import xxhash
