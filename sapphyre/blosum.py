@@ -944,7 +944,7 @@ def do_folder(folder, args, is_genome, gene_source):
 def main(args, is_genome = False, gene_source = "trimmed"):
     success = False
     if isinstance(args.INPUT, list):
-        success = all([do_folder(Path(folder), args, is_genome, gene_source)[0] for folder in args.INPUT])
+        success = all(do_folder(Path(folder), args, is_genome, gene_source)[0] for folder in args.INPUT)
     elif isinstance(args.INPUT, str):
         success = do_folder(Path(args.INPUT), args, is_genome, gene_source)
     return success

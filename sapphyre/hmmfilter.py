@@ -206,14 +206,14 @@ def internal_filter_gene2(nodes, debug, gene, min_overlap_internal, score_diff_i
         #     print(f"hit for ({node.start}, {node.end})")
         score_target = node.score / score_diff_internal
         for interval, coords in memoize[(node.start, node.end)]:
-                targets = (hit_b for hit_b in intervals[(interval[0], interval[1])].children if
-                    hit_b.score <= score_target)
+            targets = (hit_b for hit_b in intervals[(interval[0], interval[1])].children if
+                hit_b.score <= score_target)
 
-                    # hit_b.score <= score_target and
-                    # hit_b.index not in kicks and
-                    # hit_b.index not in safe)
-                # compare_hit_to_leaf(node, targets, coords, score_diff_internal, kicks, safe, debug, gene, filtered_sequence_log)
-                compare_hit_to_leaf(node, targets, coords, score_diff_internal)
+                # hit_b.score <= score_target and
+                # hit_b.index not in kicks and
+                # hit_b.index not in safe)
+            # compare_hit_to_leaf(node, targets, coords, score_diff_internal, kicks, safe, debug, gene, filtered_sequence_log)
+            compare_hit_to_leaf(node, targets, coords, score_diff_internal)
 
 
     # return [node for node in nodes if node.index not in kicks], [node.header for node in nodes if node.index in kicks], filtered_sequence_log
@@ -484,7 +484,7 @@ def process_batch(
             header_to_hits[node.bh_id].append(node)
         
         for node, hits in header_to_hits.items():
-            for (i, hit), (j, hit_b) in combinations(enumerate(hits), 2):
+            for hit, hit_b in combinations(hits, 2):
 
                 overlap_coords = get_overlap(hit.start, hit.end, hit_b.start, hit_b.end, 1)
                 amount_of_overlap = 0 if overlap_coords is None else overlap_coords[1] - overlap_coords[0]

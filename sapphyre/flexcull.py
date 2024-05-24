@@ -1313,7 +1313,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
         post_references = [i for i in aa_out if i[0].endswith(".")]
 
         (
-            post_blosum_at_each_pos,
+            _,
             post_character_at_each_pos,
             post_gap_present_threshold,
             post_all_dashes_by_index,

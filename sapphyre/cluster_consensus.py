@@ -46,8 +46,6 @@ def do_cluster(ids, ref_coords, max_distance=100):
                     if current_cluster[0][1] > req_seq_coverage:
                         cluster_coverage = current_cluster[0][1]
 
-                        data_cols = ids[current_cluster[0][2]][1]
-
                         clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage, current_coords))
                         
                 current_cluster = [(child_index, coverage, i)]

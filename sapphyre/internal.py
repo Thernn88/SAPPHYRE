@@ -263,14 +263,14 @@ def run_internal(
     if aa_fail_dict:
         with open(aa_log_path, 'a+') as f:
             f.write(f"{gene.name}\n")
-            for id, tup in aa_fail_dict.items():
+            for tup in aa_fail_dict.values():
                 candidate, start, stop, distance, threshold = tup
                 f.write(f'{candidate.id}\tstart:{start}\tstop:{stop}distance:{distance}\tthreshold:{threshold}\n')
                 f.write(f'cand seq:{candidate.seq}\ncons seq:{aa_consensus}\n')
     if nt_fail_dict:
         with open(nt_log_path, 'a+') as f:
             f.write(f"{gene.name}\n")
-            for id, tup in nt_fail_dict.items():
+            for tup in nt_fail_dict.values():
                 candidate, start, stop, distance, threshold = tup
                 f.write(f'{candidate.id}\tstart:{start}\tstop:{stop}\tdistance:{distance}\tthreshold:{threshold}\n')
                 f.write(f'cand seq:{candidate.seq[start:stop]}\ncons seq:{nt_consensus[start:stop]}\n')

@@ -177,7 +177,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
 
         
         hits_have_frames_already = defaultdict(set)
-        diamond_ids = list()
+        diamond_ids = []
         for hit in diamond_hits:
             diamond_ids.append((hit.node, hit.primary, hit.frame))
             hits_have_frames_already[hit.node].add(hit.frame)
@@ -266,8 +266,8 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
             if is_genome and clusters:
                 cluster_queries = {k: max(set(v), key=v.count) for k, v in cluster_queries.items()}
                 smallest_cluster_in_range = min([i[0][0] for i in clusters]) - chomp_max_distance
-                if smallest_cluster_in_range <= 1:
-                    smallest_cluster_in_range = 1
+                smallest_cluster_in_range = max(smallest_cluster_in_range, 1)
+                
                 largest_cluster_in_range = max([i[0]    [1] for i in clusters]) + chomp_max_distance
                 source_clusters = {}
                 
@@ -297,9 +297,8 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
                     # Quicker to filter after the fact 
                     continue
 
-                strands_present = {"+", "-"}
-                if node in cluster_full:
-                    strands_present = cluster_full[node]
+
+                strands_present = cluster_full.get(node, {"+", "-"})
 
                 if "+" in strands_present:
                     # Forward frame 1
@@ -370,8 +369,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
         passed_ids = set()
         hmm_log = []
         hmm_log_template = "{},{},{},{}"
-        seq_template = ">{}\n{}\n"
-
+        
         if debug > 2 or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
             with NamedTemporaryFile(dir=gettempdir()) as unaligned_tmp, NamedTemporaryFile(dir=gettempdir()) as aln_tmp:
                 writeFasta(unaligned_tmp.name, unaligned_sequences)
@@ -690,7 +688,7 @@ def do_folder(input_folder, args):
     multi_filter_args = []
 
     gene_based_results = {gene: [] for gene in diamond_genes}
-    for header, hits in header_based_results.items():
+    for hits in header_based_results.values():
         genes_present = {hit.gene for hit in hits}
         if len(genes_present) > 1:
             multi_filter_args.append((hits, args.debug))

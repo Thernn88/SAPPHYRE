@@ -128,7 +128,6 @@ def check_bad_regions(
     return [*output.values()]
 
 def check_covered_bad_regions(consensus, min_ambiguous, ambig_char='X', max_distance=18):
-    x_regions = []
     x_indices = []
     current_group = []
 
@@ -153,7 +152,7 @@ def check_covered_bad_regions(consensus, min_ambiguous, ambig_char='X', max_dist
             return (current_group[0], current_group[-1] + 1)
 
 
-    return
+    return None, None
 
 def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_counts):
     output = []
@@ -473,8 +472,8 @@ def do_trim(aa_nodes, get_parent_id, cluster_sets, x_positions, ref_consensus, k
                 out_of_region = []
                 for x, node in enumerate(sub_aa_nodes):
                     # within 3 bp
-                    within_left = i >= node.start and i <= node.start + 3
-                    within_right = i <= node.end and i >= node.end - 3
+                    within_left = node.start <= i <= node.start + 3
+                    within_right = node.end - 3 <= i <= node.end
 
                     if within_left or within_right:
                         in_region.append((x, node.sequence[i], within_right))
@@ -547,7 +546,7 @@ def do_trim(aa_nodes, get_parent_id, cluster_sets, x_positions, ref_consensus, k
                         x_positions[node.header].add(x)
 
 
-def do_cluster(ids, ref_coords, id_chomp_distance=100, max_distance=120):
+def do_cluster(ids, ref_coords, id_chomp_distance=100):
     clusters = []
     ids.sort(key = lambda x: x[0])
     grouped_ids = defaultdict(list)
@@ -568,7 +567,6 @@ def do_cluster(ids, ref_coords, id_chomp_distance=100, max_distance=120):
             current_cluster = [(id, len(seq_coords.intersection(ref_coords)) / len(ref_coords), i) for i, _, seq_coords, _, _ in seq_list]
             current_index = id
             current_seqs = seq_list
-            current_direction = "bi"
         else:
             passed = False
             passed_direction = None
@@ -591,13 +589,11 @@ def do_cluster(ids, ref_coords, id_chomp_distance=100, max_distance=120):
                                 else:
                                     this_direction = "reverse"
                      
-                        if current_direction == "bi" or this_direction == "bi" or this_direction == current_direction:
-                            # distance = get_overlap(start, end, current_start, current_end, -max_distance)
-                            # if distance is not None:
-                            #     distance = abs(distance[1] - distance[0])
-                            # if distance is not None and distance < max_distance:
                             passed_direction = this_direction
-                            passed = True
+                            if current_direction == "bi" or this_direction == "bi" or this_direction == current_direction:
+                                passed_direction = this_direction
+
+                                passed = True
                             break
                     if passed:
                         break
@@ -958,7 +954,7 @@ def log_excised_consensus(
             if current_cluster:
                 after_true_clusters.append(current_cluster)
 
-            after_true_cluster = set(max(after_true_clusters, key=lambda x: len(x)))
+            after_true_cluster = set(max(after_true_clusters, key=len))
             matches = []
             for i, before_cluster in enumerate(before_true_clusters):
                 matches.append((len(after_true_cluster.intersection(set(before_cluster))) / len(before_cluster), i))
@@ -1035,28 +1031,28 @@ def move_flagged(to_move, processes):
 
 def main(args, sub_dir, is_genome, is_assembly_or_genome):
     timer = TimeKeeper(KeeperMode.DIRECT)
-    if not (0 < args.excise_overlap_merge < 1.0):
+    if args.excise_overlap_merge > 1.0:
         if 0 < args.excise_overlap_merge <= 100:
             args.excise_overlap_merge = args.excise_overlap_merge / 100
         else:
             raise ValueError(
                 "Cannot convert excise_overlap_merge to a percent. Use a decimal or a whole number between 0 and 100"
             )
-    if not (0 < args.excise_overlap_ambig < 1.0):
+    if args.excise_overlap_ambig > 1.0:
         if 0 < args.excise_overlap_ambig <= 100:
             args.excise_overlap_ambig = args.excise_overlap_ambig / 100
         else:
             raise ValueError(
                 "Cannot convert excise_overlap_ambig to a percent. Use a decimal or a whole number between 0 and 100"
             )
-    if not (0 < args.excise_consensus < 1.0):
+    if args.excise_consensus > 1.0:
         if 0 < args.excise_consensus <= 100:
             args.excise_consensus = args.excise_consensus / 100
         else:
             raise ValueError(
                 "Cannot convert excise_consensus to a percent. Use a decimal or a whole number between 0 and 100"
             )
-    if not (0 < args.excise_region_overlap < 1.0):
+    if args.excise_region_overlap > 1.0:
         if 0 < args.excise_region_overlap <= 100:
             args.excise_region_overlap = args.excise_region_overlap / 100
         else:

@@ -171,33 +171,34 @@ def generate_clusters(data: dict[str, str], second_run) -> list[list[str]]:
         if second_run:
             terminal_args[9] = "65"
 
-        diamond_run = Popen(terminal_args)
-        diamond_process = Process(diamond_run.pid)
-        first_zero_time = None
-        DIAMOND_WAIT = 10
-        while True:
-            try:
-                cpu_percent = diamond_process.cpu_percent()
-                if diamond_run.poll() is not None:  # if process has a finished, break
-                    break
-                if cpu_percent == 0.0:  # if process is not using cpu, break
-                    if first_zero_time is None:
-                        first_zero_time = time()
+        with Popen(terminal_args) as diamond_run:
+            diamond_process = Process(diamond_run.pid)
+            first_zero_time = None
+            DIAMOND_WAIT = 10
+            while True:
+                try:
+                    cpu_percent = diamond_process.cpu_percent()
+                    if diamond_run.poll() is not None:  # if process has a finished, break
+                        break
+                    if cpu_percent == 0.0:  # if process is not using cpu, break
+                        if first_zero_time is None:
+                            first_zero_time = time()
+                        else:
+                            if time() - first_zero_time > DIAMOND_WAIT:
+                                diamond_process.terminate()
+                                print(f"Zombie diamond process {diamond_run.pid} found. Breaking and rerunning")
+                                diamond_process.terminate()
+                                break
                     else:
-                        if time() - first_zero_time > DIAMOND_WAIT:
-                            diamond_process.terminate()
-                            print(f"Zombie diamond process {diamond_run.pid} found. Breaking and rerunning")
-                            diamond_process.terminate()
-                            break
-                else:
-                    first_zero_time = None
-                #sleep(1)  # sleep to avoid spamming the cpu with polling ops
-            except KeyboardInterrupt:
-                break
-        if diamond_run.returncode != 0:
-            print(f"Non-zero exit code for diamond, rerunning process {diamond_run.pid} on {tmp_in.name}")
-            diamond_run = run(terminal_args)
-        cluster_children = defaultdict(list)
+                        first_zero_time = None
+                    #sleep(1)  # sleep to avoid spamming the cpu with polling ops
+                except KeyboardInterrupt:
+                    break
+                
+            if diamond_run.returncode != 0:
+                print(f"Non-zero exit code for diamond, rerunning process {diamond_run.pid} on {tmp_in.name}")
+                run(terminal_args, check=False)
+            cluster_children = defaultdict(list)
 
         for line in tmp_result.read().split("\n"):
             if line.strip():
@@ -625,7 +626,7 @@ def insert_sequences(
     return out_seqs
 
 
-def do_cluster(ids, ref_coords, id_chomp_distance=100, max_distance=120):
+def do_cluster(ids, ref_coords, id_chomp_distance=100):
     clusters = []
     ids.sort(key = lambda x: x[0])
     grouped_ids = defaultdict(list)
@@ -670,10 +671,6 @@ def do_cluster(ids, ref_coords, id_chomp_distance=100, max_distance=120):
 
                      
                         if current_direction == "bi" or this_direction == "bi" or this_direction == current_direction:
-                            # distance = get_overlap(start, end, current_start, current_end, -max_distance)
-                            # if distance is not None:
-                            #     distance = abs(distance[1] - distance[0])
-                            # if distance is not None and distance < max_distance:
                             passed = True
                             passing_direction = this_direction
                             break
@@ -856,9 +853,7 @@ def run_command(args: CmdArgs) -> None:
 
             if aligned_ingredients:
                 # Merge subalignments in order by seq count
-                aligned_ingredients = [
-                    i for i in sorted(aligned_ingredients, key=lambda x: x[1])
-                ]
+                aligned_ingredients.sort(key=lambda x: x[1])
                 printv(
                     f"Merging Alignments. Elapsed time: {keeper.differential():.2f}",
                     args.verbose,

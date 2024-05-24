@@ -229,7 +229,7 @@ class Sequence_Set:
             self.has_aligned = other.has_aligned
         if not self.has_nt and other.has_nt:
             self.has_nt = other.has_nt
-        for i, seq in enumerate(other.sequences):
+        for seq in other.sequences:
             self.sequences.append(seq)
             
         for gene, seqs in other.aligned_sequences.items():
@@ -833,7 +833,7 @@ def splice_overlap(records: list[aligned_record], candidate_consensus, allowed_a
         merge_occured = True
         while merge_occured:
             merge_occured = False
-            for (i, record_a), (j, record_b) in combinations(enumerate(comp_records), 2):        
+            for record_a, record_b in combinations(comp_records, 2):        
                 if record_a.header in merged_out or record_b.header in merged_out:
                     continue        
                 overlap_coords = get_overlap(record_a.start, record_a.end, record_b.start, record_b.end, -allowed_adjacency + 1)

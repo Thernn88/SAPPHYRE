@@ -67,7 +67,7 @@ def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
             is None
         ):
             if current_group:
-                result.append((current_region, current_group))
+                result.append(current_group)
             current_region = (sequence.start, sequence.end)
             current_group = [sequence]
         else:
@@ -77,7 +77,7 @@ def disperse_into_overlap_groups(taxa_pair: list) -> list[tuple]:
             )
 
     if current_group:
-        result.append((current_region, current_group))
+        result.append(current_group)
 
     return result
 
@@ -272,7 +272,7 @@ class do_gene():
         aa_overlap_groups = disperse_into_overlap_groups(aa_candidates)
 
         move_record = defaultdict(list)
-        for region, group in aa_overlap_groups:
+        for group in aa_overlap_groups:
             gap_regions = detect_ambig_with_gaps(group)
             
             for gap_region, kmers in gap_regions:
@@ -403,7 +403,7 @@ class do_gene():
 
         writeFasta(path.join(self.nt_gene_output, nt_gene), nt_out, self.compress)
 
-        for _, group in aa_overlap_groups:
+        for group in aa_overlap_groups:
             new_node, new_ref, old_taxa = get_header_parts([i.header for i in group])
 
             new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}"
