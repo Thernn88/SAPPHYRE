@@ -852,8 +852,13 @@ def log_excised_consensus(
                                 splice_index = calculate_split(prev_node, node, overlapping_coords, ref_consensus)
                                 prev_positions = set()
                                 node_positions = set()
-
-                                for x in range(node.start, splice_index):
+                                
+                                consecutive_match = True
+                                for x in range(splice_index - 1, node.start - 1, -1):
+                                    if consecutive_match and node.sequence[x] == prev_node.sequence[x]:
+                                        continue
+                                    
+                                    consecutive_match = False
                                     node_positions.add(x)
 
                                 for x in range(splice_index, prev_node.end):
