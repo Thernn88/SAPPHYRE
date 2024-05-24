@@ -567,6 +567,7 @@ def do_cluster(ids, ref_coords, id_chomp_distance=100):
             current_cluster = [(id, len(seq_coords.intersection(ref_coords)) / len(ref_coords), i) for i, _, seq_coords, _, _ in seq_list]
             current_index = id
             current_seqs = seq_list
+            current_direction = "bi"
         else:
             passed = False
             passed_direction = None
@@ -589,10 +590,8 @@ def do_cluster(ids, ref_coords, id_chomp_distance=100):
                                 else:
                                     this_direction = "reverse"
                      
-                            passed_direction = this_direction
                             if current_direction == "bi" or this_direction == "bi" or this_direction == current_direction:
                                 passed_direction = this_direction
-
                                 passed = True
                             break
                     if passed:
@@ -766,13 +765,13 @@ def log_excised_consensus(
 
 
     # Search for slices of the consensus seq with a high ratio of 'X' to total characters
-    region = True
+    has_region = True
     had_region = False
     recursion_max = 5 * len(cluster_sets)
     last_region = {}
     consensus_seq = ""
-    while region:
-        region = None
+    while has_region:
+        has_region = False
 
         for cluster_i, cluster_set in enumerate(cluster_sets):
 
@@ -791,26 +790,26 @@ def log_excised_consensus(
                 consensus_seq = dumb_consensus(sequences, excise_consensus, 0)
 
             consensus_seq = convert_consensus(sequences, consensus_seq)
-            region = check_covered_bad_regions(consensus_seq, excise_minimum_ambig)
-            if region == last_region.get(cluster_i, -1):
+            region_start, region_end = check_covered_bad_regions(consensus_seq, excise_minimum_ambig)
+            if region_start == last_region.get(cluster_i, -1):
                 recursion_max -= 1
                 if recursion_max <= 0:
-                    region = None
+                    region_start = None
                     continue
-            last_region[cluster_i] = region
+            last_region[cluster_i] = region_start
 
-            if region:
+            if region_start:
+                has_region = True
                 had_region = True
                 sequences_in_region = []
-                sequences_out_of_region = []
-                a, b = region         
+                sequences_out_of_region = []      
 
                 for i, node in enumerate(aa_subset):
 
                     if node.header in kicked_headers:
                         continue
 
-                    overlap_coords = get_overlap(a, b, node.start * 3, node.end * 3, 1)
+                    overlap_coords = get_overlap(region_start, region_end, node.start * 3, node.end * 3, 1)
                     if overlap_coords:
                         overlap_amount = overlap_coords[1] - overlap_coords[0]
                         overlap_percent = overlap_amount / (node.end - node.start)
@@ -829,14 +828,14 @@ def log_excised_consensus(
                     tagged_in_region.sort(key=lambda x: x[0])
                     clusters = cluster(tagged_in_region, true_cluster_threshold)
 
-                    log_output.append(f">{gene}_ambig_{a}:{b}\n{consensus_seq}")
+                    log_output.append(f">{gene}_ambig_{region_start}:{region_end}\n{consensus_seq}")
 
                     for clust in clusters:
                         if len(clust) <= 1:
                             continue
 
                         clust.sort(key = lambda node: node.start)
-                        for (j, prev_node), (i, node) in combinations(enumerate(clust), 2):
+                        for (_, prev_node), (i, node) in combinations(enumerate(clust), 2):
                             overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, 1)
                             if overlapping_coords:
                                 kmer = node.sequence[overlapping_coords[0]:overlapping_coords[1]]
@@ -868,15 +867,12 @@ def log_excised_consensus(
 
                                 cluster_resolve_failed = False
 
-                                either_kicked = False
                                 if len(prev_node.sequence) - prev_node.sequence.count("-") < 15:
                                     kicked_headers.add(prev_node.header)
-                                    either_kicked = True
                                     
 
                                 if len(node.sequence) - node.sequence.count("-") < 15:
                                     kicked_headers.add(node.header)
-                                    either_kicked = True
 
                                 # if either_kicked:
                                 #     break
@@ -891,12 +887,10 @@ def log_excised_consensus(
                                 x_positions[prev_node.header].update(prev_positions)
                 
                 if cluster_resolve_failed:
-                    
                     sequences_in_region = copy.deepcopy(sequences_in_region)
                     nodes_in_region = simple_assembly(sequences_in_region, excise_overlap_ambig)
 
                     node_indices = indices_that_resolve(nodes_in_region, sequences_out_of_region, excise_overlap_merge)
-
 
                     keep_indices = set()
                     if node_indices:
@@ -914,7 +908,7 @@ def log_excised_consensus(
                         kicked_headers.update(node.children)
 
                 if sequences_in_region:
-                    log_output.append(f">{gene}_ambig_{a}:{b}\n{consensus_seq}")
+                    log_output.append(f">{gene}_ambig_{region_start}:{region_end}\n{consensus_seq}")
                     if nodes_in_region:
                         log_output.extend([f">{node.contig_header()}_{'kept' if i in keep_indices else 'kicked'}\n{node.nt_sequence}" for i, node in enumerate(nodes_in_region)])
                     else:
