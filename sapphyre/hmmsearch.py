@@ -75,7 +75,7 @@ def get_diamondhits(
                 0,
             )
             continue
-        gene_based_results.append((gene, gene_result))
+        gene_based_results.append((gene, json.decode(gene_result, type=list[Hit])))
 
     return genes_to_process, gene_based_results
 
@@ -165,85 +165,111 @@ def internal_filter_gene(this_gene_hits, debug, min_overlap_internal=0.9, score_
 
     return [i[0] for i in this_gene_hits if i[0] is not None], filtered_sequences_log
 
-
-def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_ref_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
-    batch_result = []
-    warnings.filterwarnings("ignore", category=BiopythonWarning)
-    for gene, diamond_hits in batches:
-        diamond_hits = json.decode(diamond_hits, type=list[Hit])
-        printv(f"Processing: {gene}", verbose, 2)
-        aligned_sequences = []
-        this_hmm_output = path.join(hmm_output_folder, f"{gene}.hmmout")
-
+class hmm_search:
+    def __init__(self, gene, diamond_hits, is_full, is_genome, hmm_output_folder, aln_ref_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance) -> None:
+        self.is_full = is_full
+        self.is_genome = is_genome
+        self.hmm_output_folder = hmm_output_folder
+        self.aln_ref_location = aln_ref_location
+        self.overwrite = overwrite
+        self.map_mode = map_mode
+        self.debug = debug
+        self.verbose = verbose
+        self.evalue_threshold = evalue_threshold
+        self.chomp_max_distance = chomp_max_distance
+        self.gene = gene
+        self.diamond_hits = diamond_hits
         
-        hits_have_frames_already = defaultdict(set)
-        diamond_ids = []
-        for hit in diamond_hits:
-            diamond_ids.append((hit.node, hit.primary, hit.frame))
-            hits_have_frames_already[hit.node].add(hit.frame)
+        self.clusters = []
+        self.cluster_dict = {}
+        self.primary_cluster_dict = {}
+        self.primary_clusters = []
+        self.current_cluster = []
+        self.smallest_cluster_in_range = None
+        self.largest_cluster_in_range = None
+        
+    def get_clusters(self):
+        diamond_ids = [(hit.node, hit.primary, hit.frame) for hit in self.diamond_hits]
+        
+        diamond_ids.sort()
+        clusters = []
+        primary_clusters = []
+        current_cluster = []
 
-        if is_genome:
-            diamond_ids.sort()
-            clusters = []
-            primary_clusters = []
-            current_cluster = []
+        strands_present = set()
 
-            strands_present = set()
-
-            for child_index, is_primary, frame in diamond_ids:
-                # If the hit is primary, we don't want to cluster it.
-                if is_primary:
-                    # Instead itself is a cluster with +- chomp distance
-                    primary_clusters.append((child_index - chomp_max_distance, child_index + chomp_max_distance))
-                    continue
-                
-                if not current_cluster:
+        for child_index, is_primary, frame in diamond_ids:
+            # If the hit is primary, we don't want to cluster it.
+            if is_primary:
+                # Instead itself is a cluster with +- chomp distance
+                primary_clusters.append((child_index - self.chomp_max_distance, child_index + self.chomp_max_distance))
+                continue
+            
+            if not current_cluster:
+                current_cluster.append(child_index)
+                current_index = child_index
+                strand = "+" if frame > 0 else "-"
+                strands_present.add(strand)
+            else:
+                if child_index - current_index <= self.chomp_max_distance:
                     current_cluster.append(child_index)
                     current_index = child_index
                     strand = "+" if frame > 0 else "-"
                     strands_present.add(strand)
                 else:
-                    if child_index - current_index <= chomp_max_distance:
-                        current_cluster.append(child_index)
-                        current_index = child_index
-                        strand = "+" if frame > 0 else "-"
-                        strands_present.add(strand)
-                    else:
-                        if len(current_cluster) > 2:
-                            clusters.append(((current_cluster[0], current_cluster[-1]), strands_present))
-                        current_cluster = [child_index]
-                        strand = "+" if frame > 0 else "-"
-                        strands_present = {strand}
-                        current_index = child_index
-            
-            if current_cluster:
-                if len(current_cluster) > 2:
-                    clusters.append(((current_cluster[0], current_cluster[-1]), strands_present))
-                    
-            cluster_dict = {}
-            for cluster, strands_present in clusters:
-                for i in range(cluster[0]-chomp_max_distance, cluster[1] + chomp_max_distance + 1):
-                    cluster_dict[i] = (cluster, strands_present)
+                    if len(current_cluster) > 2:
+                        clusters.append(((current_cluster[0], current_cluster[-1]), strands_present))
+                    current_cluster = [child_index]
+                    strand = "+" if frame > 0 else "-"
+                    strands_present = {strand}
+                    current_index = child_index
         
-            primary_cluster_dict = {}
-            for cluster in primary_clusters:
-                for i in range(cluster[0], cluster[1] + 1):
-                    primary_cluster_dict[i] = cluster
+        if current_cluster:
+            if len(current_cluster) > 2:
+                clusters.append(((current_cluster[0], current_cluster[-1]), strands_present))
+                
+        cluster_dict = {}
+        for cluster, strands_present in clusters:
+            for i in range(cluster[0]-self.chomp_max_distance, cluster[1] + self.chomp_max_distance + 1):
+                cluster_dict[i] = (cluster, strands_present)
+    
+        primary_cluster_dict = {}
+        for cluster in primary_clusters:
+            for i in range(cluster[0], cluster[1] + 1):
+                primary_cluster_dict[i] = cluster
+
+        self.clusters = clusters
+        self.primary_clusters = primary_clusters
+        self.current_cluster = current_cluster
+        self.cluster_dict = cluster_dict
+        self.primary_cluster_dict = primary_cluster_dict
+        if clusters:
+            self.smallest_cluster_in_range = max(min([i[0][0] for i in clusters]) - self.chomp_max_distance, 1)
+            self.largest_cluster_in_range = max([i[0][1] for i in clusters]) + self.chomp_max_distance
+    
+    def search(self, this_seqs):
+        printv(f"Processing: {self.gene}", self.verbose, 2)
+        aligned_sequences = []
+        this_hmm_output = path.join(self.hmm_output_folder, f"{self.gene}.hmmout")
+
+        
+        hits_have_frames_already = defaultdict(set)
+        for hit in self.diamond_hits:
+            hits_have_frames_already[hit.node].add(hit.frame)
+
         nt_sequences = {}
         parents = {}
 
         cluster_full = {}
         cluster_queries = defaultdict(list)
         primary_query = {}
-        
-
         children = {}
         unaligned_sequences = []
         required_frames = defaultdict(set)
-        if is_full:
+        if self.is_full:
             fallback = {}
             nodes_in_gene = set()
-            for hit in diamond_hits:
+            for hit in self.diamond_hits:
                 nodes_in_gene.add(hit.node)
                 query = f"{hit.node}|{hit.frame}"
                 parents[query] = hit
@@ -251,39 +277,35 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
                 if hit.node not in fallback:
                     fallback[hit.node] = hit
                 
-                if not is_genome:
+                if not self.is_genome:
                     continue
 
-                this_crange, _ = cluster_dict.get(hit.node, (None, None))
+                this_crange, _ = self.cluster_dict.get(hit.node, (None, None))
                 if this_crange:
                     cluster_queries[this_crange].append(hit.query)
                 
                 if hit.primary:
-                    this_prange = primary_cluster_dict.get(hit.node)
+                    this_prange = self.primary_cluster_dict.get(hit.node)
                     primary_query[this_prange] = hit.query
 
             #grab most occuring query
-            if is_genome and clusters:
+            if self.is_genome and self.clusters:
                 cluster_queries = {k: max(set(v), key=v.count) for k, v in cluster_queries.items()}
-                smallest_cluster_in_range = min([i[0][0] for i in clusters]) - chomp_max_distance
-                smallest_cluster_in_range = max(smallest_cluster_in_range, 1)
-                
-                largest_cluster_in_range = max([i[0]    [1] for i in clusters]) + chomp_max_distance
                 source_clusters = {}
                 
-                for i in range(smallest_cluster_in_range, largest_cluster_in_range + 1):
+                for i in range(self.smallest_cluster_in_range, self.largest_cluster_in_range + 1):
                     header = i
                     
                     if header in nodes_in_gene:
                         continue
 
-                    if header in primary_cluster_dict:
-                        source_clusters[header] = (True, primary_cluster_dict[header])
+                    if header in self.primary_cluster_dict:
+                        source_clusters[header] = (True, self.primary_cluster_dict[header])
                         cluster_full[header] = {"+", "-"}
                         nodes_in_gene.add(header)
                         continue
                     
-                    this_crange, strands_present = cluster_dict.get(header, (None, None))
+                    this_crange, strands_present = self.cluster_dict.get(header, (None, None))
                     
                     if this_crange:
                         source_clusters[header] = (False, this_crange)
@@ -344,7 +366,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
 
 
         else:
-            for hit in diamond_hits:
+            for hit in self.diamond_hits:
                 raw_sequence = hit.seq
                 frame = hit.frame
                 query = f"{hit.node}|{frame}"
@@ -362,7 +384,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
         for header, seq in unaligned_sequences:
             nt_sequences[header] = seq
 
-        aln_file = path.join(aln_ref_location, f"{gene}.aln.fa")
+        aln_file = path.join(self.aln_ref_location, f"{self.gene}.aln.fa")
         output = []
         new_outs = []
         parents_done = set()
@@ -370,7 +392,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
         hmm_log = []
         hmm_log_template = "{},{},{},{}"
         
-        if debug > 2 or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
+        if self.debug > 2 or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or self.overwrite:
             with NamedTemporaryFile(dir=gettempdir()) as unaligned_tmp, NamedTemporaryFile(dir=gettempdir()) as aln_tmp:
                 writeFasta(unaligned_tmp.name, unaligned_sequences)
                 system(f"fastatranslate {unaligned_tmp.name} > {aln_tmp.name}")
@@ -387,8 +409,8 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
             with NamedTemporaryFile(dir=gettempdir()) as hmm_temp_file:
                 system(f"hmmbuild '{hmm_temp_file.name}' '{aln_file}' > /dev/null")
 
-                if debug > 2:
-                    this_hmm_in = path.join(hmm_output_folder, f"{gene}_input.fa")
+                if self.debug > 2:
+                    this_hmm_in = path.join(self.hmm_output_folder, f"{self.gene}_input.fa")
                     writeFasta(this_hmm_in, aligned_sequences)
                     system(
                     f"hmmsearch -o {this_hmm_output} --nobias --domT 10.0 {hmm_temp_file.name} {this_hmm_in} > /dev/null",
@@ -401,8 +423,8 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
                         f"hmmsearch --nobias --domtblout {this_hmm_output} --domT 10.0 {hmm_temp_file.name} {aligned_files.name} > /dev/null",
                         )
 
-        if debug > 2:
-            continue#return "", [], [], [], []
+        if self.debug > 2:
+            return "", [], [], [], []
 
         data = defaultdict(list)
         high_score = 0
@@ -422,7 +444,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
 
                 data[query].append((start - 1, end, score, ali_start, ali_end))
 
-        if map_mode:
+        if self.map_mode:
             score_thresh = high_score * 0.9
 
             queries = []
@@ -455,7 +477,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
                             where_from = "Cluster Full"
                             cquery = cluster_queries[cluster_range]
 
-                        new_hit = HmmHit(node=node, score=score, frame=int(frame), evalue=0, qstart=new_qstart, qend=new_qstart + len(sequence), gene=gene, query=cquery, uid=None, refs=[], seq=sequence)
+                        new_hit = HmmHit(node=node, score=score, frame=int(frame), evalue=0, qstart=new_qstart, qend=new_qstart + len(sequence), gene=self.gene, query=cquery, uid=None, refs=[], seq=sequence)
                         hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, where_from))
                         output.append(new_hit)
                 continue
@@ -475,7 +497,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
                     start = start * 3
                     end = end * 3
 
-                    if map_mode:
+                    if self.map_mode:
                         sequence = nt_sequences[query]
                         if len(sequence) % 3 != 0:
                             sequence += ("N" * (3 - len(sequence) % 3))
@@ -483,7 +505,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
                     else:
                         sequence = nt_sequences[query][start: end]
 
-                    if is_full:
+                    if self.is_full:
                         new_qstart = start
                         if frame < 0:
                             new_qstart -= (3 - abs(frame))
@@ -502,20 +524,20 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
                     output.append(new_hit)
 
         diamond_kicks = []
-        for hit in diamond_hits:
+        for hit in self.diamond_hits:
             if not f"{hit.node}|{hit.frame}" in parents_done:
-                if is_genome and math.floor(math.log10(abs(hit.evalue))) <= -evalue_threshold:
+                if self.is_genome and math.floor(math.log10(abs(hit.evalue))) <= -self.evalue_threshold:
                     this_id = hit.node
                     has_neighbour = False
                     neighbour = None
                     for id in passed_ids:
-                        if abs(this_id - id) <= chomp_max_distance:
+                        if abs(this_id - id) <= self.chomp_max_distance:
                             neighbour = str(id)
                             has_neighbour = True
                             break
 
                     if has_neighbour:
-                        printv(f"Rescued {hit.node}", verbose, 2)
+                        printv(f"Rescued {hit.node}", self.verbose, 2)
                         new_hit = HmmHit(node=hit.node, score=0, frame=hit.frame, evalue=hit.evalue, qstart=hit.qstart, qend=hit.qend, gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=hit.seq)
                         output.append(new_hit)
                         parents_done.add(f"{hit.node}|{hit.frame}")
@@ -524,8 +546,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
 
                 diamond_kicks.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, f"Kicked. Evalue: {hit.evalue}"))
                 
-        batch_result.append((gene, output, new_outs, hmm_log, diamond_kicks))
-    return batch_result
+        return (self.gene, output, new_outs, hmm_log, diamond_kicks)
 
 def get_head_to_seq(nt_db, recipe):
     """Get a dictionary of headers to sequences.
@@ -612,6 +633,24 @@ def miniscule_multi_filter(hits, debug):
     return [hit for i, hit in enumerate(hits) if i not in kicked_indices], len(list(kicked_indices)), log, edge_log
 
 
+def do_cluster(hmm_obj: hmm_search):
+    hmm_obj.get_clusters()
+
+def do_search(hmm_obj: hmm_search, this_seqs):
+    return hmm_obj.search(this_seqs)
+
+def get_args(hmm_objects: list[hmm_search], head_to_seq):
+    for hmm_object in hmm_objects:
+        needed_ids = {hit.node for hit in hmm_object.diamond_hits}
+        if hmm_object.clusters:
+            min_range = hmm_object.smallest_cluster_in_range
+            max_range = hmm_object.largest_cluster_in_range
+            needed_ids.update(set(range(min_range, max_range + 1)))
+        this_seqs = {i: head_to_seq[i] for i in needed_ids if i in head_to_seq}
+        yield (hmm_object, this_seqs)
+    
+
+
 def do_folder(input_folder, args):
     printv(f"Processing {input_folder}", args.verbose, 1)
     hits_db = RocksDB(path.join(input_folder, "rocksdb", "hits"))
@@ -650,17 +689,28 @@ def do_folder(input_folder, args):
     if aln_ref_location is None:
         printv("ERROR: Could not find alignment reference", args.verbose, 0)
         return False
+    
+    hmmer_objs = [hmm_search(gene, hits, is_full, is_genome, hmm_output_folder, aln_ref_location, args.overwrite, args.map, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance) for gene, hits in transcripts_mapped_to]
+    
+    if args.processes <= 1:
+        for obj in hmmer_objs:
+            do_cluster(obj)
+    else:
+        with Pool(args.processes) as p:
+            p.map(do_cluster, hmmer_objs)
+    
+    arguments = get_args(hmmer_objs, head_to_seq)
 
-    per_batch = math.ceil(len(transcripts_mapped_to) / args.processes)
-    batches = [(transcripts_mapped_to[i:i + per_batch], head_to_seq, is_full, is_genome, hmm_output_folder, aln_ref_location, args.overwrite, args.map, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance) for i in range(0, len(transcripts_mapped_to), per_batch)]
+    # per_batch = math.ceil(len(transcripts_mapped_to) / args.processes)
+    # batches = [(transcripts_mapped_to[i:i + per_batch], head_to_seq, is_full, is_genome, hmm_output_folder, aln_ref_location, args.overwrite, args.map, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance) for i in range(0, len(transcripts_mapped_to), per_batch)]
 
     if args.processes <= 1:
         all_hits = []
-        for this_arg in batches:
-            all_hits.append(hmm_search(*this_arg))
+        for this_arg in arguments:
+            all_hits.append(do_search(*this_arg))
     else:
         with Pool(args.processes) as p:
-            all_hits = p.starmap(hmm_search, batches)
+            all_hits = p.starmap(do_search, arguments)
 
     printv("Running miniscule score filter", args.verbose, 1)
 
@@ -670,17 +720,16 @@ def do_folder(input_folder, args):
     multi_causing_log = ["Gene,Node,Frame,Evalue,Master Gene"]
     header_based_results = defaultdict(list)
     printv("Processing results", args.verbose, 1)
-    for batch in all_hits:
-        for gene, hits, logs, klogs, dkicks in batch:
-            if not gene:
-                continue
+    for gene, hits, logs, klogs, dkicks in all_hits:
+        if not gene:
+            continue
 
-            for hit in hits:
-                header_based_results[hit.node].append(hit)
-            
-            log.extend(logs)
-            klog.extend(klogs)
-            kick_log.extend(dkicks)
+        for hit in hits:
+            header_based_results[hit.node].append(hit)
+        
+        log.extend(logs)
+        klog.extend(klogs)
+        kick_log.extend(dkicks)
 
     mlog = ["Gene,Node,Score,Start,End,Reason,Master Gene,Header,Score,Start,End"]
     mkicks = 0
