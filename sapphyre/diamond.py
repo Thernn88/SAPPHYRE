@@ -561,18 +561,17 @@ def top_reference_realign(gene_path, most_common_taxa, target_to_taxon, top_path
         elif key in target_to_taxon:
             taxon = target_to_taxon[key]
         else:
-            print("BROKEN")
             continue
         
         if not skip_realign:
             seq = seq.replace("-", "")
 
-        header_set.add(header)
         ref_to_seq[taxon] = (header, seq)
 
     for taxa, _ in most_common_taxa:
         if taxa in ref_to_seq:
             header, seq = ref_to_seq[taxa]
+            header_set.add(header)
             top_chosen.append(taxa)
             out.append((header, seq))
 
@@ -582,7 +581,6 @@ def top_reference_realign(gene_path, most_common_taxa, target_to_taxon, top_path
     out_path = path.join(top_path, gene+".aln.fa")
     if skip_realign:
         if len(out) > 0:
-            
             out = delete_empty_columns(out)
             
             writeFasta(out_path, out)
