@@ -693,12 +693,8 @@ def do_folder(input_folder, args):
     
     hmmer_objs = [hmm_search(gene, hits, is_full, is_genome, hmm_output_folder, aln_ref_location, args.overwrite, args.map, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance) for gene, hits in transcripts_mapped_to]
     
-    if args.processes <= 1:
-        for obj in hmmer_objs:
-            do_cluster(obj)
-    else:
-        with Pool(args.processes) as p:
-            p.map(do_cluster, hmmer_objs)
+    for obj in hmmer_objs:
+        do_cluster(obj)
     
     arguments = get_args(hmmer_objs, head_to_seq)
 
