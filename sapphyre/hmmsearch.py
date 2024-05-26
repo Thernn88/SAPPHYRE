@@ -455,7 +455,8 @@ class hmm_search:
 
         for query, results in queries:
             node, frame = query.split("|")
-            if node in cluster_full:
+            id = int(node)
+            if id in cluster_full:
                 if not query in parents_done:
                     for result in results:
                         start, end, score, ali_start, ali_end = result
@@ -466,10 +467,10 @@ class hmm_search:
 
                         new_qstart = start
 
-                        passed_ids.add(int(node))
+                        passed_ids.add(id)
                         parents_done.add(query)
 
-                        is_primary_child, cluster_range = source_clusters[node]
+                        is_primary_child, cluster_range = source_clusters[id]
                         if is_primary_child:
                             where_from = "Primary Cluster"
                             cquery = primary_query[cluster_range]
@@ -477,7 +478,7 @@ class hmm_search:
                             where_from = "Cluster Full"
                             cquery = cluster_queries[cluster_range]
 
-                        new_hit = HmmHit(node=node, score=score, frame=int(frame), evalue=0, qstart=new_qstart, qend=new_qstart + len(sequence), gene=self.gene, query=cquery, uid=None, refs=[], seq=sequence)
+                        new_hit = HmmHit(node=id, score=score, frame=int(frame), evalue=0, qstart=new_qstart, qend=new_qstart + len(sequence), gene=self.gene, query=cquery, uid=None, refs=[], seq=sequence)
                         hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, where_from))
                         output.append(new_hit)
                 continue
