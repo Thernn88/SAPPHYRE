@@ -14,6 +14,7 @@ from sapphyre_tools import (
     get_overlap,
     is_same_kmer,
     constrained_distance,
+    bio_revcomp,
 )
 from wrap_rocks import RocksDB
 
@@ -176,6 +177,7 @@ def make_duped_consensus(
 
 class NODE(Struct):
     header: str
+    frame: int
     sequence: str
     nt_sequence: str
     start: int
@@ -253,7 +255,7 @@ class NODE(Struct):
         self.children.extend(node_2.children)
 
     def clone(self):
-        return NODE(self.header, self.sequence, self.nt_sequence, self.start, self.end, self.children)
+        return NODE(self.header, self.frame, self.sequence, self.nt_sequence, self.start, self.end, self.children)
     
     def contig_header(self):
         """
@@ -657,6 +659,7 @@ def log_excised_consensus(
     excise_rescue_match,
     prepare_dupes: dict,
     reporter_dupes: dict,
+    head_to_seq,
     excise_trim_consensus,
     true_cluster_threshold = 24,
 ):
@@ -683,6 +686,7 @@ def log_excised_consensus(
     first removed character, inclusive. The end is the length of the string, which is exclusive.
     """
     log_output = []
+    scan_log = []
     this_rescues = []
 
     aa_in = input_path.joinpath("aa", gene)
@@ -712,7 +716,8 @@ def log_excised_consensus(
             ref_lens.append(bp_count(seq))
             continue
 
-        aa_nodes.append(NODE(header, seq, None, *find_index_pair(seq, "-"), []))
+        frame = int(header.split("|")[4])
+        aa_nodes.append(NODE(header, frame, seq, None, *find_index_pair(seq, "-"), []))
 
     ref_avg_len = sum(ref_lens) / len(ref_lens)
     kicked_headers = set()
@@ -927,12 +932,94 @@ def log_excised_consensus(
                     else:
                         log_output.extend([f">{node.header}_{'kept' if node.header not in kicked_headers else 'kicked'}\n{node.nt_sequence}" for node in sequences_in_region])
                     log_output.append("\n")
+                
         if recursion_max <= 0:
             break
-
+        
     if is_genome:
         do_trim(aa_nodes, get_parent_id, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
 
+
+    for cluster_i, cluster_set in enumerate(cluster_sets):
+        aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_parent_id(node.header) in cluster_set)]
+        aa_subset.sort(key = lambda x: x.start)
+        for i in range(1, len(aa_subset)):
+            prev_node = aa_subset[i-1]
+            node = aa_subset[i]
+            
+            overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, -10)
+            if overlapping_coords:
+                amount = overlapping_coords[1] - overlapping_coords[0]
+                
+                if amount > 1:
+                    continue
+                
+                prev_kmer = prev_node.nt_sequence[prev_node.start * 3 : prev_node.end * 3]
+                kmer = node.nt_sequence[node.start * 3 : node.end * 3]
+                
+                prev_og = head_to_seq[int(prev_node.header.split("|")[3].split("_")[1])]
+                if prev_node.frame < 0:
+                    prev_og = bio_revcomp(prev_og)
+                    
+                node_og = head_to_seq[int(node.header.split("|")[3].split("_")[1])]
+                if node.frame < 0:
+                    node_og = bio_revcomp(node_og)
+                
+                prev_start_index = prev_og.find(prev_kmer)
+                prev_end_index = prev_start_index + len(prev_kmer) #(inclusive of last codon)
+                
+                prev_bp = None
+                act_gt_index = None
+                gt_index = None
+                for x, i in enumerate(range(prev_end_index - 3, len(prev_og))):
+                    prev_act_coord = (prev_node.end * 3) - 3 + x
+                    #"-" if prev_act_coord >= len(prev_node.nt_sequence) else prev_node.nt_sequence[prev_act_coord]
+                    if prev_og[i] == "T" and prev_bp == "G":
+                        act_gt_index = prev_act_coord
+                        gt_index = i
+                        break
+                    prev_bp = prev_og[i]
+                    
+                node_start_index = node_og.find(kmer)
+                    
+                # Do the same but in reverse for the node where it iterates from the start + 3 to the start of the og
+                node_bp = None
+                act_ag_index_rev = None
+                ag_index_rev = None
+
+                # Iterate in reverse from the start of the kmer to the start of the original sequence
+                for x, i in enumerate(range(node_start_index + 2, -1, -1)):
+                    node_act_coord = (node.start * 3) + 2 - x
+                    
+                    # "-" if node_act_coord < 0 else node.nt_sequence[node_act_coord]
+                    if node_og[i] == "A" and node_bp == "G":
+                        act_ag_index_rev = node_act_coord
+                        ag_index_rev = i
+                        break
+                    node_bp = node_og[i]
+                    
+                    
+                if ag_index_rev and gt_index:
+                    scan_log.append("")
+                    #scan_log.append(f"{prev_node.header} vs {node.header}")
+                    scan_log.append(f">{node.header}_hit")
+                    scan_log.append(node.nt_sequence)
+                    scan_log.append(f">{node.header}_orf_scan")
+                    
+                    node_hit = node_og[ag_index_rev: node_start_index + len(kmer)]
+                    
+                    # lowercase last 2 bp
+                    node_hit = node_hit[:2].lower() + node_hit[2:]
+                    scan_log.append(("-" * ((node.end * 3) - len(node_hit))) + node_hit)
+                    scan_log.append(f">{prev_node.header}_orf_scan")
+                    
+                    prev_hit = prev_og[prev_start_index: gt_index + 1]
+                    # lowercase first 2 bp
+                    prev_hit = prev_hit[:-2] + prev_hit[-2:].lower()
+                    scan_log.append(("-" * (prev_node.start * 3)) + prev_hit)
+                    scan_log.append(f">{prev_node.header}_hit")
+                    scan_log.append(prev_node.nt_sequence)
+                        
     if had_region:
         after_data = []
         for node in aa_nodes:
@@ -1004,12 +1091,11 @@ def log_excised_consensus(
         nt_output = [(header, del_cols(seq, x_positions[header], True)) for header, seq in raw_sequences.items() if header not in kicked_headers]
         writeFasta(nt_out, nt_output, compress_intermediates)
 
-        return log_output, had_region, False, False, gene, len(kicked_headers), this_rescues
-    return log_output, had_region, gene, False, None, len(kicked_headers), this_rescues
+        return log_output, had_region, False, False, gene, len(kicked_headers), this_rescues, scan_log
+    return log_output, had_region, gene, False, None, len(kicked_headers), this_rescues, scan_log
 
 
-def load_dupes(rocks_db_path: Path):
-    rocksdb_db = RocksDB(str(rocks_db_path))
+def load_dupes(rocksdb_db):
     prepare_dupe_counts = json.decode(
         rocksdb_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]]
     )
@@ -1033,7 +1119,62 @@ def move_flagged(to_move, processes):
             pool.starmap(do_move, to_move)
 
 
-###
+def get_args(args, gene, head_to_seq, is_assembly_or_genome, is_genome, input_folder, output_folder, compress, prepare_dupes, reporter_dupes):
+    this_prepare_dupes = prepare_dupes.get(gene.split(".")[0], {})
+    this_reporter_dupes = reporter_dupes.get(gene.split(".")[0], {})
+    this_headers = [int(i[0].split("|")[3].split("_")[1]) for i in parseFasta(str(input_folder.joinpath("aa", gene))) if not i[0].endswith(".")]
+    
+    this_seqs = {i: head_to_seq[i] for i in this_headers}
+    
+    yield (
+        gene,
+        is_assembly_or_genome,
+        is_genome,
+        input_folder,
+        output_folder,
+        compress,
+        args.excise_overlap_merge,
+        args.excise_overlap_ambig,
+        args.excise_region_overlap,
+        args.excise_consensus,
+        args.excise_maximum_depth,
+        args.excise_minimum_ambig,
+        args.excise_allowed_distance,
+        args.excise_rescue_match,
+        this_prepare_dupes,
+        this_reporter_dupes,
+        this_seqs,
+        args.excise_trim_consensus,
+    )
+
+
+def get_head_to_seq(nt_db):
+    """Get a dictionary of headers to sequences.
+
+    Args:
+    ----
+        nt_db (RocksDB): The NT rocksdb database.
+        recipe (list[str]): A list of each batch index.
+    Returns:
+    -------
+        dict[str, str]: A dictionary of headers to sequences.
+    """
+    recipe = nt_db.get("getall:batches")
+    if recipe:
+        recipe = recipe.split(",")
+        
+    head_to_seq = {}
+    for i in recipe:
+        lines = nt_db.get_bytes(f"ntbatch:{i}").decode().splitlines()
+        head_to_seq.update(
+            {
+                int(lines[i][1:]): lines[i + 1]
+                for i in range(0, len(lines), 2)
+                if lines[i] != ""
+            },
+        )
+
+    return head_to_seq
 
 
 def main(args, sub_dir, is_genome, is_assembly_or_genome):
@@ -1083,48 +1224,41 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
 
     aa_input = input_folder.joinpath("aa")
 
-    rocksdb_path = Path(folder, "rocksdb", "sequences", "nt")
+    rocksdb_path = path.join(folder, "rocksdb", "sequences", "nt")
+    nt_db = RocksDB(rocksdb_path)
+    
+    head_to_seq = get_head_to_seq(nt_db)
+    
     if args.no_dupes:
         prepare_dupes, reporter_dupes = {}, {}
     else:
-        if not rocksdb_path.exists():
+        if not path.exists(rocksdb_path):
             err = f"cannot find rocksdb for {folder}"
             raise FileNotFoundError(err)
-        prepare_dupes, reporter_dupes = load_dupes(rocksdb_path)
+        prepare_dupes, reporter_dupes = load_dupes(nt_db)
+        
+    del nt_db
 
     compress = not args.uncompress_intermediates or args.compress
 
     genes = [fasta for fasta in listdir(aa_input) if ".fa" in fasta]
     log_path = Path(output_folder, "excise_regions.txt")
+    scan_log_path = Path(output_folder, "gt_ag_scan.txt")
     gene_log_path = Path(output_folder, "excise_genes.txt")
     if args.processes > 1:
-        arguments = [
-            (
-                gene,
-                is_assembly_or_genome,
-                is_genome,
-                input_folder,
-                output_folder,
-                compress,
-                args.excise_overlap_merge,
-                args.excise_overlap_ambig,
-                args.excise_region_overlap,
-                args.excise_consensus,
-                args.excise_maximum_depth,
-                args.excise_minimum_ambig,
-                args.excise_allowed_distance,
-                args.excise_rescue_match,
-                prepare_dupes.get(gene.split(".")[0], {}),
-                reporter_dupes.get(gene.split(".")[0], {}),
-                args.excise_trim_consensus,
-            )
-            for gene in genes
-        ]
+        
+        arguments = get_args(args, genes, head_to_seq, is_assembly_or_genome, is_genome, input_folder, output_folder, compress, prepare_dupes, reporter_dupes)
         with Pool(args.processes) as pool:
             results = pool.starmap(log_excised_consensus, arguments)
     else:
         results = []
         for gene in genes:
+            this_prepare_dupes = prepare_dupes.get(gene.split(".")[0], {})
+            this_reporter_dupes = reporter_dupes.get(gene.split(".")[0], {})
+            this_headers = [int(i[0].split("|")[3].split("_")[1]) for i in parseFasta(str(input_folder.joinpath("aa", gene))) if not i[0].endswith(".")]
+            
+            this_seqs = {i: head_to_seq[i] for i in this_headers}
+    
             results.append(
                 log_excised_consensus(
                     gene,
@@ -1141,8 +1275,9 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
                     args.excise_minimum_ambig,
                     args.excise_allowed_distance,
                     args.excise_rescue_match,
-                    prepare_dupes.get(gene.split(".")[0], {}),
-                    reporter_dupes.get(gene.split(".")[0], {}),
+                    this_prepare_dupes,
+                    this_reporter_dupes,
+                    this_seqs,
                     args.excise_trim_consensus,
                 )
             )
@@ -1155,9 +1290,11 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
     has_resolution = []
     no_ambig = []
     rescues = []
+    gt_ag_scan_log = []
 
-    for glog, ghas_ambig, ghas_no_resolution, gcoverage_kick, g_has_resolution, gkicked_seq, grescues in results:
+    for glog, ghas_ambig, ghas_no_resolution, gcoverage_kick, g_has_resolution, gkicked_seq, grescues, slog in results:
         log_output.extend(glog)
+        gt_ag_scan_log.extend(slog)
         rescues.extend(grescues)
         if ghas_ambig:
             loci_containing_bad_regions += 1
@@ -1183,6 +1320,8 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
         with open(log_path, "w") as f:
             f.write("Gene,Cut-Indices,Consensus Sequence\n")
             f.write("\n".join(log_output))
+        with open(scan_log_path, "w") as f:
+            f.write("\n".join(gt_ag_scan_log))
         with open(gene_log_path, "w") as f:
             f.write(f"{len(kicked_no_resolve)} gene(s) kicked due to no seqs with resolution:\n")
             f.write("\n".join(kicked_no_resolve))
