@@ -1119,33 +1119,34 @@ def move_flagged(to_move, processes):
             pool.starmap(do_move, to_move)
 
 
-def get_args(args, gene, head_to_seq, is_assembly_or_genome, is_genome, input_folder, output_folder, compress, prepare_dupes, reporter_dupes):
-    this_prepare_dupes = prepare_dupes.get(gene.split(".")[0], {})
-    this_reporter_dupes = reporter_dupes.get(gene.split(".")[0], {})
-    this_headers = [int(i[0].split("|")[3].split("_")[1]) for i in parseFasta(str(input_folder.joinpath("aa", gene))) if not i[0].endswith(".")]
-    
-    this_seqs = {i: head_to_seq[i] for i in this_headers}
-    
-    yield (
-        gene,
-        is_assembly_or_genome,
-        is_genome,
-        input_folder,
-        output_folder,
-        compress,
-        args.excise_overlap_merge,
-        args.excise_overlap_ambig,
-        args.excise_region_overlap,
-        args.excise_consensus,
-        args.excise_maximum_depth,
-        args.excise_minimum_ambig,
-        args.excise_allowed_distance,
-        args.excise_rescue_match,
-        this_prepare_dupes,
-        this_reporter_dupes,
-        this_seqs,
-        args.excise_trim_consensus,
-    )
+def get_args(args, genes, head_to_seq, is_assembly_or_genome, is_genome, input_folder, output_folder, compress, prepare_dupes, reporter_dupes):
+    for gene in genes:
+        this_prepare_dupes = prepare_dupes.get(gene.split(".")[0], {})
+        this_reporter_dupes = reporter_dupes.get(gene.split(".")[0], {})
+        this_headers = [int(i[0].split("|")[3].split("_")[1]) for i in parseFasta(str(input_folder.joinpath("aa", gene))) if not i[0].endswith(".")]
+        
+        this_seqs = {i: head_to_seq[i] for i in this_headers}
+        
+        yield (
+            gene,
+            is_assembly_or_genome,
+            is_genome,
+            input_folder,
+            output_folder,
+            compress,
+            args.excise_overlap_merge,
+            args.excise_overlap_ambig,
+            args.excise_region_overlap,
+            args.excise_consensus,
+            args.excise_maximum_depth,
+            args.excise_minimum_ambig,
+            args.excise_allowed_distance,
+            args.excise_rescue_match,
+            this_prepare_dupes,
+            this_reporter_dupes,
+            this_seqs,
+            args.excise_trim_consensus,
+        )
 
 
 def get_head_to_seq(nt_db):
@@ -1246,7 +1247,6 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
     scan_log_path = Path(output_folder, "gt_ag_scan.txt")
     gene_log_path = Path(output_folder, "excise_genes.txt")
     if args.processes > 1:
-        
         arguments = get_args(args, genes, head_to_seq, is_assembly_or_genome, is_genome, input_folder, output_folder, compress, prepare_dupes, reporter_dupes)
         with Pool(args.processes) as pool:
             results = pool.starmap(log_excised_consensus, arguments)
