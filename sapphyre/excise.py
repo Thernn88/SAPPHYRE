@@ -719,6 +719,7 @@ def log_excised_consensus(
 
     ref_avg_len = sum(ref_lens) / len(ref_lens)
     kicked_headers = set()
+    replacements = defaultdict(dict)
 
     cluster_sets = [None]
     get_id = lambda header: header.split("|")[3].replace("NODE_","")
@@ -1047,10 +1048,15 @@ def log_excised_consensus(
                                 orphan_codon.append(right_codon[i])
                             else:
                                 orphan_codon.append(left_codon[i])
-                    
-                        prev_nt_seq[left_last_codon: left_last_codon + 3] = orphan_codon
-                        node_seq[right_end_codon: right_end_codon + 3] = orphan_codon
 
+                        for i, x in enumerate(range(left_last_codon, left_last_codon + 3)):
+                            prev_nt_seq[x] = orphan_codon[i]
+                            replacements[prev_node.header][x] = orphan_codon[i]
+                            
+                        for i, x in enumerate(range(right_end_codon, right_end_codon + 3)):
+                            node_seq[x] = orphan_codon[i]
+                            replacements[node.header][x] = orphan_codon[i]
+                            
                     scan_log.append(f">{prev_node.header}_spliced")
                     scan_log.append("".join(prev_nt_seq))
                     scan_log.append(f">{node.header}_spliced")
@@ -1140,7 +1146,16 @@ def log_excised_consensus(
         
         writeFasta(aa_out, aa_output, compress_intermediates)
         nt_output = [(header, del_cols(seq, x_positions[header], True)) for header, seq in raw_sequences.items() if header not in kicked_headers]
-        writeFasta(nt_out, nt_output, compress_intermediates)
+        final_nt_out = []
+        print(replacements)
+        for header, seq in nt_output:
+            if header in replacements:
+                print(header, replacements[header])
+                seq = list(seq)
+                for i, bp in replacements[header].items():
+                    seq[i] = bp
+            final_nt_out.append((header, "".join(seq)))
+        writeFasta(nt_out, final_nt_out, compress_intermediates)
 
         return log_output, had_region, False, False, gene, len(kicked_headers), this_rescues, scan_log
     return log_output, had_region, gene, False, None, len(kicked_headers), this_rescues, scan_log
