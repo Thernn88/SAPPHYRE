@@ -1223,10 +1223,8 @@ def log_excised_consensus(
         writeFasta(aa_out, aa_output, compress_intermediates)
         nt_output = [(header, del_cols(seq, x_positions[header], True)) for header, seq in raw_sequences.items() if header not in kicked_headers]
         final_nt_out = []
-        print(replacements)
         for header, seq in nt_output:
             if header in replacements:
-                print(header, replacements[header])
                 seq = list(seq)
                 for i, bp in replacements[header].items():
                     seq[i] = bp
