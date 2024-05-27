@@ -1085,7 +1085,7 @@ def log_excised_consensus(
         req_coverage = 0.4 if is_assembly_or_genome else 0.01
         if gene_coverage < req_coverage:
             log_output.append(f">{gene}_kicked_coverage_{gene_coverage}_of_{req_coverage}\n{consensus_seq}")
-            return log_output, False, False, gene, False, len(aa_nodes), this_rescues
+            return log_output, False, False, gene, False, len(aa_nodes), this_rescues, scan_log
         
         writeFasta(aa_out, aa_output, compress_intermediates)
         nt_output = [(header, del_cols(seq, x_positions[header], True)) for header, seq in raw_sequences.items() if header not in kicked_headers]
