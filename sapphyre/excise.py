@@ -546,21 +546,55 @@ def do_trim(aa_nodes, get_parent_id, cluster_sets, x_positions, ref_consensus, k
                         x_positions[node.header].add(x)
 
 
-def do_cluster(ids, ref_coords, id_chomp_distance=100):
+def finalize_cluster(current_cluster, ids, ref_coords, clusters, kicks, req_seq_coverage):
+    if len(current_cluster) >= 2:
+        cluster_data_cols = set()
+        for _, _, index in current_cluster:
+            cluster_data_cols.update(ids[index][1])
+            
+        cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
+        clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage))
+    elif len(current_cluster) == 1:
+        if current_cluster[0][1] > req_seq_coverage:
+            cluster_coverage = current_cluster[0][1]
+            clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage))
+        else:
+            kicks.add(current_cluster[0][0])
+
+def determine_direction(start, end, current_start, current_end, current_direction):
+    this_direction = None
+    if start == current_start and end == current_end:
+        this_direction = "bi"
+    else:
+        if start == current_start:
+            if end >= current_end:
+                this_direction = "forward"
+            else:
+                this_direction = "reverse"
+        else:
+            if start >= current_start:
+                this_direction = "forward"
+            else:
+                this_direction = "reverse"
+    
+    if current_direction == "bi" or this_direction == "bi" or this_direction == current_direction:
+        return this_direction
+    return None
+
+
+def do_cluster(ids, ref_coords, max_gap_size, id_chomp_distance=100):
     clusters = []
-    ids.sort(key = lambda x: x[0])
+    kicks = set()
+    ids.sort(key=lambda x: x[0])
     grouped_ids = defaultdict(list)
     for i, (child_index, seq_coords, start, end) in enumerate(ids):
         id = int(child_index.split("_")[0])
         grouped_ids[id].append((i, child_index, seq_coords, start, end))
         
     ids_ascending = sorted(grouped_ids.keys())
-    
-
     req_seq_coverage = 0.5
-
     current_cluster = []
-    
+
     for id in ids_ascending:
         seq_list = grouped_ids[id]
         if not current_cluster:
@@ -571,28 +605,17 @@ def do_cluster(ids, ref_coords, id_chomp_distance=100):
         else:
             passed = False
             passed_direction = None
-            
+
             if id - current_index <= id_chomp_distance:
                 for i, child_index, seq_coords, start, end in seq_list:
                     for _, _, _, current_start, current_end in current_seqs:
-                        this_direction = None
-                        if start == current_start and end == current_end:
-                            this_direction = "bi"
-                        else:
-                            if start == current_start:
-                                if end >= current_end:
-                                    this_direction = "forward"
-                                else:
-                                    this_direction = "reverse"
-                            else:
-                                if start >= current_start:
-                                    this_direction = "forward"
-                                else:
-                                    this_direction = "reverse"
-                     
-                            if current_direction == "bi" or this_direction == "bi" or this_direction == current_direction:
-                                passed_direction = this_direction
-                                passed = True
+                        overlap = get_overlap(start, end, current_start, current_end, -max_gap_size)
+                        if not overlap:
+                            continue
+                        
+                        passed_direction = determine_direction(start, end, current_start, current_end, current_direction)
+                        if passed_direction:
+                            passed = True
                             break
                     if passed:
                         break
@@ -604,39 +627,16 @@ def do_cluster(ids, ref_coords, id_chomp_distance=100):
                 if passed_direction != "bi":
                     current_direction = passed_direction
             else:
-                if len(current_cluster) >= 2:
-                    cluster_data_cols = set()
-                    for _, _, index in current_cluster:
-                        cluster_data_cols.update(ids[index][1])
-                        
-                    cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
-
-                    clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage))
-                elif len(current_cluster) == 1:
-                    if current_cluster[0][1] > req_seq_coverage:
-                        cluster_coverage = current_cluster[0][1]
-                        clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage))
-                        
+                finalize_cluster(current_cluster, ids, ref_coords, clusters, kicks, req_seq_coverage)
                 current_cluster = [(id, len(seq_coords.intersection(ref_coords)) / len(ref_coords), i) for i, _, seq_coords, _, _ in seq_list]
                 current_index = id
                 current_seqs = seq_list
                 current_direction = "bi"
     
     if current_cluster:
-        if len(current_cluster) >= 2:
-            cluster_data_cols = set()
-            for _, _, index in current_cluster:
-                cluster_data_cols.update(ids[index][1])
+        finalize_cluster(current_cluster, ids, ref_coords, clusters, kicks, req_seq_coverage)
                 
-            cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
-
-            clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage))
-        elif len(current_cluster) == 1:
-            if current_cluster[0][1] > req_seq_coverage:
-                cluster_coverage = current_cluster[0][1]
-                clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage))
-                
-    return clusters
+    return clusters, kicks
 
 
 
@@ -729,7 +729,17 @@ def log_excised_consensus(
                 data_cols = {i for i, let in enumerate(node.sequence[start:end], start) if let != "-"}
                 ids.append((this_id, data_cols, start, end))
     
-        clusters = do_cluster(ids, reference_cluster_data)
+        max_gap_size = round(len(aa_nodes[0].sequence) * 0.5)
+    
+        clusters, kicks = do_cluster(ids, reference_cluster_data, max_gap_size)
+        
+        if kicks:
+            for node in aa_nodes:
+                this_parent_id = int(get_id(node.header).split("_")[0])
+                if this_parent_id in kicks:
+                    kicked_headers.add(node.header)
+                    log_output.append(f"Kicking {node.header} due to low coverage")
+        
         if clusters:
             cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
 
@@ -746,6 +756,7 @@ def log_excised_consensus(
         node_kmer = node.sequence[node.start:node.end]
         data_len = bp_count(node_kmer)
         if data_len < 15:
+            log_output.append(f"Kicking {node.header} due to < 15 bp after trimming")
             kicked_headers.add(node.header)
 
     raw_sequences = {header: del_cols(seq, x_positions[header], True) for header, seq in parseFasta(str(nt_in))}
@@ -868,10 +879,12 @@ def log_excised_consensus(
                                 cluster_resolve_failed = False
 
                                 if len(prev_node.sequence) - prev_node.sequence.count("-") < 15:
+                                    log_output.append(f"Kicking {prev_node.header} due to < 15 bp after splice")
                                     kicked_headers.add(prev_node.header)
                                     
 
                                 if len(node.sequence) - node.sequence.count("-") < 15:
+                                    log_output.append(f"Kicking {node.header} due to < 15 bp after splice")
                                     kicked_headers.add(node.header)
 
                                 # if either_kicked:
