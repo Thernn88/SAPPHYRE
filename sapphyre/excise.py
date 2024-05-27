@@ -640,8 +640,6 @@ def do_cluster(ids, ref_coords, max_gap_size, id_chomp_distance=100):
                 
     return clusters, kicks
 
-
-
 def log_excised_consensus(
     gene: str,
     is_assembly_or_genome: bool,
@@ -938,7 +936,13 @@ def log_excised_consensus(
         
     if is_genome:
         do_trim(aa_nodes, get_parent_id, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
-
+        for node in aa_nodes:
+            if node.header in kicked_headers:
+                continue
+            
+            node.sequence = del_cols(node.sequence, x_positions[node.header])
+            node.nt_sequence = del_cols(node.nt_sequence, x_positions[node.header], True)
+            node.start, node.end = find_index_pair(node.sequence, "-")
 
     for cluster_i, cluster_set in enumerate(cluster_sets):
         aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_parent_id(node.header) in cluster_set)]
@@ -972,7 +976,7 @@ def log_excised_consensus(
                 act_gt_index = None
                 gt_index = None
                 for x, i in enumerate(range(prev_end_index - 3, len(prev_og))):
-                    prev_act_coord = (prev_node.end * 3) - 3 + x
+                    prev_act_coord = (prev_node.end * 3) - 1 - 3 + x
                     #"-" if prev_act_coord >= len(prev_node.nt_sequence) else prev_node.nt_sequence[prev_act_coord]
                     if prev_og[i] == "T" and prev_bp == "G":
                         act_gt_index = prev_act_coord
@@ -1002,23 +1006,67 @@ def log_excised_consensus(
                 if ag_index_rev and gt_index:
                     scan_log.append("")
                     #scan_log.append(f"{prev_node.header} vs {node.header}")
-                    scan_log.append(f">{node.header}_hit")
-                    scan_log.append(node.nt_sequence)
-                    scan_log.append(f">{node.header}_orf_scan")
+                    prev_nt_seq = list(prev_node.nt_sequence)
+                    node_seq = list(node.nt_sequence)
+                    
+                    # scan_log.append(f">{prev_node.header}_current_output")
+                    # scan_log.append(prev_node.nt_sequence)
+                    # scan_log.append(f">{node.header}_current_output")
+                    # scan_log.append(node.nt_sequence)
+                        
+                    prev_nt_seq[act_gt_index : act_gt_index + 2] = ['-', '-']
+                    node_seq[act_ag_index_rev : act_ag_index_rev + 2] = ['-', '-']
+                    
+                    if prev_node.end * 3 > act_gt_index:
+                        for x in range(act_gt_index, prev_node.end * 3):
+                            prev_nt_seq[x] = "-"
+                    
+                    if node.start * 3 < act_ag_index_rev:
+                        for x in range(node.start * 3, act_ag_index_rev):
+                            node_seq[x] = "-"
+                            
+                            
+                    node_nt_start, _ = find_index_pair("".join(node_seq), "-")
+                    node_nt_start -= 1
+                    right_end_codon = (node_nt_start - node_nt_start % 3)
+                    
+                    _, prev_nt_end = find_index_pair("".join(prev_nt_seq), "-")
+                    prev_nt_end -= 1
+                    left_last_codon = (prev_nt_end - prev_nt_end % 3)
+                    
+                    if right_end_codon == left_last_codon:
+                        right_codon = node_seq[right_end_codon: right_end_codon + 3]
+                        left_codon = prev_nt_seq[left_last_codon: left_last_codon + 3]
+                        
+                        orphan_codon = []
+                        for i in range(3):
+                            if left_codon[i] == "-":
+                                orphan_codon.append(right_codon[i])
+                            else:
+                                orphan_codon.append(left_codon[i])
+                    
+                        prev_nt_seq[left_last_codon: left_last_codon + 3] = orphan_codon
+                        node_seq[right_end_codon: right_end_codon + 3] = orphan_codon
+
+                    scan_log.append(f">{prev_node.header}_spliced")
+                    scan_log.append("".join(prev_nt_seq))
+                    scan_log.append(f">{node.header}_spliced")
+                    scan_log.append("".join(node_seq))
+                    
                     
                     node_hit = node_og[ag_index_rev: node_start_index + len(kmer)]
-                    
-                    # lowercase last 2 bp
-                    node_hit = node_hit[:2].lower() + node_hit[2:]
-                    scan_log.append(("-" * ((node.end * 3) - len(node_hit))) + node_hit)
-                    scan_log.append(f">{prev_node.header}_orf_scan")
-                    
                     prev_hit = prev_og[prev_start_index: gt_index + 1]
-                    # lowercase first 2 bp
+                    # lowercase
                     prev_hit = prev_hit[:-2] + prev_hit[-2:].lower()
+                    node_hit = node_hit[:2].lower() + node_hit[2:]
+                    
+                    scan_log.append(f">{prev_node.header}_orf_scan")
                     scan_log.append(("-" * (prev_node.start * 3)) + prev_hit)
-                    scan_log.append(f">{prev_node.header}_hit")
-                    scan_log.append(prev_node.nt_sequence)
+                    scan_log.append(f">{node.header}_orf_scan")
+                    scan_log.append(("-" * ((node.end * 3) - len(node_hit))) + node_hit)
+                    
+                    
+                    
                         
     if had_region:
         after_data = []
