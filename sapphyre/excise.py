@@ -948,10 +948,8 @@ def log_excised_consensus(
     for cluster_i, cluster_set in enumerate(cluster_sets):
         aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_parent_id(node.header) in cluster_set)]
         aa_subset.sort(key = lambda x: x.start)
-        for i in range(1, len(aa_subset)):
-            prev_node = aa_subset[i-1]
-            node = aa_subset[i]
-            
+        for prev_node, node in combinations(aa_subset, 2):
+
             overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, -10)
             if overlapping_coords:
                 amount = overlapping_coords[1] - overlapping_coords[0]
