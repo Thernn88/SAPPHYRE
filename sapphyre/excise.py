@@ -720,6 +720,7 @@ def log_excised_consensus(
     ref_avg_len = sum(ref_lens) / len(ref_lens)
     kicked_headers = set()
     replacements = defaultdict(dict)
+    replacements_aa = defaultdict(dict)
 
     cluster_sets = [None]
     get_id = lambda header: header.split("|")[3].replace("NODE_","")
@@ -945,6 +946,75 @@ def log_excised_consensus(
             node.nt_sequence = del_cols(node.nt_sequence, x_positions[node.header], True)
             node.start, node.end = find_index_pair(node.sequence, "-")
 
+    DNA_CODONS = {
+        "GCT": "A",
+        "GCC": "A",
+        "GCA": "A",
+        "GCG": "A",
+        "TGT": "C",
+        "TGC": "C",
+        "GAT": "D",
+        "GAC": "D",
+        "GAA": "E",
+        "GAG": "E",
+        "TTT": "F",
+        "TTC": "F",
+        "GGT": "G",
+        "GGC": "G",
+        "GGA": "G",
+        "GGG": "G",
+        "CAT": "H",
+        "CAC": "H",
+        "ATA": "I",
+        "ATT": "I",
+        "ATC": "I",
+        "AAA": "K",
+        "AAG": "K",
+        "TTA": "L",
+        "TTG": "L",
+        "CTT": "L",
+        "CTC": "L",
+        "CTA": "L",
+        "CTG": "L",
+        "ATG": "M",
+        "AAT": "N",
+        "AAC": "N",
+        "CCT": "P",
+        "CCC": "P",
+        "CCA": "P",
+        "CCG": "P",
+        "CAA": "Q",
+        "CAG": "Q",
+        "CGT": "R",
+        "CGC": "R",
+        "CGA": "R",
+        "CGG": "R",
+        "AGA": "R",
+        "AGG": "R",
+        "TCT": "S",
+        "TCC": "S",
+        "TCA": "S",
+        "TCG": "S",
+        "AGT": "S",
+        "AGC": "S",
+        "ACT": "T",
+        "ACC": "T",
+        "ACA": "T",
+        "ACG": "T",
+        "GTT": "V",
+        "GTC": "V",
+        "GTA": "V",
+        "GTG": "V",
+        "TGG": "W",
+        "TAT": "Y",
+        "TAC": "Y",
+        "TAA": "*",
+        "TAG": "*",
+        "TGA": "*",
+        "---": "---",
+    }
+
+
     for cluster_i, cluster_set in enumerate(cluster_sets):
         aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_parent_id(node.header) in cluster_set)]
         aa_subset.sort(key = lambda x: x.start)
@@ -1043,6 +1113,12 @@ def log_excised_consensus(
                                 orphan_codon.append(right_codon[i])
                             else:
                                 orphan_codon.append(left_codon[i])
+                                
+                        joined = "".join(orphan_codon)
+                        if joined in DNA_CODONS:
+                            orphan_aa = DNA_CODONS[joined]
+                            replacements_aa[prev_node.header][left_last_codon//3] = orphan_aa
+                            replacements_aa[node.header][right_end_codon//3] = orphan_aa
 
                         for i, x in enumerate(range(left_last_codon, left_last_codon + 3)):
                             prev_nt_seq[x] = orphan_codon[i]
@@ -1068,9 +1144,6 @@ def log_excised_consensus(
                     scan_log.append(("-" * (prev_node.start * 3)) + prev_hit)
                     scan_log.append(f">{node.header}_orf_scan")
                     scan_log.append(("-" * ((node.end * 3) - len(node_hit))) + node_hit)
-                    
-                    
-                    
                         
     if had_region:
         after_data = []
@@ -1124,7 +1197,15 @@ def log_excised_consensus(
                     kicked_headers.remove(header)
                     this_rescues.append(header)
 
-    aa_output = [(header, del_cols(seq, x_positions[header])) for header, seq in raw_aa if header not in kicked_headers]
+    aa_raw_output = [(header, del_cols(seq, x_positions[header])) for header, seq in raw_aa if header not in kicked_headers]
+    aa_output = []
+    for header, seq in aa_raw_output:
+        if header in replacements_aa:
+            seq = list(seq)
+            for i, bp in replacements_aa[header].items():
+                seq[i] = bp
+            seq = "".join(seq)
+        aa_output.append((header, seq))
 
     aa_has_candidate = False
     for header, _ in aa_output:
