@@ -957,6 +957,9 @@ def log_excised_consensus(
                 
                 if amount > 1:
                     continue
+                elif amount == 1:
+                    if node.sequence[overlapping_coords[0]] == prev_node.sequence[overlapping_coords[0]]:
+                        continue
                 
                 prev_kmer = prev_node.nt_sequence[prev_node.start * 3 : prev_node.end * 3]
                 kmer = node.nt_sequence[node.start * 3 : node.end * 3]
