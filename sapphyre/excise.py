@@ -643,11 +643,9 @@ def do_cluster(ids, ref_coords, max_gap_size, id_chomp_distance=100):
 
 def insert_gaps(input_string, positions, offset):
     input_string = list(input_string)
-    gap_offset = 0
-
+    
     for coord in positions:
-        input_string.insert(offset + coord + gap_offset, "-")
-        # gap_offset += 1
+        input_string.insert(offset + coord, "-")
 
     return "".join(input_string)
 
@@ -1026,7 +1024,7 @@ def log_excised_consensus(
         "---": "---",
     }
 
-
+    extensions = defaultdict(dict)
     for cluster_i, cluster_set in enumerate(cluster_sets):
         aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_parent_id(node.header) in cluster_set)]
         aa_subset.sort(key = lambda x: x.start)
@@ -1054,30 +1052,36 @@ def log_excised_consensus(
                 node_og = head_to_seq[int(node.header.split("|")[3].split("_")[1])]
                 if node.frame < 0:
                     node_og = bio_revcomp(node_og)
-                    
-                
                 
                 prev_start_index = prev_og.find(prev_kmer)
                 prev_og = insert_gaps(prev_og, prev_internal_gaps, prev_start_index)
                 prev_end_index = prev_start_index + len(prev_kmer) #(inclusive of last codon)
-                
-                prev_bp = None
                 act_gt_index = None
                 gt_index = None
+                
+                prev_extensions = {}
+                node_extensions = {}
+                
+                prev_nt_seq = list(prev_node.nt_sequence)
+                node_seq = list(node.nt_sequence)
+                
                 for x, i in enumerate(range(prev_end_index - 3, len(prev_og))):
                     prev_act_coord = (prev_node.end * 3) - 1 - 3 + x
                     #"-" if prev_act_coord >= len(prev_node.nt_sequence) else prev_node.nt_sequence[prev_act_coord]
-                    if prev_og[i] == "T" and prev_bp == "G":
-                        act_gt_index = prev_act_coord
-                        gt_index = i
+                    if prev_og[i] == "G" and prev_og[i + 1] == "T":
+                        act_gt_index = prev_act_coord + 1
+                        gt_index = i + 1
                         break
+                    else:
+                        if prev_nt_seq[prev_act_coord + 1] == "-":
+                            prev_extensions[prev_act_coord + 1] = prev_og[i]
+                        
                     prev_bp = prev_og[i]
-                    
+                
                 node_start_index = node_og.find(kmer)
                 node_og = insert_gaps(node_og, kmer_internal_gaps, node_start_index)
                     
                 # Do the same but in reverse for the node where it iterates from the start + 3 to the start of the og
-                node_bp = None
                 act_ag_index_rev = None
                 ag_index_rev = None
 
@@ -1085,34 +1089,55 @@ def log_excised_consensus(
                 for x, i in enumerate(range(node_start_index + 2, -1, -1)):
                     node_act_coord = (node.start * 3) + 2 - x
                     
-                    # "-" if node_act_coord < 0 else node.nt_sequence[node_act_coord]
-                    if node_og[i] == "A" and node_bp == "G":
+                    # Check if the next nucleotide (i + 1) is "A" and the current is "G"
+                    if node_og[i] == "A" and node_og[i + 1] == "G":
                         act_ag_index_rev = node_act_coord
                         ag_index_rev = i
                         break
-                    node_bp = node_og[i]
+                    else:
+                        if node_seq[node_act_coord - 1] == "-":
+                            node_extensions[node_act_coord - 1] = node_og[i]
+
+                # No need to update node_bp as it is no longer used
+
+                    
+                    
                     
                     
                 if ag_index_rev and gt_index:
                     scan_log.append("")
                     #scan_log.append(f"{prev_node.header} vs {node.header}")
-                    prev_nt_seq = list(prev_node.nt_sequence)
-                    node_seq = list(node.nt_sequence)
+
+                    for i, let in prev_extensions.items():
+                        prev_nt_seq[i] = let
+                        
+                    for i, let in node_extensions.items():
+                        node_seq[i] = let
+                        
+                    extensions[node.header].update(node_extensions)
+                    extensions[prev_node.header].update(prev_extensions)
                     
                     # scan_log.append(f">{prev_node.header}_current_output")
                     # scan_log.append(prev_node.nt_sequence)
                     # scan_log.append(f">{node.header}_current_output")
                     # scan_log.append(node.nt_sequence)
-                        
-                    prev_nt_seq[act_gt_index : act_gt_index + 2] = ['-', '-']
-                    node_seq[act_ag_index_rev : act_ag_index_rev + 2] = ['-', '-']
                     
+                    for i in range(act_gt_index, act_gt_index + 2):
+                        prev_nt_seq[i] = "-"
+                        
+                    for i in range(act_ag_index_rev, act_ag_index_rev + 2):
+                        node_seq[i] = "-"
+
                     if prev_node.end * 3 > act_gt_index:
                         for x in range(act_gt_index, prev_node.end * 3):
+                            if x in prev_extensions:
+                                continue
                             prev_nt_seq[x] = "-"
                     
                     if node.start * 3 < act_ag_index_rev:
                         for x in range(node.start * 3, act_ag_index_rev):
+                            if x in node_extensions:
+                                continue
                             node_seq[x] = "-"
                             
                             
@@ -1245,11 +1270,16 @@ def log_excised_consensus(
         nt_output = [(header, del_cols(seq, x_positions[header], True)) for header, seq in raw_sequences.items() if header not in kicked_headers]
         final_nt_out = []
         for header, seq in nt_output:
-            if header in replacements:
+            if header in replacements or header in extensions:
                 seq = list(seq)
-                for i, bp in replacements[header].items():
-                    seq[i] = bp
-            final_nt_out.append((header, "".join(seq)))
+                if header in extensions: 
+                    for i, bp in extensions[header].items():
+                        seq[i] = bp
+                if header in replacements:
+                    for i, bp in replacements[header].items():
+                        seq[i] = bp
+                seq = "".join(seq)
+            final_nt_out.append((header, seq))
         writeFasta(nt_out, final_nt_out, compress_intermediates)
 
         return log_output, had_region, False, False, gene, len(kicked_headers), this_rescues, scan_log
