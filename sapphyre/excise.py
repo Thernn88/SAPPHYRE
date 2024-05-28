@@ -640,6 +640,18 @@ def do_cluster(ids, ref_coords, max_gap_size, id_chomp_distance=100):
                 
     return clusters, kicks
 
+
+def insert_gaps(input_string, positions, offset):
+    input_string = list(input_string)
+    gap_offset = 0
+
+    for coord in positions:
+        input_string.insert(offset + coord + gap_offset, "-")
+        # gap_offset += 1
+
+    return "".join(input_string)
+
+
 def log_excised_consensus(
     gene: str,
     is_assembly_or_genome: bool,
@@ -1028,7 +1040,12 @@ def log_excised_consensus(
                     continue
                 
                 prev_kmer = prev_node.nt_sequence[prev_node.start * 3 : prev_node.end * 3]
+                prev_internal_gaps = [i for i, let in enumerate(prev_kmer) if let == "-"]
+                prev_kmer = prev_kmer.replace("-","")
+                
                 kmer = node.nt_sequence[node.start * 3 : node.end * 3]
+                kmer_internal_gaps = [i for i, let in enumerate(kmer) if let == "-"]
+                kmer = kmer.replace("-","")
                 
                 prev_og = head_to_seq[int(prev_node.header.split("|")[3].split("_")[1])]
                 if prev_node.frame < 0:
@@ -1037,8 +1054,11 @@ def log_excised_consensus(
                 node_og = head_to_seq[int(node.header.split("|")[3].split("_")[1])]
                 if node.frame < 0:
                     node_og = bio_revcomp(node_og)
+                    
+                
                 
                 prev_start_index = prev_og.find(prev_kmer)
+                prev_og = insert_gaps(prev_og, prev_internal_gaps, prev_start_index)
                 prev_end_index = prev_start_index + len(prev_kmer) #(inclusive of last codon)
                 
                 prev_bp = None
@@ -1054,6 +1074,7 @@ def log_excised_consensus(
                     prev_bp = prev_og[i]
                     
                 node_start_index = node_og.find(kmer)
+                node_og = insert_gaps(node_og, kmer_internal_gaps, node_start_index)
                     
                 # Do the same but in reverse for the node where it iterates from the start + 3 to the start of the og
                 node_bp = None
