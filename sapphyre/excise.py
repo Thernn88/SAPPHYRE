@@ -1068,14 +1068,14 @@ def log_excised_consensus(
                 for x, i in enumerate(range(prev_end_index - 3, len(prev_og))):
                     prev_act_coord = (prev_node.end * 3) - 1 - 3 + x
                     #"-" if prev_act_coord >= len(prev_node.nt_sequence) else prev_node.nt_sequence[prev_act_coord]
-                    if i + 1 >= len(prev_og):
+                    if i + 1 >= len(prev_og) or prev_act_coord + 1 >= len(prev_node.nt_sequence):
                         break
                     
                     if prev_og[i] == "G" and prev_og[i + 1] == "T":
                         act_gt_index = prev_act_coord + 1
                         gt_index = i + 1
                         break
-                    else:
+                    else:                        
                         if prev_nt_seq[prev_act_coord + 1] == "-":
                             prev_extensions[prev_act_coord + 1] = prev_og[i]
                         
@@ -1089,6 +1089,9 @@ def log_excised_consensus(
                 # Iterate in reverse from the start of the kmer to the start of the original sequence
                 for x, i in enumerate(range(node_start_index + 2, -1, -1)):
                     node_act_coord = (node.start * 3) + 2 - x
+
+                    if node_act_coord - 1 < 0 or i < 0:
+                        break
                     
                     # Check if the next nucleotide (i + 1) is "A" and the current is "G"
                     if node_og[i] == "A" and node_og[i + 1] == "G":
