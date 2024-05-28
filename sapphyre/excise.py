@@ -1068,6 +1068,9 @@ def log_excised_consensus(
                 for x, i in enumerate(range(prev_end_index - 3, len(prev_og))):
                     prev_act_coord = (prev_node.end * 3) - 1 - 3 + x
                     #"-" if prev_act_coord >= len(prev_node.nt_sequence) else prev_node.nt_sequence[prev_act_coord]
+                    if i + 1 >= len(prev_og):
+                        break
+                    
                     if prev_og[i] == "G" and prev_og[i + 1] == "T":
                         act_gt_index = prev_act_coord + 1
                         gt_index = i + 1
@@ -1076,8 +1079,6 @@ def log_excised_consensus(
                         if prev_nt_seq[prev_act_coord + 1] == "-":
                             prev_extensions[prev_act_coord + 1] = prev_og[i]
                         
-                    prev_bp = prev_og[i]
-                
                 node_start_index = node_og.find(kmer)
                 node_og = insert_gaps(node_og, kmer_internal_gaps, node_start_index)
                     
@@ -1098,12 +1099,6 @@ def log_excised_consensus(
                         if node_seq[node_act_coord - 1] == "-":
                             node_extensions[node_act_coord - 1] = node_og[i]
 
-                # No need to update node_bp as it is no longer used
-
-                    
-                    
-                    
-                    
                 if ag_index_rev and gt_index:
                     scan_log.append("")
                     #scan_log.append(f"{prev_node.header} vs {node.header}")
