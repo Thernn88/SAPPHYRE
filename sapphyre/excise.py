@@ -1029,7 +1029,9 @@ def log_excised_consensus(
         aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_parent_id(node.header) in cluster_set)]
         aa_subset.sort(key = lambda x: x.start)
         for prev_node, node in combinations(aa_subset, 2):
-
+            # if "NODE_2022368" not in prev_node.header:
+            #     continue
+            
             overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, -10)
             if overlapping_coords:
                 amount = overlapping_coords[1] - overlapping_coords[0]
@@ -1055,7 +1057,8 @@ def log_excised_consensus(
                 
                 prev_start_index = prev_og.find(prev_kmer)
                 prev_og = insert_gaps(prev_og, prev_internal_gaps, prev_start_index)
-                prev_end_index = prev_start_index + len(prev_kmer) #(inclusive of last codon)
+                prev_end_index = prev_start_index + len(prev_kmer) + len(prev_internal_gaps) #(inclusive of last codon)
+                
                 act_gt_index = None
                 gt_index = None
                 
@@ -1066,18 +1069,18 @@ def log_excised_consensus(
                 node_seq = list(node.nt_sequence)
                 
                 for x, i in enumerate(range(prev_end_index - 3, len(prev_og))):
-                    prev_act_coord = (prev_node.end * 3) - 1 - 3 + x
+                    prev_act_coord = (prev_node.end * 3) - 3 + x
                     #"-" if prev_act_coord >= len(prev_node.nt_sequence) else prev_node.nt_sequence[prev_act_coord]
-                    if i + 1 >= len(prev_og) or prev_act_coord + 1 >= len(prev_node.nt_sequence):
+                    if i + 1 >= len(prev_og) or prev_act_coord >= len(prev_node.nt_sequence):
                         break
                     
                     if prev_og[i] == "G" and prev_og[i + 1] == "T":
-                        act_gt_index = prev_act_coord + 1
+                        act_gt_index = prev_act_coord
                         gt_index = i + 1
                         break
-                    else:                        
-                        if prev_nt_seq[prev_act_coord + 1] == "-":
-                            prev_extensions[prev_act_coord + 1] = prev_og[i]
+                    else:                       
+                        if prev_nt_seq[prev_act_coord] == "-":
+                            prev_extensions[prev_act_coord] = prev_og[i]
                         
                 node_start_index = node_og.find(kmer)
                 node_og = insert_gaps(node_og, kmer_internal_gaps, node_start_index)
@@ -1164,19 +1167,26 @@ def log_excised_consensus(
                             replacements_aa[prev_node.header][left_last_codon//3] = orphan_aa
                             replacements_aa[node.header][right_end_codon//3] = orphan_aa
 
-                        for i, x in enumerate(range(left_last_codon, left_last_codon + 3)):
-                            prev_nt_seq[x] = orphan_codon[i]
-                            replacements[prev_node.header][x] = orphan_codon[i]
-                            
-                        for i, x in enumerate(range(right_end_codon, right_end_codon + 3)):
-                            node_seq[x] = orphan_codon[i]
-                            replacements[node.header][x] = orphan_codon[i]
-                            
+                            for i, x in enumerate(range(left_last_codon, left_last_codon + 3)):
+                                prev_nt_seq[x] = orphan_codon[i]
+                                replacements[prev_node.header][x] = orphan_codon[i]
+                                
+                            for i, x in enumerate(range(right_end_codon, right_end_codon + 3)):
+                                node_seq[x] = orphan_codon[i]
+                                replacements[node.header][x] = orphan_codon[i]
+                                
+                                
+                    scan_log.append("")    
+                    scan_log.append(f">{prev_node.header}_excise_output")
+                    scan_log.append(prev_node.nt_sequence)
+                    scan_log.append(f">{node.header}_excise_output")
+                    scan_log.append(node.nt_sequence)
+                    scan_log.append("")        
                     scan_log.append(f">{prev_node.header}_spliced")
                     scan_log.append("".join(prev_nt_seq))
                     scan_log.append(f">{node.header}_spliced")
                     scan_log.append("".join(node_seq))
-                    
+                    scan_log.append("")    
                     
                     node_hit = node_og[ag_index_rev: node_start_index + len(kmer)]
                     prev_hit = prev_og[prev_start_index: gt_index + 1]
@@ -1188,6 +1198,7 @@ def log_excised_consensus(
                     scan_log.append(("-" * (prev_node.start * 3)) + prev_hit)
                     scan_log.append(f">{node.header}_orf_scan")
                     scan_log.append(("-" * ((node.end * 3) - len(node_hit))) + node_hit)
+                    scan_log.append("")    
                         
     if had_region:
         after_data = []
