@@ -1266,10 +1266,12 @@ def log_excised_consensus(
                     node_seq = "".join(node_seq)
                     prev_nt_seq = "".join(prev_nt_seq)
                         
-                    node_start, _ = find_index_pair(node_seq, "-")
+                    node_start, node_end = find_index_pair(node_seq, "-")
+                    prev_start, prev_end = find_index_pair(prev_nt_seq, "-")
+                    
                     if node_start % 3 != 0:
                         node_start -= node_start % 3
-                    _, prev_end = find_index_pair(prev_nt_seq, "-")
+                    
                     if prev_end % 3 != 0:
                         prev_end += 3 - (prev_end % 3)
                     
@@ -1286,17 +1288,21 @@ def log_excised_consensus(
                     extensions[node.header].update(final_node_extensions)
                     extensions[prev_node.header].update(final_prev_extensions)
                     
+                    # Extend one codon to the left and right for debug to show end of sequence
+                    prev_start -= 3
+                    node_end += 3
+                    
                     scan_log.append("")
                     scan_log.append("")    
                     scan_log.append(f">{prev_node.header}_excise_output")
-                    scan_log.append(prev_node.nt_sequence)
+                    scan_log.append(prev_node.nt_sequence[prev_start: node_end])
                     scan_log.append(f">{node.header}_excise_output")
-                    scan_log.append(node.nt_sequence)
+                    scan_log.append(node.nt_sequence[prev_start: node_end])
                     scan_log.append("")        
                     scan_log.append(f">{prev_node.header}_spliced")
-                    scan_log.append(prev_nt_seq)
+                    scan_log.append(prev_nt_seq[prev_start: node_end])
                     scan_log.append(f">{node.header}_spliced")
-                    scan_log.append(node_seq)
+                    scan_log.append(node_seq[prev_start: node_end])
                     scan_log.append("")    
                     
                     node_hit = node_og[ag_index_rev: node_start_index + len(kmer)]
@@ -1306,9 +1312,9 @@ def log_excised_consensus(
                     node_hit = node_hit[:2].lower() + node_hit[2:]
                     
                     scan_log.append(f">{prev_node.header}_orf_scan")
-                    scan_log.append(("-" * (prev_node.start * 3)) + prev_hit)
+                    scan_log.append((("-" * (prev_node.start * 3)) + prev_hit)[prev_start: node_end])
                     scan_log.append(f">{node.header}_orf_scan")
-                    scan_log.append(("-" * ((node.end * 3) - len(node_hit))) + node_hit)
+                    scan_log.append((("-" * ((node.end * 3) - len(node_hit))) + node_hit)[prev_start: node_end] )
                     scan_log.append("")  
 
     aa_raw_output = [(header, del_cols(seq, x_positions[header])) for header, seq in raw_aa if header not in kicked_headers]
