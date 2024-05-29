@@ -1102,8 +1102,8 @@ def log_excised_consensus(
                         ag_index_rev = i
                         break
                     else:
-                        if node_seq[node_act_coord - 1] == "-":
-                            node_extensions[node_act_coord - 1] = node_og[i]
+                        if node_seq[node_act_coord] == "-":
+                            node_extensions[node_act_coord] = node_og[i]
 
                 if ag_index_rev and gt_index:
                     scan_log.append("")
