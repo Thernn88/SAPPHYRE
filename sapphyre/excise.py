@@ -952,6 +952,58 @@ def log_excised_consensus(
             node.sequence = del_cols(node.sequence, x_positions[node.header])
             node.nt_sequence = del_cols(node.nt_sequence, x_positions[node.header], True)
             node.start, node.end = find_index_pair(node.sequence, "-")
+                          
+    if had_region:
+        after_data = []
+        for node in aa_nodes:
+            if node.header in kicked_headers:
+                continue
+            after_data.append((node.header.split("|")[3].split("_")[1], node.header))
+
+        after_data.sort(key = lambda x: x[0])
+        after_true_clusters = []
+
+        current_cluster = []
+        for child_index, child_full in true_cluster_raw:
+            if not current_cluster:
+                current_cluster.append(child_full)
+                current_index = child_index
+            else:
+                if child_index - current_index <= true_cluster_threshold:
+                    current_cluster.append(child_full)
+                    current_index = child_index
+                else:
+                    after_true_clusters.append(current_cluster)
+                    current_cluster = [child_full]
+                    current_index = child_index
+        
+        if is_assembly_or_genome:
+            if current_cluster:
+                after_true_clusters.append(current_cluster)
+
+            after_true_cluster = set(max(after_true_clusters, key=len))
+            matches = []
+            for i, before_cluster in enumerate(before_true_clusters):
+                matches.append((len(after_true_cluster.intersection(set(before_cluster))) / len(before_cluster), i))
+            matches.sort(key=lambda x: x[0], reverse= True)
+            
+            best_match = max(matches, key=lambda x: x[0])[1]
+            this_rescues = [f"Rescued in gene: {gene}"]
+            for header in before_true_clusters[best_match]:
+                if header in kicked_headers:
+
+                    this_sequence = aa_sequence[header]
+                    start, end = find_index_pair(this_sequence, "-")
+                    matching_char = 0
+                    for i, let in enumerate(this_sequence[start: end], start):
+                        if let in ref_consensus[i]:
+                            matching_char += 1
+
+                    if matching_char / (end - start) < excise_rescue_match:
+                        continue
+
+                    kicked_headers.remove(header)
+                    this_rescues.append(header)
 
     DNA_CODONS = {
         "GCT": "A",
@@ -1257,59 +1309,7 @@ def log_excised_consensus(
                     scan_log.append(("-" * (prev_node.start * 3)) + prev_hit)
                     scan_log.append(f">{node.header}_orf_scan")
                     scan_log.append(("-" * ((node.end * 3) - len(node_hit))) + node_hit)
-                    scan_log.append("")    
-                        
-    if had_region:
-        after_data = []
-        for node in aa_nodes:
-            if node.header in kicked_headers:
-                continue
-            after_data.append((node.header.split("|")[3].split("_")[1], node.header))
-
-        after_data.sort(key = lambda x: x[0])
-        after_true_clusters = []
-
-        current_cluster = []
-        for child_index, child_full in true_cluster_raw:
-            if not current_cluster:
-                current_cluster.append(child_full)
-                current_index = child_index
-            else:
-                if child_index - current_index <= true_cluster_threshold:
-                    current_cluster.append(child_full)
-                    current_index = child_index
-                else:
-                    after_true_clusters.append(current_cluster)
-                    current_cluster = [child_full]
-                    current_index = child_index
-        
-        if is_assembly_or_genome:
-            if current_cluster:
-                after_true_clusters.append(current_cluster)
-
-            after_true_cluster = set(max(after_true_clusters, key=len))
-            matches = []
-            for i, before_cluster in enumerate(before_true_clusters):
-                matches.append((len(after_true_cluster.intersection(set(before_cluster))) / len(before_cluster), i))
-            matches.sort(key=lambda x: x[0], reverse= True)
-            
-            best_match = max(matches, key=lambda x: x[0])[1]
-            this_rescues = [f"Rescued in gene: {gene}"]
-            for header in before_true_clusters[best_match]:
-                if header in kicked_headers:
-
-                    this_sequence = aa_sequence[header]
-                    start, end = find_index_pair(this_sequence, "-")
-                    matching_char = 0
-                    for i, let in enumerate(this_sequence[start: end], start):
-                        if let in ref_consensus[i]:
-                            matching_char += 1
-
-                    if matching_char / (end - start) < excise_rescue_match:
-                        continue
-
-                    kicked_headers.remove(header)
-                    this_rescues.append(header)
+                    scan_log.append("")  
 
     aa_raw_output = [(header, del_cols(seq, x_positions[header])) for header, seq in raw_aa if header not in kicked_headers]
     aa_output = []
