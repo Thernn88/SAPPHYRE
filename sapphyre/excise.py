@@ -1025,6 +1025,7 @@ def log_excised_consensus(
     }
 
     extensions = defaultdict(dict)
+    extensions_aa = defaultdict(dict)
     for cluster_i, cluster_set in enumerate(cluster_sets):
         aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_parent_id(node.header) in cluster_set)]
         aa_subset.sort(key = lambda x: x.start)
@@ -1114,9 +1115,6 @@ def log_excised_consensus(
                         
                     for i, let in node_extensions.items():
                         node_seq[i] = let
-                        
-                    extensions[node.header].update(node_extensions)
-                    extensions[prev_node.header].update(prev_extensions)
                     
                     # scan_log.append(f">{prev_node.header}_current_output")
                     # scan_log.append(prev_node.nt_sequence)
@@ -1170,35 +1168,57 @@ def log_excised_consensus(
                             for i, x in enumerate(range(left_last_codon, left_last_codon + 3)):
                                 prev_nt_seq[x] = orphan_codon[i]
                                 replacements[prev_node.header][x] = orphan_codon[i]
-                                
+
                             for i, x in enumerate(range(right_end_codon, right_end_codon + 3)):
                                 node_seq[x] = orphan_codon[i]
                                 replacements[node.header][x] = orphan_codon[i]
                                 
+                            node_seq = "".join(node_seq)
+                            prev_nt_seq = "".join(prev_nt_seq)
                                 
-                    scan_log.append("")    
-                    scan_log.append(f">{prev_node.header}_excise_output")
-                    scan_log.append(prev_node.nt_sequence)
-                    scan_log.append(f">{node.header}_excise_output")
-                    scan_log.append(node.nt_sequence)
-                    scan_log.append("")        
-                    scan_log.append(f">{prev_node.header}_spliced")
-                    scan_log.append("".join(prev_nt_seq))
-                    scan_log.append(f">{node.header}_spliced")
-                    scan_log.append("".join(node_seq))
-                    scan_log.append("")    
-                    
-                    node_hit = node_og[ag_index_rev: node_start_index + len(kmer)]
-                    prev_hit = prev_og[prev_start_index: gt_index + 1]
-                    # lowercase
-                    prev_hit = prev_hit[:-2] + prev_hit[-2:].lower()
-                    node_hit = node_hit[:2].lower() + node_hit[2:]
-                    
-                    scan_log.append(f">{prev_node.header}_orf_scan")
-                    scan_log.append(("-" * (prev_node.start * 3)) + prev_hit)
-                    scan_log.append(f">{node.header}_orf_scan")
-                    scan_log.append(("-" * ((node.end * 3) - len(node_hit))) + node_hit)
-                    scan_log.append("")    
+                            node_start, _ = find_index_pair(node_seq, "-")
+                            if node_start % 3 != 0:
+                                node_start -= node_start % 3
+                            _, prev_end = find_index_pair(prev_nt_seq, "-")
+                            if prev_end % 3 != 0:
+                                prev_end += 3 - (prev_end % 3)
+                            
+                            for i in range((prev_node.end * 3) - 3, prev_end, 3):
+                                codon = prev_nt_seq[i:i+3]
+                                if codon in DNA_CODONS:
+                                    extensions_aa[prev_node.header][i//3] = DNA_CODONS[codon]
+                                
+                            for i in range(node_start, node.start * 3):
+                                codon = node_seq[i:i+3]
+                                if codon in DNA_CODONS:
+                                    extensions_aa[node.header][i//3] = DNA_CODONS[codon]
+
+                            extensions[node.header].update(node_extensions)
+                            extensions[prev_node.header].update(prev_extensions)
+
+                            scan_log.append("")    
+                            scan_log.append(f">{prev_node.header}_excise_output")
+                            scan_log.append(prev_node.nt_sequence)
+                            scan_log.append(f">{node.header}_excise_output")
+                            scan_log.append(node.nt_sequence)
+                            scan_log.append("")        
+                            scan_log.append(f">{prev_node.header}_spliced")
+                            scan_log.append(prev_nt_seq)
+                            scan_log.append(f">{node.header}_spliced")
+                            scan_log.append(node_seq)
+                            scan_log.append("")    
+                            
+                            node_hit = node_og[ag_index_rev: node_start_index + len(kmer)]
+                            prev_hit = prev_og[prev_start_index: gt_index + 1]
+                            # lowercase
+                            prev_hit = prev_hit[:-2] + prev_hit[-2:].lower()
+                            node_hit = node_hit[:2].lower() + node_hit[2:]
+                            
+                            scan_log.append(f">{prev_node.header}_orf_scan")
+                            scan_log.append(("-" * (prev_node.start * 3)) + prev_hit)
+                            scan_log.append(f">{node.header}_orf_scan")
+                            scan_log.append(("-" * ((node.end * 3) - len(node_hit))) + node_hit)
+                            scan_log.append("")    
                         
     if had_region:
         after_data = []
@@ -1255,10 +1275,14 @@ def log_excised_consensus(
     aa_raw_output = [(header, del_cols(seq, x_positions[header])) for header, seq in raw_aa if header not in kicked_headers]
     aa_output = []
     for header, seq in aa_raw_output:
-        if header in replacements_aa:
+        if header in replacements_aa or header in extensions_aa:
             seq = list(seq)
-            for i, bp in replacements_aa[header].items():
-                seq[i] = bp
+            if header in extensions_aa:
+                for i, bp in extensions_aa[header].items():
+                    seq[i] = bp
+            if header in replacements_aa:
+                for i, bp in replacements_aa[header].items():
+                    seq[i] = bp
             seq = "".join(seq)
         aa_output.append((header, seq))
 
