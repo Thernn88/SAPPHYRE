@@ -166,6 +166,26 @@ def internal_filter_gene(this_gene_hits, debug, min_overlap_internal=0.9, score_
     return [i[0] for i in this_gene_hits if i[0] is not None], filtered_sequences_log
 
 
+def merge_clusters(clusters):
+    # Sort the clusters by their starting point
+    sorted_clusters = sorted(clusters, key=lambda x: x[0])
+    merged_clusters = []
+    
+    current_start, current_end = sorted_clusters[0]
+    
+    for start, end in sorted_clusters[1:]:
+        if get_overlap(current_start, current_end, start, end, 1) is not None:
+            current_start = min(current_start, start)  # Handle left overlap
+            current_end = max(current_end, end)        # Handle right overlap and containment
+        else:
+            merged_clusters.append((current_start, current_end))
+            current_start, current_end = start, end
+    
+    merged_clusters.append((current_start, current_end))  # Add the last cluster
+    
+    return merged_clusters
+
+
 def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_ref_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
     batch_result = []
     warnings.filterwarnings("ignore", category=BiopythonWarning)
@@ -226,9 +246,11 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
                     cluster_dict[i] = (cluster, strands_present)
         
             primary_cluster_dict = {}
-            for cluster in primary_clusters:
-                for i in range(cluster[0], cluster[1] + 1):
-                    primary_cluster_dict[i] = cluster
+            if primary_clusters:
+                merged_primary_clusters = merge_clusters(primary_clusters)
+                for cluster in merged_primary_clusters:
+                    for i in range(cluster[0], cluster[1] + 1):
+                        primary_cluster_dict[i] = cluster
         nt_sequences = {}
         parents = {}
 
@@ -236,7 +258,6 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
         cluster_queries = defaultdict(list)
         primary_query = {}
         
-
         children = {}
         unaligned_sequences = []
         required_frames = defaultdict(set)
