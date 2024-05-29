@@ -847,7 +847,6 @@ def log_excised_consensus(
                 if len(sequences_in_region) > excise_maximum_depth:
                     continue
                 
-                cluster_resolve_failed = True
                 nodes_in_region = None
                 if is_genome:
                     tagged_in_region = [(int(node.header.split("|")[3].split("_")[1]), node) for node in sequences_in_region]
@@ -891,8 +890,6 @@ def log_excised_consensus(
                                 prev_node.sequence = del_cols(prev_node.sequence, prev_positions)
                                 node.sequence = del_cols(node.sequence, node_positions)
 
-                                cluster_resolve_failed = False
-
                                 if len(prev_node.sequence) - prev_node.sequence.count("-") < 15:
                                     log_output.append(f"Kicking {prev_node.header} due to < 15 bp after splice")
                                     kicked_headers.add(prev_node.header)
@@ -914,7 +911,7 @@ def log_excised_consensus(
                                 x_positions[node.header].update(node_positions)
                                 x_positions[prev_node.header].update(prev_positions)
                 
-                if cluster_resolve_failed:
+                else:
                     sequences_in_region = copy.deepcopy(sequences_in_region)
                     nodes_in_region = simple_assembly(sequences_in_region, excise_overlap_ambig)
 
