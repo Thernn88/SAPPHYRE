@@ -823,7 +823,7 @@ def do_folder(folder, args, is_genome, gene_source):
 
     file_inputs = [
         gene
-        for gene in aa_input.iterdir()
+        for gene in aa_input.iterdir() 
         if ".aa" in gene.suffixes and gene.suffix in ALLOWED_EXTENSIONS
     ]
     output_path = Path(folder, "outlier", "blosum")

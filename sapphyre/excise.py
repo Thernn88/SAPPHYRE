@@ -1314,7 +1314,7 @@ def log_excised_consensus(
                     scan_log.append(f">{prev_node.header}_orf_scan")
                     scan_log.append((("-" * (prev_node.start * 3)) + prev_hit)[prev_start: node_end])
                     scan_log.append(f">{node.header}_orf_scan")
-                    scan_log.append((("-" * ((node.end * 3) - len(node_hit))) + node_hit)[prev_start: node_end] )
+                    scan_log.append((("-" * ((node.end * 3) - len(node_hit) - len(kmer_internal_gaps))) + node_hit)[prev_start: node_end] )
                     scan_log.append("")  
 
     aa_raw_output = [(header, del_cols(seq, x_positions[header])) for header, seq in raw_aa if header not in kicked_headers]
