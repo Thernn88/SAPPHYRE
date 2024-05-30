@@ -147,21 +147,36 @@ class SeqDeduplicator:
             if requires:
                 parent_seq = parent_seq.upper()
 
-            if self.skip_ntrim:
-                n_sequences = [parent_seq]
-            elif not self.rename:
-                n_sequences = [chunk for chunk in parent_seq.split("N") if len(chunk) >= self.minimum_sequence_length]
+            parent_len = len(parent_seq)
+            
+
+            current_position = 0
+            n_sequences = []
+            if "N" not in parent_seq:
+                n_sequences.append((0, len(parent_seq)))
             else:
-                n_sequences = (chunk for chunk in parent_seq.split("N") if len(chunk) >= self.minimum_sequence_length)
+                # Split the parent sequence by 'N' and process each chunk
+                for chunk in parent_seq.split("N"):
+                    if len(chunk) >= self.minimum_sequence_length:
+                        start_position = current_position
+                        end_position = current_position + len(chunk)
+                        n_sequences.append((start_position, end_position))
+                    # Update the current position to account for the length of this chunk and the skipped 'N's
+                    current_position += len(chunk) + 1  # +1 to account for the 'N' that was removed in the split
+
+                        
             individual_index = IndexIter()
             append_index_template = "{}_{}"
             sequence_template = ">{}\n{}\n"
-
+            
             if self.prepared_output is not None:
                 self.prepared_output.write(sequence_template.format(raw_header, parent_seq))
+
+            
+            for start, end in n_sequences:
+                seq = parent_seq[start:end]
+                seq_len = end - start
                 
-            for seq in n_sequences:
-                seq_len = len(seq)
                 if self.rename:
                     header = this_index.x
                 else:
@@ -216,7 +231,7 @@ class SeqDeduplicator:
                             next(individual_index)
                         if len(seq[i:i+CHOMP_LEN]) < self.minimum_sequence_length:
                             continue
-                        self.original_coords[this_header] = (raw_header, i, i+CHOMP_LEN-1, seq_len, CHOMP_LEN - 1)
+                        self.original_coords[this_header] = (raw_header, start+i, start+i+CHOMP_LEN-1, parent_len, CHOMP_LEN - 1)
                         self.lines.append(sequence_template.format(this_header, seq[i:i+CHOMP_LEN]))
                         next(this_index)
 
