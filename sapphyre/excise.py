@@ -1083,13 +1083,12 @@ def log_excised_consensus(
         aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_parent_id(node.header) in cluster_set)]
         aa_subset.sort(key = lambda x: x.start)
         for prev_node, node in combinations(aa_subset, 2):
-            # if "NODE_2022368" not in prev_node.header:
+            # if "482161" not in prev_node.header:
             #     continue
             
             overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, -10)
             if overlapping_coords:
                 amount = overlapping_coords[1] - overlapping_coords[0]
-                
                 if amount > 1:
                     continue
                 
@@ -1204,11 +1203,11 @@ def log_excised_consensus(
                     prev_nt_end -= 1
                     left_last_codon = (prev_nt_end - prev_nt_end % 3)
                     
+                    this_score = 0
+                    
                     if right_end_codon == left_last_codon:
                         right_codon = node_seq[right_end_codon: right_end_codon + 3]
                         left_codon = prev_nt_seq[left_last_codon: left_last_codon + 3]
-                        
-                        this_score = 0
                         
                         orphan_codon = []
                         for i in range(3):
@@ -1216,19 +1215,21 @@ def log_excised_consensus(
                                 orphan_codon.append(right_codon[i])
                             else:
                                 orphan_codon.append(left_codon[i])
-                                
+
                         joined = "".join(orphan_codon)
                         if joined not in DNA_CODONS:
                             this_score += FRANKENSTEIN_PENALTY
+                    
+                    else:
+                        orphan_codon = None
                             
-                        node_extension_indices = set(this_node_extensions.keys())
-                        prev_extension_indices = set(this_prev_extensions.keys())
-                        extension_indices = node_extension_indices.union(prev_extension_indices)
-                        
-                        this_score += len(extension_indices) * INSERTION_PENALTY
-                        this_results.append((this_score, act_gt_index, gt_index, act_ag_index_rev, ag_index_rev, prev_deletions, node_deletions, this_prev_extensions, this_node_extensions, left_last_codon, right_end_codon, orphan_codon))
-                        
-                      
+                    node_extension_indices = set(this_node_extensions.keys())
+                    prev_extension_indices = set(this_prev_extensions.keys())
+                    extension_indices = node_extension_indices.union(prev_extension_indices)
+                    
+                    this_score += len(extension_indices) * INSERTION_PENALTY
+                    this_results.append((this_score, act_gt_index, gt_index, act_ag_index_rev, ag_index_rev, prev_deletions, node_deletions, this_prev_extensions, this_node_extensions, left_last_codon, right_end_codon, orphan_codon))
+
                 if this_results:
                     prev_nt_seq = list(prev_node.nt_sequence)
                     node_seq = list(node.nt_sequence)
@@ -1246,22 +1247,23 @@ def log_excised_consensus(
                         prev_nt_seq[x] = "-"
                     for x in node_deletions:
                         node_seq[x] = "-"
+
+                    if orphan_codon:
+                        joined = "".join(orphan_codon)
+                        if joined not in DNA_CODONS:
+                            continue
                         
-                    joined = "".join(orphan_codon)
-                    if joined not in DNA_CODONS:
-                        continue
-                    
-                    orphan_aa = DNA_CODONS[joined]
-                    replacements_aa[prev_node.header][left_last_codon//3] = orphan_aa
-                    replacements_aa[node.header][right_end_codon//3] = orphan_aa
+                        orphan_aa = DNA_CODONS[joined]
+                        replacements_aa[prev_node.header][left_last_codon//3] = orphan_aa
+                        replacements_aa[node.header][right_end_codon//3] = orphan_aa
 
-                    for i, x in enumerate(range(left_last_codon, left_last_codon + 3)):
-                        prev_nt_seq[x] = orphan_codon[i]
-                        replacements[prev_node.header][x] = orphan_codon[i]
+                        for i, x in enumerate(range(left_last_codon, left_last_codon + 3)):
+                            prev_nt_seq[x] = orphan_codon[i]
+                            replacements[prev_node.header][x] = orphan_codon[i]
 
-                    for i, x in enumerate(range(right_end_codon, right_end_codon + 3)):
-                        node_seq[x] = orphan_codon[i]
-                        replacements[node.header][x] = orphan_codon[i]
+                        for i, x in enumerate(range(right_end_codon, right_end_codon + 3)):
+                            node_seq[x] = orphan_codon[i]
+                            replacements[node.header][x] = orphan_codon[i]
                         
                     node_seq = "".join(node_seq)
                     prev_nt_seq = "".join(prev_nt_seq)
