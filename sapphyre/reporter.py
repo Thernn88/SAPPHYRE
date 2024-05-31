@@ -45,6 +45,7 @@ MainArgs = namedtuple(
 
 # Extend hit with new functions
 class Hit(HmmHit):#, frozen=True):
+    parent: str = None
     strand: str = None
     chomp_start: int = None
     chomp_end: int = None
@@ -631,6 +632,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
 
     # Unpack the hits
     this_hits = oargs.list_of_hits
+    gene_nodes = [hit.node for hit in this_hits]
     
     if oargs.is_genome:
         this_hits, merge_log = merge_hits(this_hits)
@@ -716,7 +718,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.verbose,
         2,
     )
-    return oargs.gene, this_gene_dupes, len(aa_output), header_to_score, [(hit.node, hit.chomp_start, hit.chomp_end, hit.strand, hit.frame) for hit in this_hits], merge_log
+    return oargs.gene, this_gene_dupes, len(aa_output), header_to_score, gene_nodes, [(hit.parent, "&&".join(map(str, [hit.node]+hit.children)), hit.chomp_start, hit.chomp_end, hit.strand, hit.frame) for hit in this_hits], merge_log
 
 
 def get_prepare_dupes(rocks_nt_db: RocksDB) -> dict[str, dict[str, int]]:
@@ -806,7 +808,8 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     for gene, transcript_hits in transcripts_mapped_to:
         
         for hit in transcript_hits:
-            _, chomp_start, chomp_end, _, chomp_len = original_coords.get(str(hit.node), (None, None, None, None, None))
+            parent, chomp_start, chomp_end, _, chomp_len = original_coords.get(str(hit.node), (None, None, None, None, None))
+            hit.parent = parent
             if hit.frame < 0:
                 hit.strand = "-"
                 hit.chomp_start = (chomp_len - hit.qend) + chomp_start
@@ -863,25 +866,24 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     gff_output = ["##gff-version\t3"]
     global_merge_log = []
     
-    for gene, dupes, amount, scores, nodes, merge_log in recovered:
+    for gene, dupes, amount, scores, nodes, gff, merge_log in recovered:
         global_merge_log.extend(merge_log)
         out_data = defaultdict(list)
         if original_coords:
-            
-            with open(path.join(coords_path,gene+".txt"), "w") as fp:
-                for node, act_start, act_end, strand, frame in nodes:
-                    key = str(node) if type(node) == int else node.split("_")[0]
-                    tup = original_coords.get(key, None)
-                    if tup:
-                        parent, chomp_start, chomp_end, input_len, chomp_len = tup
-                        out_data[parent].append((node, chomp_start, chomp_end))
-                        #out_data.append((node, parent, chomp_start, chomp_end))
-
-                        parent_gff_output[parent].append(((act_start), f"{parent}\tSapphyre\texon\t{act_start}\t{act_end}\t.\t{strand}\t.\tID={node};Parent={gene};Note={frame};"))
-                        if parent not in end_bp:
-                            end_bp[parent] = input_len
-                        
-                if out_data:
+            for node in nodes:
+                tup = original_coords.get(str(node), None)
+                if tup:
+                    parent, chomp_start, chomp_end, input_len, chomp_len = tup
+                    if parent not in end_bp:
+                        end_bp[parent] = input_len
+                    out_data[parent].append((node, chomp_start, chomp_end))
+                
+            for parent, node, act_start, act_end, strand, frame in gff:
+                parent_gff_output[parent].append(((act_start), f"{parent}\tSapphyre\texon\t{act_start}\t{act_end}\t.\t{strand}\t.\tID={node};Parent={gene};Note={frame};"))
+                    
+        
+            if out_data:
+                with open(path.join(coords_path,gene+".txt"), "w") as fp:
                     global_out.append(f"### {gene} ###")
                     for og, data in out_data.items():
                         data.sort(key = lambda x: (x[1]))
