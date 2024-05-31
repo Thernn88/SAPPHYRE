@@ -984,7 +984,7 @@ def do_cluster(ids, ref_coords, id_chomp_distance=100):
     ids.sort(key = lambda x: x[0])
     grouped_ids = defaultdict(list)
     for i, (child_index, seq_coords, start, end) in enumerate(ids):
-        id = int(child_index.split("_")[0])
+        id = int(child_index.split("&&")[0].split("_")[0])
         grouped_ids[id].append((i, child_index, seq_coords, start, end))
         
     ids_ascending = sorted(grouped_ids.keys())
@@ -1224,24 +1224,24 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
             # If gene is not NCG and we don't want to keep codons, cull codons
             positions_to_trim = set()
-            if not fargs.is_ncg and not fargs.keep_codons:
-                out_line, positions_to_trim, kick = cull_codons(
-                    out_line,
-                    cull_start,
-                    cull_end,
-                    fargs.amt_matches,
-                    fargs.mismatches,
-                    all_dashes_by_index,
-                    character_at_each_pos,
-                    gap_present_threshold,
-                )
-                if kick:
-                    follow_through[header] = True, 0, 0, []
+            # if not fargs.is_ncg and not fargs.keep_codons:
+            #     out_line, positions_to_trim, kick = cull_codons(
+            #         out_line,
+            #         cull_start,
+            #         cull_end,
+            #         fargs.amt_matches,
+            #         fargs.mismatches,
+            #         all_dashes_by_index,
+            #         character_at_each_pos,
+            #         gap_present_threshold,
+            #     )
+            #     if kick:
+            #         follow_through[header] = True, 0, 0, []
 
-                    if fargs.debug:
-                        codon_log.append(f"{header},{kick[1]}\n")
-                    kick = False
-                    # continue
+            #         if fargs.debug:
+            #             codon_log.append(f"{header},{kick[1]}\n")
+            #         kick = False
+            #         # continue
 
             # Join sequence and check bp after cull
             out_line = "".join(out_line)
@@ -1328,20 +1328,20 @@ def do_gene(fargs: FlexcullArgs) -> None:
         reference_gap_col = {i for i, x in post_gap_present_threshold.items() if not x}
 
         # Trim large gaps
-        aa_out, gap_pass_through, trim_log, kicks = trim_large_gaps(
-            aa_out,
-            reference_gap_col,
-            fargs.amt_matches,
-            fargs.mismatches,
-            post_all_dashes_by_index,
-            post_character_at_each_pos,
-            post_gap_present_threshold,
-            fargs.bp,
-            fargs.debug,
-        )
+        # aa_out, gap_pass_through, trim_log, kicks = trim_large_gaps(
+        #     aa_out,
+        #     reference_gap_col,
+        #     fargs.amt_matches,
+        #     fargs.mismatches,
+        #     post_all_dashes_by_index,
+        #     post_character_at_each_pos,
+        #     post_gap_present_threshold,
+        #     fargs.bp,
+        #     fargs.debug,
+        # )
 
-        if fargs.debug:
-            log.extend(trim_log)
+        # if fargs.debug:
+        #     log.extend(trim_log)
 
         for kick in kicks:
             follow_through[kick] = True, 0, 0, []
@@ -1383,21 +1383,21 @@ def do_gene(fargs: FlexcullArgs) -> None:
             nt_out = align_col_removal(nt_out, aa_positions_to_keep)
             out_nt = []
             for header, sequence in nt_out:
-                gap_cull = gap_pass_through.get(header, None)
+                # gap_cull = gap_pass_through.get(header, None)
 
-                if gap_cull:
-                    out_nt.append(
-                        (
-                            header,
-                            "".join(
-                                [
-                                    sequence[i : i + 3] if i not in gap_cull else "---"
-                                    for i in range(0, len(sequence), 3)
-                                ],
-                            ),
-                        ),
-                    )
-                else:
+                # if gap_cull:
+                #     out_nt.append(
+                #         (
+                #             header,
+                #             "".join(
+                #                 [
+                #                     sequence[i : i + 3] if i not in gap_cull else "---"
+                #                     for i in range(0, len(sequence), 3)
+                #                 ],
+                #             ),
+                #         ),
+                #     )
+                # else:
                     out_nt.append((header, sequence))
 
             # Align order

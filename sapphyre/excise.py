@@ -590,7 +590,7 @@ def do_cluster(ids, ref_coords, max_gap_size, id_chomp_distance=100):
     ids.sort(key=lambda x: x[0])
     grouped_ids = defaultdict(list)
     for i, (child_index, seq_coords, start, end) in enumerate(ids):
-        id = int(child_index.split("_")[0])
+        id = int(child_index.split("&&")[0].split("_")[0])
         grouped_ids[id].append((i, child_index, seq_coords, start, end))
         
     ids_ascending = sorted(grouped_ids.keys())
@@ -734,7 +734,7 @@ def log_excised_consensus(
 
     cluster_sets = [None]
     get_id = lambda header: header.split("|")[3].replace("NODE_","")
-    get_parent_id = lambda header: int(header.split("|")[3].split("_")[1])
+    get_parent_id = lambda header: int(header.split("|")[3].split("&&")[0].split("_")[1])
     if is_genome:
         ids = []
         for node in aa_nodes:
@@ -750,7 +750,7 @@ def log_excised_consensus(
         
         if kicks:
             for node in aa_nodes:
-                this_parent_id = int(get_id(node.header).split("_")[0])
+                this_parent_id = int(get_id(node.header).split("&&")[0].split("_")[0])
                 if this_parent_id in kicks:
                     kicked_headers.add(node.header)
                     log_output.append(f"Kicking {node.header} due to low coverage")
@@ -784,7 +784,7 @@ def log_excised_consensus(
     true_cluster_raw = []
 
     for header in raw_sequences:
-        true_cluster_raw.append((int(header.split("|")[3].split("_")[1]), header))
+        true_cluster_raw.append((int(header.split("|")[3].split("&&")[0].split("_")[1]), header))
 
     true_cluster_raw.sort(key = lambda x: x[0])
     before_true_clusters = cluster(true_cluster_raw, true_cluster_threshold)
@@ -849,7 +849,7 @@ def log_excised_consensus(
                 
                 nodes_in_region = None
                 if is_genome:
-                    tagged_in_region = [(int(node.header.split("|")[3].split("_")[1]), node) for node in sequences_in_region]
+                    tagged_in_region = [(int(node.header.split("|")[3].split("&&")[0].split("_")[1]), node) for node in sequences_in_region]
                     tagged_in_region.sort(key=lambda x: x[0])
                     clusters = cluster(tagged_in_region, true_cluster_threshold)
 
@@ -958,7 +958,7 @@ def log_excised_consensus(
         for node in aa_nodes:
             if node.header in kicked_headers:
                 continue
-            after_data.append((node.header.split("|")[3].split("_")[1], node.header))
+            after_data.append((node.header.split("|")[3].split("&&")[0].split("_")[1], node.header))
 
         after_data.sort(key = lambda x: x[0])
         after_true_clusters = []
@@ -1100,11 +1100,11 @@ def log_excised_consensus(
                 kmer_internal_gaps = [i for i, let in enumerate(kmer) if let == "-"]
                 kmer = kmer.replace("-","")
                 
-                prev_og = head_to_seq[int(prev_node.header.split("|")[3].split("_")[1])]
+                prev_og = head_to_seq[int(prev_node.header.split("|")[3].split("&&")[0].split("_")[1])]
                 if prev_node.frame < 0:
                     prev_og = bio_revcomp(prev_og)
                     
-                node_og = head_to_seq[int(node.header.split("|")[3].split("_")[1])]
+                node_og = head_to_seq[int(node.header.split("|")[3].split("&&")[0].split("_")[1])]
                 if node.frame < 0:
                     node_og = bio_revcomp(node_og)
                 
@@ -1394,7 +1394,7 @@ def get_args(args, genes, head_to_seq, is_assembly_or_genome, is_genome, input_f
     for gene in genes:
         this_prepare_dupes = prepare_dupes.get(gene.split(".")[0], {})
         this_reporter_dupes = reporter_dupes.get(gene.split(".")[0], {})
-        this_headers = [int(i[0].split("|")[3].split("_")[1]) for i in parseFasta(str(input_folder.joinpath("aa", gene))) if not i[0].endswith(".")]
+        this_headers = [int(i[0].split("|")[3].split("&&")[0].split("_")[1]) for i in parseFasta(str(input_folder.joinpath("aa", gene))) if not i[0].endswith(".")]
         
         this_seqs = {i: head_to_seq[i] for i in this_headers}
         
@@ -1526,7 +1526,7 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
         for gene in genes:
             this_prepare_dupes = prepare_dupes.get(gene.split(".")[0], {})
             this_reporter_dupes = reporter_dupes.get(gene.split(".")[0], {})
-            this_headers = [int(i[0].split("|")[3].split("_")[1]) for i in parseFasta(str(input_folder.joinpath("aa", gene))) if not i[0].endswith(".")]
+            this_headers = [int(i[0].split("|")[3].split("&&")[0].split("_")[1]) for i in parseFasta(str(input_folder.joinpath("aa", gene))) if not i[0].endswith(".")]
             
             this_seqs = {i: head_to_seq[i] for i in this_headers}
     

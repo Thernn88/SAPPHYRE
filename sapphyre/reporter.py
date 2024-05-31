@@ -14,6 +14,10 @@ from parasail import blosum62, nw_trace_scan_profile_16, profile_create_16
 from wrap_rocks import RocksDB
 from xxhash import xxh3_64
 from Bio.Seq import Seq
+from sapphyre_tools import (
+    find_index_pair,
+    get_overlap
+)
 
 from . import rocky
 from .hmmsearch import HmmHit
@@ -41,6 +45,11 @@ MainArgs = namedtuple(
 
 # Extend hit with new functions
 class Hit(HmmHit):#, frozen=True):
+    strand: str = None
+    chomp_start: int = None
+    chomp_end: int = None
+    children: list = []
+    
     def get_bp_trim(
         self,
         this_aa: str,
@@ -221,7 +230,7 @@ def get_diamondhits(
                 0,
             )
             continue
-        gene_based_results.append((gene, gene_result))
+        gene_based_results.append((gene, json.decode(gene_result, type=list[Hit])))
 
     return gene_based_results
 
@@ -374,12 +383,11 @@ def print_unmerged_sequences(
     dupes = defaultdict(list)
     header_to_score = {}
     for hit in hits:
-        base_header = hit.node
+        base_header = "&&NODE_".join(map(str, [hit.node] + hit.children))
         reference_frame = str(hit.frame)
 
         # Format header to gene|taxa_name|taxa_id|sequence_id|frame
         header = header_template.format(gene, hit.query, taxa_id, base_header, reference_frame)
-
         # Translate to AA
         nt_seq = hit.seq
         aa_seq = translate_cdna(nt_seq)
@@ -518,6 +526,7 @@ OutputArgs = namedtuple(
         "minimum_bp",
         "debug",
         "is_assembly_or_genome",
+        "is_genome",
     ],
 )
 
@@ -546,6 +555,66 @@ def tag(sequences: list[tuple[str, str]], prepare_dupes: dict[str, dict[str, int
     return output
 
 
+def merge_hits(hits: list[Hit]) -> tuple[list[Hit], list[str]]:
+    GAP_PENALTY = 2
+    EXTEND_PENALTY = 1
+    hits.sort(key = lambda x: (x.node))
+    log = ["Merges for: "+hits[0].gene]
+    for i in range(len(hits)-1):
+        if hits[i] is None:
+            continue
+        
+        if hits[i+1].node - hits[i].node > 1:
+            continue
+        if get_overlap(hits[i].chomp_start, hits[i].chomp_end, hits[i + 1].chomp_start, hits[i + 1].chomp_end, 1) is None:
+            continue
+        
+        a_seq = translate_cdna(hits[i].seq)
+        b_seq = translate_cdna(hits[i+1].seq)
+        
+        profile = profile_create_16(a_seq, blosum62)
+        result = nw_trace_scan_profile_16(
+                profile,
+                b_seq,
+                GAP_PENALTY,
+                EXTEND_PENALTY,
+            )
+        
+        a_align, b_align = result.traceback.query, result.traceback.ref
+        a_start, a_end = find_index_pair(a_align, "-")
+        b_start, b_end = find_index_pair(b_align, "-")
+        pair_overlap = get_overlap(a_start, a_end, b_start, b_end, 1)
+        if pair_overlap is None:
+            continue
+        
+        a_kmer = a_align[pair_overlap[0]:pair_overlap[1]]
+        b_kmer = b_align[pair_overlap[0]:pair_overlap[1]]
+        if a_kmer != b_kmer:
+            continue
+        
+        # Same strand
+        if (hits[i].frame / abs(hits[i].frame)) != (hits[i+1].frame / abs(hits[i+1].frame)):
+            continue
+        
+        # Same frame
+        # if hits[i].frame != hits[i + 1].frame:
+        #     continue
+        
+        if hits[i].node == hits[i+1].node:
+            log.append("WARNING: {} and {} same node merge".format(hits[i].node, hits[i+1].node))
+        
+        hits[i].children.append(hits[i+1].node)
+        hits[i].seq += hits[i+1].seq
+        
+        hits[i].chomp_end = hits[i+1].chomp_end
+        hits[i+1] = None
+        
+    for hit in hits:
+        if hit is not None and hit.children:
+            log.append("&&".join(map(str, [hit.node] + hit.children)))
+    return [i for i in hits if i is not None], log
+
+
 def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     """Trims, dedupes and writes the output for a given gene.
 
@@ -561,7 +630,10 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     printv(f"Doing output for: {oargs.gene}", oargs.verbose, 2)
 
     # Unpack the hits
-    this_hits = json.decode(oargs.list_of_hits, type=list[Hit])
+    this_hits = oargs.list_of_hits
+    
+    if oargs.is_genome:
+        this_hits, merge_log = merge_hits(this_hits)
 
     # Get reference sequences
     core_sequences, core_sequences_nt = get_core_sequences(
@@ -600,8 +672,6 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
 
         def dist(bp_a, bp_b, mat):
             return mat[bp_a][bp_b] >= 0.0 and bp_a != "-" and bp_b != "-"
-
-    
 
     # Trim and save the sequences
     this_gene_dupes, aa_output, nt_output, header_to_score, this_hits = print_unmerged_sequences(
@@ -646,7 +716,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.verbose,
         2,
     )
-    return oargs.gene, this_gene_dupes, len(aa_output), header_to_score, [(hit.node, hit.qstart, hit.qend, hit.frame) for hit in this_hits]
+    return oargs.gene, this_gene_dupes, len(aa_output), header_to_score, [(hit.node, hit.chomp_start, hit.chomp_end, hit.strand, hit.frame) for hit in this_hits], merge_log
 
 
 def get_prepare_dupes(rocks_nt_db: RocksDB) -> dict[str, dict[str, int]]:
@@ -713,10 +783,6 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     target_taxon = get_gene_variants(rocky.get_rock("rocks_hits_db"))
     top_refs, is_assembly, is_genome = get_toprefs(rocky.get_rock("rocks_nt_db"))
     gene_dupes = get_prepare_dupes(rocky.get_rock("rocks_nt_db"))
-    raw_data = rocky.get_rock("rocks_nt_db").get("getall:original_coords")
-    original_coords = {}
-    if raw_data:
-        original_coords = json.decode(raw_data, type = dict[str, tuple[str, int, int, int, int]])
 
     coords_path = path.join(taxa_path, "coords")
     if path.exists(coords_path):
@@ -730,7 +796,26 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     )
 
     arguments: list[OutputArgs | None] = []
+    original_coords = {}
+    if is_genome:
+        raw_data = rocky.get_rock("rocks_nt_db").get("getall:original_coords")
+        
+        if raw_data:
+            original_coords = json.decode(raw_data, type = dict[str, tuple[str, int, int, int, int]])
+        
     for gene, transcript_hits in transcripts_mapped_to:
+        
+        for hit in transcript_hits:
+            _, chomp_start, chomp_end, _, chomp_len = original_coords.get(str(hit.node), (None, None, None, None, None))
+            if hit.frame < 0:
+                hit.strand = "-"
+                hit.chomp_start = (chomp_len - hit.qend) + chomp_start
+                hit.chomp_end = (chomp_len - hit.qstart) + chomp_start - 1
+            else:
+                hit.strand = "+"
+                hit.chomp_start = hit.qstart + chomp_start
+                hit.chomp_end = hit.qend + chomp_start - 1
+                
         arguments.append(
             (
                 OutputArgs(
@@ -750,6 +835,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
                     args.minimum_bp,
                     args.debug,
                     is_assembly or is_genome,
+                    is_genome
                 ),
             ),
         )
@@ -775,28 +861,21 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     parent_gff_output = defaultdict(list)
     end_bp = {}
     gff_output = ["##gff-version\t3"]
+    global_merge_log = []
     
-    for gene, dupes, amount, scores, nodes in recovered:
+    for gene, dupes, amount, scores, nodes, merge_log in recovered:
+        global_merge_log.extend(merge_log)
         out_data = defaultdict(list)
-        if is_genome and original_coords:
+        if original_coords:
             
             with open(path.join(coords_path,gene+".txt"), "w") as fp:
-                for node, start, end, frame in nodes:
+                for node, act_start, act_end, strand, frame in nodes:
                     key = str(node) if type(node) == int else node.split("_")[0]
                     tup = original_coords.get(key, None)
                     if tup:
                         parent, chomp_start, chomp_end, input_len, chomp_len = tup
                         out_data[parent].append((node, chomp_start, chomp_end))
                         #out_data.append((node, parent, chomp_start, chomp_end))
-                        strand = "-" if frame < 0 else "+"
-                        if frame < 0:
-                            strand = "-"
-                            act_start = (chomp_len - end) + chomp_start
-                            act_end = (chomp_len - start) + chomp_start - 1
-                        else:
-                            strand = "+"
-                            act_start = start + chomp_start
-                            act_end = end + chomp_start - 1
 
                         parent_gff_output[parent].append(((act_start), f"{parent}\tSapphyre\texon\t{act_start}\t{act_end}\t.\t{strand}\t.\tID={node};Parent={gene};Note={frame};"))
                         if parent not in end_bp:
@@ -815,6 +894,9 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
         final_count += amount
         this_gene_based_dupes[gene] = dupes
         this_gene_based_scores[gene] = scores
+        
+    with open(path.join(coords_path,"Diamond_merges.txt"), "w") as fp:
+        fp.write("\n".join(global_merge_log))
         
     if is_genome:
         
