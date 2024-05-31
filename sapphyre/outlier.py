@@ -75,7 +75,7 @@ def main(argsobj):
                 print(argsobj.formathelp())
             from_folder = "excise"
 
-        if is_genome:
+        if not argsobj.gene_finding_mode and is_genome:
             printv("Filtering Clusters.", argsobj.verbose)
             if not cluster_consensus.main(this_args, from_folder):
                 print()

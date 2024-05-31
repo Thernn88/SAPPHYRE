@@ -1538,6 +1538,13 @@ def main():
         help="Output fasta files as compressed files using gzip",
     )
     parser.add_argument(
+        "-gfm",
+        "--gene_finding_mode",
+        action="store_true",
+        default=False,
+        help="Alternative logic for gene finding mode",
+    )
+    parser.add_argument(
         "--map",
         action="store_true",
         default=False,
