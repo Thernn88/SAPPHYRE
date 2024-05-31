@@ -593,6 +593,13 @@ def merge_hits(hits: list[Hit]) -> tuple[list[Hit], list[str]]:
         if a_kmer != b_kmer:
             continue
         
+        splice_coord = 0
+        for x in range(0, pair_overlap[0]):
+            if a_align[x] == "-":
+                continue
+            
+            splice_coord += 3
+        
         # Same strand
         if (hits[i].frame / abs(hits[i].frame)) != (hits[i+1].frame / abs(hits[i+1].frame)):
             continue
@@ -605,7 +612,7 @@ def merge_hits(hits: list[Hit]) -> tuple[list[Hit], list[str]]:
             log.append("WARNING: {} and {} same node merge".format(hits[i].node, hits[i+1].node))
         
         hits[i].children.append(hits[i+1].node)
-        hits[i].seq += hits[i+1].seq
+        hits[i].seq = hits[i].seq[:splice_coord] + hits[i+1].seq[splice_coord:]
         
         hits[i].chomp_end = hits[i+1].chomp_end
         hits[i+1] = None
