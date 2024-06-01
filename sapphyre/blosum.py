@@ -683,7 +683,7 @@ def main_process(
         passed = {candidate.id for candidate in passing}
         ref_coords = set()
         # get_id = lambda header: header.split("|")[3].replace("NODE_","")
-        get_id = lambda header: int(header.split("|")[3].split("_")[1])
+        get_id = lambda header: int(header.split("|")[3].split("&&")[0].split("_")[1])
         for ref in reference_records:
             start, end = find_index_pair(ref.raw, "-")
             for i, let in enumerate(ref.raw[start:end], start):

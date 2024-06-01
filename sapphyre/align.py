@@ -730,7 +730,7 @@ def run_command(args: CmdArgs) -> None:
 
     aligned_ingredients = []
     if args.is_genome:
-        get_id = lambda header: header.split("|")[3].replace("NODE_","")
+        get_id = lambda header: header.split("|")[3].split("&&")[0].replace("NODE_","")
     else:
         get_id = lambda header: header
 
@@ -946,7 +946,7 @@ def run_command(args: CmdArgs) -> None:
             reordered = []
             group = defaultdict(list)
             for header, seq in to_write:
-                group[int(header.split("|")[3].split("_")[1])].append((header, seq))
+                group[int(header.split("|")[3].split("&&")[0].split("_")[1])].append((header, seq))
                 
             for key in sorted(group.keys()):
                 seqs = group[key]

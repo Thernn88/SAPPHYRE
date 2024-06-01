@@ -107,7 +107,7 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
     logs = []
     cluster_consensi = {}
 
-    get_id = lambda header: int(header.split("|")[3].split("_")[1])
+    get_id = lambda header: int(header.split("|")[3].split("&&")[0].split("_")[1])
     ref_consensus = defaultdict(set)
     sequences = defaultdict(list)
 

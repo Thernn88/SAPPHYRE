@@ -590,7 +590,7 @@ def do_cluster(ids, ref_coords, max_gap_size, id_chomp_distance=100):
     ids.sort(key=lambda x: x[0])
     grouped_ids = defaultdict(list)
     for i, (child_index, seq_coords, start, end) in enumerate(ids):
-        id = int(child_index.split("_")[0])
+        id = int(child_index.split("&&")[0].split("_")[0])
         grouped_ids[id].append((i, child_index, seq_coords, start, end))
         
     ids_ascending = sorted(grouped_ids.keys())
@@ -734,7 +734,7 @@ def log_excised_consensus(
 
     cluster_sets = [None]
     get_id = lambda header: header.split("|")[3].replace("NODE_","")
-    get_parent_id = lambda header: int(header.split("|")[3].split("_")[1])
+    get_parent_id = lambda header: int(header.split("|")[3].split("&&")[0].split("_")[1])
     if is_genome:
         ids = []
         for node in aa_nodes:
@@ -750,7 +750,7 @@ def log_excised_consensus(
         
         if kicks:
             for node in aa_nodes:
-                this_parent_id = int(get_id(node.header).split("_")[0])
+                this_parent_id = int(get_id(node.header).split("&&")[0].split("_")[0])
                 if this_parent_id in kicks:
                     kicked_headers.add(node.header)
                     log_output.append(f"Kicking {node.header} due to low coverage")
@@ -784,7 +784,7 @@ def log_excised_consensus(
     true_cluster_raw = []
 
     for header in raw_sequences:
-        true_cluster_raw.append((int(header.split("|")[3].split("_")[1]), header))
+        true_cluster_raw.append((int(header.split("|")[3].split("&&")[0].split("_")[1]), header))
 
     true_cluster_raw.sort(key = lambda x: x[0])
     before_true_clusters = cluster(true_cluster_raw, true_cluster_threshold)
@@ -849,7 +849,7 @@ def log_excised_consensus(
                 
                 nodes_in_region = None
                 if is_genome:
-                    tagged_in_region = [(int(node.header.split("|")[3].split("_")[1]), node) for node in sequences_in_region]
+                    tagged_in_region = [(int(node.header.split("|")[3].split("&&")[0].split("_")[1]), node) for node in sequences_in_region]
                     tagged_in_region.sort(key=lambda x: x[0])
                     clusters = cluster(tagged_in_region, true_cluster_threshold)
 
@@ -958,7 +958,7 @@ def log_excised_consensus(
         for node in aa_nodes:
             if node.header in kicked_headers:
                 continue
-            after_data.append((node.header.split("|")[3].split("_")[1], node.header))
+            after_data.append((node.header.split("|")[3].split("&&")[0].split("_")[1], node.header))
 
         after_data.sort(key = lambda x: x[0])
         after_true_clusters = []
@@ -1083,13 +1083,12 @@ def log_excised_consensus(
         aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_parent_id(node.header) in cluster_set)]
         aa_subset.sort(key = lambda x: x.start)
         for prev_node, node in combinations(aa_subset, 2):
-            # if "NODE_2022368" not in prev_node.header:
+            # if "482161" not in prev_node.header:
             #     continue
             
             overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, -10)
             if overlapping_coords:
                 amount = overlapping_coords[1] - overlapping_coords[0]
-                
                 if amount > 1:
                     continue
                 
@@ -1101,11 +1100,11 @@ def log_excised_consensus(
                 kmer_internal_gaps = [i for i, let in enumerate(kmer) if let == "-"]
                 kmer = kmer.replace("-","")
                 
-                prev_og = head_to_seq[int(prev_node.header.split("|")[3].split("_")[1])]
+                prev_og = head_to_seq[int(prev_node.header.split("|")[3].split("&&")[0].split("_")[1])]
                 if prev_node.frame < 0:
                     prev_og = bio_revcomp(prev_og)
                     
-                node_og = head_to_seq[int(node.header.split("|")[3].split("_")[1])]
+                node_og = head_to_seq[int(node.header.split("|")[3].split("&&")[0].split("_")[1])]
                 if node.frame < 0:
                     node_og = bio_revcomp(node_og)
                 
@@ -1204,11 +1203,11 @@ def log_excised_consensus(
                     prev_nt_end -= 1
                     left_last_codon = (prev_nt_end - prev_nt_end % 3)
                     
+                    this_score = 0
+                    
                     if right_end_codon == left_last_codon:
                         right_codon = node_seq[right_end_codon: right_end_codon + 3]
                         left_codon = prev_nt_seq[left_last_codon: left_last_codon + 3]
-                        
-                        this_score = 0
                         
                         orphan_codon = []
                         for i in range(3):
@@ -1216,19 +1215,21 @@ def log_excised_consensus(
                                 orphan_codon.append(right_codon[i])
                             else:
                                 orphan_codon.append(left_codon[i])
-                                
+
                         joined = "".join(orphan_codon)
                         if joined not in DNA_CODONS:
                             this_score += FRANKENSTEIN_PENALTY
+                    
+                    else:
+                        orphan_codon = None
                             
-                        node_extension_indices = set(this_node_extensions.keys())
-                        prev_extension_indices = set(this_prev_extensions.keys())
-                        extension_indices = node_extension_indices.union(prev_extension_indices)
-                        
-                        this_score += len(extension_indices) * INSERTION_PENALTY
-                        this_results.append((this_score, act_gt_index, gt_index, act_ag_index_rev, ag_index_rev, prev_deletions, node_deletions, this_prev_extensions, this_node_extensions, left_last_codon, right_end_codon, orphan_codon))
-                        
-                      
+                    node_extension_indices = set(this_node_extensions.keys())
+                    prev_extension_indices = set(this_prev_extensions.keys())
+                    extension_indices = node_extension_indices.union(prev_extension_indices)
+                    
+                    this_score += len(extension_indices) * INSERTION_PENALTY
+                    this_results.append((this_score, act_gt_index, gt_index, act_ag_index_rev, ag_index_rev, prev_deletions, node_deletions, this_prev_extensions, this_node_extensions, left_last_codon, right_end_codon, orphan_codon))
+
                 if this_results:
                     prev_nt_seq = list(prev_node.nt_sequence)
                     node_seq = list(node.nt_sequence)
@@ -1246,22 +1247,23 @@ def log_excised_consensus(
                         prev_nt_seq[x] = "-"
                     for x in node_deletions:
                         node_seq[x] = "-"
+
+                    if orphan_codon:
+                        joined = "".join(orphan_codon)
+                        if joined not in DNA_CODONS:
+                            continue
                         
-                    joined = "".join(orphan_codon)
-                    if joined not in DNA_CODONS:
-                        continue
-                    
-                    orphan_aa = DNA_CODONS[joined]
-                    replacements_aa[prev_node.header][left_last_codon//3] = orphan_aa
-                    replacements_aa[node.header][right_end_codon//3] = orphan_aa
+                        orphan_aa = DNA_CODONS[joined]
+                        replacements_aa[prev_node.header][left_last_codon//3] = orphan_aa
+                        replacements_aa[node.header][right_end_codon//3] = orphan_aa
 
-                    for i, x in enumerate(range(left_last_codon, left_last_codon + 3)):
-                        prev_nt_seq[x] = orphan_codon[i]
-                        replacements[prev_node.header][x] = orphan_codon[i]
+                        for i, x in enumerate(range(left_last_codon, left_last_codon + 3)):
+                            prev_nt_seq[x] = orphan_codon[i]
+                            replacements[prev_node.header][x] = orphan_codon[i]
 
-                    for i, x in enumerate(range(right_end_codon, right_end_codon + 3)):
-                        node_seq[x] = orphan_codon[i]
-                        replacements[node.header][x] = orphan_codon[i]
+                        for i, x in enumerate(range(right_end_codon, right_end_codon + 3)):
+                            node_seq[x] = orphan_codon[i]
+                            replacements[node.header][x] = orphan_codon[i]
                         
                     node_seq = "".join(node_seq)
                     prev_nt_seq = "".join(prev_nt_seq)
@@ -1392,7 +1394,7 @@ def get_args(args, genes, head_to_seq, is_assembly_or_genome, is_genome, input_f
     for gene in genes:
         this_prepare_dupes = prepare_dupes.get(gene.split(".")[0], {})
         this_reporter_dupes = reporter_dupes.get(gene.split(".")[0], {})
-        this_headers = [int(i[0].split("|")[3].split("_")[1]) for i in parseFasta(str(input_folder.joinpath("aa", gene))) if not i[0].endswith(".")]
+        this_headers = [int(i[0].split("|")[3].split("&&")[0].split("_")[1]) for i in parseFasta(str(input_folder.joinpath("aa", gene))) if not i[0].endswith(".")]
         
         this_seqs = {i: head_to_seq[i] for i in this_headers}
         
@@ -1524,7 +1526,7 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
         for gene in genes:
             this_prepare_dupes = prepare_dupes.get(gene.split(".")[0], {})
             this_reporter_dupes = reporter_dupes.get(gene.split(".")[0], {})
-            this_headers = [int(i[0].split("|")[3].split("_")[1]) for i in parseFasta(str(input_folder.joinpath("aa", gene))) if not i[0].endswith(".")]
+            this_headers = [int(i[0].split("|")[3].split("&&")[0].split("_")[1]) for i in parseFasta(str(input_folder.joinpath("aa", gene))) if not i[0].endswith(".")]
             
             this_seqs = {i: head_to_seq[i] for i in this_headers}
     
