@@ -560,8 +560,6 @@ def tag(sequences: list[tuple[str, str]], prepare_dupes: dict[str, dict[str, int
 
 
 def merge_hits(hits: list[Hit]) -> tuple[list[Hit], list[str]]:
-    GAP_PENALTY = 1
-    EXTEND_PENALTY = 1
     hits.sort(key = lambda x: (x.node))
     log = ["Merges for: "+hits[0].gene]
     indices = range(len(hits))
@@ -571,50 +569,57 @@ def merge_hits(hits: list[Hit]) -> tuple[list[Hit], list[str]]:
         for i, j in combinations(indices, 2):
             if hits[i] is None or hits[j] is None:
                 continue
-
             if not any(b - a <= 1 for a, b in product(([hits[i].node] + hits[i].children), ([hits[j].node] + hits[j].children))):
                 continue
             
-            if get_overlap(hits[i].chomp_start, hits[i].chomp_end, hits[j].chomp_start, hits[j].chomp_end, 1) is None:
+            if get_overlap(hits[i].chomp_start, hits[i].chomp_end, hits[j].chomp_start, hits[j].chomp_end, 3) is None:
                 continue
             
-            a_seq = translate_cdna(hits[i].seq)
-            b_seq = translate_cdna(hits[j].seq)
-            
-            profile = profile_create_16(a_seq, blosum62)
-            result = sw_trace_scan_profile_16(
-                    profile,
-                    b_seq,
-                    GAP_PENALTY,
-                    EXTEND_PENALTY,
-                )
-            
-            a_align, b_align = result.traceback.query, result.traceback.ref
-
-            if a_align != b_align:
-                continue
-
-            a_coord = (a_seq.find(a_align) + len(a_align)) * 3
-            b_coord = (b_seq.find(b_align) + len(b_align)) * 3
-
-            # Same strand
-            if (hits[i].frame / abs(hits[i].frame)) != (hits[j].frame / abs(hits[j].frame)):
+            if hits[i].strand != hits[j].strand:
                 continue
             
-            # Same frame
-            # if hits[i].frame != hits[j].frame:
-            #     continue
+            if abs(hits[i].chomp_start - hits[j].chomp_start) % 3 != 0:
+                continue # different frame same seq
             
+            if hits[i].strand == "-":
+                gaps_a_start = max(hits[j].chomp_end - hits[i].chomp_end, 0)
+                gaps_b_start = max(hits[i].chomp_end - hits[j].chomp_end, 0)
+            else:
+                gaps_a_start = max(hits[i].chomp_start - hits[j].chomp_start, 0)
+                gaps_b_start = max(hits[j].chomp_start - hits[i].chomp_start, 0)
+
+            a_align_seq = ("-" * gaps_a_start) + hits[i].seq
+            b_align_seq = "-" * gaps_b_start + hits[j].seq
+
+            alignment_length = max(len(b_align_seq),len(a_align_seq))
+            a_align_seq += "-" * (alignment_length - len(a_align_seq))
+            b_align_seq += "-" * (alignment_length - len(b_align_seq))
+            
+            a_align_start, a_align_end = find_index_pair(a_align_seq, "-")
+            b_align_start, b_align_end = find_index_pair(b_align_seq, "-")
+            
+            overlap = get_overlap(a_align_start, a_align_end, b_align_start, b_align_end, 1)
+            if overlap is None:
+                continue
+            
+            a_kmer = a_align_seq[overlap[0]:overlap[1]]
+            b_kmer = b_align_seq[overlap[0]:overlap[1]]
+            
+            if translate_cdna(a_kmer) != translate_cdna(b_kmer):
+                continue
+            
+            merged_seq = "".join([a_align_seq[i] if a_align_seq[i] != "-" else b_align_seq[i] for i in range(len(a_align_seq))])
+
             if hits[i].node == hits[j].node:
                 log.append("WARNING: {} and {} same node merge".format(hits[i].node, hits[j].node))
             
             hits[i].children.append(hits[j].node)
-            if len(hits[i].seq) > len(hits[j].seq):
-                hits[i].seq = hits[i].seq[:a_coord] + hits[j].seq[b_coord:]
-            else:
-                hits[i].seq = hits[i].seq[a_coord:] + hits[j].seq[:b_coord]
+            hits[i].seq = merged_seq
             
-            hits[i].chomp_end = hits[j].chomp_end
+            # Update coords
+            hits[i].chomp_start = min(hits[i].chomp_start, hits[j].chomp_start)
+            hits[i].chomp_end = max(hits[i].chomp_end, hits[j].chomp_end)
+            
             hits[j] = None
             merge_occured = True
         
