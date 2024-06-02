@@ -571,7 +571,7 @@ def merge_hits(hits: list[Hit]) -> tuple[list[Hit], list[str]]:
         for i, j in combinations(indices, 2):
             if hits[i] is None or hits[j] is None:
                 continue
-            
+
             if not any(b - a <= 1 for a, b in product(([hits[i].node] + hits[i].children), ([hits[j].node] + hits[j].children))):
                 continue
             
@@ -594,9 +594,9 @@ def merge_hits(hits: list[Hit]) -> tuple[list[Hit], list[str]]:
             if a_align != b_align:
                 continue
 
-            a_coord = result.end_query * 3
-            b_coord = result.end_ref * 3
-            
+            a_coord = (a_seq.find(a_align) + len(a_align)) * 3
+            b_coord = (b_seq.find(b_align) + len(b_align)) * 3
+
             # Same strand
             if (hits[i].frame / abs(hits[i].frame)) != (hits[j].frame / abs(hits[j].frame)):
                 continue
@@ -609,7 +609,10 @@ def merge_hits(hits: list[Hit]) -> tuple[list[Hit], list[str]]:
                 log.append("WARNING: {} and {} same node merge".format(hits[i].node, hits[j].node))
             
             hits[i].children.append(hits[j].node)
-            hits[i].seq = hits[i].seq[:a_coord] + hits[j].seq[b_coord:]
+            if len(hits[i].seq) > len(hits[j].seq):
+                hits[i].seq = hits[i].seq[:a_coord] + hits[j].seq[b_coord:]
+            else:
+                hits[i].seq = hits[i].seq[a_coord:] + hits[j].seq[:b_coord]
             
             hits[i].chomp_end = hits[j].chomp_end
             hits[j] = None
