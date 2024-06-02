@@ -457,6 +457,7 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
             id = int(node)
             if id in cluster_full:
                 if not query in parents_done:
+                    frame = int(frame)
                     for result in results:
                         start, end, score, ali_start, ali_end = result
                         start = start * 3
@@ -465,6 +466,10 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
                         sequence = nt_sequences[query][start: end]
 
                         new_qstart = start
+                        if frame < 0:
+                            new_qstart -= (3 - abs(frame))
+                        else:
+                            new_qstart += frame
 
                         passed_ids.add(id)
                         parents_done.add(query)
