@@ -1076,7 +1076,7 @@ def log_excised_consensus(
     FRANKENSTEIN_PENALTY = -10
     INSERTION_PENALTY = -1
     DELETION_PENALTY = -1
-
+    int_first_id = lambda x: int(x.split("_")[0])
     extensions = defaultdict(dict)
     extensions_aa = defaultdict(dict)
     for cluster_i, cluster_set in enumerate(cluster_sets):
@@ -1100,11 +1100,23 @@ def log_excised_consensus(
                 kmer_internal_gaps = [i for i, let in enumerate(kmer) if let == "-"]
                 kmer = kmer.replace("-","")
                 
-                prev_og = head_to_seq[int(prev_node.header.split("|")[3].split("&&")[0].split("_")[1])]
+                children = list(map(int_first_id, prev_node.header.split("|")[3].replace("NODE_", "").split("&&")))
+                prev_og = head_to_seq[children[0]]
+                for i, child in enumerate(children):
+                    if i == 0:
+                        continue
+                    prev_og += head_to_seq[child][250:]
+
                 if prev_node.frame < 0:
                     prev_og = bio_revcomp(prev_og)
                     
-                node_og = head_to_seq[int(node.header.split("|")[3].split("&&")[0].split("_")[1])]
+                children = list(map(int_first_id, node.header.split("|")[3].replace("NODE_", "").split("&&")))
+                node_og = head_to_seq[children[0]]
+                for i, child in enumerate(children):
+                    if i == 0:
+                        continue
+                    node_og += head_to_seq[child][250:]
+
                 if node.frame < 0:
                     node_og = bio_revcomp(node_og)
                 
@@ -1132,11 +1144,11 @@ def log_excised_consensus(
                 
                 for x, i in enumerate(range(prev_end_index - 3, len(prev_og))):
                     prev_act_coord = (prev_node.end * 3) - 3 + x
-                    prev_codon_start = i - (i % 3) - 3
-                    if x > 0 and prev_codon_start >= 0:
-                        prev_codon = prev_og[prev_codon_start: prev_codon_start + 3]
-                        if DNA_CODONS[prev_codon] == "*":
-                            break
+                    # prev_codon_start = i - (i % 3) - 3
+                    # if x > 0 and prev_codon_start >= 0:
+                    #     prev_codon = prev_og[prev_codon_start: prev_codon_start + 3]
+                    #     if DNA_CODONS[prev_codon] == "*":
+                    #         break
 
                     #"-" if prev_act_coord >= len(prev_node.nt_sequence) else prev_node.nt_sequence[prev_act_coord]
                     if i + 1 >= len(prev_og) or prev_act_coord + 2 >= len(prev_node.nt_sequence):
@@ -1153,11 +1165,11 @@ def log_excised_consensus(
                 # Iterate in reverse from the start of the kmer to the start of the original sequence
                 for x, i in enumerate(range(node_start_index + 2, -1, -1)):
                     node_act_coord = (node.start * 3) + 2 - x
-                    prev_codon_start = i - (i % 3) + 3
-                    if x > 0 and prev_codon_start >= 0:
-                        prev_codon = node_og[prev_codon_start: prev_codon_start + 3]
-                        if DNA_CODONS[prev_codon] == "*":
-                            break
+                    # prev_codon_start = i - (i % 3) + 3
+                    # if x > 0 and prev_codon_start >= 0:
+                    #     prev_codon = node_og[prev_codon_start: prev_codon_start + 3]
+                    #     if DNA_CODONS[prev_codon] == "*":
+                    #         break
 
                     if node_act_coord < 0 or i < 0:
                         break
@@ -1402,12 +1414,20 @@ def move_flagged(to_move, processes):
 
 
 def get_args(args, genes, head_to_seq, is_assembly_or_genome, is_genome, input_folder, output_folder, compress, prepare_dupes, reporter_dupes):
+
+    get_id = lambda x: int(x.split("_")[0]) 
     for gene in genes:
         this_prepare_dupes = prepare_dupes.get(gene.split(".")[0], {})
         this_reporter_dupes = reporter_dupes.get(gene.split(".")[0], {})
-        this_headers = [int(i[0].split("|")[3].split("&&")[0].split("_")[1]) for i in parseFasta(str(input_folder.joinpath("aa", gene))) if not i[0].endswith(".")]
-        
-        this_seqs = {i: head_to_seq[i] for i in this_headers}
+        this_headers = []
+        for header, _ in parseFasta(str(Path(input_folder, "aa", gene))):
+            if header.endswith("."):
+                continue
+            this_headers.extend(
+                map(get_id, header.split("|")[3].replace("NODE_", "").split("&&"))
+            )
+
+        this_seqs = {i: head_to_seq[i] for i in set(this_headers)}
         
         yield (
             gene,
@@ -1528,39 +1548,16 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
     log_path = Path(output_folder, "excise_regions.txt")
     scan_log_path = Path(output_folder, "gt_ag_scan.txt")
     gene_log_path = Path(output_folder, "excise_genes.txt")
+    arguments = get_args(args, genes, head_to_seq, is_assembly_or_genome, is_genome, input_folder, output_folder, compress, prepare_dupes, reporter_dupes)
     if args.processes > 1:
-        arguments = get_args(args, genes, head_to_seq, is_assembly_or_genome, is_genome, input_folder, output_folder, compress, prepare_dupes, reporter_dupes)
         with Pool(args.processes) as pool:
             results = pool.starmap(log_excised_consensus, arguments)
     else:
         results = []
-        for gene in genes:
-            this_prepare_dupes = prepare_dupes.get(gene.split(".")[0], {})
-            this_reporter_dupes = reporter_dupes.get(gene.split(".")[0], {})
-            this_headers = [int(i[0].split("|")[3].split("&&")[0].split("_")[1]) for i in parseFasta(str(input_folder.joinpath("aa", gene))) if not i[0].endswith(".")]
-            
-            this_seqs = {i: head_to_seq[i] for i in this_headers}
-    
+        for arg in arguments:
             results.append(
                 log_excised_consensus(
-                    gene,
-                    is_assembly_or_genome,
-                    is_genome,
-                    input_folder,
-                    output_folder,
-                    compress,
-                    args.excise_overlap_merge,
-                    args.excise_overlap_ambig,
-                    args.excise_region_overlap,
-                    args.excise_consensus,
-                    args.excise_maximum_depth,
-                    args.excise_minimum_ambig,
-                    args.excise_allowed_distance,
-                    args.excise_rescue_match,
-                    this_prepare_dupes,
-                    this_reporter_dupes,
-                    this_seqs,
-                    args.excise_trim_consensus,
+                    *arg
                 )
             )
 
