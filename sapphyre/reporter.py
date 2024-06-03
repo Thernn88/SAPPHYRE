@@ -813,42 +813,42 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
             original_coords = json.decode(raw_data, type = dict[str, tuple[str, int, int, int, int]])
         
     for gene, transcript_hits in transcripts_mapped_to:
-        
-        for hit in transcript_hits:
-            parent, chomp_start, chomp_end, _, chomp_len = original_coords.get(str(hit.node), (None, None, None, None, None))
-            hit.parent = parent
-            if hit.frame < 0:
-                hit.strand = "-"
-                hit.chomp_start = (chomp_len - hit.qend) + chomp_start
-                hit.chomp_end = (chomp_len - hit.qstart) + chomp_start - 1
-            else:
-                hit.strand = "+"
-                hit.chomp_start = hit.qstart + chomp_start
-                hit.chomp_end = hit.qend + chomp_start - 1
-                
-        arguments.append(
-            (
-                OutputArgs(
-                    gene,
-                    transcript_hits,
-                    aa_out_path,
-                    taxa_id,
-                    nt_out_path,
-                    args.verbose,
-                    args.compress,
-                    set(target_taxon.get(gene, [])),
-                    gene_dupes.get(gene, {}),
-                    top_refs.get(gene, []),
-                    args.matches,
-                    args.blosum_strictness,
-                    EXACT_MATCH_AMOUNT,
-                    args.minimum_bp,
-                    args.debug,
-                    is_assembly or is_genome,
-                    is_genome
+        if transcript_hits:
+            for hit in transcript_hits:
+                parent, chomp_start, chomp_end, _, chomp_len = original_coords.get(str(hit.node), (None, None, None, None, None))
+                hit.parent = parent
+                if hit.frame < 0:
+                    hit.strand = "-"
+                    hit.chomp_start = (chomp_len - hit.qend) + chomp_start
+                    hit.chomp_end = (chomp_len - hit.qstart) + chomp_start - 1
+                else:
+                    hit.strand = "+"
+                    hit.chomp_start = hit.qstart + chomp_start
+                    hit.chomp_end = hit.qend + chomp_start - 1
+                    
+            arguments.append(
+                (
+                    OutputArgs(
+                        gene,
+                        transcript_hits,
+                        aa_out_path,
+                        taxa_id,
+                        nt_out_path,
+                        args.verbose,
+                        args.compress,
+                        set(target_taxon.get(gene, [])),
+                        gene_dupes.get(gene, {}),
+                        top_refs.get(gene, []),
+                        args.matches,
+                        args.blosum_strictness,
+                        EXACT_MATCH_AMOUNT,
+                        args.minimum_bp,
+                        args.debug,
+                        is_assembly or is_genome,
+                        is_genome
+                    ),
                 ),
-            ),
-        )
+            )
     if args.debug:
         makedirs("align_debug", exist_ok=True)
 
