@@ -1144,13 +1144,12 @@ def log_excised_consensus(
                 
                 for x, i in enumerate(range(prev_end_index - 3, len(prev_og))):
                     prev_act_coord = (prev_node.end * 3) - 3 + x
-                    # prev_codon_start = i - (i % 3) - 3
-                    # if x > 0 and prev_codon_start >= 0:
-                    #     prev_codon = prev_og[prev_codon_start: prev_codon_start + 3]
-                    #     if DNA_CODONS[prev_codon] == "*":
-                    #         break
+                    # Get last codon
+                    if x != 0 and x % 3 == 0:
+                        last_codon = prev_og[i - 3: i]
+                        if DNA_CODONS[last_codon] == "*":
+                            break
 
-                    #"-" if prev_act_coord >= len(prev_node.nt_sequence) else prev_node.nt_sequence[prev_act_coord]
                     if i + 1 >= len(prev_og) or prev_act_coord + 2 >= len(prev_node.nt_sequence):
                         break
 
@@ -1165,11 +1164,12 @@ def log_excised_consensus(
                 # Iterate in reverse from the start of the kmer to the start of the original sequence
                 for x, i in enumerate(range(node_start_index + 2, -1, -1)):
                     node_act_coord = (node.start * 3) + 2 - x
-                    # prev_codon_start = i - (i % 3) + 3
-                    # if x > 0 and prev_codon_start >= 0:
-                    #     prev_codon = node_og[prev_codon_start: prev_codon_start + 3]
-                    #     if DNA_CODONS[prev_codon] == "*":
-                    #         break
+                    # Get last codon
+                    if x != 0 and x % 3 == 0:
+                        last_codon = node_og[i + 1: i + 4]
+                    
+                        if DNA_CODONS[last_codon] == "*":
+                            break
 
                     if node_act_coord < 0 or i < 0:
                         break
