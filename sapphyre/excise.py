@@ -1132,6 +1132,7 @@ def log_excised_consensus(
                 
                 node_start_index = node_og.find(kmer)
                 node_og = insert_gaps(node_og, kmer_internal_gaps, node_start_index)
+                node_end_index = node_start_index + len(kmer) + len(kmer_internal_gaps) #(inclusive of last codon)
                 
                 prev_extensions = {}
                 node_extensions = {}
@@ -1319,10 +1320,20 @@ def log_excised_consensus(
                     
                     scan_log.append("")
                     scan_log.append("")    
+                    scan_log.append(f">{prev_node.header}_orf")
+                    # print(prev_start_index, node_end_index)
+                    # input()
+
+                    node_region = node.nt_sequence[prev_start: node_end]
+                    node_region_start, _ = find_index_pair(node_region, "-")
+
+                    scan_log.append(prev_og[prev_start_index - 3 :][:node_end])  
+                    scan_log.append(f">{node.header}_orf")  
+                    scan_log.append(node_og[node_start_index - node_region_start :][:node_end - prev_start_index])  
                     scan_log.append(f">{prev_node.header}_excise_output")
                     scan_log.append(prev_node.nt_sequence[prev_start: node_end])
                     scan_log.append(f">{node.header}_excise_output")
-                    scan_log.append(node.nt_sequence[prev_start: node_end])
+                    scan_log.append(node_region)
                     scan_log.append("")        
                     scan_log.append(f">{prev_node.header}_spliced")
                     scan_log.append(prev_nt_seq[prev_start: node_end])
