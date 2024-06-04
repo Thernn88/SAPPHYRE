@@ -797,9 +797,9 @@ def do_folder(folder, args, is_genome, gene_source):
     elif gene_source == "trimmed":
         aa_input = Path(folder, "trimmed", "aa")
         nt_input = Path(folder, "trimmed", "nt")
-    else:
-        aa_input = Path(folder, "align")
-        nt_input = Path(folder, "nt_aligned")
+        if not aa_input.exists():
+            aa_input = Path(folder, "align")
+            nt_input = Path(folder, "nt_aligned")
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
     if not rocks_db_path.exists():
         err = f"cannot find dupe databases for {folder}"
