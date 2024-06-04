@@ -1073,7 +1073,7 @@ def log_excised_consensus(
         "---": "---",
     }
     
-    FRANKENSTEIN_PENALTY = -10
+    FRANKENSTEIN_PENALTY = -20
     INSERTION_PENALTY = -1
     DELETION_PENALTY = -1
     int_first_id = lambda x: int(x.split("_")[0])
@@ -1245,6 +1245,14 @@ def log_excised_consensus(
                             this_score += FRANKENSTEIN_PENALTY
                     
                     else:
+                        right_codon = node_seq[right_end_codon: right_end_codon + 3]
+                        left_codon = prev_nt_seq[left_last_codon: left_last_codon + 3]
+                        
+                        if "-" in right_codon and right_codon.count("-") != 3:
+                            continue
+                        if "-" in left_codon and left_codon.count("-") != 3:
+                            continue
+                            
                         orphan_codon = None
                             
                     node_extension_indices = set(this_node_extensions.keys())
