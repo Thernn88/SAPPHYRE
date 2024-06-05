@@ -559,7 +559,7 @@ def tag(sequences: list[tuple[str, str]], prepare_dupes: dict[str, dict[str, int
     return output
 
 
-def merge_hits(hits: list[Hit]) -> tuple[list[Hit], list[str]]:
+def merge_hits(hits: list[Hit], minimum_bp_overlap = 30) -> tuple[list[Hit], list[str]]:
     hits.sort(key = lambda x: (x.node))
     log = ["Merges for: "+hits[0].gene]
     indices = range(len(hits))
@@ -572,7 +572,7 @@ def merge_hits(hits: list[Hit]) -> tuple[list[Hit], list[str]]:
             if not any(b - a <= 1 for a, b in product(([hits[i].node] + hits[i].children), ([hits[j].node] + hits[j].children))):
                 continue
             
-            if get_overlap(hits[i].chomp_start, hits[i].chomp_end, hits[j].chomp_start, hits[j].chomp_end, 1) is None:
+            if get_overlap(hits[i].chomp_start, hits[i].chomp_end, hits[j].chomp_start, hits[j].chomp_end, minimum_bp_overlap) is None:
                 continue
             
             if hits[i].strand != hits[j].strand:
