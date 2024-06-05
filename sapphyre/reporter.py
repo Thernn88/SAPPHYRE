@@ -647,7 +647,8 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     this_hits = oargs.list_of_hits
     gene_nodes = [hit.node for hit in this_hits]
     
-    if oargs.is_genome:
+    merge_log = []
+    if oargs.is_genome: # Set False to disable
         this_hits, merge_log = merge_hits(this_hits)
 
     # Get reference sequences
