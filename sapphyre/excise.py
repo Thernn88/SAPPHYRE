@@ -1157,7 +1157,7 @@ def log_excised_consensus(
                     if prev_og[i] == "G" and prev_og[i + 1] == "T":
                         act_gt_index = prev_act_coord
                         gt_index = i + 1
-                        gt_positions.append((act_gt_index, gt_index, prev_extensions.copy()))
+                        gt_positions.append((act_gt_index, gt_index, copy.deepcopy(prev_extensions)))
         
                     if prev_nt_seq[prev_act_coord] == "-":
                         prev_extensions[prev_act_coord] = prev_og[i]
@@ -1179,10 +1179,10 @@ def log_excised_consensus(
                     if node_og[i] == "A" and node_og[i + 1] == "G":
                         act_ag_index_rev = node_act_coord
                         ag_index_rev = i
-                        ag_positions.append((act_ag_index_rev, ag_index_rev, node_extensions.copy()))
+                        ag_positions.append((act_ag_index_rev, ag_index_rev, copy.deepcopy(node_extensions)))
         
-                    if node_seq[node_act_coord] == "-":
-                        node_extensions[node_act_coord] = node_og[i]
+                    if node_seq[node_act_coord + 1] == "-":
+                        node_extensions[node_act_coord + 1] = node_og[i + 1]
 
                 this_results = []
                 
@@ -1243,6 +1243,8 @@ def log_excised_consensus(
                         joined = "".join(orphan_codon)
                         if joined not in DNA_CODONS:
                             this_score += FRANKENSTEIN_PENALTY
+                        elif DNA_CODONS[joined] == "*":
+                            continue
                     
                     else:
                         right_codon = node_seq[right_end_codon: right_end_codon + 3]
