@@ -572,7 +572,7 @@ def merge_hits(hits: list[Hit]) -> tuple[list[Hit], list[str]]:
             if not any(b - a <= 1 for a, b in product(([hits[i].node] + hits[i].children), ([hits[j].node] + hits[j].children))):
                 continue
             
-            if get_overlap(hits[i].chomp_start, hits[i].chomp_end, hits[j].chomp_start, hits[j].chomp_end, 3) is None:
+            if get_overlap(hits[i].chomp_start, hits[i].chomp_end, hits[j].chomp_start, hits[j].chomp_end, 1) is None:
                 continue
             
             if hits[i].strand != hits[j].strand:

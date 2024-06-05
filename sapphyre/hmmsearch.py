@@ -545,12 +545,8 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
                         printv(f"Rescued {hit.node}", verbose, 2)
                                                 
                         new_start = hit.qend
-                        if frame < 0:
-                            new_start += (3 - abs(frame))
-                        else:
-                            new_start += frame
-                            
-                        new_start = len(this_seqs[hit.node]) - new_start
+
+                        new_start = len(this_seqs[hit.node]) - 2 - new_start # -1 for len inclusive and -1 for 0 based
                         new_end = new_start + len(hit.seq)
                         
                         new_hit = HmmHit(node=hit.node, score=0, frame=hit.frame, evalue=hit.evalue, qstart=new_start, qend=new_end, gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=hit.seq)
