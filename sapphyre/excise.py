@@ -1272,9 +1272,11 @@ def log_excised_consensus(
                         node_seq[i] = let
                     for i in range(act_gt_index, act_gt_index + 2):
                         replacements[prev_node.header][i] = "-"
+                        replacements_aa[prev_node.header][i//3] = "-"
                         prev_nt_seq[i] = "-"
                     for i in range(act_ag_index_rev, act_ag_index_rev + 2):
                         replacements[node.header][i] = "-"
+                        replacements_aa[node.header][i//3] = "-"
                         node_seq[i] = "-"
                     for x in prev_deletions:
                         if x in final_prev_extensions:
@@ -1323,7 +1325,7 @@ def log_excised_consensus(
                         if codon in DNA_CODONS:
                             extensions_aa[prev_node.header][i//3] = DNA_CODONS[codon]
                         
-                    for i in range(node_start, node.start * 3):
+                    for i in range(node_start, node.start * 3, 3):
                         codon = node_seq[i:i+3]
                         if codon in DNA_CODONS:
                             extensions_aa[node.header][i//3] = DNA_CODONS[codon]
