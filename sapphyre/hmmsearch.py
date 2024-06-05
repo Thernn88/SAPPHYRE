@@ -543,7 +543,17 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
 
                     if has_neighbour:
                         printv(f"Rescued {hit.node}", verbose, 2)
-                        new_hit = HmmHit(node=hit.node, score=0, frame=hit.frame, evalue=hit.evalue, qstart=hit.qstart, qend=hit.qend, gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=hit.seq)
+                                                
+                        new_start = hit.qend
+                        if frame < 0:
+                            new_start += (3 - abs(frame))
+                        else:
+                            new_start += frame
+                            
+                        new_start = len(this_seqs[hit.node]) - new_start
+                        new_end = new_start + len(hit.seq)
+                        
+                        new_hit = HmmHit(node=hit.node, score=0, frame=hit.frame, evalue=hit.evalue, qstart=new_start, qend=new_end, gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=hit.seq)
                         output.append(new_hit)
                         parents_done.add(f"{hit.node}|{hit.frame}")
                         hmm_log.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, f"Rescued by {neighbour}. Evalue: {hit.evalue}"))
