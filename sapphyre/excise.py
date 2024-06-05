@@ -1083,9 +1083,6 @@ def log_excised_consensus(
         aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_parent_id(node.header) in cluster_set)]
         aa_subset.sort(key = lambda x: x.start)
         for prev_node, node in combinations(aa_subset, 2):
-            # if "482161" not in prev_node.header:
-            #     continue
-            
             overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, -10)
             if overlapping_coords:
                 amount = overlapping_coords[1] - overlapping_coords[0]
@@ -1274,12 +1271,22 @@ def log_excised_consensus(
                     for i, let in final_node_extensions.items():
                         node_seq[i] = let
                     for i in range(act_gt_index, act_gt_index + 2):
+                        replacements[prev_node.header][i] = "-"
                         prev_nt_seq[i] = "-"
                     for i in range(act_ag_index_rev, act_ag_index_rev + 2):
+                        replacements[node.header][i] = "-"
                         node_seq[i] = "-"
                     for x in prev_deletions:
+                        if x in final_prev_extensions:
+                            continue
+                        replacements_aa[prev_node.header][x//3] = "-"
+                        replacements[prev_node.header][x] = "-"
                         prev_nt_seq[x] = "-"
                     for x in node_deletions:
+                        if x in final_node_extensions:
+                            continue
+                        replacements_aa[node.header][x//3] = "-"
+                        replacements[node.header][x] = "-"
                         node_seq[x] = "-"
 
                     if orphan_codon:
