@@ -789,7 +789,7 @@ def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, pr
 
 
 def splice_combo(this_result, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps):
-    # if "136841" not in prev_node.header:
+    # if "223372" not in node.header:
     #     return
     
     prev_nt_seq = list(prev_node.nt_sequence)
@@ -878,7 +878,7 @@ def splice_combo(this_result, prev_node, node, prev_og, node_og, DNA_CODONS, sca
     
     scan_log.append(prev_og[prev_start_index - 3 :][:node_end])  
     scan_log.append(f">{node.header}_orf")  
-    scan_log.append(node_og[node_start_index - node_region_start :][:node_end - prev_start_index])  
+    scan_log.append(node_og[node_start_index - node_region_start :][:node_end])  
     scan_log.append(f">{prev_node.header}_excise_output")
     scan_log.append(prev_node.nt_sequence[prev_start: node_end])
     scan_log.append(f">{node.header}_excise_output")
@@ -890,7 +890,7 @@ def splice_combo(this_result, prev_node, node, prev_og, node_og, DNA_CODONS, sca
     scan_log.append(node_seq[prev_start: node_end])
     scan_log.append("")    
     
-    node_hit = node_og[ag_index_rev: node_start_index + len(kmer)]
+    node_hit = node_og[ag_index_rev: (node_start_index + len(kmer) + len(kmer_internal_gaps))]
     prev_hit = prev_og[prev_start_index: gt_index + 1]
     # lowercase
     prev_hit = prev_hit[:-2] + prev_hit[-2:].lower()
@@ -899,19 +899,19 @@ def splice_combo(this_result, prev_node, node, prev_og, node_og, DNA_CODONS, sca
     scan_log.append(f">{prev_node.header}_orf_scan")
     scan_log.append((("-" * (prev_node.start * 3)) + prev_hit)[prev_start: node_end])
     scan_log.append(f">{node.header}_orf_scan")
-    scan_log.append((("-" * ((node.end * 3) - len(node_hit) - len(kmer_internal_gaps))) + node_hit)[prev_start: node_end] )
+    scan_log.append((("-" * ((node.end * 3) - len(node_hit))) + node_hit)[prev_start: node_end] )
     scan_log.append("") 
     
     gff_coord_prev = (
-        prev_start_index,
+        prev_start_index + 1,
         gt_index - len(prev_internal_gaps) - 1
     ) 
-    
-    gff_coord_node = (
-        ag_index_rev + 2,
-        node_start_index + len(kmer) - len(kmer_internal_gaps)
-    )
 
+    gff_coord_node = (
+        ag_index_rev + 3,
+        node_start_index + len(kmer)
+    )
+    
     return gff_coord_prev, gff_coord_node
 
 def log_excised_consensus(
@@ -1409,8 +1409,8 @@ def log_excised_consensus(
                             parent, chomp_start, chomp_end, input_len, chomp_len = tup
                             
                             if prev_node.frame < 0:
-                                prev_start = (chomp_len - prev_gff[0]) + chomp_start
-                                prev_end = (chomp_len - prev_gff[1]) + chomp_start
+                                prev_start = (chomp_len - prev_gff[1]) + chomp_start + 2
+                                prev_end = (chomp_len - prev_gff[0]) + chomp_start + 2
                             else:
                                 prev_start = prev_gff[0] + chomp_start
                                 prev_end = prev_gff[1] + chomp_start
@@ -1419,7 +1419,6 @@ def log_excised_consensus(
                                 ends[parent] = input_len
                                 
                             strand = "+" if prev_node.frame > 0 else "-"
-                                
                             gff_out[parent][prev_id] = ((prev_start), f"{parent}\tSapphyre\texon\t{prev_start}\t{prev_end}\t.\t{strand}\t.\tID={prev_id};Parent={gene};Note={prev_node.frame};")
                             
                         node_id = get_id(node.header)
@@ -1428,8 +1427,8 @@ def log_excised_consensus(
                             parent, chomp_start, chomp_end, input_len, chomp_len = tup
                             
                             if node.frame < 0:
-                                node_start = (chomp_len - node_gff[0]) + chomp_start
-                                node_end = (chomp_len - node_gff[1]) + chomp_start
+                                node_start = (chomp_len - node_gff[1]) + chomp_start
+                                node_end = (chomp_len - node_gff[0]) + chomp_start
                             else:
                                 node_start = node_gff[0] + chomp_start
                                 node_end = node_gff[1] + chomp_start
@@ -1438,7 +1437,6 @@ def log_excised_consensus(
                                 ends[parent] = input_len
                                 
                             strand = "+" if node.frame > 0 else "-"
-                                
                             gff_out[parent][node_id] = ((node_start), f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tID={node_id};Parent={gene};Note={node.frame};")
 
     aa_raw_output = [(header, del_cols(seq, x_positions[header])) for header, seq in raw_aa if header not in kicked_headers]
