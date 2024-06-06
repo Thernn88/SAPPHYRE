@@ -650,6 +650,255 @@ def insert_gaps(input_string, positions, offset):
     return "".join(input_string)
 
 
+def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, INSERTION_PENALTY, DNA_CODONS):
+    this_results = []
+                
+    for (act_gt_index, gt_index, this_prev_extensions), (act_ag_index_rev, ag_index_rev, this_node_extensions) in product(gt_positions, ag_positions):
+        prev_deletions = set()
+        node_deletions = set()
+
+        prev_nt_seq = list(prev_node.nt_sequence)
+        node_seq = list(node.nt_sequence)
+        
+        for i, let in this_prev_extensions.items():
+            prev_nt_seq[i] = let
+        for i, let in this_node_extensions.items():
+            node_seq[i] = let
+        
+        for i in range(act_gt_index, act_gt_index + 2):
+            prev_nt_seq[i] = "-"
+            
+        for i in range(act_ag_index_rev, act_ag_index_rev + 2):
+            node_seq[i] = "-"
+
+        if prev_node.end * 3 > act_gt_index:
+            for x in range(act_gt_index, prev_node.end * 3):
+                if x in this_prev_extensions:
+                    continue
+                prev_nt_seq[x] = "-"
+                prev_deletions.add(x)
+        
+        if node.start * 3 < act_ag_index_rev:
+            for x in range(node.start * 3, act_ag_index_rev):
+                if x in this_node_extensions:
+                    continue
+                node_seq[x] = "-"
+                node_deletions.add(x)
+                
+                
+        node_nt_start, _ = find_index_pair("".join(node_seq), "-")
+        node_nt_start -= 1
+        right_end_codon = (node_nt_start - node_nt_start % 3)
+        
+        _, prev_nt_end = find_index_pair("".join(prev_nt_seq), "-")
+        prev_nt_end -= 1
+        left_last_codon = (prev_nt_end - prev_nt_end % 3)
+        
+        this_score = 0
+        
+        if right_end_codon == left_last_codon:
+            right_codon = node_seq[right_end_codon: right_end_codon + 3]
+            left_codon = prev_nt_seq[left_last_codon: left_last_codon + 3]
+            
+            orphan_codon = []
+            for i in range(3):
+                if left_codon[i] == "-":
+                    orphan_codon.append(right_codon[i])
+                else:
+                    orphan_codon.append(left_codon[i])
+
+            joined = "".join(orphan_codon)
+            if joined not in DNA_CODONS:
+                this_score += FRANKENSTEIN_PENALTY
+            elif DNA_CODONS[joined] == "*":
+                continue
+        
+        else:
+            right_codon = node_seq[right_end_codon: right_end_codon + 3]
+            left_codon = prev_nt_seq[left_last_codon: left_last_codon + 3]
+            
+            if "-" in right_codon and right_codon.count("-") != 3:
+                continue
+            if "-" in left_codon and left_codon.count("-") != 3:
+                continue
+                
+            orphan_codon = None
+                
+        node_extension_indices = set(this_node_extensions.keys())
+        prev_extension_indices = set(this_prev_extensions.keys())
+        extension_indices = node_extension_indices.union(prev_extension_indices)
+        
+        this_score += len(extension_indices) * INSERTION_PENALTY
+        this_results.append((this_score, act_gt_index, gt_index, act_ag_index_rev, ag_index_rev, prev_deletions, node_deletions, this_prev_extensions, this_node_extensions, left_last_codon, right_end_codon, orphan_codon))
+
+    return this_results
+
+
+def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, prev_og, node_og, prev_nt_seq, node_seq):
+    act_gt_index = None
+    gt_index = None
+    act_ag_index_rev = None
+    ag_index_rev = None
+    prev_extensions = {}
+    node_extensions = {}
+    gt_positions = []
+    ag_positions = []
+    
+    for x, i in enumerate(range(prev_end_index - 3, len(prev_og))):
+        prev_act_coord = (prev_node.end * 3) - 3 + x
+        # Get last codon
+        if x != 0 and x % 3 == 0:
+            last_codon = prev_og[i - 3: i]
+            if DNA_CODONS[last_codon] == "*":
+                break
+
+        if i + 1 >= len(prev_og) or prev_act_coord + 2 >= len(prev_node.nt_sequence):
+            break
+
+        if prev_og[i] == "G" and prev_og[i + 1] == "T":
+            act_gt_index = prev_act_coord
+            gt_index = i + 1
+            gt_positions.append((act_gt_index, gt_index, copy.deepcopy(prev_extensions)))
+
+        if prev_nt_seq[prev_act_coord] == "-":
+            prev_extensions[prev_act_coord] = prev_og[i]
+        
+    # Iterate in reverse from the start of the kmer to the start of the original sequence
+    for x, i in enumerate(range(node_start_index + 2, -1, -1)):
+        node_act_coord = (node.start * 3) + 2 - x
+        # Get last codon
+        if x != 0 and x % 3 == 0:
+            last_codon = node_og[i + 1: i + 4]
+        
+            if DNA_CODONS[last_codon] == "*":
+                break
+
+        if node_act_coord < 0 or i < 0:
+            break
+        
+        # Check if the next nucleotide (i + 1) is "A" and the current is "G"
+        if node_og[i] == "A" and node_og[i + 1] == "G":
+            act_ag_index_rev = node_act_coord
+            ag_index_rev = i
+            ag_positions.append((act_ag_index_rev, ag_index_rev, copy.deepcopy(node_extensions)))
+
+        if node_seq[node_act_coord + 1] == "-":
+            node_extensions[node_act_coord + 1] = node_og[i + 1]
+            
+    return gt_positions, ag_positions
+
+
+def splice_combo(this_result, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps):
+    prev_nt_seq = list(prev_node.nt_sequence)
+    node_seq = list(node.nt_sequence)
+    
+    this_score, act_gt_index, gt_index, act_ag_index_rev, ag_index_rev, prev_deletions, node_deletions, final_prev_extensions, final_node_extensions, left_last_codon, right_end_codon, orphan_codon = this_result
+    for i, let in final_prev_extensions.items():
+        prev_nt_seq[i] = let
+    for i, let in final_node_extensions.items():
+        node_seq[i] = let
+    for i in range(act_gt_index, act_gt_index + 2):
+        replacements[prev_node.header][i] = "-"
+        replacements_aa[prev_node.header][i//3] = "-"
+        prev_nt_seq[i] = "-"
+    for i in range(act_ag_index_rev, act_ag_index_rev + 2):
+        replacements[node.header][i] = "-"
+        replacements_aa[node.header][i//3] = "-"
+        node_seq[i] = "-"
+    for x in prev_deletions:
+        if x in final_prev_extensions:
+            continue
+        replacements_aa[prev_node.header][x//3] = "-"
+        replacements[prev_node.header][x] = "-"
+        prev_nt_seq[x] = "-"
+    for x in node_deletions:
+        if x in final_node_extensions:
+            continue
+        replacements_aa[node.header][x//3] = "-"
+        replacements[node.header][x] = "-"
+        node_seq[x] = "-"
+
+    if orphan_codon:
+        joined = "".join(orphan_codon)
+        if joined not in DNA_CODONS:
+            return
+        
+        orphan_aa = DNA_CODONS[joined]
+        replacements_aa[prev_node.header][left_last_codon//3] = orphan_aa
+        replacements_aa[node.header][right_end_codon//3] = orphan_aa
+
+        for i, x in enumerate(range(left_last_codon, left_last_codon + 3)):
+            prev_nt_seq[x] = orphan_codon[i]
+            replacements[prev_node.header][x] = orphan_codon[i]
+
+        for i, x in enumerate(range(right_end_codon, right_end_codon + 3)):
+            node_seq[x] = orphan_codon[i]
+            replacements[node.header][x] = orphan_codon[i]
+        
+    node_seq = "".join(node_seq)
+    prev_nt_seq = "".join(prev_nt_seq)
+        
+    node_start, node_end = find_index_pair(node_seq, "-")
+    prev_start, prev_end = find_index_pair(prev_nt_seq, "-")
+    
+    if node_start % 3 != 0:
+        node_start -= node_start % 3
+    
+    if prev_end % 3 != 0:
+        prev_end += 3 - (prev_end % 3)
+    
+    for i in range((prev_node.end * 3) - 3, prev_end, 3):
+        codon = prev_nt_seq[i:i+3]
+        if codon in DNA_CODONS:
+            extensions_aa[prev_node.header][i//3] = DNA_CODONS[codon]
+        
+    for i in range(node_start, node.start * 3, 3):
+        codon = node_seq[i:i+3]
+        if codon in DNA_CODONS:
+            extensions_aa[node.header][i//3] = DNA_CODONS[codon]
+
+    extensions[node.header].update(final_node_extensions)
+    extensions[prev_node.header].update(final_prev_extensions)
+    
+    # Extend one codon to the left and right for debug to show end of sequence
+    prev_start -= 3
+    node_end += 3
+    
+    scan_log.append("")
+    scan_log.append("")    
+    scan_log.append(f">{prev_node.header}_orf")
+    # print(prev_start_index, node_end_index)
+    # input()
+
+    node_region = node.nt_sequence[prev_start: node_end]
+    node_region_start, _ = find_index_pair(node_region, "-")
+
+    scan_log.append(prev_og[prev_start_index - 3 :][:node_end])  
+    scan_log.append(f">{node.header}_orf")  
+    scan_log.append(node_og[node_start_index - node_region_start :][:node_end - prev_start_index])  
+    scan_log.append(f">{prev_node.header}_excise_output")
+    scan_log.append(prev_node.nt_sequence[prev_start: node_end])
+    scan_log.append(f">{node.header}_excise_output")
+    scan_log.append(node_region)
+    scan_log.append("")        
+    scan_log.append(f">{prev_node.header}_spliced")
+    scan_log.append(prev_nt_seq[prev_start: node_end])
+    scan_log.append(f">{node.header}_spliced")
+    scan_log.append(node_seq[prev_start: node_end])
+    scan_log.append("")    
+    
+    node_hit = node_og[ag_index_rev: node_start_index + len(kmer)]
+    prev_hit = prev_og[prev_start_index: gt_index + 1]
+    # lowercase
+    prev_hit = prev_hit[:-2] + prev_hit[-2:].lower()
+    node_hit = node_hit[:2].lower() + node_hit[2:]
+    
+    scan_log.append(f">{prev_node.header}_orf_scan")
+    scan_log.append((("-" * (prev_node.start * 3)) + prev_hit)[prev_start: node_end])
+    scan_log.append(f">{node.header}_orf_scan")
+    scan_log.append((("-" * ((node.end * 3) - len(node_hit) - len(kmer_internal_gaps))) + node_hit)[prev_start: node_end] )
+    scan_log.append("")  
+
 def log_excised_consensus(
     gene: str,
     is_assembly_or_genome: bool,
@@ -1121,256 +1370,19 @@ def log_excised_consensus(
                 prev_og = insert_gaps(prev_og, prev_internal_gaps, prev_start_index)
                 prev_end_index = prev_start_index + len(prev_kmer) + len(prev_internal_gaps) #(inclusive of last codon)
                 
-                act_gt_index = None
-                gt_index = None
-                
-                act_ag_index_rev = None
-                ag_index_rev = None
-                
                 node_start_index = node_og.find(kmer)
                 node_og = insert_gaps(node_og, kmer_internal_gaps, node_start_index)
-                node_end_index = node_start_index + len(kmer) + len(kmer_internal_gaps) #(inclusive of last codon)
-                
-                prev_extensions = {}
-                node_extensions = {}
-                
+
                 prev_nt_seq = list(prev_node.nt_sequence)
                 node_seq = list(node.nt_sequence)
                 
-                gt_positions = []
-                ag_positions = []
+                gt_positions, ag_positions = find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, prev_og, node_og, prev_nt_seq, node_seq)
+
+                this_results = get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, INSERTION_PENALTY, DNA_CODONS)
                 
-                for x, i in enumerate(range(prev_end_index - 3, len(prev_og))):
-                    prev_act_coord = (prev_node.end * 3) - 3 + x
-                    # Get last codon
-                    if x != 0 and x % 3 == 0:
-                        last_codon = prev_og[i - 3: i]
-                        if DNA_CODONS[last_codon] == "*":
-                            break
-
-                    if i + 1 >= len(prev_og) or prev_act_coord + 2 >= len(prev_node.nt_sequence):
-                        break
-
-                    if prev_og[i] == "G" and prev_og[i + 1] == "T":
-                        act_gt_index = prev_act_coord
-                        gt_index = i + 1
-                        gt_positions.append((act_gt_index, gt_index, copy.deepcopy(prev_extensions)))
-        
-                    if prev_nt_seq[prev_act_coord] == "-":
-                        prev_extensions[prev_act_coord] = prev_og[i]
-                    
-                # Iterate in reverse from the start of the kmer to the start of the original sequence
-                for x, i in enumerate(range(node_start_index + 2, -1, -1)):
-                    node_act_coord = (node.start * 3) + 2 - x
-                    # Get last codon
-                    if x != 0 and x % 3 == 0:
-                        last_codon = node_og[i + 1: i + 4]
-                    
-                        if DNA_CODONS[last_codon] == "*":
-                            break
-
-                    if node_act_coord < 0 or i < 0:
-                        break
-                    
-                    # Check if the next nucleotide (i + 1) is "A" and the current is "G"
-                    if node_og[i] == "A" and node_og[i + 1] == "G":
-                        act_ag_index_rev = node_act_coord
-                        ag_index_rev = i
-                        ag_positions.append((act_ag_index_rev, ag_index_rev, copy.deepcopy(node_extensions)))
-        
-                    if node_seq[node_act_coord + 1] == "-":
-                        node_extensions[node_act_coord + 1] = node_og[i + 1]
-
-                this_results = []
-                
-                for (act_gt_index, gt_index, this_prev_extensions), (act_ag_index_rev, ag_index_rev, this_node_extensions) in product(gt_positions, ag_positions):
-                    prev_deletions = set()
-                    node_deletions = set()
-
-                    prev_nt_seq = list(prev_node.nt_sequence)
-                    node_seq = list(node.nt_sequence)
-                    
-                    for i, let in this_prev_extensions.items():
-                        prev_nt_seq[i] = let
-                    for i, let in this_node_extensions.items():
-                        node_seq[i] = let
-                    
-                    for i in range(act_gt_index, act_gt_index + 2):
-                        prev_nt_seq[i] = "-"
-                        
-                    for i in range(act_ag_index_rev, act_ag_index_rev + 2):
-                        node_seq[i] = "-"
-
-                    if prev_node.end * 3 > act_gt_index:
-                        for x in range(act_gt_index, prev_node.end * 3):
-                            if x in this_prev_extensions:
-                                continue
-                            prev_nt_seq[x] = "-"
-                            prev_deletions.add(x)
-                    
-                    if node.start * 3 < act_ag_index_rev:
-                        for x in range(node.start * 3, act_ag_index_rev):
-                            if x in this_node_extensions:
-                                continue
-                            node_seq[x] = "-"
-                            node_deletions.add(x)
-                            
-                            
-                    node_nt_start, _ = find_index_pair("".join(node_seq), "-")
-                    node_nt_start -= 1
-                    right_end_codon = (node_nt_start - node_nt_start % 3)
-                    
-                    _, prev_nt_end = find_index_pair("".join(prev_nt_seq), "-")
-                    prev_nt_end -= 1
-                    left_last_codon = (prev_nt_end - prev_nt_end % 3)
-                    
-                    this_score = 0
-                    
-                    if right_end_codon == left_last_codon:
-                        right_codon = node_seq[right_end_codon: right_end_codon + 3]
-                        left_codon = prev_nt_seq[left_last_codon: left_last_codon + 3]
-                        
-                        orphan_codon = []
-                        for i in range(3):
-                            if left_codon[i] == "-":
-                                orphan_codon.append(right_codon[i])
-                            else:
-                                orphan_codon.append(left_codon[i])
-
-                        joined = "".join(orphan_codon)
-                        if joined not in DNA_CODONS:
-                            this_score += FRANKENSTEIN_PENALTY
-                        elif DNA_CODONS[joined] == "*":
-                            continue
-                    
-                    else:
-                        right_codon = node_seq[right_end_codon: right_end_codon + 3]
-                        left_codon = prev_nt_seq[left_last_codon: left_last_codon + 3]
-                        
-                        if "-" in right_codon and right_codon.count("-") != 3:
-                            continue
-                        if "-" in left_codon and left_codon.count("-") != 3:
-                            continue
-                            
-                        orphan_codon = None
-                            
-                    node_extension_indices = set(this_node_extensions.keys())
-                    prev_extension_indices = set(this_prev_extensions.keys())
-                    extension_indices = node_extension_indices.union(prev_extension_indices)
-                    
-                    this_score += len(extension_indices) * INSERTION_PENALTY
-                    this_results.append((this_score, act_gt_index, gt_index, act_ag_index_rev, ag_index_rev, prev_deletions, node_deletions, this_prev_extensions, this_node_extensions, left_last_codon, right_end_codon, orphan_codon))
-
                 if this_results:
-                    prev_nt_seq = list(prev_node.nt_sequence)
-                    node_seq = list(node.nt_sequence)
-                    
-                    this_score, act_gt_index, gt_index, act_ag_index_rev, ag_index_rev, prev_deletions, node_deletions, final_prev_extensions, final_node_extensions, left_last_codon, right_end_codon, orphan_codon = max(this_results, key=lambda x: x[0])
-                    for i, let in final_prev_extensions.items():
-                        prev_nt_seq[i] = let
-                    for i, let in final_node_extensions.items():
-                        node_seq[i] = let
-                    for i in range(act_gt_index, act_gt_index + 2):
-                        replacements[prev_node.header][i] = "-"
-                        replacements_aa[prev_node.header][i//3] = "-"
-                        prev_nt_seq[i] = "-"
-                    for i in range(act_ag_index_rev, act_ag_index_rev + 2):
-                        replacements[node.header][i] = "-"
-                        replacements_aa[node.header][i//3] = "-"
-                        node_seq[i] = "-"
-                    for x in prev_deletions:
-                        if x in final_prev_extensions:
-                            continue
-                        replacements_aa[prev_node.header][x//3] = "-"
-                        replacements[prev_node.header][x] = "-"
-                        prev_nt_seq[x] = "-"
-                    for x in node_deletions:
-                        if x in final_node_extensions:
-                            continue
-                        replacements_aa[node.header][x//3] = "-"
-                        replacements[node.header][x] = "-"
-                        node_seq[x] = "-"
-
-                    if orphan_codon:
-                        joined = "".join(orphan_codon)
-                        if joined not in DNA_CODONS:
-                            continue
-                        
-                        orphan_aa = DNA_CODONS[joined]
-                        replacements_aa[prev_node.header][left_last_codon//3] = orphan_aa
-                        replacements_aa[node.header][right_end_codon//3] = orphan_aa
-
-                        for i, x in enumerate(range(left_last_codon, left_last_codon + 3)):
-                            prev_nt_seq[x] = orphan_codon[i]
-                            replacements[prev_node.header][x] = orphan_codon[i]
-
-                        for i, x in enumerate(range(right_end_codon, right_end_codon + 3)):
-                            node_seq[x] = orphan_codon[i]
-                            replacements[node.header][x] = orphan_codon[i]
-                        
-                    node_seq = "".join(node_seq)
-                    prev_nt_seq = "".join(prev_nt_seq)
-                        
-                    node_start, node_end = find_index_pair(node_seq, "-")
-                    prev_start, prev_end = find_index_pair(prev_nt_seq, "-")
-                    
-                    if node_start % 3 != 0:
-                        node_start -= node_start % 3
-                    
-                    if prev_end % 3 != 0:
-                        prev_end += 3 - (prev_end % 3)
-                    
-                    for i in range((prev_node.end * 3) - 3, prev_end, 3):
-                        codon = prev_nt_seq[i:i+3]
-                        if codon in DNA_CODONS:
-                            extensions_aa[prev_node.header][i//3] = DNA_CODONS[codon]
-                        
-                    for i in range(node_start, node.start * 3, 3):
-                        codon = node_seq[i:i+3]
-                        if codon in DNA_CODONS:
-                            extensions_aa[node.header][i//3] = DNA_CODONS[codon]
-
-                    extensions[node.header].update(final_node_extensions)
-                    extensions[prev_node.header].update(final_prev_extensions)
-                    
-                    # Extend one codon to the left and right for debug to show end of sequence
-                    prev_start -= 3
-                    node_end += 3
-                    
-                    scan_log.append("")
-                    scan_log.append("")    
-                    scan_log.append(f">{prev_node.header}_orf")
-                    # print(prev_start_index, node_end_index)
-                    # input()
-
-                    node_region = node.nt_sequence[prev_start: node_end]
-                    node_region_start, _ = find_index_pair(node_region, "-")
-
-                    scan_log.append(prev_og[prev_start_index - 3 :][:node_end])  
-                    scan_log.append(f">{node.header}_orf")  
-                    scan_log.append(node_og[node_start_index - node_region_start :][:node_end - prev_start_index])  
-                    scan_log.append(f">{prev_node.header}_excise_output")
-                    scan_log.append(prev_node.nt_sequence[prev_start: node_end])
-                    scan_log.append(f">{node.header}_excise_output")
-                    scan_log.append(node_region)
-                    scan_log.append("")        
-                    scan_log.append(f">{prev_node.header}_spliced")
-                    scan_log.append(prev_nt_seq[prev_start: node_end])
-                    scan_log.append(f">{node.header}_spliced")
-                    scan_log.append(node_seq[prev_start: node_end])
-                    scan_log.append("")    
-                    
-                    node_hit = node_og[ag_index_rev: node_start_index + len(kmer)]
-                    prev_hit = prev_og[prev_start_index: gt_index + 1]
-                    # lowercase
-                    prev_hit = prev_hit[:-2] + prev_hit[-2:].lower()
-                    node_hit = node_hit[:2].lower() + node_hit[2:]
-                    
-                    scan_log.append(f">{prev_node.header}_orf_scan")
-                    scan_log.append((("-" * (prev_node.start * 3)) + prev_hit)[prev_start: node_end])
-                    scan_log.append(f">{node.header}_orf_scan")
-                    scan_log.append((("-" * ((node.end * 3) - len(node_hit) - len(kmer_internal_gaps))) + node_hit)[prev_start: node_end] )
-                    scan_log.append("")  
+                    this_best_splice = max(this_results, key=lambda x: x[0])
+                    splice_combo(this_best_splice, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps)
 
     aa_raw_output = [(header, del_cols(seq, x_positions[header])) for header, seq in raw_aa if header not in kicked_headers]
     aa_output = []
