@@ -840,7 +840,7 @@ def trim_large_gaps(
                 else:
                     # Consecutive gap with length of 80 or more where the majority of the
                     # gaps are not reference gaps
-                    if non_ref_gap_dash_count >= 80:
+                    if non_ref_gap_dash_count >= 10:
                         i = j - (raw_dash_count // 2)
                         # Trim around the middle of the gap
                         positions = trim_around(
@@ -855,7 +855,6 @@ def trim_large_gaps(
                             post_gap_present_threshold,
                         )
                         for x in positions:
-                            gap_cull.add(x * 3)
                             out_line[x] = "-"
 
                         left_after = out_line[seq_start:i]
@@ -908,28 +907,35 @@ def trim_large_gaps(
                                 left_of_trim_data_columns,
                                 left_side_ref_data_columns,
                             )
-                            < 0.55
+                            < 0.75
                             and not keep_left
                         ):  # candidate has less than % of data columns compared to reference
+                            for x in positions:
+                                gap_cull.add(x * 3)
                             for x in range(seq_start, i):
                                 gap_cull.add(x * 3)
                                 out_line[x] = "-"
+                            change_made = "Left"
+                            
                         if (
                             get_data_difference(
                                 right_of_trim_data_columns,
                                 right_side_ref_data_columns,
                             )
-                            < 0.55
+                            < 0.75
                             and not keep_right
                         ):
+                            for x in positions:
+                                gap_cull.add(x * 3)
                             for x in range(i, seq_end):
                                 gap_cull.add(x * 3)
                                 out_line[x] = "-"
-                        change_made = True
+                        
+                            change_made = "Right"
 
                     non_ref_gap_dash_count = 0
                     raw_dash_count = 0
-            # If change made in sequence, log the change, kick the sequence if necessary and output
+            # If change made in sequence, log the change, kick the sequence if necessary and output)
             if change_made:
                 bp_after_cull = len(out_line) - out_line.count("-")
                 if bp_after_cull < minimum_bp:
@@ -951,6 +957,12 @@ def trim_large_gaps(
                     kicks.append(header)
                     aa_out[record_index] = None
                 else:
+                    log.append(
+                        header.split("|")[0]
+                        + ","
+                        + header
+                        + f",Trimmed {change_made} side,,,\n"
+                    )
                     aa_out[record_index] = (header, "".join(out_line))
 
                 # Save cull data to pass onto NT sequences
@@ -1328,20 +1340,20 @@ def do_gene(fargs: FlexcullArgs) -> None:
         reference_gap_col = {i for i, x in post_gap_present_threshold.items() if not x}
 
         # Trim large gaps
-        # aa_out, gap_pass_through, trim_log, kicks = trim_large_gaps(
-        #     aa_out,
-        #     reference_gap_col,
-        #     fargs.amt_matches,
-        #     fargs.mismatches,
-        #     post_all_dashes_by_index,
-        #     post_character_at_each_pos,
-        #     post_gap_present_threshold,
-        #     fargs.bp,
-        #     fargs.debug,
-        # )
+        aa_out, gap_pass_through, trim_log, kicks = trim_large_gaps(
+            aa_out,
+            reference_gap_col,
+            fargs.amt_matches,
+            fargs.mismatches,
+            post_all_dashes_by_index,
+            post_character_at_each_pos,
+            post_gap_present_threshold,
+            fargs.bp,
+            fargs.debug,
+        )
 
-        # if fargs.debug:
-        #     log.extend(trim_log)
+        if fargs.debug:
+            log.extend(trim_log)
 
         for kick in kicks:
             follow_through[kick] = True, 0, 0, []
@@ -1383,21 +1395,21 @@ def do_gene(fargs: FlexcullArgs) -> None:
             nt_out = align_col_removal(nt_out, aa_positions_to_keep)
             out_nt = []
             for header, sequence in nt_out:
-                # gap_cull = gap_pass_through.get(header, None)
+                gap_cull = gap_pass_through.get(header, None)
 
-                # if gap_cull:
-                #     out_nt.append(
-                #         (
-                #             header,
-                #             "".join(
-                #                 [
-                #                     sequence[i : i + 3] if i not in gap_cull else "---"
-                #                     for i in range(0, len(sequence), 3)
-                #                 ],
-                #             ),
-                #         ),
-                #     )
-                # else:
+                if gap_cull:
+                    out_nt.append(
+                        (
+                            header,
+                            "".join(
+                                [
+                                    sequence[i : i + 3] if i not in gap_cull else "---"
+                                    for i in range(0, len(sequence), 3)
+                                ],
+                            ),
+                        ),
+                    )
+                else:
                     out_nt.append((header, sequence))
 
             # Align order
