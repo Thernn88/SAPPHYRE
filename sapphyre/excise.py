@@ -1,4 +1,5 @@
 from collections import defaultdict
+from functools import cached_property
 from itertools import combinations, product
 from multiprocessing import Pool
 from os import listdir, makedirs, path
@@ -445,10 +446,10 @@ def calculate_split(node_a: str, node_b: str, overlapping_coords: tuple, ref_con
     return highest_scoring_pos
 
 
-def do_trim(aa_nodes, get_parent_id, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus):
+def do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus):
     for cluster_set in cluster_sets:
         
-        sub_aa_nodes = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_parent_id(node.header) in cluster_set)]
+        sub_aa_nodes = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
 
         aa_sequences = [node.sequence for node in sub_aa_nodes]
         if aa_sequences:
@@ -547,26 +548,12 @@ def do_trim(aa_nodes, get_parent_id, cluster_sets, x_positions, ref_consensus, k
                     for x in range(i, node.end):
                         x_positions[node.header].add(x)
 
-
-def finalize_cluster(current_cluster, ids, ref_coords, clusters, kicks, req_seq_coverage):
-    if len(current_cluster) >= 2:
-        cluster_data_cols = set()
-        for _, _, index in current_cluster:
-            cluster_data_cols.update(ids[index][1])
-            
-        cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
-        clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage))
-    elif len(current_cluster) == 1:
-        if current_cluster[0][1] > req_seq_coverage:
-            cluster_coverage = current_cluster[0][1]
-            clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage))
-        else:
-            kicks.add(current_cluster[0][0])
+### Clustering code
 
 def determine_direction(start, end, current_start, current_end, current_direction):
     this_direction = None
     if start == current_start and end == current_end:
-        this_direction = "bi"
+        this_direction =  current_direction
     else:
         if start == current_start:
             if end >= current_end:
@@ -584,61 +571,148 @@ def determine_direction(start, end, current_start, current_end, current_directio
     return None
 
 
-def do_cluster(ids, ref_coords, max_gap_size, id_chomp_distance=100):
+def node_to_ids(node):
+    if "NODE_" in node:
+        node = node.replace("NODE_","")
+    return list(map(lambda x: int(x.split("_")[0]), node.split("&&")))
+
+class cluster_rec:
+    def __init__(self, node, start, end, seq_data_coords) -> None:
+        self.node = node
+        self.start = start
+        self.end = end
+        self.seq_data_coords = seq_data_coords
+    
+    @cached_property
+    def get_ids(self): 
+        return node_to_ids(self.node)
+    
+    def get_first_id(self):
+        return min(self.get_ids)
+    
+   
+def get_min_distance(a: set, b: set) -> int:
+    """Get the minimum distance between two sets."""
+    min_distance = float("inf")
+    for a_obj in a:
+        for b_obj in b:
+            distance = abs(a_obj - b_obj)
+            if distance < min_distance:
+                min_distance = distance
+    return min_distance
+    
+    
+def within_distance(a: set, b: set, distance: int) -> bool:
+    """Check if any object from set a is within distance of set b."""
+    for a_obj in a:
+        for b_obj in b:
+            if abs(a_obj - b_obj) <= distance:
+                return True
+    return False
+
+
+def finalize_cluster(current_cluster, current_indices, ref_coords, clusters, kicks, req_seq_coverage):
+    if len(current_cluster) >= 2:
+        cluster_data_cols = set()
+        for rec in current_cluster:
+            cluster_data_cols.update(rec.seq_data_coords)
+            
+        cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
+        clusters.append((min(current_indices), max(current_indices), cluster_coverage))
+    elif len(current_cluster) == 1:
+        cluster_rec = current_cluster[0]
+        cluster_coverage = len(cluster_rec.seq_data_coords.intersection(ref_coords)) / len(ref_coords)
+        
+        if cluster_coverage > req_seq_coverage:
+            clusters.append((min(current_indices), max(current_indices), cluster_coverage))
+        else:
+            kicks.add(cluster_rec.node)
+
+
+def cluster_ids(ids, max_id_distance, max_gap, ref_coords):
     clusters = []
     kicks = set()
-    ids.sort(key=lambda x: x[0])
-    grouped_ids = defaultdict(list)
-    for i, (child_index, seq_coords, start, end) in enumerate(ids):
-        id = int(child_index.split("&&")[0].split("_")[0])
-        grouped_ids[id].append((i, child_index, seq_coords, start, end))
-        
-    ids_ascending = sorted(grouped_ids.keys())
+    ids.sort(key=lambda x: x.get_first_id())
     req_seq_coverage = 0.5
-    current_cluster = []
-
-    for id in ids_ascending:
-        seq_list = grouped_ids[id]
-        if not current_cluster:
-            current_cluster = [(id, len(seq_coords.intersection(ref_coords)) / len(ref_coords), i) for i, _, seq_coords, _, _ in seq_list]
-            current_index = id
-            current_seqs = seq_list
+    current_cluster = None
+    debug = False
+    
+    for x, rec in enumerate(ids):
+        if current_cluster is None:
+            current_cluster = [rec]
+            current_indices = set(rec.get_ids)
             current_direction = "bi"
         else:
             passed = False
-            passed_direction = None
+            cluster_distance = get_min_distance(current_indices, rec.get_ids)
+            passed_id_distance = None
+            passed_distance = None
+            if cluster_distance <= max_id_distance:
+                current_rec = current_cluster[-1]
+                cluster_overlap = get_overlap(rec.start, rec.end, current_rec.start, current_rec.end, -max_gap)
+                
+                if not cluster_overlap:
+                    continue
+                
+                cluster_pos_distance = min(
+                    abs(rec.start - current_rec.start), 
+                    abs(rec.start - current_rec.end), 
+                    abs(rec.end - current_rec.start), 
+                    abs(rec.end - current_rec.end)
+                )
+                
+                if cluster_distance == 0:
+                    passed_id_distance = cluster_distance
+                    passed_distance = cluster_pos_distance
+                    passed_direction = current_direction
+                    passed = True
 
-            if id - current_index <= id_chomp_distance:
-                for i, child_index, seq_coords, start, end in seq_list:
-                    for _, _, _, current_start, current_end in current_seqs:
-                        overlap = get_overlap(start, end, current_start, current_end, -max_gap_size)
-                        if not overlap:
-                            continue
-                        
-                        passed_direction = determine_direction(start, end, current_start, current_end, current_direction)
-                        if passed_direction:
-                            passed = True
-                            break
-                    if passed:
-                        break
-            
+                this_direction = determine_direction(rec.start, rec.end, current_rec.start, current_rec.end, current_direction)
+                if this_direction:
+                    passed_id_distance = cluster_distance
+                    passed_distance = cluster_pos_distance
+                    passed_direction = this_direction
+                    passed = True
+                    
+                
             if passed:
-                current_cluster.extend([(id, len(seq_coords.intersection(ref_coords)) / len(ref_coords), i) for i, _, seq_coords, _, _ in seq_list])
-                current_index = id
-                current_seqs = seq_list
+                # not last id
+                if x != len(ids) - 1:
+                    next_rec = ids[x + 1]
+                    if within_distance(rec.get_ids, next_rec.get_ids, max_id_distance):
+                        next_overlap = get_overlap(rec.start, rec.end, next_rec.start, next_rec.end, -max_gap)
+                        if next_overlap:
+                            next_distance = get_min_distance(rec.get_ids, next_rec.get_ids)
+                                
+                            next_amount = min(
+                                abs(rec.start - next_rec.start), 
+                                abs(rec.start - next_rec.end), 
+                                abs(rec.end - next_rec.start), 
+                                abs(rec.end - next_rec.end)
+                            )
+                            
+                            next_direction = determine_direction(next_rec.start, next_rec.end, rec.start, rec.end, current_direction)
+
+
+                            if next_direction and passed_direction and next_direction != passed_direction and next_distance < passed_id_distance and next_amount < passed_distance:
+                                passed = False
+                    
+            if passed:
+                current_cluster.append(rec)
+                current_indices.update(rec.get_ids)
                 if passed_direction != "bi":
                     current_direction = passed_direction
             else:
-                finalize_cluster(current_cluster, ids, ref_coords, clusters, kicks, req_seq_coverage)
-                current_cluster = [(id, len(seq_coords.intersection(ref_coords)) / len(ref_coords), i) for i, _, seq_coords, _, _ in seq_list]
-                current_index = id
-                current_seqs = seq_list
-                current_direction = "bi"
+                finalize_cluster(current_cluster, current_indices, ref_coords, clusters, kicks, req_seq_coverage)
+                current_cluster = [rec]
+                current_indices = set(rec.get_ids)
     
     if current_cluster:
-        finalize_cluster(current_cluster, ids, ref_coords, clusters, kicks, req_seq_coverage)
+        finalize_cluster(current_cluster, current_indices, ref_coords, clusters, kicks, req_seq_coverage)
                 
     return clusters, kicks
+
+###
 
 
 def insert_gaps(input_string, positions, offset):
@@ -1004,15 +1078,14 @@ def log_excised_consensus(
         ids = []
         for node in aa_nodes:
             if node.header not in kicked_headers:
-                this_id = get_id(node.header)
                 start, end = find_index_pair(node.sequence, "-")
                 data_cols = {i for i, let in enumerate(node.sequence[start:end], start) if let != "-"}
-                ids.append((this_id, data_cols, start, end))
+                ids.append(cluster_rec(node.header.split("|")[3], start, end, data_cols))
     
-        max_gap_size = round(len(aa_nodes[0].sequence) * 0.5)
+        max_gap_size = round(len(aa_nodes[0].sequence) * 0.5) # Half MSA length
     
-        clusters, kicks = do_cluster(ids, reference_cluster_data, max_gap_size)
-        
+        clusters, kicks = cluster_ids(ids, 100, max_gap_size, reference_cluster_data) #TODO: Make distance an arg
+        # print(clusters)
         if kicks:
             for node in aa_nodes:
                 this_parent_id = int(get_id(node.header).split("&&")[0].split("_")[0])
@@ -1024,7 +1097,7 @@ def log_excised_consensus(
             cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
 
     if not is_genome:
-        do_trim(aa_nodes, get_parent_id, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
+        do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
 
     aa_sequence = {}
     for node in aa_nodes:
@@ -1054,6 +1127,24 @@ def log_excised_consensus(
     true_cluster_raw.sort(key = lambda x: x[0])
     before_true_clusters = cluster(true_cluster_raw, true_cluster_threshold)
 
+    # with open(gene+"_debug.txt", "w") as fp:
+    #     for cluster_i, cluster_set in enumerate(cluster_sets):
+    #         if 1482133 in cluster_set:
+    #             for node in aa_nodes:
+    #                 if "NODE_1482133&&1482134" in node.header:
+                        
+    #                     print(node.header in kicked_headers)
+    #                     print(cluster_set)
+    #                     print(node_to_ids(node.header.split("|")[3]))
+    #                     print(within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))
+                        
+    #         fp.write(f"Cluster {cluster_i}\n")
+    #         aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
+    #         for node in aa_subset:
+    #             if "NODE_1482133&&1482134" in node.header:
+    #                 print("wot")
+    #             fp.write(f">{node.header}\n{node.sequence}\n")
+        
 
     # Search for slices of the consensus seq with a high ratio of 'X' to total characters
     has_region = True
@@ -1066,7 +1157,7 @@ def log_excised_consensus(
 
         for cluster_i, cluster_set in enumerate(cluster_sets):
 
-            aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_parent_id(node.header) in cluster_set)]
+            aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
 
             sequences = [node.nt_sequence for node in aa_subset]
             if not sequences:
@@ -1209,7 +1300,7 @@ def log_excised_consensus(
             break
         
     if is_genome:
-        do_trim(aa_nodes, get_parent_id, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
+        do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
         for node in aa_nodes:
             if node.header in kicked_headers:
                 continue
@@ -1347,7 +1438,7 @@ def log_excised_consensus(
     ends = {}
     gff_out = defaultdict(dict)
     for cluster_i, cluster_set in enumerate(cluster_sets):
-        aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or get_parent_id(node.header) in cluster_set)]
+        aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
         aa_subset.sort(key = lambda x: x.start)
         for prev_node, node in combinations(aa_subset, 2):
             overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, -10)
@@ -1385,10 +1476,18 @@ def log_excised_consensus(
                     node_og = bio_revcomp(node_og)
                 
                 prev_start_index = prev_og.find(prev_kmer)
+                if prev_start_index == -1:
+                    # print(prev_node.header)
+                    continue
+                
                 prev_og = insert_gaps(prev_og, prev_internal_gaps, prev_start_index)
                 prev_end_index = prev_start_index + len(prev_kmer) + len(prev_internal_gaps) #(inclusive of last codon)
                 
                 node_start_index = node_og.find(kmer)
+                if node_start_index == -1:
+                    # print(node.header)
+                    continue
+                
                 node_og = insert_gaps(node_og, kmer_internal_gaps, node_start_index)
 
                 prev_nt_seq = list(prev_node.nt_sequence)
