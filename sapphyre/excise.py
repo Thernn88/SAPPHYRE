@@ -1352,9 +1352,9 @@ def log_excised_consensus(
         for prev_node, node in combinations(aa_subset, 2):
             overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, -10)
             if overlapping_coords:
-                amount = overlapping_coords[1] - overlapping_coords[0]
-                if amount > 1:
-                    continue
+                # amount = overlapping_coords[1] - overlapping_coords[0]
+                # if amount > 1:
+                #     continue
                 
                 prev_kmer = prev_node.nt_sequence[prev_node.start * 3 : prev_node.end * 3]
                 prev_internal_gaps = [i for i, let in enumerate(prev_kmer) if let == "-"]
