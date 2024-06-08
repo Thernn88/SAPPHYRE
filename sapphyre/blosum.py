@@ -715,7 +715,7 @@ def main_process(
                     
                     matches = 0
                     for x, let in enumerate(candidate.raw[candidate.start:candidate.end], candidate.start):
-                        if let in candidate_flex_consensus[x]:
+                        if not candidate_flex_consensus[x] or let in candidate_flex_consensus[x]:
                             matches += 1
                             
                     if matches / (candidate.end - candidate.start) < rescue_consensus_percent:
