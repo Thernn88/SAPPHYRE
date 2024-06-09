@@ -982,10 +982,24 @@ def splice_combo(this_result, prev_node, node, prev_og, node_og, DNA_CODONS, sca
     ) 
 
     gff_coord_node = (
-        ag_index_rev + 3,
-        node_start_index + len(kmer)
+        ag_index_rev + 2,
+        node_start_index + len(kmer) - 1
     )
     
+    if prev_node.frame < 0:
+        og_length = len(prev_og) - len(prev_internal_gaps) + 1
+        gff_coord_prev = (
+            og_length - gff_coord_prev[1],
+            og_length - gff_coord_prev[0]
+        )
+        
+    if node.frame < 0:
+        og_length = len(node_og) - len(kmer_internal_gaps) + 1
+        gff_coord_node = (
+            og_length - gff_coord_node[1],
+            og_length - gff_coord_node[0]
+        )
+        
     return gff_coord_prev, gff_coord_node
 
 def log_excised_consensus(
@@ -1507,12 +1521,8 @@ def log_excised_consensus(
                         if tup:
                             parent, chomp_start, chomp_end, input_len, chomp_len = tup
                             
-                            if prev_node.frame < 0:
-                                prev_start = (chomp_len - prev_gff[1]) + chomp_start + 2
-                                prev_end = (chomp_len - prev_gff[0]) + chomp_start + 2
-                            else:
-                                prev_start = prev_gff[0] + chomp_start
-                                prev_end = prev_gff[1] + chomp_start
+                            prev_start = prev_gff[0] + chomp_start
+                            prev_end = prev_gff[1] + chomp_start
                             
                             if parent not in ends:
                                 ends[parent] = input_len
@@ -1525,12 +1535,8 @@ def log_excised_consensus(
                         if tup:
                             parent, chomp_start, chomp_end, input_len, chomp_len = tup
                             
-                            if node.frame < 0:
-                                node_start = (chomp_len - node_gff[1]) + chomp_start
-                                node_end = (chomp_len - node_gff[0]) + chomp_start
-                            else:
-                                node_start = node_gff[0] + chomp_start
-                                node_end = node_gff[1] + chomp_start
+                            node_start = node_gff[0] + chomp_start
+                            node_end = node_gff[1] + chomp_start
                             
                             if parent not in ends:
                                 ends[parent] = input_len
