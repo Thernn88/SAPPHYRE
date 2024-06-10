@@ -1564,6 +1564,26 @@ def log_excised_consensus(
                     scan_log.append("")
                     scan_log.append("No result found.")
                     scan_log.append("")
+                    
+                    prev_id = get_id(prev_node.header)
+                    tup = original_coords.get(prev_id.split("&&")[0].split("_")[0], None)
+                    parent, _, _, input_len, _ = tup
+                    if parent not in ends:
+                        ends[parent] = input_len
+                        
+                    if prev_id not in gff_out[parent]:
+                        gff_out[parent][prev_id] = None
+                        
+                    node_id = get_id(node.header)
+                    tup = original_coords.get(node_id.split("&&")[0].split("_")[0], None)
+                    parent, _, _, input_len, _ = tup
+                    
+                    if parent not in ends:
+                        ends[parent] = input_len
+                    
+                    if node_id not in gff_out[parent]:
+                        gff_out[parent][node_id] = None
+                        
     aa_raw_output = [(header, del_cols(seq, x_positions[header])) for header, seq in raw_aa if header not in kicked_headers]
     aa_output = []
     for header, seq in aa_raw_output:
@@ -1779,6 +1799,7 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
     log_path = Path(output_folder, "excise_regions.txt")
     scan_log_path = Path(output_folder, "gt_ag_scan.txt")
     gene_log_path = Path(output_folder, "excise_genes.txt")
+    coords_path = Path(folder, "coords")
     arguments = get_args(args, genes, head_to_seq, is_assembly_or_genome, is_genome, input_folder, output_folder, compress, prepare_dupes, reporter_dupes, original_coords)
     if args.processes > 1:
         with Pool(args.processes) as pool:
@@ -1802,12 +1823,14 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
     rescues = []
     gt_ag_scan_log = []
 
-    parent_gff_output = defaultdict(list)
+    parent_gff_output = defaultdict(dict)
     end_bp = {}
 
     for glog, ghas_ambig, ghas_no_resolution, gcoverage_kick, g_has_resolution, gkicked_seq, grescues, slog, input_lengths, gff_result in results:
         for parent, node_values in gff_result.items():
-            parent_gff_output[parent].extend(node_values.values())
+            for id, value in node_values.items():
+                parent_gff_output[parent][id] = value
+                
         end_bp.update(input_lengths)
         
         log_output.extend(glog)
@@ -1827,15 +1850,40 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
                 no_ambig.append(g_has_resolution)
 
     if is_genome:
+        
+        reporter_coords_path = coords_path.joinpath("coords.gff")
+        if reporter_coords_path.exists():
+            with open(reporter_coords_path, "r") as fp:
+                for line in fp:
+                    if line.startswith("#"):
+                        continue
+                    line = line.strip().split("\t")
+                    #AGOUTI_SCAF_51|6429119BP|CTG001940_1,CTG001110_1,CTG004120_1	Sapphyre	exon	4815540	4815717	.	-	.	ID=136854;Parent=1.aa.fa;Note=-2;
+                    parent = line[0]
+                    id = line[-1].split(";")[0].split("=")[1]
+                    start = int(line[3])
+                    if not parent in parent_gff_output:
+                        continue
+                    
+                    if not id in parent_gff_output[parent]:
+                        continue
+                    
+                    if parent_gff_output[parent][id] is None:
+                        parent_gff_output[parent][id] = (start, "\t".join(line))
+        else:
+            printv("No reporter coords found. Unable to fill in the blank.", args.verbose, 0)
+        
         gff_output= []
         for parent, rows in parent_gff_output.items():
+                
+            rows = [i for i in rows.values() if i]
             end = end_bp[parent]
             gff_output.append(f"##sequence-region\t{parent}\t{1}\t{end}")
             rows.sort(key = lambda x: (x[0]))
             gff_output.extend(i[1] for i in rows)
         
         if gff_output:
-            with open(path.join(output_folder, "coords.gff"), "w") as fp:
+            with open(path.join(coords_path, "splice.gff"), "w") as fp:
                 fp.write("\n".join(gff_output))
 
 
