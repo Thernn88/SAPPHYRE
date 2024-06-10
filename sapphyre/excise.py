@@ -979,8 +979,8 @@ def splice_combo(this_result, prev_node, node, prev_og, node_og, DNA_CODONS, sca
     ) 
 
     gff_coord_node = (
-        ag_index_rev + 2,
-        node_start_index + len(kmer) - 1
+        ag_index_rev + 3,
+        node_start_index + len(kmer)
     )
     
     if prev_node.frame < 0:
