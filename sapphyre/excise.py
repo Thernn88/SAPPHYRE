@@ -1310,15 +1310,15 @@ def log_excised_consensus(
         if recursion_max <= 0:
             break
         
-    if is_genome:
-        do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
-        for node in aa_nodes:
-            if node.header in kicked_headers:
-                continue
+    # if is_genome:
+    #     do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
+    #     for node in aa_nodes:
+    #         if node.header in kicked_headers:
+    #             continue
             
-            node.sequence = del_cols(node.sequence, x_positions[node.header])
-            node.nt_sequence = del_cols(node.nt_sequence, x_positions[node.header], True)
-            node.start, node.end = find_index_pair(node.sequence, "-")
+    #         node.sequence = del_cols(node.sequence, x_positions[node.header])
+    #         node.nt_sequence = del_cols(node.nt_sequence, x_positions[node.header], True)
+    #         node.start, node.end = find_index_pair(node.sequence, "-")
                           
     if had_region:
         after_data = []
