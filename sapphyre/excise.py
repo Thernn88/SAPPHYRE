@@ -1514,7 +1514,7 @@ def log_excised_consensus(
                     if gff:
                         prev_gff, node_gff = gff
                         prev_id = get_id(prev_node.header)
-                        tup = original_coords.get(prev_id.split("&&")[0], None)
+                        tup = original_coords.get(prev_id.split("&&")[0].split("_")[0], None)
                         if tup:
                             parent, chomp_start, chomp_end, input_len, chomp_len = tup
                             
@@ -1528,7 +1528,7 @@ def log_excised_consensus(
                             gff_out[parent][prev_id] = ((prev_start), f"{parent}\tSapphyre\texon\t{prev_start}\t{prev_end}\t.\t{strand}\t.\tID={prev_id};Parent={gene};Note={prev_node.frame};")
                             
                         node_id = get_id(node.header)
-                        tup = original_coords.get(node_id.split("&&")[0], None)
+                        tup = original_coords.get(node_id.split("&&")[0].split("_")[0], None)
                         if tup:
                             parent, chomp_start, chomp_end, input_len, chomp_len = tup
                             
