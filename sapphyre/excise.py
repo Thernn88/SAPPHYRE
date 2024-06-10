@@ -550,12 +550,12 @@ def do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, 
 
 ### Clustering code
 
-def determine_direction(start, end, current_start, current_end, current_direction):
+def determine_direction(start, end, current_start, current_end, current_direction, debug = False):
     this_direction = None
     if start == current_start and end == current_end:
         this_direction =  current_direction
     else:
-        if start == current_start:
+        if start == current_start or current_direction == "reverse":
             if end >= current_end:
                 this_direction = "forward"
             else:
@@ -565,7 +565,6 @@ def determine_direction(start, end, current_start, current_end, current_directio
                 this_direction = "forward"
             else:
                 this_direction = "reverse"
-    
     if current_direction == "bi" or this_direction == "bi" or this_direction == current_direction:
         return this_direction
     return None
@@ -642,7 +641,7 @@ def cluster_ids(ids, max_id_distance, max_gap, ref_coords):
             current_cluster = [rec]
             current_indices = set(rec.get_ids)
             current_direction = "bi"
-        else:
+        else:   
             passed = False
             cluster_distance = get_min_distance(current_indices, rec.get_ids)
             passed_id_distance = None
@@ -651,29 +650,26 @@ def cluster_ids(ids, max_id_distance, max_gap, ref_coords):
                 current_rec = current_cluster[-1]
                 cluster_overlap = get_overlap(rec.start, rec.end, current_rec.start, current_rec.end, -max_gap)
                 
-                if not cluster_overlap:
-                    continue
-                
-                cluster_pos_distance = min(
-                    abs(rec.start - current_rec.start), 
-                    abs(rec.start - current_rec.end), 
-                    abs(rec.end - current_rec.start), 
-                    abs(rec.end - current_rec.end)
-                )
-                
-                if cluster_distance == 0:
-                    passed_id_distance = cluster_distance
-                    passed_distance = cluster_pos_distance
-                    passed_direction = current_direction
-                    passed = True
-
-                this_direction = determine_direction(rec.start, rec.end, current_rec.start, current_rec.end, current_direction)
-                if this_direction:
-                    passed_id_distance = cluster_distance
-                    passed_distance = cluster_pos_distance
-                    passed_direction = this_direction
-                    passed = True
+                if cluster_overlap:
+                    cluster_pos_distance = min(
+                        abs(rec.start - current_rec.start), 
+                        abs(rec.start - current_rec.end), 
+                        abs(rec.end - current_rec.start), 
+                        abs(rec.end - current_rec.end)
+                    )
                     
+                    if cluster_distance == 0:
+                        passed_id_distance = cluster_distance
+                        passed_distance = cluster_pos_distance
+                        passed_direction = current_direction
+                        passed = True
+
+                    this_direction = determine_direction(rec.start, rec.end, current_rec.start, current_rec.end, current_direction)
+                    if this_direction:
+                        passed_id_distance = cluster_distance
+                        passed_distance = cluster_pos_distance
+                        passed_direction = this_direction
+                        passed = True
                 
             if passed:
                 # not last id
@@ -706,6 +702,7 @@ def cluster_ids(ids, max_id_distance, max_gap, ref_coords):
                 finalize_cluster(current_cluster, current_indices, ref_coords, clusters, kicks, req_seq_coverage)
                 current_cluster = [rec]
                 current_indices = set(rec.get_ids)
+                current_direction = "bi"
     
     if current_cluster:
         finalize_cluster(current_cluster, current_indices, ref_coords, clusters, kicks, req_seq_coverage)
@@ -1099,7 +1096,6 @@ def log_excised_consensus(
         max_gap_size = round(len(aa_nodes[0].sequence) * 0.5) # Half MSA length
     
         clusters, kicks = cluster_ids(ids, 100, max_gap_size, reference_cluster_data) #TODO: Make distance an arg
-        # print(clusters)
         if kicks:
             for node in aa_nodes:
                 this_parent_id = int(get_id(node.header).split("&&")[0].split("_")[0])
@@ -1109,6 +1105,7 @@ def log_excised_consensus(
         
         if clusters:
             cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
+            
 
     if not is_genome:
         do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
