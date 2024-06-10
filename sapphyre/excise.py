@@ -915,6 +915,7 @@ def splice_combo(this_result, prev_node, node, prev_og, node_og, DNA_CODONS, sca
     node_start, node_end = find_index_pair(node_seq, "-")
     prev_start, prev_end = find_index_pair(prev_nt_seq, "-")
     
+    
     if node_start % 3 != 0:
         node_start -= node_start % 3
     
@@ -1540,7 +1541,29 @@ def log_excised_consensus(
                                 
                             strand = "+" if node.frame > 0 else "-"
                             gff_out[parent][node_id] = ((node_start), f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tID={node_id};Parent={gene};Note={node.frame};")
-
+                elif True:
+                    scan_log.append("")
+                    scan_log.append("")    
+                    scan_log.append(f">{prev_node.header}_orf")
+                    # print(prev_start_index, node_end_index)
+                    # input()
+                    node_start, node_end = find_index_pair("".join(node_seq), "-")
+                    prev_start, prev_end = find_index_pair("".join(prev_nt_seq), "-")
+                    prev_start -= 3
+                    node_end += 3
+                    node_region = node.nt_sequence[prev_start: node_end]
+                    node_region_start, _ = find_index_pair(node_region, "-")
+                    
+                    scan_log.append(prev_og[prev_start_index - 3 :][:node_end])  
+                    scan_log.append(f">{node.header}_orf")  
+                    scan_log.append(node_og[node_start_index - node_region_start :][:node_end])  
+                    scan_log.append(f">{prev_node.header}_excise_output")
+                    scan_log.append(prev_node.nt_sequence[prev_start: node_end])
+                    scan_log.append(f">{node.header}_excise_output")
+                    scan_log.append(node_region)
+                    scan_log.append("")
+                    scan_log.append("No result found.")
+                    scan_log.append("")
     aa_raw_output = [(header, del_cols(seq, x_positions[header])) for header, seq in raw_aa if header not in kicked_headers]
     aa_output = []
     for header, seq in aa_raw_output:
