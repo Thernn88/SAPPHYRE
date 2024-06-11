@@ -1565,28 +1565,20 @@ def log_excised_consensus(
                     scan_log.append("No result found.")
                     scan_log.append("")
                     
-                    prev_id = get_id(prev_node.header)
-                    tup = original_coords.get(prev_id.split("&&")[0].split("_")[0], None)
-                    parent, _, _, input_len, _ = tup
-                    if parent not in ends:
-                        ends[parent] = input_len
-                        
-                    if prev_id not in gff_out[parent]:
-                        gff_out[parent][prev_id] = None
-                        
-                    node_id = get_id(node.header)
-                    tup = original_coords.get(node_id.split("&&")[0].split("_")[0], None)
-                    parent, _, _, input_len, _ = tup
                     
-                    if parent not in ends:
-                        ends[parent] = input_len
-                    
-                    if node_id not in gff_out[parent]:
-                        gff_out[parent][node_id] = None
-                        
     aa_raw_output = [(header, del_cols(seq, x_positions[header])) for header, seq in raw_aa if header not in kicked_headers]
     aa_output = []
     for header, seq in aa_raw_output:
+        this_id = get_id(header)
+        tup = original_coords.get(this_id.split("&&")[0].split("_")[0], None)
+        if tup:
+            parent, _, _, input_len, _ = tup
+            if parent not in ends:
+                ends[parent] = input_len
+                
+            if this_id not in gff_out[parent]:
+                gff_out[parent][this_id] = None
+        
         if header in replacements_aa or header in extensions_aa:
             seq = list(seq)
             if header in extensions_aa:
