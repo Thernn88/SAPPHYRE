@@ -820,8 +820,13 @@ def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, pr
     gt_positions = []
     ag_positions = []
     
-    for x, i in enumerate(range(prev_end_index - 3, len(prev_og))):
-        prev_act_coord = (prev_node.end * 3) - 3 + x
+    overlapping_region = get_overlap(prev_node.start * 3, prev_node.end * 3, node.start * 3, node.end * 3, 1)
+    overlap_amount = 0
+    if overlapping_region:
+        overlap_amount = overlapping_region[1] - overlapping_region[0]
+    
+    for x, i in enumerate(range(prev_end_index - overlap_amount - 3, len(prev_og))):
+        prev_act_coord = (prev_node.end * 3) - overlap_amount - 3 + x
         # Get last codon
         if x != 0 and x % 3 == 0:
             last_codon = prev_og[i - 3: i]
@@ -840,8 +845,8 @@ def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, pr
             prev_extensions[prev_act_coord] = prev_og[i]
         
     # Iterate in reverse from the start of the kmer to the start of the original sequence
-    for x, i in enumerate(range(node_start_index + 2, -1, -1)):
-        node_act_coord = (node.start * 3) + 2 - x
+    for x, i in enumerate(range(node_start_index + overlap_amount + 2, -1, -1)):
+        node_act_coord = (node.start * 3) + overlap_amount + 2 - x
         # Get last codon
         if x != 0 and x % 3 == 0:
             last_codon = node_og[i + 1: i + 4]
