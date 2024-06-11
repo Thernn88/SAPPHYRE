@@ -800,11 +800,10 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
                 
             orphan_codon = None
                 
-        node_extension_indices = set(this_node_extensions.keys())
-        prev_extension_indices = set(this_prev_extensions.keys())
-        extension_indices = node_extension_indices.union(prev_extension_indices)
-        
-        this_score += len(extension_indices) * INSERTION_PENALTY
+        distance = node_nt_start - prev_nt_end
+        if not (0 <= distance <= 2):
+            this_score -= 1 * abs(distance)
+            
         this_results.append((this_score, act_gt_index, gt_index, act_ag_index_rev, ag_index_rev, prev_deletions, node_deletions, this_prev_extensions, this_node_extensions, left_last_codon, right_end_codon, orphan_codon))
 
     return this_results
