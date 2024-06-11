@@ -565,6 +565,7 @@ def determine_direction(start, end, current_start, current_end, current_directio
                 this_direction = "forward"
             else:
                 this_direction = "reverse"
+
     if current_direction == "bi" or this_direction == "bi" or this_direction == current_direction:
         return this_direction
     return None
@@ -637,6 +638,7 @@ def cluster_ids(ids, max_id_distance, max_gap, ref_coords):
     debug = False
     
     for x, rec in enumerate(ids):
+        
         if current_cluster is None:
             current_cluster = [rec]
             current_indices = set(rec.get_ids)
@@ -657,12 +659,6 @@ def cluster_ids(ids, max_id_distance, max_gap, ref_coords):
                         abs(rec.end - current_rec.start), 
                         abs(rec.end - current_rec.end)
                     )
-                    
-                    if cluster_distance == 0:
-                        passed_id_distance = cluster_distance
-                        passed_distance = cluster_pos_distance
-                        passed_direction = current_direction
-                        passed = True
 
                     this_direction = determine_direction(rec.start, rec.end, current_rec.start, current_rec.end, current_direction)
                     if this_direction:
@@ -699,10 +695,19 @@ def cluster_ids(ids, max_id_distance, max_gap, ref_coords):
                 if passed_direction != "bi":
                     current_direction = passed_direction
             else:
-                finalize_cluster(current_cluster, current_indices, ref_coords, clusters, kicks, req_seq_coverage)
-                current_cluster = [rec]
-                current_indices = set(rec.get_ids)
-                current_direction = "bi"
+                if cluster_distance == 0:
+                    current_cluster.remove(current_rec)
+                    current_indices.difference_update(current_rec.get_ids)
+                    finalize_cluster(current_cluster, current_indices, ref_coords, clusters, kicks, req_seq_coverage)
+                    
+                    current_cluster = [current_rec, rec]
+                    current_indices = set(rec.get_ids) & set(current_rec.get_ids)
+                    current_direction = determine_direction(rec.start, rec.end, current_rec.start, current_rec.end, "bi")
+                else:
+                    finalize_cluster(current_cluster, current_indices, ref_coords, clusters, kicks, req_seq_coverage)
+                    current_cluster = [rec]
+                    current_indices = set(rec.get_ids)
+                    current_direction = "bi"
     
     if current_cluster:
         finalize_cluster(current_cluster, current_indices, ref_coords, clusters, kicks, req_seq_coverage)
