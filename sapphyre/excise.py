@@ -612,6 +612,7 @@ def within_distance(a: set, b: set, distance: int) -> bool:
 
 
 def finalize_cluster(current_cluster, current_indices, ref_coords, clusters, kicks, req_seq_coverage):
+
     if len(current_cluster) >= 2:
         cluster_data_cols = set()
         for rec in current_cluster:
@@ -696,12 +697,24 @@ def cluster_ids(ids, max_id_distance, max_gap, ref_coords):
                     current_direction = passed_direction
             else:
                 if cluster_distance == 0:
-                    current_cluster.remove(current_rec)
-                    current_indices.difference_update(current_rec.get_ids)
-                    finalize_cluster(current_cluster, current_indices, ref_coords, clusters, kicks, req_seq_coverage)
+                    new_cluster = [rec]
+                    new_indices = set(rec.get_ids)
+                    kick_occured = True
+                    while kick_occured:
+                        kick_occured = False
+                        for rec_in in current_cluster:
+                            if get_min_distance(new_indices, rec_in.get_ids) == 0:
+                                current_cluster.remove(rec_in)
+                                current_indices.difference_update(rec_in.get_ids)
+                                new_cluster.append(rec_in)
+                                new_indices.update(rec_in.get_ids)
+                                kick_occured = True
+                            
+                    if current_cluster:
+                        finalize_cluster(current_cluster, current_indices, ref_coords, clusters, kicks, req_seq_coverage)
                     
-                    current_cluster = [current_rec, rec]
-                    current_indices = set(rec.get_ids) & set(current_rec.get_ids)
+                    current_cluster = new_cluster
+                    current_indices = new_indices
                     current_direction = determine_direction(rec.start, rec.end, current_rec.start, current_rec.end, "bi")
                 else:
                     finalize_cluster(current_cluster, current_indices, ref_coords, clusters, kicks, req_seq_coverage)
@@ -772,6 +785,8 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
         
         this_score = 0
         
+        
+        
         if right_end_codon == left_last_codon:
             right_codon = node_seq[right_end_codon: right_end_codon + 3]
             left_codon = prev_nt_seq[left_last_codon: left_last_codon + 3]
@@ -836,12 +851,17 @@ def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, pr
     for x, i in enumerate(range(prev_end_index - overlap_amount - EXTEND_WINDOW, len(prev_og))):
         prev_act_coord = (prev_node.end * 3) - overlap_amount - EXTEND_WINDOW + x
         # Get last codon
-        if x != 0 and x % 3 == 0:
+        
+        if prev_act_coord <= 0:
+            continue
+        
+        if x > 0 and i >= 3 and i < len(prev_og) - 3 and x % 3 == 0:
             last_codon = prev_og[i - 3: i]
+            
             if DNA_CODONS[last_codon] == "*":
                 break
 
-        if i + 1 >= len(prev_og) or prev_act_coord + 2 >= len(prev_node.nt_sequence):
+        if i + 1 >= len(prev_og) or prev_act_coord >= len(prev_nt_seq) - 1:
             break
 
         if prev_og[i] == "G" and prev_og[i + 1] == "T":
@@ -857,20 +877,16 @@ def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, pr
         node_act_coord = (node.start * 3) + overlap_amount + EXTEND_WINDOW - 1 - x
         # Get last codon
         
-        if i >= len(node_og) - 1:
+        if node_act_coord >= len(node_seq) - 1 or i >= len(node_og) - 1:
             continue
         
         if node_act_coord < 0 or i < 0:
             break
         
-        if x > 0 and x % 3 == 0:
+        if x > 0 and i < len(node_og) - 3 and x % 3 == 0:
             last_codon = node_og[i + 1: i + 4]
-        
             if DNA_CODONS[last_codon] == "*":
                 break
-
-        if node_act_coord < 0 or i < 0:
-            break
         
         # Check if the next nucleotide (i + 1) is "A" and the current is "G"
         if node_og[i] == "A" and node_og[i + 1] == "G":
@@ -907,7 +923,7 @@ def splice_combo(this_result, prev_node, node, prev_og, node_og, DNA_CODONS, sca
     for x in prev_deletions:
         if x in final_prev_extensions:
             continue
-        replacements_aa[prev_node.header][x//3] = "-"
+        replacements_aa[prev_node.header][x//3] = "-"#
         replacements[prev_node.header][x] = "-"
         prev_nt_seq[x] = "-"
     for x in node_deletions:
@@ -961,8 +977,10 @@ def splice_combo(this_result, prev_node, node, prev_og, node_og, DNA_CODONS, sca
     extensions[prev_node.header].update(final_prev_extensions)
     
     # Extend one codon to the left and right for debug to show end of sequence
-    prev_start -= 3
-    node_end += 3
+    if prev_start >= 3:
+        prev_start -= 3
+    if node_end + 3 <= len(node_seq):
+        node_end += 3
     
     scan_log.append("")
     scan_log.append("")    
@@ -1023,9 +1041,19 @@ def splice_combo(this_result, prev_node, node, prev_og, node_og, DNA_CODONS, sca
             og_length - gff_coord_node[0]
         )
         
+    prev_node.nt_sequence = prev_nt_seq
+    node.nt_sequence = node_seq
+    
+    start, end = find_index_pair(prev_nt_seq, "-")
+    prev_node.start, prev_node.end = start//3, end//3
+    
+    start, end = find_index_pair(node_seq, "-")
+    node.start, node.end = start//3, end//3
+        
     return gff_coord_prev, gff_coord_node
 
 def log_excised_consensus(
+    verbose: int,
     gene: str,
     is_assembly_or_genome: bool,
     is_genome: bool,
@@ -1069,6 +1097,7 @@ def log_excised_consensus(
     The second field in the log file is the cut-index in regular slice notation. It starts at the index of the
     first removed character, inclusive. The end is the length of the string, which is exclusive.
     """
+    printv(f"Processing {gene}", verbose, 2)
     log_output = []
     scan_log = []
     this_rescues = []
@@ -1483,6 +1512,7 @@ def log_excised_consensus(
     for cluster_i, cluster_set in enumerate(cluster_sets):
         aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
         aa_subset.sort(key = lambda x: x.start)
+        og_starts = {}
         for prev_node, node in combinations(aa_subset, 2):
             overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, -10)
             if overlapping_coords:
@@ -1518,18 +1548,28 @@ def log_excised_consensus(
                 if node.frame < 0:
                     node_og = bio_revcomp(node_og)
                 
-                prev_start_index = prev_og.find(prev_kmer)
-                if prev_start_index == -1:
-                    # print(prev_node.header)
-                    continue
-                
+                if prev_node.header in og_starts:
+                    prev_start_index, prev_start = og_starts[prev_node.header]
+                    difference = (prev_node.start * 3) - prev_start
+                    prev_start_index += difference
+                else:
+                    prev_start_index = prev_og.find(prev_kmer)
+                    if prev_start_index == -1:
+                        continue
+                    og_starts[prev_node.header] = [prev_start_index, prev_node.start * 3]
+
                 prev_og = insert_gaps(prev_og, prev_internal_gaps, prev_start_index)
                 prev_end_index = prev_start_index + len(prev_kmer) + len(prev_internal_gaps) #(inclusive of last codon)
                 
-                node_start_index = node_og.find(kmer)
-                if node_start_index == -1:
-                    # print(node.header)
-                    continue
+                if node.header in og_starts:
+                    node_start_index, node_start = og_starts[node.header]
+                    difference = (node.start * 3) - node_start
+                    node_start_index += difference
+                else:
+                    node_start_index = node_og.find(kmer)
+                    if node_start_index == -1:
+                        continue
+                    og_starts[node.header] = [node_start_index, node.start * 3]
                 
                 node_og = insert_gaps(node_og, kmer_internal_gaps, node_start_index)
 
@@ -1628,7 +1668,7 @@ def log_excised_consensus(
             break
 
     if aa_has_candidate:
-        gene_coverage = get_coverage([seq for header, seq in aa_output if header[-1] != "."], ref_avg_len)
+        gene_coverage = 1#get_coverage([seq for header, seq in aa_output if header[-1] != "."], ref_avg_len)
         req_coverage = 0.4 if is_assembly_or_genome else 0.01
         if gene_coverage < req_coverage:
             log_output.append(f">{gene}_kicked_coverage_{gene_coverage}_of_{req_coverage}\n{consensus_seq}")
@@ -1696,6 +1736,7 @@ def get_args(args, genes, head_to_seq, is_assembly_or_genome, is_genome, input_f
         this_original_coords = {str(i): original_coords[str(i)] for i in set(this_headers)}
         
         yield (
+            args.verbose,
             gene,
             is_assembly_or_genome,
             is_genome,
