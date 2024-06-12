@@ -856,7 +856,14 @@ def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, pr
     for x, i in enumerate(range(node_start_index + overlap_amount + EXTEND_WINDOW - 1, -1, -1)):
         node_act_coord = (node.start * 3) + overlap_amount + EXTEND_WINDOW - 1 - x
         # Get last codon
-        if x != 0 and x % 3 == 0:
+        
+        if i >= len(node_og) - 1:
+            continue
+        
+        if node_act_coord < 0 or i < 0:
+            break
+        
+        if x > 0 and x % 3 == 0:
             last_codon = node_og[i + 1: i + 4]
         
             if DNA_CODONS[last_codon] == "*":
