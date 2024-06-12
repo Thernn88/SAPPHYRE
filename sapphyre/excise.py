@@ -726,7 +726,7 @@ def insert_gaps(input_string, positions, offset):
     return "".join(input_string)
 
 
-def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, INSERTION_PENALTY, DNA_CODONS):
+def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, INSERTION_PENALTY, DNA_CODONS, ref_gaps):
     this_results = []
                 
     for (act_gt_index, gt_index, this_prev_extensions), (act_ag_index_rev, ag_index_rev, this_node_extensions) in product(gt_positions, ag_positions):
@@ -802,8 +802,15 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
                 
         distance = node_nt_start - prev_nt_end
         if not (0 <= distance <= 2):
-            this_score -= 1 * abs(distance)
-            
+            if prev_nt_end > node_nt_start:
+                this_range = range(node_nt_start, prev_nt_end)
+            else:
+                this_range = range(prev_nt_end, node_nt_start)
+            for i in this_range:
+                if node_seq[i] == "-" and prev_nt_seq[i] == "-" and i // 3 in ref_gaps:
+                    continue
+                this_score -= 1
+                
         this_results.append((this_score, act_gt_index, gt_index, act_ag_index_rev, ag_index_rev, prev_deletions, node_deletions, this_prev_extensions, this_node_extensions, left_last_codon, right_end_codon, orphan_codon))
 
     return this_results
@@ -1075,6 +1082,7 @@ def log_excised_consensus(
     aa_nodes = []
     reference_cluster_data = set()
     ref_consensus = defaultdict(list)
+    ref_gaps = set()
     for header, seq in raw_aa:
         if header.endswith('.'):
             start, end = find_index_pair(seq, "-")
@@ -1088,6 +1096,11 @@ def log_excised_consensus(
 
         frame = int(header.split("|")[4])
         aa_nodes.append(NODE(header, frame, seq, None, *find_index_pair(seq, "-"), []))
+
+    ref_gap_percent = 0.75
+    for i, lets in ref_consensus.items():
+        if lets.count("-") / len(lets) > ref_gap_percent:
+            ref_gaps.add(i)
 
     ref_avg_len = sum(ref_lens) / len(ref_lens)
     kicked_headers = set()
@@ -1518,7 +1531,7 @@ def log_excised_consensus(
                 
                 gt_positions, ag_positions = find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, prev_og, node_og, prev_nt_seq, node_seq)
 
-                this_results = get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, INSERTION_PENALTY, DNA_CODONS)
+                this_results = get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, INSERTION_PENALTY, DNA_CODONS, ref_gaps)
                 
                 if this_results:
                     this_best_splice = max(this_results, key=lambda x: x[0])
