@@ -848,7 +848,8 @@ def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, pr
     if overlapping_region:
         overlap_amount = overlapping_region[1] - overlapping_region[0]
     
-    for x, i in enumerate(range(prev_end_index - overlap_amount - EXTEND_WINDOW, len(prev_og))):
+    x = 0
+    for i in range(prev_end_index - overlap_amount - EXTEND_WINDOW, len(prev_og)):
         prev_act_coord = (prev_node.end * 3) - overlap_amount - EXTEND_WINDOW + x
         # Get last codon
         
@@ -857,6 +858,11 @@ def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, pr
         
         if x > 0 and i >= 3 and i < len(prev_og) - 3 and x % 3 == 0:
             last_codon = prev_og[i - 3: i]
+            
+            if last_codon not in DNA_CODONS:
+                #Bandaid TODO
+                continue
+                
             
             if DNA_CODONS[last_codon] == "*":
                 break
@@ -872,8 +878,11 @@ def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, pr
         if prev_nt_seq[prev_act_coord] == "-":
             prev_extensions[prev_act_coord] = prev_og[i]
         
+        x += 1
+        
     # Iterate in reverse from the start of the kmer to the start of the original sequence
-    for x, i in enumerate(range(node_start_index + overlap_amount + EXTEND_WINDOW - 1, -1, -1)):
+    x = 0
+    for i in range(node_start_index + overlap_amount + EXTEND_WINDOW - 1, -1, -1):
         node_act_coord = (node.start * 3) + overlap_amount + EXTEND_WINDOW - 1 - x
         # Get last codon
         
@@ -885,6 +894,11 @@ def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, pr
         
         if x > 0 and i < len(node_og) - 3 and x % 3 == 0:
             last_codon = node_og[i + 1: i + 4]
+            if last_codon not in DNA_CODONS:
+                #Bandaid TODO
+                continue
+            
+            
             if DNA_CODONS[last_codon] == "*":
                 break
         
@@ -896,6 +910,8 @@ def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, pr
 
         if node_seq[node_act_coord + 1] == "-":
             node_extensions[node_act_coord + 1] = node_og[i + 1]
+            
+        x += 1
             
     return gt_positions, ag_positions
 
