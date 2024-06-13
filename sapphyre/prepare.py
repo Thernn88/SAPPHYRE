@@ -229,10 +229,14 @@ class SeqDeduplicator:
                         else:
                             this_header = append_index_template.format(header, individual_index.x)
                             next(individual_index)
-                        if len(seq[i:i+CHOMP_LEN]) < self.minimum_sequence_length:
+                            
+                        this_chomp_seq = seq[i:i+CHOMP_LEN] 
+                        if len(this_chomp_seq) < self.minimum_sequence_length:
                             continue
-                        self.original_coords[this_header] = (raw_header, start+i, start+i+CHOMP_LEN-1, parent_len, CHOMP_LEN - 1)
-                        self.lines.append(sequence_template.format(this_header, seq[i:i+CHOMP_LEN]))
+                        
+                        this_child_len = len(this_chomp_seq)
+                        self.original_coords[this_header] = (raw_header, start+i, start+i+CHOMP_LEN-1, parent_len, this_child_len - 1)
+                        self.lines.append(sequence_template.format(this_header, this_chomp_seq))
                         next(this_index)
 
         self.file_index += 1
