@@ -1530,15 +1530,8 @@ def log_excised_consensus(
         aa_subset.sort(key = lambda x: x.start)
         og_starts = {}
         for prev_node, node in combinations(aa_subset, 2):
-            if node.header in kicked_headers or prev_node.header in kicked_headers:
-                continue
             overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, -10)
             if overlapping_coords:
-                node_aa_kmer = node.sequence[overlapping_coords[0]:overlapping_coords[1]]
-                prev_aa_kmer = prev_node.sequence[overlapping_coords[0]:overlapping_coords[1]]
-                
-                if is_same_kmer(node_aa_kmer, prev_aa_kmer):
-                    continue
                 # amount = overlapping_coords[1] - overlapping_coords[0]
                 # if amount > 1:
                 #     continue
@@ -1635,15 +1628,6 @@ def log_excised_consensus(
                                 
                             strand = "+" if node.frame > 0 else "-"
                             gff_out[parent][node_id] = ((node_start), f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tID={node_id};Parent={gene};Note={node.frame};")
-
-                    if len(prev_node.nt_sequence) - prev_node.nt_sequence.count("-") < 45:
-                        log_output.append(f"Kicking {prev_node.header} due to < 15 bp after new splice")
-                        kicked_headers.add(prev_node.header)
-                        
-                    if len(node.nt_sequence) - node.nt_sequence.count("-") < 45:
-                        log_output.append(f"Kicking {node.header} due to < 15 bp after new splice")
-                        kicked_headers.add(node.header)
-
                 elif True:
                     scan_log.append("")
                     scan_log.append("")    
