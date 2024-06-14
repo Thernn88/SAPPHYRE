@@ -916,7 +916,7 @@ def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, pr
     return gt_positions, ag_positions
 
 
-def splice_combo(this_result, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps):
+def splice_combo(this_result, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords):
     # if "223372" not in node.header:
     #     return
     
@@ -1042,6 +1042,20 @@ def splice_combo(this_result, prev_node, node, prev_og, node_og, DNA_CODONS, sca
         ag_index_rev + 3,
         node_start_index + len(kmer)
     )
+    
+    if prev_node.header in gff_coords:
+        existing_gff = gff_coords[prev_node.header]
+        gff_coord_prev = (existing_gff[0], gff_coord_prev[1])
+        gff_coords[prev_node.header] = gff_coord_prev
+    else:
+        gff_coords[prev_node.header] = gff_coord_prev
+        
+    if node.header in gff_coords:
+        existing_gff = gff_coords[node.header]
+        gff_coord_node = (gff_coord_node[0], existing_gff[1])
+        gff_coords[node.header] = gff_coord_node
+    else:
+        gff_coords[node.header] = gff_coord_node
     
     if prev_node.frame < 0:
         og_length = len(prev_og) - len(prev_internal_gaps) + 1
@@ -1525,6 +1539,7 @@ def log_excised_consensus(
     extensions_aa = defaultdict(dict)
     ends = {}
     gff_out = defaultdict(dict)
+    gff_coords = {}
     for cluster_i, cluster_set in enumerate(cluster_sets):
         aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
         aa_subset.sort(key = lambda x: x.start)
@@ -1598,9 +1613,10 @@ def log_excised_consensus(
                 
                 if this_results:
                     this_best_splice = max(this_results, key=lambda x: x[0])
-                    gff = splice_combo(this_best_splice, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps)
+                    gff = splice_combo(this_best_splice, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
                     if gff:
                         prev_gff, node_gff = gff
+                        
                         prev_id = get_id(prev_node.header)
                         tup = original_coords.get(prev_id.split("&&")[0].split("_")[0], None)
                         if tup:
