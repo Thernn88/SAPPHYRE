@@ -1700,6 +1700,43 @@ def log_excised_consensus(
                     seq[i] = bp
             seq = "".join(seq)
         aa_output.append((header, seq))
+        
+    integers = list(ref_gaps)
+    debug_out = []
+    merged = []
+    if integers:
+        integers.sort()
+        start = integers[0]
+        end = integers[0]
+
+        for num in integers[1:]:
+            if num == end + 1:
+                end = num
+            else:
+                if end - start >= 10:
+                    merged.append((start, end))
+                start = num
+                end = num
+
+        if end - start >= 10:
+            merged.append((start, end))
+    
+    if merged:
+        for header, seq in aa_output:
+            if header.endswith("."):
+                continue
+            
+            start, end = find_index_pair(seq, "-")
+            for region in merged:
+                this_overlap = get_overlap(start, end, region[0], region[1], 1)
+                if this_overlap:
+                    amt_non_gap = 0
+                    for i, let in enumerate(seq[start:end], start):
+                        if let != "-":
+                            amt_non_gap += 1
+                    if amt_non_gap / (end - start) >= 0.9:
+                        debug_out.append(header+f" - {region[0]}:{region[1]}")
+                        break
 
     aa_has_candidate = False
     for header, _ in aa_output:
@@ -1712,7 +1749,7 @@ def log_excised_consensus(
         req_coverage = 0.4 if is_assembly_or_genome else 0.01
         if gene_coverage < req_coverage:
             log_output.append(f">{gene}_kicked_coverage_{gene_coverage}_of_{req_coverage}\n{consensus_seq}")
-            return log_output, False, False, gene, False, len(aa_nodes), this_rescues, scan_log, multi_log, ends, gff_out
+            return log_output, False, False, gene, False, len(aa_nodes), this_rescues, scan_log, multi_log, ends, gff_out, debug_out
         
         writeFasta(aa_out, aa_output, compress_intermediates)
         nt_output = [(header, del_cols(seq, x_positions[header], True)) for header, seq in raw_sequences.items() if header not in kicked_headers]
@@ -1730,8 +1767,8 @@ def log_excised_consensus(
             final_nt_out.append((header, seq))
         writeFasta(nt_out, final_nt_out, compress_intermediates)
 
-        return log_output, had_region, False, False, gene, len(kicked_headers), this_rescues, scan_log, multi_log, ends, gff_out
-    return log_output, had_region, gene, False, None, len(kicked_headers), this_rescues, scan_log, multi_log, ends, gff_out
+        return log_output, had_region, False, False, gene, len(kicked_headers), this_rescues, scan_log, multi_log, ends, gff_out, debug_out
+    return log_output, had_region, gene, False, None, len(kicked_headers), this_rescues, scan_log, multi_log, ends, gff_out, debug_out
 
 
 def load_dupes(rocksdb_db):
@@ -1903,6 +1940,7 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
     log_path = Path(output_folder, "excise_regions.txt")
     scan_log_path = Path(output_folder, "gt_ag_scan.txt")
     multi_log_path = Path(output_folder, "multi_log.txt")
+    internal_path = Path(output_folder, "internal.txt")
     gene_log_path = Path(output_folder, "excise_genes.txt")
     coords_path = Path(folder, "coords")
     arguments = get_args(args, genes, head_to_seq, is_assembly_or_genome, is_genome, input_folder, output_folder, compress, prepare_dupes, reporter_dupes, original_coords)
@@ -1928,11 +1966,12 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
     rescues = []
     gt_ag_scan_log = []
     multi_scan_log = []
+    this_debug_out = []
 
     parent_gff_output = defaultdict(dict)
     end_bp = {}
 
-    for glog, ghas_ambig, ghas_no_resolution, gcoverage_kick, g_has_resolution, gkicked_seq, grescues, slog, dlog, input_lengths, gff_result in results:
+    for glog, ghas_ambig, ghas_no_resolution, gcoverage_kick, g_has_resolution, gkicked_seq, grescues, slog, dlog, input_lengths, gff_result, debug_lines in results:
         for parent, node_values in gff_result.items():
             for id, value in node_values.items():
                 parent_gff_output[parent][id] = value
@@ -1941,6 +1980,7 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
         
         log_output.extend(glog)
         gt_ag_scan_log.extend(slog)
+        this_debug_out.extend(debug_lines)
         multi_scan_log.extend(dlog)
         rescues.extend(grescues)
         if ghas_ambig:
@@ -2007,6 +2047,8 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
             f.write("\n".join(gt_ag_scan_log))
         with open(multi_log_path, "w") as f:
             f.write("\n".join(multi_scan_log))
+        with open(internal_path, "w") as f:
+            f.write("\n".join(this_debug_out))
         with open(gene_log_path, "w") as f:
             f.write(f"{len(kicked_no_resolve)} gene(s) kicked due to no seqs with resolution:\n")
             f.write("\n".join(kicked_no_resolve))
