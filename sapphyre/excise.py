@@ -916,10 +916,7 @@ def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, pr
     return gt_positions, ag_positions
 
 
-def splice_combo(this_result, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords):
-    # if "223372" not in node.header:
-    #     return
-    
+def splice_combo(add_results, this_result, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords):
     prev_nt_seq = list(prev_node.nt_sequence)
     node_seq = list(node.nt_sequence)
     
@@ -1015,9 +1012,9 @@ def splice_combo(this_result, prev_node, node, prev_og, node_og, DNA_CODONS, sca
     scan_log.append(f">{node.header}_excise_output")
     scan_log.append(node_region)
     scan_log.append("")        
-    scan_log.append(f">{prev_node.header}_spliced")
+    scan_log.append(f">{prev_node.header}_spliced_{this_score}")
     scan_log.append(prev_nt_seq[prev_start: node_end])
-    scan_log.append(f">{node.header}_spliced")
+    scan_log.append(f">{node.header}_spliced_{this_score}")
     scan_log.append(node_seq[prev_start: node_end])
     scan_log.append("")    
     
@@ -1071,14 +1068,15 @@ def splice_combo(this_result, prev_node, node, prev_og, node_og, DNA_CODONS, sca
             og_length - gff_coord_node[0]
         )
         
-    prev_node.nt_sequence = prev_nt_seq
-    node.nt_sequence = node_seq
-    
-    start, end = find_index_pair(prev_nt_seq, "-")
-    prev_node.start, prev_node.end = start//3, end//3
-    
-    start, end = find_index_pair(node_seq, "-")
-    node.start, node.end = start//3, end//3
+    if add_results:
+        prev_node.nt_sequence = prev_nt_seq
+        node.nt_sequence = node_seq
+        
+        start, end = find_index_pair(prev_nt_seq, "-")
+        prev_node.start, prev_node.end = start//3, end//3
+        
+        start, end = find_index_pair(node_seq, "-")
+        node.start, node.end = start//3, end//3
         
     return gff_coord_prev, gff_coord_node
 
@@ -1130,6 +1128,7 @@ def log_excised_consensus(
     printv(f"Processing {gene}", verbose, 2)
     log_output = []
     scan_log = []
+    multi_log = []
     this_rescues = []
 
     aa_in = input_path.joinpath("aa", gene)
@@ -1613,7 +1612,16 @@ def log_excised_consensus(
                 
                 if this_results:
                     this_best_splice = max(this_results, key=lambda x: x[0])
-                    gff = splice_combo(this_best_splice, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
+                    highest_results = []
+                    for result in this_results:
+                        if result[0] == this_best_splice[0]:
+                            highest_results.append(result)
+                    
+                    if len(highest_results) > 1:
+                        for result in highest_results:
+                            _ = splice_combo(False, result, prev_node, node, prev_og, node_og, DNA_CODONS, multi_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
+                        
+                    gff = splice_combo(True, this_best_splice, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
                     if gff:
                         prev_gff, node_gff = gff
                         
@@ -1704,7 +1712,7 @@ def log_excised_consensus(
         req_coverage = 0.4 if is_assembly_or_genome else 0.01
         if gene_coverage < req_coverage:
             log_output.append(f">{gene}_kicked_coverage_{gene_coverage}_of_{req_coverage}\n{consensus_seq}")
-            return log_output, False, False, gene, False, len(aa_nodes), this_rescues, scan_log, ends, gff_out
+            return log_output, False, False, gene, False, len(aa_nodes), this_rescues, scan_log, multi_log, ends, gff_out
         
         writeFasta(aa_out, aa_output, compress_intermediates)
         nt_output = [(header, del_cols(seq, x_positions[header], True)) for header, seq in raw_sequences.items() if header not in kicked_headers]
@@ -1722,8 +1730,8 @@ def log_excised_consensus(
             final_nt_out.append((header, seq))
         writeFasta(nt_out, final_nt_out, compress_intermediates)
 
-        return log_output, had_region, False, False, gene, len(kicked_headers), this_rescues, scan_log, ends, gff_out
-    return log_output, had_region, gene, False, None, len(kicked_headers), this_rescues, scan_log, ends, gff_out
+        return log_output, had_region, False, False, gene, len(kicked_headers), this_rescues, scan_log, multi_log, ends, gff_out
+    return log_output, had_region, gene, False, None, len(kicked_headers), this_rescues, scan_log, multi_log, ends, gff_out
 
 
 def load_dupes(rocksdb_db):
@@ -1894,6 +1902,7 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
     genes = [fasta for fasta in listdir(aa_input) if ".fa" in fasta]
     log_path = Path(output_folder, "excise_regions.txt")
     scan_log_path = Path(output_folder, "gt_ag_scan.txt")
+    multi_log_path = Path(output_folder, "multi_log.txt")
     gene_log_path = Path(output_folder, "excise_genes.txt")
     coords_path = Path(folder, "coords")
     arguments = get_args(args, genes, head_to_seq, is_assembly_or_genome, is_genome, input_folder, output_folder, compress, prepare_dupes, reporter_dupes, original_coords)
@@ -1918,11 +1927,12 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
     no_ambig = []
     rescues = []
     gt_ag_scan_log = []
+    multi_scan_log = []
 
     parent_gff_output = defaultdict(dict)
     end_bp = {}
 
-    for glog, ghas_ambig, ghas_no_resolution, gcoverage_kick, g_has_resolution, gkicked_seq, grescues, slog, input_lengths, gff_result in results:
+    for glog, ghas_ambig, ghas_no_resolution, gcoverage_kick, g_has_resolution, gkicked_seq, grescues, slog, dlog, input_lengths, gff_result in results:
         for parent, node_values in gff_result.items():
             for id, value in node_values.items():
                 parent_gff_output[parent][id] = value
@@ -1931,6 +1941,7 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
         
         log_output.extend(glog)
         gt_ag_scan_log.extend(slog)
+        multi_scan_log.extend(dlog)
         rescues.extend(grescues)
         if ghas_ambig:
             loci_containing_bad_regions += 1
@@ -1994,6 +2005,8 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
             f.write("\n".join(log_output))
         with open(scan_log_path, "w") as f:
             f.write("\n".join(gt_ag_scan_log))
+        with open(multi_log_path, "w") as f:
+            f.write("\n".join(multi_scan_log))
         with open(gene_log_path, "w") as f:
             f.write(f"{len(kicked_no_resolve)} gene(s) kicked due to no seqs with resolution:\n")
             f.write("\n".join(kicked_no_resolve))
