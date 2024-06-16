@@ -1131,7 +1131,8 @@ def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og
         start, end = find_index_pair(node_seq, "-")
         node.start, node.end = start//3, end//3
         
-    return gff_coord_prev, gff_coord_node
+        return gff_coord_prev, gff_coord_node
+    return None
 
 def log_excised_consensus(
     verbose: int,
