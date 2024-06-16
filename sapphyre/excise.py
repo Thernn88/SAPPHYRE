@@ -830,7 +830,7 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
 
     return this_results
 
-def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, prev_og, node_og, prev_nt_seq, node_seq, ref_gaps):
+def find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_index, node_end_index, DNA_CODONS, prev_og, node_og, prev_nt_seq, node_seq, ref_gaps):
     act_gt_index = None
     gt_index = None
     act_ag_index_rev = None
@@ -846,16 +846,22 @@ def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, pr
     overlap_amount = 0
     if overlapping_region:
         overlap_amount = overlapping_region[1] - overlapping_region[0]
-    
+        
     x = 0
-    for i in range(prev_end_index - overlap_amount - EXTEND_WINDOW, len(prev_og)):
-        prev_act_coord = (prev_node.end * 3) - overlap_amount - EXTEND_WINDOW + x
+    act_offset = (prev_node.end * 3) - overlap_amount - EXTEND_WINDOW
+    prev_start_scan = prev_end_index - overlap_amount - EXTEND_WINDOW
+    if prev_start_scan < prev_start_index:
+        act_offset = (prev_node.start * 3) + 3
+        prev_start_scan = prev_start_index + 3
+    
+    for i in range(prev_start_scan, len(prev_og)):
+        prev_act_coord = act_offset + x
         # Get last codon
         
         if prev_act_coord <= 0:
             continue
         
-        if x > 0 and i >= 3 and i < len(prev_og) - 3 and x % 3 == 0:
+        if x > 0 and i >= 3 and i < len(prev_og) - 3 and x % 3 == 0 and i > prev_end_index:
             last_codon = prev_og[i - 3: i]
             
             if last_codon not in DNA_CODONS:
@@ -895,8 +901,15 @@ def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, pr
         
     # Iterate in reverse from the start of the kmer to the start of the original sequence
     x = 0
-    for i in range(node_start_index + overlap_amount + EXTEND_WINDOW - 1, -1, -1):
-        node_act_coord = (node.start * 3) + overlap_amount + EXTEND_WINDOW - 1 - x
+    
+    start_scan = node_start_index + overlap_amount + EXTEND_WINDOW
+    act_offset = (node.start * 3) + overlap_amount + EXTEND_WINDOW
+    if start_scan > node_end_index:
+        start_scan = node_end_index
+        act_offset = (node.end * 3)
+        
+    for i in range(start_scan - 1, -1, -1):
+        node_act_coord = act_offset - 1 - x
         # Get last codon
         
         if node_act_coord >= len(node_seq) - 1 or i >= len(node_og) - 1:
@@ -905,7 +918,7 @@ def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, pr
         if node_act_coord < 0 or i < 0:
             break
         
-        if x > 0 and i < len(node_og) - 3 and x % 3 == 0:
+        if x > 0 and i < len(node_og) - 3 and x % 3 == 0 and i < node_start_index:
             last_codon = node_og[i + 1: i + 4]
             if last_codon not in DNA_CODONS:
                 #Bandaid TODO
@@ -1621,7 +1634,7 @@ def log_excised_consensus(
                     og_starts[prev_node.header] = [prev_start_index, prev_node.start * 3]
 
                 prev_og = insert_gaps(prev_og, prev_internal_gaps, prev_start_index)
-                prev_end_index = prev_start_index + len(prev_kmer) + len(prev_internal_gaps) #(inclusive of last codon)
+                prev_end_index = prev_start_index + len(prev_kmer) + len(prev_internal_gaps)
                 
                 if node.header in og_starts:
                     node_start_index, node_start = og_starts[node.header]
@@ -1634,11 +1647,12 @@ def log_excised_consensus(
                     og_starts[node.header] = [node_start_index, node.start * 3]
                 
                 node_og = insert_gaps(node_og, kmer_internal_gaps, node_start_index)
+                node_end_index = node_start_index + len(kmer) + len(kmer_internal_gaps)
 
                 prev_nt_seq = list(prev_node.nt_sequence)
                 node_seq = list(node.nt_sequence)
                 
-                gt_positions, ag_positions = find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, prev_og, node_og, prev_nt_seq, node_seq, ref_gaps)
+                gt_positions, ag_positions = find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_index, node_end_index, DNA_CODONS, prev_og, node_og, prev_nt_seq, node_seq, ref_gaps)
 
                 this_results = get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, INSERTION_PENALTY, DNA_CODONS, ref_gaps)
                 
