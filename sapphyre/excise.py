@@ -742,7 +742,7 @@ def insert_gaps(input_string, positions, offset):
 def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, INSERTION_PENALTY, DNA_CODONS, ref_gaps):
     this_results = []
                 
-    for (act_gt_index, gt_index, this_prev_extensions), (act_ag_index_rev, ag_index_rev, this_node_extensions) in product(gt_positions, ag_positions):
+    for (gt_size, act_gt_index, gt_index, this_prev_extensions), (ag_size, act_ag_index_rev, ag_index_rev, this_node_extensions) in product(gt_positions, ag_positions):
         prev_deletions = set()
         node_deletions = set()
 
@@ -754,10 +754,10 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
         for i, let in this_node_extensions.items():
             node_seq[i] = let
         
-        for i in range(act_gt_index, act_gt_index + 2):
+        for i in range(act_gt_index, act_gt_index + gt_size):
             prev_nt_seq[i] = "-"
             
-        for i in range(act_ag_index_rev, act_ag_index_rev + 2):
+        for i in range(act_ag_index_rev, act_ag_index_rev + ag_size):
             node_seq[i] = "-"
 
         if prev_node.end * 3 > act_gt_index:
@@ -825,13 +825,12 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
                 if node_seq[i] == "-" and prev_nt_seq[i] == "-" and i // 3 in ref_gaps:
                     continue
                 this_score -= 1
-                
-        this_results.append((this_score, act_gt_index, gt_index, act_ag_index_rev, ag_index_rev, prev_deletions, node_deletions, this_prev_extensions, this_node_extensions, left_last_codon, right_end_codon, orphan_codon))
+
+        this_results.append((this_score, gt_size, act_gt_index, gt_index, ag_size, act_ag_index_rev, ag_index_rev, prev_deletions, node_deletions, this_prev_extensions, this_node_extensions, left_last_codon, right_end_codon, orphan_codon))
 
     return this_results
 
-
-def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, prev_og, node_og, prev_nt_seq, node_seq):
+def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, prev_og, node_og, prev_nt_seq, node_seq, ref_gaps):
     act_gt_index = None
     gt_index = None
     act_ag_index_rev = None
@@ -870,10 +869,24 @@ def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, pr
         if i + 1 >= len(prev_og) or prev_act_coord >= len(prev_nt_seq) - 1:
             break
 
-        if prev_og[i] == "G" and prev_og[i + 1] == "T":
-            act_gt_index = prev_act_coord
-            gt_index = i + 1
-            gt_positions.append((act_gt_index, gt_index, copy.deepcopy(prev_extensions)))
+        scan_index = 0
+        if prev_og[i] == "G":
+            while True:
+                scan_index += 1
+                if i + scan_index >= len(prev_og):
+                    break
+                
+                if prev_og[i + scan_index] == "T":
+                    act_gt_index = prev_act_coord
+                    gt_index = i + 1
+                    gt_size = scan_index + 1
+                    gt_positions.append((gt_size, act_gt_index, gt_index, copy.deepcopy(prev_extensions)))
+
+                if prev_og[i + scan_index] != "-":
+                    break
+
+                if prev_act_coord + scan_index not in ref_gaps:
+                    break            
 
         if prev_nt_seq[prev_act_coord] == "-":
             prev_extensions[prev_act_coord] = prev_og[i]
@@ -903,10 +916,25 @@ def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, pr
                 break
         
         # Check if the next nucleotide (i + 1) is "A" and the current is "G"
-        if node_og[i] == "A" and node_og[i + 1] == "G":
-            act_ag_index_rev = node_act_coord
-            ag_index_rev = i
-            ag_positions.append((act_ag_index_rev, ag_index_rev, copy.deepcopy(node_extensions)))
+        scan_index = 0
+        if node_og[i] == "A":
+            while True:
+                scan_index += 1
+
+                if i + scan_index >= len(node_og):
+                    break
+
+                if node_og[i + scan_index] == "G":
+                    act_ag_index_rev = node_act_coord
+                    ag_index_rev = i
+                    ag_size = scan_index + 1
+                    ag_positions.append((ag_size, act_ag_index_rev, ag_index_rev, copy.deepcopy(node_extensions)))
+
+                if node_og[i + scan_index] != "-":
+                    break
+
+                if (node_act_coord + scan_index)//3 not in ref_gaps:
+                    break
 
         if node_seq[node_act_coord + 1] == "-":
             node_extensions[node_act_coord + 1] = node_og[i + 1]
@@ -917,19 +945,22 @@ def find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, pr
 
 
 def splice_combo(add_results, this_result, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords):
+    # if "223372" not in node.header:
+    #     return
+    
     prev_nt_seq = list(prev_node.nt_sequence)
     node_seq = list(node.nt_sequence)
     
-    this_score, act_gt_index, gt_index, act_ag_index_rev, ag_index_rev, prev_deletions, node_deletions, final_prev_extensions, final_node_extensions, left_last_codon, right_end_codon, orphan_codon = this_result
+    this_score, gt_size, act_gt_index, gt_index, ag_size, act_ag_index_rev, ag_index_rev, prev_deletions, node_deletions, final_prev_extensions, final_node_extensions, left_last_codon, right_end_codon, orphan_codon = this_result
     for i, let in final_prev_extensions.items():
         prev_nt_seq[i] = let
     for i, let in final_node_extensions.items():
         node_seq[i] = let
-    for i in range(act_gt_index, act_gt_index + 2):
+    for i in range(act_gt_index, act_gt_index + gt_size):
         replacements[prev_node.header][i] = "-"
         replacements_aa[prev_node.header][i//3] = "-"
         prev_nt_seq[i] = "-"
-    for i in range(act_ag_index_rev, act_ag_index_rev + 2):
+    for i in range(act_ag_index_rev, act_ag_index_rev + ag_size):
         replacements[node.header][i] = "-"
         replacements_aa[node.header][i//3] = "-"
         node_seq[i] = "-"
@@ -1012,17 +1043,17 @@ def splice_combo(add_results, this_result, prev_node, node, prev_og, node_og, DN
     scan_log.append(f">{node.header}_excise_output")
     scan_log.append(node_region)
     scan_log.append("")        
-    scan_log.append(f">{prev_node.header}_spliced_{this_score}")
+    scan_log.append(f">{prev_node.header}_spliced")
     scan_log.append(prev_nt_seq[prev_start: node_end])
-    scan_log.append(f">{node.header}_spliced_{this_score}")
+    scan_log.append(f">{node.header}_spliced")
     scan_log.append(node_seq[prev_start: node_end])
     scan_log.append("")    
     
     node_hit = node_og[ag_index_rev: (node_start_index + len(kmer) + len(kmer_internal_gaps))]
     prev_hit = prev_og[prev_start_index: gt_index + 1]
     # lowercase
-    prev_hit = prev_hit[:-2] + prev_hit[-2:].lower()
-    node_hit = node_hit[:2].lower() + node_hit[2:]
+    prev_hit = prev_hit[:-gt_size] + prev_hit[-gt_size:].lower()
+    node_hit = node_hit[:ag_size].lower() + node_hit[ag_size:]
     
     scan_log.append(f">{prev_node.header}_orf_scan")
     scan_log.append((("-" * (prev_node.start * 3)) + prev_hit)[prev_start: node_end])
@@ -1606,7 +1637,7 @@ def log_excised_consensus(
                 prev_nt_seq = list(prev_node.nt_sequence)
                 node_seq = list(node.nt_sequence)
                 
-                gt_positions, ag_positions = find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, prev_og, node_og, prev_nt_seq, node_seq)
+                gt_positions, ag_positions = find_gt_ag(prev_node, node, prev_end_index, node_start_index, DNA_CODONS, prev_og, node_og, prev_nt_seq, node_seq, ref_gaps)
 
                 this_results = get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, INSERTION_PENALTY, DNA_CODONS, ref_gaps)
                 
