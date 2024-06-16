@@ -970,24 +970,28 @@ def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og
     for i, let in final_node_extensions.items():
         node_seq[i] = let
     for i in range(act_gt_index, act_gt_index + gt_size):
-        replacements[prev_node.header][i] = "-"
-        replacements_aa[prev_node.header][i//3] = "-"
+        if add_results:
+            replacements[prev_node.header][i] = "-"
+            replacements_aa[prev_node.header][i//3] = "-"
         prev_nt_seq[i] = "-"
     for i in range(act_ag_index_rev, act_ag_index_rev + ag_size):
-        replacements[node.header][i] = "-"
-        replacements_aa[node.header][i//3] = "-"
+        if add_results:
+            replacements[node.header][i] = "-"
+            replacements_aa[node.header][i//3] = "-"
         node_seq[i] = "-"
     for x in prev_deletions:
         if x in final_prev_extensions:
             continue
-        replacements_aa[prev_node.header][x//3] = "-"#
-        replacements[prev_node.header][x] = "-"
+        if add_results:
+            replacements_aa[prev_node.header][x//3] = "-"#
+            replacements[prev_node.header][x] = "-"
         prev_nt_seq[x] = "-"
     for x in node_deletions:
         if x in final_node_extensions:
             continue
-        replacements_aa[node.header][x//3] = "-"
-        replacements[node.header][x] = "-"
+        if add_results:
+            replacements_aa[node.header][x//3] = "-"
+            replacements[node.header][x] = "-"
         node_seq[x] = "-"
 
     if orphan_codon:
@@ -996,16 +1000,19 @@ def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og
             return
         
         orphan_aa = DNA_CODONS[joined]
-        replacements_aa[prev_node.header][left_last_codon//3] = orphan_aa
-        replacements_aa[node.header][right_end_codon//3] = orphan_aa
+        if add_results:
+            replacements_aa[prev_node.header][left_last_codon//3] = orphan_aa
+            replacements_aa[node.header][right_end_codon//3] = orphan_aa
 
         for i, x in enumerate(range(left_last_codon, left_last_codon + 3)):
             prev_nt_seq[x] = orphan_codon[i]
-            replacements[prev_node.header][x] = orphan_codon[i]
+            if add_results:
+                replacements[prev_node.header][x] = orphan_codon[i]
 
         for i, x in enumerate(range(right_end_codon, right_end_codon + 3)):
             node_seq[x] = orphan_codon[i]
-            replacements[node.header][x] = orphan_codon[i]
+            if add_results:
+                replacements[node.header][x] = orphan_codon[i]
         
     node_seq = "".join(node_seq)
     prev_nt_seq = "".join(prev_nt_seq)
@@ -1020,19 +1027,20 @@ def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og
     if prev_end % 3 != 0:
         prev_end += 3 - (prev_end % 3)
     
-    for i in range((prev_node.end * 3) - 3, prev_end, 3):
-        codon = prev_nt_seq[i:i+3]
-        if codon in DNA_CODONS:
-            extensions_aa[prev_node.header][i//3] = DNA_CODONS[codon]
-        
-    for i in range(node_start, node.start * 3, 3):
-        codon = node_seq[i:i+3]
-        if codon in DNA_CODONS:
-            extensions_aa[node.header][i//3] = DNA_CODONS[codon]
+    if add_results:
+        for i in range((prev_node.end * 3) - 3, prev_end, 3):
+            codon = prev_nt_seq[i:i+3]
+            if codon in DNA_CODONS:
+                extensions_aa[prev_node.header][i//3] = DNA_CODONS[codon]
+            
+        for i in range(node_start, node.start * 3, 3):
+            codon = node_seq[i:i+3]
+            if codon in DNA_CODONS:
+                extensions_aa[node.header][i//3] = DNA_CODONS[codon]
 
-    extensions[node.header].update(final_node_extensions)
-    extensions[prev_node.header].update(final_prev_extensions)
-    
+        extensions[node.header].update(final_node_extensions)
+        extensions[prev_node.header].update(final_prev_extensions)
+        
     # Extend one codon to the left and right for debug to show end of sequence
     if prev_start >= 3:
         prev_start -= 3
@@ -1074,46 +1082,46 @@ def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og
     scan_log.append(f">{node.header}_orf_scan")
     scan_log.append((("-" * ((node.end * 3) - len(node_hit))) + node_hit)[prev_start: node_end] )
     scan_log.append("") 
-    
-    gff_coord_prev = (
-        prev_start_index + 1,
-        gt_index - len(prev_internal_gaps) - 1
-    ) 
-
-    gff_coord_node = (
-        ag_index_rev + 3,
-        node_start_index + len(kmer)
-    )
-    
-    if prev_node.header in gff_coords:
-        existing_gff = gff_coords[prev_node.header]
-        gff_coord_prev = (existing_gff[0], gff_coord_prev[1])
-        gff_coords[prev_node.header] = gff_coord_prev
-    else:
-        gff_coords[prev_node.header] = gff_coord_prev
-        
-    if node.header in gff_coords:
-        existing_gff = gff_coords[node.header]
-        gff_coord_node = (gff_coord_node[0], existing_gff[1])
-        gff_coords[node.header] = gff_coord_node
-    else:
-        gff_coords[node.header] = gff_coord_node
-    
-    if prev_node.frame < 0:
-        og_length = len(prev_og) - len(prev_internal_gaps) + 1
-        gff_coord_prev = (
-            og_length - gff_coord_prev[1],
-            og_length - gff_coord_prev[0]
-        )
-        
-    if node.frame < 0:
-        og_length = len(node_og) - len(kmer_internal_gaps) + 1
-        gff_coord_node = (
-            og_length - gff_coord_node[1],
-            og_length - gff_coord_node[0]
-        )
         
     if add_results:
+        gff_coord_prev = (
+            prev_start_index + 1,
+            gt_index - len(prev_internal_gaps) - 1
+        ) 
+
+        gff_coord_node = (
+            ag_index_rev + 3,
+            node_start_index + len(kmer)
+        )
+        
+        if prev_node.header in gff_coords:
+            existing_gff = gff_coords[prev_node.header]
+            gff_coord_prev = (existing_gff[0], gff_coord_prev[1])
+            gff_coords[prev_node.header] = gff_coord_prev
+        else:
+            gff_coords[prev_node.header] = gff_coord_prev
+            
+        if node.header in gff_coords:
+            existing_gff = gff_coords[node.header]
+            gff_coord_node = (gff_coord_node[0], existing_gff[1])
+            gff_coords[node.header] = gff_coord_node
+        else:
+            gff_coords[node.header] = gff_coord_node
+        
+        if prev_node.frame < 0:
+            og_length = len(prev_og) - len(prev_internal_gaps) + 1
+            gff_coord_prev = (
+                og_length - gff_coord_prev[1],
+                og_length - gff_coord_prev[0]
+            )
+            
+        if node.frame < 0:
+            og_length = len(node_og) - len(kmer_internal_gaps) + 1
+            gff_coord_node = (
+                og_length - gff_coord_node[1],
+                og_length - gff_coord_node[0]
+            )
+            
         prev_node.nt_sequence = prev_nt_seq
         node.nt_sequence = node_seq
         
@@ -1572,7 +1580,7 @@ def log_excised_consensus(
         "TAA": "*",
         "TAG": "*",
         "TGA": "*",
-        "---": "---",
+        "---": "-",
     }
     
     FRANKENSTEIN_PENALTY = -20
