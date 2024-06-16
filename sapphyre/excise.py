@@ -957,7 +957,7 @@ def find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_ind
     return gt_positions, ag_positions
 
 
-def splice_combo(add_results, this_result, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords):
+def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords):
     # if "223372" not in node.header:
     #     return
     
@@ -1038,27 +1038,28 @@ def splice_combo(add_results, this_result, prev_node, node, prev_og, node_og, DN
         prev_start -= 3
     if node_end + 3 <= len(node_seq):
         node_end += 3
-    
-    scan_log.append("")
-    scan_log.append("")    
-    scan_log.append(f">{prev_node.header}_orf")
-    # print(prev_start_index, node_end_index)
-    # input()
-
+        
     node_region = node.nt_sequence[prev_start: node_end]
     node_region_start, _ = find_index_pair(node_region, "-")
     
-    scan_log.append(prev_og[prev_start_index - 3 :][:node_end])  
-    scan_log.append(f">{node.header}_orf")  
-    scan_log.append(node_og[node_start_index - node_region_start :][:node_end])  
-    scan_log.append(f">{prev_node.header}_excise_output")
-    scan_log.append(prev_node.nt_sequence[prev_start: node_end])
-    scan_log.append(f">{node.header}_excise_output")
-    scan_log.append(node_region)
-    scan_log.append("")        
-    scan_log.append(f">{prev_node.header}_spliced")
+    
+    if print_extra: 
+        scan_log.append("")
+        scan_log.append("")   
+        scan_log.append(f">{prev_node.header}_orf")
+
+        scan_log.append(prev_og[prev_start_index - 3 :][:node_end])  
+        scan_log.append(f">{node.header}_orf")  
+        scan_log.append(node_og[node_start_index - node_region_start :][:node_end])  
+        scan_log.append(f">{prev_node.header}_excise_output")
+        scan_log.append(prev_node.nt_sequence[prev_start: node_end])
+        scan_log.append(f">{node.header}_excise_output")
+        scan_log.append(node_region)
+        scan_log.append("")
+                
+    scan_log.append(f">{prev_node.header}_spliced_{this_score}")
     scan_log.append(prev_nt_seq[prev_start: node_end])
-    scan_log.append(f">{node.header}_spliced")
+    scan_log.append(f">{node.header}_spliced_{this_score}")
     scan_log.append(node_seq[prev_start: node_end])
     scan_log.append("")    
     
@@ -1067,7 +1068,7 @@ def splice_combo(add_results, this_result, prev_node, node, prev_og, node_og, DN
     # lowercase
     prev_hit = prev_hit[:-gt_size] + prev_hit[-gt_size:].lower()
     node_hit = node_hit[:ag_size].lower() + node_hit[ag_size:]
-    
+
     scan_log.append(f">{prev_node.header}_orf_scan")
     scan_log.append((("-" * (prev_node.start * 3)) + prev_hit)[prev_start: node_end])
     scan_log.append(f">{node.header}_orf_scan")
@@ -1663,10 +1664,10 @@ def log_excised_consensus(
                             highest_results.append(result)
                     
                     if len(highest_results) > 1:
-                        for result in highest_results:
-                            _ = splice_combo(False, result, prev_node, node, prev_og, node_og, DNA_CODONS, multi_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
+                        for i, result in enumerate(highest_results):
+                            _ = splice_combo(False, i == 0, result, prev_node, node, prev_og, node_og, DNA_CODONS, multi_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
                         
-                    gff = splice_combo(True, this_best_splice, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
+                    gff = splice_combo(True, True, this_best_splice, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
                     if gff:
                         prev_gff, node_gff = gff
                         
