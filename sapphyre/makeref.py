@@ -62,8 +62,8 @@ class Sequence:
     ) -> None:
         self.raw_head = raw_head
         self.header = header
-        self.aa_sequence = aa_sequence.replace("-","")
-        self.nt_sequence = nt_sequence if nt_sequence is None else nt_sequence.replace("-","")
+        self.aa_sequence = aa_sequence.replace("-","").upper()
+        self.nt_sequence = nt_sequence if nt_sequence is None else nt_sequence.replace("-","").upper()
         self.taxon = taxon
         self.gene = gene
 
