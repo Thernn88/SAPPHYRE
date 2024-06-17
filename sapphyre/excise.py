@@ -997,7 +997,7 @@ def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og
     if orphan_codon:
         joined = "".join(orphan_codon)
         if joined not in DNA_CODONS:
-            return
+            return None, None
         
         orphan_aa = DNA_CODONS[joined]
         if add_results:
@@ -1050,6 +1050,10 @@ def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og
     node_region = node.nt_sequence[prev_start: node_end]
     node_region_start, _ = find_index_pair(node_region, "-")
     
+    final_prev_start, final_prev_end = find_index_pair(prev_nt_seq, "-")
+    final_node_start, final_node_end = find_index_pair(node_seq, "-")
+    
+    smallest_change = min(abs(final_prev_start - (prev_node.start*3)) + abs(final_prev_end - (prev_node.end*3)), abs(final_node_start - (node.start*3)) + abs(final_node_end - (node.end*3)))
     
     if print_extra: 
         scan_log.append("")
@@ -1065,9 +1069,9 @@ def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og
         scan_log.append(node_region)
         scan_log.append("")
                 
-    scan_log.append(f">{prev_node.header}_spliced_{this_score}")
+    scan_log.append(f">{prev_node.header}_spliced_s{this_score}_c{smallest_change}")
     scan_log.append(prev_nt_seq[prev_start: node_end])
-    scan_log.append(f">{node.header}_spliced_{this_score}")
+    scan_log.append(f">{node.header}_spliced_s{this_score}_c{smallest_change}")
     scan_log.append(node_seq[prev_start: node_end])
     scan_log.append("")    
     
@@ -1082,7 +1086,7 @@ def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og
     scan_log.append(f">{node.header}_orf_scan")
     scan_log.append((("-" * ((node.end * 3) - len(node_hit))) + node_hit)[prev_start: node_end] )
     scan_log.append("") 
-        
+    
     if add_results:
         gff_coord_prev = (
             prev_start_index + 1,
@@ -1125,14 +1129,11 @@ def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og
         prev_node.nt_sequence = prev_nt_seq
         node.nt_sequence = node_seq
         
-        start, end = find_index_pair(prev_nt_seq, "-")
-        prev_node.start, prev_node.end = start//3, end//3
+        prev_node.start, prev_node.end = final_prev_start//3, final_prev_end//3
+        node.start, node.end = final_node_start//3, final_node_end//3
         
-        start, end = find_index_pair(node_seq, "-")
-        node.start, node.end = start//3, end//3
-        
-        return gff_coord_prev, gff_coord_node
-    return None
+        return (gff_coord_prev, gff_coord_node), smallest_change
+    return None, smallest_change
 
 def log_excised_consensus(
     verbose: int,
@@ -1672,17 +1673,19 @@ def log_excised_consensus(
                 this_results = get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, INSERTION_PENALTY, DNA_CODONS, ref_gaps)
                 
                 if this_results:
-                    this_best_splice = max(this_results, key=lambda x: x[0])
-                    highest_results = []
-                    for result in this_results:
-                        if result[0] == this_best_splice[0]:
-                            highest_results.append(result)
-                    
+                    this_best_score = max(i[0] for i in this_results)
+                    highest_results = [i for i in this_results if i[0] == this_best_score]
                     if len(highest_results) > 1:
+                        best_change = None
                         for i, result in enumerate(highest_results):
-                            _ = splice_combo(False, i == 0, result, prev_node, node, prev_og, node_og, DNA_CODONS, multi_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
-                        
-                    gff = splice_combo(True, True, this_best_splice, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
+                            _, smallest_coords_change = splice_combo(False, i == 0, result, prev_node, node, prev_og, node_og, DNA_CODONS, multi_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
+                            if best_change is None or smallest_coords_change < best_change:
+                                best_change = smallest_coords_change
+                                this_best_splice = result
+                    else:
+                        this_best_splice = highest_results[0]
+                    
+                    gff, _ = splice_combo(True, True, this_best_splice, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
                     if gff:
                         prev_gff, node_gff = gff
                         
