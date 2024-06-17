@@ -1586,7 +1586,7 @@ def log_excised_consensus(
     
     FRANKENSTEIN_PENALTY = -20
     INSERTION_PENALTY = -1
-    DELETION_PENALTY = -1
+    SIMILARITY_SKIP = 0.95
     int_first_id = lambda x: int(x.split("_")[0])
     extensions = defaultdict(dict)
     extensions_aa = defaultdict(dict)
@@ -1600,9 +1600,15 @@ def log_excised_consensus(
         for prev_node, node in combinations(aa_subset, 2):
             overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, -10)
             if overlapping_coords:
-                # amount = overlapping_coords[1] - overlapping_coords[0]
-                # if amount > 1:
-                #     continue
+                amount = overlapping_coords[1] - overlapping_coords[0]
+                if amount > 1:
+                    early_start = min(prev_node.start, node.start) * 3
+                    late_end = max(prev_node.end, node.end) * 3
+                    
+                    distance = constrained_distance(prev_node.nt_sequence[early_start : late_end], node.nt_sequence[early_start : late_end])
+                    percent_matching = 1 - (distance / (late_end - early_start))
+                    if percent_matching >= SIMILARITY_SKIP:
+                        continue
                 
                 prev_kmer = prev_node.nt_sequence[prev_node.start * 3 : prev_node.end * 3]
                 prev_internal_gaps = [i for i, let in enumerate(prev_kmer) if let == "-"]
