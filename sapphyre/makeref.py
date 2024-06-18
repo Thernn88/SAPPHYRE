@@ -431,7 +431,8 @@ def generate_aln(
     no_halves,
     skip_deviation_filter,
     realign,
-    debug_halves
+    debug_halves,
+    skip_splice,
 ):
     """
     Generates the .aln.fa files for each gene in the set.
@@ -505,7 +506,8 @@ def generate_aln(
                 skip_deviation_filter,
                 realign,
                 final_path,
-                debug_halves
+                debug_halves,
+                skip_splice,
             ),
         )
 
@@ -896,7 +898,8 @@ def aln_function(
     skip_deviation_filter,
     realign,
     final_path,
-    debug_halves
+    debug_halves,
+    skip_splice,
 ):
     """
     Calls the alignment program, runs some additional logic on the result and returns the aligned sequences
@@ -957,14 +960,16 @@ def aln_function(
             if let != "-":
                 cand_consensus[i].append(let)
         
-    allowed_adjacency = 3 # Allow x bp of non-overlapping adjacent bp to merge
-    maximum_overlap = 0.5
-    aligned_result, merged_header, splice_log = splice_overlap(aligned_result, cand_consensus, allowed_adjacency, maximum_overlap)
+    splice_log = []
+    if not skip_splice:
+        allowed_adjacency = 3 # Allow x bp of non-overlapping adjacent bp to merge
+        maximum_overlap = 0.5
+        aligned_result, merged_header, splice_log = splice_overlap(aligned_result, cand_consensus, allowed_adjacency, maximum_overlap)
 
-    for seq in sequences:
-        if seq.header in merged_header:
-            seq.header = merged_header[seq.header]
-            
+        for seq in sequences:
+            if seq.header in merged_header:
+                seq.header = merged_header[seq.header]
+                
     cull_result = {}
     if do_cull:
         cull_result, aligned_result = cull(aligned_result, cull_percent, has_nt)
@@ -1440,7 +1445,8 @@ def main(args):
             no_halves,
             skip_deviation_filter,
             realign,
-            args.debug
+            args.debug,
+            args.skip_splice,
         )
     if do_hmm:
         generate_hmm(this_set, overwrite, processes, verbosity, set_path)

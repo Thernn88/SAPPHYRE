@@ -1146,6 +1146,13 @@ def subcmd_makeref(sp):
         help="Realign sequences after outlier removal",
     )
     par.add_argument(
+        "-ss",
+        "--skip_splice",
+        default=False,
+        action="store_true",
+        help="Skip splice. Useful for non-orthodb inputs",
+    )
+    par.add_argument(
         "-nh",
         "--no_halves",
         default=False,
