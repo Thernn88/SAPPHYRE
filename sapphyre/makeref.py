@@ -935,7 +935,7 @@ def aln_function(
     aligned_dict = {}
     for header, seq in parseFasta(aln_file, True):
         header = trimmed_header_to_full[header[:127]]
-        aligned_result.append((header, seq))
+        aligned_result.append((header, seq.upper()))
 
     writeFasta(aln_file, aligned_result, False)
     
