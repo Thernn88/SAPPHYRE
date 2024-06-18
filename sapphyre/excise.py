@@ -1796,21 +1796,24 @@ def log_excised_consensus(
         if end - start >= 10:
             merged.append((start, end))
     
+    internal_headers = {}
     if merged:
         for header, seq in aa_output:
             if header.endswith("."):
                 continue
-            
+        
             start, end = find_index_pair(seq, "-")
             for region in merged:
                 this_overlap = get_overlap(start, end, region[0], region[1], 1)
                 if this_overlap:
                     amt_non_gap = 0
-                    for i, let in enumerate(seq[start:end], start):
+                    kmer = seq[start:end]
+                    for i, let in enumerate(kmer, start):
                         if let != "-":
                             amt_non_gap += 1
+                            
                     if amt_non_gap / (end - start) >= 0.9:
-                        debug_out.append(header+f" - {region[0]}:{region[1]}")
+                        internal_headers[header] = region[0], region[1]
                         break
 
     aa_has_candidate = False
@@ -1828,7 +1831,9 @@ def log_excised_consensus(
         
         writeFasta(aa_out, aa_output, compress_intermediates)
         nt_output = [(header, del_cols(seq, x_positions[header], True)) for header, seq in raw_sequences.items() if header not in kicked_headers]
+        EXTEND_WINDOW = 15
         final_nt_out = []
+            
         for header, seq in nt_output:
             if header in replacements or header in extensions:
                 seq = list(seq)
@@ -1839,6 +1844,27 @@ def log_excised_consensus(
                     for i, bp in replacements[header].items():
                         seq[i] = bp
                 seq = "".join(seq)
+                
+            if header in internal_headers:
+                region_start, region_end = internal_headers[header]
+                gt_positions = []
+                ag_positions = []
+                for i in range(max(0, (region_start * 3) - EXTEND_WINDOW), min(len(seq), (region_end * 3) + EXTEND_WINDOW), 2):
+                    if seq[i:i+2] == "GT":
+                        gt_positions.append(i)
+                    
+                    if seq[i:i+2] == "AG":
+                        ag_positions.append(i)
+                
+                for gt_i, ag_i in product(gt_positions, ag_positions):
+                    if gt_i > ag_i:
+                        continue
+                    
+                    gt_ag_kmer = seq[gt_i:ag_i+2]
+                    difference = len(gt_ag_kmer) - ((region_end - region_start) * 3)
+                    debug_out.append(">"+header+f" - {region_start}:{region_end} - {difference}")
+                    debug_out.append(gt_ag_kmer)
+            
             final_nt_out.append((header, seq))
         writeFasta(nt_out, final_nt_out, compress_intermediates)
 
