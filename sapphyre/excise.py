@@ -1834,13 +1834,12 @@ def log_excised_consensus(
         if gene_coverage < req_coverage:
             log_output.append(f">{gene}_kicked_coverage_{gene_coverage}_of_{req_coverage}\n{consensus_seq}")
             return log_output, False, False, gene, False, len(aa_nodes), this_rescues, scan_log, multi_log, ends, gff_out, debug_out
-        
-        writeFasta(aa_out, aa_output, compress_intermediates)
+
         nt_output = [(header, del_cols(seq, x_positions[header], True)) for header, seq in raw_sequences.items() if header not in kicked_headers]
         EXTEND_WINDOW = 15
         PENALISE_OVER_CUTOFF = 1.2
         final_nt_out = []
-            
+        aa_cols = defaultdict(set)
         for header, seq in nt_output:
             if header in replacements or header in extensions:
                 seq = list(seq)
@@ -1862,7 +1861,7 @@ def log_excised_consensus(
                     if seq[i:i+2] == "GT":
                         gt_positions.append(i)
                     
-                    if seq[i:i+2] == "AG":
+                    if seq[i+1:i+3] == "AG":
                         ag_positions.append(i)
                 
                 combo_found = False
@@ -1871,7 +1870,7 @@ def log_excised_consensus(
                     if gt_i > ag_i:
                         continue
                     
-                    gt_ag_kmer = seq[gt_i:ag_i+2]
+                    gt_ag_kmer = seq[gt_i:ag_i+3]
                     if len(gt_ag_kmer) >= 20:
                         
                         difference = ((region_end - region_start) * 3) - len(gt_ag_kmer)
@@ -1879,7 +1878,7 @@ def log_excised_consensus(
                             difference *= PENALISE_OVER_CUTOFF
                         this_combos.append((gt_i, ag_i, difference))
                         debug_out.append(">"+header+f" - {region_start}:{region_end} - {difference}")
-                        debug_out.append(gt_ag_kmer + "N")
+                        debug_out.append(gt_ag_kmer)
                     combo_found = True
                     
                 
@@ -1891,15 +1890,26 @@ def log_excised_consensus(
                     gt_positions, ag_positions, _ = min(this_combos, key=lambda x: abs(x[2]))
 
                     seq = list(seq)
-                    for i in range(gt_positions, ag_positions):
+                    for i in range(gt_positions, ag_positions+3):
                         seq[i] = "-"
+                        aa_cols[header].add(i//3)
                     seq = "".join(seq)
                     #seq = seq[:gt_positions] + seq[ag_positions:]
                 
             
             final_nt_out.append((header, seq))
         writeFasta(nt_out, final_nt_out, compress_intermediates)
-
+        
+        this_out = []
+        for header, seq in aa_output:
+            if header in aa_cols:
+                seq = list(seq)
+                for i in aa_cols[header]:
+                    seq[i] = "-"
+                seq = "".join(seq)
+            this_out.append((header, seq))
+        
+        writeFasta(aa_out, this_out, compress_intermediates)
         return log_output, had_region, False, False, gene, len(kicked_headers), this_rescues, scan_log, multi_log, ends, gff_out, debug_out
     return log_output, had_region, gene, False, None, len(kicked_headers), this_rescues, scan_log, multi_log, ends, gff_out, debug_out
 
