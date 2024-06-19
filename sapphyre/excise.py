@@ -1640,27 +1640,31 @@ def log_excised_consensus(
                     node_og = bio_revcomp(node_og)
                 
                 if prev_node.header in og_starts:
-                    prev_start_index, prev_start = og_starts[prev_node.header]
-                    difference = (prev_node.start * 3) - prev_start
-                    prev_start_index += difference
+                    prev_cur_len = len(prev_node.nt_sequence) - prev_node.nt_sequence.count("-")
+                    prev_start_index, prev_len = og_starts[prev_node.header]
+                    difference = prev_cur_len - prev_len
+                    prev_start_index -= difference
                 else:
                     prev_start_index = prev_og.find(prev_kmer)
                     if prev_start_index == -1:
                         continue
-                    og_starts[prev_node.header] = [prev_start_index, prev_node.start * 3]
+                    prev_len = len(prev_node.nt_sequence) - prev_node.nt_sequence.count("-")
+                    og_starts[prev_node.header] = [prev_start_index, prev_len]
 
                 prev_og = insert_gaps(prev_og, prev_internal_gaps, prev_start_index)
                 prev_end_index = prev_start_index + len(prev_kmer) + len(prev_internal_gaps)
                 
                 if node.header in og_starts:
-                    node_start_index, node_start = og_starts[node.header]
-                    difference = (node.start * 3) - node_start
-                    node_start_index += difference
+                    node_cur_len = len(node.nt_sequence) - node.nt_sequence.count("-")
+                    node_start_index, node_len = og_starts[node.header]
+                    difference = node_cur_len - node_len
+                    node_start_index -= difference
                 else:
                     node_start_index = node_og.find(kmer)
                     if node_start_index == -1:
                         continue
-                    og_starts[node.header] = [node_start_index, node.start * 3]
+                    node_len = len(node.nt_sequence) - node.nt_sequence.count("-")
+                    og_starts[node.header] = [node_start_index, node_len]
                 
                 node_og = insert_gaps(node_og, kmer_internal_gaps, node_start_index)
                 node_end_index = node_start_index + len(kmer) + len(kmer_internal_gaps)
