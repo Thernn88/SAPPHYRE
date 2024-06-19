@@ -1124,7 +1124,7 @@ def make_diamonddb(set: Sequence_Set, processes):
 SETS_DIR = None
 
 
-def generate_subset(file_paths, taxon_to_kick: set, nt_input: str = None):
+def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, nt_input: str = None):
     """
     Grabs alls sequences in a fasta file and inserts them into a subset.
     """
@@ -1152,18 +1152,21 @@ def generate_subset(file_paths, taxon_to_kick: set, nt_input: str = None):
         #Grab headers
         headers = set()
         multiheaders = set()
-        with open(file) as fp:
-            for line in fp:
-                if line[0] != ">" or line[-1] == ".":
-                    continue
-                if "{" in line:
-                    break
-                
-                header = line.split("|")[2]
-                if header in headers:
-                    multiheaders.add(header)
-                    continue
-                headers.add(header)
+        if not skip_multi_headers:
+            with open(file) as fp:
+                for line in fp:
+                    if line[0] != ">" or line[-1] == ".":
+                        continue
+                    if "{" in line:
+                        header = line.split(" ")[0]
+                    elif "|" in line:
+                        header = line.split("|")[2]
+                        
+                    if header in headers:
+                        multiheaders.add(header)
+                        continue
+                    
+                    headers.add(header)
 
         for seq_record in SeqIO.parse(file, "fasta"):
             if "|" in seq_record.description and " " not in seq_record.description:
@@ -1191,6 +1194,9 @@ def generate_subset(file_paths, taxon_to_kick: set, nt_input: str = None):
                     )
             else:
                 header, data = seq_record.description.split(" ", 1)
+                if header in multiheaders:
+                    this_counter[header] += 1
+                    header = f"{header}_{this_counter[header]}"
                 #Assuming ID {JSON}
                 data = json.decode(data)
                 seq = str(seq_record.seq)
@@ -1203,7 +1209,7 @@ def generate_subset(file_paths, taxon_to_kick: set, nt_input: str = None):
 
                     subset.add_sequence(
                         Sequence(
-                            seq_record.description,
+                            f"{header} {data}",
                             header,
                             seq,
                             nt_seqs.get(seq_record.description),
@@ -1319,7 +1325,7 @@ def main(args):
         printv(f"Reading files from {input_file}", verbosity)
         if input_file.split(".")[-1] == "fa" and os.path.isfile(input_file):
             printv("Input Detected: Single fasta", verbosity)
-            subset = generate_subset([input_file], kick)
+            subset = generate_subset([input_file], kick, args.skip_multi_headers)
             this_set.absorb(subset)
 
         elif input_file.split(".")[-1] in {
@@ -1381,6 +1387,7 @@ def main(args):
                 (
                     file_paths[i : i + per_thread],
                     kick,
+                    args.skip_multi_headers,
                     nt_input,
                 )
                 for i in range(0, len(file_paths), per_thread)

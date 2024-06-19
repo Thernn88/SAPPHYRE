@@ -1153,6 +1153,13 @@ def subcmd_makeref(sp):
         help="Skip splice. Useful for non-orthodb inputs",
     )
     par.add_argument(
+        "-smh",
+        "--skip_multi_headers",
+        default = False,
+        action="store_true",
+        help="Skip checking for duplicate headers and appending _# to them",
+    )   
+    par.add_argument(
         "-nh",
         "--no_halves",
         default=False,
