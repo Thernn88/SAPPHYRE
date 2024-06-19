@@ -1817,7 +1817,9 @@ def log_excised_consensus(
                             amt_non_gap += 1
                             
                     if amt_non_gap / (end - start) >= 0.9:
-                        internal_headers[header] = region[0], region[1]
+                        region_start = region[0] - (region[0] % 3)
+                        region_end = region[1] + (3 - (region[0] % 3))
+                        internal_headers[header] = region_start, region_end
                         break
 
     aa_has_candidate = False
@@ -1836,6 +1838,7 @@ def log_excised_consensus(
         writeFasta(aa_out, aa_output, compress_intermediates)
         nt_output = [(header, del_cols(seq, x_positions[header], True)) for header, seq in raw_sequences.items() if header not in kicked_headers]
         EXTEND_WINDOW = 15
+        PENALISE_OVER_CUTOFF = 1.2
         final_nt_out = []
             
         for header, seq in nt_output:
@@ -1854,7 +1857,8 @@ def log_excised_consensus(
                 gt_positions = []
                 ag_positions = []
                 search_start, search_end = max(0, (region_start * 3) - EXTEND_WINDOW), min(len(seq), (region_end * 3) + EXTEND_WINDOW)
-                for i in range(search_start, search_end - 1):
+                for i in range(search_start, search_end - 1, 3):
+
                     if seq[i:i+2] == "GT":
                         gt_positions.append(i)
                     
@@ -1862,20 +1866,36 @@ def log_excised_consensus(
                         ag_positions.append(i)
                 
                 combo_found = False
+                this_combos = []
                 for gt_i, ag_i in product(gt_positions, ag_positions):
                     if gt_i > ag_i:
                         continue
                     
                     gt_ag_kmer = seq[gt_i:ag_i+2]
-                    difference = len(gt_ag_kmer) - ((region_end - region_start) * 3)
-                    debug_out.append(">"+header+f" - {region_start}:{region_end} - {difference}")
-                    debug_out.append(gt_ag_kmer)
+                    if len(gt_ag_kmer) >= 20:
+                        
+                        difference = ((region_end - region_start) * 3) - len(gt_ag_kmer)
+                        if difference < 0:
+                            difference *= PENALISE_OVER_CUTOFF
+                        this_combos.append((gt_i, ag_i, difference))
+                        debug_out.append(">"+header+f" - {region_start}:{region_end} - {difference}")
+                        debug_out.append(gt_ag_kmer + "N")
                     combo_found = True
                     
                 
                 if not combo_found:
                     debug_out.append(">"+header+f" - {region_start}:{region_end} - Combo not found, search region follows. {len(gt_positions)}, {len(ag_positions)}")
                     debug_out.append(seq[search_start: search_end])
+                    
+                if this_combos:
+                    gt_positions, ag_positions, _ = min(this_combos, key=lambda x: abs(x[2]))
+
+                    seq = list(seq)
+                    for i in range(gt_positions, ag_positions):
+                        seq[i] = "-"
+                    seq = "".join(seq)
+                    #seq = seq[:gt_positions] + seq[ag_positions:]
+                
             
             final_nt_out.append((header, seq))
         writeFasta(nt_out, final_nt_out, compress_intermediates)
