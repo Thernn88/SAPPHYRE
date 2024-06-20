@@ -183,8 +183,6 @@ class NODE(Struct):
     nt_sequence: str
     start: int
     end: int
-    non_orphan_start: int
-    non_orphan_end: int
     children: list
 
     def extend(self, node_2, overlap_coord):
@@ -258,7 +256,7 @@ class NODE(Struct):
         self.children.extend(node_2.children)
 
     def clone(self):
-        return NODE(self.header, self.frame, self.sequence, self.nt_sequence, self.start, self.end, self.non_orphan_start, self.non_orphan_end, self.children)
+        return NODE(self.header, self.frame, self.sequence, self.nt_sequence, self.start, self.end, self.children)
     
     def contig_header(self):
         """
@@ -998,16 +996,12 @@ def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og
             replacements[node.header][x] = "-"
         node_seq[x] = "-"
         
-    prev_non_orphan_start, prev_non_orphan_end = find_index_pair("".join(prev_nt_seq), "-")
-    node_non_orphan_start, node_non_orphan_end = find_index_pair("".join(node_seq), "-")
-        
-    prev_bp = prev_node.non_orphan_start - prev_non_orphan_start
-    node_bp = node.non_orphan_start - node_non_orphan_start
+    new_start, _ = find_index_pair("".join(node_seq), "-")
+    old_start = node.start * 3
     
-    if add_results:
-        prev_node.non_orphan_start, prev_node.non_orphan_end = prev_non_orphan_start, prev_non_orphan_end
-        node.non_orphan_start, node.non_orphan_end = node_non_orphan_start, node_non_orphan_end
-
+    removed_region = node.nt_sequence[old_start: new_start]
+    node_bp = removed_region.count("-")
+        
     if orphan_codon:
         joined = "".join(orphan_codon)
         if joined not in DNA_CODONS:
@@ -1022,7 +1016,6 @@ def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og
             if prev_nt_seq[x] == orphan_codon[i]:
                 continue
             
-            prev_bp += 1    
             prev_nt_seq[x] = orphan_codon[i]
             if add_results:
                 replacements[prev_node.header][x] = orphan_codon[i]
@@ -1031,7 +1024,6 @@ def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og
             if node_seq[x] == orphan_codon[i]:
                 continue
             
-            node_bp += 1
             node_seq[x] = orphan_codon[i]
             if add_results:
                 replacements[node.header][x] = orphan_codon[i]
@@ -1154,7 +1146,7 @@ def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og
         prev_node.start, prev_node.end = final_prev_start//3, final_prev_end//3
         node.start, node.end = final_node_start//3, final_node_end//3
         
-        return (prev_bp, node_bp), (gff_coord_prev, gff_coord_node), smallest_change
+        return node_bp, (gff_coord_prev, gff_coord_node), smallest_change
     return None, smallest_change, None
 
 def log_excised_consensus(
@@ -1238,7 +1230,7 @@ def log_excised_consensus(
 
         frame = int(header.split("|")[4])
         start, end = find_index_pair(seq, "-")
-        aa_nodes.append(NODE(header, frame, seq, None, start, end, start*3, end*3, []))
+        aa_nodes.append(NODE(header, frame, seq, None, start, end, []))
 
     ref_gap_percent = 0.75
     for i, lets in ref_consensus.items():
@@ -1494,7 +1486,6 @@ def log_excised_consensus(
         for node in aa_nodes:
             if node.header in kicked_headers:
                 continue
-            node.non_orphan_start, node.non_orphan_end = find_index_pair(node.nt_sequence, "-")
             after_data.append((node.header.split("|")[3].split("&&")[0].split("_")[1], node.header))
 
         after_data.sort(key = lambda x: x[0])
@@ -1667,7 +1658,7 @@ def log_excised_consensus(
                 
                 if prev_node.header in og_starts:
                     prev_start_index, prev_start = og_starts[prev_node.header]
-                    difference = (prev_node.start * 3) - prev_start
+                    difference = (prev_node.start * 3) - prev_start - start_bp_difference.get(prev_node.header, 0)
                     prev_start_index += difference
                 else:
                     prev_start_index = prev_og.find(prev_kmer)
@@ -1696,10 +1687,6 @@ def log_excised_consensus(
                 node_seq = list(node.nt_sequence)
                 
                 gt_positions, ag_positions = find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_index, node_end_index, DNA_CODONS, prev_og, node_og, prev_nt_seq, node_seq, ref_gaps)
-
-                if "NODE_1066362&&1066363" in prev_node.header or "NODE_1066362&&1066363" in node.header:
-                    print(len(gt_positions), len(ag_positions))
-
                 this_results = get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, INSERTION_PENALTY, DNA_CODONS, ref_gaps)
                 
                 if this_results:
@@ -1715,10 +1702,9 @@ def log_excised_consensus(
                     else:
                         this_best_splice = highest_results[0]
                     
-                    removed_bp, gff, _ = splice_combo(True, True, this_best_splice, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
-                    if removed_bp:
-                        _, node_bp = removed_bp
-                        start_bp_difference[node.header] = node_bp
+                    removed_internal_gaps, gff, _ = splice_combo(True, True, this_best_splice, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
+                    if removed_internal_gaps:
+                        start_bp_difference[node.header] = removed_internal_gaps
                         
                     if gff:
                         prev_gff, node_gff = gff
