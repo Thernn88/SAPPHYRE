@@ -1004,8 +1004,9 @@ def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og
     prev_bp = prev_node.non_orphan_start - prev_non_orphan_start
     node_bp = node.non_orphan_start - node_non_orphan_start
     
-    prev_node.non_orphan_start, prev_node.non_orphan_end = prev_non_orphan_start, prev_non_orphan_end
-    node.non_orphan_start, node.non_orphan_end = node_non_orphan_start, node_non_orphan_end
+    if add_results:
+        prev_node.non_orphan_start, prev_node.non_orphan_end = prev_non_orphan_start, prev_non_orphan_end
+        node.non_orphan_start, node.non_orphan_end = node_non_orphan_start, node_non_orphan_end
 
     if orphan_codon:
         joined = "".join(orphan_codon)
@@ -1021,9 +1022,7 @@ def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og
             if prev_nt_seq[x] == orphan_codon[i]:
                 continue
             
-            if orphan_codon[i] == prev_node.nt_sequence[x] and prev_node.nt_sequence[x] != "-":
-                prev_bp += 1
-                
+            prev_bp += 1    
             prev_nt_seq[x] = orphan_codon[i]
             if add_results:
                 replacements[prev_node.header][x] = orphan_codon[i]
@@ -1032,8 +1031,7 @@ def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og
             if node_seq[x] == orphan_codon[i]:
                 continue
             
-            if orphan_codon[i] == node.nt_sequence[x] and node.nt_sequence[x] != "-":
-                node_bp += 1
+            node_bp += 1
             node_seq[x] = orphan_codon[i]
             if add_results:
                 replacements[node.header][x] = orphan_codon[i]
@@ -1496,6 +1494,7 @@ def log_excised_consensus(
         for node in aa_nodes:
             if node.header in kicked_headers:
                 continue
+            node.non_orphan_start, node.non_orphan_end = find_index_pair(node.nt_sequence, "-")
             after_data.append((node.header.split("|")[3].split("&&")[0].split("_")[1], node.header))
 
         after_data.sort(key = lambda x: x[0])
@@ -1669,7 +1668,7 @@ def log_excised_consensus(
                 if prev_node.header in og_starts:
                     prev_start_index = og_starts[prev_node.header]
                     left_bp_difference = start_bp_difference.get(prev_node.header, 0)
-                    prev_start_index += left_bp_difference
+                    prev_start_index -= left_bp_difference
                 else:
                     prev_start_index = prev_og.find(prev_kmer)
                     if prev_start_index == -1:
@@ -1683,7 +1682,7 @@ def log_excised_consensus(
                 if node.header in og_starts:
                     node_start_index = og_starts[node.header]
                     right_bp_difference = start_bp_difference.get(node.header, 0)
-                    node_start_index += right_bp_difference
+                    node_start_index -= right_bp_difference
                 else:
                     node_start_index = node_og.find(kmer)
                     if node_start_index == -1:
