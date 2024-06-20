@@ -577,11 +577,12 @@ def node_to_ids(node):
     return list(map(lambda x: int(x.split("_")[0]), node.split("&&")))
 
 class cluster_rec:
-    def __init__(self, node, start, end, seq_data_coords) -> None:
+    def __init__(self, node, start, end, seq_data_coords, strand) -> None:
         self.node = node
         self.start = start
         self.end = end
         self.seq_data_coords = seq_data_coords
+        self.strand = strand
     
     @cached_property
     def get_ids(self): 
@@ -649,24 +650,25 @@ def cluster_ids(ids, max_id_distance, max_gap, ref_coords):
             cluster_distance = get_min_distance(current_indices, rec.get_ids)
             passed_id_distance = None
             passed_distance = None
-            if cluster_distance <= max_id_distance:
-                current_rec = current_cluster[-1]
-                cluster_overlap = get_overlap(rec.start, rec.end, current_rec.start, current_rec.end, -max_gap)
-                
-                if cluster_overlap:
-                    cluster_pos_distance = min(
-                        abs(rec.start - current_rec.start), 
-                        abs(rec.start - current_rec.end), 
-                        abs(rec.end - current_rec.start), 
-                        abs(rec.end - current_rec.end)
-                    )
+            if rec.strand == current_cluster[-1].strand:
+                if cluster_distance <= max_id_distance:
+                    current_rec = current_cluster[-1]
+                    cluster_overlap = get_overlap(rec.start, rec.end, current_rec.start, current_rec.end, -max_gap)
+                    
+                    if cluster_overlap:
+                        cluster_pos_distance = min(
+                            abs(rec.start - current_rec.start), 
+                            abs(rec.start - current_rec.end), 
+                            abs(rec.end - current_rec.start), 
+                            abs(rec.end - current_rec.end)
+                        )
 
-                    this_direction = determine_direction(rec.start, rec.end, current_rec.start, current_rec.end, current_direction)
-                    if this_direction:
-                        passed_id_distance = cluster_distance
-                        passed_distance = cluster_pos_distance
-                        passed_direction = this_direction
-                        passed = True
+                        this_direction = determine_direction(rec.start, rec.end, current_rec.start, current_rec.end, current_direction)
+                        if this_direction:
+                            passed_id_distance = cluster_distance
+                            passed_distance = cluster_pos_distance
+                            passed_direction = this_direction
+                            passed = True
                 
             if passed:
                 # not last id
@@ -1236,7 +1238,7 @@ def log_excised_consensus(
             if node.header not in kicked_headers:
                 start, end = find_index_pair(node.sequence, "-")
                 data_cols = {i for i, let in enumerate(node.sequence[start:end], start) if let != "-"}
-                ids.append(cluster_rec(node.header.split("|")[3], start, end, data_cols))
+                ids.append(cluster_rec(node.header.split("|")[3], start, end, data_cols, "-" if node.frame < 0 else "+"))
     
         max_gap_size = round(len(aa_nodes[0].sequence) * 0.5) # Half MSA length
     
