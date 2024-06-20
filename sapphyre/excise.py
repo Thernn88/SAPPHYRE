@@ -842,7 +842,7 @@ def find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_ind
     gt_positions = []
     ag_positions = []
     
-    EXTEND_WINDOW = 15
+    EXTEND_WINDOW = 45
     
     overlapping_region = get_overlap(prev_node.start * 3, prev_node.end * 3, node.start * 3, node.end * 3, 1)
     overlap_amount = 0
@@ -1841,7 +1841,7 @@ def log_excised_consensus(
         
         writeFasta(aa_out, aa_output, compress_intermediates)
         nt_output = [(header, del_cols(seq, x_positions[header], True)) for header, seq in raw_sequences.items() if header not in kicked_headers]
-        EXTEND_WINDOW = 15
+        EXTEND_WINDOW = 45
         final_nt_out = []
             
         for header, seq in nt_output:
