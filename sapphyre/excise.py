@@ -1386,6 +1386,7 @@ def log_excised_consensus(
                 
                 nodes_in_region = None
                 if is_genome:
+                    continue
                     tagged_in_region = [(int(node.header.split("|")[3].split("&&")[0].split("_")[1]), node) for node in sequences_in_region]
                     tagged_in_region.sort(key=lambda x: x[0])
                     clusters = cluster(tagged_in_region, true_cluster_threshold)
@@ -1697,6 +1698,9 @@ def log_excised_consensus(
                 node_seq = list(node.nt_sequence)
                 
                 gt_positions, ag_positions = find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_index, node_end_index, DNA_CODONS, prev_og, node_og, prev_nt_seq, node_seq, ref_gaps)
+
+                if "NODE_1066362&&1066363" in prev_node.header or "NODE_1066362&&1066363" in node.header:
+                    print(len(gt_positions), len(ag_positions))
 
                 this_results = get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, INSERTION_PENALTY, DNA_CODONS, ref_gaps)
                 
