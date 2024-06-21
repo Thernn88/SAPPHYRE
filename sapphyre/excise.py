@@ -1102,10 +1102,9 @@ def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og
     scan_log.append("") 
     
     if add_results:
-        prev_kmer = prev_hit.replace("-", "")
         gff_coord_prev = (
             prev_start_index + 1,
-            prev_start_index + len(prev_kmer) - 2
+            gt_index - len(prev_internal_gaps) - 1
         ) 
 
         gff_coord_node = (
@@ -1126,12 +1125,6 @@ def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og
             gff_coords[node.header] = gff_coord_node
         else:
             gff_coords[node.header] = gff_coord_node
-        
-        if "NODE_1482416&&1482417" in prev_node.header:
-            print(gff_coord_prev)
-            print(prev_nt_seq)
-            print(kmer)
-            print(prev_node.nt_sequence)
         
         if prev_node.frame < 0:
             og_length = len(prev_og) - len(prev_internal_gaps) + 1
