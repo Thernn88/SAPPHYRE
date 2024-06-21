@@ -1101,10 +1101,11 @@ def splice_combo(add_results, print_extra, formed_seqs, this_result, prev_node, 
     scan_log.append("") 
     
     if add_results:
+        prev_kmer = prev_hit.replace("-", "")
         gff_coord_prev = (
             prev_start_index + 1,
-            gt_index - len(prev_internal_gaps) - 1
-        ) 
+            prev_start_index + len(prev_kmer) - 2
+        )
 
         gff_coord_node = (
             ag_index_rev + 3,
