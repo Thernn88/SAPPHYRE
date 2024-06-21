@@ -959,7 +959,7 @@ def find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_ind
     return gt_positions, ag_positions
 
 
-def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords):
+def splice_combo(add_results, print_extra, formed_seqs, this_result, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords):
     # if "223372" not in node.header:
     #     return
     
@@ -1006,15 +1006,26 @@ def splice_combo(add_results, print_extra, this_result, prev_node, node, prev_og
             replacements_aa[prev_node.header][left_last_codon//3] = orphan_aa
             replacements_aa[node.header][right_end_codon//3] = orphan_aa
 
+        prev_og = list(prev_og)
+        node_og = list(node_og)
+
         for i, x in enumerate(range(left_last_codon, left_last_codon + 3)):
             prev_nt_seq[x] = orphan_codon[i]
             if add_results:
+                prev_og[prev_start_index + x - (prev_node.start * 3)] = orphan_codon[i]
                 replacements[prev_node.header][x] = orphan_codon[i]
 
         for i, x in enumerate(range(right_end_codon, right_end_codon + 3)):
             node_seq[x] = orphan_codon[i]
             if add_results:
+                node_og[node_start_index + x - (node.start * 3)] = orphan_codon[i]
                 replacements[node.header][x] = orphan_codon[i]
+                
+        prev_og = "".join(prev_og)
+        node_og = "".join(node_og)
+        
+        formed_seqs[prev_node.header] = prev_og.replace("-", "")
+        formed_seqs[node.header] = node_og.replace("-", "")
         
     node_seq = "".join(node_seq)
     prev_nt_seq = "".join(prev_nt_seq)
@@ -1597,6 +1608,7 @@ def log_excised_consensus(
     ends = {}
     gff_out = defaultdict(dict)
     gff_coords = {}
+    formed_seqs = {}
     for cluster_i, cluster_set in enumerate(cluster_sets):
         aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
         aa_subset.sort(key = lambda x: x.start)
@@ -1622,52 +1634,48 @@ def log_excised_consensus(
                 kmer_internal_gaps = [i for i, let in enumerate(kmer) if let == "-"]
                 kmer = kmer.replace("-","")
                 
-                children = list(map(int_first_id, prev_node.header.split("|")[3].replace("NODE_", "").split("&&")))
-                prev_og = head_to_seq[children[0]]
-                for i, child in enumerate(children):
-                    if i == 0:
-                        continue
-                    prev_og += head_to_seq[child][250:]
+                if prev_node.header not in formed_seqs:
+                    children = list(map(int_first_id, prev_node.header.split("|")[3].replace("NODE_", "").split("&&")))
+                    prev_og = head_to_seq[children[0]]
+                    for i, child in enumerate(children):
+                        if i == 0:
+                            continue
+                        prev_og += head_to_seq[child][250:]
 
-                if prev_node.frame < 0:
-                    prev_og = bio_revcomp(prev_og)
-                    
-                children = list(map(int_first_id, node.header.split("|")[3].replace("NODE_", "").split("&&")))
-                node_og = head_to_seq[children[0]]
-                for i, child in enumerate(children):
-                    if i == 0:
-                        continue
-                    node_og += head_to_seq[child][250:]
-
-                if node.frame < 0:
-                    node_og = bio_revcomp(node_og)
+                    if prev_node.frame < 0:
+                        prev_og = bio_revcomp(prev_og)
                 
-                if prev_node.header in og_starts:
-                    prev_cur_len = len(prev_node.nt_sequence) - prev_node.nt_sequence.count("-")
-                    prev_start_index, prev_len = og_starts[prev_node.header]
-                    difference = prev_cur_len - prev_len
-                    prev_start_index -= difference
+                    formed_seqs[prev_node.header] = prev_og
                 else:
-                    prev_start_index = prev_og.find(prev_kmer)
-                    if prev_start_index == -1:
-                        continue
-                    prev_len = len(prev_node.nt_sequence) - prev_node.nt_sequence.count("-")
-                    og_starts[prev_node.header] = [prev_start_index, prev_len]
+                    prev_og = formed_seqs[prev_node.header]
+                    
+                if node.header not in formed_seqs:
+                    children = list(map(int_first_id, node.header.split("|")[3].replace("NODE_", "").split("&&")))
+                    node_og = head_to_seq[children[0]]
+                    for i, child in enumerate(children):
+                        if i == 0:
+                            continue
+                        node_og += head_to_seq[child][250:]
+
+                    if node.frame < 0:
+                        node_og = bio_revcomp(node_og)
+                    formed_seqs[node.header] = node_og
+                else:
+                    node_og = formed_seqs[node.header]
+                
+                prev_start_index = prev_og.find(prev_kmer)
+                if prev_start_index == -1:
+                    # print(prev_node.header)
+                    # print("FAIL")
+                    continue
 
                 prev_og = insert_gaps(prev_og, prev_internal_gaps, prev_start_index)
                 prev_end_index = prev_start_index + len(prev_kmer) + len(prev_internal_gaps)
-                
-                if node.header in og_starts:
-                    node_cur_len = len(node.nt_sequence) - node.nt_sequence.count("-")
-                    node_start_index, node_len = og_starts[node.header]
-                    difference = node_cur_len - node_len
-                    node_start_index -= difference
-                else:
-                    node_start_index = node_og.find(kmer)
-                    if node_start_index == -1:
-                        continue
-                    node_len = len(node.nt_sequence) - node.nt_sequence.count("-")
-                    og_starts[node.header] = [node_start_index, node_len]
+
+                node_start_index = node_og.find(kmer)
+                if node_start_index == -1:
+                    continue
+
                 
                 node_og = insert_gaps(node_og, kmer_internal_gaps, node_start_index)
                 node_end_index = node_start_index + len(kmer) + len(kmer_internal_gaps)
@@ -1677,26 +1685,24 @@ def log_excised_consensus(
                 
                 gt_positions, ag_positions = find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_index, node_end_index, DNA_CODONS, prev_og, node_og, prev_nt_seq, node_seq, ref_gaps)
 
-                if "NODE_1066362&&1066363" in prev_node.header or "NODE_1066362&&1066363" in node.header:
-                    print(len(gt_positions), len(ag_positions))
-
                 this_results = get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, INSERTION_PENALTY, DNA_CODONS, ref_gaps)
-                
+                splice_found = False
                 if this_results:
                     this_best_score = max(i[0] for i in this_results)
                     highest_results = [i for i in this_results if i[0] == this_best_score]
                     if len(highest_results) > 1:
                         best_change = None
                         for i, result in enumerate(highest_results):
-                            _, smallest_coords_change = splice_combo(False, i == 0, result, prev_node, node, prev_og, node_og, DNA_CODONS, multi_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
+                            _, smallest_coords_change = splice_combo(False, i == 0, formed_seqs, result, prev_node, node, prev_og, node_og, DNA_CODONS, multi_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
                             if best_change is None or smallest_coords_change < best_change:
                                 best_change = smallest_coords_change
                                 this_best_splice = result
                     else:
                         this_best_splice = highest_results[0]
                     
-                    gff, _ = splice_combo(True, True, this_best_splice, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
+                    gff, _ = splice_combo(True, True, formed_seqs, this_best_splice, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
                     if gff:
+                        splice_found = True
                         prev_gff, node_gff = gff
                         
                         prev_id = get_id(prev_node.header)
@@ -1726,7 +1732,7 @@ def log_excised_consensus(
                                 
                             strand = "+" if node.frame > 0 else "-"
                             gff_out[parent][node_id] = ((node_start), f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tID={node_id};Parent={gene};Note={node.frame};")
-                elif True:
+                if True and not splice_found:
                     scan_log.append("")
                     scan_log.append("")    
                     scan_log.append(f">{prev_node.header}_orf")
