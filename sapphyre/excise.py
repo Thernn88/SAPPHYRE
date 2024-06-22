@@ -802,7 +802,7 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
 
         if gt_size > 2 and right_end_codon in range(act_gt_index, act_gt_index + gt_size):
             for i in range(act_gt_index + gt_size - 1, act_gt_index + 1, -1):
-                if node_seq[i] != "-":
+                if node_seq[i - 1] != "-":
                     node_gap_insertions.append(i)
                     node_seq.insert(i, "-")
                     node_seq.pop(0)
@@ -840,7 +840,7 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
                 continue 
                 
             orphan_codon = None
-            
+
         distance = node_nt_start - prev_nt_end
         if not (0 <= distance <= 2):
             if prev_nt_end > node_nt_start:
@@ -920,8 +920,8 @@ def find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_ind
                 if (prev_act_coord + scan_index)//3 not in ref_gaps:
                     break            
 
-        if prev_nt_seq[prev_act_coord] == "-":
-            prev_extensions[prev_act_coord] = prev_og[i]
+        if prev_nt_seq[prev_act_coord - 1] == "-":
+            prev_extensions[prev_act_coord - 1] = prev_og[i - 1]
         
         x += 1
         
@@ -1151,7 +1151,7 @@ def splice_combo(add_results,
     scan_log.append("")    
     
     node_hit = node_og[ag_index_rev: (node_start_index + len(kmer) + len(kmer_internal_gaps))]
-    prev_hit = prev_og[prev_start_index: gt_index + 1]
+    prev_hit = prev_og[prev_start_index: gt_index + gt_size - 1]
     # lowercase
     prev_hit = prev_hit[:-gt_size] + prev_hit[-gt_size:].lower()
     node_hit = node_hit[:ag_size].lower() + node_hit[ag_size:]
@@ -1930,8 +1930,7 @@ def log_excised_consensus(
                     for i, bp in extensions[header].items():
                         seq[i] = bp
                 if header in gap_insertions_nt:
-                    gap_inserts = sorted(list(gap_insertions_nt[header]))
-                    for insert_i, pop_i in gap_inserts:
+                    for insert_i, pop_i in gap_insertions_nt[header]:
                         seq.insert(insert_i, "-")
                         seq.pop(pop_i)
                 if header in replacements:
