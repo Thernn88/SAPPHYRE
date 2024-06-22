@@ -793,19 +793,20 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
         prev_gap_insertions = []
         node_gap_insertions = []
         
-        if left_last_codon in range(act_ag_index_rev, act_ag_index_rev + ag_size) and ag_size > 2:
-            # print(prev_node.header,'vs',node.header)
+        if ag_size > 2 and left_last_codon in range(act_ag_index_rev, act_ag_index_rev + ag_size):
             for i in range(act_ag_index_rev + 1, act_ag_index_rev + ag_size - 1):
-                prev_gap_insertions.append(i)
-                prev_nt_seq.insert(i, "-")
-                prev_nt_seq.pop(-1)
+                if prev_nt_seq[i] != "-":
+                    prev_gap_insertions.append(i)
+                    prev_nt_seq.insert(i, "-")
+                    prev_nt_seq.pop(-1)
 
-        if right_end_codon in range(act_gt_index, act_gt_index + gt_size) and gt_size > 2:
-            # print(prev_node.header,'vs',node.header)
+        if gt_size > 2 and right_end_codon in range(act_gt_index, act_gt_index + gt_size):
+            print(node.header)
             for i in range(act_gt_index + 1, act_gt_index + gt_size - 1):
-                node_gap_insertions.append(i)
-                node_seq.insert(i, "-")
-                node_seq.pop(0)
+                if node_seq[i] != "-":
+                    node_gap_insertions.append(i)
+                    node_seq.insert(i, "-")
+                    node_seq.pop(0)
                 
         node_nt_start, node_nt_end = find_index_pair("".join(node_seq), "-")
         length = node_nt_end - node_nt_start
@@ -837,10 +838,10 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
             if "-" in right_codon and right_codon.count("-") != 3:
                 continue
             if "-" in left_codon and left_codon.count("-") != 3:
-                continue
+                continue 
                 
             orphan_codon = None
-
+            
         distance = node_nt_start - prev_nt_end
         if not (0 <= distance <= 2):
             if prev_nt_end > node_nt_start:
@@ -975,8 +976,8 @@ def find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_ind
                 if (node_act_coord + scan_index)//3 not in ref_gaps:
                     break
 
-        if node_seq[node_act_coord + 1] == "-":
-            node_extensions[node_act_coord + 1] = node_og[i + 1]
+        if node_seq[node_act_coord - 1] == "-":
+            node_extensions[node_act_coord - 1] = node_og[i - 1]
             
         x += 1
             
