@@ -801,8 +801,7 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
                     prev_nt_seq.pop(-1)
 
         if gt_size > 2 and right_end_codon in range(act_gt_index, act_gt_index + gt_size):
-            print(node.header)
-            for i in range(act_gt_index + 1, act_gt_index + gt_size - 1):
+            for i in range(act_gt_index + gt_size - 1, act_gt_index + 1, -1):
                 if node_seq[i] != "-":
                     node_gap_insertions.append(i)
                     node_seq.insert(i, "-")
@@ -918,7 +917,7 @@ def find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_ind
                 if prev_og[i + scan_index] != "-":
                     break
 
-                if prev_act_coord + scan_index not in ref_gaps:
+                if (prev_act_coord + scan_index)//3 not in ref_gaps:
                     break            
 
         if prev_nt_seq[prev_act_coord] == "-":
