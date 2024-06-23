@@ -1042,6 +1042,9 @@ def splice_combo(add_results,
             replacements[node.header][x] = "-"
         node_seq[x] = "-"
         
+    prev_insertions = 0
+    node_insertions = 0
+        
     for i in final_prev_insertions:
         if add_results:
             # if i % 3 == 0:
@@ -1049,6 +1052,7 @@ def splice_combo(add_results,
             gap_insertions_nt[prev_node.header].append((i, -1))
         prev_nt_seq.insert(i, "-")
         prev_nt_seq.pop(-1)
+        prev_insertions += 1
     
     for i in final_node_insertions:
         if add_results:
@@ -1057,7 +1061,8 @@ def splice_combo(add_results,
             gap_insertions_nt[node.header].append((i, 0))
         node_seq.insert(i, "-")
         node_seq.pop(0)
-
+        node_insertions += 1
+        
     if orphan_codon:
         joined = "".join(orphan_codon)
         if joined not in DNA_CODONS:
@@ -1074,13 +1079,13 @@ def splice_combo(add_results,
         for i, x in enumerate(range(left_last_codon, left_last_codon + 3)):
             prev_nt_seq[x] = orphan_codon[i]
             if add_results:
-                prev_og[prev_start_index + x - (prev_node.start * 3)] = orphan_codon[i]
+                prev_og[prev_start_index + x - (prev_node.start * 3) + prev_insertions] = orphan_codon[i]
                 replacements[prev_node.header][x] = orphan_codon[i]
 
         for i, x in enumerate(range(right_end_codon, right_end_codon + 3)):
             node_seq[x] = orphan_codon[i]
             if add_results:
-                node_og[node_start_index + x - (node.start * 3)] = orphan_codon[i]
+                node_og[node_start_index + x - (node.start * 3) + node_insertions] = orphan_codon[i]
                 replacements[node.header][x] = orphan_codon[i]
                 
         prev_og = "".join(prev_og)
