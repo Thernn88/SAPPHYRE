@@ -900,6 +900,9 @@ def find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_ind
 
         if i + 1 >= len(prev_og) or prev_act_coord >= len(prev_nt_seq) - 1:
             break
+        
+        if prev_nt_seq[prev_act_coord + 1] == "-":
+            prev_extensions[prev_act_coord + 1] = prev_og[i + 1]
 
         scan_index = 0
         if prev_og[i] == "G":
@@ -919,10 +922,6 @@ def find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_ind
 
                 if (prev_act_coord + scan_index)//3 not in ref_gaps:
                     break            
-
-        if prev_nt_seq[prev_act_coord] == "-":
-            prev_extensions[prev_act_coord] = prev_og[i]
-        
         x += 1
         
     # Iterate in reverse from the start of the kmer to the start of the original sequence
@@ -956,6 +955,10 @@ def find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_ind
         
         # Check if the next nucleotide (i + 1) is "A" and the current is "G"
         scan_index = 0
+        
+        if node_seq[node_act_coord] == "-":
+            node_extensions[node_act_coord] = node_og[i]
+        
         if node_og[i] == "A":
             while True:
                 scan_index += 1
@@ -974,9 +977,6 @@ def find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_ind
 
                 if (node_act_coord + scan_index)//3 not in ref_gaps:
                     break
-
-        if node_seq[node_act_coord + 1] == "-":
-            node_extensions[node_act_coord + 1] = node_og[i + 1]
             
         x += 1
             
