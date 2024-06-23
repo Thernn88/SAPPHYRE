@@ -1136,8 +1136,6 @@ def splice_combo(add_results,
     smallest_change = min(abs(final_prev_start - (prev_node.start*3)) + abs(final_prev_end - (prev_node.end*3)), abs(final_node_start - (node.start*3)) + abs(final_node_end - (node.end*3)))
     
     if print_extra: 
-        scan_log.append("")
-        scan_log.append("")   
         scan_log.append(f">{prev_node.header}_orf")
 
         scan_log.append(prev_og[prev_start_index - 3 :][:node_end])  
@@ -1687,6 +1685,7 @@ def log_excised_consensus(
             overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, -10)
             if overlapping_coords:
                 amount = overlapping_coords[1] - overlapping_coords[0]
+                this_flipped = ""
                 if amount > 1:
                     early_start = min(prev_node.start, node.start) * 3
                     late_end = max(prev_node.end, node.end) * 3
@@ -1695,7 +1694,24 @@ def log_excised_consensus(
                     percent_matching = 1 - (distance / (late_end - early_start))
                     if percent_matching >= SIMILARITY_SKIP:
                         continue
-                
+                    
+                    if amount == (node.end - node.start) or amount == (prev_node.end - prev_node.start):
+                        #Containment
+                        
+                        node_bp_indices = [i for i,let in enumerate(node.nt_sequence) if let != "-"]
+                        node_avg_bp_index = sum(node_bp_indices) / len(node_bp_indices)
+                        
+                        prev_bp_indices = [i for i,let in enumerate(prev_node.nt_sequence) if let != "-"]
+                        prev_avg_bp_index = sum(prev_bp_indices) / len(prev_bp_indices)
+                        
+                        if node_avg_bp_index < prev_avg_bp_index:
+                            prev_node, node = node, prev_node
+                            this_flipped = " (flipped)"
+                            
+                scan_log.append("")
+                scan_log.append("")
+                scan_log.append(f"Comparing {prev_node.header} vs {node.header}" + this_flipped)
+
                 prev_kmer = prev_node.nt_sequence[prev_node.start * 3 : prev_node.end * 3]
                 prev_internal_gaps = [i for i, let in enumerate(prev_kmer) if let == "-"]
                 prev_kmer = prev_kmer.replace("-","")
@@ -1803,9 +1819,7 @@ def log_excised_consensus(
                                 
                             strand = "+" if node.frame > 0 else "-"
                             gff_out[parent][node_id] = ((node_start), f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tID={node_id};Parent={gene};Note={node.frame};")
-                if True and not splice_found:
-                    scan_log.append("")
-                    scan_log.append("")    
+                if True and not splice_found:    
                     scan_log.append(f">{prev_node.header}_orf")
                     # print(prev_start_index, node_end_index)
                     # input()
