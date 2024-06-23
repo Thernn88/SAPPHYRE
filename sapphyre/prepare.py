@@ -169,8 +169,8 @@ class SeqDeduplicator:
             append_index_template = "{}_{}"
             sequence_template = ">{}\n{}\n"
             
-            if self.prepared_output is not None:
-                self.prepared_output.write(sequence_template.format(raw_header, parent_seq))
+            # if self.prepared_output is not None:
+            #     self.prepared_output.write(sequence_template.format(raw_header, parent_seq))
 
             
             for start, end in n_sequences:
@@ -220,6 +220,8 @@ class SeqDeduplicator:
                     self.original_positions[this_header] = (self.file_index, line_index)
 
                     self.lines.append(sequence_template.format(this_header, seq))
+                    if self.prepared_output is not None:
+                        self.prepared_output.write(sequence_template.format(this_header, seq))
                     next(this_index)
                 else:
                     individual_index = IndexIter()
@@ -237,6 +239,8 @@ class SeqDeduplicator:
                         this_child_len = len(this_chomp_seq)
                         self.original_coords[this_header] = (raw_header, start+i, start+i+CHOMP_LEN-1, parent_len, this_child_len - 1)
                         self.lines.append(sequence_template.format(this_header, this_chomp_seq))
+                        if self.prepared_output is not None:
+                            self.prepared_output.write(sequence_template.format(this_header, this_chomp_seq))
                         next(this_index)
 
         self.file_index += 1
