@@ -461,7 +461,7 @@ def do_cull(
 
             if sequence[i + match_i] == "-":
                 # References don't contain gap at this index, fail
-                if gap_present_threshold[i + match_i]:
+                if gap_present_threshold[i + match_i] and gap_present_threshold[i + match_i+1]:
                     pass_all = False
                     break
                 # Skip if references also have gap
@@ -539,7 +539,7 @@ def do_cull(
 
                 if sequence[i - match_i] == "-":
                     # References don't contain gap at this index, fail
-                    if gap_present_threshold[i - match_i]:
+                    if gap_present_threshold[i - match_i]and gap_present_threshold[i + match_i-1]:
                         pass_all = False
                         break
                     match_i += 1
