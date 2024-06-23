@@ -920,8 +920,8 @@ def find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_ind
                 if (prev_act_coord + scan_index)//3 not in ref_gaps:
                     break            
 
-        if prev_nt_seq[prev_act_coord - 1] == "-":
-            prev_extensions[prev_act_coord - 1] = prev_og[i - 1]
+        if prev_nt_seq[prev_act_coord] == "-":
+            prev_extensions[prev_act_coord] = prev_og[i]
         
         x += 1
         
@@ -975,8 +975,8 @@ def find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_ind
                 if (node_act_coord + scan_index)//3 not in ref_gaps:
                     break
 
-        if node_seq[node_act_coord - 1] == "-":
-            node_extensions[node_act_coord - 1] = node_og[i - 1]
+        if node_seq[node_act_coord + 1] == "-":
+            node_extensions[node_act_coord + 1] = node_og[i + 1]
             
         x += 1
             
@@ -1735,8 +1735,6 @@ def log_excised_consensus(
                 
                 prev_start_index = prev_og.find(prev_kmer)
                 if prev_start_index == -1:
-                    # print(prev_node.header)
-                    # print("FAIL")
                     continue
 
                 prev_og = insert_gaps(prev_og, prev_internal_gaps, prev_start_index)
