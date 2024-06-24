@@ -321,12 +321,12 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
 
                 strands_present = cluster_full.get(node, {"+", "-"})
 
+                unaligned_sequences.append((node, parent_seq))
                 if "+" in strands_present:
                     # Forward frame 1
                     query = f"{node}|1"
                     nt_sequences[query] = parent_seq
                     required_frames[node].add(1)
-                    unaligned_sequences.append((node, parent_seq))
                     if query not in parents and node not in cluster_full:
                         children[query] = fallback[node]
 
@@ -370,18 +370,16 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
                 frame = hit.frame
                 query = f"{hit.node}|{frame}"
                 unaligned_sequences.append((query, raw_sequence))
+                nt_sequences[query] = raw_sequence
                 parents[query] = hit
 
                 for shift_by in [1, 2]:
                     shifted = shift(frame, shift_by)
                     if not shifted in hits_have_frames_already[hit.node]:
                         new_query = f"{hit.node}|{shifted}"
-                        unaligned_sequences.append((new_query, raw_sequence[shift_by:]))
+                        nt_sequences[new_query] = raw_sequence[shift_by:]
                         hits_have_frames_already[hit.node].add(shifted)
                         children[new_query] = hit
-
-        for header, seq in unaligned_sequences:
-            nt_sequences[header] = seq
 
         aln_file = path.join(aln_ref_location, f"{gene}.aln.fa")
         output = []
