@@ -637,7 +637,6 @@ def cluster_ids(ids, max_id_distance, max_gap, ref_coords):
     ids.sort(key=lambda x: x.get_first_id())
     req_seq_coverage = 0.5
     current_cluster = None
-    debug = False
     
     for x, rec in enumerate(ids):
         
@@ -873,7 +872,7 @@ def find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_ind
     if overlapping_region:
         overlap_amount = overlapping_region[1] - overlapping_region[0]
         
-    x = 0
+    x = -1
     act_offset = (prev_node.end * 3) - overlap_amount - EXTEND_WINDOW
     prev_start_scan = prev_end_index - overlap_amount - EXTEND_WINDOW
     if prev_start_scan < prev_start_index:
@@ -881,7 +880,9 @@ def find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_ind
         prev_start_scan = prev_start_index + 3
     
     for i in range(prev_start_scan, len(prev_og)):
+        x += 1
         prev_act_coord = act_offset + x
+            
         # Get last codon
         
         if prev_act_coord <= 0:
@@ -922,25 +923,28 @@ def find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_ind
 
                 if (prev_act_coord + scan_index)//3 not in ref_gaps:
                     break            
-        x += 1
-        
     # Iterate in reverse from the start of the kmer to the start of the original sequence
-    x = 0
+    x = -1
     
-    start_scan = node_start_index + overlap_amount + EXTEND_WINDOW
-    act_offset = (node.start * 3) + overlap_amount + EXTEND_WINDOW
+    offset_distance = 0
+    if node.start < prev_node.start:
+        offset_distance = (prev_node.start - node.start) * 3
+    
+    start_scan = node_start_index + overlap_amount + EXTEND_WINDOW + offset_distance
+    act_offset = (node.start * 3) + overlap_amount + EXTEND_WINDOW + offset_distance
     if start_scan > node_end_index:
         start_scan = node_end_index
         act_offset = (node.end * 3)
         
     for i in range(start_scan - 1, -1, -1):
+        x += 1
         node_act_coord = act_offset - 1 - x
         # Get last codon
         
         if node_act_coord >= len(node_seq) - 1 or i >= len(node_og) - 1:
             continue
         
-        if node_act_coord < 0 or i < 0:
+        if node_act_coord < 0 or node_act_coord < (prev_node.start * 3):
             break
         
         if x > 0 and i < len(node_og) - 3 and x % 3 == 0 and i < node_start_index:
@@ -965,21 +969,18 @@ def find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_ind
 
                 if i + scan_index >= len(node_og):
                     break
-
+                
                 if node_og[i + scan_index] == "G":
                     act_ag_index_rev = node_act_coord
                     ag_index_rev = i
                     ag_size = scan_index + 1
                     ag_positions.append((ag_size, act_ag_index_rev, ag_index_rev, copy.deepcopy(node_extensions)))
-
                 if node_og[i + scan_index] != "-":
                     break
 
                 if (node_act_coord + scan_index)//3 not in ref_gaps:
                     break
-            
-        x += 1
-            
+
     return gt_positions, ag_positions
 
 
