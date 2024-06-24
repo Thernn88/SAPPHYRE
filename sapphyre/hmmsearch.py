@@ -186,7 +186,7 @@ def merge_clusters(clusters):
     return merged_clusters
 
 
-def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_ref_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
+def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_ref_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
     batch_result = []
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     for gene, diamond_hits in batches:
@@ -284,6 +284,8 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
                     primary_query[this_prange] = hit.query
 
             #grab most occuring query
+            smallest_cluster_in_range = None
+            largest_cluster_in_range = None
             if is_genome and clusters:
                 cluster_queries = {k: max(set(v), key=v.count) for k, v in cluster_queries.items()}
                 smallest_cluster_in_range = min([i[0][0] for i in clusters]) - chomp_max_distance
@@ -310,6 +312,15 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
                         source_clusters[header] = (False, this_crange)
                         cluster_full[header] = strands_present
                         nodes_in_gene.add(header)
+                
+            if type(source_seqs) is dict:
+                this_seqs = source_seqs
+            else:
+                this_seqs = {}
+                for header, seq in parseFasta(source_seqs, False):
+                    header = int(header)
+                    if smallest_cluster_in_range is None or header >= smallest_cluster_in_range and header <= largest_cluster_in_range:
+                        this_seqs[int(header)] = seq
                 
             for node in nodes_in_gene:
                 parent_seq = this_seqs.get(node)
@@ -683,7 +694,14 @@ def do_folder(input_folder, args):
         return False
 
     per_batch = math.ceil(len(transcripts_mapped_to) / args.processes)
-    batches = [(transcripts_mapped_to[i:i + per_batch], head_to_seq, is_full, is_genome, hmm_output_folder, aln_ref_location, args.overwrite, args.map, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance) for i in range(0, len(transcripts_mapped_to), per_batch)]
+    temp_source_file = None
+    if args.processes > 1:
+        temp_source_file = NamedTemporaryFile(dir=gettempdir(), prefix="seqs_", suffix=".fa")
+        writeFasta(temp_source_file.name, head_to_seq.items())
+        seq_source = temp_source_file.name
+    else:
+        seq_source = head_to_seq
+    batches = [(transcripts_mapped_to[i:i + per_batch], seq_source, is_full, is_genome, hmm_output_folder, aln_ref_location, args.overwrite, args.map, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance) for i in range(0, len(transcripts_mapped_to), per_batch)]
 
     if args.processes <= 1:
         all_hits = []
