@@ -811,7 +811,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         raise ValueError(
             msg,
         )
-    dupe_counts = json.decode(nt_db.get_bytes("getall:dupes"), type=dict[str, int])
+    dupe_counts = json.decode(nt_db.get_bytes("getall:dupes"), type=dict[int, int])
 
     out_path = path.join(diamond_path, f"{sensitivity}")
     extension_found = False
@@ -1316,8 +1316,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
         gene_dupe_count = defaultdict(dict)
         for gene, headers in dupe_divy_headers.items():
             for base_header in headers:
-                if base_header in dupe_counts:
-                    gene_dupe_count[gene][base_header] = dupe_counts[base_header]
+                header = int(base_header)
+                if header in dupe_counts:
+                    gene_dupe_count[gene][header] = dupe_counts[header]
 
         db.put("getall:presentgenes", ",".join(present_genes))
 

@@ -548,11 +548,9 @@ def tag(sequences: list[tuple[str, str]], prepare_dupes: dict[str, dict[str, int
     """
     output = []
     for header, sequence in sequences:
-        node = header.split("|")[3]
-        dupes = prepare_dupes.get(node, 1) + sum(
-            prepare_dupes.get(node, 1)
-            for node in reporter_dupes.get(node, [])
-        )
+        this_node = header.split("|")[3].replace("NODE_","")
+        nodes = list(map(lambda x: int(x.split("_")[0]), this_node.split("&&")))
+        dupes = sum(prepare_dupes.get(node, 1) for node in nodes) + sum(prepare_dupes.get(child, 1) for child in reporter_dupes.get(this_node, []))
         header = f"{header}|{dupes}"
         output.append((header, sequence))
 
