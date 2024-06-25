@@ -380,7 +380,8 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                 raw_sequence = hit.seq
                 frame = hit.frame
                 query = f"{hit.node}|{frame}"
-                unaligned_sequences.append((query, raw_sequence))
+                unaligned_sequences.append((hit.node, raw_sequence))
+                required_frames[hit.node].add(frame)
                 nt_sequences[query] = raw_sequence
                 parents[query] = hit
 
@@ -388,6 +389,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                     shifted = shift(frame, shift_by)
                     if not shifted in hits_have_frames_already[hit.node]:
                         new_query = f"{hit.node}|{shifted}"
+                        required_frames[hit.node].add(shifted)
                         nt_sequences[new_query] = raw_sequence[shift_by:]
                         hits_have_frames_already[hit.node].add(shifted)
                         children[new_query] = hit
