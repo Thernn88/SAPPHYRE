@@ -10,7 +10,7 @@ from typing import TextIO
 
 from blosum import BLOSUM
 from msgspec import json
-from parasail import blosum62, sw_trace_scan_profile_16, profile_create_16
+from parasail import blosum62, nw_trace_scan_profile_16, profile_create_16
 #from sapphyre_tools import translate
 from wrap_rocks import RocksDB
 from xxhash import xxh3_64
@@ -822,16 +822,17 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     for gene, transcript_hits in transcripts_mapped_to:
         if transcript_hits:
             for hit in transcript_hits:
-                parent, chomp_start, chomp_end, _, chomp_len = original_coords.get(str(hit.node), (None, None, None, None, None))
-                hit.parent = parent
-                if hit.frame < 0:
-                    hit.strand = "-"
-                    hit.chomp_start = (chomp_len - hit.qend) + chomp_start
-                    hit.chomp_end = (chomp_len - hit.qstart) + chomp_start - 1
-                else:
-                    hit.strand = "+"
-                    hit.chomp_start = hit.qstart + chomp_start
-                    hit.chomp_end = hit.qend + chomp_start - 1
+                if is_genome:
+                    parent, chomp_start, chomp_end, _, chomp_len = original_coords.get(str(hit.node), (None, None, None, None, None))
+                    hit.parent = parent
+                    if hit.frame < 0:
+                        hit.strand = "-"
+                        hit.chomp_start = (chomp_len - hit.qend) + chomp_start
+                        hit.chomp_end = (chomp_len - hit.qstart) + chomp_start - 1
+                    else:
+                        hit.strand = "+"
+                        hit.chomp_start = hit.qstart + chomp_start
+                        hit.chomp_end = hit.qend + chomp_start - 1
                     
             arguments.append(
                 (
