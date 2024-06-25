@@ -9,6 +9,7 @@ from wrap_rocks import RocksDB
 from msgspec import Struct, json
 from sapphyre_tools import bio_revcomp, get_overlap
 from Bio import BiopythonWarning
+from Bio.Seq import Seq
 from .utils import parseFasta, printv, gettempdir, writeFasta
 from .diamond import ReferenceHit, ReporterHit as Hit
 from .timekeeper import TimeKeeper, KeeperMode
@@ -380,17 +381,14 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                 raw_sequence = hit.seq
                 frame = hit.frame
                 query = f"{hit.node}|{frame}"
-                unaligned_sequences.append((hit.node, raw_sequence))
-                required_frames[hit.node].add(frame)
-                nt_sequences[query] = raw_sequence
+                unaligned_sequences.append((query, raw_sequence))
                 parents[query] = hit
 
                 for shift_by in [1, 2]:
                     shifted = shift(frame, shift_by)
                     if not shifted in hits_have_frames_already[hit.node]:
                         new_query = f"{hit.node}|{shifted}"
-                        required_frames[hit.node].add(shifted)
-                        nt_sequences[new_query] = raw_sequence[shift_by:]
+                        unaligned_sequences.append((new_query, raw_sequence[shift_by:]))
                         hits_have_frames_already[hit.node].add(shifted)
                         children[new_query] = hit
 
@@ -403,18 +401,24 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
         hmm_log_template = "{},{},{},{}"
         
         if debug > 2 or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
-            with NamedTemporaryFile(dir=gettempdir()) as unaligned_tmp, NamedTemporaryFile(dir=gettempdir()) as aln_tmp:
-                writeFasta(unaligned_tmp.name, unaligned_sequences)
-                system(f"fastatranslate {unaligned_tmp.name} > {aln_tmp.name}")
+            if is_full:
+                with NamedTemporaryFile(dir=gettempdir()) as unaligned_tmp, NamedTemporaryFile(dir=gettempdir()) as aln_tmp:
+                    writeFasta(unaligned_tmp.name, unaligned_sequences)
+                    system(f"fastatranslate {unaligned_tmp.name} > {aln_tmp.name}")
 
-                for header, seq in parseFasta(aln_tmp.name, True):
-                    frame = int(header.split("translate(")[1].replace(")]",""))
-                    if "revcomp" in header:
-                        frame = -frame
-                    header = header.split(" ")[0]
-                    if frame in required_frames[int(header)]:
-                        query = f"{header}|{frame}"
-                        aligned_sequences.append((query, seq))
+                    for header, seq in parseFasta(aln_tmp.name, True):
+                        frame = int(header.split("translate(")[1].replace(")]",""))
+                        if "revcomp" in header:
+                            frame = -frame
+                        header = header.split(" ")[0]
+                        if frame in required_frames[int(header)]:
+                            query = f"{header}|{frame}"
+                            aligned_sequences.append((query, seq))
+            else:
+                for header, seq in unaligned_sequences:
+                    nt_sequences[header] = seq
+                    aligned_sequences.append((header, str(Seq(seq).translate())))
+                    
                         
             with NamedTemporaryFile(dir=gettempdir()) as hmm_temp_file:
                 system(f"hmmbuild '{hmm_temp_file.name}' '{aln_file}' > /dev/null")
