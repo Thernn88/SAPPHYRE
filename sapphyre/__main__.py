@@ -228,7 +228,7 @@ def reporter_args(par):
         "-bp",
         "--minimum_bp",
         type=int,
-        default=15,
+        default=10,
         help="Amount of bp required after trim.",
     )
     par.add_argument(
@@ -297,7 +297,7 @@ def hmmsearch_args(par):
         "-et",
         "--evalue_threshold",
         type=int,
-        default=10,
+        default=5,
         help="Magnitude evalue threshold for rescue",
     )
     par.add_argument(
@@ -448,7 +448,7 @@ def outlier_args(par):
         "-imp",
         "--index_group_min_bp",
         type=int,
-        default=15,
+        default=10,
         help="Minimum bp for index group after column cull.",
     )
     par.add_argument(
