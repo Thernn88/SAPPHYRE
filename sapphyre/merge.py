@@ -173,8 +173,8 @@ class Sequence(Struct, frozen=True):
     header: str
     sequence: str
 
-    def get_node(self) -> str:
-        return self.header.split("|")[3]
+    def get_count(self) -> str:
+        return int(self.header.split("|")[5])
 
 
 
@@ -213,8 +213,7 @@ def do_protein(
     protein: Literal["aa", "nt"],
     gene_path,
     output_dir: Path,
-    prep_dupe_counts,
-    rep_dupe_counts,
+    skip_dupes,
     ref_stats,
     already_calculated_splits,
     gene,
@@ -283,10 +282,7 @@ def do_protein(
 
             for sequence in this_sequences:
                 # if protein == "aa":
-                count = prep_dupe_counts.get(sequence.get_node(), 1) + sum(
-                    prep_dupe_counts.get(header, 1)
-                    for header in rep_dupe_counts.get(sequence.get_node(), [])
-                )
+                count = sequence.get_count()
                 consists_of.append((sequence.header, sequence.sequence, count))
 
             # Gets last pipe of each component of a merge
@@ -557,8 +553,7 @@ def do_gene(
     output_dir: Path,
     aa_path,
     nt_path,  # this one
-    prep_dupe_counts,
-    rep_dupe_counts,
+    skip_dupes,
     ref_stats,
     debug,
     majority,
@@ -644,8 +639,7 @@ def do_gene(
         "aa",
         aa_path,
         output_dir,
-        prep_dupe_counts,
-        rep_dupe_counts,
+        skip_dupes,
         ref_stats,
         already_calculated_splits,
         gene,
@@ -661,8 +655,7 @@ def do_gene(
         "nt",
         nt_path,
         output_dir,
-        prep_dupe_counts,
-        rep_dupe_counts,
+        skip_dupes,
         ref_stats,
         already_calculated_splits,
         make_nt_name(gene),
@@ -691,19 +684,12 @@ def do_folder(folder: Path, args):
     tmp_dir = directory_check(folder)
     dupe_tmp_file = Path(tmp_dir, "DupeSeqs.tmp")
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
+    skip_dupes = False
     if rocks_db_path.exists():
         rocksdb_db = RocksDB(str(rocks_db_path))
-        prepare_dupe_counts = json.decode(
-            rocksdb_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]]
-        )
-        reporter_dupe_counts = json.decode(
-            rocksdb_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]]
-        )
-
         ref_stats = rocksdb_db.get("getall:valid_refs").split(",")
     else:
-        prepare_dupe_counts = {}
-        reporter_dupe_counts = {}
+        skip_dupes = True
         ref_stats = []
 
     if args.second_run:
@@ -734,14 +720,6 @@ def do_folder(folder: Path, args):
     if args.processes > 1:
         arguments = []
         for target_gene in target_genes:
-            prep_dupes_in_this_gene = prepare_dupe_counts.get(
-                target_gene.split(".")[0],
-                {},
-            )
-            rep_dupes_in_this_gene = reporter_dupe_counts.get(
-                target_gene.split(".")[0],
-                {},
-            )
             target_aa_path = Path(aa_input, target_gene)
             target_nt_path = Path(nt_input, make_nt_name(target_gene))
             arguments.append(
@@ -750,8 +728,7 @@ def do_folder(folder: Path, args):
                     folder,
                     target_aa_path,
                     target_nt_path,
-                    prep_dupes_in_this_gene,
-                    rep_dupes_in_this_gene,
+                    skip_dupes,
                     ref_stats,
                     args.debug,
                     args.majority,
@@ -766,14 +743,6 @@ def do_folder(folder: Path, args):
             pool.starmap(do_gene, arguments, chunksize=1)
     else:
         for target_gene in target_genes:
-            prep_dupes_in_this_gene = prepare_dupe_counts.get(
-                target_gene.split(".")[0],
-                {},
-            )
-            rep_dupes_in_this_gene = reporter_dupe_counts.get(
-                target_gene.split(".")[0],
-                {},
-            )
             target_aa_path = path.join(aa_input, target_gene)
             target_nt_path = path.join(nt_input, make_nt_name(target_gene))
             do_gene(
@@ -781,8 +750,7 @@ def do_folder(folder: Path, args):
                 folder,
                 target_aa_path,
                 target_nt_path,
-                prep_dupes_in_this_gene,
-                rep_dupes_in_this_gene,
+                skip_dupes,
                 ref_stats,
                 args.debug,
                 args.majority,

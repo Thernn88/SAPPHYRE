@@ -9,8 +9,6 @@ from sapphyre_tools import (
     consensus_distance,
     find_index_pair,
 )
-from wrap_rocks import RocksDB
-
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
 
@@ -49,7 +47,7 @@ def folder_check(taxa_path: Path) -> Path:
     # else:
     #     return None
 
-def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_counts):
+def bundle_seqs_and_dupes(sequences: list):
     """
     Pairs each record object with its dupe count from prepare and reporter databases.
     Given dupe count dictionaries and a list of Record objects, makes tuples of the records
@@ -57,33 +55,9 @@ def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_co
     """
     output = []
     for rec in sequences:
-        node = rec.id.split("|")[3]
-        dupes = prepare_dupe_counts.get(node, 1) + sum(
-            prepare_dupe_counts.get(node, 1)
-            for node in reporter_dupe_counts.get(node, [])
-        )
-        output.append((rec.seq, dupes))
+        dupe_count = int(rec.id.split("|")[5])
+        output.append((rec.seq, dupe_count))
     return output
-
-
-def load_dupes(folder):
-    """
-    Load dupe counts from prepare and reporter runs.
-    """
-    rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
-    if rocks_db_path.exists():
-        rocksdb_db = RocksDB(str(rocks_db_path))
-        prepare_dupe_counts = json.decode(
-            rocksdb_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]]
-        )
-        reporter_dupe_counts = json.decode(
-            rocksdb_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]]
-        )
-    else:
-        err = f"cannot find dupe databases for {folder}"
-        raise FileNotFoundError(err)
-    return prepare_dupe_counts, reporter_dupe_counts
-
 
 def get_data_path(gene: Path) -> list:
     """
@@ -115,8 +89,6 @@ def do_internal(
     consensus_threshold,
     distance_threshold,
     no_dupes,
-    prepare_dupes,
-    reporter_dupes,
     minimum_depth,
     minimum_length,
     minimum_overlap,
@@ -166,7 +138,7 @@ def do_internal(
         sequences = [rec.seq for rec in candidates]
     else:
         consensus_func = dumb_consensus_dupe
-        sequences = bundle_seqs_and_dupes(candidates, prepare_dupes, reporter_dupes)
+        sequences = bundle_seqs_and_dupes(candidates)
 
     consensus = consensus_func(sequences, consensus_threshold, minimum_depth)
 
@@ -218,8 +190,6 @@ def run_internal(
     consensus_threshold_nt,
     distance_threshold_nt,
     no_dupes,
-    prepare_dupes,
-    reporter_dupes,
     decompress,
     aa_log_path,
     nt_log_path,
@@ -238,8 +208,6 @@ def run_internal(
         consensus_threshold,
         distance_threshold,
         no_dupes,
-        prepare_dupes,
-        reporter_dupes,
         minimum_depth,
         minimum_length,
         minimum_overlap,
@@ -250,8 +218,6 @@ def run_internal(
         consensus_threshold_nt,
         distance_threshold_nt,
         no_dupes,
-        prepare_dupes,
-        reporter_dupes,
         minimum_depth,
         minimum_length,
         minimum_overlap,
@@ -281,29 +247,17 @@ def run_internal(
     if add_internal_dupes and not no_dupes:
         aa_out = [rec.get_pair() for rec in aa_references]
         nt_out = [rec.get_pair() for rec in nt_references]
-        #insert aa dupes
         for rec in aa_passing:
-            node = rec.id.split("|")[3]
-            dupes = prepare_dupes.get(node, 1) + sum(
-                prepare_dupes.get(node, 1)
-                for node in reporter_dupes.get(node, [])
-            )
+            dupes = int(rec.id.split("|")[5])
             aa_out.append(rec.get_pair())
             for i in range(dupes - 1):
                 aa_out.append((f"{rec.id}_dupe{i}", rec.seq))
-            #insert nt dupes
-                
+
         for rec in nt_passing:
-            node = rec.id.split("|")[3]
-            dupes = prepare_dupes.get(node, 1) + sum(
-                prepare_dupes.get(node, 1)
-                for node in reporter_dupes.get(node, [])
-            )
+            dupes = int(rec.id.split("|")[5])
             nt_out.append(rec.get_pair())
             for i in range(dupes - 1):
                 nt_out.append((f"{rec.id}_dupe{i}", rec.seq))
-        
-        
     else:
         aa_out = [rec.get_pair() for rec in aa_references + aa_passing]
         nt_out = [rec.get_pair() for rec in nt_references + nt_passing]
@@ -349,8 +303,7 @@ def main(args, from_folder):
 
         aa_input = Path(folder, "outlier", from_folder, "aa")
         nt_input = Path(folder, "outlier", from_folder, "nt")
-        if not args.no_dupes:
-            prepare_dupe_counts, reporter_dupe_counts = load_dupes(folder)
+
         file_inputs = [
             gene
             for gene in aa_input.iterdir()
@@ -364,12 +317,6 @@ def main(args, from_folder):
         arguments = []
             
         for gene in file_inputs:
-            gene_raw = gene.stem.split(".")[0]
-            if not args.no_dupes:
-                prepare_dupes = prepare_dupe_counts.get(gene_raw, {})
-                reporter_dupes = reporter_dupe_counts.get(gene_raw, {})
-            else:
-                prepare_dupes, reporter_dupes = None, None
             arguments.append(
                 (
                     gene,
@@ -381,8 +328,6 @@ def main(args, from_folder):
                     args.internal_consensus_threshold_nt,
                     args.internal_distance_threshold_nt,
                     args.no_dupes,
-                    prepare_dupes,
-                    reporter_dupes,
                     args.uncompress_intermediates,
                     aa_log_path,
                     nt_log_path,

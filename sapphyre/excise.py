@@ -156,23 +156,11 @@ def check_covered_bad_regions(consensus, min_ambiguous, ambig_char='X', max_dist
 
     return None, None
 
-def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_counts):
-    output = []
-    for header, seq in sequences:
-        node = header.split("|")[3]
-        dupes = prepare_dupe_counts.get(node, 1) + sum(
-            prepare_dupe_counts.get(node, 1)
-            for node in reporter_dupe_counts.get(node, [])
-        )
-        output.append((seq, dupes))
-    return output
-
 
 def make_duped_consensus(
-    raw_sequences: list, prepare_dupes: dict, reporter_dupes: dict, threshold: float
+    raw_sequences: list, threshold: float
 ) -> str:
-    seqs = [(header, seq) for header, seq in raw_sequences if header[-1] != "."]
-    bundled_seqs = bundle_seqs_and_dupes(seqs, prepare_dupes, reporter_dupes)
+    bundled_seqs = [(seq, int(header.split("|")[5])) for header, seq in raw_sequences if header[-1] != "."]
     return dumb_consensus_dupe(bundled_seqs, threshold, 0)
 
 
@@ -446,20 +434,20 @@ def calculate_split(node_a: str, node_b: str, overlapping_coords: tuple, ref_con
     return highest_scoring_pos
 
 
-def do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus):
+def do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, no_dupes, excise_trim_consensus):
     for cluster_set in cluster_sets:
         
         sub_aa_nodes = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
 
         aa_sequences = [node.sequence for node in sub_aa_nodes]
         if aa_sequences:
-            if prepare_dupes and reporter_dupes:
+            if no_dupes:
+                consensus_seq = dumb_consensus(aa_sequences, excise_trim_consensus, 0)
+            else:
                 current_raw_aa = [(node.header, node.sequence) for node in sub_aa_nodes]
                 consensus_seq = make_duped_consensus(
-                    current_raw_aa, prepare_dupes, reporter_dupes, excise_trim_consensus
+                    current_raw_aa, excise_trim_consensus
                 )
-            else:
-                consensus_seq = dumb_consensus(aa_sequences, excise_trim_consensus, 0)
 
             cstart, cend = find_index_pair(consensus_seq, "X")
             cstart, cend = find_index_pair(consensus_seq, "X")
@@ -520,14 +508,15 @@ def do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, 
                     node.sequence = del_cols(node.sequence, x_positions[node.header])
                     node.start, node.end = find_index_pair(node.sequence, "-")
 
-            if prepare_dupes and reporter_dupes:
-                current_raw_aa = [(node.header, node.sequence) for node in sub_aa_nodes if node.header not in kicked_headers]
-                consensus_seq = make_duped_consensus(
-                    current_raw_aa, prepare_dupes, reporter_dupes, excise_trim_consensus
-                )
-            else:
+            if no_dupes:
                 aa_sequences = [x.sequence for x in sub_aa_nodes if x.header not in kicked_headers]
                 consensus_seq = dumb_consensus(aa_sequences, excise_trim_consensus, 0)
+            else:
+                current_raw_aa = [(node.header, node.sequence) for node in sub_aa_nodes if node.header not in kicked_headers]
+                consensus_seq = make_duped_consensus(
+                    current_raw_aa, excise_trim_consensus
+                )
+  
 
             for node in sub_aa_nodes:
                 i = None
@@ -1231,8 +1220,7 @@ def log_excised_consensus(
     excise_minimum_ambig,
     allowed_distance,
     excise_rescue_match,
-    prepare_dupes: dict,
-    reporter_dupes: dict,
+    no_dupes,
     head_to_seq,
     original_coords,
     excise_trim_consensus,
@@ -1333,7 +1321,7 @@ def log_excised_consensus(
             
 
     if not is_genome:
-        do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
+        do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, no_dupes, excise_trim_consensus)
 
     aa_sequence = {}
     for node in aa_nodes:
@@ -1399,13 +1387,13 @@ def log_excised_consensus(
             if not sequences:
                 break
 
-            if prepare_dupes and reporter_dupes:
+            if no_dupes:
+                consensus_seq = dumb_consensus(sequences, excise_consensus, 0)
+            else:
                 nt_sequences = [(node.header, node.nt_sequence) for node in aa_subset]
                 consensus_seq = make_duped_consensus(
-                    nt_sequences, prepare_dupes, reporter_dupes, excise_consensus
-                )
-            else:
-                consensus_seq = dumb_consensus(sequences, excise_consensus, 0)
+                    nt_sequences, excise_consensus
+                )    
 
             consensus_seq = convert_consensus(sequences, consensus_seq)
             region_start, region_end = check_covered_bad_regions(consensus_seq, excise_minimum_ambig)
@@ -1537,7 +1525,7 @@ def log_excised_consensus(
             break
         
     # if is_genome:
-    #     do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, prepare_dupes, reporter_dupes, excise_trim_consensus)
+    #     do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, no_dupes, excise_trim_consensus)
     #     for node in aa_nodes:
     #         if node.header in kicked_headers:
     #             continue
@@ -1982,17 +1970,6 @@ def log_excised_consensus(
         return log_output, had_region, False, False, gene, len(kicked_headers), this_rescues, scan_log, multi_log, ends, gff_out, debug_out
     return log_output, had_region, gene, False, None, len(kicked_headers), this_rescues, scan_log, multi_log, ends, gff_out, debug_out
 
-
-def load_dupes(rocksdb_db):
-    prepare_dupe_counts = json.decode(
-        rocksdb_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]]
-    )
-    reporter_dupe_counts = json.decode(
-        rocksdb_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]]
-    )
-    return prepare_dupe_counts, reporter_dupe_counts
-
-
 ### USED BY __main__
 def do_move(from_, to_):
     move(from_, to_)
@@ -2007,12 +1984,10 @@ def move_flagged(to_move, processes):
             pool.starmap(do_move, to_move)
 
 
-def get_args(args, genes, head_to_seq, is_assembly_or_genome, is_genome, input_folder, output_folder, compress, prepare_dupes, reporter_dupes, original_coords):
+def get_args(args, genes, head_to_seq, is_assembly_or_genome, is_genome, input_folder, output_folder, compress, no_dupes, original_coords):
 
     get_id = lambda x: int(x.split("_")[0]) 
     for gene in genes:
-        this_prepare_dupes = prepare_dupes.get(gene.split(".")[0], {})
-        this_reporter_dupes = reporter_dupes.get(gene.split(".")[0], {})
         this_headers = []
         for header, _ in parseFasta(str(Path(input_folder, "aa", gene))):
             if header.endswith("."):
@@ -2040,8 +2015,7 @@ def get_args(args, genes, head_to_seq, is_assembly_or_genome, is_genome, input_f
             args.excise_minimum_ambig,
             args.excise_allowed_distance,
             args.excise_rescue_match,
-            this_prepare_dupes,
-            this_reporter_dupes,
+            no_dupes,
             this_seqs,
             this_original_coords,
             args.excise_trim_consensus,
@@ -2136,14 +2110,6 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
         if raw_data:
             original_coords = json.decode(raw_data, type = dict[str, tuple[str, int, int, int, int]])
     
-    if args.no_dupes:
-        prepare_dupes, reporter_dupes = {}, {}
-    else:
-        if not path.exists(rocksdb_path):
-            err = f"cannot find rocksdb for {folder}"
-            raise FileNotFoundError(err)
-        prepare_dupes, reporter_dupes = load_dupes(nt_db)
-        
     del nt_db
 
     compress = not args.uncompress_intermediates or args.compress
@@ -2155,7 +2121,7 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
     internal_path = Path(output_folder, "internal.txt")
     gene_log_path = Path(output_folder, "excise_genes.txt")
     coords_path = Path(folder, "coords")
-    arguments = get_args(args, genes, head_to_seq, is_assembly_or_genome, is_genome, input_folder, output_folder, compress, prepare_dupes, reporter_dupes, original_coords)
+    arguments = get_args(args, genes, head_to_seq, is_assembly_or_genome, is_genome, input_folder, output_folder, compress, args.no_dupes, original_coords)
     if args.processes > 1:
         with Pool(args.processes) as pool:
             results = pool.starmap(log_excised_consensus, arguments)

@@ -223,7 +223,7 @@ def detect_ambig_with_gaps(nodes, gap_percentage=0.25):
     return regions
 
 class do_gene():
-    def __init__(self, aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, compress, debug, threshold, prepare_dupe_counts, reporter_dupe_counts) -> None:
+    def __init__(self, aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, compress, debug, threshold) -> None:
         self.aa_gene_input = aa_gene_input
         self.nt_gene_input = nt_gene_input
 
@@ -234,9 +234,6 @@ class do_gene():
         self.debug = debug
 
         self.threshold = threshold
-
-        self.prepare_dupes = prepare_dupe_counts
-        self.reporter_dupes = reporter_dupe_counts
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         return self.do_gene(*args, **kwds)
@@ -260,11 +257,7 @@ class do_gene():
             if header.endswith("."):
                 aa_out.append((header, seq))
             else:
-                node = header.split("|")[3]
-                count = self.prepare_dupes.get(node, 1) + sum(
-                    self.prepare_dupes.get(node, 1)
-                    for node in self.reporter_dupes.get(node, [])
-                )
+                count = int(header.split("|")[5])
                 aa_candidates.append(Node(header, seq, count, *find_index_pair(seq, "-")))
 
         aa_candidates.sort(key=lambda x: x.start)
@@ -325,11 +318,7 @@ class do_gene():
             if header.endswith("."):
                 nt_out.append((header, seq))
             else:
-                node = header.split("|")[3]
-                count = self.prepare_dupes.get(node, 1) + sum(
-                    self.prepare_dupes.get(node, 1)
-                    for node in self.reporter_dupes.get(node, [])
-                )
+                count = int(header.split("|")[5])
 
                 moves = move_record[header]
                 if moves:
@@ -451,19 +440,7 @@ def do_folder(input_folder, args):
     mkdir(aa_gene_output)
     mkdir(nt_gene_output)
 
-    nt_db_path = path.join(input_folder, "rocksdb", "sequences", "nt")
-    prepare_dupe_counts, reporter_dupe_counts = {}, {}
-    if path.exists(nt_db_path):
-        nt_db = RocksDB(nt_db_path)
-        prepare_dupe_counts = json.decode(
-            nt_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]]
-        )
-        reporter_dupe_counts = json.decode(
-            nt_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]]
-        )
-        del nt_db
-
-    gene_func = do_gene(aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, args.compress, args.debug, args.consensus_threshold, prepare_dupe_counts, reporter_dupe_counts)
+    gene_func = do_gene(aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, args.compress, args.debug, args.consensus_threshold)
 
     arguments = []
     for aa_gene in listdir(aa_gene_input):
