@@ -320,7 +320,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                 this_seqs = {}
                 for header, seq in parseFasta(source_seqs, False):
                     header = int(header)
-                    if smallest_cluster_in_range is None or header >= smallest_cluster_in_range and header <= largest_cluster_in_range:
+                    if smallest_cluster_in_range is None or header in nodes_in_gene or header >= smallest_cluster_in_range and header <= largest_cluster_in_range:
                         this_seqs[int(header)] = seq
                 
             for node in nodes_in_gene:
@@ -559,14 +559,10 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                     if has_neighbour:
                         printv(f"Rescued {hit.node}", verbose, 2)
                                      
-                        if hit.frame < 0:   
-                            if is_full:        
-                                new_start = hit.qend
-                                new_start = len(this_seqs[hit.node]) - 2 - new_start # -1 for len inclusive and -1 for 0 based
-                                new_end = new_start + len(hit.seq)
-                            else:
-                                new_start = hit.qend
-                                new_end = new_start + len(hit.seq)
+                        if hit.frame < 0:      
+                            new_start = hit.qend
+                            new_start = len(this_seqs[hit.node]) - 2 - new_start # -1 for len inclusive and -1 for 0 based
+                            new_end = new_start + len(hit.seq)
                         else:
                             new_start = hit.qstart
                             new_end = new_start + len(hit.seq)
