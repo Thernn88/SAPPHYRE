@@ -181,35 +181,36 @@ class SeqDeduplicator:
                     header = this_index.x
                 else:
                     header = raw_header.split(" ")[0]
-                seq_hash = xxhash.xxh3_64(seq).hexdigest()
-
-                this_hash_subset = self.transcript_mapped_to[seq_len]
-
-                # Check for dupe, if so save how many times that sequence occured
-                if seq_hash in this_hash_subset:
-                    duplicates[this_hash_subset[seq_hash]] += 1
-                    next(dupes)
-                    continue
-                this_hash_subset[seq_hash] = header
-
-                # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
-                # sequence so we don't have to rev-comp this unique sequence again
-                if seq_hash in rev_comp_save:
-                    rev_seq_hash = rev_comp_save[seq_hash]
-                else:
-                    rev_seq_hash = xxhash.xxh3_64(
-                        sapphyre_tools.bio_revcomp(seq),
-                    ).hexdigest()
-                    rev_comp_save[seq_hash] = rev_seq_hash
-
-                # Check for revcomp dupe, if so save how many times that sequence occured
-                if rev_seq_hash in this_hash_subset:
-                    duplicates[this_hash_subset[rev_seq_hash]] += 1
-                    next(dupes)
-                    continue
-                this_hash_subset[rev_seq_hash] = header
 
                 if not self.this_genome:
+                    seq_hash = xxhash.xxh3_64(seq).hexdigest()
+
+                    this_hash_subset = self.transcript_mapped_to[seq_len]
+
+                    # Check for dupe, if so save how many times that sequence occured
+                    if seq_hash in this_hash_subset:
+                        duplicates[this_hash_subset[seq_hash]] += 1
+                        next(dupes)
+                        continue
+                    this_hash_subset[seq_hash] = header
+
+                    # Rev-comp sequence. Save the reverse compliment in a hashmap with the original
+                    # sequence so we don't have to rev-comp this unique sequence again
+                    if seq_hash in rev_comp_save:
+                        rev_seq_hash = rev_comp_save[seq_hash]
+                    else:
+                        rev_seq_hash = xxhash.xxh3_64(
+                            sapphyre_tools.bio_revcomp(seq),
+                        ).hexdigest()
+                        rev_comp_save[seq_hash] = rev_seq_hash
+
+                    # Check for revcomp dupe, if so save how many times that sequence occured
+                    if rev_seq_hash in this_hash_subset:
+                        duplicates[this_hash_subset[rev_seq_hash]] += 1
+                        next(dupes)
+                        continue
+                    this_hash_subset[rev_seq_hash] = header
+                    
                     if not self.this_assembly and len(parent_seq) >= ASSEMBLY_LEN:
                         self.this_assembly = True
                     this_header = header
@@ -256,6 +257,7 @@ def map_taxa_runs(
     components,
     keep_prepared,
     chunk_size,
+    force_entropy,
     skip_entropy,
     skip_ntrim,
 ):
@@ -327,7 +329,8 @@ def map_taxa_runs(
     original_positions = deduper.original_positions
     original_inputs = deduper.original_inputs
     del deduper
-    if not skip_entropy:
+    run_entropy = force_entropy or (not skip_entropy and not this_is_genome)
+    if run_entropy:
         fa_file_out = sapphyre_tools.entropy_filter(fa_file_out, 0.7)
     recipe = []
     recipe_index = IndexIter()
@@ -341,10 +344,11 @@ def map_taxa_runs(
         verbose,
     )
     
+    entropy_return_template = "{}\n{}\n"
     for line in fa_file_out:
-        if not skip_entropy:
+        if run_entropy:
             header, seq = line
-            line = f"{header}\n{seq}\n"
+            line = entropy_return_template.format(header, seq)
         
         next(final)
         current_batch.append(line)
@@ -424,6 +428,7 @@ def main(args):
             components,
             args.keep_prepared,
             args.chunk_size,
+            args.force_entropy,
             args.skip_entropy,
             args.skip_ntrim,
         )
