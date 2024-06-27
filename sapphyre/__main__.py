@@ -228,7 +228,7 @@ def reporter_args(par):
         "-bp",
         "--minimum_bp",
         type=int,
-        default=10,
+        default=30,
         help="Amount of bp required after trim.",
     )
     par.add_argument(

@@ -46,6 +46,9 @@ MainArgs = namedtuple(
 
 # Extend hit with new functions
 class Hit(HmmHit):#, frozen=True):
+    header: str = None
+    base_header: str = None
+    aa_sequence: str = None
     parent: str = None
     strand: str = None
     chomp_start: int = None
@@ -341,174 +344,21 @@ def print_core_sequences(
 
 def print_unmerged_sequences(
     hits: list,
-    gene: str,
-    taxa_id: str,
-    core_aa_seqs: list,
-    trim_matches: int,
-    is_positive_match: callable,
-    minimum_bp: int,
-    debug_fp: TextIO,
-    dupe_debug_fp: TextIO,
-    verbose: int,
-    mat: dict,
     is_assembly_or_genome: bool,
-    exact_match_amount: int,
-    top_refs: set,
 ) -> tuple[dict[str, list], list[tuple[str, str]], list[tuple[str, str]]]:
-    """Returns a list of unique trimmed sequences for a given gene with formatted headers.
-
-    For every hit in the given hits list the header is formatted, sequence is trimmed and
-    translated to AA and the results are deduplicated.
-
-    Args:
-    ----
-        hits (list): List of hits
-        gene (str): Gene name
-        taxa_id (str): Taxa ID
-        core_aa_seqs (list): List of core AA sequences
-        trim_matches (int): Number of matches to trim
-        blosum_strictness (str): Blosum mode
-        minimum_bp (int): Minimum number of bp after trim
-        debug_fp (TextIO): Debug file pointer
-    Returns:
-        tuple:
-            Tuple containg a dict of removed duplicates,
-            a list containing AA and a list containing NT sequences
-    """
-    header_template = "{}|{}|{}|NODE_{}|{}"
-    base_header_template = "{}_{}"
+    
     aa_result = []
     nt_result = []
-    header_maps_to_where = {}
-    header_mapped_x_times = Counter()
-    base_header_mapped_already = {}
-    seq_mapped_already = {}
-    exact_hit_mapped_already = set()
-    dupes = defaultdict(list)
     header_to_score = {}
     for hit in hits:
-        base_header = hit.get_merge_header()
-        reference_frame = str(hit.frame)
+        # Write unique sequence
+        aa_result.append((hit.header, hit.aa_sequence))
+        nt_result.append((hit.header, hit.seq))
 
-        # Format header to gene|taxa_name|taxa_id|sequence_id|frame
-        header = header_template.format(gene, hit.query, taxa_id, base_header, reference_frame)
-        # Translate to AA
-        nt_seq = hit.seq
-        aa_seq = translate_cdna(nt_seq)
+        if is_assembly_or_genome:
+            header_to_score[hit.node] = max(header_to_score.get(hit.node, 0), hit.score)  
 
-        # Trim to match reference
-        r_start = 0
-        if not is_assembly_or_genome:
-            r_start, r_end = hit.get_bp_trim(
-                aa_seq,
-                core_aa_seqs,
-                trim_matches,
-                is_positive_match,
-                debug_fp,
-                header,
-                mat,
-                exact_match_amount,
-                top_refs,
-            )
-            if r_start is None or r_end is None:
-                printv(f"WARNING: Trim kicked: {hit.node}|{hit.frame}", verbose, 2)
-                continue
-
-            if r_end == 0:
-                nt_seq = nt_seq[(r_start * 3) :]
-                aa_seq = aa_seq[r_start:]
-            else:
-                nt_seq = nt_seq[(r_start * 3) : -(r_end * 3)]
-                aa_seq = aa_seq[r_start:-r_end]
-
-            if debug_fp:
-                debug_fp.write(f">{header}\n{aa_seq}\n\n")
-
-        # Check if new seq is over bp minimum
-        data_after = len(aa_seq)
-
-        if data_after >= minimum_bp:
-            unique_hit = None
-
-            if not is_assembly_or_genome:
-                # Hash the NT sequence and the AA sequence + base header
-                unique_hit = xxh3_64(base_header + aa_seq).hexdigest()
-                nt_seq_hash = xxh3_64(nt_seq).hexdigest()
-                # Filter and save NT dupes
-                if nt_seq_hash in seq_mapped_already:
-                    mapped_to = seq_mapped_already[nt_seq_hash]
-                    dupes.setdefault(mapped_to, []).append(base_header)
-                    if dupe_debug_fp:
-                        dupe_debug_fp.write(
-                            f"{header}\n{nt_seq}\nis an nt dupe of\n{mapped_to}\n\n",
-                        )
-                    continue
-                seq_mapped_already[nt_seq_hash] = base_header
-
-            # If the sequence is unique
-            if is_assembly_or_genome or unique_hit not in exact_hit_mapped_already:
-                # Remove subsequence dupes from same read
-                if base_header in base_header_mapped_already:
-                    (
-                        already_mapped_header,
-                        already_mapped_sequence,
-                    ) = base_header_mapped_already[base_header]
-                    # Dont kick if assembly
-                    if not is_assembly_or_genome:
-                        if len(aa_seq) > len(already_mapped_sequence):
-                            if already_mapped_sequence in aa_seq:
-                                aa_result[header_maps_to_where[already_mapped_header]] = (
-                                    header,
-                                    aa_seq,
-                                )
-                                nt_result[header_maps_to_where[already_mapped_header]] = (
-                                    header,
-                                    nt_seq,
-                                )
-                                continue
-                        else:
-                            if aa_seq in already_mapped_sequence:
-                                if dupe_debug_fp:
-                                    dupe_debug_fp.write(
-                                        f"{header}\n{aa_seq}\nis an aa dupe of\n{already_mapped_header}\n\n",
-                                    )
-                                continue
-
-                    if base_header in header_mapped_x_times:
-                        # Make header unique
-                        current_count = header_mapped_x_times[base_header]
-                        header_mapped_x_times[base_header] += 1
-                        modified_header = base_header_template.format(base_header, current_count)
-                        hit.node = modified_header
-                        header = header_template.format(
-                            gene,
-                            hit.query,
-                            taxa_id,
-                            modified_header,
-                            reference_frame,
-                        )
-
-                        header_mapped_x_times[base_header] += 1
-                else:
-                    base_header_mapped_already[base_header] = header, aa_seq
-
-                # Save the index of the sequence output
-                header_maps_to_where[header] = len(
-                    aa_result,
-                )
-
-                # Write unique sequence
-                aa_result.append((header, aa_seq))
-                nt_result.append((header, nt_seq))
-
-
-                header_to_score[hit.node] = max(header_to_score.get(hit.node, 0), hit.score)
-
-                if base_header not in header_mapped_x_times:
-                    header_mapped_x_times[base_header] = 1
-                exact_hit_mapped_already.add(unique_hit)
-
-    return dupes, aa_result, nt_result, header_to_score, hits
+    return aa_result, nt_result, header_to_score
 
 
 OutputArgs = namedtuple(
@@ -550,7 +400,7 @@ def tag(sequences: list[tuple[str, str]], prepare_dupes: dict[str, dict[str, int
     for header, sequence in sequences:
         this_node = header.split("|")[3].replace("NODE_","")
         nodes = list(map(lambda x: int(x.split("_")[0]), this_node.split("&&")))
-        dupes = sum(prepare_dupes.get(node, 1) for node in nodes) + sum(prepare_dupes.get(child, 1) for child in reporter_dupes.get(this_node, []))
+        dupes = 1 + sum(prepare_dupes.get(node, 0) for node in nodes) + sum(prepare_dupes.get(child, 1) for child in reporter_dupes.get(this_node, []))
         header = f"{header}|{dupes}"
         output.append((header, sequence))
 
@@ -558,7 +408,8 @@ def tag(sequences: list[tuple[str, str]], prepare_dupes: dict[str, dict[str, int
 
 
 def merge_hits(hits: list[Hit], minimum_bp_overlap = 30) -> tuple[list[Hit], list[str]]:
-    hits.sort(key = lambda x: (x.node))
+    get_base_id = lambda x: x if type(x) is int else int(x.split("_")[0])
+    hits.sort(key = lambda x: get_base_id(x.node))
     log = ["Merges for: "+hits[0].gene]
     indices = range(len(hits))
     merge_occured = True
@@ -567,7 +418,8 @@ def merge_hits(hits: list[Hit], minimum_bp_overlap = 30) -> tuple[list[Hit], lis
         for i, j in combinations(indices, 2):
             if hits[i] is None or hits[j] is None:
                 continue
-            if not any(b - a <= 1 for a, b in product(([hits[i].node] + hits[i].children), ([hits[j].node] + hits[j].children))):
+            
+            if not any(b - a <= 1 for a, b in product(map(get_base_id, [hits[i].node] + hits[i].children), map(get_base_id, [hits[j].node] + hits[j].children))):
                 continue
             
             if get_overlap(hits[i].chomp_start, hits[i].chomp_end, hits[j].chomp_start, hits[j].chomp_end, minimum_bp_overlap) is None:
@@ -608,8 +460,8 @@ def merge_hits(hits: list[Hit], minimum_bp_overlap = 30) -> tuple[list[Hit], lis
             
             merged_seq = "".join([a_align_seq[i] if a_align_seq[i] != "-" else b_align_seq[i] for i in range(len(a_align_seq))])
 
-            if hits[i].node == hits[j].node:
-                log.append("WARNING: {} and {} same node merge".format(hits[i].node, hits[j].node))
+            if get_base_id(hits[i].node) == get_base_id(hits[j].node):
+                log.append("WARNING: {} and {} same base node merge".format(hits[i].node, hits[j].node))
             
             hits[i].children.append(hits[j].node)
             hits[i].seq = merged_seq
@@ -625,6 +477,142 @@ def merge_hits(hits: list[Hit], minimum_bp_overlap = 30) -> tuple[list[Hit], lis
         if hit is not None and hit.children:
             log.append(hit.get_merge_header())
     return [i for i in hits if i is not None], log
+
+
+def do_trim(
+        hits: list[Hit],
+        core_aa_seqs: list,
+        trim_matches: int,
+        is_positive_match: callable,
+        debug_fp: TextIO,
+        verbose: int,
+        mat: dict,
+        exact_match_amount: int,
+        top_refs: set,
+    ):
+    out_hits = []
+    for hit in hits:
+        header = f"NODE_{hit.node}|{hit.frame}"
+        r_start, r_end = hit.get_bp_trim(
+            aa_seq,
+            core_aa_seqs,
+            trim_matches,
+            is_positive_match,
+            debug_fp,
+            header,
+            mat,
+            exact_match_amount,
+            top_refs,
+        )
+        if r_start is None or r_end is None:
+            printv(f"WARNING: Trim kicked: {header}", verbose, 2)
+            continue
+
+        if r_end == 0:
+            nt_seq = nt_seq[(r_start * 3) :]
+            aa_seq = aa_seq[r_start:]
+        else:
+            nt_seq = nt_seq[(r_start * 3) : -(r_end * 3)]
+            aa_seq = aa_seq[r_start:-r_end]
+            
+        hit.qstart += (r_start * 3)
+        hit.qend -= (r_end * 3)
+        
+        if hit.chomp_start is not None:
+            hit.chomp_start += r_start
+            hit.chomp_end -= r_end
+
+        if debug_fp:
+            debug_fp.write(f">{header}\n{aa_seq}\n\n")
+        out_hits.append(hit)
+    return out_hits
+
+
+def translate_sequences(hits):
+    for hit in hits:
+        hit.aa_sequence = translate_cdna(hit.seq)
+
+
+def check_minimum_bp(hits, minimum_bp):
+    out_hits = []
+    for hit in hits:
+        if len(hit.seq) >= minimum_bp:
+            out_hits.append(hit)
+
+    return out_hits
+
+
+def do_dupe_check(hits, header_template, is_assembly_or_genome, dupe_debug_fp, taxa_id):
+    base_header_template = "{}_{}"
+    header_mapped_x_times = Counter()
+    base_header_mapped_already = {}
+    seq_mapped_already = {}
+    exact_hit_mapped_already = set()
+    dupes = defaultdict(list)
+    
+    for i, hit in enumerate(hits):
+        base_header = str(hit.node)
+        hit.header = header_template.format(hit.gene, hit.query, taxa_id, hit.node, hit.frame)
+        unique_hit = None
+        if not is_assembly_or_genome:
+            # Hash the NT sequence and the AA sequence + base header
+            unique_hit = xxh3_64(base_header + hit.aa_sequence).hexdigest()
+            nt_seq_hash = xxh3_64(hit.seq).hexdigest()
+            # Filter and save NT dupes
+            if nt_seq_hash in seq_mapped_already:
+                mapped_to = seq_mapped_already[nt_seq_hash]
+                dupes.setdefault(mapped_to, []).append(base_header)
+                if dupe_debug_fp:
+                    dupe_debug_fp.write(
+                        f"{hit.header}\n{hit.seq}\nis an nt dupe of\n{mapped_to}\n\n",
+                    )
+                hits[i] = None
+                continue
+            seq_mapped_already[nt_seq_hash] = base_header
+
+        # If the sequence is unique
+        if is_assembly_or_genome or unique_hit not in exact_hit_mapped_already:
+            # Remove subsequence dupes from same read
+            if base_header in base_header_mapped_already:
+                (
+                    already_mapped_index,
+                    already_mapped_hit,
+                ) = base_header_mapped_already[base_header]
+                # Dont kick if assembly
+                if not is_assembly_or_genome:
+                    already_mapped_header = already_mapped_hit.header
+                    already_mapped_sequence = already_mapped_hit.aa_sequence
+                    if len(hit.aa_sequence) > len(already_mapped_sequence):
+                        if already_mapped_sequence in hit.aa_sequence:
+                            hits[already_mapped_index] = None
+                            continue
+                    else:
+                        if hit.aa_sequence in already_mapped_sequence:
+                            if dupe_debug_fp:
+                                dupe_debug_fp.write(
+                                    f"{hit.header}\n{hit.aa_sequence}\nis an aa dupe of\n{already_mapped_header}\n\n",
+                                )
+                            hits[i] = None
+                            continue
+
+                if base_header in header_mapped_x_times:
+                    # Make header unique
+                    current_count = header_mapped_x_times[base_header]
+                    header_mapped_x_times[base_header] += 1
+                    modified_header = base_header_template.format(base_header, current_count)
+                    hit.node = modified_header
+                    hit.header = header_template.format(hit.gene, hit.query, taxa_id, hit.node, hit.frame)
+
+                    header_mapped_x_times[base_header] += 1
+            else:
+                base_header_mapped_already[base_header] = i, hit
+
+
+            if base_header not in header_mapped_x_times:
+                header_mapped_x_times[base_header] = 1
+            exact_hit_mapped_already.add(unique_hit)
+            
+    return [i for i in hits if i is not None], dupes
 
 
 def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
@@ -644,10 +632,6 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     # Unpack the hits
     this_hits = oargs.list_of_hits
     gene_nodes = [hit.node for hit in this_hits]
-    
-    merge_log = []
-    if oargs.is_genome: # Set False to disable
-        this_hits, merge_log = merge_hits(this_hits)
 
     # Get reference sequences
     core_sequences, core_sequences_nt = get_core_sequences(
@@ -686,23 +670,31 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
 
         def dist(bp_a, bp_b, mat):
             return mat[bp_a][bp_b] >= 0.0 and bp_a != "-" and bp_b != "-"
+        
+    header_template = "{}|{}|{}|NODE_{}|{}"
+        
+    translate_sequences(this_hits)
+    
+    if not oargs.is_assembly_or_genome:
+        this_hits = do_trim(this_hits, core_seq_aa_dict, oargs.matches, dist, debug_alignments, oargs.verbose, mat, oargs.EXACT_MATCH_AMOUNT, oargs.top_refs)
+        
+    this_hits = check_minimum_bp(this_hits, oargs.minimum_bp)
+        
+    this_hits, this_gene_dupes = do_dupe_check(this_hits, header_template, oargs.is_assembly_or_genome, debug_dupes, oargs.taxa_id)
+        
+    merge_log = []
+    if oargs.is_genome or False: # Set False to disable
+        this_hits, merge_log = merge_hits(this_hits)
+        for hit in this_hits:
+            hit.header = header_template.format(hit.gene, hit.query, oargs.taxa_id, hit.get_merge_header(), hit.frame)
 
+        # Refresh translation
+        translate_sequences(this_hits)
+        
     # Trim and save the sequences
-    this_gene_dupes, aa_output, nt_output, header_to_score, this_hits = print_unmerged_sequences(
+    aa_output, nt_output, header_to_score = print_unmerged_sequences(
         this_hits,
-        oargs.gene,
-        oargs.taxa_id,
-        core_seq_aa_dict,
-        oargs.matches,
-        dist,
-        oargs.minimum_bp,
-        debug_alignments,
-        debug_dupes,
-        oargs.verbose,
-        mat,
         oargs.is_assembly_or_genome,
-        oargs.EXACT_MATCH_AMOUNT,
-        oargs.top_refs,
     )
     if debug_alignments:
         debug_alignments.close()
@@ -896,15 +888,12 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
                     
         
             if out_data:
-                with open(path.join(coords_path,gene+".txt"), "w") as fp:
-                    global_out.append(f"### {gene} ###")
-                    for og, data in out_data.items():
-                        data.sort(key = lambda x: (x[1]))
-                        fp.write(f">{og}\n")
-                        global_out.append(f">{og}\n")
-                        for node, start, end in data:
-                            fp.write(f"{node}\t{start}-{end}\n")
-                            global_out.append(f"{node}\t{start}-{end}\n")
+                global_out.append(f"### {gene} ###")
+                for og, data in out_data.items():
+                    data.sort(key = lambda x: (x[1]))
+                    global_out.append(f">{og}\n")
+                    for node, start, end in data:
+                        global_out.append(f"{node}\t{start}-{end}\n")
         
         final_count += amount
         this_gene_based_dupes[gene] = dupes
