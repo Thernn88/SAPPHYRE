@@ -5,81 +5,22 @@ from os import listdir, makedirs, path
 from sapphyre_tools import (
     find_index_pair,
 )
-
+from .directional_cluster import cluster_ids, cluster_rec, within_distance, node_to_ids
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
-
-
-def do_cluster(ids, ref_coords, max_distance=100):
-    clusters = []
-    ids.sort(key = lambda x: x[0])
-
-    req_seq_coverage = 0
-
-    current_cluster = []
-    current_coords = set()
-    for i, (child_index, seq_coords) in enumerate(ids):
-
-        coverage = len(seq_coords.intersection(ref_coords)) / len(ref_coords)
-
-
-        if not current_cluster:
-            current_cluster.append((child_index, coverage, i))
-            current_coords.update(seq_coords)
-            current_index = child_index
-        else:
-            if child_index - current_index <= max_distance:
-                current_cluster.append((child_index, coverage, i))
-                current_coords.update(seq_coords)
-                current_index = child_index
-            else:
-                if len(current_cluster) >= 2:
-                    cluster_data_cols = set()
-                    for _, _, index in current_cluster:
-                        cluster_data_cols.update(ids[index][1])
-
-                    cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
-
-                    clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage, current_coords))
-                elif len(current_cluster) == 1:
-                    if current_cluster[0][1] > req_seq_coverage:
-                        cluster_coverage = current_cluster[0][1]
-
-                        clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage, current_coords))
-                        
-                current_cluster = [(child_index, coverage, i)]
-                current_coords = seq_coords
-                current_index = child_index
-
-    if current_cluster:
-        if len(current_cluster) >= 2:
-            cluster_data_cols = set()
-            for _, _, index in current_cluster:
-                cluster_data_cols.update(ids[index][1])
-
-            cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
-
-            clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage, current_coords))
-        elif len(current_cluster) == 1:
-            if current_cluster[0][1] > req_seq_coverage:
-                cluster_coverage = current_cluster[0][1]
-
-                clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage, current_coords))
-                
-    return clusters
 
 def within_highest_coverage(logs, clusters, overlap_perc, within=0.1): # kick 10% less coverage
     highest_cluster = max(clusters, key = lambda x: x[2])
     highest_coverage_cluster = highest_cluster[2]
 
-    highest_data_coords = highest_cluster[3]
+    highest_data_coords = highest_cluster[4]
 
     req_coverage = highest_coverage_cluster - within
 
     within = []
     for cluster in clusters:
 
-        cluster_data_coords = cluster[3]
+        cluster_data_coords = cluster[4]
 
         overlap = highest_data_coords.intersection(cluster_data_coords)
 
@@ -109,7 +50,7 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
 
     get_id = lambda header: int(header.split("|")[3].split("&&")[0].split("_")[1])
     ref_consensus = defaultdict(set)
-    sequences = defaultdict(list)
+    sequences = []
 
     for header, seq in parseFasta(path.join(aa_gene_input_path, gene)):
         if header.endswith("."):
@@ -121,14 +62,32 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
                     
             continue
 
-        this_id = get_id(header)
         start, end = find_index_pair(seq, "-")
         data_cols = {i for i, let in enumerate(seq[start:end], start) if let != "-"}
 
-        ids.append((this_id, data_cols))
-        sequences[this_id].append((header, seq))
+        frame = int(header.split("|")[4])
+        ids.append(cluster_rec(header.split("|")[3], start, end, data_cols, frame))
+        sequences.append((header, seq))
+        msa_length = len(seq)
 
-    clusters = do_cluster(ids, reference_data_cols)
+    max_gap_size = round(msa_length * 0.3)
+    clusters, kicks = cluster_ids(ids, 100, max_gap_size, reference_data_cols, req_seq_coverage=0)
+
+    final_clusters = []
+    for cluster in clusters:
+        cluster_set = set(range(cluster[0], cluster[1] + 1))
+        this_cluster_seq = []
+        this_cluster_coords = set()
+        
+        for header, seq in sequences:
+            if within_distance(node_to_ids(header.split("|")[3]), cluster_set, 0):
+                this_cluster_seq.append((header, seq, start, end))
+                start, end = find_index_pair(seq, "-")
+                for i, let in enumerate(seq[start:end], start):
+                    if let != "-":
+                        this_cluster_coords.add(i)
+        
+        final_clusters.append((cluster[0], cluster[1], cluster[2], this_cluster_seq, this_cluster_coords))
 
     if not clusters:
         if logs:
@@ -136,25 +95,17 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
         return logs
     
 
-    clusters = within_highest_coverage(logs, clusters, cluster_overlap_requirement)
+    final_clusters = within_highest_coverage(logs, final_clusters, cluster_overlap_requirement)
 
-    for i, cluster in enumerate(clusters):
+    for i, cluster in enumerate(final_clusters):
         cluster_consensi[i] = None
    
-    if len(clusters) >= 2: 
+    if len(final_clusters) >= 2: 
         cluster_percents = []
 
-        for x, cluster in enumerate(clusters):
-            this_cluster_sequences = []
-            for i in range(cluster[0], cluster[1] + 1):
-                if i in sequences:
-                    for seq in sequences[i]:
-                        this_cluster_sequences.append(seq[1])
-
+        for x, cluster in enumerate(final_clusters):
             cluster_consensus = defaultdict(set)
-            for seq in this_cluster_sequences:
-                start, end = find_index_pair(seq, "-")
-                
+            for _, seq, start, end in cluster[3]:
                 for i, let in enumerate(seq[start:end], start):
                     if let != "-":
                         cluster_consensus[i].add(let)
@@ -167,7 +118,7 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
                     cluster_match += 1
             
             cluster_consensi[x] = cluster_consensus
-            cluster_percents.append((x, cluster[3], cluster_match / cluster_cols))
+            cluster_percents.append((x, cluster[4], cluster_match / cluster_cols))
 
         max_cluster = max(cluster_percents, key = lambda x: x[2])
         max_percent = max_cluster[2]
@@ -244,12 +195,9 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
                         break
     allowed = set()
     for i in cluster_consensi:
-        cluster = clusters[i]
-        id_start = cluster[0]
-        id_end = cluster[1]
-
-        for i in range(id_start, id_end + 1):
-            allowed.add(i)
+        cluster = final_clusters[i]
+        for header, _, _, _ in cluster[3]:
+            allowed.add(header)
 
     aa_out = []
     nt_out = []
@@ -259,7 +207,7 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
             aa_out.append((header, seq))
             continue
 
-        if get_id(header) in allowed:
+        if header in allowed:
             aa_out.append((header, seq))
 
     for header, seq in parseFasta(path.join(nt_gene_input_path, gene.replace('.aa.','.nt.'))):
@@ -267,7 +215,7 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
             nt_out.append((header, seq))
             continue
 
-        if get_id(header) in allowed:
+        if header in allowed:
             nt_out.append((header, seq))
 
     writeFasta(path.join(aa_gene_output_path, gene), aa_out)
