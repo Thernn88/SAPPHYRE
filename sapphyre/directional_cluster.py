@@ -104,9 +104,9 @@ def cluster_ids(ids, max_id_distance, max_gap, ref_coords, req_seq_coverage = 0.
             cluster_distance = get_min_distance(current_indices, rec.get_ids)
             passed_id_distance = None
             passed_distance = None
+            current_rec = current_cluster[-1]
             if rec.strand == current_cluster[-1].strand:
                 if cluster_distance <= max_id_distance:
-                    current_rec = current_cluster[-1]
                     cluster_overlap = get_overlap(rec.start, rec.end, current_rec.start, current_rec.end, -(max_gap)+1)
                     
                     if cluster_overlap:
