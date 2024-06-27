@@ -12,6 +12,7 @@ from typing import Any
 
 from msgspec import Struct, json
 from sapphyre_tools import find_index_pair, get_overlap
+from .directional_cluster import cluster_ids, within_distance, node_to_ids, quick_rec
 from wrap_rocks import RocksDB
 
 from .timekeeper import KeeperMode, TimeKeeper
@@ -223,7 +224,7 @@ def detect_ambig_with_gaps(nodes, gap_percentage=0.25):
     return regions
 
 class do_gene():
-    def __init__(self, aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, compress, debug, threshold) -> None:
+    def __init__(self, aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, is_gfm, compress, debug, threshold) -> None:
         self.aa_gene_input = aa_gene_input
         self.nt_gene_input = nt_gene_input
 
@@ -234,6 +235,7 @@ class do_gene():
         self.debug = debug
 
         self.threshold = threshold
+        self.is_gfm = is_gfm
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         return self.do_gene(*args, **kwds)
@@ -253,63 +255,18 @@ class do_gene():
 
         aa_out = []
         aa_candidates = []
+        reference_cluster_data = set()
         for header, seq in aa_seqs:
             if header.endswith("."):
+                start, end = find_index_pair(seq, "-")
+                for i, bp in enumerate(seq[start:end], start):
+                    if bp != "-":
+                        reference_cluster_data.add(i)
                 aa_out.append((header, seq))
             else:
                 count = int(header.split("|")[5])
                 aa_candidates.append(Node(header, seq, count, *find_index_pair(seq, "-")))
-
-        aa_candidates.sort(key=lambda x: x.start)
-
-        aa_overlap_groups = disperse_into_overlap_groups(aa_candidates)
-
-        move_record = defaultdict(list)
-        for group in aa_overlap_groups:
-            gap_regions = detect_ambig_with_gaps(group)
-            
-            for gap_region, kmers in gap_regions:
-                for i in range(len(kmers)-1, -1, -1):
-                    if i - 1 < 0:
-                        continue
-
-                    kmer_right_start, kmer_right_end = kmers[i]
-                    kmer_left_start, kmer_left_end = kmers[i-1]
-
-                    kmer_left_distance = kmer_left_end - kmer_left_start
-                    kmer_right_distance = kmer_right_end - kmer_right_start
-
-                    if kmer_left_distance != kmer_right_distance:
-                        continue
-
-                    # If sequence has overlap with the gap_region generate a flex consensus using left kmer and check if right kmers merge
-                    left_consensus = set()
-                    check_again_for_right = []
-                    for i, node in enumerate(group):
-                        if get_overlap(node.start, node.end, gap_region[0], gap_region[1], 0) is not None:
-                            kmer = node.sequence[kmer_left_start:kmer_left_end + 1].replace("-", "")
-                            if kmer:
-                                left_consensus.add(kmer)
-                            else:
-                                check_again_for_right.append(i)
-
-                    for i in check_again_for_right:
-                        node = group[i]
-                        
-                        right_kmer = node.sequence[kmer_right_start:kmer_right_end + 1].replace("-", "")
-                        if right_kmer in left_consensus:
-
-                            this_sequence = list(node.sequence)
-
-                            for x, i in zip(range(kmer_right_start, kmer_right_end+1), range(kmer_left_start, kmer_left_end+1)):
-                                this_sequence[i] = this_sequence[x]
-                                this_sequence[x] = "-"
-                                move_record[node.header].append((i,x))
-                        
-                            node.sequence = "".join(this_sequence)
-                            node.start, node.end = find_index_pair(node.sequence, "-")
-                        
-
+                
         nt_out = []
         candidates = []
         move_log = []
@@ -319,9 +276,80 @@ class do_gene():
                 nt_out.append((header, seq))
             else:
                 count = int(header.split("|")[5])
+                candidates.append(Node(header, seq, count, *find_index_pair(seq, "-")))
+                
+        if not self.is_gfm:
+            cluster_sets = None
+        else:
+            ids = [quick_rec(node.header.split("|")[3], None, node.sequence, node.start, node.end) for node in aa_candidates]
+            max_gap_size = round(len(aa_candidates[0].sequence) * 0.5) # Half MSA length
+    
+            clusters, _ = cluster_ids(ids, 100, max_gap_size, reference_cluster_data, req_seq_coverage=0) #TODO: Make distance an arg
 
+            if clusters:
+                cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
+
+        for cluster_set in cluster_sets:
+            aa_subset = [node for node in aa_candidates if (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
+            aa_subset.sort(key=lambda x: x.start)
+
+            if self.is_gfm:
+                aa_overlap_groups = [aa_subset]
+            else:
+                aa_overlap_groups = disperse_into_overlap_groups(aa_subset)
+
+            move_record = defaultdict(list)
+            for group in aa_overlap_groups:
+                gap_regions = detect_ambig_with_gaps(group)
+                
+                for gap_region, kmers in gap_regions:
+                    for i in range(len(kmers)-1, -1, -1):
+                        if i - 1 < 0:
+                            continue
+
+                        kmer_right_start, kmer_right_end = kmers[i]
+                        kmer_left_start, kmer_left_end = kmers[i-1]
+
+                        kmer_left_distance = kmer_left_end - kmer_left_start
+                        kmer_right_distance = kmer_right_end - kmer_right_start
+
+                        if kmer_left_distance != kmer_right_distance:
+                            continue
+
+                        # If sequence has overlap with the gap_region generate a flex consensus using left kmer and check if right kmers merge
+                        left_consensus = set()
+                        check_again_for_right = []
+                        for i, node in enumerate(group):
+                            if get_overlap(node.start, node.end, gap_region[0], gap_region[1], 0) is not None:
+                                kmer = node.sequence[kmer_left_start:kmer_left_end + 1].replace("-", "")
+                                if kmer:
+                                    left_consensus.add(kmer)
+                                else:
+                                    check_again_for_right.append(i)
+
+                        for i in check_again_for_right:
+                            node = group[i]
+                            
+                            right_kmer = node.sequence[kmer_right_start:kmer_right_end + 1].replace("-", "")
+                            if right_kmer in left_consensus:
+
+                                this_sequence = list(node.sequence)
+
+                                for x, i in zip(range(kmer_right_start, kmer_right_end+1), range(kmer_left_start, kmer_left_end+1)):
+                                    this_sequence[i] = this_sequence[x]
+                                    this_sequence[x] = "-"
+                                    move_record[node.header].append((i,x))
+                            
+                                node.sequence = "".join(this_sequence)
+                                node.start, node.end = find_index_pair(node.sequence, "-")
+
+            candidates_subset = [node for node in candidates if (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
+            
+            for node in candidates_subset:
+                header = node.header
                 moves = move_record[header]
                 if moves:
+                    seq = node.sequence
                     seq_as_triplets = [seq[i:i+3] for i in range(0, len(seq), 3)]
 
                     for i, x in moves:
@@ -333,81 +361,77 @@ class do_gene():
                         move_log.append((header+"_After", "".join(seq_as_triplets)))
 
                     seq = "".join(seq_as_triplets)
+                    node.sequence = seq
+                    node.start, node.end = find_index_pair(seq, "-")
+            
+            candidates_subset.sort(key=lambda x: x.start)
+
+            if self.is_gfm:
+                nt_overlap_groups = [candidates_subset]
+            else:
+                nt_overlap_groups = disperse_into_overlap_groups(candidates_subset)
+
+            for group in nt_overlap_groups:
+                new_node, new_ref, old_taxa = get_header_parts([i.header for i in group])
+
+                new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}"
+                triplets = defaultdict(list)
+                
+                min_start = min(node.start for node in group)
+                msa_end = len(group[0].sequence)
+
+                for node in group:
+
+                    for i in range(node.start, node.end, 3):
+                        triplets[i].extend([node.sequence[i: i+3]] * node.count)
+
+                out_seq = []
+                for i, column in triplets.items():
+                    column_counts = Counter(column)
+
+                    most_common = column_counts.most_common(1)[0]
+                    if most_common[1] / sum(column_counts.values()) > self.threshold:
+                        out_seq.append(most_common[0])
+                        continue
+
+                    key_set = set(column) - {"---"}
+
+                    if len(key_set) == 1:
+                        out_seq.append(key_set.pop())
+                        continue
+
+                    for x in range(0,3):
+                        triplet_column = {char[x] for char in column}
+                        if len(triplet_column) == 1:
+                            out_seq.append(triplet_column.pop())
+                        else:
+                            out_seq.append(get_IUPAC(triplet_column))
+
+                new_seq = ("-" * min_start) + "".join(out_seq)
+                new_seq = new_seq + ("-" * (msa_end - len(new_seq)))
+
+                nt_out.append((new_header, new_seq))
+                if self.debug > 1:
+                    for node in group:
+                        nt_out.append((node.header.split("|")[3], node.sequence))
+                        
+            for group in aa_overlap_groups:
+                new_node, new_ref, old_taxa = get_header_parts([i.header for i in group])
+
+                new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}"
+
+                new_seq = []
                 
 
-                candidates.append(Node(header, seq, count, *find_index_pair(seq, "-")))
-        
-        candidates.sort(key=lambda x: x.start)
+                cand_seq = do_consensus(group, self.threshold)
 
-        overlap_groups = disperse_into_overlap_groups(candidates)
+                aa_out.append((new_header, cand_seq))
 
-        for _, group in overlap_groups:
-            new_node, new_ref, old_taxa = get_header_parts([i.header for i in group])
-
-            new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}"
-            triplets = defaultdict(list)
-            
-            min_start = min(node.start for node in group)
-            msa_end = len(group[0].sequence)
-
-            for node in group:
-
-                for i in range(node.start, node.end, 3):
-                    triplets[i].extend([node.sequence[i: i+3]] * node.count)
-
-            out_seq = []
-            for i, column in triplets.items():
-                column_counts = Counter(column)
-
-                most_common = column_counts.most_common(1)[0]
-                if most_common[1] / sum(column_counts.values()) > self.threshold:
-                    out_seq.append(most_common[0])
-                    continue
-
-                key_set = set(column) - {"---"}
-
-                if len(key_set) == 1:
-                    out_seq.append(key_set.pop())
-                    continue
-
-                for x in range(0,3):
-                    triplet_column = {char[x] for char in column}
-                    if len(triplet_column) == 1:
-                        out_seq.append(triplet_column.pop())
-                    else:
-                        out_seq.append(get_IUPAC(triplet_column))
-
-            
-            new_seq = ("-" * min_start) + "".join(out_seq)
-            new_seq = new_seq + ("-" * (msa_end - len(new_seq)))
-            
-
-            
-            nt_out.append((new_header, new_seq))
-            if self.debug > 1:
-                for node in group:
-                    nt_out.append((node.header.split("|")[3], node.sequence))
-
-            
+                if self.debug > 1:
+                    for node in group:
+                        aa_out.append((node.header.split("|")[3], node.sequence))
 
         writeFasta(path.join(self.nt_gene_output, nt_gene), nt_out, self.compress)
-
-        for group in aa_overlap_groups:
-            new_node, new_ref, old_taxa = get_header_parts([i.header for i in group])
-
-            new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}"
-
-            new_seq = []
-            
-
-            cand_seq = do_consensus(group, self.threshold)
-
-            aa_out.append((new_header, cand_seq))
-
-            if self.debug > 1:
-                for node in group:
-                    aa_out.append((node.header.split("|")[3], node.sequence))
-
         writeFasta(path.join(self.aa_gene_output, aa_gene), aa_out, self.compress)
 
         return move_log
@@ -440,7 +464,7 @@ def do_folder(input_folder, args):
     mkdir(aa_gene_output)
     mkdir(nt_gene_output)
 
-    gene_func = do_gene(aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, args.compress, args.debug, args.consensus_threshold)
+    gene_func = do_gene(aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, args.gene_finding_mode, args.compress, args.debug, args.consensus_threshold)
 
     arguments = []
     for aa_gene in listdir(aa_gene_input):
