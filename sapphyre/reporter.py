@@ -722,7 +722,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.verbose,
         2,
     )
-    return oargs.gene, this_gene_dupes, len(aa_output), header_to_score, gene_nodes, [(hit.parent, hit.get_merge_header(), hit.chomp_start, hit.chomp_end, hit.strand, hit.frame) for hit in this_hits], merge_log
+    return oargs.gene, len(aa_output), header_to_score, gene_nodes, [(hit.parent, hit.get_merge_header(), hit.chomp_start, hit.chomp_end, hit.strand, hit.frame) for hit in this_hits], merge_log
 
 
 def get_prepare_dupes(rocks_nt_db: RocksDB) -> dict[str, dict[str, int]]:
@@ -863,7 +863,6 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     )    
         
     final_count = 0
-    this_gene_based_dupes = {}
     this_gene_based_scores = {}
     global_out = []
     parent_gff_output = defaultdict(list)
@@ -871,7 +870,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     gff_output = ["##gff-version\t3"]
     global_merge_log = []
     
-    for gene, dupes, amount, scores, nodes, gff, merge_log in recovered:
+    for gene, amount, scores, nodes, gff, merge_log in recovered:
         global_merge_log.extend(merge_log)
         out_data = defaultdict(list)
         if original_coords:
@@ -896,7 +895,6 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
                         global_out.append(f"{node}\t{start}-{end}\n")
         
         final_count += amount
-        this_gene_based_dupes[gene] = dupes
         this_gene_based_scores[gene] = scores
         
     with open(path.join(coords_path,"Diamond_merges.txt"), "w") as fp:
@@ -916,11 +914,6 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
         if args.debug:
             with open(path.join(taxa_path, "coords.txt"), "w") as fp:
                 fp.write("\n".join(global_out))
-
-
-    key = "getall:reporter_dupes"
-    data = json.encode(this_gene_based_dupes)
-    rocky.get_rock("rocks_nt_db").put_bytes(key, data)
 
     key = "getall:hmm_gene_scores"
     data = json.encode(this_gene_based_scores)
