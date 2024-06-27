@@ -282,7 +282,7 @@ class do_gene():
             cluster_sets = None
         else:
             ids = [quick_rec(node.header.split("|")[3], None, node.sequence, node.start, node.end) for node in aa_candidates]
-            max_gap_size = round(len(aa_candidates[0].sequence) * 0.5) # Half MSA length
+            max_gap_size = round(len(aa_candidates[0].sequence) * 0.3) # Half MSA length
     
             clusters, _ = cluster_ids(ids, 100, max_gap_size, reference_cluster_data, req_seq_coverage=0) #TODO: Make distance an arg
 

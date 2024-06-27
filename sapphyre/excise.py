@@ -1124,7 +1124,7 @@ def log_excised_consensus(
                 start, end = find_index_pair(node.sequence, "-")
                 ids.append(quick_rec(node.header.split("|")[3], node.frame, node.sequence, start, end))
     
-        max_gap_size = round(len(aa_nodes[0].sequence) * 0.5) # Half MSA length
+        max_gap_size = round(len(aa_nodes[0].sequence) * 0.3) # Half MSA length
     
         clusters, kicks = cluster_ids(ids, 100, max_gap_size, reference_cluster_data) #TODO: Make distance an arg
         if kicks:
