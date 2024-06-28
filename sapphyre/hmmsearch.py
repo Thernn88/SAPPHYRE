@@ -186,6 +186,215 @@ def merge_clusters(clusters):
     
     return merged_clusters
 
+def load_Sequences(source_seqs, nodes_in_gene):
+    if type(source_seqs) is dict:
+        this_seqs = source_seqs
+    else:
+        this_seqs = {}
+        for header, seq in parseFasta(source_seqs, False):
+            header = int(header)
+            if header in nodes_in_gene:
+                this_seqs[int(header)] = seq
+    return this_seqs
+
+def shift_targets(is_full, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp):
+    if is_full:
+        for node in nodes_in_gene:
+            parent_seq = this_seqs.get(node)
+            if parent_seq is None:
+                # Full cluster search introduced header not found in db.
+                # Quicker to filter after the fact 
+                continue
+
+            strands_present = cluster_full.get(node, {"+", "-"})
+
+            unaligned_sequences.append((node, parent_seq))
+            if "+" in strands_present:
+                # Forward frame 1
+                query = f"{node}|1"
+                nt_sequences[query] = parent_seq
+                required_frames[node].add(1)
+                if query not in parents and node not in cluster_full:
+                    children[query] = fallback[node]
+
+                # Forward 2 & 3
+                for shift_by in [1, 2]:
+                    shifted = shift(1, shift_by)
+                    new_query = f"{node}|{shifted}"
+                    nt_sequences[new_query] = parent_seq[shift_by:]
+                    required_frames[node].add(shifted)
+                    if new_query in parents:
+                        continue
+                    if node in cluster_full:
+                        continue
+                    children[new_query] = fallback[node]
+
+            if "-" in strands_present:
+                # Reversed frame 1
+                bio_revcomp_seq = bio_revcomp(parent_seq)
+                query = f"{node}|-1"
+                nt_sequences[query] = bio_revcomp_seq
+                required_frames[node].add(-1)
+                if query not in parents and node not in cluster_full:
+                    children[query] = fallback[node]
+
+                # Reversed 2 & 3
+                for shift_by in [1, 2]:
+                    shifted = shift(-1, shift_by)
+                    new_query = f"{node}|{shifted}"
+                    nt_sequences[new_query] = bio_revcomp_seq[shift_by:]
+                    required_frames[node].add(shifted)
+                    if new_query in parents:
+                        continue
+                    if node in cluster_full:
+                        continue
+                    children[new_query] = fallback[node]
+    else:
+        for hit in diamond_hits:
+            raw_sequence = hit.seq
+            frame = hit.frame
+            query = f"{hit.node}|{frame}"
+            unaligned_sequences.append((query, raw_sequence))
+            parents[query] = hit
+
+            for shift_by in [1, 2]:
+                shifted = shift(frame, shift_by)
+                if not shifted in hits_have_frames_already[hit.node]:
+                    new_query = f"{hit.node}|{shifted}"
+                    unaligned_sequences.append((new_query, raw_sequence[shift_by:]))
+                    hits_have_frames_already[hit.node].add(shifted)
+                    children[new_query] = hit
+
+
+def add_full_cluster_search(clusters, chomp_max_distance, nodes_in_genes, primary_cluster_dict, source_clusters, cluster_full, nodes_in_gene, cluster_dict):
+    for cluster in clusters:
+        for i in range(cluster[0][0] - chomp_max_distance, cluster[0][1] + chomp_max_distance + 1):
+            header = i
+            
+            if header in nodes_in_gene:
+                continue
+
+            if header in primary_cluster_dict:
+                source_clusters[header] = (True, primary_cluster_dict[header])
+                cluster_full[header] = {"+", "-"}
+                nodes_in_gene.add(header)
+                continue
+            
+            this_crange, strands_present = cluster_dict.get(header, (None, None))
+            
+            if this_crange:
+                source_clusters[header] = (False, this_crange)
+                cluster_full[header] = strands_present
+                nodes_in_gene.add(header)
+
+
+def get_results(hmm_output, map_mode):
+    data = defaultdict(list)
+    high_score = 0
+    with open(hmm_output) as f:
+        for line in f:
+            if line.startswith("#"):
+                continue
+            while "  " in line:
+                line = line.replace("  ", " ")
+            line = line.strip().split()
+
+            query = line[0]
+
+            start, end, ali_start, ali_end, score = int(line[17]), int(line[18]), int(line[15]), int(line[16]), float(line[13])
+
+            high_score = max(high_score, score)
+
+            data[query].append((start - 1, end, score, ali_start, ali_end))
+
+    if map_mode:
+        score_thresh = high_score * 0.9
+
+        queries = []
+        for query, results in data.items():
+            queries.append((query, [i for i in results if i[2] >= score_thresh]))
+    else:
+        queries = data.items()
+
+    return queries
+
+
+def add_new_result(map_mode, gene, query, results, is_full, cluster_full, cluster_queries, primary_query, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template):
+    node, frame = query.split("|")
+    id = int(node)
+    if id in cluster_full:
+        if not query in parents_done:
+            frame = int(frame)
+            for result in results:
+                start, end, score, ali_start, ali_end = result
+                start = start * 3
+                end = end * 3
+
+                sequence = nt_sequences[query][start: end]
+
+                new_qstart = start
+                if frame < 0:
+                    new_qstart -= (3 - abs(frame))
+                else:
+                    new_qstart += frame
+
+                passed_ids.add(id)
+                parents_done.add(query)
+
+                is_primary_child, cluster_range = source_clusters[id]
+                if is_primary_child:
+                    where_from = "Primary Cluster"
+                    cquery = primary_query[cluster_range]
+                else:
+                    where_from = "Cluster Full"
+                    cquery = cluster_queries[cluster_range]
+
+                new_hit = HmmHit(node=id, score=score, frame=int(frame), evalue=0, qstart=new_qstart, qend=new_qstart + len(sequence), gene=gene, query=cquery, uid=None, refs=[], seq=sequence)
+                hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, where_from))
+                output.append(new_hit)
+        return
+    
+    if query in parents or query in children:
+        if query in parents:
+            hit = parents[query]
+            if f"{hit.node}|{hit.frame}" in parents_done:
+                return
+            
+            frame = hit.frame
+        else:
+            hit = children[query]
+            frame = int(query.split("|")[1])
+        for result in results:
+            start, end, score, ali_start, ali_end = result
+            start = start * 3
+            end = end * 3
+
+            if map_mode:
+                sequence = nt_sequences[query]
+                if len(sequence) % 3 != 0:
+                    sequence += ("N" * (3 - len(sequence) % 3))
+                start = 0
+            else:
+                sequence = nt_sequences[query][start: end]
+
+            if is_full:
+                new_qstart = start
+                if frame < 0:
+                    new_qstart -= (3 - abs(frame))
+
+                else:
+                    new_qstart += frame
+
+            else:
+                new_qstart = hit.qstart + start
+
+            new_uid = hit.uid + start + end
+
+            passed_ids.add(hit.node)
+            parents_done.add(f"{hit.node}|{frame}")
+            new_hit = HmmHit(node=hit.node, score=score, frame=frame, evalue=hit.evalue, qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=new_uid, refs=hit.refs, seq=sequence)
+            output.append(new_hit)
+
 
 def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_ref_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
     batch_result = []
@@ -258,6 +467,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
         cluster_full = {}
         cluster_queries = defaultdict(list)
         primary_query = {}
+        source_clusters = {}
         
         children = {}
         unaligned_sequences = []
@@ -284,113 +494,13 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                     this_prange = primary_cluster_dict.get(hit.node)
                     primary_query[this_prange] = hit.query
 
-            #grab most occuring query
-            smallest_cluster_in_range = None
-            largest_cluster_in_range = None
             if is_genome and clusters:
                 cluster_queries = {k: max(set(v), key=v.count) for k, v in cluster_queries.items()}
-                smallest_cluster_in_range = min([i[0][0] for i in clusters]) - chomp_max_distance
-                smallest_cluster_in_range = max(smallest_cluster_in_range, 1)
+                add_full_cluster_search(clusters, chomp_max_distance, nodes_in_gene, primary_cluster_dict, source_clusters, cluster_full, nodes_in_gene, cluster_dict)
                 
-                largest_cluster_in_range = max([i[0]    [1] for i in clusters]) + chomp_max_distance
-                source_clusters = {}
+            this_seqs = load_Sequences(source_seqs, nodes_in_gene)
                 
-                for i in range(smallest_cluster_in_range, largest_cluster_in_range + 1):
-                    header = i
-                    
-                    if header in nodes_in_gene:
-                        continue
-
-                    if header in primary_cluster_dict:
-                        source_clusters[header] = (True, primary_cluster_dict[header])
-                        cluster_full[header] = {"+", "-"}
-                        nodes_in_gene.add(header)
-                        continue
-                    
-                    this_crange, strands_present = cluster_dict.get(header, (None, None))
-                    
-                    if this_crange:
-                        source_clusters[header] = (False, this_crange)
-                        cluster_full[header] = strands_present
-                        nodes_in_gene.add(header)
-                
-            if type(source_seqs) is dict:
-                this_seqs = source_seqs
-            else:
-                this_seqs = {}
-                for header, seq in parseFasta(source_seqs, False):
-                    header = int(header)
-                    if smallest_cluster_in_range is None or header in nodes_in_gene or header >= smallest_cluster_in_range and header <= largest_cluster_in_range:
-                        this_seqs[int(header)] = seq
-                
-            for node in nodes_in_gene:
-                parent_seq = this_seqs.get(node)
-                if parent_seq is None:
-                    # Full cluster search introduced header not found in db.
-                    # Quicker to filter after the fact 
-                    continue
-
-
-                strands_present = cluster_full.get(node, {"+", "-"})
-
-                unaligned_sequences.append((node, parent_seq))
-                if "+" in strands_present:
-                    # Forward frame 1
-                    query = f"{node}|1"
-                    nt_sequences[query] = parent_seq
-                    required_frames[node].add(1)
-                    if query not in parents and node not in cluster_full:
-                        children[query] = fallback[node]
-
-                    # Forward 2 & 3
-                    for shift_by in [1, 2]:
-                        shifted = shift(1, shift_by)
-                        new_query = f"{node}|{shifted}"
-                        nt_sequences[new_query] = parent_seq[shift_by:]
-                        required_frames[node].add(shifted)
-                        if new_query in parents:
-                            continue
-                        if node in cluster_full:
-                            continue
-                        children[new_query] = fallback[node]
-
-                if "-" in strands_present:
-                    # Reversed frame 1
-                    bio_revcomp_seq = bio_revcomp(parent_seq)
-                    query = f"{node}|-1"
-                    nt_sequences[query] = bio_revcomp_seq
-                    required_frames[node].add(-1)
-                    if query not in parents and node not in cluster_full:
-                        children[query] = fallback[node]
-
-                    # Reversed 2 & 3
-                    for shift_by in [1, 2]:
-                        shifted = shift(-1, shift_by)
-                        new_query = f"{node}|{shifted}"
-                        nt_sequences[new_query] = bio_revcomp_seq[shift_by:]
-                        required_frames[node].add(shifted)
-                        if new_query in parents:
-                            continue
-                        if node in cluster_full:
-                            continue
-                        children[new_query] = fallback[node]
-
-
-        else:
-            for hit in diamond_hits:
-                raw_sequence = hit.seq
-                frame = hit.frame
-                query = f"{hit.node}|{frame}"
-                unaligned_sequences.append((query, raw_sequence))
-                parents[query] = hit
-
-                for shift_by in [1, 2]:
-                    shifted = shift(frame, shift_by)
-                    if not shifted in hits_have_frames_already[hit.node]:
-                        new_query = f"{hit.node}|{shifted}"
-                        unaligned_sequences.append((new_query, raw_sequence[shift_by:]))
-                        hits_have_frames_already[hit.node].add(shifted)
-                        children[new_query] = hit
+        shift_targets(is_full, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp)
 
         aln_file = path.join(aln_ref_location, f"{gene}.aln.fa")
         output = []
@@ -440,108 +550,10 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
         if debug > 2:
             continue#return "", [], [], [], []
 
-        data = defaultdict(list)
-        high_score = 0
-        with open(this_hmm_output) as f:
-            for line in f:
-                if line.startswith("#"):
-                    continue
-                while "  " in line:
-                    line = line.replace("  ", " ")
-                line = line.strip().split()
-
-                query = line[0]
-
-                start, end, ali_start, ali_end, score = int(line[17]), int(line[18]), int(line[15]), int(line[16]), float(line[13])
-
-                high_score = max(high_score, score)
-
-                data[query].append((start - 1, end, score, ali_start, ali_end))
-
-        if map_mode:
-            score_thresh = high_score * 0.9
-
-            queries = []
-            for query, results in data.items():
-                queries.append((query, [i for i in results if i[2] >= score_thresh]))
-        else:
-            queries = data.items()
+        queries = get_results(this_hmm_output, map_mode)
 
         for query, results in queries:
-            node, frame = query.split("|")
-            id = int(node)
-            if id in cluster_full:
-                if not query in parents_done:
-                    frame = int(frame)
-                    for result in results:
-                        start, end, score, ali_start, ali_end = result
-                        start = start * 3
-                        end = end * 3
-
-                        sequence = nt_sequences[query][start: end]
-
-                        new_qstart = start
-                        if frame < 0:
-                            new_qstart -= (3 - abs(frame))
-                        else:
-                            new_qstart += frame
-
-                        passed_ids.add(id)
-                        parents_done.add(query)
-
-                        is_primary_child, cluster_range = source_clusters[id]
-                        if is_primary_child:
-                            where_from = "Primary Cluster"
-                            cquery = primary_query[cluster_range]
-                        else:
-                            where_from = "Cluster Full"
-                            cquery = cluster_queries[cluster_range]
-
-                        new_hit = HmmHit(node=id, score=score, frame=int(frame), evalue=0, qstart=new_qstart, qend=new_qstart + len(sequence), gene=gene, query=cquery, uid=None, refs=[], seq=sequence)
-                        hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, where_from))
-                        output.append(new_hit)
-                continue
-            
-            if query in parents or query in children:
-                if query in parents:
-                    hit = parents[query]
-                    if f"{hit.node}|{hit.frame}" in parents_done:
-                        continue
-                    
-                    frame = hit.frame
-                else:
-                    hit = children[query]
-                    frame = int(query.split("|")[1])
-                for result in results:
-                    start, end, score, ali_start, ali_end = result
-                    start = start * 3
-                    end = end * 3
-
-                    if map_mode:
-                        sequence = nt_sequences[query]
-                        if len(sequence) % 3 != 0:
-                            sequence += ("N" * (3 - len(sequence) % 3))
-                        start = 0
-                    else:
-                        sequence = nt_sequences[query][start: end]
-
-                    if is_full:
-                        new_qstart = start
-                        if frame < 0:
-                            new_qstart -= (3 - abs(frame))
-
-                        else:
-                            new_qstart += frame
-
-                    else:
-                        new_qstart = hit.qstart + start
-
-                    new_uid = hit.uid + start + end
-
-                    passed_ids.add(hit.node)
-                    parents_done.add(f"{hit.node}|{frame}")
-                    new_hit = HmmHit(node=hit.node, score=score, frame=frame, evalue=hit.evalue, qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=new_uid, refs=hit.refs, seq=sequence)
-                    output.append(new_hit)
+            add_new_result(map_mode, gene, query, results, is_full, cluster_full, cluster_queries, primary_query, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template)
 
         diamond_kicks = []
         for hit in diamond_hits:
