@@ -396,7 +396,6 @@ def add_new_result(map_mode, gene, query, results, is_full, cluster_full, cluste
 def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_ref_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
     batch_result = []
     warnings.filterwarnings("ignore", category=BiopythonWarning)
-    start = time()
     this_seqs = load_Sequences(source_seqs)#, nodes_in_gene)
     for gene, diamond_hits in batches:
         diamond_hits = json.decode(diamond_hits, type=list[Hit])
