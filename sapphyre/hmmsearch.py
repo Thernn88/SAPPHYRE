@@ -186,15 +186,12 @@ def merge_clusters(clusters):
     
     return merged_clusters
 
-def load_Sequences(source_seqs, nodes_in_gene):
+def load_Sequences(source_seqs):
     if type(source_seqs) is dict:
         this_seqs = source_seqs
     else:
-        this_seqs = {}
-        for header, seq in parseFasta(source_seqs, False):
-            header = int(header)
-            if header in nodes_in_gene:
-                this_seqs[int(header)] = seq
+        this_seqs = {int(header): seq for header, seq in parseFasta(source_seqs)}
+
     return this_seqs
 
 def shift_targets(is_full, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp):
@@ -399,6 +396,8 @@ def add_new_result(map_mode, gene, query, results, is_full, cluster_full, cluste
 def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_ref_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
     batch_result = []
     warnings.filterwarnings("ignore", category=BiopythonWarning)
+    start = time()
+    this_seqs = load_Sequences(source_seqs)#, nodes_in_gene)
     for gene, diamond_hits in batches:
         diamond_hits = json.decode(diamond_hits, type=list[Hit])
         printv(f"Processing: {gene}", verbose, 2)
@@ -497,9 +496,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
             if is_genome and clusters:
                 cluster_queries = {k: max(set(v), key=v.count) for k, v in cluster_queries.items()}
                 add_full_cluster_search(clusters, chomp_max_distance, nodes_in_gene, primary_cluster_dict, source_clusters, cluster_full, nodes_in_gene, cluster_dict)
-                
-            this_seqs = load_Sequences(source_seqs, nodes_in_gene)
-                
+                      
         shift_targets(is_full, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp)
 
         aln_file = path.join(aln_ref_location, f"{gene}.aln.fa")
