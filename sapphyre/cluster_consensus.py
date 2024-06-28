@@ -118,7 +118,8 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
                     cluster_match += 1
             
             cluster_consensi[x] = cluster_consensus
-            cluster_percents.append((x, cluster[4], cluster_match / cluster_cols))
+            percent = 0 if cluster_cols == 0 else cluster_match / cluster_cols
+            cluster_percents.append((x, cluster[4], percent))
 
         max_cluster = max(cluster_percents, key = lambda x: x[2])
         max_percent = max_cluster[2]
