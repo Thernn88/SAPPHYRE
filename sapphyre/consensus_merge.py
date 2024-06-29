@@ -279,7 +279,7 @@ class do_gene():
                 candidates.append(Node(header, seq, count, *find_index_pair(seq, "-")))
                 
         if not self.is_gfm:
-            cluster_sets = None
+            cluster_sets = [None]
         else:
             ids = [quick_rec(node.header.split("|")[3], None, node.sequence, node.start, node.end) for node in aa_candidates]
             max_gap_size = round(len(aa_candidates[0].sequence) * 0.3) # Half MSA length
