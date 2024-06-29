@@ -888,7 +888,7 @@ def flexcull_args(par):
         "-bs",
         "--blosum_strictness",
         choices=["exact", "strict", "lax"],
-        default="exact",
+        default="strict",
         help="Blosum strictness setting.",
     )
     par.add_argument(
