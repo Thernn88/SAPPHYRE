@@ -66,11 +66,17 @@ def get_diamondhits(
         printv("Please make sure Diamond completed successfully", 0)
         return None
     genes_to_process = present_genes.split(",")
-    upper = int(rocks_hits_db.get("gethits:batch_count"))
-    
+
     gene_based_results = []
-    for i in range(1, upper + 1):
-        gene_based_results.extend(json.decode(rocks_hits_db.get(f"gethits:{i}"), type=list[tuple[str, list[Hit]]]))
+    for gene in genes_to_process:
+        gene_result = rocks_hits_db.get_bytes(f"gethits:{gene}")
+        if not gene_result:
+            printv(
+                f"WARNING: No hits found for {gene}. If you are using a gene list file this may be a non-issue",
+                0,
+            )
+            continue
+        gene_based_results.append((gene, gene_result))
 
     return genes_to_process, gene_based_results
 
@@ -390,6 +396,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     this_seqs = load_Sequences(source_seqs)#, nodes_in_gene)
     for gene, diamond_hits in batches:
+        diamond_hits = json.decode(diamond_hits, type=list[Hit])
         printv(f"Processing: {gene}", verbose, 2)
         aligned_sequences = []
         this_hmm_output = path.join(hmm_output_folder, f"{gene}.hmmout")
@@ -701,6 +708,7 @@ def do_folder(input_folder, args):
     if aln_ref_location is None:
         printv("ERROR: Could not find alignment reference", args.verbose, 0)
         return False
+
     per_batch = math.ceil(len(transcripts_mapped_to) / args.processes)
     temp_source_file = None
     if args.processes > 1:
