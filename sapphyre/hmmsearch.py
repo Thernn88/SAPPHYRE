@@ -188,7 +188,7 @@ def load_Sequences(source_seqs):
 
     return this_seqs
 
-def shift_targets(is_full, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp):
+def shift_targets(is_full, query_template, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp):
     if is_full:
         for node in nodes_in_gene:
             parent_seq = this_seqs.get(node)
@@ -202,18 +202,17 @@ def shift_targets(is_full, nodes_in_gene, diamond_hits, cluster_full, fallback, 
             unaligned_sequences.append((node, parent_seq))
             if "+" in strands_present:
                 # Forward frame 1
-                query = f"{node}|1"
+                query = query_template.format(node, 1)
                 nt_sequences[query] = parent_seq
-                required_frames[node].add(1)
+                required_frames[node].update({1,2,3})
                 if query not in parents and node not in cluster_full:
                     children[query] = fallback[node]
 
                 # Forward 2 & 3
                 for shift_by in [1, 2]:
                     shifted = shift(1, shift_by)
-                    new_query = f"{node}|{shifted}"
+                    new_query = query_template.format(node, shifted)
                     nt_sequences[new_query] = parent_seq[shift_by:]
-                    required_frames[node].add(shifted)
                     if new_query in parents:
                         continue
                     if node in cluster_full:
@@ -223,18 +222,17 @@ def shift_targets(is_full, nodes_in_gene, diamond_hits, cluster_full, fallback, 
             if "-" in strands_present:
                 # Reversed frame 1
                 bio_revcomp_seq = bio_revcomp(parent_seq)
-                query = f"{node}|-1"
+                query = query_template.format(node, -1)
                 nt_sequences[query] = bio_revcomp_seq
-                required_frames[node].add(-1)
+                required_frames[node].update({-1,-2,-3})
                 if query not in parents and node not in cluster_full:
                     children[query] = fallback[node]
 
                 # Reversed 2 & 3
                 for shift_by in [1, 2]:
                     shifted = shift(-1, shift_by)
-                    new_query = f"{node}|{shifted}"
+                    new_query = query_template.format(node, shifted)
                     nt_sequences[new_query] = bio_revcomp_seq[shift_by:]
-                    required_frames[node].add(shifted)
                     if new_query in parents:
                         continue
                     if node in cluster_full:
@@ -244,14 +242,14 @@ def shift_targets(is_full, nodes_in_gene, diamond_hits, cluster_full, fallback, 
         for hit in diamond_hits:
             raw_sequence = hit.seq
             frame = hit.frame
-            query = f"{hit.node}|{frame}"
+            query = query_template.format(hit.node, frame)
             unaligned_sequences.append((query, raw_sequence))
             parents[query] = hit
 
             for shift_by in [1, 2]:
                 shifted = shift(frame, shift_by)
                 if not shifted in hits_have_frames_already[hit.node]:
-                    new_query = f"{hit.node}|{shifted}"
+                    new_query = query_template.format(hit.node, shifted)
                     unaligned_sequences.append((new_query, raw_sequence[shift_by:]))
                     hits_have_frames_already[hit.node].add(shifted)
                     children[new_query] = hit
@@ -463,12 +461,13 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
         children = {}
         unaligned_sequences = []
         required_frames = defaultdict(set)
+        query_template = "{}|{}"
         if is_full:
             fallback = {}
             nodes_in_gene = set()
             for hit in diamond_hits:
                 nodes_in_gene.add(hit.node)
-                query = f"{hit.node}|{hit.frame}"
+                query = query_template.format(hit.node, hit.frame)
                 parents[query] = hit
 
                 if hit.node not in fallback:
@@ -489,7 +488,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                 cluster_queries = {k: max(set(v), key=v.count) for k, v in cluster_queries.items()}
                 add_full_cluster_search(clusters, chomp_max_distance, nodes_in_gene, primary_cluster_dict, source_clusters, cluster_full, nodes_in_gene, cluster_dict)
                       
-        shift_targets(is_full, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp)
+        shift_targets(is_full, query_template, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp)
 
         aln_file = path.join(aln_ref_location, f"{gene}.aln.fa")
         output = []
@@ -509,9 +508,9 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                         frame = int(header[-3])
                         if "rev" in header:
                             frame = -frame
-                        header = header.split(" ")[0]
-                        if frame in required_frames[int(header)]:
-                            query = f"{header}|{frame}"
+                        header = int(header.split(" ")[0])
+                        if frame in required_frames[header]:
+                            query = query_template.format(header, frame)
                             aligned_sequences.append((query, seq))
             else:
                 for header, seq in unaligned_sequences:
@@ -546,7 +545,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
 
         diamond_kicks = []
         for hit in diamond_hits:
-            if not f"{hit.node}|{hit.frame}" in parents_done:
+            if not query_template.format(hit.node, hit.frame) in parents_done:
                 if is_genome and math.floor(math.log10(abs(hit.evalue))) <= -evalue_threshold:
                     this_id = hit.node
                     has_neighbour = False
@@ -570,7 +569,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                         
                         new_hit = HmmHit(node=hit.node, score=0, frame=hit.frame, evalue=hit.evalue, qstart=new_start, qend=new_end, gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=hit.seq)
                         output.append(new_hit)
-                        parents_done.add(f"{hit.node}|{hit.frame}")
+                        parents_done.add(query_template.format(hit.node, hit.frame))
                         hmm_log.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, f"Rescued by {neighbour}. Evalue: {hit.evalue}"))
                         continue
 
