@@ -513,8 +513,8 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                     system(f"fastatranslate {unaligned_tmp.name} > {aln_tmp.name}")
 
                     for header, seq in parseFasta(aln_tmp.name, True):
-                        frame = int(header.split("translate(")[1].replace(")]",""))
-                        if "revcomp" in header:
+                        frame = int(header[-3])
+                        if "rev" in header:
                             frame = -frame
                         header = header.split(" ")[0]
                         if frame in required_frames[int(header)]:
