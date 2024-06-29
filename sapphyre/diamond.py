@@ -1221,6 +1221,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 output = [convert_and_cull(arg) for arg in arguments]
         passes = 0
         encoder = json.Encoder()
+        
+        batches = []
+        batch_count = 1
+        max_per_batch = 1000
+        
         for result in output:
             if is_assembly_or_genome:
                 hits, gene = result.hits, result.gene
@@ -1250,7 +1255,17 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 dupe_divy_headers[gene].add(hit.node)
 
             passes += len(out)
-            db.put_bytes(f"gethits:{gene}", encoder.encode(out))
+            batches.append((gene, out))
+            
+            if len(batches) >= max_per_batch:
+                db.put_bytes(f"gethits:{batch_count}", encoder.encode(batches))
+                batches = []
+                batch_count += 1
+        
+        if batches:    
+            db.put_bytes(f"gethits:{batch_count}", encoder.encode(batches))
+            
+        db.put("gethits:batch_count", str(batch_count))
 
         del head_to_seq
         if global_log:
