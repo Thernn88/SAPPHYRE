@@ -929,7 +929,7 @@ def aln_function(
                 f"clustalo -i '{raw_fa_file}' -o '{aln_file}' --threads=1 --force",
             )  # --verbose
         else:
-            os.system(f"mafft-linsi --thread 1 '{raw_fa_file}' > '{aln_file}'")
+            os.system(f"mafft --thread 1 --quiet --anysymbol '{raw_fa_file}' > '{aln_file}'")
 
     aligned_result = []
     aligned_dict = {}
@@ -1082,7 +1082,7 @@ def aln_function(
                             f"clustalo -i '{temp.name}' -o '{final_file}' --threads=1 --force",
                         )  # --verbose
                     else:
-                        os.system(f"mafft-linsi --thread 1 '{temp.name}' > '{final_file}'")
+                        os.system(f"mafft --quiet --anysymbol --thread 1 '{temp.name}' > '{final_file}'")
 
             aligned_dict = {}
             for header, seq in parseFasta(final_file, True):
