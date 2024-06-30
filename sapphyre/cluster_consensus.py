@@ -41,7 +41,7 @@ def within_highest_coverage(logs, clusters, overlap_perc, within=0.1): # kick 10
     return within
 
 
-def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene_output_path: str, nt_gene_output_path: str, verbose: int, cluster_overlap_requirement: float):
+def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene_output_path: str, nt_gene_output_path: str, verbose: int, gfm: bool, cluster_overlap_requirement: float):
     printv(f"Processing {gene}", verbose, 2)
     reference_data_cols = set()
     ids = []
@@ -56,7 +56,7 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
         if header.endswith("."):
             start, end = find_index_pair(seq, "-")
             for i,let in enumerate(seq[start:end], start):
-                if let != "-":
+                if not gfm or let != "-":
                     ref_consensus[i].add(let)
                     reference_data_cols.add(i)
                     
@@ -84,9 +84,9 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
                 this_cluster_seq.append((header, seq, start, end))
                 start, end = find_index_pair(seq, "-")
                 for i, let in enumerate(seq[start:end], start):
-                    if let != "-":
+                    if not gfm or let != "-":
                         this_cluster_coords.add(i)
-        
+                        
         final_clusters.append((cluster[0], cluster[1], cluster[2], this_cluster_seq, this_cluster_coords))
 
     if not clusters:
@@ -107,7 +107,7 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
             cluster_consensus = defaultdict(set)
             for _, seq, start, end in cluster[3]:
                 for i, let in enumerate(seq[start:end], start):
-                    if let != "-":
+                    if not gfm or let != "-":
                         cluster_consensus[i].add(let)
 
             cluster_match = 0
@@ -242,7 +242,7 @@ def do_folder(args, folder: str, from_folder: str):
     makedirs(nt_gene_output_path, exist_ok=True)
 
     for gene in listdir(aa_gene_input_path):
-        arguments.append((gene, aa_gene_input_path, nt_gene_input_path, aa_gene_output_path, nt_gene_output_path, args.verbose, args.cluster_overlap_requirement))
+        arguments.append((gene, aa_gene_input_path, nt_gene_input_path, aa_gene_output_path, nt_gene_output_path, args.verbose, args.gene_finding_mode, args.cluster_overlap_requirement))
     
 
     if args.processes >= 1:
