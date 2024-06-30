@@ -872,6 +872,9 @@ def splice_combo(add_results,
         node_seq.pop(0)
         node_insertions += 1
         
+    node_hit = node_og[ag_index_rev: (node_start_index + len(kmer) + len(kmer_internal_gaps))]
+    prev_hit = prev_og[prev_start_index: gt_index + gt_size - 1]
+        
     if orphan_codon:
         joined = "".join(orphan_codon)
         if joined not in DNA_CODONS:
@@ -962,8 +965,7 @@ def splice_combo(add_results,
     scan_log.append(node_seq[prev_start: node_end])
     scan_log.append("")    
     
-    node_hit = node_og[ag_index_rev: (node_start_index + len(kmer) + len(kmer_internal_gaps))]
-    prev_hit = prev_og[prev_start_index: gt_index + gt_size - 1]
+    
     # lowercase
     prev_hit = prev_hit[:-gt_size] + prev_hit[-gt_size:].lower()
     node_hit = node_hit[:ag_size].lower() + node_hit[ag_size:]
