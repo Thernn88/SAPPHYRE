@@ -1,5 +1,6 @@
 import math
 import warnings
+import subprocess
 from collections import defaultdict
 from shutil import rmtree
 from tempfile import NamedTemporaryFile
@@ -509,7 +510,9 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
             if is_full:
                 with NamedTemporaryFile(dir=gettempdir()) as unaligned_tmp, NamedTemporaryFile(dir=gettempdir()) as aln_tmp:
                     writeFasta(unaligned_tmp.name, unaligned_sequences)
-                    system(f"fastatranslate {unaligned_tmp.name} > {aln_tmp.name}")
+                    ft = ["fastatranslate", unaligned_tmp.name]
+                    subprocess.run(ft, stdout=aln_tmp)
+                    #system(f"fastatranslate {unaligned_tmp.name} > {aln_tmp.name}")
 
                     for header, seq in parseFasta(aln_tmp.name, True):
                         frame = int(header[-3])
@@ -526,7 +529,9 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                     
                         
             with NamedTemporaryFile(dir=gettempdir()) as hmm_temp_file:
-                system(f"hmmbuild '{hmm_temp_file.name}' '{aln_file}' > /dev/null")
+                hmmb = ["hmmbuild", hmm_temp_file.name, aln_file]
+                subprocess.run(hmmb, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                #system(f"hmmbuild '{hmm_temp_file.name}' '{aln_file}' > /dev/null")
 
                 if debug > 2:
                     this_hmm_in = path.join(hmm_output_folder, f"{gene}_input.fa")
@@ -538,9 +543,11 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                     with NamedTemporaryFile(dir=gettempdir()) as aligned_files:
                         writeFasta(aligned_files.name, aligned_sequences)
                         aligned_files.flush()
-                        system(
-                        f"hmmsearch --nobias --domtblout {this_hmm_output} --domT 10.0 {hmm_temp_file.name} {aligned_files.name} > /dev/null",
-                        )
+                        hmms = ["hmmsearch", "--nobias", "--domtblout", this_hmm_output, "--domT", "10.0", hmm_temp_file.name, aligned_files.name]
+                        subprocess.run(hmms, stdout=subprocess.DEVNULL)
+                        #system(
+                        #f"hmmsearch --nobias --domtblout {this_hmm_output} --domT 10.0 {hmm_temp_file.name} {aligned_files.name} > /dev/null",
+                        #)
 
         if debug > 2:
             continue#return "", [], [], [], []
