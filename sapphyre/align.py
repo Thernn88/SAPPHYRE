@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict, namedtuple
+import subprocess
 from math import ceil
 from multiprocessing.pool import Pool
 from os import listdir, mkdir, path, stat, system
@@ -311,9 +312,12 @@ def generate_tmp_aln(
             tmp_prealign.flush()
 
             if align_method == "clustal":
-                system(
-                    f"clustalo -i '{tmp_prealign.name}' -o '{dest.name}' --thread=1 --full --force"
-                )
+                
+                cmd = ["clustalo", "-i", tmp_prealign.name, "-o", dest.name, "--thread=1", "--full", "--force"]
+                subprocess.run(cmd, stdout=subprocess.DEVNULL)
+                #system(
+                    #f"clustalo -i '{tmp_prealign.name}' -o '{dest.name}' --thread=1 --full --force"
+                #)
             else:
                 system(
                     f"mafft --localpair --quiet --thread 1 --anysymbol '{tmp_prealign.name}' > '{dest.name}'"
@@ -501,9 +505,11 @@ def create_subalignment(
     else:
         is_profile = ""
 
-    system(
-        f"clustalo --p1 {tmp_aln} --p2 {file} -o {out_file} --threads=1 --full {is_profile} --force",
-    )
+    cmd = ["clustalo", "--p1", tmp_aln, "--p2", file, "-o", out_file, "--threads=1", "--full", is_profile, "--force"]
+    subprocess.run(cmd)
+    #system(
+        #f"clustalo --p1 {tmp_aln} --p2 {file} -o {out_file} --threads=1 --full {is_profile} --force",
+    #)
 
     if debug:
         print(
