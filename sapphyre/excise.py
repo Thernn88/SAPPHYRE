@@ -1351,7 +1351,85 @@ def log_excised_consensus(
     #         node.sequence = del_cols(node.sequence, x_positions[node.header])
     #         node.nt_sequence = del_cols(node.nt_sequence, x_positions[node.header], True)
     #         node.start, node.end = find_index_pair(node.sequence, "-")
-                          
+          
+    # Detect ref gap regoins
+    integers = list(ref_gaps)
+    debug_out = []
+    merged = []
+    if integers:
+        integers.sort()
+        start = integers[0]
+        end = integers[0]
+
+        for num in integers[1:]:
+            if num == end + 1:
+                end = num
+            else:
+                merged.append((start, end + 1))
+                start = num
+                end = num
+
+        merged.append((start, end + 1))
+           
+    move_dict = defaultdict(list)
+    for cluster_i, cluster_set in enumerate(cluster_sets):
+        aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
+        
+        for start, end in merged:
+            gap_size = end - start
+            for node in aa_nodes:
+                overlap = get_overlap(start, end, node.start, node.end, 1)
+
+                if overlap is None:
+                    continue
+                
+                amount = overlap[1] - overlap[0]
+
+                data_in_gap = node.sequence[overlap[0]: overlap[1]]
+                # right side or left side of the gap
+                
+                this_seq = list(node.sequence)
+                this_nt_seq = list(node.nt_sequence)
+                
+                if node.start <= overlap[1]: # Right side
+                    match = True
+                    for i, let in enumerate(data_in_gap, start - amount):
+                        if not let in ref_consensus[i]:
+                            match = False
+                            break
+                    
+                    if match:
+                        for new_i, original_i in enumerate(range(node.start, end), start - amount):
+                            this_seq[new_i] = this_seq[original_i]
+                            this_seq[original_i] = "-"
+                            
+                            
+                            this_nt_seq[(new_i*3):(new_i*3)+3] = this_nt_seq[(original_i*3):(original_i*3)+3]
+                            this_nt_seq[(original_i*3):(original_i*3)+3] = ["-","-","-"]
+                            
+                            move_dict[node.header].append((original_i, new_i))
+                
+                if node.end >= overlap[0] and node.end <= end: # Left side
+                    match = True
+                    for i, let in enumerate(data_in_gap, overlap[0]+gap_size):
+                        if not let in ref_consensus[i]:
+                            match = False
+                            break
+                        
+                    if match:
+                        for new_i, original_i in enumerate(range(start, node.end), overlap[0]+gap_size):
+                            this_seq[new_i] = this_seq[original_i]
+                            this_seq[original_i] = "-"
+                            
+                            this_nt_seq[(new_i*3):(new_i*3)+3] = this_nt_seq[(original_i*3):(original_i*3)+3]
+                            this_nt_seq[(original_i*3):(original_i*3)+3] = ["-","-","-"]
+                            
+                            move_dict[node.header].append((original_i, new_i))
+                        
+                node.sequence = "".join(this_seq)
+                node.nt_sequence = "".join(this_nt_seq)
+                node.start, node.end = find_index_pair(node.sequence, "-")
+
     if had_region:
         after_data = []
         for node in aa_nodes:
@@ -1672,6 +1750,13 @@ def log_excised_consensus(
                 
             if this_id not in gff_out[parent]:
                 gff_out[parent][this_id] = None
+                
+        if header in move_dict:
+            seq = list(seq)
+            for original_i, new_i in move_dict[header]:
+                seq[new_i] = seq[original_i]
+                seq[original_i] = "-"
+            seq = "".join(seq)
         
         if header in replacements_aa or header in extensions_aa or header in gap_insertions_aa:
             seq = list(seq)
@@ -1688,35 +1773,16 @@ def log_excised_consensus(
                     
             seq = "".join(seq)
         aa_output.append((header, seq))
-        
-    integers = list(ref_gaps)
-    debug_out = []
-    merged = []
-    if integers:
-        integers.sort()
-        start = integers[0]
-        end = integers[0]
-
-        for num in integers[1:]:
-            if num == end + 1:
-                end = num
-            else:
-                if end - start >= 10:
-                    merged.append((start, end))
-                start = num
-                end = num
-
-        if end - start >= 10:
-            merged.append((start, end))
     
     internal_headers = {}
     if merged:
+        ref_gaps_over_ten = [group for group in merged if group[1] - group[0] >= 10]
         for header, seq in aa_output:
             if header.endswith("."):
                 continue
         
             start, end = find_index_pair(seq, "-")
-            for region in merged:
+            for region in ref_gaps_over_ten:
                 this_overlap = get_overlap(start, end, region[0], region[1], 1)
                 if this_overlap:
                     amt_non_gap = 0
@@ -1748,6 +1814,13 @@ def log_excised_consensus(
         final_nt_out = []
             
         for header, seq in nt_output:
+            if header in move_dict:
+                seq = list(seq)
+                for original_i, new_i in move_dict[header]:
+                    seq[(new_i*3):(new_i*3)+3] = seq[(original_i*3):(original_i*3)+3]
+                    seq[(original_i*3):(original_i*3)+3] = ["-","-","-"]
+                seq = "".join(seq)
+            
             if header in replacements or header in extensions or header in gap_insertions_nt:
                 seq = list(seq)
                 if header in extensions: 
