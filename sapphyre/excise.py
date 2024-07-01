@@ -1387,43 +1387,54 @@ def log_excised_consensus(
                 
                 amount = overlap[1] - overlap[0]
 
-                data_in_gap = node.sequence[overlap[0]: overlap[1]]
-                if data_in_gap.count("-") == 0 or data_in_gap.count("-") == len(data_in_gap):
+                gap_region = node.sequence[overlap[0]: overlap[1]]
+                
+                if gap_region.count("-") == len(gap_region):
                     continue
+                
+                internal_gap_offset = find_index_pair(gap_region, "-")
+                data_in_gap = gap_region[internal_gap_offset[0]:internal_gap_offset[1]]
                 # right side or left side of the gap
                 
                 this_seq = list(node.sequence)
                 this_nt_seq = list(node.nt_sequence)
-                
-                if node.start <= overlap[1]: # Right side
+
+                if overlap[0] == start and internal_gap_offset[0] == 0: # Left side
                     match = True
-                    for i, let in enumerate(data_in_gap, start - amount):
+                    for i, let in enumerate(data_in_gap, overlap[0]+gap_size):
+                        if node.sequence[i] != "-" and let != node.sequence[i]:
+                            match = False
+                            break
+                        if not let in ref_consensus[i]:
+                            match = False
+                            break
+
+                    if match:
+                        for new_i, original_i in enumerate(range(overlap[0], overlap[0]+len(data_in_gap)), overlap[0] + gap_size):
+                            this_seq[new_i] = this_seq[original_i]
+                            this_seq[original_i] = "-"
+                            
+                            this_nt_seq[(new_i*3):(new_i*3)+3] = this_nt_seq[(original_i*3):(original_i*3)+3]
+                            this_nt_seq[(original_i*3):(original_i*3)+3] = ["-","-","-"]
+                            
+                            move_dict[node.header].append((original_i, new_i))          
+                else: # Right side
+                    match = True
+                    for i, let in enumerate(data_in_gap, start-len(data_in_gap)):
+                        
+                        if node.sequence[i] != "-" and let != node.sequence[i]:
+                            match = False
+                            break
+                        
                         if not let in ref_consensus[i]:
                             match = False
                             break
                     
                     if match:
-                        for new_i, original_i in enumerate(range(node.start, end), start - amount):
+                        for new_i, original_i in enumerate(range(overlap[0] + internal_gap_offset[0], overlap[0] + internal_gap_offset[1]), start - len(data_in_gap)):
                             this_seq[new_i] = this_seq[original_i]
                             this_seq[original_i] = "-"
                             
-                            
-                            this_nt_seq[(new_i*3):(new_i*3)+3] = this_nt_seq[(original_i*3):(original_i*3)+3]
-                            this_nt_seq[(original_i*3):(original_i*3)+3] = ["-","-","-"]
-                            
-                            move_dict[node.header].append((original_i, new_i))
-                
-                if node.end >= overlap[0] and node.end <= end: # Left side
-                    match = True
-                    for i, let in enumerate(data_in_gap, overlap[0]+gap_size):
-                        if not let in ref_consensus[i]:
-                            match = False
-                            break
-                        
-                    if match:
-                        for new_i, original_i in enumerate(range(start, node.end), overlap[0]+gap_size):
-                            this_seq[new_i] = this_seq[original_i]
-                            this_seq[original_i] = "-"
                             
                             this_nt_seq[(new_i*3):(new_i*3)+3] = this_nt_seq[(original_i*3):(original_i*3)+3]
                             this_nt_seq[(original_i*3):(original_i*3)+3] = ["-","-","-"]
