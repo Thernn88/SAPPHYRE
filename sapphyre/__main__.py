@@ -635,6 +635,41 @@ def outlier(argsobj):
         print(argsobj.formathelp())
 
 
+def subcmd_Exonerate(subparsers):
+    par = subparsers.add_parser(
+        "Exonerate",
+        help="Reference-guided De-novo Assembly Algorithm which merges overlapping reads "
+        "into contiguous segments (Contigs).",
+    )
+    par.add_argument(
+        "INPUT",
+        help="Path to directory of Input folder",
+        action="extend",
+        nargs="+",
+    )
+    exonerate_args(par)
+    par.set_defaults(func=Exonerate, formathelp=par.format_help)
+
+
+def exonerate_args(par):
+    par.add_argument(
+        "-cd",
+        "--chomp_max_distance",
+        type=int,
+        default=100,
+        help="Max distance for merging cluster in chomp",
+    )
+        
+
+
+def Exonerate(args):
+    from . import exonerate_module
+
+    if not exonerate_module.main(args):
+        print()
+        print(args.formathelp())
+
+
 def subcmd_Merge(subparsers):
     par = subparsers.add_parser(
         "Merge",
@@ -1617,6 +1652,7 @@ def main():
     subcmd_Merge(subparsers)
     subcmd_Combine(subparsers)
     subcmd_archive(subparsers)
+    subcmd_Exonerate(subparsers)
 
     # Finalize
     subcmd_finalize(subparsers)
