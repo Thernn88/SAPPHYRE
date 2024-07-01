@@ -38,10 +38,10 @@ def determine_direction(start, end, current_start, current_end, current_directio
         return this_direction
     return None
 
-def quick_rec(header, frame, seq, start, end):
+def quick_rec(node, frame, seq, start, end):
     data_cols = {i for i, let in enumerate(seq[start:end], start) if let != "-"}
     strand = None if frame is None else "-" if frame < 0 else "+"
-    return cluster_rec(header, start, end, data_cols, strand)
+    return cluster_rec(node, start, end, data_cols, strand)
 
 def node_to_ids(node):
     if "NODE_" in node:
