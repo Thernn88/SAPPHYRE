@@ -74,10 +74,9 @@ class exonerate:
             
             clusters, _ = cluster_ids(ids, self.args.chomp_max_distance, gap_distance, ref_coords, 0)
             raw_path = path.join(self.orthoset_raw_path, gene_name+".fa")
-            max_cluster = max(clusters, key=lambda x: x[1] - x[0])
-            cluster = max_cluster
-            # for cluster in clusters:
-            if True:
+            # max_cluster = max(clusters, key=lambda x: x[1] - x[0])
+            # cluster = max_cluster
+            for cluster in clusters:
                 cluster_seq = ""
                 test = []
                 for x, i in enumerate(range(cluster[0], cluster[1] + 1)):
