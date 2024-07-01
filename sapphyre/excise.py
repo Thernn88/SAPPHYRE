@@ -1388,6 +1388,8 @@ def log_excised_consensus(
                 amount = overlap[1] - overlap[0]
 
                 data_in_gap = node.sequence[overlap[0]: overlap[1]]
+                if data_in_gap.count("-") == 0 or data_in_gap.count("-") == len(data_in_gap):
+                    continue
                 # right side or left side of the gap
                 
                 this_seq = list(node.sequence)
