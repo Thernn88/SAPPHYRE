@@ -41,11 +41,11 @@ def get_head_to_seq(nt_db):
 
 
 class exonerate:
-    def __init__(self, aa_input, nt_input, folder, args, orthoset_raw_path, exonerate_path) -> None:
+    def __init__(self, aa_input, nt_input, folder, chomp_max_distance, orthoset_raw_path, exonerate_path) -> None:
         self.aa_input = aa_input
         self.nt_input = nt_input
         self.folder = folder
-        self.args = args
+        self.chomp_max_distance = chomp_max_distance
         self.orthoset_raw_path = orthoset_raw_path
         self.exonerate_path = exonerate_path
         
@@ -72,7 +72,7 @@ class exonerate:
             msa_length = len(seq)
             gap_distance = round(msa_length * 0.3)
             
-            clusters, _ = cluster_ids(ids, self.args.chomp_max_distance, gap_distance, ref_coords, 0)
+            clusters, _ = cluster_ids(ids, self.chomp_max_distance, gap_distance, ref_coords, 0)
             raw_path = path.join(self.orthoset_raw_path, gene_name+".fa")
             # max_cluster = max(clusters, key=lambda x: x[1] - x[0])
             # cluster = max_cluster
@@ -133,13 +133,13 @@ def do_folder(folder, args):
     batches = [(genes[i : i + per_batch], head_to_seq, original_coords) for i in range(0, len(genes), per_batch)]
     
     if args.processes <= 1:
-        exonerate_obj = exonerate(aa_input, nt_input, folder, args, orthoset_raw_path, exonerate_path)
+        exonerate_obj = exonerate(aa_input, nt_input, folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path)
         for batch in batches:
             exonerate_obj.run(*batch)
     else:
         with Pool(args.processes) as pool:
             pool.starmap(
-                exonerate(aa_input, nt_input, folder, args, orthoset_raw_path, exonerate_path).run,
+                exonerate(aa_input, nt_input, folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path).run,
                 batches,
             )
 
