@@ -5,7 +5,7 @@ from os import listdir, makedirs, path
 from sapphyre_tools import (
     find_index_pair,
 )
-from .directional_cluster import cluster_ids, cluster_rec, within_distance, node_to_ids
+from .directional_cluster import cluster_ids, quick_rec, within_distance, node_to_ids
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
 
@@ -21,7 +21,6 @@ def within_highest_coverage(logs, clusters, overlap_perc, within=0.1): # kick 10
     for cluster in clusters:
 
         cluster_data_coords = cluster[4]
-
         overlap = highest_data_coords.intersection(cluster_data_coords)
 
         percent = 0
@@ -29,7 +28,7 @@ def within_highest_coverage(logs, clusters, overlap_perc, within=0.1): # kick 10
             amount = len(overlap)
             start, end = min(cluster_data_coords), max(cluster_data_coords)
             highest_start, highest_end = min(highest_data_coords), max(highest_data_coords)
-            percent = amount / min((end-start), (highest_end-highest_start))
+            percent = amount / (min((end-start), (highest_end-highest_start)) + 1)
 
         if percent >= overlap_perc:
             if cluster[2] < req_coverage:
@@ -66,7 +65,7 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
         data_cols = {i for i, let in enumerate(seq[start:end], start) if let != "-"}
 
         frame = int(header.split("|")[4])
-        ids.append(cluster_rec(header.split("|")[3], start, end, data_cols, frame))
+        ids.append(quick_rec(header.split("|")[3], frame, seq, start, end))
         sequences.append((header, seq))
         msa_length = len(seq)
 
@@ -77,15 +76,21 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
     for cluster in clusters:
         cluster_set = set(range(cluster[0], cluster[1] + 1))
         this_cluster_seq = []
-        this_cluster_coords = set()
-        
+
+        cluster_min_start = None
+        cluster_min_end = None
         for header, seq in sequences:
             if within_distance(node_to_ids(header.split("|")[3]), cluster_set, 0):
                 this_cluster_seq.append((header, seq, start, end))
                 start, end = find_index_pair(seq, "-")
-                for i, let in enumerate(seq[start:end], start):
-                    if let != "-":
-                        this_cluster_coords.add(i)
+                if cluster_min_start is None:
+                    cluster_min_start = start
+                    cluster_min_end = end
+                else:
+                    cluster_min_start = min(cluster_min_start, start)
+                    cluster_min_end = max(cluster_min_end, end)
+                    
+        this_cluster_coords = set(range(cluster_min_start, cluster_min_end))
         
         final_clusters.append((cluster[0], cluster[1], cluster[2], this_cluster_seq, this_cluster_coords))
 
