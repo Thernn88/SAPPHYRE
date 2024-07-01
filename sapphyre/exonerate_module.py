@@ -92,8 +92,8 @@ class exonerate:
                     command = [
                         "exonerate",
                         "--geneticcode", "1",
-                        "--model", "protein2genome",
-                        "--showcigar", "no",
+                        #"--model", "protein2genome",
+                        #"--showcigar", "no",
                         "--showvulgar", "true",
                         "--verbose", "0",
                         raw_path,
