@@ -47,12 +47,13 @@ def get_head_to_seq(nt_db):
 
 
 class Node:
-    def __init__(self, head, seq, start, end, score) -> None:
+    def __init__(self, head, seq, start, end, score, frame) -> None:
         self.head = head
         self.seq = seq
         self.start = start
         self.end = end
         self.score = score
+        self.frame = frame
 
 
 
@@ -65,7 +66,8 @@ class exonerate:
         self.orthoset_raw_path = orthoset_raw_path
         self.exonerate_path = exonerate_path
         
-    def run(self, genes, head_to_seq, original_coords):
+    def run(self, genes, original_coords, temp_source_file):
+        head_to_seq = dict(parseFasta(temp_source_file))
         for gene in genes:
             gene_name = gene.split(".")[0]
             print(gene)
@@ -95,16 +97,14 @@ class exonerate:
             final_output = []
             raw_nt_final_output = []
             index = 0
-            for cluster in clusters:
+            for cluster_i, cluster in enumerate(clusters):
                 cluster_seq = ""
-                test = []
                 for x, i in enumerate(range(cluster[0], cluster[1] + 1)):
                     if x == 0:
-                        cluster_seq += head_to_seq[i]
+                        cluster_seq += head_to_seq[str(i)]
                     else:
-                        cluster_seq += head_to_seq[i][250:]
-                    test.append(head_to_seq[i])
-                    
+                        cluster_seq += head_to_seq[str(i)][250:]
+
                 cluster_name = path.join(self.exonerate_path, f"{gene_name}_{cluster[0]}-{cluster[1]}.fa")
                 with NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()) as f, NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".txt", dir=gettempdir()) as result:
                     writeFasta(f.name, [(f"{gene_name}_{cluster[0]}-{cluster[1]}", cluster_seq)])
@@ -123,13 +123,21 @@ class exonerate:
                     ]
                                         
                     subprocess.run(command, stdout=result)
+
+                    if path.getsize(result.name) == 0:
+                        continue
                     
                     this_nodes = []
                     for header, sequence in parseFasta(result.name, True):
                         header, coords, score = header.split("|")
                         start, end = map(int, coords.split("-"))
+                        if start > end:
+                            start, end = end, start
+                            frame = -((start % 3) + 1)
+                        else:
+                            frame = (start % 3) + 1
                         index += 1
-                        this_nodes.append(Node(f"{index}", sequence, start, end, int(score)))
+                        this_nodes.append(Node(f"{index}", sequence, start, end, int(score), frame))
                         
                     kicked_ids = set()
                     overlap_min = 0.1
@@ -140,6 +148,8 @@ class exonerate:
                         if overlap:
                             amount = overlap[1] - overlap[0]
                             percent = amount / min((node_a.end - node_a.start), (node_b.end - node_b.start))
+
+                            
                             if percent > overlap_min:
                                 if node_a.score > node_b.score:
                                     kicked_ids.add(node_b.head)
@@ -148,8 +158,8 @@ class exonerate:
                     
                     this_nodes = [node for node in this_nodes if node.head not in kicked_ids]
 
-                    raw_nt_final_output.extend([(f"{gene_name}|placeholder|CONTIG_{node.head}|strand|1", node.seq) for node in this_nodes])
-                    final_output.extend([(f"{gene_name}|placeholder|CONTIG_{node.head}|strand|1", str(Seq(node.seq).translate())) for node in this_nodes])
+                    raw_nt_final_output.extend([(f"{gene_name}|placeholder|taxa|CONTIG_{node.head}|{node.frame}|1", node.seq) for node in this_nodes])
+                    final_output.extend([(f"{gene_name}|placeholder|taxa|CONTIG_{node.head}|{node.frame}|1", str(Seq(node.seq).translate())) for node in this_nodes])
 
             result_path = path.join(self.exonerate_path, "aa", f"{gene_name}.aa.fa")
             result_nt_path = path.join(self.exonerate_path, "nt", f"{gene_name}.nt.fa")
@@ -174,8 +184,6 @@ class exonerate:
                 
                 nt_sequences = [(header, sequence.replace("-","")) for header, sequence in parseFasta(nt_path, False)] + raw_nt_final_output
                 writeFasta(result_nt_file.name, nt_sequences)
-                print(result_file.name, result_nt_file.name, result_nt_path)
-                input()
                 worker(Path(result_file.name), Path(result_nt_file.name), Path(result_nt_path), 1, False, False)
 
             
@@ -194,14 +202,18 @@ def do_folder(folder, args):
     
     aa_input = path.join(folder, "align")# "outlier", "excise", "aa")
     nt_input = path.join(folder, "nt")#"outlier", "excise", "nt")
-    
-    genes = ["562at8782.aa.fa"]
-    # for gene in listdir(aa_input):
-    #     genes.append(gene)
+
+    genes = []
+    for gene in listdir(aa_input):
+        genes.append(gene)
     
     nt_db_path = path.join(folder, "rocksdb", "sequences", "nt")
     nt_db = RocksDB(nt_db_path)
     head_to_seq = get_head_to_seq(nt_db)
+
+    temp_source_file = NamedTemporaryFile(dir=gettempdir(), prefix="seqs_", suffix=".fa")
+    writeFasta(temp_source_file.name, head_to_seq.items())
+
     raw_data = nt_db.get("getall:original_coords")
     original_coords = json.decode(raw_data, type = dict[str, tuple[str, int, int, int, int]])
     
@@ -210,7 +222,7 @@ def do_folder(folder, args):
 
     
     per_batch = ceil(len(genes) / args.processes)
-    batches = [(genes[i : i + per_batch], head_to_seq, original_coords) for i in range(0, len(genes), per_batch)]
+    batches = [(genes[i : i + per_batch], original_coords, temp_source_file.name) for i in range(0, len(genes), per_batch)]
     
     if args.processes <= 1:
         exonerate_obj = exonerate(aa_input, nt_input, folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path)
@@ -222,6 +234,8 @@ def do_folder(folder, args):
                 exonerate(aa_input, nt_input, folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path).run,
                 batches,
             )
+
+    del temp_source_file
 
     return True    
 
