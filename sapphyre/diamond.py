@@ -1292,16 +1292,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 (gene_path, most_common, gene_target_to_taxa[gene], top_path, gene, args.skip_realign, args.top_ref)
             )
 
-        if post_threads > 1:
-            top_ref_result = pool.starmap(top_reference_realign, arguments)
-        else:
-            for arg in arguments:
-                top_ref_result = []
-                top_ref_result.append(top_reference_realign(*arg))
-        if post_threads > 1:
-            pool.close()
-            pool.terminate()
-
         top_ref_in_order = {gene: top_chosen for gene, top_chosen in top_ref_result}
         nt_db.put_bytes("getall:valid_refs", json.encode(top_ref_in_order))
 
@@ -1317,6 +1307,16 @@ def run_process(args: Namespace, input_path: str) -> bool:
         key = "getall:gene_dupes"
         data = json_encoder.encode(gene_dupe_count)  # type=dict[str, dict[str, int]]
         nt_db.put_bytes(key, data)
+
+        if post_threads > 1:
+            top_ref_result = pool.starmap(top_reference_realign, arguments)
+        else:
+            for arg in arguments:
+                top_ref_result = []
+                top_ref_result.append(top_reference_realign(*arg))
+        if post_threads > 1:
+            pool.close()
+            pool.terminate()
 
     del top_refs
     del db
