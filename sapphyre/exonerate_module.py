@@ -16,7 +16,7 @@ from Bio.Seq import Seq
 from multiprocessing import Pool
 from msgspec import json
 from .pal2nal import worker
-
+import xxhash
 def get_head_to_seq(nt_db):
     """Get a dictionary of headers to sequences.
 
@@ -76,6 +76,7 @@ class exonerate:
             
             ids = []
             ref_coords = set()
+            raw_seq_hash = set()
             for (header, seq) in parseFasta(aa_path):
                 if header.endswith('.'):
                     for i, let in enumerate(seq):
@@ -85,6 +86,7 @@ class exonerate:
                             
                 frame = int(header.split("|")[4])
                 start, end = find_index_pair(seq, "-")
+                raw_seq_hash.add(xxhash.xxh64(seq[start:end].replace("-","")).hexdigest())
                 ids.append(quick_rec(header.split("|")[3], frame, seq, start, end))
                 
             msa_length = len(seq)
@@ -161,30 +163,49 @@ class exonerate:
                     raw_nt_final_output.extend([(f"{gene_name}|placeholder|taxa|CONTIG_{node.head}|{node.frame}|1", node.seq) for node in this_nodes])
                     final_output.extend([(f"{gene_name}|placeholder|taxa|CONTIG_{node.head}|{node.frame}|1", str(Seq(node.seq).translate())) for node in this_nodes])
 
-            result_path = path.join(self.exonerate_path, "aa", f"{gene_name}.aa.fa")
-            result_nt_path = path.join(self.exonerate_path, "nt", f"{gene_name}.nt.fa")
-            with NamedTemporaryFile(
-                prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()
-                ) as f, NamedTemporaryFile(
+            kick_dupes = set()
+            for node, seq in final_output:
+                if xxhash.xxh64(seq).hexdigest() in raw_seq_hash:
+                    kick_dupes.add(node)
+
+            final_output = [(node, seq) for node, seq in final_output if node not in kick_dupes]
+            raw_nt_final_output = [(node, seq) for node, seq in raw_nt_final_output if node not in kick_dupes]
+
+            if final_output:
+                result_path = path.join(self.exonerate_path, "aa", f"{gene_name}.aa.fa")
+                result_nt_path = path.join(self.exonerate_path, "nt", f"{gene_name}.nt.fa")
+                with NamedTemporaryFile(
                     prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()
-                ) as result_file, NamedTemporaryFile(
-                    prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()
-                ) as aln_file, NamedTemporaryFile(
-                    prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()
-                ) as result_nt_file:
+                    ) as f, NamedTemporaryFile(
+                        prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()
+                    ) as result_file, NamedTemporaryFile(
+                        prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()
+                    ) as aln_file, NamedTemporaryFile(
+                        prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()
+                    ) as result_nt_file:
+                        
+                    aa_seqs = parseFasta(aa_path, False)
+                    writeFasta(aln_file.name, aa_seqs)
+                        
+                    writeFasta(f.name, final_output)
+                    command = ["mafft", "--anysymbol", "--quiet", "--jtt", "1", "--addfragments", f.name, "--thread", "1", aln_file.name]
+                    subprocess.run(command, stdout=result_file)
+                    result = list(parseFasta(result_file.name, True))
+                    writeFasta(result_path, result)
                     
+                    nt_sequences = [(header, sequence.replace("-","")) for header, sequence in parseFasta(nt_path, False)] + raw_nt_final_output
+                    writeFasta(result_nt_file.name, nt_sequences)
+                    worker(result_file.name, result_nt_file.name, Path(result_nt_path), 1, False, False)
+            else:
                 aa_seqs = parseFasta(aa_path, False)
-                writeFasta(aln_file.name, aa_seqs)
-                    
-                writeFasta(f.name, final_output)
-                command = ["mafft", "--anysymbol", "--quiet", "--jtt", "1", "--addfragments", f.name, "--thread", "1", aln_file.name]
-                subprocess.run(command, stdout=result_file)
-                result = list(parseFasta(result_file.name, True))
-                writeFasta(result_path, result)
+                writeFasta(result_path, aa_seqs)
                 
-                nt_sequences = [(header, sequence.replace("-","")) for header, sequence in parseFasta(nt_path, False)] + raw_nt_final_output
-                writeFasta(result_nt_file.name, nt_sequences)
-                worker(Path(result_file.name), Path(result_nt_file.name), Path(result_nt_path), 1, False, False)
+                nt_sequences = [(header, sequence.replace("-","")) for header, sequence in parseFasta(nt_path, False)]
+                with NamedTemporaryFile(
+                    prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()
+                    ) as result_nt_file:
+                    writeFasta(result_nt_file.name, nt_sequences)
+                    worker(result_path, result_nt_file.name, Path(result_nt_path), 1, False, False)
 
             
 
