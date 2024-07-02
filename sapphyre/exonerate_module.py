@@ -210,7 +210,7 @@ class exonerate:
             
 
 def do_folder(folder, args):
-    exonerate_path = path.join(folder, "Exonerate")
+    exonerate_path = path.join(folder, "exonerate")
     if path.exists(exonerate_path):
         rmtree(exonerate_path)
     mkdir(exonerate_path)
