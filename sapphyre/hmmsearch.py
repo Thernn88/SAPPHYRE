@@ -762,6 +762,7 @@ def do_folder(input_folder, args):
     for gene, hits in gene_based_results.items():
         hits_db.put_bytes(f"gethmmhits:{gene}", json.encode(hits))
 
+    del temp_source_file
     del hits_db
 
     with open(path.join(input_folder, "hmmsearch_log.log"), "w") as f:
