@@ -42,7 +42,6 @@ class Hit(Struct, frozen=True):
     uid: int
     ref: str
     refs: list[ReferenceHit]
-    coverage: float
 
 class ReporterHit(Struct):
     node: int
@@ -396,8 +395,6 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             # reference hit for the current row
             refs = [ReferenceHit(target, ref, sstart, send)]
 
-            coverage = row[9]/100 if len(row) == 10 else 0.0
-
             this_hit = Hit(
                 int(row[0]),
                 target,
@@ -412,7 +409,6 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                 abs(hash(time())) // (pargs.i + 1),
                 ref,
                 refs,
-                coverage,
             )
 
             # Used to calculate the sum of each targets' individual scores
@@ -850,7 +846,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             if sensitivity in {"more", "very", "mid", "ultra"}:
                 sensitivity += "-sensitive"
             system(
-                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity} --masking 0 -e {precision} --compress 1 --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send scovhsp {quiet} --top {top_amount} --min-orf {min_orf} --max-hsps 0 -p {num_threads}",
+                f"diamond blastx -d {diamond_db_path} -q {input_file.name} -o {out_path} --{sensitivity} --masking 0 -e {precision} --compress 1 --outfmt 6 qseqid sseqid qframe evalue bitscore qstart qend sstart send {quiet} --top {top_amount} --min-orf {min_orf} --max-hsps 0 -p {num_threads}",
             )
             if not path.exists(path.join(out_path)) and path.exists(path.join(out_path+".gz")):
                 out_path += ".gz"
@@ -1157,36 +1153,31 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         cluster_out = []
         for gene, hits in output:
-            ids = [(hit.node, hit.coverage) for hit in hits]
-            ids.sort(key = lambda x: x[0])
+            ids = [hit.node for hit in hits]
+            ids.sort()
             clusters = []
 
-            req_seq_coverage = 0.5
             current_cluster = []
-            for node, seq_coverage in ids:
+            for node in ids:
                 if not current_cluster:
-                    current_cluster.append((node, seq_coverage))
+                    current_cluster.append(node)
                     current_index = node
                 else:
                     if node - current_index <= 35:
-                        current_cluster.append((node, seq_coverage))
+                        current_cluster.append(node)
                         current_index = node
                     else:
-                        if len(current_cluster) == 1:
-                            if current_cluster[0][1] > req_seq_coverage:
-                                clusters.append((current_cluster[0][0], current_cluster[0][1]))
+                        clusters.append((current_cluster[0], current_cluster[-1]))
 
-                        current_cluster = [(node, seq_coverage)]
+                        current_cluster = [node]
                         current_index = node
 
             if current_cluster:
-                if len(current_cluster) == 1:
-                    if current_cluster[0][1] > req_seq_coverage:
-                        clusters.append((current_cluster[0][0], current_cluster[0][1]))
+                clusters.append((current_cluster[0], current_cluster[-1]))
 
             clusters.sort(key=lambda x: x[1], reverse=True)
 
-            cluster_string = ", ".join([f"{cluster[0]} {(cluster[1]*100):.2f}%" for cluster in clusters])         
+            cluster_string = ", ".join([f"{cluster[0]-cluster[1]}" for cluster in clusters])         
             cluster_out.append((gene, f"{gene},{len(ids)},{len(clusters)},{cluster_string}"))
 
         if args.debug:
