@@ -55,7 +55,6 @@ class ReporterHit(Struct):
     uid: int
     refs: list[ReferenceHit]
     seq: str | None
-    primary: bool
 
 
 class ProcessingArgs(Struct, frozen=True):
@@ -97,7 +96,6 @@ class MultiReturn(Struct, frozen=True):
 class ConvertArgs(Struct, frozen=True):
     hits: list[Hit]
     gene: str
-    primary_nodes: set
 
 
 class ConvertReturn(Struct, frozen=True):
@@ -335,7 +333,6 @@ def convert_and_cull(this_args: ConvertArgs) -> ConvertReturn:
                 hit.uid,
                 hit.refs,
                 None,
-                hit.node in this_args.primary_nodes,
             ),
         )
     return ConvertReturn(this_args.gene, output)
@@ -1159,7 +1156,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
         head_to_seq = get_head_to_seq(nt_db, recipe)
 
         cluster_out = []
-        primary_nodes = set()
         for gene, hits in output:
             ids = [(hit.node, hit.coverage) for hit in hits]
             ids.sort(key = lambda x: x[0])
@@ -1179,8 +1175,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                         if len(current_cluster) == 1:
                             if current_cluster[0][1] > req_seq_coverage:
                                 clusters.append((current_cluster[0][0], current_cluster[0][1]))
-                                primary_nodes.add(current_cluster[0][0])
-                                
+
                         current_cluster = [(node, seq_coverage)]
                         current_index = node
 
@@ -1188,8 +1183,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 if len(current_cluster) == 1:
                     if current_cluster[0][1] > req_seq_coverage:
                         clusters.append((current_cluster[0][0], current_cluster[0][1]))
-                        primary_nodes.add(current_cluster[0][0])
-                        
+
             clusters.sort(key=lambda x: x[1], reverse=True)
 
             cluster_string = ", ".join([f"{cluster[0]} {(cluster[1]*100):.2f}%" for cluster in clusters])         
@@ -1210,7 +1204,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
                     ConvertArgs(
                         hits,
                         gene,
-                        primary_nodes,
                     ),
                 )
 
@@ -1241,7 +1234,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
                         hit.uid,
                         hit.refs,
                         None,
-                        hit.node in primary_nodes,
                     )
                 hit.seq = head_to_seq[hit.node][hit.qstart - 1 : hit.qend]
                 if hit.frame < 0:

@@ -262,24 +262,18 @@ def shift_targets(is_full, query_template, nodes_in_gene, diamond_hits, cluster_
                     children[new_query] = hit
 
 
-def add_full_cluster_search(clusters, chomp_max_distance, nodes_in_genes, primary_cluster_dict, source_clusters, cluster_full, nodes_in_gene, cluster_dict):
+def add_full_cluster_search(clusters, chomp_max_distance, nodes_in_genes, source_clusters, cluster_full, nodes_in_gene, cluster_dict):
     for cluster in clusters:
         for i in range(cluster[0][0] - chomp_max_distance, cluster[0][1] + chomp_max_distance + 1):
             header = i
             
             if header in nodes_in_gene:
                 continue
-
-            if header in primary_cluster_dict:
-                source_clusters[header] = (True, primary_cluster_dict[header])
-                cluster_full[header] = {"+", "-"}
-                nodes_in_gene.add(header)
-                continue
             
             this_crange, strands_present = cluster_dict.get(header, (None, None))
             
             if this_crange:
-                source_clusters[header] = (False, this_crange)
+                source_clusters[header] = this_crange
                 cluster_full[header] = strands_present
                 nodes_in_gene.add(header)
 
@@ -315,7 +309,7 @@ def get_results(hmm_output, map_mode):
     return queries
 
 
-def add_new_result(map_mode, gene, query, results, is_full, cluster_full, cluster_queries, primary_query, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template):
+def add_new_result(map_mode, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template):
     node, frame = query.split("|")
     id = int(node)
     if id in cluster_full:
@@ -337,13 +331,9 @@ def add_new_result(map_mode, gene, query, results, is_full, cluster_full, cluste
                 passed_ids.add(id)
                 parents_done.add(query)
 
-                is_primary_child, cluster_range = source_clusters[id]
-                if is_primary_child:
-                    where_from = "Primary Cluster"
-                    cquery = primary_query[cluster_range]
-                else:
-                    where_from = "Cluster Full"
-                    cquery = cluster_queries[cluster_range]
+                cluster_range = source_clusters[id]
+                where_from = "Cluster Full"
+                cquery = cluster_queries[cluster_range]
 
                 new_hit = HmmHit(node=id, score=score, frame=int(frame), evalue=0, qstart=new_qstart, qend=new_qstart + len(sequence), gene=gene, query=cquery, uid=None, refs=[], seq=sequence)
                 hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, where_from))
@@ -406,24 +396,17 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
         hits_have_frames_already = defaultdict(set)
         diamond_ids = []
         for hit in diamond_hits:
-            diamond_ids.append((hit.node, hit.primary, hit.frame))
+            diamond_ids.append((hit.node, hit.frame))
             hits_have_frames_already[hit.node].add(hit.frame)
 
         if is_genome:
             diamond_ids.sort()
             clusters = []
-            primary_clusters = []
             current_cluster = []
 
             strands_present = set()
 
-            for child_index, is_primary, frame in diamond_ids:
-                # If the hit is primary, we don't want to cluster it.
-                if is_primary:
-                    # Instead itself is a cluster with +- chomp distance
-                    primary_clusters.append((child_index - chomp_max_distance, child_index + chomp_max_distance))
-                    continue
-                
+            for child_index, frame in diamond_ids:
                 if not current_cluster:
                     current_cluster.append(child_index)
                     current_index = child_index
@@ -452,18 +435,11 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                 for i in range(cluster[0]-chomp_max_distance, cluster[1] + chomp_max_distance + 1):
                     cluster_dict[i] = (cluster, strands_present)
         
-            primary_cluster_dict = {}
-            if primary_clusters:
-                merged_primary_clusters = merge_clusters(primary_clusters)
-                for cluster in merged_primary_clusters:
-                    for i in range(cluster[0], cluster[1] + 1):
-                        primary_cluster_dict[i] = cluster
         nt_sequences = {}
         parents = {}
 
         cluster_full = {}
         cluster_queries = defaultdict(list)
-        primary_query = {}
         source_clusters = {}
         
         children = {}
@@ -488,13 +464,9 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                 if this_crange:
                     cluster_queries[this_crange].append(hit.query)
                 
-                if hit.primary:
-                    this_prange = primary_cluster_dict.get(hit.node)
-                    primary_query[this_prange] = hit.query
-
             if is_genome and clusters:
                 cluster_queries = {k: max(set(v), key=v.count) for k, v in cluster_queries.items()}
-                add_full_cluster_search(clusters, chomp_max_distance, nodes_in_gene, primary_cluster_dict, source_clusters, cluster_full, nodes_in_gene, cluster_dict)
+                add_full_cluster_search(clusters, chomp_max_distance, nodes_in_gene, source_clusters, cluster_full, nodes_in_gene, cluster_dict)
                       
         shift_targets(is_full, query_template, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp)
 
@@ -555,7 +527,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
         queries = get_results(this_hmm_output, map_mode)
 
         for query, results in queries:
-            add_new_result(map_mode, gene, query, results, is_full, cluster_full, cluster_queries, primary_query, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template)
+            add_new_result(map_mode, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template)
 
         diamond_kicks = []
         for hit in diamond_hits:
