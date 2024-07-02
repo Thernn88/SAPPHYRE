@@ -135,6 +135,7 @@ class exonerate:
                         "exonerate",
                         "--geneticcode", "1",
                         "--ryo", '>%ti|%tcb-%tce|%s\n%tcs\n',
+                        "--score" "50",
                         #"--model", "protein2genome",
                         #"--showcigar", "no",
                         "--showvulgar", "no",
