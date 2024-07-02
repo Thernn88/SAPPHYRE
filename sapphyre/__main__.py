@@ -659,6 +659,13 @@ def exonerate_args(par):
         default=100,
         help="Max distance for merging cluster in chomp",
     )
+    par.add_argument(
+        "-me",
+        "--max_extend",
+        type=int,
+        default=4,
+        help="Max distance to extend left and right (x * chomp length)",
+    )
         
 
 

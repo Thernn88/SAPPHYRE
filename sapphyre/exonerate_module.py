@@ -58,13 +58,14 @@ class Node:
 
 
 class exonerate:
-    def __init__(self, aa_input, nt_input, folder, chomp_max_distance, orthoset_raw_path, exonerate_path) -> None:
+    def __init__(self, aa_input, nt_input, folder, chomp_max_distance, orthoset_raw_path, exonerate_path, max_extend) -> None:
         self.aa_input = aa_input
         self.nt_input = nt_input
         self.folder = folder
         self.chomp_max_distance = chomp_max_distance
         self.orthoset_raw_path = orthoset_raw_path
         self.exonerate_path = exonerate_path
+        self.max_extend = max_extend
         
     def run(self, genes, original_coords, temp_source_file):
         head_to_seq = dict(parseFasta(temp_source_file))
@@ -93,6 +94,7 @@ class exonerate:
             gap_distance = round(msa_length * 0.3)
             
             clusters, _ = cluster_ids(ids, self.chomp_max_distance, gap_distance, ref_coords, 0)
+            cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
             raw_path = path.join(self.orthoset_raw_path, gene_name+".fa")
             # max_cluster = max(clusters, key=lambda x: x[1] - x[0])
             # cluster = max_cluster
@@ -101,7 +103,25 @@ class exonerate:
             index = 0
             for cluster_i, cluster in enumerate(clusters):
                 cluster_seq = ""
-                for x, i in enumerate(range(cluster[0], cluster[1] + 1)):
+                
+                outside_cluster = set()
+                for x, cset in enumerate(cluster_sets):
+                    if x != cluster_i:
+                        outside_cluster.update(cset)
+                
+                cluster_start = cluster[0]
+                for i in range(self.max_extend):
+                    if cluster_start - i in outside_cluster:
+                        break
+                    cluster_start -= i
+                    
+                cluster_end = cluster[1]
+                for i in range(self.max_extend):
+                    if cluster_end + i in outside_cluster:
+                        break
+                    cluster_end += i
+                
+                for x, i in enumerate(range(cluster_start, cluster_end + 1)):
                     if x == 0:
                         cluster_seq += head_to_seq[str(i)]
                     else:
@@ -246,13 +266,13 @@ def do_folder(folder, args):
     batches = [(genes[i : i + per_batch], original_coords, temp_source_file.name) for i in range(0, len(genes), per_batch)]
     
     if args.processes <= 1:
-        exonerate_obj = exonerate(aa_input, nt_input, folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path)
+        exonerate_obj = exonerate(aa_input, nt_input, folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend)
         for batch in batches:
             exonerate_obj.run(*batch)
     else:
         with Pool(args.processes) as pool:
             pool.starmap(
-                exonerate(aa_input, nt_input, folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path).run,
+                exonerate(aa_input, nt_input, folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend).run,
                 batches,
             )
 
