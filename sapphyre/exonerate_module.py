@@ -1,4 +1,7 @@
+from itertools import combinations
 from math import ceil
+from pathlib import Path
+from shutil import rmtree
 import subprocess
 from tempfile import NamedTemporaryFile
 from wrap_rocks import RocksDB
@@ -7,9 +10,12 @@ from .directional_cluster import cluster_ids, within_distance, node_to_ids, quic
 from .utils import gettempdir, parseFasta, printv, writeFasta
 from sapphyre_tools import (
     find_index_pair,
+    get_overlap,
 )
+from Bio.Seq import Seq
 from multiprocessing import Pool
 from msgspec import json
+from .pal2nal import worker
 
 def get_head_to_seq(nt_db):
     """Get a dictionary of headers to sequences.
@@ -38,6 +44,16 @@ def get_head_to_seq(nt_db):
         )
 
     return head_to_seq
+
+
+class Node:
+    def __init__(self, head, seq, start, end, score) -> None:
+        self.head = head
+        self.seq = seq
+        self.start = start
+        self.end = end
+        self.score = score
+
 
 
 class exonerate:
@@ -76,6 +92,9 @@ class exonerate:
             raw_path = path.join(self.orthoset_raw_path, gene_name+".fa")
             # max_cluster = max(clusters, key=lambda x: x[1] - x[0])
             # cluster = max_cluster
+            final_output = []
+            raw_nt_final_output = []
+            index = 0
             for cluster in clusters:
                 cluster_seq = ""
                 test = []
@@ -85,39 +104,100 @@ class exonerate:
                     else:
                         cluster_seq += head_to_seq[i][250:]
                     test.append(head_to_seq[i])
-                cluster_name = path.join(self.exonerate_path, f"{gene_name}_{cluster[0]}-{cluster[1]}.txt")
-                with NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()) as f, open(cluster_name, "w") as result:#NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".txt", dir=gettempdir()) as result:
+                    
+                cluster_name = path.join(self.exonerate_path, f"{gene_name}_{cluster[0]}-{cluster[1]}.fa")
+                with NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()) as f, NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".txt", dir=gettempdir()) as result:
                     writeFasta(f.name, [(f"{gene_name}_{cluster[0]}-{cluster[1]}", cluster_seq)])
                     
                     command = [
                         "exonerate",
                         "--geneticcode", "1",
+                        "--ryo", '>%ti|%tcb-%tce|%s\n%tcs\n',
                         #"--model", "protein2genome",
                         #"--showcigar", "no",
-                        "--showvulgar", "true",
+                        "--showvulgar", "no",
+                        "--showalignment", "no",
                         "--verbose", "0",
                         raw_path,
                         f.name
                     ]
                                         
                     subprocess.run(command, stdout=result)
-                    # print(result.name)
-                    # input("called")
-                #writeFasta(f"{cluster_name}.test", [(i, test[i]) for i in range(len(test))])
-                
+                    
+                    this_nodes = []
+                    for header, sequence in parseFasta(result.name, True):
+                        header, coords, score = header.split("|")
+                        start, end = map(int, coords.split("-"))
+                        index += 1
+                        this_nodes.append(Node(f"{index}", sequence, start, end, int(score)))
+                        
+                    kicked_ids = set()
+                    overlap_min = 0.1
+                    for node_a, node_b in combinations(this_nodes, 2):
+                        if node_a.head in kicked_ids or node_b.head in kicked_ids:
+                            continue
+                        overlap = get_overlap(node_a.start, node_a.end, node_b.start, node_b.end, 1)
+                        if overlap:
+                            amount = overlap[1] - overlap[0]
+                            percent = amount / min((node_a.end - node_a.start), (node_b.end - node_b.start))
+                            if percent > overlap_min:
+                                if node_a.score > node_b.score:
+                                    kicked_ids.add(node_b.head)
+                                else:
+                                    kicked_ids.add(node_a.head)
+                    
+                    this_nodes = [node for node in this_nodes if node.head not in kicked_ids]
 
+                    raw_nt_final_output.extend([(f"{gene_name}|placeholder|CONTIG_{node.head}|strand|1", node.seq) for node in this_nodes])
+                    final_output.extend([(f"{gene_name}|placeholder|CONTIG_{node.head}|strand|1", str(Seq(node.seq).translate())) for node in this_nodes])
+
+            result_path = path.join(self.exonerate_path, "aa", f"{gene_name}.aa.fa")
+            result_nt_path = path.join(self.exonerate_path, "nt", f"{gene_name}.nt.fa")
+            with NamedTemporaryFile(
+                prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()
+                ) as f, NamedTemporaryFile(
+                    prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()
+                ) as result_file, NamedTemporaryFile(
+                    prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()
+                ) as aln_file, NamedTemporaryFile(
+                    prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()
+                ) as result_nt_file:
+                    
+                aa_seqs = parseFasta(aa_path, False)
+                writeFasta(aln_file.name, aa_seqs)
+                    
+                writeFasta(f.name, final_output)
+                command = ["mafft", "--anysymbol", "--quiet", "--jtt", "1", "--addfragments", f.name, "--thread", "1", aln_file.name]
+                subprocess.run(command, stdout=result_file)
+                result = list(parseFasta(result_file.name, True))
+                writeFasta(result_path, result)
+                
+                nt_sequences = [(header, sequence.replace("-","")) for header, sequence in parseFasta(nt_path, False)] + raw_nt_final_output
+                writeFasta(result_nt_file.name, nt_sequences)
+                print(result_file.name, result_nt_file.name, result_nt_path)
+                input()
+                worker(Path(result_file.name), Path(result_nt_file.name), Path(result_nt_path), 1, False, False)
+
+            
 
 def do_folder(folder, args):
     exonerate_path = path.join(folder, "Exonerate")
-    if not path.exists(exonerate_path):
-        mkdir(exonerate_path)
+    if path.exists(exonerate_path):
+        rmtree(exonerate_path)
+    mkdir(exonerate_path)
+        
+    exonerate_aa_path = path.join(exonerate_path, "aa")
+    mkdir(exonerate_aa_path)
+        
+    exonerate_nt_path = path.join(exonerate_path, "nt")
+    mkdir(exonerate_nt_path)
     
-    aa_input = path.join(folder, "outlier", "excise", "aa")
-    nt_input = path.join(folder, "outlier", "excise", "nt")
+    aa_input = path.join(folder, "align")# "outlier", "excise", "aa")
+    nt_input = path.join(folder, "nt")#"outlier", "excise", "nt")
     
-    genes = []
-    for gene in listdir(aa_input):
-        genes.append(gene)
+    genes = ["562at8782.aa.fa"]
+    # for gene in listdir(aa_input):
+    #     genes.append(gene)
     
     nt_db_path = path.join(folder, "rocksdb", "sequences", "nt")
     nt_db = RocksDB(nt_db_path)
