@@ -102,7 +102,7 @@ class exonerate:
             raw_nt_final_output = []
             index = 0
             for cluster_i, cluster in enumerate(clusters):
-                cluster_seq = ""
+                cluster_seqs = []
                 
                 outside_cluster = set()
                 for x, cset in enumerate(cluster_sets):
@@ -122,14 +122,11 @@ class exonerate:
                     cluster_end += i
                 
                 for x, i in enumerate(range(cluster_start, cluster_end + 1)):
-                    if x == 0:
-                        cluster_seq += head_to_seq[str(i)]
-                    else:
-                        cluster_seq += head_to_seq[str(i)][250:]
-
+                    cluster_seqs.append((i, head_to_seq[str(i)]))
+                    
                 cluster_name = path.join(self.exonerate_path, f"{gene_name}_{cluster[0]}-{cluster[1]}.fa")
                 with NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()) as f, NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".txt", dir=gettempdir()) as result:
-                    writeFasta(f.name, [(f"{gene_name}_{cluster[0]}-{cluster[1]}", cluster_seq)])
+                    writeFasta(f.name, cluster_seqs)
                     
                     command = [
                         "exonerate",
