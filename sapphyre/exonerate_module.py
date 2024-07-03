@@ -1,3 +1,4 @@
+from collections import defaultdict
 from itertools import combinations
 from math import ceil
 from pathlib import Path
@@ -136,8 +137,8 @@ class exonerate:
                     if str(i) in head_to_seq:
                         cluster_seqs.append((i, head_to_seq[str(i)]))
                     
-                cluster_name = path.join(self.exonerate_path, f"{gene_name}_{cluster[0]}-{cluster[1]}.fa")
-                with NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()) as f, NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".txt", dir=gettempdir()) as result:
+                cluster_name = path.join(self.exonerate_path, f"{gene_name}_{cluster[0]}-{cluster[1]}.txt")
+                with NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()) as f, open(cluster_name, "w") as result:
                     writeFasta(f.name, cluster_seqs)
                     command = [
                         "exonerate",
@@ -157,7 +158,7 @@ class exonerate:
                     if path.getsize(result.name) == 0:
                         continue
                     
-                    this_nodes = []
+                    this_results = defaultdict(list)
                     for header, sequence in parseFasta(result.name, True):
                         header, coords, score, ref_coords, ref_id = header.split("|")
                         start, end = map(int, coords.split("/"))
@@ -167,26 +168,33 @@ class exonerate:
                             frame = -((start % 3) + 1)
                         else:
                             frame = (start % 3) + 1
-                        this_nodes.append(Node(int(header), sequence, start, end, int(score), frame, ref_start, ref_end, ref_id))
+                        this_results[header].append(Node(int(header), sequence, start, end, int(score), frame, ref_start, ref_end, ref_id))
                         
-                    kicked_ids = set()
-                    overlap_min = 0.1
-                    for node_a, node_b in combinations(this_nodes, 2):
-                        if node_a.head in kicked_ids or node_b.head in kicked_ids:
-                            continue
-                        overlap = get_overlap(node_a.start, node_a.end, node_b.start, node_b.end, 1)
-                        if overlap:
-                            amount = overlap[1] - overlap[0]
-                            percent = amount / min((node_a.end - node_a.start), (node_b.end - node_b.start))
+                    this_nodes = []
+                    for header, nodes in this_results.items():
+                        for frame in range(1, 4):
+                            frame_nodes = [node for node in nodes if abs(node.frame) == frame]
+                            if frame_nodes:
+                                this_nodes.append(max(frame_nodes, key=lambda x: x.score))
+          
+                    # kicked_ids = set()
+                    # overlap_min = 0.1
+                    # for node_a, node_b in combinations(this_nodes, 2):
+                    #     if node_a.head in kicked_ids or node_b.head in kicked_ids:
+                    #         continue
+                    #     overlap = get_overlap(node_a.start, node_a.end, node_b.start, node_b.end, 1)
+                    #     if overlap:
+                    #         amount = overlap[1] - overlap[0]
+                    #         percent = amount / min((node_a.end - node_a.start), (node_b.end - node_b.start))
 
                             
-                            if percent > overlap_min:
-                                if node_a.score > node_b.score:
-                                    kicked_ids.add(node_b.head)
-                                else:
-                                    kicked_ids.add(node_a.head)
+                    #         if percent > overlap_min:
+                    #             if node_a.score > node_b.score:
+                    #                 kicked_ids.add(node_b.head)
+                    #             else:
+                    #                 kicked_ids.add(node_a.head)
                     
-                    this_nodes = [node for node in this_nodes if node.head not in kicked_ids]
+                    # this_nodes = [node for node in this_nodes if node.head not in kicked_ids]
 
                     for node in this_nodes:
                         target = node.ref_name
@@ -249,11 +257,11 @@ def do_folder(folder, args):
         rmtree(exonerate_path)
     mkdir(exonerate_path)
         
-    exonerate_aa_path = path.join(exonerate_path, "aa")
-    mkdir(exonerate_aa_path)
+    # exonerate_aa_path = path.join(exonerate_path, "aa")
+    # mkdir(exonerate_aa_path)
         
-    exonerate_nt_path = path.join(exonerate_path, "nt")
-    mkdir(exonerate_nt_path)
+    # exonerate_nt_path = path.join(exonerate_path, "nt")
+    # mkdir(exonerate_nt_path)
     
     # aa_input = path.join(folder, "align")# "outlier", "excise", "aa")
     # nt_input = path.join(folder, "nt")#"outlier", "excise", "nt")
