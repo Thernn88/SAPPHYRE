@@ -532,10 +532,8 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
         diamond_kicks = []
         for hit in diamond_hits:
             if not query_template.format(hit.node, hit.frame) in parents_done:
-                if hit.evalue == 0:
-                    continue
                 
-                if is_genome and math.floor(math.log10(abs(hit.evalue))) <= -evalue_threshold:
+                if hit.evalue == 0 or is_genome and math.floor(math.log10(abs(hit.evalue))) <= -evalue_threshold:
                     this_id = hit.node
                     has_neighbour = False
                     neighbour = None
