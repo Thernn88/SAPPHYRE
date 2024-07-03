@@ -916,14 +916,14 @@ def flexcull_args(par):
         "-aa",
         "--amino-acid",
         type=str,
-        default="exonerate/aa",
+        default="align",
         help="AA Folder Name.",
     )
     par.add_argument(
         "-nt",
         "--nucleotide",
         type=str,
-        default="exonerate/nt",
+        default="nt_aligned",
         help="NT Folder Name.",
     )  #
     par.add_argument(
