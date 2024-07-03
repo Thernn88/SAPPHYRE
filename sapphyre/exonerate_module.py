@@ -194,7 +194,6 @@ class exonerate:
                         
                         _, ref, _ = self.target_to_taxon[key]
                         additions += 1
-                        print(node.head, node.frame)
                         final_output.append(Hit(
                             node=node.head,
                             frame=node.frame,
