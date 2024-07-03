@@ -70,7 +70,7 @@ def get_diamondhits(
 
     gene_based_results = []
     for gene in genes_to_process:
-        gene_result = rocks_hits_db.get_bytes(f"gethits:{gene}")
+        gene_result = rocks_hits_db.get_bytes(f"get_exoneratehits:{gene}")
         if not gene_result:
             printv(
                 f"WARNING: No hits found for {gene}. If you are using a gene list file this may be a non-issue",
@@ -532,6 +532,9 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
         diamond_kicks = []
         for hit in diamond_hits:
             if not query_template.format(hit.node, hit.frame) in parents_done:
+                if hit.evalue == 0:
+                    continue
+                
                 if is_genome and math.floor(math.log10(abs(hit.evalue))) <= -evalue_threshold:
                     this_id = hit.node
                     has_neighbour = False

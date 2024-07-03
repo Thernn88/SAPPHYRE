@@ -4,9 +4,9 @@ from pathlib import Path
 from shutil import rmtree
 import subprocess
 from tempfile import NamedTemporaryFile
+from time import time
 from wrap_rocks import RocksDB
 from os import listdir, mkdir, path
-from .directional_cluster import cluster_ids, within_distance, node_to_ids, quick_rec
 from .utils import gettempdir, parseFasta, printv, writeFasta
 from sapphyre_tools import (
     find_index_pair,
@@ -17,6 +17,8 @@ from multiprocessing import Pool
 from msgspec import json
 from .pal2nal import worker
 import xxhash
+from .diamond import ReferenceHit, ReporterHit as Hit
+
 def get_head_to_seq(nt_db):
     """Get a dictionary of headers to sequences.
 
@@ -47,60 +49,67 @@ def get_head_to_seq(nt_db):
 
 
 class Node:
-    def __init__(self, head, seq, start, end, score, frame) -> None:
+    def __init__(self, head, seq, start, end, score, frame, ref_start, ref_end, ref_name) -> None:
         self.head = head
         self.seq = seq
         self.start = start
         self.end = end
         self.score = score
         self.frame = frame
+        self.ref_start = ref_start
+        self.ref_end = ref_end
+        self.ref_name = ref_name
 
 
 
 class exonerate:
-    def __init__(self, aa_input, nt_input, folder, chomp_max_distance, orthoset_raw_path, exonerate_path, max_extend) -> None:
-        self.aa_input = aa_input
-        self.nt_input = nt_input
+    def __init__(self, folder, chomp_max_distance, orthoset_raw_path, exonerate_path, max_extend, target_to_taxon) -> None:
         self.folder = folder
         self.chomp_max_distance = chomp_max_distance
         self.orthoset_raw_path = orthoset_raw_path
         self.exonerate_path = exonerate_path
         self.max_extend = max_extend
+        self.target_to_taxon = target_to_taxon
         
-    def run(self, genes, original_coords, temp_source_file):
+    def run(self, batches, temp_source_file):
         head_to_seq = dict(parseFasta(temp_source_file))
-        for gene in genes:
+        batch_result = []
+        additions = 0
+        for gene, hits in batches:
+            diamond_hits = json.decode(hits, type=list[Hit])
             gene_name = gene.split(".")[0]
             print(gene)
-            aa_path = path.join(self.aa_input, gene)
-            nt_path = path.join(self.nt_input, gene.replace(".aa.", ".nt."))
             
-            ids = []
-            ref_coords = set()
-            raw_seq_hash = set()
-            for (header, seq) in parseFasta(aa_path):
-                if header.endswith('.'):
-                    for i, let in enumerate(seq):
-                        if let != "-":
-                            ref_coords.add(i)
-                    continue
-                            
-                frame = int(header.split("|")[4])
-                start, end = find_index_pair(seq, "-")
-                raw_seq_hash.add(xxhash.xxh64(seq[start:end].replace("-","")).hexdigest())
-                ids.append(quick_rec(header.split("|")[3], frame, seq, start, end))
-                
-            msa_length = len(seq)
-            gap_distance = round(msa_length * 0.3)
+            diamond_ids = [hit.node for hit in diamond_hits]
+
+            diamond_ids.sort()
+            clusters = []
+            current_cluster = []
+
+            for child_index in diamond_ids:
+                if not current_cluster:
+                    current_cluster.append(child_index)
+                    current_index = child_index
+                else:
+                    if child_index - current_index <= self.chomp_max_distance:
+                        current_cluster.append(child_index)
+                        current_index = child_index
+                    else:
+                        if len(current_cluster) > 2:
+                            clusters.append((current_cluster[0], current_cluster[-1]))
+                        current_cluster = [child_index]
+                        current_index = child_index
             
-            clusters, _ = cluster_ids(ids, self.chomp_max_distance, gap_distance, ref_coords, 0)
-            cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
+            if current_cluster:
+                if len(current_cluster) > 2:
+                    clusters.append((current_cluster[0], current_cluster[-1]))
+            
+            cluster_sets = [set(range(a, b+1)) for a, b in clusters]
             raw_path = path.join(self.orthoset_raw_path, gene_name+".fa")
             # max_cluster = max(clusters, key=lambda x: x[1] - x[0])
             # cluster = max_cluster
-            final_output = []
-            raw_nt_final_output = []
-            index = 0
+            final_output = diamond_hits.copy()
+
             for cluster_i, cluster in enumerate(clusters):
                 cluster_seqs = []
                 
@@ -122,17 +131,19 @@ class exonerate:
                     cluster_end += i
                 
                 for x, i in enumerate(range(cluster_start, cluster_end + 1)):
-                    cluster_seqs.append((i, head_to_seq[str(i)]))
+                    if i in diamond_ids:
+                        continue
+                    if str(i) in head_to_seq:
+                        cluster_seqs.append((i, head_to_seq[str(i)]))
                     
                 cluster_name = path.join(self.exonerate_path, f"{gene_name}_{cluster[0]}-{cluster[1]}.fa")
                 with NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()) as f, NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".txt", dir=gettempdir()) as result:
                     writeFasta(f.name, cluster_seqs)
-                    
                     command = [
                         "exonerate",
                         "--geneticcode", "1",
-                        "--ryo", '>%ti|%tcb-%tce|%s\n%tcs\n',
-                        "--score" "50",
+                        "--ryo", '>%ti|%tcb/%tce|%s|%qcb/%qce|%qi\n%tcs\n',
+                        "--score", "50",
                         #"--model", "protein2genome",
                         #"--showcigar", "no",
                         "--showvulgar", "no",
@@ -143,21 +154,20 @@ class exonerate:
                     ]
                                         
                     subprocess.run(command, stdout=result)
-
                     if path.getsize(result.name) == 0:
                         continue
                     
                     this_nodes = []
                     for header, sequence in parseFasta(result.name, True):
-                        header, coords, score = header.split("|")
-                        start, end = map(int, coords.split("-"))
+                        header, coords, score, ref_coords, ref_id = header.split("|")
+                        start, end = map(int, coords.split("/"))
+                        ref_start, ref_end = map(int, ref_coords.split("/"))
                         if start > end:
                             start, end = end, start
                             frame = -((start % 3) + 1)
                         else:
                             frame = (start % 3) + 1
-                        index += 1
-                        this_nodes.append(Node(f"{index}", sequence, start, end, int(score), frame))
+                        this_nodes.append(Node(int(header), sequence, start, end, int(score), frame, ref_start, ref_end, ref_id))
                         
                     kicked_ids = set()
                     overlap_min = 0.1
@@ -178,54 +188,61 @@ class exonerate:
                     
                     this_nodes = [node for node in this_nodes if node.head not in kicked_ids]
 
-                    raw_nt_final_output.extend([(f"{gene_name}|placeholder|taxa|CONTIG_{node.head}|{node.frame}|1", node.seq) for node in this_nodes])
-                    final_output.extend([(f"{gene_name}|placeholder|taxa|CONTIG_{node.head}|{node.frame}|1", str(Seq(node.seq).translate())) for node in this_nodes])
-
-            kick_dupes = set()
-            for node, seq in final_output:
-                if xxhash.xxh64(seq).hexdigest() in raw_seq_hash:
-                    kick_dupes.add(node)
-
-            final_output = [(node, seq) for node, seq in final_output if node not in kick_dupes]
-            raw_nt_final_output = [(node, seq) for node, seq in raw_nt_final_output if node not in kick_dupes]
-
-            if final_output:
-                result_path = path.join(self.exonerate_path, "aa", f"{gene_name}.aa.fa")
-                result_nt_path = path.join(self.exonerate_path, "nt", f"{gene_name}.nt.fa")
-                with NamedTemporaryFile(
-                    prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()
-                    ) as f, NamedTemporaryFile(
-                        prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()
-                    ) as result_file, NamedTemporaryFile(
-                        prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()
-                    ) as aln_file, NamedTemporaryFile(
-                        prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()
-                    ) as result_nt_file:
+                    for node in this_nodes:
+                        target = node.ref_name
+                        key = f"{gene_name}|{target}"
                         
-                    aa_seqs = parseFasta(aa_path, False)
-                    writeFasta(aln_file.name, aa_seqs)
-                        
-                    writeFasta(f.name, final_output)
-                    command = ["mafft", "--anysymbol", "--quiet", "--jtt", "1", "--addfragments", f.name, "--thread", "1", aln_file.name]
-                    subprocess.run(command, stdout=result_file)
-                    result = list(parseFasta(result_file.name, True))
-                    writeFasta(result_path, result)
-                    
-                    nt_sequences = [(header, sequence.replace("-","")) for header, sequence in parseFasta(nt_path, False)] + raw_nt_final_output
-                    writeFasta(result_nt_file.name, nt_sequences)
-                    worker(result_file.name, result_nt_file.name, Path(result_nt_path), 1, False, False)
-            else:
-                aa_seqs = parseFasta(aa_path, False)
-                writeFasta(result_path, aa_seqs)
-                
-                nt_sequences = [(header, sequence.replace("-","")) for header, sequence in parseFasta(nt_path, False)]
-                with NamedTemporaryFile(
-                    prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()
-                    ) as result_nt_file:
-                    writeFasta(result_nt_file.name, nt_sequences)
-                    worker(result_path, result_nt_file.name, Path(result_nt_path), 1, False, False)
+                        _, ref, _ = self.target_to_taxon[key]
+                        additions += 1
+                        print(node.head, node.frame)
+                        final_output.append(Hit(
+                            node=node.head,
+                            frame=node.frame,
+                            evalue=0,
+                            qstart=node.start,
+                            qend=node.end,
+                            gene=gene_name,
+                            query=ref,
+                            uid=round(time()),
+                            refs=[ReferenceHit(target, ref, node.ref_start, node.ref_end)],
+                            seq = node.seq
+                        ))
 
-            
+            batch_result.append((gene, final_output))
+        return batch_result, additions
+
+       
+def get_diamondhits(
+    rocks_hits_db: RocksDB,
+) -> dict[str, list[Hit]]:
+    """Returns a dictionary of gene to corresponding hits.
+
+    Args:
+    ----
+        rocks_hits_db (RocksDB): RocksDB instance
+    Returns:
+        dict[str, list[Hit]]: Dictionary of gene to corresponding hits
+    """
+    present_genes = rocks_hits_db.get("getall:presentgenes")
+    if not present_genes:
+        printv("ERROR: No genes found in hits database", 0)
+        printv("Please make sure Diamond completed successfully", 0)
+        return None
+    genes_to_process = present_genes.split(",")
+
+    gene_based_results = []
+    for gene in genes_to_process:
+        gene_result = rocks_hits_db.get_bytes(f"gethits:{gene}")
+        if not gene_result:
+            printv(
+                f"WARNING: No hits found for {gene}. If you are using a gene list file this may be a non-issue",
+                0,
+            )
+            continue
+        gene_based_results.append((gene, gene_result))
+
+    return genes_to_process, gene_based_results
+     
 
 def do_folder(folder, args):
     exonerate_path = path.join(folder, "exonerate")
@@ -239,12 +256,12 @@ def do_folder(folder, args):
     exonerate_nt_path = path.join(exonerate_path, "nt")
     mkdir(exonerate_nt_path)
     
-    aa_input = path.join(folder, "align")# "outlier", "excise", "aa")
-    nt_input = path.join(folder, "nt")#"outlier", "excise", "nt")
+    # aa_input = path.join(folder, "align")# "outlier", "excise", "aa")
+    # nt_input = path.join(folder, "nt")#"outlier", "excise", "nt")
 
-    genes = []
-    for gene in listdir(aa_input):
-        genes.append(gene)
+    # genes = []
+    # for gene in listdir(aa_input):
+    #     genes.append(gene)
     
     nt_db_path = path.join(folder, "rocksdb", "sequences", "nt")
     nt_db = RocksDB(nt_db_path)
@@ -253,26 +270,45 @@ def do_folder(folder, args):
     temp_source_file = NamedTemporaryFile(dir=gettempdir(), prefix="seqs_", suffix=".fa")
     writeFasta(temp_source_file.name, head_to_seq.items())
 
-    raw_data = nt_db.get("getall:original_coords")
-    original_coords = json.decode(raw_data, type = dict[str, tuple[str, int, int, int, int]])
-    
     orthoset_path = path.join(args.orthoset_input, args.orthoset)
     orthoset_raw_path = path.join(orthoset_path, "raw")
-
     
-    per_batch = ceil(len(genes) / args.processes)
-    batches = [(genes[i : i + per_batch], original_coords, temp_source_file.name) for i in range(0, len(genes), per_batch)]
+    hits_db = RocksDB(path.join(folder, "rocksdb", "hits"))
+    diamond_genes, transcripts_mapped_to = get_diamondhits(
+        hits_db
+    )
     
+    per_batch = ceil(len(diamond_genes) / args.processes)
+    batches = [(transcripts_mapped_to[i : i + per_batch], temp_source_file.name) for i in range(0, len(diamond_genes), per_batch)]
+    
+    orthoset_db_path = path.join(args.orthoset_input, args.orthoset, "rocksdb")
+    orthoset_db = RocksDB(orthoset_db_path)
+    
+    target_to_taxon_raw = orthoset_db.get_bytes("getall:targetreference")
+    target_to_taxon = json.decode(
+        target_to_taxon_raw,
+        type=dict[str, list[str | int]],
+    )
+    batch_result = []
     if args.processes <= 1:
-        exonerate_obj = exonerate(aa_input, nt_input, folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend)
+        exonerate_obj = exonerate(folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend, target_to_taxon)
         for batch in batches:
-            exonerate_obj.run(*batch)
+            batch_result.append(exonerate_obj.run(*batch))
     else:
         with Pool(args.processes) as pool:
-            pool.starmap(
-                exonerate(aa_input, nt_input, folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend).run,
+            batch_result.extend(pool.starmap(
+                exonerate(folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend, target_to_taxon).run,
                 batches,
-            )
+            ))
+            
+    encoder = json.Encoder()
+    total_new_seqs = 0
+    for batchr, additions in batch_result:
+        total_new_seqs += additions
+        for gene, hits in batchr:
+            hits_db.put_bytes(f"get_exoneratehits:{gene}", encoder.encode(hits))
+
+    printv(f"Added {total_new_seqs} new sequences", args.verbose, 1)
 
     del temp_source_file
 

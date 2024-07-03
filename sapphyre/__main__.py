@@ -663,7 +663,7 @@ def exonerate_args(par):
         "-me",
         "--max_extend",
         type=int,
-        default=4,
+        default=40,
         help="Max distance to extend left and right (x * chomp length)",
     )
         
