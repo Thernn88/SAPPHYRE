@@ -1496,6 +1496,8 @@ def log_excised_consensus(
 
                     kicked_headers.remove(header)
                     this_rescues.append(header)
+                    
+    aa_nodes = [node for node in aa_nodes if node.header not in kicked_headers]
 
     DNA_CODONS = {
         "GCT": "A",
