@@ -12,6 +12,7 @@ from .utils import gettempdir, parseFasta, printv, writeFasta
 from sapphyre_tools import (
     find_index_pair,
     get_overlap,
+    entropy_filter,
 )
 from Bio.Seq import Seq
 from multiprocessing import Pool
@@ -64,13 +65,14 @@ class Node:
 
 
 class exonerate:
-    def __init__(self, folder, chomp_max_distance, orthoset_raw_path, exonerate_path, max_extend, target_to_taxon) -> None:
+    def __init__(self, folder, chomp_max_distance, orthoset_raw_path, exonerate_path, max_extend, target_to_taxon, entropy_percent) -> None:
         self.folder = folder
         self.chomp_max_distance = chomp_max_distance
         self.orthoset_raw_path = orthoset_raw_path
         self.exonerate_path = exonerate_path
         self.max_extend = max_extend
         self.target_to_taxon = target_to_taxon
+        self.entropy_percent = entropy_percent
         
     def run(self, batches, temp_source_file):
         head_to_seq = dict(parseFasta(temp_source_file))
@@ -195,8 +197,19 @@ class exonerate:
                     #                 kicked_ids.add(node_a.head)
                     
                     # this_nodes = [node for node in this_nodes if node.head not in kicked_ids]
+                    
+                    sequence_template = ">{}|{}\n{}\n"
+                    as_fasta = [sequence_template.format(node.head, node.frame, node.seq) for node in this_nodes]
+                    passing_fasta = entropy_filter(as_fasta, self.entropy_percent)
+                    passing_headers = set()
+                    for header, _ in passing_fasta:
+                        passing_headers.add(header.strip()[1:])
+                            
 
                     for node in this_nodes:
+                        if not f"{node.head}|{node.frame}" in passing_headers:
+                            continue
+                        
                         target = node.ref_name
                         key = f"{gene_name}|{target}"
                         
@@ -298,13 +311,13 @@ def do_folder(folder, args):
     )
     batch_result = []
     if args.processes <= 1:
-        exonerate_obj = exonerate(folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend, target_to_taxon)
+        exonerate_obj = exonerate(folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend, target_to_taxon, args.entropy_percent)
         for batch in batches:
             batch_result.append(exonerate_obj.run(*batch))
     else:
         with Pool(args.processes) as pool:
             batch_result.extend(pool.starmap(
-                exonerate(folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend, target_to_taxon).run,
+                exonerate(folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend, target_to_taxon, args.entropy_percent).run,
                 batches,
             ))
             

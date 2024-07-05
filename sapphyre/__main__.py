@@ -666,6 +666,13 @@ def exonerate_args(par):
         default=40,
         help="Max distance to extend left and right (x * chomp length)",
     )
+    par.add_argument(
+        "-ep",
+        "--entropy_percent",
+        type=float,
+        default=0.7,
+        help="Entropy percentage arg"
+    )
         
 
 
