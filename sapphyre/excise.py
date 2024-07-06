@@ -1158,8 +1158,6 @@ def log_excised_consensus(
 
     raw_sequences = {header: del_cols(seq, x_positions[header], True) for header, seq in parseFasta(str(nt_in))}
     for node in aa_nodes:
-        if node.header in kicked_headers:
-            continue
         nt_seq = raw_sequences[node.header]
         node.nt_sequence = nt_seq
     
