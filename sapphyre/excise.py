@@ -1137,8 +1137,7 @@ def log_excised_consensus(
         clusters, kicks = cluster_ids(ids, 100, max_gap_size, reference_cluster_data) #TODO: Make distance an arg
         if kicks:
             for node in aa_nodes:
-                this_parent_id = int(get_id(node.header).split("&&")[0].split("_")[0])
-                if this_parent_id in kicks:
+                if node.header.split("|")[3] in kicks:
                     kicked_headers.add(node.header)
                     log_output.append(f"Kicking {node.header} due to low coverage")
         
