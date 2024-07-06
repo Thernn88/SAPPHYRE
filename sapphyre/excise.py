@@ -548,7 +548,7 @@ def insert_gaps(input_string, positions, offset):
     return "".join(input_string)
 
 
-def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, INSERTION_PENALTY, DNA_CODONS, ref_gaps):
+def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, INSERTION_PENALTY, DNA_CODONS, ref_gaps, minimum_bp_for_splice = 30):
     this_results = []
                 
     for (gt_size, act_gt_index, gt_index, this_prev_extensions), (ag_size, act_ag_index_rev, ag_index_rev, this_node_extensions) in product(gt_positions, ag_positions):
@@ -658,6 +658,12 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
                 if node_seq[i] == "-" and prev_nt_seq[i] == "-" and i // 3 in ref_gaps:
                     continue
                 this_score -= 1
+                
+        if len(prev_nt_seq) - prev_nt_seq.count("-") < minimum_bp_for_splice:
+            continue
+        
+        if len(node_seq) - node_seq.count("-") < minimum_bp_for_splice:
+            continue
 
         this_results.append((this_score, gt_size, act_gt_index, gt_index, ag_size, act_ag_index_rev, ag_index_rev, prev_deletions, node_deletions, prev_gap_insertions, node_gap_insertions, this_prev_extensions, this_node_extensions, left_last_codon, right_end_codon, orphan_codon))
 
