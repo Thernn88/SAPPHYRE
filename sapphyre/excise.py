@@ -1031,6 +1031,64 @@ def splice_combo(add_results,
         return (gff_coord_prev, gff_coord_node), smallest_change
     return None, smallest_change
 
+
+def edge_check(aa_nodes, cluster_sets, kicked_headers, log_output, min_overlap_amount = 0.85, min_matching_percent = 0.95):
+    for cluster_set in cluster_sets:
+        aa_subset = [node for node in aa_nodes if within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0)]
+        if aa_subset[0].frame < 0:
+            aa_subset.sort(key=lambda x: x.start, reverse=True)
+        else:
+            aa_subset.sort(key=lambda x: x.start)
+            
+        left_most = aa_subset[0]
+        left_next = aa_subset[1]
+       
+        left_overlap = get_overlap(left_most.start, left_most.end, left_next.start, left_next.end, 1)
+        if left_overlap:
+            left_overlap_amt = left_overlap[1] - left_overlap[0]
+            left_overlap_percent = left_overlap_amt / (left_most.end - left_most.start)
+            if left_overlap_percent >= min_overlap_amount:
+                left_most_kmer = left_most.sequence[left_overlap[0]: left_overlap[1]]
+                left_next_kmer = left_next.sequence[left_overlap[0]: left_overlap[1]]
+                
+                distance = constrained_distance(left_most_kmer, left_next_kmer)
+                matching_percent = distance / len(left_most_kmer)
+                
+                
+                if matching_percent <= min_matching_percent:
+                    if left_next.start == left_most.start and len(left_next.sequence) < len(left_most.sequence):
+                        kicked_headers.add(left_next.header)
+                        log_output.append(f"Kicked {left_next.header} as it greatly overlapped on the edge")
+                    else:
+                        kicked_headers.add(left_most.header)
+                        log_output.append(f"Kicked {left_most.header} as it greatly overlapped on the edge")
+                    
+        right_most = aa_subset[-1]
+        right_next = aa_subset[-2]
+        
+        right_overlap = get_overlap(right_most.start, right_most.end, right_next.start, right_next.end, 1)
+        if right_overlap:
+            right_overlap_amt = right_overlap[1] - right_overlap[0]
+            right_overlap_percent = right_overlap_amt / (right_most.end - right_most.start)
+            if right_overlap_percent >= min_overlap_amount:
+                right_most_kmer = right_most.sequence[right_overlap[0]: right_overlap[1]]
+                right_next_kmer = right_next.sequence[right_overlap[0]: right_overlap[1]]
+                
+                distance = constrained_distance(right_most_kmer, right_next_kmer)
+                matching_percent = distance / len(right_most_kmer)
+                
+                if matching_percent <= min_matching_percent:
+                    if right_next.end == right_most.end and len(right_next.sequence) < len(right_most.sequence):
+                        kicked_headers.add(right_next.header)
+                        log_output.append(f"Kicked {right_next.header} as it greatly overlapped on the edge")
+                    else:
+                        kicked_headers.add(right_most.header)
+                        log_output.append(f"Kicked {right_most.header} as it greatly overlapped on the edge")
+                    
+            
+        
+
+
 def log_excised_consensus(
     verbose: int,
     gene: str,
@@ -1143,7 +1201,9 @@ def log_excised_consensus(
         
         if clusters:
             cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
-            
+        
+    if is_genome:    
+        edge_check(aa_nodes, cluster_sets, kicked_headers, log_output)
 
     if not is_genome:
         do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, no_dupes, excise_trim_consensus)
