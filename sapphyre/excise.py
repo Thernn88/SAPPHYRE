@@ -548,10 +548,10 @@ def insert_gaps(input_string, positions, offset):
     return "".join(input_string)
 
 
-def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, INSERTION_PENALTY, DNA_CODONS, ref_gaps, minimum_bp_for_splice = 30):
+def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, GC_PENALTY, DNA_CODONS, ref_gaps, minimum_bp_for_splice = 30):
     this_results = []
                 
-    for (gt_size, act_gt_index, gt_index, this_prev_extensions), (ag_size, act_ag_index_rev, ag_index_rev, this_node_extensions) in product(gt_positions, ag_positions):
+    for (gt_size, act_gt_index, gt_index, this_prev_extensions, is_gc), (ag_size, act_ag_index_rev, ag_index_rev, this_node_extensions) in product(gt_positions, ag_positions):
         prev_deletions = []
         node_deletions = []
 
@@ -623,6 +623,10 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
         left_last_codon = prev_nt_start + length - (length % 3)
         
         this_score = 0
+        
+        if is_gc:
+            this_score += GC_PENALTY
+        
         right_codon = node_seq[right_end_codon: right_end_codon + 3]
         left_codon = prev_nt_seq[left_last_codon: left_last_codon + 3]
 
@@ -665,7 +669,7 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
         if len(node_seq) - node_seq.count("-") < minimum_bp_for_splice:
             continue
 
-        this_results.append((this_score, gt_size, act_gt_index, gt_index, ag_size, act_ag_index_rev, ag_index_rev, prev_deletions, node_deletions, prev_gap_insertions, node_gap_insertions, this_prev_extensions, this_node_extensions, left_last_codon, right_end_codon, orphan_codon))
+        this_results.append((is_gc, this_score, gt_size, act_gt_index, gt_index, ag_size, act_ag_index_rev, ag_index_rev, prev_deletions, node_deletions, prev_gap_insertions, node_gap_insertions, this_prev_extensions, this_node_extensions, left_last_codon, right_end_codon, orphan_codon))
 
     return this_results
 
@@ -726,11 +730,11 @@ def find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_ind
                 if i + scan_index >= len(prev_og):
                     break
                 
-                if prev_og[i + scan_index] == "T":
+                if prev_og[i + scan_index] == "T" or prev_og[i + scan_index] == "C":
                     act_gt_index = prev_act_coord
                     gt_index = i + 1
                     gt_size = scan_index + 1
-                    gt_positions.append((gt_size, act_gt_index, gt_index, copy.deepcopy(prev_extensions)))
+                    gt_positions.append((gt_size, act_gt_index, gt_index, copy.deepcopy(prev_extensions), prev_og[i + scan_index] == "C"))
 
                 if prev_og[i + scan_index] != "-":
                     break
@@ -808,6 +812,7 @@ def splice_combo(add_results,
                  node_og,
                  DNA_CODONS,
                  scan_log,
+                 combo_log,
                  replacements,
                  replacements_aa,
                  extensions,
@@ -827,7 +832,7 @@ def splice_combo(add_results,
     prev_nt_seq = list(prev_node.nt_sequence)
     node_seq = list(node.nt_sequence)
     
-    this_score, gt_size, act_gt_index, gt_index, ag_size, act_ag_index_rev, ag_index_rev, prev_deletions, node_deletions, final_prev_insertions, final_node_insertions, final_prev_extensions, final_node_extensions, left_last_codon, right_end_codon, orphan_codon = this_result
+    is_gc, this_score, gt_size, act_gt_index, gt_index, ag_size, act_ag_index_rev, ag_index_rev, prev_deletions, node_deletions, final_prev_insertions, final_node_insertions, final_prev_extensions, final_node_extensions, left_last_codon, right_end_codon, orphan_codon = this_result
     for i, let in final_prev_extensions.items():
         prev_nt_seq[i] = let
     for i, let in final_node_extensions.items():
@@ -952,7 +957,6 @@ def splice_combo(add_results,
     final_node_start, final_node_end = find_index_pair(node_seq, "-")
     
     smallest_change = min(abs(final_prev_start - (prev_node.start*3)) + abs(final_prev_end - (prev_node.end*3)), abs(final_node_start - (node.start*3)) + abs(final_node_end - (node.end*3)))
-    
     if print_extra: 
         scan_log.append(f">{prev_node.header}_orf")
 
@@ -983,6 +987,8 @@ def splice_combo(add_results,
     scan_log.append("") 
     
     if add_results:
+        combo_log.append(f"{prev_node.header} vs {node.header}: {this_score} " + ("GC-AG" if is_gc else "GT-AG"))
+        
         prev_kmer = prev_hit.replace("-", "")
         gff_coord_prev = (
             prev_start_index + 1,
@@ -1034,12 +1040,15 @@ def splice_combo(add_results,
 
 def edge_check(aa_nodes, cluster_sets, kicked_headers, log_output, min_overlap_amount = 0.85, min_matching_percent = 0.95):
     for cluster_set in cluster_sets:
-        aa_subset = [node for node in aa_nodes if within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0)]
+        aa_subset = [node for node in aa_nodes if (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
         if aa_subset[0].frame < 0:
             aa_subset.sort(key=lambda x: x.start, reverse=True)
         else:
             aa_subset.sort(key=lambda x: x.start)
             
+        if len(aa_subset) < 2:
+            continue
+        
         left_most = aa_subset[0]
         left_next = aa_subset[1]
        
@@ -1136,6 +1145,7 @@ def log_excised_consensus(
     printv(f"Processing {gene}", verbose, 2)
     log_output = []
     scan_log = []
+    combo_log = []
     multi_log = []
     this_rescues = []
 
@@ -1631,7 +1641,7 @@ def log_excised_consensus(
     }
     
     FRANKENSTEIN_PENALTY = -20
-    INSERTION_PENALTY = -1
+    GC_PENALTY = -20
     SIMILARITY_SKIP = 0.95
     int_first_id = lambda x: int(x.split("_")[0])
     extensions = defaultdict(dict)
@@ -1737,53 +1747,56 @@ def log_excised_consensus(
                 # if "2A|AglaOr12CTE|splice_fix|NODE_343534&&343535|-3|1" not in prev_node.header:
                 #     continue
 
-                this_results = get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, INSERTION_PENALTY, DNA_CODONS, ref_gaps)
+                this_results = get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, GC_PENALTY, DNA_CODONS, ref_gaps)
                 splice_found = False
+                this_best_splice = None
                 if this_results:
-                    this_best_score = max(i[0] for i in this_results)
-                    highest_results = [i for i in this_results if i[0] == this_best_score]
+                    this_best_score = max(i[1] for i in this_results)
+                    highest_results = [i for i in this_results if i[1] == this_best_score]
                     if len(highest_results) > 1:
                         best_change = None
                         for i, result in enumerate(highest_results):
-                            _, smallest_coords_change = splice_combo(False, i == 0, formed_seqs, result, prev_node, node, prev_og, node_og, DNA_CODONS, multi_log, replacements, replacements_aa, extensions, extensions_aa, gap_insertions_aa, gap_insertions_nt, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
-                            if best_change is None or smallest_coords_change < best_change:
+                            _, smallest_coords_change = splice_combo(False, i == 0, formed_seqs, result, prev_node, node, prev_og, node_og, DNA_CODONS, multi_log, [], replacements, replacements_aa, extensions, extensions_aa, gap_insertions_aa, gap_insertions_nt, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
+                            # print(smallest_coords_change)
+                            if smallest_coords_change is not None and (best_change is None or smallest_coords_change < best_change):
                                 best_change = smallest_coords_change
                                 this_best_splice = result
                     else:
                         this_best_splice = highest_results[0]
                     
-                    gff, _ = splice_combo(True, True, formed_seqs, this_best_splice, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, replacements, replacements_aa, extensions, extensions_aa, gap_insertions_aa, gap_insertions_nt, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
-                    if gff:
-                        splice_found = True
-                        prev_gff, node_gff = gff
-                        
-                        prev_id = get_id(prev_node.header)
-                        tup = original_coords.get(prev_id.split("&&")[0].split("_")[0], None)
-                        if tup:
-                            parent, chomp_start, chomp_end, input_len, chomp_len = tup
+                    if this_best_splice is not None:
+                        gff, _ = splice_combo(True, True, formed_seqs, this_best_splice, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, combo_log, replacements, replacements_aa, extensions, extensions_aa, gap_insertions_aa, gap_insertions_nt, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
+                        if gff:
+                            splice_found = True
+                            prev_gff, node_gff = gff
                             
-                            prev_start = prev_gff[0] + chomp_start
-                            prev_end = prev_gff[1] + chomp_start
-                            
-                            if parent not in ends:
-                                ends[parent] = input_len
+                            prev_id = get_id(prev_node.header)
+                            tup = original_coords.get(prev_id.split("&&")[0].split("_")[0], None)
+                            if tup:
+                                parent, chomp_start, chomp_end, input_len, chomp_len = tup
                                 
-                            strand = "+" if prev_node.frame > 0 else "-"
-                            gff_out[parent][prev_id] = ((prev_start), f"{parent}\tSapphyre\texon\t{prev_start}\t{prev_end}\t.\t{strand}\t.\tID={prev_id};Parent={gene};Note={prev_node.frame};")
-                            
-                        node_id = get_id(node.header)
-                        tup = original_coords.get(node_id.split("&&")[0].split("_")[0], None)
-                        if tup:
-                            parent, chomp_start, chomp_end, input_len, chomp_len = tup
-                            
-                            node_start = node_gff[0] + chomp_start
-                            node_end = node_gff[1] + chomp_start
-                            
-                            if parent not in ends:
-                                ends[parent] = input_len
+                                prev_start = prev_gff[0] + chomp_start
+                                prev_end = prev_gff[1] + chomp_start
                                 
-                            strand = "+" if node.frame > 0 else "-"
-                            gff_out[parent][node_id] = ((node_start), f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tID={node_id};Parent={gene};Note={node.frame};")
+                                if parent not in ends:
+                                    ends[parent] = input_len
+                                    
+                                strand = "+" if prev_node.frame > 0 else "-"
+                                gff_out[parent][prev_id] = ((prev_start), f"{parent}\tSapphyre\texon\t{prev_start}\t{prev_end}\t.\t{strand}\t.\tID={prev_id};Parent={gene};Note={prev_node.frame};")
+                                
+                            node_id = get_id(node.header)
+                            tup = original_coords.get(node_id.split("&&")[0].split("_")[0], None)
+                            if tup:
+                                parent, chomp_start, chomp_end, input_len, chomp_len = tup
+                                
+                                node_start = node_gff[0] + chomp_start
+                                node_end = node_gff[1] + chomp_start
+                                
+                                if parent not in ends:
+                                    ends[parent] = input_len
+                                    
+                                strand = "+" if node.frame > 0 else "-"
+                                gff_out[parent][node_id] = ((node_start), f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tID={node_id};Parent={gene};Note={node.frame};")
                 if True and not splice_found:    
                     scan_log.append(f">{prev_node.header}_orf")
                     # print(prev_start_index, node_end_index)
@@ -1938,8 +1951,8 @@ def log_excised_consensus(
             final_nt_out.append((header, seq))
         writeFasta(nt_out, final_nt_out, compress_intermediates)
 
-        return log_output, had_region, False, False, gene, len(kicked_headers), this_rescues, scan_log, multi_log, ends, gff_out, debug_out
-    return log_output, had_region, gene, False, None, len(kicked_headers), this_rescues, scan_log, multi_log, ends, gff_out, debug_out
+        return log_output, had_region, False, False, gene, len(kicked_headers), this_rescues, scan_log, combo_log, multi_log, ends, gff_out, debug_out
+    return log_output, had_region, gene, False, None, len(kicked_headers), this_rescues, scan_log, combo_log, multi_log, ends, gff_out, debug_out
 
 ### USED BY __main__
 def do_move(from_, to_):
@@ -2088,6 +2101,7 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
     genes = [fasta for fasta in listdir(aa_input) if ".fa" in fasta]
     log_path = Path(output_folder, "excise_regions.txt")
     scan_log_path = Path(output_folder, "gt_ag_scan.txt")
+    combo_log_path = Path(output_folder, "combo_log.txt")
     multi_log_path = Path(output_folder, "multi_log.txt")
     internal_path = Path(output_folder, "internal.txt")
     gene_log_path = Path(output_folder, "excise_genes.txt")
@@ -2115,12 +2129,15 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
     rescues = []
     gt_ag_scan_log = []
     multi_scan_log = []
+    combo_scan_log = []
     this_debug_out = []
+    gt_hits = 0
+    gc_hits = 0
 
     parent_gff_output = defaultdict(dict)
     end_bp = {}
 
-    for glog, ghas_ambig, ghas_no_resolution, gcoverage_kick, g_has_resolution, gkicked_seq, grescues, slog, dlog, input_lengths, gff_result, debug_lines in results:
+    for glog, ghas_ambig, ghas_no_resolution, gcoverage_kick, g_has_resolution, gkicked_seq, grescues, slog, clog, dlog, input_lengths, gff_result, debug_lines in results:
         for parent, node_values in gff_result.items():
             for id, value in node_values.items():
                 parent_gff_output[parent][id] = value
@@ -2131,6 +2148,14 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
         gt_ag_scan_log.extend(slog)
         this_debug_out.extend(debug_lines)
         multi_scan_log.extend(dlog)
+        for line in clog:
+            if line:
+                if "GT-AG" in line:
+                    gt_hits += 1
+                if "GC-AG" in line:
+                    gc_hits += 1
+                combo_scan_log.append(line)
+                
         rescues.extend(grescues)
         if ghas_ambig:
             loci_containing_bad_regions += 1
@@ -2189,11 +2214,14 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
     )
 
     if args.debug:
+        combo_scan_log.insert(0, f"GT-AG Hits: {gt_hits}\nGC-AG Hits: {gc_hits}\n")
         with open(log_path, "w") as f:
             f.write("Gene,Cut-Indices,Consensus Sequence\n")
             f.write("\n".join(log_output))
         with open(scan_log_path, "w") as f:
             f.write("\n".join(gt_ag_scan_log))
+        with open(combo_log_path, "w") as f:
+            f.write("\n".join(combo_scan_log))
         with open(multi_log_path, "w") as f:
             f.write("\n".join(multi_scan_log))
         with open(internal_path, "w") as f:
