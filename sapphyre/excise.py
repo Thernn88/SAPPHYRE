@@ -1203,11 +1203,11 @@ def log_excised_consensus(
         max_gap_size = round(len(aa_nodes[0].sequence) * 0.3) # Half MSA length
     
         clusters, kicks = cluster_ids(ids, 100, max_gap_size, reference_cluster_data) #TODO: Make distance an arg
-        if kicks:
-            for node in aa_nodes:
-                if node.header.split("|")[3] in kicks:
-                    kicked_headers.add(node.header)
-                    log_output.append(f"Kicking {node.header} due to low coverage")
+        # if kicks:
+        #     for node in aa_nodes:
+        #         if node.header.split("|")[3] in kicks:
+        #             kicked_headers.add(node.header)
+        #             log_output.append(f"Kicking {node.header} due to low coverage")
         
         if clusters:
             cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
