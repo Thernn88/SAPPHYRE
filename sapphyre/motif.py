@@ -1,0 +1,342 @@
+from collections import Counter, defaultdict
+from functools import cached_property
+from itertools import combinations, product
+from math import ceil
+from multiprocessing import Pool
+from os import listdir, makedirs, path
+from pathlib import Path
+from shutil import move, rmtree
+import copy
+from tempfile import NamedTemporaryFile
+from msgspec import Struct, json
+from sapphyre_tools import (
+    convert_consensus,
+    dumb_consensus,
+    dumb_consensus_dupe,
+    find_index_pair,
+    get_overlap,
+    is_same_kmer,
+    constrained_distance,
+    bio_revcomp,
+)
+from .directional_cluster import cluster_ids, within_distance, node_to_ids, quick_rec
+from wrap_rocks import RocksDB
+from Bio.Seq import Seq
+
+from .timekeeper import KeeperMode, TimeKeeper
+from .utils import gettempdir, parseFasta, printv, writeFasta
+
+class NODE(Struct):
+    header: str
+    frame: int
+    sequence: str
+    nt_sequence: str
+    start: int
+    end: int
+
+def insert_gaps(input_string, positions, offset):
+    input_string = list(input_string)
+    
+    for coord in positions:
+        input_string.insert(offset + coord, "-")
+
+    return "".join(input_string)
+  
+def int_first_id(x):
+    return int(x.split("_")[0])
+  
+def generate_sequence(ids, frame, head_to_seq):
+    id_to_coords = {}
+    
+    prev_og = head_to_seq[ids[0]]
+    start, end = 0, len(prev_og)
+    id_to_coords[ids[0]] = (start, end)
+    for i, child in enumerate(ids):
+        if i == 0:
+            continue
+        prev_og += head_to_seq[child][250:]
+        start = end
+        end = len(prev_og)
+        id_to_coords[child] = (start, end)
+
+    if frame < 0:
+        prev_og = bio_revcomp(prev_og)
+        
+    return id_to_coords, prev_og
+  
+            
+def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, minimum_gap = 15, max_gap = 60):
+    new_aa = []
+    new_nt = []
+    new_headers = []
+    id_count = Counter()
+    
+    for node in aa_nodes:
+        for id in node_to_ids(node.header.split("|")[3]):
+            id_count[id] += 1
+
+    for cluster_set in cluster_sets:
+        aa_subset = [node for node in aa_nodes if (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
+        aa_subset.sort(key=lambda x: x.start)
+            
+        for i in range(1, len(aa_subset)):
+            node_a = aa_subset[i - 1]
+            node_b = aa_subset[i]
+            
+            overlap = get_overlap(node_a.start * 3, node_a.end * 3, node_b.start * 3, node_b.end * 3, -max_gap)
+            if not overlap:
+                continue
+            
+            amount = overlap[1] - overlap[0]
+            if amount >= 0:
+                continue
+            
+            if abs(amount) < minimum_gap:
+                continue
+            
+            ids = set(map(int_first_id, node_a.header.split("|")[3].replace("NODE_", "").split("&&"))).union(set(map(int_first_id, node_b.header.split("|")[3].replace("NODE_", "").split("&&"))))
+            genomic_range = list(range(min(ids), max(ids) + 1))
+
+            id_to_coords, genomic_sequence = generate_sequence(genomic_range, node_a.frame, head_to_seq)
+                
+            node_a_kmer = node_a.nt_sequence[node_a.start * 3: node_a.end * 3]
+            node_b_kmer = node_b.nt_sequence[node_b.start * 3: node_b.end * 3]
+            
+            node_a_internal_gap = [i for i, let in enumerate(node_a_kmer) if let == "-"]
+            node_b_internal_gap = [i for i, let in enumerate(node_b_kmer) if let == "-"]
+            
+            node_a_len = len(node_a_kmer)
+            
+            node_a_kmer = node_a_kmer.replace("-", "")
+            node_b_kmer = node_b_kmer.replace("-", "")
+            
+            node_a_og_start = genomic_sequence.find(node_a_kmer)
+            node_b_og_start = genomic_sequence.find(node_b_kmer)
+            
+            if node_a_og_start == -1 or node_b_og_start == -1:
+                continue
+            
+            genomic_sequence = insert_gaps(genomic_sequence, node_a_internal_gap, node_a_og_start)
+            genomic_sequence = insert_gaps(genomic_sequence, node_b_internal_gap, node_b_og_start)
+
+            end_of_a = node_a_og_start + node_a_len
+            start_of_b = node_b_og_start
+            
+            splice_region = genomic_sequence[end_of_a: start_of_b + 3]
+            splice_region += "N" * (3 - (len(splice_region) % 3))
+            
+            kmer_size = abs(amount) // 3
+            # input(kmer_size)
+            
+            best_kmer = None
+            best_score = None
+            for frame in range(3):
+                protein_seq = str(Seq(splice_region[frame:] + ("N" * frame)).translate())
+                for i in range(0, len(protein_seq) - kmer_size):
+                    kmer = protein_seq[i: i + kmer_size]
+                    kmer_score = sum(ref_consensus[i].count(let) for i, let in enumerate(kmer, overlap[1]//3))
+                    
+                    if kmer_score == 0:
+                        continue
+                    
+                    if best_kmer is None or kmer_score > best_score:
+                        best_frame = frame
+                        best_qstart = (i * 3) + frame
+                        best_qend = best_qstart + (kmer_size * 3)
+                        best_kmer = kmer
+                        best_score = kmer_score
+                       
+                       
+            if best_kmer:
+                ids_in_qstart = [id for id, range in id_to_coords.items() if best_qstart >= range[0] and best_qstart <= range[1] or best_qend >= range[0] and best_qend <= range[1]]
+                new_header_fields = node_a.header.split("|")
+                final_ids = []
+                for id in ids_in_qstart:
+                    
+                    count = id_count[id]
+                    if count == 0:
+                        final_ids.append(str(id))
+                    else:
+                        final_ids.append(f"{id}_{count}")
+                        
+                    id_count[id] += 1
+                    
+                this_id = "&&".join(final_ids)
+                new_header_fields[3] = f"NODE_{this_id}"
+                new_header_fields[4] = str(best_frame+1)
+                new_header_fields[5] = "1"
+                new_header = "|".join(new_header_fields)
+                
+                new_aa_sequence = ("-" * (overlap[1]//3)) + best_kmer
+                new_aa_sequence += ("-" * (len(node_a.sequence) - len(new_aa_sequence)))
+                
+                nt_seq = splice_region[best_qstart: best_qend]
+                new_nt_seq = "-" * overlap[1] + nt_seq 
+                new_nt_seq += "-" * (len(node_a.nt_sequence) - len(nt_seq))
+                
+                new_aa.append((new_header, new_aa_sequence))
+                new_nt.append((new_header, new_nt_seq))
+                new_headers.append(new_header)
+    return new_nt, new_aa, new_headers
+
+
+def do_genes(genes, input_aa, input_nt, seq_source, out_aa_path, out_nt_path):
+    batch_result = []
+    head_to_seq = {int(head): seq for head, seq in parseFasta(seq_source)}
+    for gene in genes:
+        print(gene)
+        batch_result.extend(do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path))
+        
+    return batch_result
+
+def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path):
+    aa_nodes = []
+    reference_cluster_data = set()
+    ref_consensus = defaultdict(list)
+    
+    raw_aa = []
+    raw_nt = []
+    
+    for header, seq in parseFasta(path.join(input_aa, gene)):
+        raw_aa.append((header, seq))
+        if header.endswith('.'):
+            start, end = find_index_pair(seq, "-")
+            for i, bp in enumerate(seq[start:end], start):
+                if bp != "-":
+                    reference_cluster_data.add(i)
+                ref_consensus[i].append(bp)
+            continue
+
+        frame = int(header.split("|")[4])
+        aa_nodes.append(NODE(header, frame, seq, None, *find_index_pair(seq, "-")))
+        
+        
+    nt_sequences = {}
+    for header, seq in parseFasta(path.join(input_nt, gene.replace(".aa.", ".nt."))):
+        nt_sequences[header] = seq
+        raw_nt.append((header, seq))
+        
+    for node in aa_nodes:
+        node.nt_sequence = nt_sequences[node.header]
+        
+    cluster_sets = [None]
+    ids = []
+    for node in aa_nodes:
+        start, end = find_index_pair(node.sequence, "-")
+        ids.append(quick_rec(node.header.split("|")[3], node.frame, node.sequence, start, end))
+
+    max_gap_size = round(len(aa_nodes[0].sequence) * 0.3) # Half MSA length
+
+    clusters, _ = cluster_ids(ids, 100, max_gap_size, reference_cluster_data, req_seq_coverage=0) #TODO: Make distance an arg
+    
+    if clusters:
+        cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
+       
+    new_nt, new_aa, new_headers = reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq)
+    
+    aa_seqs = raw_aa+new_aa
+    
+    aa_references = [i for i in aa_seqs if i[0].endswith('.')]
+    aa_candidates = [i for i in aa_seqs if not i[0].endswith('.')]
+    
+    aa_candidates.sort(key=lambda x: int(x[0].split("|")[3].split("&&")[0].split("_")[1]))
+    
+    aa_header_order = [i[0] for i in aa_candidates]
+    nt_sequences = {header: seq for header, seq in raw_nt+new_nt}
+    
+    nt_seqs = [(header, nt_sequences[header]) for header in aa_header_order]
+
+    writeFasta(path.join(out_aa_path, gene), aa_references+aa_candidates)
+    writeFasta(path.join(out_nt_path, gene.replace(".aa.", ".nt.")), nt_seqs)
+                    
+    return new_headers    
+                        
+def do_folder(folder, args):
+    print(folder)
+    tk = TimeKeeper(KeeperMode.DIRECT)
+    rocksdb_path = path.join(folder, "rocksdb", "sequences", "nt")
+    nt_db = RocksDB(rocksdb_path)
+    
+    head_to_seq = get_head_to_seq(nt_db)
+    
+    input_aa_path = path.join(folder, "trimmed", "aa")
+    input_nt_path = path.join(folder, "trimmed", "nt")
+    
+    output_folder = path.join(folder, "motif")
+    out_aa_path = path.join(output_folder, "aa")
+    out_nt_path = path.join(output_folder, "nt")
+    
+    if path.exists(output_folder):
+        rmtree(output_folder)
+    makedirs(out_aa_path, exist_ok=True)
+    makedirs(out_nt_path, exist_ok=True)
+    
+    head_to_seq_source = NamedTemporaryFile(dir=gettempdir(), prefix="seqs_")
+    writeFasta(head_to_seq_source.name, head_to_seq.items())
+    
+    genes = [i for i in listdir(input_aa_path) if ".fa" in i]
+    per_batch = ceil(len(genes) / args.processes)
+    arguments = [(genes[i: i+per_batch], input_aa_path, input_nt_path, head_to_seq_source.name, out_aa_path, out_nt_path) for i in range(0, len(genes), per_batch)]
+    new_seqs = []
+    if args.processes == 1:
+        for arg in arguments:
+            new_seqs.extend(do_genes(*arg))
+    else:
+        with Pool(args.processes) as pool:
+            batches = pool.starmap(do_genes, arguments)
+        for batch in batches:
+            new_seqs.extend(batch)
+            
+    motif_log = path.join(output_folder, "motif.log")
+    with open(motif_log, "w") as f:
+        f.write("\n".join(new_seqs))
+        
+    del head_to_seq_source
+        
+    print(f"Done! Took {tk.differential():.2f}s")
+    
+    return True
+
+def get_head_to_seq(nt_db):
+    """Get a dictionary of headers to sequences.
+
+    Args:
+    ----
+        nt_db (RocksDB): The NT rocksdb database.
+        recipe (list[str]): A list of each batch index.
+    Returns:
+    -------
+        dict[str, str]: A dictionary of headers to sequences.
+    """
+    recipe = nt_db.get("getall:batches")
+    if recipe:
+        recipe = recipe.split(",")
+        
+    head_to_seq = {}
+    for i in recipe:
+        lines = nt_db.get_bytes(f"ntbatch:{i}").decode().splitlines()
+        head_to_seq.update(
+            {
+                int(lines[i][1:]): lines[i + 1]
+                for i in range(0, len(lines), 2)
+                if lines[i] != ""
+            },
+        )
+
+    return head_to_seq
+
+
+def main(args):
+    success = False
+    if isinstance(args.INPUT, list):
+        success = all(do_folder(folder, args) for folder in args.INPUT)
+    elif isinstance(args.INPUT, str):
+        success = do_folder(args.INPUT, args)
+    return success
+
+
+if __name__ == "__main__":
+    MSG = "Cannot be called directly, please use the module:\nsapphyre excise"
+    raise RuntimeError(
+        MSG,
+    )

@@ -941,6 +941,32 @@ def flexcull_args(par):
     )
 
 
+def subcmd_motif(subparsers):
+    par = subparsers.add_parser(
+        "Motif",
+        help="Searches for motifs in the input sequences.",
+    )
+    par.add_argument(
+        "INPUT",
+        help="Path to directory of Input folder",
+        action="extend",
+        nargs="+",
+    )
+    motif_args(par)
+    par.set_defaults(func=motif, formathelp=par.format_help)
+
+
+def motif_args(par):
+    pass
+
+
+def motif(args):
+    from . import motif
+
+    if not motif.main(args):
+        print()
+        print(args.formathelp())
+
 def flexcull(args):
     from . import flexcull
 
@@ -1612,6 +1638,7 @@ def main():
     subcmd_align(subparsers)
     subcmd_pal2nal(subparsers)
     subcmd_flexcull(subparsers)
+    subcmd_motif(subparsers)
     subcmd_outlier(subparsers)
     subcmd_internal(subparsers)
     subcmd_Merge(subparsers)
