@@ -65,7 +65,7 @@ def generate_sequence(ids, frame, head_to_seq):
     return id_to_coords, prev_og
   
             
-def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, minimum_gap = 15, max_gap = 60, ref_gap_thresh = 0.75):
+def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, minimum_gap = 30, max_gap = 180, ref_gap_thresh = 0.75):
     new_aa = []
     new_nt = []
     id_count = Counter()
