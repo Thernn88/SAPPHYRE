@@ -177,6 +177,8 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                        
             if results:
                 best_kmer, best_score, best_qstart, best_qend, best_frame = max(results, key=lambda x: x[1])
+                if node_a.frame < 0:
+                    best_frame = -best_frame
                 target_score = best_score * 0.9
                 
                 other = [f"{res[0]} - {res[1]}" for res in results if res[1] >= target_score and res[0] != best_kmer]
