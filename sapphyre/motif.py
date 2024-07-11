@@ -65,7 +65,7 @@ def generate_sequence(ids, frame, head_to_seq):
     return id_to_coords, prev_og
   
             
-def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, minimum_gap = 15, max_gap = 60):
+def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, minimum_gap = 15, max_gap = 60, ref_gap_thresh = 0.75):
     new_aa = []
     new_nt = []
     id_count = Counter()
@@ -93,8 +93,19 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             if abs(amount) < minimum_gap:
                 continue
             
+            log_output.append("Gap between {} and {} of size {}".format(node_a.header, node_b.header, abs(amount)))
+            
             ids = set(map(int_first_id, node_a.header.split("|")[3].replace("NODE_", "").split("&&"))).union(set(map(int_first_id, node_b.header.split("|")[3].replace("NODE_", "").split("&&"))))
             genomic_range = list(range(min(ids), max(ids) + 1))
+            
+            is_ref_gap = False
+            for y in range(overlap[1]//3, overlap[0]//3):
+                if ref_consensus[y].count("-") / len(ref_consensus[y]) >= ref_gap_thresh:
+                    break
+            
+            if is_ref_gap:
+                log_output.append("Reference gap found in consensus\n")
+                continue
 
             id_to_coords, genomic_sequence = generate_sequence(genomic_range, node_a.frame, head_to_seq)
                 
@@ -113,6 +124,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             node_b_og_start = genomic_sequence.find(node_b_kmer)
             
             if node_a_og_start == -1 or node_b_og_start == -1:
+                log_output.append("Unable to find genomic coords\n")
                 continue
             
             genomic_sequence = insert_gaps(genomic_sequence, node_a_internal_gap, node_a_og_start)
@@ -123,6 +135,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             
             splice_region = genomic_sequence[end_of_a: start_of_b + 3]
             if splice_region == "":
+                log_output.append("Splice region empty\n")
                 continue
             
             splice_region += "N" * (3 - (len(splice_region) % 3))
@@ -130,7 +143,6 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             kmer_size = abs(amount) // 3
             # input(kmer_size)
             
-            log_output.append("Gap between {} and {} of size {}".format(node_a.header, node_b.header, abs(amount)))
             log_output.append("Reference seqs:")
             for x in range(len(ref_consensus[0])):
                 this_line = ""
