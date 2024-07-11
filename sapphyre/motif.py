@@ -99,8 +99,10 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             genomic_range = list(range(min(ids), max(ids) + 1))
             
             is_ref_gap = False
+            
             for y in range(overlap[1]//3, overlap[0]//3):
                 if ref_consensus[y].count("-") / len(ref_consensus[y]) >= ref_gap_thresh:
+                    is_ref_gap = True
                     break
             
             if is_ref_gap:
