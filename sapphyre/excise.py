@@ -1652,6 +1652,7 @@ def log_excised_consensus(
     gff_out = defaultdict(dict)
     gff_coords = {}
     formed_seqs = {}
+    has_exisiting_result = defaultdict(dict)
     for cluster_i, cluster_set in enumerate(cluster_sets):
         aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
         aa_subset.sort(key = lambda x: x.start)
@@ -1765,8 +1766,18 @@ def log_excised_consensus(
                         this_best_splice = highest_results[0]
                     
                     if this_best_splice is not None:
+                        if "Right" in has_exisiting_result[prev_node.header]:
+                            if has_exisiting_result[prev_node.header]["Right"] >= this_best_splice[1]:
+                                continue
+                        if "Left" in has_exisiting_result[node.header]:
+                            if has_exisiting_result[node.header]["Left"] >= this_best_splice[1]:
+                                continue
+                        
                         gff, _ = splice_combo(True, True, formed_seqs, this_best_splice, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, combo_log, replacements, replacements_aa, extensions, extensions_aa, gap_insertions_aa, gap_insertions_nt, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
                         if gff:
+                            has_exisiting_result[prev_node.header]["Right"] = this_best_splice[1]
+                            has_exisiting_result[node.header]["Left"] = this_best_splice[1]
+                            
                             splice_found = True
                             prev_gff, node_gff = gff
                             
