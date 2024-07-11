@@ -8,6 +8,7 @@ from pathlib import Path
 from shutil import move, rmtree
 import copy
 from tempfile import NamedTemporaryFile
+import warnings
 from msgspec import Struct, json
 from sapphyre_tools import (
     convert_consensus,
@@ -22,6 +23,7 @@ from sapphyre_tools import (
 from .directional_cluster import cluster_ids, within_distance, node_to_ids, quick_rec
 from wrap_rocks import RocksDB
 from Bio.Seq import Seq
+from Bio import BiopythonWarning
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import gettempdir, parseFasta, printv, writeFasta
@@ -154,9 +156,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             if splice_region == "":
                 log_output.append("Splice region empty\n")
                 continue
-            
-            splice_region += "N" * (3 - (len(splice_region) % 3))
-            
+             
             kmer_size = abs(amount) // 3
             # input(kmer_size)
             
@@ -175,7 +175,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             best_score = None
             results = []
             for frame in range(3):
-                protein_seq = str(Seq(splice_region[frame:] + ("N" * frame)).translate())
+                protein_seq = str(Seq(splice_region[frame:]).translate())
                 log_output.append(protein_seq)
                 for i in range(0, len(protein_seq) - kmer_size):
                     kmer = protein_seq[i: i + kmer_size]
@@ -241,6 +241,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
 
 
 def do_genes(genes, input_aa, input_nt, seq_source, out_aa_path, out_nt_path):
+    warnings.filterwarnings("ignore", category=BiopythonWarning)
     batch_result = []
     head_to_seq = {int(head): seq for head, seq in parseFasta(seq_source)}
     for gene in genes:
