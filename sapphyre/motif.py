@@ -65,10 +65,9 @@ def generate_sequence(ids, frame, head_to_seq):
     return id_to_coords, prev_og
   
             
-def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, minimum_gap = 15, max_gap = 60):
+def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, minimum_gap = 15, max_gap = 60):
     new_aa = []
     new_nt = []
-    new_headers = []
     id_count = Counter()
     
     for node in aa_nodes:
@@ -123,15 +122,32 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, minim
             start_of_b = node_b_og_start
             
             splice_region = genomic_sequence[end_of_a: start_of_b + 3]
+            if splice_region == "":
+                continue
+            
             splice_region += "N" * (3 - (len(splice_region) % 3))
             
             kmer_size = abs(amount) // 3
             # input(kmer_size)
             
+            log_output.append("Gap between {} and {} of size {}".format(node_a.header, node_b.header, abs(amount)))
+            log_output.append("Reference seqs:")
+            for x in range(len(ref_consensus[0])):
+                this_line = ""
+                for y in range(overlap[1]//3, overlap[0]//3):
+                    this_line += ref_consensus[y][x]
+                log_output.append(this_line)
+            log_output.append("")
+            log_output.append("Raw splice region:")
+            log_output.append(splice_region)
+            log_output.append("")
+            log_output.append("Translated Splice Sequences:")
             best_kmer = None
             best_score = None
+            results = []
             for frame in range(3):
                 protein_seq = str(Seq(splice_region[frame:] + ("N" * frame)).translate())
+                log_output.append(protein_seq)
                 for i in range(0, len(protein_seq) - kmer_size):
                     kmer = protein_seq[i: i + kmer_size]
                     kmer_score = sum(ref_consensus[i].count(let) for i, let in enumerate(kmer, overlap[1]//3))
@@ -139,15 +155,18 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, minim
                     if kmer_score == 0:
                         continue
                     
-                    if best_kmer is None or kmer_score > best_score:
-                        best_frame = frame
-                        best_qstart = (i * 3) + frame
-                        best_qend = best_qstart + (kmer_size * 3)
-                        best_kmer = kmer
-                        best_score = kmer_score
+                    best_qstart = (i * 3) + frame
+                    best_qend = best_qstart + (kmer_size * 3)
+                    results.append((kmer, kmer_score, best_qstart, best_qend, frame))
+            
+            log_output.append("")
                        
-                       
-            if best_kmer:
+            if results:
+                best_kmer, best_score, best_qstart, best_qend, best_frame = max(results, key=lambda x: x[1])
+                target_score = best_score * 0.9
+                
+                other = [f"{res[0]} - {res[1]}" for res in results if res[1] >= target_score and res[0] != best_kmer]
+                
                 ids_in_qstart = [id for id, range in id_to_coords.items() if best_qstart >= range[0] and best_qstart <= range[1] or best_qend >= range[0] and best_qend <= range[1]]
                 new_header_fields = node_a.header.split("|")
                 final_ids = []
@@ -160,6 +179,12 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, minim
                         final_ids.append(f"{id}_{count}")
                         
                     id_count[id] += 1
+                    
+                log_output.append("Best match: {} - Score: {} - Other possible matches within 10% of score: {}".format(best_kmer, best_score, len(other)))
+                if other:
+                    log_output.append("Other matches:")
+                    for o in other:
+                        log_output.append(o)
                     
                 this_id = "&&".join(final_ids)
                 new_header_fields[3] = f"NODE_{this_id}"
@@ -176,8 +201,12 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, minim
                 
                 new_aa.append((new_header, new_aa_sequence))
                 new_nt.append((new_header, new_nt_seq))
-                new_headers.append(new_header)
-    return new_nt, new_aa, new_headers
+            else:
+                log_output.append("No suitable kmer found")
+            log_output.append("")
+                
+                
+    return new_nt, new_aa
 
 
 def do_genes(genes, input_aa, input_nt, seq_source, out_aa_path, out_nt_path):
@@ -201,10 +230,13 @@ def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path):
         raw_aa.append((header, seq))
         if header.endswith('.'):
             start, end = find_index_pair(seq, "-")
-            for i, bp in enumerate(seq[start:end], start):
-                if bp != "-":
-                    reference_cluster_data.add(i)
-                ref_consensus[i].append(bp)
+            for i, bp in enumerate(seq):
+                if i >= start and i <= end:
+                    if bp != "-":
+                        reference_cluster_data.add(i)
+                    ref_consensus[i].append(bp)
+                else:
+                    ref_consensus[i].append(" ")
             continue
 
         frame = int(header.split("|")[4])
@@ -219,6 +251,8 @@ def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path):
     for node in aa_nodes:
         node.nt_sequence = nt_sequences[node.header]
         
+    log_output = []
+        
     cluster_sets = [None]
     ids = []
     for node in aa_nodes:
@@ -232,7 +266,7 @@ def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path):
     if clusters:
         cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
        
-    new_nt, new_aa, new_headers = reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq)
+    new_nt, new_aa = reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output)
     
     aa_seqs = raw_aa+new_aa
     
@@ -249,7 +283,7 @@ def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path):
     writeFasta(path.join(out_aa_path, gene), aa_references+aa_candidates)
     writeFasta(path.join(out_nt_path, gene.replace(".aa.", ".nt.")), nt_seqs)
                     
-    return new_headers    
+    return log_output    
                         
 def do_folder(folder, args):
     print(folder)
