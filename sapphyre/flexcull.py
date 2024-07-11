@@ -886,12 +886,12 @@ def trim_large_gaps(
                                 left_of_trim_data_columns,
                                 left_side_ref_data_columns,
                             )
-                            < 0.55
+                            < 0.75
                             and get_data_difference(
                                 right_of_trim_data_columns,
                                 right_side_ref_data_columns,
                             )
-                            < 0.55
+                            < 0.75
                         ):
                             keep_left = len(left_after) - left_after.count(
                                 "-",
