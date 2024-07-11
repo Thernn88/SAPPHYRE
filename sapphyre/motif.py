@@ -65,7 +65,7 @@ def generate_sequence(ids, frame, head_to_seq):
     return id_to_coords, prev_og
   
             
-def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, minimum_gap = 30, max_gap = 180, ref_gap_thresh = 0.75):
+def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, minimum_gap = 30, max_gap = 180, ref_gap_thresh = 0.75, majority_gaps = 0.5):
     new_aa = []
     new_nt = []
     id_count = Counter()
@@ -98,15 +98,30 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             ids = set(map(int_first_id, node_a.header.split("|")[3].replace("NODE_", "").split("&&"))).union(set(map(int_first_id, node_b.header.split("|")[3].replace("NODE_", "").split("&&"))))
             genomic_range = list(range(min(ids), max(ids) + 1))
             
-            is_ref_gap = False
+            gap_start = overlap[1]
+            gap_end = overlap[0]
             
-            for y in range(overlap[1]//3, overlap[0]//3):
-                if ref_consensus[y].count("-") / len(ref_consensus[y]) >= ref_gap_thresh:
-                    is_ref_gap = True
+            for y in range(gap_start//3, gap_end//3):
+                if ref_consensus[y].count("-") / len(ref_consensus[y]) < ref_gap_thresh:
+                    gap_start = y * 3
                     break
             
-            if is_ref_gap:
-                log_output.append("Reference gap found in consensus\n")
+            for y in range((gap_end//3)-1, (gap_start//3)-1, -1):
+                if ref_consensus[y].count("-") / len(ref_consensus[y]) < ref_gap_thresh:
+                    gap_end = y * 3
+                    break
+            
+            if gap_end - gap_start < minimum_gap:
+                log_output.append("Gap too small after reference gap check")
+                continue
+            
+            ref_gaps = 0
+            for y in range(gap_start//3, gap_end//3):
+                if ref_consensus[y].count("-") / len(ref_consensus[y]) >= ref_gap_thresh:
+                    ref_gaps += 1
+                    
+            if ref_gaps / (gap_end//3 - gap_start//3) >= majority_gaps:
+                log_output.append("Too many gaps in reference")
                 continue
 
             id_to_coords, genomic_sequence = generate_sequence(genomic_range, node_a.frame, head_to_seq)
@@ -148,7 +163,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             log_output.append("Reference seqs:")
             for x in range(len(ref_consensus[0])):
                 this_line = ""
-                for y in range(overlap[1]//3, overlap[0]//3):
+                for y in range(gap_start//3, gap_end//3):
                     this_line += ref_consensus[y][x]
                 log_output.append(this_line)
             log_output.append("")
@@ -164,7 +179,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                 log_output.append(protein_seq)
                 for i in range(0, len(protein_seq) - kmer_size):
                     kmer = protein_seq[i: i + kmer_size]
-                    kmer_score = sum(ref_consensus[i].count(let) for i, let in enumerate(kmer, overlap[1]//3))
+                    kmer_score = sum(ref_consensus[i].count(let) for i, let in enumerate(kmer, gap_start//3))
                     
                     if kmer_score == 0:
                         continue
@@ -208,11 +223,11 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                 new_header_fields[5] = "1"
                 new_header = "|".join(new_header_fields)
                 
-                new_aa_sequence = ("-" * (overlap[1]//3)) + best_kmer
+                new_aa_sequence = ("-" * (gap_start//3)) + best_kmer
                 new_aa_sequence += ("-" * (len(node_a.sequence) - len(new_aa_sequence)))
                 
                 nt_seq = splice_region[best_qstart: best_qend]
-                new_nt_seq = "-" * overlap[1] + nt_seq 
+                new_nt_seq = "-" * gap_start + nt_seq 
                 new_nt_seq += "-" * (len(node_a.nt_sequence) - len(nt_seq))
                 
                 new_aa.append((new_header, new_aa_sequence))
