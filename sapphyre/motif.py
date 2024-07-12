@@ -67,7 +67,7 @@ def generate_sequence(ids, frame, head_to_seq):
     return id_to_coords, prev_og
   
             
-def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, minimum_gap = 30, max_gap = 180, ref_gap_thresh = 0.5, min_consec_char = 5):
+def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, ref_count, minimum_gap = 30, max_gap = 180, ref_gap_thresh = 0.5, min_consec_char = 5):
     new_aa = []
     new_nt = []
     id_count = Counter()
@@ -116,7 +116,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                     consecutive_non_gap += 1
                     
             log_output.append("Reference seqs:")
-            for x in range(len(ref_consensus[0])):
+            for x in range(ref_count):
                 this_line = ""
                 for y in range(gap_start//3, gap_end//3):
                     this_line += ref_consensus[y][x]
@@ -224,7 +224,9 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                         
                     id_count[id] += 1
                     
-                log_output.append("Best match: {} - Score: {} - Other possible matches within 10% of score: {}".format(best_kmer, best_score, len(other)))
+                universal_score = (best_score / len(best_kmer)) / ref_count
+                    
+                log_output.append("Best match: {} - Score: {} - Global Score: {} - Other possible matches within 10% of score: {}".format(best_kmer, best_score, universal_score, len(other)))
                 if other:
                     log_output.append("Other matches:")
                     for o in other:
@@ -272,10 +274,12 @@ def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path):
     
     raw_aa = []
     raw_nt = []
+    ref_count = 0
     
     for header, seq in parseFasta(path.join(input_aa, gene)):
         raw_aa.append((header, seq))
         if header.endswith('.'):
+            ref_count += 1
             start, end = find_index_pair(seq, "-")
             for i, bp in enumerate(seq):
                 if i >= start and i <= end:
@@ -313,7 +317,7 @@ def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path):
     if clusters:
         cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
        
-    new_nt, new_aa = reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output)
+    new_nt, new_aa = reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, ref_count)
     
     aa_seqs = raw_aa+new_aa
     
