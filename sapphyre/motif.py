@@ -178,6 +178,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                        
             if results:
                 best_kmer, best_score, best_qstart, best_qend, best_frame = max(results, key=lambda x: x[1])
+                best_frame += 1
                 if node_a.frame < 0:
                     best_frame = -best_frame
                 target_score = best_score * 0.9
@@ -205,7 +206,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                     
                 this_id = "&&".join(final_ids)
                 new_header_fields[3] = f"NODE_{this_id}"
-                new_header_fields[4] = str(best_frame+1)
+                new_header_fields[4] = str(best_frame)
                 new_header_fields[5] = "1"
                 new_header = "|".join(new_header_fields)
                 
