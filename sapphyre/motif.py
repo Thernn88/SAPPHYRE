@@ -67,7 +67,7 @@ def generate_sequence(ids, frame, head_to_seq):
     return id_to_coords, prev_og
   
             
-def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, minimum_gap = 30, max_gap = 180, ref_gap_thresh = 0.5, majority_gaps = 0.33):
+def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, minimum_gap = 30, max_gap = 180, ref_gap_thresh = 0.5, min_consec_char = 5):
     new_aa = []
     new_nt = []
     id_count = Counter()
@@ -104,9 +104,32 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             gap_end = overlap[0]
             
             ref_gaps = set()
+            longest_consecutive = None
+            consecutive_non_gap = 0
             for x, y in enumerate(range(gap_start//3, gap_end//3)):
                 if ref_consensus[y].count("-") / len(ref_consensus[y]) >= ref_gap_thresh:
                     ref_gaps.add(x)
+                    if longest_consecutive is None or consecutive_non_gap > longest_consecutive:
+                        longest_consecutive = consecutive_non_gap
+                    consecutive_non_gap = 0
+                else:
+                    consecutive_non_gap += 1
+                    
+            log_output.append("Reference seqs:")
+            for x in range(len(ref_consensus[0])):
+                this_line = ""
+                for y in range(gap_start//3, gap_end//3):
+                    this_line += ref_consensus[y][x]
+                this_line = "".join(let for i, let in enumerate(this_line) if i not in ref_gaps)
+                log_output.append(this_line)
+            log_output.append("")
+                    
+            if longest_consecutive is None or consecutive_non_gap > longest_consecutive:
+                longest_consecutive = consecutive_non_gap
+                
+            if longest_consecutive is None or longest_consecutive < min_consec_char:
+                log_output.append("No non-gap region with 5 char\n")
+                continue
                     
             # if len(ref_gaps) / (gap_end//3 - gap_start//3) >= majority_gaps:
             #     log_output.append("Too many gaps in reference")
@@ -155,14 +178,6 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             kmer_size = (abs(amount) // 3) - len(ref_gaps)
             # input(kmer_size)
             
-            log_output.append("Reference seqs:")
-            for x in range(len(ref_consensus[0])):
-                this_line = ""
-                for y in range(gap_start//3, gap_end//3):
-                    this_line += ref_consensus[y][x]
-                this_line = "".join(let for i, let in enumerate(this_line) if i not in ref_gaps)
-                log_output.append(this_line)
-            log_output.append("")
             log_output.append("Raw splice region:")
             log_output.append(splice_region)
             log_output.append("")
