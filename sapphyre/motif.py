@@ -67,7 +67,7 @@ def generate_sequence(ids, frame, head_to_seq):
     return id_to_coords, prev_og
   
             
-def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, minimum_gap = 30, max_gap = 180, ref_gap_thresh = 0.75, majority_gaps = 0.33):
+def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, minimum_gap = 30, max_gap = 180, ref_gap_thresh = 0.5, majority_gaps = 0.33):
     new_aa = []
     new_nt = []
     id_count = Counter()
@@ -103,14 +103,23 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             gap_start = overlap[1]
             gap_end = overlap[0]
             
-            ref_gaps = 0
-            for y in range(gap_start//3, gap_end//3):
+            ref_gaps = []
+            for x, y in enumerate(range(gap_start//3, gap_end//3)):
                 if ref_consensus[y].count("-") / len(ref_consensus[y]) >= ref_gap_thresh:
-                    ref_gaps += 1
+                    ref_gaps.append(x)
                     
-            if ref_gaps / (gap_end//3 - gap_start//3) >= majority_gaps:
-                log_output.append("Too many gaps in reference")
-                continue
+            # if len(ref_gaps) / (gap_end//3 - gap_start//3) >= majority_gaps:
+            #     log_output.append("Too many gaps in reference")
+            #     continue
+            # if "NODE_521670&&521671" in node_a.header:
+            #     print(ref_gaps)
+                
+            # x = ["N"] * (gap_end//3 - gap_start//3)
+            # for gap in ref_gaps:
+            #     x[gap] = "-"
+                
+            # if "NODE_521670&&521671" in node_a.header:
+            #     print("".join(x))
 
             id_to_coords, genomic_sequence = generate_sequence(genomic_range, node_a.frame, head_to_seq)
                 
@@ -143,7 +152,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                 log_output.append("Splice region empty\n")
                 continue
              
-            kmer_size = abs(amount) // 3
+            kmer_size = (abs(amount) // 3) - len(ref_gaps)
             # input(kmer_size)
             
             log_output.append("Reference seqs:")
@@ -165,6 +174,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                 log_output.append(protein_seq)
                 for i in range(0, len(protein_seq) - kmer_size):
                     kmer = protein_seq[i: i + kmer_size]
+                    kmer = insert_gaps(kmer, ref_gaps, 0)
                     kmer_score = sum(ref_consensus[i].count(let) for i, let in enumerate(kmer, gap_start//3))
                     
                     if kmer_score == 0:
