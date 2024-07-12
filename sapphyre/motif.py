@@ -67,7 +67,7 @@ def generate_sequence(ids, frame, head_to_seq):
     return id_to_coords, prev_og
   
             
-def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, minimum_gap = 30, max_gap = 180, ref_gap_thresh = 0.75, majority_gaps = 0.5):
+def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, minimum_gap = 30, max_gap = 180, ref_gap_thresh = 0.75, majority_gaps = 0.33):
     new_aa = []
     new_nt = []
     id_count = Counter()
@@ -102,20 +102,6 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             
             gap_start = overlap[1]
             gap_end = overlap[0]
-            
-            for y in range(gap_start//3, gap_end//3):
-                if ref_consensus[y].count("-") / len(ref_consensus[y]) < ref_gap_thresh:
-                    gap_start = y * 3
-                    break
-            
-            for y in range((gap_end//3)-1, (gap_start//3)-1, -1):
-                if ref_consensus[y].count("-") / len(ref_consensus[y]) < ref_gap_thresh:
-                    gap_end = y * 3
-                    break
-            
-            if gap_end - gap_start < minimum_gap:
-                log_output.append("Gap too small after reference gap check")
-                continue
             
             ref_gaps = 0
             for y in range(gap_start//3, gap_end//3):
