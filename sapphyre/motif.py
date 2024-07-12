@@ -103,10 +103,10 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             gap_start = overlap[1]
             gap_end = overlap[0]
             
-            ref_gaps = []
+            ref_gaps = set()
             for x, y in enumerate(range(gap_start//3, gap_end//3)):
                 if ref_consensus[y].count("-") / len(ref_consensus[y]) >= ref_gap_thresh:
-                    ref_gaps.append(x)
+                    ref_gaps.add(x)
                     
             # if len(ref_gaps) / (gap_end//3 - gap_start//3) >= majority_gaps:
             #     log_output.append("Too many gaps in reference")
@@ -160,6 +160,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                 this_line = ""
                 for y in range(gap_start//3, gap_end//3):
                     this_line += ref_consensus[y][x]
+                this_line = "".join(let for i, let in enumerate(this_line) if i not in ref_gaps)
                 log_output.append(this_line)
             log_output.append("")
             log_output.append("Raw splice region:")
@@ -174,7 +175,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                 log_output.append(protein_seq)
                 for i in range(0, len(protein_seq) - kmer_size):
                     kmer = protein_seq[i: i + kmer_size]
-                    kmer = insert_gaps(kmer, ref_gaps, 0)
+                    # kmer = insert_gaps(kmer, ref_gaps, 0)
                     kmer_score = sum(ref_consensus[i].count(let) for i, let in enumerate(kmer, gap_start//3))
                     
                     if kmer_score == 0:
@@ -219,6 +220,8 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                 new_header_fields[4] = str(best_frame)
                 new_header_fields[5] = "1"
                 new_header = "|".join(new_header_fields)
+                
+                best_kmer = insert_gaps(best_kmer, sorted(list(ref_gaps)), 0)
                 
                 new_aa_sequence = ("-" * (gap_start//3)) + best_kmer
                 new_aa_sequence += ("-" * (len(node_a.sequence) - len(new_aa_sequence)))
