@@ -191,10 +191,16 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                 for i in range(0, len(protein_seq) - kmer_size):
                     kmer = protein_seq[i: i + kmer_size]
                     # kmer = insert_gaps(kmer, ref_gaps, 0)
-                    kmer_score = sum(ref_consensus[i].count(let) for i, let in enumerate(kmer, gap_start//3))
-                    
-                    if kmer_score == 0:
-                        continue
+                    ref_coord = gap_start//3
+                    kmer_coord = 0
+                    kmer_score = 0
+                    for let in kmer:
+                        while kmer_coord in ref_gaps:
+                            ref_coord += 1
+                            kmer_coord += 1
+                        kmer_score += ref_consensus[ref_coord].count(let)
+                        ref_coord += 1
+                        kmer_coord += 1
                     
                     best_qstart = (i * 3) + frame
                     best_qend = best_qstart + (kmer_size * 3)
