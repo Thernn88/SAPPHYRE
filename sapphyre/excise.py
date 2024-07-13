@@ -1228,7 +1228,7 @@ def log_excised_consensus(
         frame = int(header.split("|")[4])
         aa_nodes.append(NODE(header, frame, seq, None, *find_index_pair(seq, "-"), []))
 
-    ref_gap_percent = 0.75
+    ref_gap_percent = 0.7
     for i, lets in ref_consensus.items():
         if lets.count("-") / len(lets) > ref_gap_percent:
             ref_gaps.add(i)
