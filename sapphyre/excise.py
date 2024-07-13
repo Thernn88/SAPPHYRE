@@ -645,12 +645,60 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
                 continue
         
         else:
-            if "-" in right_codon and right_codon.count("-") != 3:
-                continue
-            if "-" in left_codon and left_codon.count("-") != 3:
-                continue 
-                
             orphan_codon = None
+            right_incomplete = "-" in right_codon and right_codon.count("-") != 3
+            right_has_ref_gap = right_end_codon // 3 in ref_gaps
+                    
+            left_incomplete = "-" in left_codon and left_codon.count("-") != 3
+            left_has_ref_gap = left_last_codon // 3 in ref_gaps
+            
+            # Has incomplete and either right or left is in the ref gap but not both
+            if (right_incomplete or left_incomplete) and (right_has_ref_gap or left_has_ref_gap) and (right_has_ref_gap != left_has_ref_gap):
+                if right_has_ref_gap:
+                    while right_end_codon // 3 in ref_gaps:
+                        for i in range(right_end_codon, right_end_codon + 3):
+                            node_gap_insertions.append(i)
+                            node_seq.insert(i, "-")
+                            node_seq.pop(0)
+                        right_end_codon += 3
+                elif left_has_ref_gap:
+                    # Extend left by ref gap and see if it meets the right
+                    while left_last_codon // 3 in ref_gaps:
+                        for i in range(left_last_codon, left_last_codon + 3):
+                            prev_gap_insertions.append(i)
+                            prev_nt_seq.insert(i, "-")
+                            prev_nt_seq.pop(-1)
+                        left_last_codon += 3
+                            
+                node_nt_start, node_nt_end = find_index_pair("".join(node_seq), "-")
+                length = node_nt_end - node_nt_start
+                right_end_codon = node_nt_start - (3 - (length % 3))
+                
+                prev_nt_start, prev_nt_end = find_index_pair("".join(prev_nt_seq), "-")
+                length = prev_nt_end - prev_nt_start
+                left_last_codon = prev_nt_start + length - (length % 3)
+                
+                right_codon = node_seq[right_end_codon: right_end_codon + 3]
+                left_codon = prev_nt_seq[left_last_codon: left_last_codon + 3]
+                
+                if right_end_codon == left_last_codon:
+                    orphan_codon = []
+                    for i in range(3):
+                        if left_codon[i] == "-":
+                            orphan_codon.append(right_codon[i])
+                        else:
+                            orphan_codon.append(left_codon[i])
+                    joined = "".join(orphan_codon)
+                    if joined not in DNA_CODONS:
+                        this_score += FRANKENSTEIN_PENALTY
+                    elif DNA_CODONS[joined] == "*":
+                        continue
+                else:
+                    continue
+                
+            elif right_incomplete or left_incomplete and not (right_has_ref_gap or left_has_ref_gap):
+                continue
+                
 
         distance = node_nt_start - prev_nt_end
         if not (0 <= distance <= 2):
