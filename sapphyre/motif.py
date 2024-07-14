@@ -95,8 +95,6 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             if abs(amount) < minimum_gap:
                 continue
             
-            log_output.append("Gap between {} and {} of size {}".format(node_a.header, node_b.header, abs(amount)))
-            
             ids = set(map(int_first_id, node_a.header.split("|")[3].replace("NODE_", "").split("&&"))).union(set(map(int_first_id, node_b.header.split("|")[3].replace("NODE_", "").split("&&"))))
             genomic_range = list(range(min(ids), max(ids) + 1))
             
@@ -115,21 +113,34 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                 else:
                     consecutive_non_gap += 1
                     
-            log_output.append("Reference seqs:")
-            for x in range(ref_count):
-                this_line = ""
-                for y in range(gap_start//3, gap_end//3):
-                    this_line += ref_consensus[y][x]
-                this_line = "".join(let for i, let in enumerate(this_line) if i not in ref_gaps)
-                log_output.append(this_line)
-            log_output.append("")
-                    
             if longest_consecutive is None or consecutive_non_gap > longest_consecutive:
                 longest_consecutive = consecutive_non_gap
                 
             if longest_consecutive is None or longest_consecutive < min_consec_char:
-                log_output.append("No non-gap region with 5 char\n")
+                # log_output.append("No non-gap region with 5 char\n")
                 continue
+            
+            log_output.append("Gap between {} and {} of size {}".format(node_a.header, node_b.header, abs(amount)))
+                    
+            log_output.append("Reference seqs:")
+            ref_seqs = []
+            for y in range(ref_count):
+                this_seq = "".join(ref_consensus[x][y] for i, x in enumerate(range(gap_start//3, gap_end//3)) if i not in ref_gaps)
+                
+                this_seq_coverage = 1 - ((this_seq.count("-") + this_seq.count(" ")) / len(this_seq))
+                ref_seqs.append((this_seq, this_seq_coverage))
+                
+                
+            target_coverage = 0.8 * max(ref_seq[1] for ref_seq in ref_seqs)
+            ref_indices = [i for i, ref_seq in enumerate(ref_seqs) if ref_seq[1] >= target_coverage]
+            ref_seqs = [seq for seq, cov in ref_seqs if cov >= target_coverage]
+            
+            this_consensus = {}
+            for x in range(gap_start//3, gap_end//3):
+                this_consensus[x] = [ref_consensus[x][y] for y in ref_indices]
+            
+            log_output.append("\n".join(ref_seqs))
+            log_output.append("")
                     
             # if len(ref_gaps) / (gap_end//3 - gap_start//3) >= majority_gaps:
             #     log_output.append("Too many gaps in reference")
@@ -198,7 +209,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                         while kmer_coord in ref_gaps:
                             ref_coord += 1
                             kmer_coord += 1
-                        kmer_score += ref_consensus[ref_coord].count(let)
+                        kmer_score += this_consensus[ref_coord].count(let)
                         ref_coord += 1
                         kmer_coord += 1
                     
