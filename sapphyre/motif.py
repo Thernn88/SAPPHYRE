@@ -36,11 +36,14 @@ class NODE(Struct):
     start: int
     end: int
 
-def insert_gaps(input_string, positions, offset):
+def insert_gaps(input_string, positions, offset, is_nt = False):
     input_string = list(input_string)
     
     for coord in positions:
-        input_string.insert(offset + coord, "-")
+        if is_nt:
+            input_string.insert(offset + (coord*3), "---")
+        else:
+            input_string.insert(offset + coord, "-")
 
     return "".join(input_string)
   
@@ -98,15 +101,17 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             ids = set(map(int_first_id, node_a.header.split("|")[3].replace("NODE_", "").split("&&"))).union(set(map(int_first_id, node_b.header.split("|")[3].replace("NODE_", "").split("&&"))))
             genomic_range = list(range(min(ids), max(ids) + 1))
             
-            gap_start = overlap[1]
-            gap_end = overlap[0]
+            gap_start = overlap[1] // 3
+            gap_end = overlap[0] // 3
             
             ref_gaps = set()
+            insert_at = []
             longest_consecutive = None
             consecutive_non_gap = 0
-            for x, y in enumerate(range(gap_start//3, gap_end//3)):
-                if ref_consensus[y].count("-") / len(ref_consensus[y]) >= ref_gap_thresh:
+            for i, x in enumerate(range(gap_start, gap_end)):
+                if ref_consensus[x].count("-") / len(ref_consensus[x]) >= ref_gap_thresh:
                     ref_gaps.add(x)
+                    insert_at.append(i)
                     if longest_consecutive is None or consecutive_non_gap > longest_consecutive:
                         longest_consecutive = consecutive_non_gap
                     consecutive_non_gap = 0
@@ -125,7 +130,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             log_output.append("Reference seqs:")
             ref_seqs = []
             for y in range(ref_count):
-                this_seq = "".join(ref_consensus[x][y] for i, x in enumerate(range(gap_start//3, gap_end//3)) if i not in ref_gaps)
+                this_seq = "".join(ref_consensus[x][y] for x in range(gap_start, gap_end) if x not in ref_gaps)
                 
                 this_seq_coverage = 1 - ((this_seq.count("-") + this_seq.count(" ")) / len(this_seq))
                 ref_seqs.append((this_seq, this_seq_coverage))
@@ -136,19 +141,21 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             ref_seqs = [seq for seq, cov in ref_seqs if cov >= target_coverage]
             
             this_consensus = {}
-            for x in range(gap_start//3, gap_end//3):
+            for x in range(gap_start, gap_end):
+                if x in ref_gaps:
+                    continue
                 this_consensus[x] = [ref_consensus[x][y] for y in ref_indices if ref_consensus[x][y] != " " and ref_consensus[x][y] != "-"]
             
             log_output.append("\n".join(ref_seqs))
             log_output.append("")
                     
-            # if len(ref_gaps) / (gap_end//3 - gap_start//3) >= majority_gaps:
+            # if len(ref_gaps) / (gap_end - gap_start) >= majority_gaps:
             #     log_output.append("Too many gaps in reference")
             #     continue
             # if "NODE_521670&&521671" in node_a.header:
             #     print(ref_gaps)
                 
-            # x = ["N"] * (gap_end//3 - gap_start//3)
+            # x = ["N"] * (gap_end - gap_start)
             # for gap in ref_gaps:
             #     x[gap] = "-"
                 
@@ -201,48 +208,35 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             for i, cons in this_consensus.items():
                 all_posibilities.update(cons)
                 
-            rows = [""] * (len(all_posibilities) + 1)
-            for rangei, x in enumerate(range(gap_start//3, gap_end//3)):
-                
-                if rangei == 0:
-                    rows[0] += "N\t"
-                    for i, let in enumerate(all_posibilities):
-                        rows[i+1] += f"{let}\t"
+            rows = [""] * (len(all_posibilities) + 1)  
+            rows[0] += "N\t"
+            for i, let in enumerate(all_posibilities):
+                rows[i+1] += f"{let}\t"
+            for x in range(gap_start, gap_end):
+                if x in ref_gaps:
                     continue
-                        
-                rows[0] += str(x) + "\t"
-                        
+                rows[0] += str(x) + "\t"   
                 for i, let in enumerate(all_posibilities):
                     rows[i+1] += f"{this_consensus[x].count(let)}\t"
-                  
+                    
+            ref_cols = [x for x in range(gap_start, gap_end) if x not in ref_gaps]
             
             for frame in range(3):
                 protein_seq = str(Seq(splice_region[frame:]).translate())
                 log_output.append(protein_seq)
-                for this_size in range(kmer_size - 3, kmer_size + 1):
-                    for i in range(0, len(protein_seq) - this_size):
-                        kmer = protein_seq[i: i + this_size]
-                        # kmer = insert_gaps(kmer, ref_gaps, 0)
-                        ref_coord = gap_start//3
-                        kmer_coord = 0
-                        kmer_score = 0
-                        for let in kmer:
-                            while kmer_coord in ref_gaps:
-                                ref_coord += 1
-                                kmer_coord += 1
-                            
-                            matches = this_consensus[ref_coord].count(let)
-                            if matches == 0:
-                                kmer_score -= 10
-                            kmer_score += matches
-                            ref_coord += 1
-                            kmer_coord += 1
-                        
-                        best_qstart = (i * 3) + frame
-                        best_qend = best_qstart + (kmer_size * 3)
-                        if kmer_score < 0:
-                            continue
-                        results.append((kmer, kmer_score, best_qstart, best_qend, frame))
+                for i in range(0, len(protein_seq) - kmer_size):
+                    kmer = protein_seq[i: i + kmer_size]
+                    # kmer = insert_gaps(kmer, ref_gaps, 0)
+                    
+                    kmer_score = 0
+                    for kmer_i, x in enumerate(ref_cols):
+                        kmer_score += this_consensus[x].count(kmer[kmer_i])
+                    
+                    best_qstart = (i * 3) + frame
+                    best_qend = best_qstart + (kmer_size * 3)
+                    if kmer_score < 0:
+                        continue
+                    results.append((kmer, kmer_score, best_qstart, best_qend, frame))
             
             log_output.append("")
                        
@@ -251,7 +245,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                 best_frame += 1
                 if node_a.frame < 0:
                     best_frame = -best_frame
-                target_score = best_score * 0.9
+                target_score = best_score * 0.8
                 
                 other = [f"{res[0]} - {res[1]}" for res in results if res[1] >= target_score and res[0] != best_kmer]
                 
@@ -270,7 +264,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                     
                 universal_score = (best_score / len(best_kmer)) / ref_count
 
-                log_output.append("Best match: {} - Score: {} - Global Score: {} - Other possible matches within 10% of score: {}".format(best_kmer, best_score, universal_score, len(other)))
+                log_output.append("Best match: {} - Score: {} - Global Score: {} - Other possible matches within 20% of score: {}".format(best_kmer, best_score, universal_score, len(other)))
                 log_output.append("\n".join(rows))
                 if other:
                     log_output.append("Other matches:")
@@ -283,12 +277,13 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                 new_header_fields[5] = "1"
                 new_header = "|".join(new_header_fields)
                 
-                best_kmer = insert_gaps(best_kmer, sorted(list(ref_gaps)), 0)
+                best_kmer = insert_gaps(best_kmer, insert_at, 0)
                 
-                new_aa_sequence = ("-" * (gap_start//3)) + best_kmer
+                new_aa_sequence = ("-" * (gap_start)) + best_kmer
                 new_aa_sequence += ("-" * (len(node_a.sequence) - len(new_aa_sequence)))
                 
                 nt_seq = splice_region[best_qstart: best_qend]
+                nt_seq = insert_gaps(nt_seq, insert_at, 0, True)
                 new_nt_seq = "-" * gap_start + nt_seq 
                 new_nt_seq += "-" * (len(node_a.nt_sequence) - len(nt_seq))
                 
