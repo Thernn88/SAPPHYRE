@@ -137,7 +137,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             
             this_consensus = {}
             for x in range(gap_start//3, gap_end//3):
-                this_consensus[x] = [ref_consensus[x][y] for y in ref_indices]
+                this_consensus[x] = [ref_consensus[x][y] for y in ref_indices if ref_consensus[x][y] != " " and ref_consensus[x][y] != "-"]
             
             log_output.append("\n".join(ref_seqs))
             log_output.append("")
@@ -196,6 +196,26 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             best_kmer = None
             best_score = None
             results = []
+            
+            all_posibilities = set()
+            for i, cons in this_consensus.items():
+                all_posibilities.update(cons)
+                
+            rows = [""] * (len(all_posibilities) + 1)
+            for rangei, x in enumerate(range(gap_start//3, gap_end//3)):
+                
+                if rangei == 0:
+                    rows[0] += "N\t"
+                    for i, let in enumerate(all_posibilities):
+                        rows[i+1] += f"{let}\t"
+                    continue
+                        
+                rows[0] += str(x) + "\t"
+                        
+                for i, let in enumerate(all_posibilities):
+                    rows[i+1] += f"{this_consensus[x].count(let)}\t"
+                  
+            
             for frame in range(3):
                 protein_seq = str(Seq(splice_region[frame:]).translate())
                 log_output.append(protein_seq)
@@ -209,7 +229,9 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                         while kmer_coord in ref_gaps:
                             ref_coord += 1
                             kmer_coord += 1
-                        kmer_score += this_consensus[ref_coord].count(let)
+                        
+                        matches = this_consensus[ref_coord].count(let)
+                        kmer_score += matches
                         ref_coord += 1
                         kmer_coord += 1
                     
@@ -242,8 +264,9 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                     id_count[id] += 1
                     
                 universal_score = (best_score / len(best_kmer)) / ref_count
-                    
+
                 log_output.append("Best match: {} - Score: {} - Global Score: {} - Other possible matches within 10% of score: {}".format(best_kmer, best_score, universal_score, len(other)))
+                log_output.append("\n".join(rows))
                 if other:
                     log_output.append("Other matches:")
                     for o in other:
