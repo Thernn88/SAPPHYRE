@@ -219,25 +219,30 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             for frame in range(3):
                 protein_seq = str(Seq(splice_region[frame:]).translate())
                 log_output.append(protein_seq)
-                for i in range(0, len(protein_seq) - kmer_size):
-                    kmer = protein_seq[i: i + kmer_size]
-                    # kmer = insert_gaps(kmer, ref_gaps, 0)
-                    ref_coord = gap_start//3
-                    kmer_coord = 0
-                    kmer_score = 0
-                    for let in kmer:
-                        while kmer_coord in ref_gaps:
+                for this_size in range(kmer_size - 3, kmer_size + 1):
+                    for i in range(0, len(protein_seq) - this_size):
+                        kmer = protein_seq[i: i + this_size]
+                        # kmer = insert_gaps(kmer, ref_gaps, 0)
+                        ref_coord = gap_start//3
+                        kmer_coord = 0
+                        kmer_score = 0
+                        for let in kmer:
+                            while kmer_coord in ref_gaps:
+                                ref_coord += 1
+                                kmer_coord += 1
+                            
+                            matches = this_consensus[ref_coord].count(let)
+                            if matches == 0:
+                                kmer_score -= 10
+                            kmer_score += matches
                             ref_coord += 1
                             kmer_coord += 1
                         
-                        matches = this_consensus[ref_coord].count(let)
-                        kmer_score += matches
-                        ref_coord += 1
-                        kmer_coord += 1
-                    
-                    best_qstart = (i * 3) + frame
-                    best_qend = best_qstart + (kmer_size * 3)
-                    results.append((kmer, kmer_score, best_qstart, best_qend, frame))
+                        best_qstart = (i * 3) + frame
+                        best_qend = best_qstart + (kmer_size * 3)
+                        if kmer_score < 0:
+                            continue
+                        results.append((kmer, kmer_score, best_qstart, best_qend, frame))
             
             log_output.append("")
                        
