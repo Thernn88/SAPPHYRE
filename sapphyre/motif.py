@@ -174,13 +174,14 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                 log_output.append("Unable to find genomic coords\n")
                 continue
             
+            
             genomic_sequence = insert_gaps(genomic_sequence, node_a_internal_gap, node_a_og_start)
             genomic_sequence = insert_gaps(genomic_sequence, node_b_internal_gap, node_b_og_start+len(node_a_internal_gap))
 
             end_of_a = node_a_og_start + node_a_len
-            start_of_b = node_b_og_start
+            start_of_b = node_b_og_start + len(node_a_internal_gap)
             
-            splice_region = genomic_sequence[end_of_a: start_of_b + 3]
+            splice_region = genomic_sequence[end_of_a: start_of_b]
             if splice_region == "":
                 log_output.append("Splice region empty\n")
                 continue
