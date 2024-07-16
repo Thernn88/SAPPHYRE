@@ -37,15 +37,20 @@ class NODE(Struct):
     end: int
 
 def insert_gaps(input_string, positions, offset, is_nt = False):
-    input_string = list(input_string)
-    
-    for coord in positions:
-        if is_nt:
-            input_string.insert(offset + (coord*3), "---")
-        else:
+    if is_nt:
+        input_triplets = [input_string[i:i+3] for i in range(0, len(input_string), 3)]
+        
+        for coord in positions:
+            input_triplets.insert(offset + coord, "---")
+            
+        return "".join(input_triplets)
+    else:
+        input_string = list(input_string)
+        
+        for coord in positions:
             input_string.insert(offset + coord, "-")
 
-    return "".join(input_string)
+        return "".join(input_string)
   
 def int_first_id(x):
     return int(x.split("_")[0])
@@ -284,8 +289,8 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                 
                 nt_seq = splice_region[best_qstart: best_qend]
                 nt_seq = insert_gaps(nt_seq, insert_at, 0, True)
-                new_nt_seq = "-" * gap_start + nt_seq 
-                new_nt_seq += "-" * (len(node_a.nt_sequence) - len(nt_seq))
+                new_nt_seq = "-" * (gap_start * 3) + nt_seq 
+                new_nt_seq += "-" * (len(node_a.nt_sequence) - len(new_nt_seq))
                 
                 new_aa.append((new_header, new_aa_sequence))
                 new_nt.append((new_header, new_nt_seq))
