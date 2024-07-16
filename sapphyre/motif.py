@@ -80,6 +80,10 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
     new_nt = []
     id_count = Counter()
     
+    flex = 3
+    max_score = 15
+    stop_penalty = 2
+    
     for node in aa_nodes:
         for id in node_to_ids(node.header.split("|")[3]):
             id_count[id] += 1
@@ -198,7 +202,6 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                 log_output.append("Splice region empty\n")
                 continue
             
-            flex = 3 
             kmer_size = (abs(amount) // 3) - len(ref_gaps) - flex
             # input(kmer_size)
             
@@ -227,6 +230,14 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                     
             ref_cols = [x for x in range(gap_start, gap_end) if x not in ref_gaps]
             
+            highest_possible_score = 0
+
+            for x in range(gap_start, gap_end):
+                if x in ref_gaps:
+                    continue
+                max_count = max(this_consensus[x].count(let) for let in all_posibilities)
+                highest_possible_score += min(max_count, max_score)
+            
             for frame in range(3):
                 protein_seq = str(Seq(splice_region[frame:]).translate())
                 log_output.append(protein_seq)
@@ -235,7 +246,9 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                     for offset in range(0, flex):
                         kmer_score = 0
                         for kmer_i in range(kmer_size):
-                            kmer_score += this_consensus[ref_cols[kmer_i + offset]].count(kmer[kmer_i])
+                            kmer_score += min(this_consensus[ref_cols[kmer_i + offset]].count(kmer[kmer_i]), max_score)
+                        
+                        kmer_score -= (stop_penalty * kmer.count("*"))
                         
                         best_qstart = (i * 3) + frame
                         best_qend = best_qstart + (kmer_size * 3)
@@ -267,31 +280,33 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                     
                 universal_score = (best_score / len(best_kmer)) / ref_count
 
-                log_output.append("Best match: {} - Score: {} - Global Score: {} - Other possible matches within 20% of score: {}".format(best_kmer, best_score, universal_score, len(other)))
+                log_output.append("Highest possible threshold: {}".format(highest_possible_score/3))
+                log_output.append("Best match: {} - Score: {} - Average Match: {} - Other possible matches within 20% of score: {}".format(best_kmer, best_score, universal_score, len(other)))
                 log_output.append("\n".join(rows))
                 if other:
                     log_output.append("Other matches:")
                     for o in other:
                         log_output.append(o)
                     
-                this_id = "&&".join(final_ids)
-                new_header_fields[3] = f"NODE_{this_id}"
-                new_header_fields[4] = str(best_frame)
-                new_header_fields[5] = "1"
-                new_header = "|".join(new_header_fields)
-                
-                best_kmer = insert_gaps(best_kmer, insert_at, 0)
-                
-                new_aa_sequence = ("-" * (gap_start)) + best_kmer
-                new_aa_sequence += ("-" * (len(node_a.sequence) - len(new_aa_sequence)))
-                
-                nt_seq = splice_region[best_qstart: best_qend]
-                nt_seq = insert_gaps(nt_seq, insert_at, 0, True)
-                new_nt_seq = "-" * (gap_start * 3) + nt_seq 
-                new_nt_seq += "-" * (len(node_a.nt_sequence) - len(new_nt_seq))
-                
-                new_aa.append((new_header, new_aa_sequence))
-                new_nt.append((new_header, new_nt_seq))
+                if best_score >= highest_possible_score // 3:
+                    this_id = "&&".join(final_ids)
+                    new_header_fields[3] = f"NODE_{this_id}"
+                    new_header_fields[4] = str(best_frame)
+                    new_header_fields[5] = "1"
+                    new_header = "|".join(new_header_fields)
+                    
+                    best_kmer = insert_gaps(best_kmer, insert_at, 0)
+                    
+                    new_aa_sequence = ("-" * (gap_start)) + best_kmer
+                    new_aa_sequence += ("-" * (len(node_a.sequence) - len(new_aa_sequence)))
+                    
+                    nt_seq = splice_region[best_qstart: best_qend]
+                    nt_seq = insert_gaps(nt_seq, insert_at, 0, True)
+                    new_nt_seq = "-" * (gap_start * 3) + nt_seq 
+                    new_nt_seq += "-" * (len(node_a.nt_sequence) - len(new_nt_seq))
+                    
+                    new_aa.append((new_header, new_aa_sequence))
+                    new_nt.append((new_header, new_nt_seq))
             else:
                 log_output.append("No suitable kmer found")
             log_output.append("")
