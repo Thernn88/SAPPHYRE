@@ -178,7 +178,7 @@ def scan_kmer(amount, log_output, splice_region, ref_gaps, flex, this_consensus,
         log_output.append(protein_seq)
         for i in range(0, len(protein_seq) - kmer_size):
             kmer = protein_seq[i: i + kmer_size]
-            for offset in range(0, flex):
+            for offset in range(0, flex + 1):
                 kmer_score = 0
                 for kmer_i in range(kmer_size):
                     kmer_score += min(this_consensus[ref_cols[kmer_i + offset]].count(kmer[kmer_i]), max_score)
