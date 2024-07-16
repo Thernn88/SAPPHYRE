@@ -197,8 +197,9 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             if splice_region == "":
                 log_output.append("Splice region empty\n")
                 continue
-             
-            kmer_size = (abs(amount) // 3) - len(ref_gaps)
+            
+            flex = 3 
+            kmer_size = (abs(amount) // 3) - len(ref_gaps) - flex
             # input(kmer_size)
             
             log_output.append("Raw splice region:")
@@ -231,17 +232,14 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                 log_output.append(protein_seq)
                 for i in range(0, len(protein_seq) - kmer_size):
                     kmer = protein_seq[i: i + kmer_size]
-                    # kmer = insert_gaps(kmer, ref_gaps, 0)
-                    
-                    kmer_score = 0
-                    for kmer_i, x in enumerate(ref_cols):
-                        kmer_score += this_consensus[x].count(kmer[kmer_i])
-                    
-                    best_qstart = (i * 3) + frame
-                    best_qend = best_qstart + (kmer_size * 3)
-                    if kmer_score < 0:
-                        continue
-                    results.append((kmer, kmer_score, best_qstart, best_qend, frame))
+                    for offset in range(0, flex):
+                        kmer_score = 0
+                        for kmer_i in range(kmer_size):
+                            kmer_score += this_consensus[ref_cols[kmer_i + offset]].count(kmer[kmer_i])
+                        
+                        best_qstart = (i * 3) + frame
+                        best_qend = best_qstart + (kmer_size * 3)
+                        results.append((kmer, kmer_score, best_qstart, best_qend, frame))
             
             log_output.append("")
                        
