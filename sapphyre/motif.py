@@ -54,7 +54,48 @@ def insert_gaps(input_string, positions, offset, is_nt = False):
   
 def int_first_id(x):
     return int(x.split("_")[0])
-  
+
+def scan_sequence(starting_id, left, frame, head_to_seq):
+    coords = []
+    ids = [starting_id]
+    this_seq = head_to_seq[starting_id]
+    start, end = 0, len(this_seq)
+    coords.append((start, end))
+    
+    i = 0
+    while True:
+        if left:
+            i -= 1
+            
+            if head_to_seq[starting_id + i][-250:] != this_seq[:250]:
+                break
+            
+            this_seq = head_to_seq[starting_id + i][250:] + this_seq
+        else:
+            i += 1
+            
+            if head_to_seq[starting_id + i][:250] != this_seq[-250:]:
+                break
+            
+            this_seq += head_to_seq[starting_id + i][250:]
+            
+        ids.append(starting_id + i)
+        start = end
+        end = len(this_seq)
+        coords.append((start, end))
+        if end >= 15000:
+            break
+        
+    if frame < 0:
+        this_seq = bio_revcomp(this_seq)
+        
+    if left:
+        coords = coords[::-1]
+        
+    id_to_coords = {id: coord for id, coord in zip(ids, coords)}
+    
+    return id_to_coords, this_seq
+
 def generate_sequence(ids, frame, head_to_seq):
     id_to_coords = {}
     
@@ -74,8 +115,85 @@ def generate_sequence(ids, frame, head_to_seq):
         
     return id_to_coords, prev_og
   
+  
+def filter_ref_consensus(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end):
+    log_output.append("Reference seqs:")
+    ref_seqs = []
+    for y in range(ref_count):
+        this_seq = "".join(ref_consensus[x][y] for x in range(gap_start, gap_end) if x not in ref_gaps)
+        
+        this_seq_coverage = 1 - ((this_seq.count("-") + this_seq.count(" ")) / len(this_seq))
+        ref_seqs.append((this_seq, this_seq_coverage))
+        
+        
+    target_coverage = 0.8 * max(ref_seq[1] for ref_seq in ref_seqs)
+    ref_indices = [i for i, ref_seq in enumerate(ref_seqs) if ref_seq[1] >= target_coverage]
+    ref_seqs = [seq for seq, cov in ref_seqs if cov >= target_coverage]
+    
+    this_consensus = {}
+    for x in range(gap_start, gap_end):
+        if x in ref_gaps:
+            continue
+        this_consensus[x] = [ref_consensus[x][y] for y in ref_indices if ref_consensus[x][y] != " " and ref_consensus[x][y] != "-"]
+  
+    return this_consensus, ref_seqs
             
-def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, ref_count, minimum_gap = 30, max_gap = 180, ref_gap_thresh = 0.5, min_consec_char = 5):
+def scan_kmer(amount, log_output, splice_region, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty):
+    kmer_size = (abs(amount) // 3) - len(ref_gaps) - flex
+    # input(kmer_size)
+    
+    log_output.append("Raw splice region:")
+    log_output.append(splice_region)
+    log_output.append("")
+    log_output.append("Translated Splice Sequences:")
+    results = []
+    
+    all_posibilities = set()
+    for i, cons in this_consensus.items():
+        all_posibilities.update(cons)
+        
+    rows = [""] * (len(all_posibilities) + 1)  
+    rows[0] += "N\t"
+    for i, let in enumerate(all_posibilities):
+        rows[i+1] += f"{let}\t"
+    for x in range(gap_start, gap_end):
+        if x in ref_gaps:
+            continue
+        rows[0] += str(x) + "\t"   
+        for i, let in enumerate(all_posibilities):
+            rows[i+1] += f"{this_consensus[x].count(let)}\t"
+            
+    ref_cols = [x for x in range(gap_start, gap_end) if x not in ref_gaps]
+    
+    highest_possible_score = 0
+
+    for x in range(gap_start, gap_end):
+        if x in ref_gaps:
+            continue
+        max_count = max(this_consensus[x].count(let) for let in all_posibilities)
+        highest_possible_score += min(max_count, max_score)
+    
+    for frame in range(3):
+        protein_seq = str(Seq(splice_region[frame:]).translate())
+        log_output.append(protein_seq)
+        for i in range(0, len(protein_seq) - kmer_size):
+            kmer = protein_seq[i: i + kmer_size]
+            for offset in range(0, flex):
+                kmer_score = 0
+                for kmer_i in range(kmer_size):
+                    kmer_score += min(this_consensus[ref_cols[kmer_i + offset]].count(kmer[kmer_i]), max_score)
+                
+                kmer_score -= (stop_penalty * kmer.count("*"))
+                
+                best_qstart = (i * 3) + frame
+                best_qend = best_qstart + (kmer_size * 3)
+                results.append((kmer, kmer_score, best_qstart, best_qend, frame))
+    
+    log_output.append("")
+            
+    return rows, highest_possible_score, results
+            
+def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, ref_count, ref_start, ref_end, minimum_gap = 30, max_gap = 180, ref_gap_thresh = 0.5, min_consec_char = 5):
     new_aa = []
     new_nt = []
     id_count = Counter()
@@ -91,6 +209,223 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
     for cluster_set in cluster_sets:
         aa_subset = [node for node in aa_nodes if (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
         aa_subset.sort(key=lambda x: x.start)
+        
+        first_node = aa_subset[0]
+        
+        gap_start = ref_start
+        gap_end = first_node.start
+        
+        if gap_end - gap_start >= minimum_gap:
+            amount = gap_end - gap_start
+            
+            first_id = list(map(int_first_id, first_node.header.split("|")[3].replace("NODE_", "").split("&&")))[0]
+            ids_to_coords, seq = scan_sequence(first_id, True, first_node.frame, head_to_seq)
+            
+            first_node_kmer = first_node.nt_sequence[first_node.start * 3: first_node.end * 3].replace("-", "")
+            
+            first_node_og_start = seq.find(first_node_kmer)
+            
+            seq = seq[:first_node_og_start]
+            
+            ref_gaps = set()
+            insert_at = []
+            longest_consecutive = None
+            consecutive_non_gap = 0
+            for i, x in enumerate(range(gap_start, gap_end)):
+                if ref_consensus[x].count("-") / len(ref_consensus[x]) >= ref_gap_thresh:
+                    ref_gaps.add(x)
+                    insert_at.append(i)
+                    if longest_consecutive is None or consecutive_non_gap > longest_consecutive:
+                        longest_consecutive = consecutive_non_gap
+                    consecutive_non_gap = 0
+                else:
+                    consecutive_non_gap += 1
+                    
+            if longest_consecutive is None or consecutive_non_gap > longest_consecutive:
+                longest_consecutive = consecutive_non_gap
+                
+            if longest_consecutive is None or longest_consecutive < min_consec_char:
+                # log_output.append("No non-gap region with 5 char\n")
+                pass
+            else:
+            
+                log_output.append("Left leading gap of {} with size {}".format(first_node.header, abs(amount)))
+                
+                this_consensus, ref_seqs = filter_ref_consensus(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end)
+                
+                log_output.append("\n".join(ref_seqs))
+                log_output.append("")
+                
+                rows, highest_possible_score, results = scan_kmer(amount, log_output, seq, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
+                
+                if results:
+                    best_kmer, best_score, best_qstart, best_qend, best_frame = max(results, key=lambda x: x[1])
+                    if len(best_kmer) >= 3:
+                        best_frame += 1
+                        if first_node.frame < 0:
+                            best_frame = -best_frame
+                        target_score = best_score * 0.8
+                        
+                        other = [f"{res[0]} - {res[1]}" for res in results if res[1] >= target_score and res[0] != best_kmer]
+                        
+                        ids_in_qstart = [id for id, range in ids_to_coords.items() if best_qstart >= range[0] and best_qstart <= range[1] or best_qend >= range[0] and best_qend <= range[1]]
+                        new_header_fields = first_node.header.split("|")
+                        final_ids = []
+                        for id in ids_in_qstart:
+                                
+                                count = id_count[id]
+                                if count == 0:
+                                    final_ids.append(str(id))
+                                else:
+                                    final_ids.append(f"{id}_{count}")
+                                    
+                                id_count[id] += 1
+                                
+                        universal_score = (best_score / len(best_kmer)) / ref_count
+                        
+                        log_output.append("Highest possible threshold half: {}".format(highest_possible_score/12))
+                        log_output.append("Best match: {} - Score: {} - Average Match: {} - Other possible matches within 20% of score: {}".format(best_kmer, best_score, universal_score, len(other)))
+                        log_output.append("\n".join(rows))
+                        if other:
+                            log_output.append("Other matches:")
+                            for o in other:
+                                log_output.append(o)
+                                
+                        if best_score >= highest_possible_score // 12:
+                            this_id = "&&".join(final_ids)
+                            new_header_fields[3] = f"NODE_{this_id}"
+                            new_header_fields[4] = str(best_frame)
+                            new_header_fields[5] = "1"
+                            new_header = "|".join(new_header_fields)
+                            
+                            best_kmer = insert_gaps(best_kmer, insert_at, 0)
+                            
+                            new_aa_sequence = ("-" * (gap_start)) + best_kmer
+                            new_aa_sequence += ("-" * (len(first_node.sequence) - len(new_aa_sequence)))
+                            
+                            nt_seq = seq[best_qstart: best_qend]
+                            nt_seq = insert_gaps(nt_seq, insert_at, 0, True)
+                            new_nt_seq = nt_seq 
+                            new_nt_seq += "-" * (len(first_node.nt_sequence) - len(new_nt_seq))
+                            
+                            new_aa.append((new_header, new_aa_sequence))
+                            new_nt.append((new_header, new_nt_seq))
+                        else:
+                            log_output.append("Failed score threshold")
+                    
+                else:
+                    log_output.append("No suitable kmer found")
+                
+            log_output.append("")
+        
+        last_node = aa_subset[-1]
+        
+        gap_start = last_node.end
+        gap_end = ref_end
+        
+        if gap_end - gap_start >= minimum_gap:
+            amount = gap_end - gap_start
+            
+            last_id = list(map(int_first_id, last_node.header.split("|")[3].replace("NODE_", "").split("&&")))[-1]
+            ids_to_coords, seq = scan_sequence(last_id, False, last_node.frame, head_to_seq)
+            
+            last_node_kmer = last_node.nt_sequence[last_node.start * 3: last_node.end * 3].replace("-", "")
+            
+            last_node_og_start = seq.find(last_node_kmer)
+            last_node_og_end = last_node_og_start + len(last_node_kmer)
+            
+            seq = seq[last_node_og_end:]
+            
+            ref_gaps = set()
+            insert_at = []
+            longest_consecutive = None
+            consecutive_non_gap = 0
+            for i, x in enumerate(range(gap_start, gap_end)):
+                if ref_consensus[x].count("-") / len(ref_consensus[x]) >= ref_gap_thresh:
+                    ref_gaps.add(x)
+                    insert_at.append(i)
+                    if longest_consecutive is None or consecutive_non_gap > longest_consecutive:
+                        longest_consecutive = consecutive_non_gap
+                    consecutive_non_gap = 0
+                else:
+                    consecutive_non_gap += 1
+                    
+            if longest_consecutive is None or consecutive_non_gap > longest_consecutive:
+                longest_consecutive = consecutive_non_gap
+                
+            if longest_consecutive is None or longest_consecutive < min_consec_char:
+                # log_output.append("No non-gap region with 5 char\n")
+                pass
+            else:
+            
+                log_output.append("Right trailing gap of {} with size {}".format(last_node.header, abs(amount)))
+                
+                this_consensus, ref_seqs = filter_ref_consensus(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end)
+                
+                log_output.append("\n".join(ref_seqs))
+                log_output.append("")
+                
+                rows, highest_possible_score, results = scan_kmer(amount, log_output, seq, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
+                
+                if results:
+                    best_kmer, best_score, best_qstart, best_qend, best_frame = max(results, key=lambda x: x[1])
+                    if len(best_kmer) >= 3:
+                        best_frame += 1
+                        if last_node.frame < 0:
+                            best_frame = -best_frame
+                        target_score = best_score * 0.8
+                        
+                        other = [f"{res[0]} - {res[1]}" for res in results if res[1] >= target_score and res[0] != best_kmer]
+                        
+                        ids_in_qstart = [id for id, range in ids_to_coords.items() if best_qstart >= range[0] and best_qstart <= range[1] or best_qend >= range[0] and best_qend <= range[1]]
+                        new_header_fields = last_node.header.split("|")
+                        final_ids = []
+                        for id in ids_in_qstart:
+                                
+                                count = id_count[id]
+                                if count == 0:
+                                    final_ids.append(str(id))
+                                else:
+                                    final_ids.append(f"{id}_{count}")
+                                    
+                                id_count[id] += 1
+                                
+                        universal_score = (best_score / len(best_kmer)) / ref_count
+                        
+                        log_output.append("Highest possible threshold half: {}".format(highest_possible_score/12))
+                        log_output.append("Best match: {} - Score: {} - Average Match: {} - Other possible matches within 20% of score: {}".format(best_kmer, best_score, universal_score, len(other)))
+                        log_output.append("\n".join(rows))
+                        if other:
+                            log_output.append("Other matches:")
+                            for o in other:
+                                log_output.append(o)
+                                
+                        if best_score >= highest_possible_score // 12:
+                            this_id = "&&".join(final_ids)
+                            new_header_fields[3] = f"NODE_{this_id}"
+                            new_header_fields[4] = str(best_frame)
+                            new_header_fields[5] = "1"
+                            new_header = "|".join(new_header_fields)
+                            
+                            best_kmer = insert_gaps(best_kmer, insert_at, 0)
+                            
+                            new_aa_sequence = ("-" * (gap_start)) + best_kmer
+                            new_aa_sequence += ("-" * (len(last_node.sequence) - len(new_aa_sequence)))
+                            
+                            nt_seq = seq[best_qstart: best_qend]
+                            nt_seq = insert_gaps(nt_seq, insert_at, 0, True)
+                            
+                            new_nt_seq = ("-" * (gap_start * 3)) + nt_seq
+                            new_nt_seq += "-" * (len(last_node.nt_sequence) - len(new_nt_seq))
+                            
+                            new_aa.append((new_header, new_aa_sequence))
+                            new_nt.append((new_header, new_nt_seq))
+                        else:
+                            log_output.append("Failed score threshold")    
+                else:
+                    log_output.append("No suitable kmer found")
+                
+            log_output.append("")            
             
         for i in range(1, len(aa_subset)):
             node_a = aa_subset[i - 1]
@@ -136,40 +471,10 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             
             log_output.append("Gap between {} and {} of size {}".format(node_a.header, node_b.header, abs(amount)))
                     
-            log_output.append("Reference seqs:")
-            ref_seqs = []
-            for y in range(ref_count):
-                this_seq = "".join(ref_consensus[x][y] for x in range(gap_start, gap_end) if x not in ref_gaps)
-                
-                this_seq_coverage = 1 - ((this_seq.count("-") + this_seq.count(" ")) / len(this_seq))
-                ref_seqs.append((this_seq, this_seq_coverage))
-                
-                
-            target_coverage = 0.8 * max(ref_seq[1] for ref_seq in ref_seqs)
-            ref_indices = [i for i, ref_seq in enumerate(ref_seqs) if ref_seq[1] >= target_coverage]
-            ref_seqs = [seq for seq, cov in ref_seqs if cov >= target_coverage]
-            
-            this_consensus = {}
-            for x in range(gap_start, gap_end):
-                if x in ref_gaps:
-                    continue
-                this_consensus[x] = [ref_consensus[x][y] for y in ref_indices if ref_consensus[x][y] != " " and ref_consensus[x][y] != "-"]
+            this_consensus, ref_seqs = filter_ref_consensus(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end)
             
             log_output.append("\n".join(ref_seqs))
             log_output.append("")
-                    
-            # if len(ref_gaps) / (gap_end - gap_start) >= majority_gaps:
-            #     log_output.append("Too many gaps in reference")
-            #     continue
-            # if "NODE_521670&&521671" in node_a.header:
-            #     print(ref_gaps)
-                
-            # x = ["N"] * (gap_end - gap_start)
-            # for gap in ref_gaps:
-            #     x[gap] = "-"
-                
-            # if "NODE_521670&&521671" in node_a.header:
-            #     print("".join(x))
 
             id_to_coords, genomic_sequence = generate_sequence(genomic_range, node_a.frame, head_to_seq)
                 
@@ -190,7 +495,6 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                 log_output.append("Unable to find genomic coords\n")
                 continue
             
-            
             genomic_sequence = insert_gaps(genomic_sequence, node_a_internal_gap, node_a_og_start)
             genomic_sequence = insert_gaps(genomic_sequence, node_b_internal_gap, node_b_og_start+len(node_a_internal_gap))
 
@@ -202,59 +506,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                 log_output.append("Splice region empty\n")
                 continue
             
-            kmer_size = (abs(amount) // 3) - len(ref_gaps) - flex
-            # input(kmer_size)
-            
-            log_output.append("Raw splice region:")
-            log_output.append(splice_region)
-            log_output.append("")
-            log_output.append("Translated Splice Sequences:")
-            best_kmer = None
-            best_score = None
-            results = []
-            
-            all_posibilities = set()
-            for i, cons in this_consensus.items():
-                all_posibilities.update(cons)
-                
-            rows = [""] * (len(all_posibilities) + 1)  
-            rows[0] += "N\t"
-            for i, let in enumerate(all_posibilities):
-                rows[i+1] += f"{let}\t"
-            for x in range(gap_start, gap_end):
-                if x in ref_gaps:
-                    continue
-                rows[0] += str(x) + "\t"   
-                for i, let in enumerate(all_posibilities):
-                    rows[i+1] += f"{this_consensus[x].count(let)}\t"
-                    
-            ref_cols = [x for x in range(gap_start, gap_end) if x not in ref_gaps]
-            
-            highest_possible_score = 0
-
-            for x in range(gap_start, gap_end):
-                if x in ref_gaps:
-                    continue
-                max_count = max(this_consensus[x].count(let) for let in all_posibilities)
-                highest_possible_score += min(max_count, max_score)
-            
-            for frame in range(3):
-                protein_seq = str(Seq(splice_region[frame:]).translate())
-                log_output.append(protein_seq)
-                for i in range(0, len(protein_seq) - kmer_size):
-                    kmer = protein_seq[i: i + kmer_size]
-                    for offset in range(0, flex):
-                        kmer_score = 0
-                        for kmer_i in range(kmer_size):
-                            kmer_score += min(this_consensus[ref_cols[kmer_i + offset]].count(kmer[kmer_i]), max_score)
-                        
-                        kmer_score -= (stop_penalty * kmer.count("*"))
-                        
-                        best_qstart = (i * 3) + frame
-                        best_qend = best_qstart + (kmer_size * 3)
-                        results.append((kmer, kmer_score, best_qstart, best_qend, frame))
-            
-            log_output.append("")
+            rows, highest_possible_score, results = scan_kmer(amount, log_output, splice_region, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
                        
             if results:
                 best_kmer, best_score, best_qstart, best_qend, best_frame = max(results, key=lambda x: x[1])
@@ -329,6 +581,7 @@ def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path):
     aa_nodes = []
     reference_cluster_data = set()
     ref_consensus = defaultdict(list)
+    ref_start, ref_end = None, None
     
     raw_aa = []
     raw_nt = []
@@ -339,6 +592,11 @@ def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path):
         if header.endswith('.'):
             ref_count += 1
             start, end = find_index_pair(seq, "-")
+            if ref_start is None or start < ref_start:
+                ref_start = start
+            if ref_end is None or end > ref_end:
+                ref_end = end
+                
             for i, bp in enumerate(seq):
                 if i >= start and i <= end:
                     if bp != "-":
@@ -375,7 +633,7 @@ def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path):
     if clusters:
         cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
        
-    new_nt, new_aa = reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, ref_count)
+    new_nt, new_aa = reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, ref_count, ref_start, ref_end)
     
     aa_seqs = raw_aa+new_aa
     
