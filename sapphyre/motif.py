@@ -137,6 +137,28 @@ def filter_ref_consensus(log_output, ref_count, ref_consensus, ref_gaps, gap_sta
         this_consensus[x] = [ref_consensus[x][y] for y in ref_indices if ref_consensus[x][y] != " " and ref_consensus[x][y] != "-"]
   
     return this_consensus, ref_seqs
+    
+def filter_ref_leftright(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end):
+    log_output.append("Reference seqs:")
+    ref_seqs = []
+    for y in range(ref_count):
+        this_seq = "".join(ref_consensus[x][y] for x in range(gap_start, gap_end) if x not in ref_gaps)
+        
+        this_seq_coverage = 1 - ((this_seq.count("-") + this_seq.count(" ")) / len(this_seq))
+        ref_seqs.append((this_seq, this_seq_coverage))
+        
+        
+    target_coverage = 0.5 * max(ref_seq[1] for ref_seq in ref_seqs)
+    ref_indices = [i for i, ref_seq in enumerate(ref_seqs) if ref_seq[1] >= target_coverage]
+    ref_seqs = [seq for seq, cov in ref_seqs if cov >= target_coverage]
+    
+    this_consensus = {}
+    for x in range(gap_start, gap_end):
+        if x in ref_gaps:
+            continue
+        this_consensus[x] = [ref_consensus[x][y] for y in ref_indices if ref_consensus[x][y] != " " and ref_consensus[x][y] != "-"]
+  
+    return this_consensus, ref_seqs
             
 def scan_kmer(amount, log_output, splice_region, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty):
     kmer_size = (abs(amount) // 3) - len(ref_gaps) - flex
@@ -198,7 +220,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
     new_nt = []
     id_count = Counter()
     
-    flex = 3
+    flex = 0
     max_score = 15
     stop_penalty = 2
     
@@ -215,8 +237,8 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
         gap_start = ref_start
         gap_end = first_node.start
         
-        if gap_end - gap_start >= minimum_gap:
-            amount = gap_end - gap_start
+        if gap_end - gap_start >= minimum_gap and gap_end - gap_start < max_gap:
+            amount = (gap_end - gap_start)
             
             first_id = list(map(int_first_id, first_node.header.split("|")[3].replace("NODE_", "").split("&&")))[0]
             ids_to_coords, seq = scan_sequence(first_id, True, first_node.frame, head_to_seq)
@@ -251,7 +273,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             
                 log_output.append("Left leading gap of {} with size {}".format(first_node.header, abs(amount)))
                 
-                this_consensus, ref_seqs = filter_ref_consensus(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end)
+                this_consensus, ref_seqs = filter_ref_leftright(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end)
                 
                 log_output.append("\n".join(ref_seqs))
                 log_output.append("")
@@ -283,15 +305,15 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                                 
                         universal_score = (best_score / len(best_kmer)) / ref_count
                         
-                        log_output.append("Highest possible threshold half: {}".format(highest_possible_score/12))
-                        log_output.append("Best match: {} - Score: {} - Average Match: {} - Other possible matches within 20% of score: {}".format(best_kmer, best_score, universal_score, len(other)))
+                        #log_output.append("Highest possible threshold half: {}".format(highest_possible_score/3))
+                        log_output.append("Best match: {} - Score: {} - Highest possible score: {} - Other possible matches within 20% of score: {}".format(best_kmer, best_score, highest_possible_score, len(other)))
                         log_output.append("\n".join(rows))
                         if other:
                             log_output.append("Other matches:")
                             for o in other:
                                 log_output.append(o)
                                 
-                        if best_score >= highest_possible_score // 12:
+                        if best_score >= highest_possible_score // 3:
                             this_id = "&&".join(final_ids)
                             new_header_fields[3] = f"NODE_{this_id}"
                             new_header_fields[4] = str(best_frame)
@@ -323,8 +345,8 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
         gap_start = last_node.end
         gap_end = ref_end
         
-        if gap_end - gap_start >= minimum_gap:
-            amount = gap_end - gap_start
+        if gap_end - gap_start >= minimum_gap and gap_end - gap_start < max_gap:
+            amount = (gap_end - gap_start)
             
             last_id = list(map(int_first_id, last_node.header.split("|")[3].replace("NODE_", "").split("&&")))[-1]
             ids_to_coords, seq = scan_sequence(last_id, False, last_node.frame, head_to_seq)
@@ -360,7 +382,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             
                 log_output.append("Right trailing gap of {} with size {}".format(last_node.header, abs(amount)))
                 
-                this_consensus, ref_seqs = filter_ref_consensus(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end)
+                this_consensus, ref_seqs = filter_ref_leftright(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end)
                 
                 log_output.append("\n".join(ref_seqs))
                 log_output.append("")
@@ -392,15 +414,15 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                                 
                         universal_score = (best_score / len(best_kmer)) / ref_count
                         
-                        log_output.append("Highest possible threshold half: {}".format(highest_possible_score/12))
-                        log_output.append("Best match: {} - Score: {} - Average Match: {} - Other possible matches within 20% of score: {}".format(best_kmer, best_score, universal_score, len(other)))
+                        #log_output.append("Highest possible threshold half: {}".format(highest_possible_score/3))
+                        log_output.append("Best match: {} - Score: {} - Highest possible score: {} - Other possible matches within 20% of score: {}".format(best_kmer, best_score, highest_possible_score, len(other)))
                         log_output.append("\n".join(rows))
                         if other:
                             log_output.append("Other matches:")
                             for o in other:
                                 log_output.append(o)
                                 
-                        if best_score >= highest_possible_score // 12:
+                        if best_score >= highest_possible_score // 3:
                             this_id = "&&".join(final_ids)
                             new_header_fields[3] = f"NODE_{this_id}"
                             new_header_fields[4] = str(best_frame)
@@ -532,8 +554,8 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                     
                 universal_score = (best_score / len(best_kmer)) / ref_count
 
-                log_output.append("Highest possible threshold: {}".format(highest_possible_score/3))
-                log_output.append("Best match: {} - Score: {} - Average Match: {} - Other possible matches within 20% of score: {}".format(best_kmer, best_score, universal_score, len(other)))
+                #log_output.append("Highest possible threshold: {}".format(highest_possible_score/3))
+                log_output.append("Best match: {} - Score: {} - Highest possible score: {} - Other possible matches within 10% of score: {}".format(best_kmer, best_score, highest_possible_score, len(other)))
                 log_output.append("\n".join(rows))
                 if other:
                     log_output.append("Other matches:")
