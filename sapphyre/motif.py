@@ -1,12 +1,13 @@
 from collections import Counter, defaultdict
 from functools import cached_property
 from itertools import combinations, product
-from math import ceil
+from math import ceil, floor
 from multiprocessing import Pool
 from os import listdir, makedirs, path
 from pathlib import Path
 from shutil import move, rmtree
 import copy
+from statistics import median
 from tempfile import NamedTemporaryFile
 import warnings
 from msgspec import Struct, json
@@ -271,14 +272,16 @@ def finalise_seq(node, rows, highest_possible_score, insert_at, results, gap_sta
             new_nt_seq = ("-" * (gap_start * 3)) + nt_seq
             new_nt_seq += "-" * (len(last_node.nt_sequence) - len(new_nt_seq))
         else:
-            log_output.append("Failed score threshold")  
+            log_output.append("Failed score threshold")
+    else:
+        log_output.append("Incomplete kmer found")  
             
     return new_header, new_aa_sequence, new_nt_seq
 
             
 def scan_last_node(gap_start, gap_end, minimum_gap, max_gap, last_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex):
-    if gap_end - gap_start >= minimum_gap and gap_end - gap_start < max_gap:
-        amount = (gap_end - gap_start)
+    amount = (gap_end - gap_start) * 3
+    if amount >= minimum_gap and amount < max_gap:
         
         last_id = list(map(int_first_id, last_node.header.split("|")[3].replace("NODE_", "").split("&&")))[-1]
         ids_to_coords, seq = scan_sequence(last_id, False, last_node.frame, head_to_seq)
@@ -312,12 +315,14 @@ def scan_last_node(gap_start, gap_end, minimum_gap, max_gap, last_node, log_outp
             else:
                 log_output.append("No suitable kmer found")
             
-        log_output.append("")    
+        log_output.append("")   
+    else:
+        log_output.append("Gap too small or too large for right trailing gap of {}. Size {}\n".format(last_node.header, (gap_end - gap_start))) 
             
             
 def scan_first_node(gap_start, gap_end, minimum_gap, max_gap, first_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex):
-    if gap_end - gap_start >= minimum_gap and gap_end - gap_start < max_gap:
-        amount = (gap_end - gap_start)
+    amount = (gap_end - gap_start) * 3
+    if amount >= minimum_gap and amount < max_gap:
         
         first_id = list(map(int_first_id, first_node.header.split("|")[3].replace("NODE_", "").split("&&")))[0]
         ids_to_coords, seq = scan_sequence(first_id, True, first_node.frame, head_to_seq)
@@ -382,7 +387,7 @@ def align_and_trim_seq(node_a, node_b, genomic_sequence):
           
     return splice_region  
             
-def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, ref_count, ref_start, ref_end, minimum_gap = 30, max_gap = 180, ref_gap_thresh = 0.5, min_consec_char = 5):
+def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, ref_count, ref_median_start, ref_median_end):
     new_aa = []
     new_nt = []
     id_count = Counter()
@@ -392,6 +397,10 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
     stop_penalty = 2
     ref_coverage_thresh = 0.5
     leftright_ref_coverage = 0.8
+    minimum_gap = 15
+    max_gap = 180
+    ref_gap_thresh = 0.5
+    min_consec_char = 5
     
     for node in aa_nodes:
         for id in node_to_ids(node.header.split("|")[3]):
@@ -402,14 +411,14 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
         aa_subset.sort(key=lambda x: x.start)
         
         first_node = aa_subset[0]
-        gap_start = ref_start
+        gap_start = ref_median_start
         gap_end = first_node.start
         
         scan_first_node(gap_start, gap_end, minimum_gap, max_gap, first_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex)
         
         last_node = aa_subset[-1] 
         gap_start = last_node.end
-        gap_end = ref_end
+        gap_end = ref_median_end
         scan_last_node(gap_start, gap_end, minimum_gap, max_gap, last_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex)        
             
         for i in range(1, len(aa_subset)):
@@ -485,7 +494,7 @@ def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path):
     aa_nodes = []
     reference_cluster_data = set()
     ref_consensus = defaultdict(list)
-    ref_start, ref_end = None, None
+    ref_starts, ref_ends = [], []
     
     raw_aa = []
     raw_nt = []
@@ -496,10 +505,8 @@ def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path):
         if header.endswith('.'):
             ref_count += 1
             start, end = find_index_pair(seq, "-")
-            if ref_start is None or start < ref_start:
-                ref_start = start
-            if ref_end is None or end > ref_end:
-                ref_end = end
+            ref_starts.append(start)
+            ref_ends.append(end)
                 
             for i, bp in enumerate(seq):
                 if i >= start and i <= end:
@@ -513,6 +520,8 @@ def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path):
         frame = int(header.split("|")[4])
         aa_nodes.append(NODE(header, frame, seq, None, *find_index_pair(seq, "-")))
         
+    ref_median_start = floor(median(ref_starts))
+    ref_median_end = ceil(median(ref_ends))
         
     nt_sequences = {}
     for header, seq in parseFasta(path.join(input_nt, gene.replace(".aa.", ".nt."))):
@@ -537,7 +546,7 @@ def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path):
     if clusters:
         cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
        
-    new_nt, new_aa = reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, ref_count, ref_start, ref_end)
+    new_nt, new_aa = reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, ref_count, ref_median_start, ref_median_end)
     
     aa_seqs = raw_aa+new_aa
     
