@@ -246,7 +246,7 @@ def finalise_seq(node, rows, highest_possible_score, insert_at, results, gap_sta
                     
                 id_count[id] += 1
 
-        #log_output.append("Highest possible threshold half: {}".format(highest_possible_score/3))
+        log_output.append("Threshold: {}".format(highest_possible_score/2))
         log_output.append("Best match: {} - Score: {} - Highest possible score: {} - Other possible matches within 20% of score: {}".format(best_kmer, best_score, highest_possible_score, len(other)))
         log_output.append("\n".join(rows))
         if other:
@@ -254,7 +254,7 @@ def finalise_seq(node, rows, highest_possible_score, insert_at, results, gap_sta
             for o in other:
                 log_output.append(o)
                 
-        if best_score >= highest_possible_score // 3:
+        if best_score >= highest_possible_score // 2:
             this_id = "&&".join(final_ids)
             new_header_fields[3] = f"NODE_{this_id}"
             new_header_fields[4] = str(best_frame)
