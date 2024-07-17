@@ -459,7 +459,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                 
             splice_region = align_and_trim_seq(node_a, node_b, genomic_sequence)
             
-            if genomic_sequence is None:
+            if splice_region is None:
                 log_output.append("Could not find coords of mapped sequences")
                 continue
             
