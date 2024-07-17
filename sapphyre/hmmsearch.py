@@ -262,9 +262,9 @@ def shift_targets(is_full, query_template, nodes_in_gene, diamond_hits, cluster_
                     children[new_query] = hit
 
 
-def add_full_cluster_search(clusters, chomp_max_distance, nodes_in_genes, source_clusters, cluster_full, nodes_in_gene, cluster_dict):
+def add_full_cluster_search(clusters, edge_margin, nodes_in_genes, source_clusters, cluster_full, nodes_in_gene, cluster_dict):
     for cluster in clusters:
-        for i in range(cluster[0][0] - chomp_max_distance, cluster[0][1] + chomp_max_distance + 1):
+        for i in range(cluster[0][0] - edge_margin, cluster[0][1] + edge_margin + 1):
             header = i
             
             if header in nodes_in_gene:
@@ -382,7 +382,7 @@ def add_new_result(map_mode, gene, query, results, is_full, cluster_full, cluste
             output.append(new_hit)
 
 
-def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_ref_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance):
+def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_ref_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance, edge_margin):
     batch_result = []
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     this_seqs = load_Sequences(source_seqs)#, nodes_in_gene)
@@ -466,7 +466,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                 
             if is_genome and clusters:
                 cluster_queries = {k: max(set(v), key=v.count) for k, v in cluster_queries.items()}
-                add_full_cluster_search(clusters, chomp_max_distance, nodes_in_gene, source_clusters, cluster_full, nodes_in_gene, cluster_dict)
+                add_full_cluster_search(clusters, edge_margin, nodes_in_gene, source_clusters, cluster_full, nodes_in_gene, cluster_dict)
                       
         shift_targets(is_full, query_template, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp)
 
@@ -696,7 +696,7 @@ def do_folder(input_folder, args):
         seq_source = temp_source_file.name
     else:
         seq_source = head_to_seq
-    batches = [(transcripts_mapped_to[i:i + per_batch], seq_source, is_full, is_genome, hmm_output_folder, aln_ref_location, args.overwrite, args.map, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance) for i in range(0, len(transcripts_mapped_to), per_batch)]
+    batches = [(transcripts_mapped_to[i:i + per_batch], seq_source, is_full, is_genome, hmm_output_folder, aln_ref_location, args.overwrite, args.map, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance, args.edge_margin) for i in range(0, len(transcripts_mapped_to), per_batch)]
 
     if args.processes <= 1:
         all_hits = []

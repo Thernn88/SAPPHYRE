@@ -315,6 +315,13 @@ def hmmsearch_args(par):
         default=100,
         help="Max distance for merging cluster in chomp",
     )
+    par.add_argument(
+        "-em",
+        "--edge_margin",
+        type=int,
+        default=50,
+        help="Max distance for expanding cluster for search",
+    )
 
 def hmmsearch(args):
     from . import hmmsearch
