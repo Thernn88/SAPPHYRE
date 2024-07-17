@@ -6,11 +6,13 @@ from math import ceil
 from multiprocessing.pool import Pool
 from os import listdir, mkdir, path, stat, system
 from shutil import rmtree
+from statistics import median
+from numpy import percentile
 from subprocess import Popen, run
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from time import time
 from psutil import Process
-from sapphyre_tools import find_index_pair, sigclust
+from sapphyre_tools import blosum62_distance, find_index_pair, sigclust
 from xxhash import xxh3_64
 from wrap_rocks import RocksDB
 from .timekeeper import KeeperMode, TimeKeeper
@@ -726,6 +728,67 @@ def do_cluster(ids, ref_coords, id_chomp_distance=100):
     return clusters
 
 
+def cull_reference_outliers(reference_records: list, debug: int) -> list:
+    """
+    Removes reference sequences which have an unusually large mean
+    blosum distance. Finds the constrained blosum distance between
+    each reference pull any reference with a mean 1.5x higher than
+    the group mean. Returns the remaining references in a list.
+    """
+    needs_to_check = True
+    filtered = []
+    loop = 0
+    while needs_to_check:
+        loop += 1
+        needs_to_check = False
+        distances_by_index = defaultdict(list)
+        all_distances = []
+        indices = {i:find_index_pair(reference_records[i][1], '-') for i in range(len(reference_records))}
+        # generate reference distances
+        for i, ref1 in enumerate(reference_records[:-1]):
+            start1, stop1 = indices[i]
+            for j, ref2 in enumerate(reference_records[i+1:],i+1):
+                start2, stop2 = indices[j]
+                start = max(start1, start2)
+                stop = min(stop1, stop2)
+                # avoid the occasional rust-nan result
+                if start >= stop:
+                    distances_by_index[i].append(1)
+                    distances_by_index[j].append(1)
+                    continue
+                dist = blosum62_distance(ref1[1][start:stop], ref2[1][start:stop]) ** 2
+                distances_by_index[i].append(dist)
+                distances_by_index[j].append(dist)
+                all_distances.append(dist)
+
+        if not all_distances:
+            return reference_records, filtered, 0, 0, 0
+
+        total_median = median(all_distances)
+        q3, q1 = percentile(all_distances, [75, 25])
+        iqr = q3 - q1
+        iqr_coeff = 1
+
+        allowable = max(total_median + iqr_coeff * iqr, 0.02)
+
+        # if a record's mean is too high, cull it
+        for index, distances in distances_by_index.items():
+            this_median = median(distances)
+            if this_median > allowable:# or mean > 1:
+                distances_by_index[index] = None
+                filtered.append( (reference_records[index], this_median, "kicked") )
+                needs_to_check = True
+
+            if debug == 2:
+                filtered.append( (reference_records[index], this_median, "") )
+        reference_records = [reference_records[i] for i in range(len(reference_records)) if distances_by_index[i] is not None]
+            # else:
+            #     distances_by_index[index] = mean
+# get all remaining records
+    output = [reference_records[i] for i in range(len(reference_records)) if distances_by_index[i] is not None]
+
+    return output, filtered, total_median, allowable, iqr
+
 
 def run_command(args: CmdArgs) -> None:
     keeper = TimeKeeper(KeeperMode.DIRECT)
@@ -867,11 +930,21 @@ def run_command(args: CmdArgs) -> None:
                 )  # Debug
 
                 # Grab target reference sequences
+
                 top_aln_path = path.join(args.top_folder, args.gene + ".aln.fa")
                 realign_rec = args.second_run # Realign if required
                 if not path.exists(top_aln_path):
                     realign_rec = True # Force realignment if the top alignment doesn't exist
                     top_aln_path = path.join(args.aln_path, args.gene + ".aln.fa")
+                references = parseFasta(top_aln_path)
+                references, filtered_refs, ref_total_median, ref_allowable, ref_iqr = cull_reference_outliers(references, args.debug)
+                culled_references = []
+                if filtered_refs:
+                    culled_references.append(f'{args.gene} total median: {ref_total_median}\n')
+                    culled_references.append(f'{args.gene} threshold: {ref_allowable}\n')
+                    culled_references.append(f'{args.gene} standard deviation: {ref_iqr}\n')
+                    for ref_kick, ref_median, kick in filtered_refs:
+                        culled_references.append(f'{ref_kick[0]},{ref_median},{kick}\n')
 
                 if realign_rec:
                     tmp_aln = NamedTemporaryFile(dir=parent_tmpdir, mode="w+", prefix="References_")

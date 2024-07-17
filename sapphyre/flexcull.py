@@ -1147,14 +1147,14 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
     references, candidates = parse_fasta(gene_path)
 
-    references, filtered_refs, total_median, allowable, iqr = cull_reference_outliers(references, fargs.debug)
+    # references, filtered_refs, total_median, allowable, iqr = cull_reference_outliers(references, fargs.debug)
     culled_references = []
-    if filtered_refs:
-        culled_references.append(f'{this_gene} total median: {total_median}\n')
-        culled_references.append(f'{this_gene} threshold: {allowable}\n')
-        culled_references.append(f'{this_gene} standard deviation: {iqr}\n')
-        for ref_kick, ref_median, kick in filtered_refs:
-            culled_references.append(f'{ref_kick[0]},{ref_median},{kick}\n')
+    # if filtered_refs:
+    #     culled_references.append(f'{this_gene} total median: {total_median}\n')
+    #     culled_references.append(f'{this_gene} threshold: {allowable}\n')
+    #     culled_references.append(f'{this_gene} standard deviation: {iqr}\n')
+    #     for ref_kick, ref_median, kick in filtered_refs:
+    #         culled_references.append(f'{ref_kick[0]},{ref_median},{kick}\n')
 
     if not references:
         printv(f"No references for {this_gene} after cull", fargs.verbosity, 1)
