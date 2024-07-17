@@ -243,8 +243,7 @@ def seperate_into_clusters(
 
 
 def generate_tmp_aln(
-    # aln_file: str,
-    references: list,
+    aln_file: str,
     targets: dict[str, str],
     dest: NamedTemporaryFile,
     parent_tmpdir: str,
@@ -269,8 +268,7 @@ def generate_tmp_aln(
         dir=parent_tmpdir, mode="w+", prefix="References_"
     ) as tmp_prealign:
         sequences = []
-        # for header, sequence in parseFasta(aln_file, True):
-        for header, sequence in references:
+        for header, sequence in parseFasta(aln_file, True):
             if header.split(" ")[0] in targets:
                 if len(sequence) != sequence.count("-"):
                     sequences.append((targets[header.split(" ")[0]], sequence))
@@ -939,7 +937,7 @@ def run_command(args: CmdArgs) -> None:
                     realign_rec = True # Force realignment if the top alignment doesn't exist
                     top_aln_path = path.join(args.aln_path, args.gene + ".aln.fa")
                 # cull reference outliers
-                references = parseFasta(top_aln_path)
+                references = list(parseFasta(top_aln_path, has_interleave=True))
                 references, filtered_refs, ref_total_median, ref_allowable, ref_iqr = cull_reference_outliers(references, args.debug)
                 culled_references = []
                 if filtered_refs:
@@ -949,12 +947,12 @@ def run_command(args: CmdArgs) -> None:
                     for ref_kick, ref_median, kick in filtered_refs:
                         culled_references.append(f'{ref_kick[0]},{ref_median},{kick}\n')
                 tmp_aln = NamedTemporaryFile(dir=parent_tmpdir, mode="w+", prefix="References_")
+
                 if realign_rec:
-                    # tmp_aln = NamedTemporaryFile(dir=parent_tmpdir, mode="w+", prefix="References_")
                     print(aln_file)
                     generate_tmp_aln(
-                        # aln_file,
-                        references,
+                        aln_file,
+                        # references,
                         targets,
                         tmp_aln,
                         parent_tmpdir,
@@ -963,7 +961,6 @@ def run_command(args: CmdArgs) -> None:
                         args.align_method,
                     )
                 else:
-                    # tmp_aln_name = path.join(args.aln_path, args.gene + ".aln.fa")
                     writeFasta(tmp_aln.name, references)
                     tmp_aln.flush()
                 for i, (file, seq_count, cluster_i) in enumerate(aligned_ingredients):
@@ -977,7 +974,7 @@ def run_command(args: CmdArgs) -> None:
                         args.align_method,
                         parent_tmpdir,
                         file,
-                        tmp_aln.name if realign_rec else top_aln_path,
+                        tmp_aln.name, #if realign_rec else top_aln_path,
                         cluster_i,
                         seq_count,
                         debug,
@@ -1002,8 +999,8 @@ def run_command(args: CmdArgs) -> None:
                     # Consolidate output
                     final_sequences = final_refs + sequences
                 
-                if realign_rec:
-                    del tmp_aln
+                # if realign_rec:
+                del tmp_aln
 
         # Reinsert and sort by start position
         to_write = []
