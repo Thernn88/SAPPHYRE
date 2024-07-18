@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict, namedtuple
+import itertools
 import subprocess
 from math import ceil
 from multiprocessing.pool import Pool
@@ -12,7 +13,7 @@ from subprocess import Popen, run
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 from time import time
 from psutil import Process
-from sapphyre_tools import blosum62_distance, find_index_pair, sigclust
+from sapphyre_tools import blosum62_distance, find_index_pair, sigclust, delete_empty_columns
 from xxhash import xxh3_64
 from wrap_rocks import RocksDB
 from .timekeeper import KeeperMode, TimeKeeper
@@ -785,7 +786,7 @@ def cull_reference_outliers(reference_records: list, debug: int) -> list:
             # else:
             #     distances_by_index[index] = mean
 # get all remaining records
-    output = [reference_records[i] for i in range(len(reference_records)) if distances_by_index[i] is not None]
+    output = list(itertools.chain(*(reference_records[i] for i in range(len(reference_records)) if distances_by_index[i] is not None)))
 
     return output, filtered, total_median, allowable, iqr
 
@@ -939,6 +940,10 @@ def run_command(args: CmdArgs) -> None:
                 # cull reference outliers
                 references = list(parseFasta(top_aln_path, has_interleave=True))
                 references, filtered_refs, ref_total_median, ref_allowable, ref_iqr = cull_reference_outliers(references, args.debug)
+
+                references, _ = delete_empty_columns(references)
+                references = [(references[i], references[i + 1]) for i in range(0, len(references), 2)]
+                
                 culled_references = []
                 if filtered_refs:
                     culled_references.append(f'{args.gene} total median: {ref_total_median}\n')
