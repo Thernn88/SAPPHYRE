@@ -409,7 +409,7 @@ def align_and_trim_seq(node_a, node_b, genomic_sequence):
     genomic_sequence = insert_gaps(genomic_sequence, node_a_internal_gap, node_a_og_start)
     genomic_sequence = insert_gaps(genomic_sequence, node_b_internal_gap, node_b_og_start+len(node_a_internal_gap))
 
-    start_of_a = node_a_og_start
+    start_of_a = node_a_og_start    
     end_of_a = start_of_a + node_a_len
     start_of_b = node_b_og_start + len(node_a_internal_gap)
     end_of_b = start_of_b + node_b_len
@@ -447,13 +447,18 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
         else:
             aa_subset.sort(key=lambda x: x.start)
             
-        first_node = aa_subset[0]
+        if aa_subset[0].frame < 0:
+            first_node = aa_subset[-1]
+            last_node = aa_subset[0]
+        else:
+            first_node = aa_subset[0]
+            last_node = aa_subset[-1]
+            
         gap_start = ref_median_start
         gap_end = first_node.start
         
         scan_first_node(gap_start, gap_end, minimum_gap, max_gap, first_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex)
         
-        last_node = aa_subset[-1] 
         gap_start = last_node.end
         gap_end = ref_median_end
         scan_last_node(gap_start, gap_end, minimum_gap, max_gap, last_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex)        
