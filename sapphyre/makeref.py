@@ -1124,7 +1124,7 @@ def make_diamonddb(set: Sequence_Set, processes):
 SETS_DIR = None
 
 
-def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, nt_input: str = None):
+def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, gfm, nt_input: str = None):
     """
     Grabs alls sequences in a fasta file and inserts them into a subset.
     """
@@ -1152,7 +1152,7 @@ def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, nt_input
         #Grab headers
         headers = set()
         multiheaders = set()
-        if not skip_multi_headers:
+        if not gfm and not skip_multi_headers:
             with open(file) as fp:
                 for line in fp:
                     if line[0] != ">" or line[-1] == ".":
@@ -1169,7 +1169,24 @@ def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, nt_input
                     headers.add(header)
 
         for seq_record in SeqIO.parse(file, "fasta"):
-            if "|" in seq_record.description and " " not in seq_record.description:
+            if gfm: 
+                seq = str(seq_record.seq)
+                taxon = seq_record.description.replace(" ","_").replace("|","-")
+                gene = os.path.basename(file).split(".")[0]
+                header = f"{gene}_{taxon}"
+
+                subset.add_sequence(
+                    Sequence(
+                        None,
+                        header,
+                        seq,
+                        nt_seqs.get(seq_record.description),
+                        taxon,
+                        gene,
+                        next(index),
+                    )
+                )
+            elif "|" in seq_record.description and " " not in seq_record.description:
                 #Assuming legacy GENE|TAXON|ID
                 if seq_record.description.endswith("."):
                     continue
@@ -1272,6 +1289,7 @@ def main(args):
         nc_genes = set()
 
     input_file = args.INPUT  # "Ortholog_set_Mecopterida_v4.sqlite"
+    print(input_file)
     if not input_file or not os.path.exists(input_file):
         printv("Fatal: Input file not defined or does not exist (-i)", verbosity, 0)
         return False
@@ -1325,7 +1343,7 @@ def main(args):
         printv(f"Reading files from {input_file}", verbosity)
         if input_file.split(".")[-1] == "fa" and os.path.isfile(input_file):
             printv("Input Detected: Single fasta", verbosity)
-            subset = generate_subset([input_file], kick, args.skip_multi_headers)
+            subset = generate_subset([input_file], kick, args.skip_multi_headers, args.gene_finding_mode)
             this_set.absorb(subset)
 
         elif input_file.split(".")[-1] in {
@@ -1379,7 +1397,7 @@ def main(args):
             printv("Input Detected: Folder containing Fasta", verbosity)
             file_paths = []
             for file in os.listdir(input_file):
-                if file.endswith(".fa") or file.endswith(".fa.gz"):
+                if file.endswith(".fa") or file.endswith(".fasta") or file.endswith(".fa.gz"):
                     file_paths.append(os.path.join(input_file, file))
 
             per_thread = ceil(len(file_paths) / processes)
@@ -1388,6 +1406,7 @@ def main(args):
                     file_paths[i : i + per_thread],
                     kick,
                     args.skip_multi_headers,
+                    args.gene_finding_mode,
                     nt_input,
                 )
                 for i in range(0, len(file_paths), per_thread)
