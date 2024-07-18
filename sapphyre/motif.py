@@ -62,16 +62,15 @@ def scan_sequence(starting_id, left, frame, head_to_seq):
     this_seq = head_to_seq[starting_id]
     start, end = 0, len(this_seq)
     coords.append((start, end))
-    
+
     i = 0
     while True:
         if left:
             i -= 1
-            
             if head_to_seq[starting_id + i][-250:] != this_seq[:250]:
                 break
             
-            this_seq = head_to_seq[starting_id + i][250:] + this_seq
+            this_seq = head_to_seq[starting_id + i][:-250] + this_seq
         else:
             i += 1
             
@@ -281,83 +280,88 @@ def finalise_seq(node, rows, highest_possible_score, insert_at, results, gap_sta
             
 def scan_last_node(gap_start, gap_end, minimum_gap, max_gap, last_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex):
     amount = (gap_end - gap_start) * 3
-    if amount >= minimum_gap and amount < max_gap:
+    log_output.append("Right trailing gap of {} with size {}".format(last_node.header, abs(amount)))
+    
+    if amount < minimum_gap or amount >= max_gap:
+        log_output.append("Gap too small or too large\n")
+        return
         
-        last_id = list(map(int_first_id, last_node.header.split("|")[3].replace("NODE_", "").split("&&")))[-1]
-        ids_to_coords, seq = scan_sequence(last_id, False, last_node.frame, head_to_seq)
-        
-        last_node_kmer = last_node.nt_sequence[last_node.start * 3: last_node.end * 3].replace("-", "")
-        
-        last_node_og_start = seq.find(last_node_kmer)
-        last_node_og_end = last_node_og_start + len(last_node_kmer)
-        
-        seq = seq[last_node_og_end:]
-        
-        ref_gaps, insert_at, longest_consecutive = count_ref_gaps(gap_start, gap_end, ref_consensus, ref_gap_thresh)
-        if longest_consecutive < min_consec_char:
-            # log_output.append("No non-gap region with 5 char\n")
-            pass
-        else:
-            log_output.append("Right trailing gap of {} with size {}".format(last_node.header, abs(amount)))
-            
-            this_consensus, ref_seqs = filter_ref_consensus(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end, leftright_ref_coverage)
-            
-            log_output.append("\n".join(ref_seqs))
-            log_output.append("")
-            
-            rows, highest_possible_score, results = scan_kmer(amount, log_output, seq, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
-            
-            if results:
-                new_header, new_aa_sequence, new_nt_seq = finalise_seq(last_node, rows, highest_possible_score, insert_at, results, gap_start, last_node, seq, ids_to_coords, id_count, log_output)
-                if new_header:
-                    new_aa.append((new_header, new_aa_sequence))
-                    new_nt.append((new_header, new_nt_seq))  
-            else:
-                log_output.append("No suitable kmer found")
-            
-        log_output.append("")   
+    last_id = list(map(int_first_id, last_node.header.split("|")[3].replace("NODE_", "").split("&&")))[-1]
+    ids_to_coords, seq = scan_sequence(last_id, False, last_node.frame, head_to_seq)
+    
+    last_node_kmer = last_node.nt_sequence[last_node.start * 3: last_node.end * 3].replace("-", "")
+    
+    last_node_og_start = seq.find(last_node_kmer)
+    if last_node_og_start == -1:
+        log_output.append("Could not find exon on genome\n")
+        return
+    
+    last_node_og_end = last_node_og_start + len(last_node_kmer)
+    
+    seq = seq[last_node_og_end:]
+    
+    ref_gaps, insert_at, longest_consecutive = count_ref_gaps(gap_start, gap_end, ref_consensus, ref_gap_thresh)
+    if longest_consecutive < min_consec_char:
+        # log_output.append("No non-gap region with 5 char\n")
+        return
+    
+    this_consensus, ref_seqs = filter_ref_consensus(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end, leftright_ref_coverage)
+    
+    log_output.append("\n".join(ref_seqs))
+    log_output.append("")
+    
+    rows, highest_possible_score, results = scan_kmer(amount, log_output, seq, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
+    
+    if results:
+        new_header, new_aa_sequence, new_nt_seq = finalise_seq(last_node, rows, highest_possible_score, insert_at, results, gap_start, last_node, seq, ids_to_coords, id_count, log_output)
+        if new_header:
+            new_aa.append((new_header, new_aa_sequence))
+            new_nt.append((new_header, new_nt_seq))  
     else:
-        log_output.append("Gap too small or too large for right trailing gap of {}. Size {}\n".format(last_node.header, (gap_end - gap_start))) 
-            
+        log_output.append("No suitable kmer found")
+        
+    log_output.append("")   
             
 def scan_first_node(gap_start, gap_end, minimum_gap, max_gap, first_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex):
     amount = (gap_end - gap_start) * 3
-    if amount >= minimum_gap and amount < max_gap:
+    log_output.append("Left leading gap of {} with size {}".format(first_node.header, abs(amount)))
+    if amount < minimum_gap or amount >= max_gap:
+        log_output.append("Gap too small or too large\n")
+        return
+    
+    first_id = list(map(int_first_id, first_node.header.split("|")[3].replace("NODE_", "").split("&&")))[0]
+    ids_to_coords, seq = scan_sequence(first_id, True, first_node.frame, head_to_seq)
+    first_node_kmer = first_node.nt_sequence[first_node.start * 3: first_node.end * 3].replace("-", "")
+    
+    first_node_og_start = seq.find(first_node_kmer)
+    
+    if first_node_og_start == -1:
+        log_output.append("Could not find exon on genome\n")
+        return
+    
+    seq = seq[:first_node_og_start]
+    
+    ref_gaps, insert_at, longest_consecutive = count_ref_gaps(gap_start, gap_end, ref_consensus, ref_gap_thresh)
         
-        first_id = list(map(int_first_id, first_node.header.split("|")[3].replace("NODE_", "").split("&&")))[0]
-        ids_to_coords, seq = scan_sequence(first_id, True, first_node.frame, head_to_seq)
+    if longest_consecutive is None or longest_consecutive < min_consec_char:
+        # log_output.append("No non-gap region with 5 char\n")
+        return
+    this_consensus, ref_seqs = filter_ref_consensus(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end, leftright_ref_coverage)
+    
+    log_output.append("\n".join(ref_seqs))
+    log_output.append("")
+    
+    rows, highest_possible_score, results = scan_kmer(amount, log_output, seq, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
+    
+    if results:
+        new_header, new_aa_sequence, new_nt_seq = finalise_seq(first_node, rows, highest_possible_score, insert_at, results, gap_start, first_node, seq, ids_to_coords, id_count, log_output)
+        if new_header:
+            new_aa.append((new_header, new_aa_sequence))
+            new_nt.append((new_header, new_nt_seq))
+    else:
+        log_output.append("No suitable kmer found")
         
-        first_node_kmer = first_node.nt_sequence[first_node.start * 3: first_node.end * 3].replace("-", "")
-        
-        first_node_og_start = seq.find(first_node_kmer)
-        
-        seq = seq[:first_node_og_start]
-        
-        ref_gaps, insert_at, longest_consecutive = count_ref_gaps(gap_start, gap_end, ref_consensus, ref_gap_thresh)
-            
-        if longest_consecutive is None or longest_consecutive < min_consec_char:
-            # log_output.append("No non-gap region with 5 char\n")
-            pass
-        else:
-        
-            log_output.append("Left leading gap of {} with size {}".format(first_node.header, abs(amount)))
-            
-            this_consensus, ref_seqs = filter_ref_consensus(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end, leftright_ref_coverage)
-            
-            log_output.append("\n".join(ref_seqs))
-            log_output.append("")
-            
-            rows, highest_possible_score, results = scan_kmer(amount, log_output, seq, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
-            
-            if results:
-                new_header, new_aa_sequence, new_nt_seq = finalise_seq(first_node, rows, highest_possible_score, insert_at, results, gap_start, first_node, seq, ids_to_coords, id_count, log_output)
-                if new_header:
-                    new_aa.append((new_header, new_aa_sequence))
-                    new_nt.append((new_header, new_nt_seq))
-            else:
-                log_output.append("No suitable kmer found")
-            
-        log_output.append("")
+    log_output.append("")
             
             
 def align_and_trim_seq(node_a, node_b, genomic_sequence):
@@ -591,7 +595,7 @@ def do_folder(folder, args):
     head_to_seq_source = NamedTemporaryFile(dir=gettempdir(), prefix="seqs_")
     writeFasta(head_to_seq_source.name, head_to_seq.items())
     
-    genes = [i for i in listdir(input_aa_path) if ".fa" in i and "216827at8782" in i]
+    genes = [i for i in listdir(input_aa_path) if ".fa"]
     per_batch = ceil(len(genes) / args.processes)
     arguments = [(genes[i: i+per_batch], input_aa_path, input_nt_path, head_to_seq_source.name, out_aa_path, out_nt_path) for i in range(0, len(genes), per_batch)]
     new_seqs = []
