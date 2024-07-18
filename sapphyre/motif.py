@@ -244,34 +244,58 @@ def finalise_seq(node, rows, highest_possible_score, insert_at, results, gap_sta
                     final_ids.append(f"{id}_{count}")
                     
                 id_count[id] += 1
-
-        log_output.append("Threshold: {}".format(highest_possible_score/2))
+        if len(best_kmer) >= 10:
+            log_output.append("Threshold: {}".format(round(highest_possible_score * 0.5)))
+        else:
+            log_output.append("Threshold: {}".format(round(highest_possible_score * 0.70)))
         log_output.append("Best match: {} - Score: {} - Highest possible score: {} - Other possible matches within 20% of score: {}".format(best_kmer, best_score, highest_possible_score, len(other)))
         log_output.append("\n".join(rows))
         if other:
             log_output.append("Other matches:")
             for o in other:
                 log_output.append(o)
+        
+
+        if len(best_kmer) >= 10:
+            if best_score >= round(highest_possible_score * 0.5):
+                this_id = "&&".join(final_ids)
+                new_header_fields[3] = f"NODE_{this_id}"
+                new_header_fields[4] = str(best_frame)
+                new_header_fields[5] = "1"
+                new_header = "|".join(new_header_fields)
                 
-        if best_score >= highest_possible_score // 2:
-            this_id = "&&".join(final_ids)
-            new_header_fields[3] = f"NODE_{this_id}"
-            new_header_fields[4] = str(best_frame)
-            new_header_fields[5] = "1"
-            new_header = "|".join(new_header_fields)
-            
-            best_kmer = insert_gaps(best_kmer, insert_at, 0)
-            
-            new_aa_sequence = ("-" * (gap_start)) + best_kmer
-            new_aa_sequence += ("-" * (len(last_node.sequence) - len(new_aa_sequence)))
-            
-            nt_seq = seq[best_qstart: best_qend]
-            nt_seq = insert_gaps(nt_seq, insert_at, 0, True)
-            
-            new_nt_seq = ("-" * (gap_start * 3)) + nt_seq
-            new_nt_seq += "-" * (len(last_node.nt_sequence) - len(new_nt_seq))
+                best_kmer = insert_gaps(best_kmer, insert_at, 0)
+                
+                new_aa_sequence = ("-" * (gap_start)) + best_kmer
+                new_aa_sequence += ("-" * (len(last_node.sequence) - len(new_aa_sequence)))
+                
+                nt_seq = seq[best_qstart: best_qend]
+                nt_seq = insert_gaps(nt_seq, insert_at, 0, True)
+                
+                new_nt_seq = ("-" * (gap_start * 3)) + nt_seq
+                new_nt_seq += "-" * (len(last_node.nt_sequence) - len(new_nt_seq))
+            else:
+                log_output.append("Failed score threshold")
         else:
-            log_output.append("Failed score threshold")
+            if best_score >= round(highest_possible_score * 0.7):
+                this_id = "&&".join(final_ids)
+                new_header_fields[3] = f"NODE_{this_id}"
+                new_header_fields[4] = str(best_frame)
+                new_header_fields[5] = "1"
+                new_header = "|".join(new_header_fields)
+                
+                best_kmer = insert_gaps(best_kmer, insert_at, 0)
+                
+                new_aa_sequence = ("-" * (gap_start)) + best_kmer
+                new_aa_sequence += ("-" * (len(last_node.sequence) - len(new_aa_sequence)))
+                
+                nt_seq = seq[best_qstart: best_qend]
+                nt_seq = insert_gaps(nt_seq, insert_at, 0, True)
+                
+                new_nt_seq = ("-" * (gap_start * 3)) + nt_seq
+                new_nt_seq += "-" * (len(last_node.nt_sequence) - len(new_nt_seq))
+            else:
+                log_output.append("Failed score threshold")
     else:
         log_output.append("Incomplete kmer found")  
             
@@ -396,14 +420,14 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
     new_nt = []
     id_count = Counter()
     
-    flex = 0
-    max_score = 15
-    stop_penalty = 2
-    ref_coverage_thresh = 0.5
+    flex = 1
+    max_score = 100
+    stop_penalty = 10
+    ref_coverage_thresh = 0.7
     leftright_ref_coverage = 0.8
     minimum_gap = 15
     max_gap = 180
-    ref_gap_thresh = 0.5
+    ref_gap_thresh = 0.7
     min_consec_char = 5
     
     for node in aa_nodes:
