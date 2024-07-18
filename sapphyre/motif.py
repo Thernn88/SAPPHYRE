@@ -391,10 +391,11 @@ def scan_first_node(gap_start, gap_end, minimum_gap, max_gap, first_node, log_ou
 def align_and_trim_seq(node_a, node_b, genomic_sequence):
     node_a_kmer = node_a.nt_sequence[node_a.start * 3: node_a.end * 3]
     node_b_kmer = node_b.nt_sequence[node_b.start * 3: node_b.end * 3]
-    
+
     node_a_internal_gap = [i for i, let in enumerate(node_a_kmer) if let == "-"]
     node_b_internal_gap = [i for i, let in enumerate(node_b_kmer) if let == "-"]
     node_a_len = len(node_a_kmer)
+    node_b_len = len(node_b_kmer)
     
     node_a_kmer = node_a_kmer.replace("-", "")
     node_b_kmer = node_b_kmer.replace("-", "")
@@ -408,10 +409,15 @@ def align_and_trim_seq(node_a, node_b, genomic_sequence):
     genomic_sequence = insert_gaps(genomic_sequence, node_a_internal_gap, node_a_og_start)
     genomic_sequence = insert_gaps(genomic_sequence, node_b_internal_gap, node_b_og_start+len(node_a_internal_gap))
 
-    end_of_a = node_a_og_start + node_a_len
+    start_of_a = node_a_og_start
+    end_of_a = start_of_a + node_a_len
     start_of_b = node_b_og_start + len(node_a_internal_gap)
+    end_of_b = start_of_b + node_b_len
     
-    splice_region = genomic_sequence[end_of_a: start_of_b]
+    if end_of_a < start_of_b:
+        splice_region = genomic_sequence[end_of_a: start_of_b]
+    else:
+        splice_region = genomic_sequence[end_of_b: start_of_a]
           
     return splice_region  
             
