@@ -408,8 +408,11 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
 
     for cluster_set in cluster_sets:
         aa_subset = [node for node in aa_nodes if (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
-        aa_subset.sort(key=lambda x: node_to_ids(x.header.split("|")[3])[0], reverse=aa_subset[0].frame < 0)
-        
+        if aa_subset[0].frame < 0:
+            aa_subset.sort(key=lambda x: x.start, reverse=True)
+        else:
+            aa_subset.sort(key=lambda x: x.start)
+            
         first_node = aa_subset[0]
         gap_start = ref_median_start
         gap_end = first_node.start
@@ -588,7 +591,7 @@ def do_folder(folder, args):
     head_to_seq_source = NamedTemporaryFile(dir=gettempdir(), prefix="seqs_")
     writeFasta(head_to_seq_source.name, head_to_seq.items())
     
-    genes = [i for i in listdir(input_aa_path) if ".fa" in i]
+    genes = [i for i in listdir(input_aa_path) if ".fa" in i and "216827at8782" in i]
     per_batch = ceil(len(genes) / args.processes)
     arguments = [(genes[i: i+per_batch], input_aa_path, input_nt_path, head_to_seq_source.name, out_aa_path, out_nt_path) for i in range(0, len(genes), per_batch)]
     new_seqs = []
