@@ -1416,6 +1416,13 @@ def subcmd_auto(subparsers):
         help="Skip trying to glob *.fa from the input directory.",
     )
     par.add_argument(
+        "-sm",
+        "--skip_motif",
+        action="store_true",
+        default=False,
+        help="Skip motif.",
+    )
+    par.add_argument(
         "-c",
         "--config",
         type=str,
