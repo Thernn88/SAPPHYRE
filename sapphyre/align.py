@@ -968,6 +968,7 @@ def run_command(args: CmdArgs) -> None:
                 else:
                     writeFasta(tmp_aln.name, references)
                     tmp_aln.flush()
+                    
                 for i, (file, seq_count, cluster_i) in enumerate(aligned_ingredients):
                     printv(
                         f"Creating reference subalignment {i+1} of {len(aligned_ingredients)}.",
@@ -990,7 +991,7 @@ def run_command(args: CmdArgs) -> None:
                 if args.align_method != "frags":
                     # Grab insertions in each subalignment
                     alignment_insertion_coords, subalignments, refs = get_insertions(
-                        parent_tmpdir, targets, tmp_aln.name if realign_rec else top_aln_path
+                        parent_tmpdir, targets, tmp_aln.name
                     )
 
                     # Insert into refs
