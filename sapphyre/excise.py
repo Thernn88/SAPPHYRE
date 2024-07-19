@@ -548,7 +548,7 @@ def insert_gaps(input_string, positions, offset):
     return "".join(input_string)
 
 
-def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, GC_PENALTY, DNA_CODONS, ref_gaps, minimum_bp_for_splice = 30):
+def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, GC_PENALTY, DNA_CODONS, ref_gaps, minimum_bp_for_splice = 15):
     this_results = []
                 
     for (gt_size, act_gt_index, gt_index, this_prev_extensions, is_gc), (ag_size, act_ag_index_rev, ag_index_rev, this_node_extensions) in product(gt_positions, ag_positions):
