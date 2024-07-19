@@ -219,12 +219,12 @@ def scan_kmer(amount, log_output, splice_region, ref_gaps, flex, this_consensus,
     return rows, highest_possible_score, results
 
 
-def finalise_seq(node, rows, highest_possible_score, insert_at, results, gap_start, last_node, seq, ids_to_coords, id_count, log_output):
+def finalise_seq(node, rows, highest_possible_score, insert_at, results, gap_start, last_node, seq, ids_to_coords, id_count, log_output, minimum_aa):
     new_header = None
     new_aa_sequence = None
     new_nt_seq = None
     best_kmer, best_score, best_qstart, best_qend, best_frame = max(results, key=lambda x: x[1])
-    if len(best_kmer) >= 3:
+    if len(best_kmer) >= minimum_aa:
         best_frame += 1
         if node.frame < 0:
             best_frame = -best_frame
@@ -297,16 +297,16 @@ def finalise_seq(node, rows, highest_possible_score, insert_at, results, gap_sta
             else:
                 log_output.append("Failed score threshold")
     else:
-        log_output.append("Incomplete kmer found")  
+        log_output.append("Kmer does not have enough bp: {}/{}".format(len(best_kmer), minimum_aa)) 
             
     return new_header, new_aa_sequence, new_nt_seq
 
             
-def scan_last_node(gap_start, gap_end, minimum_gap, max_gap, last_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex):
+def scan_last_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, last_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex, minimum_aa):
     amount = (gap_end - gap_start) * 3
     log_output.append("Right trailing gap of {} with size {}".format(last_node.header, abs(amount)))
     
-    if amount < minimum_gap or amount >= max_gap:
+    if amount < minimum_gap_bp or amount >= max_gap_bp:
         log_output.append("Gap too small or too large\n")
         return
         
@@ -337,7 +337,7 @@ def scan_last_node(gap_start, gap_end, minimum_gap, max_gap, last_node, log_outp
     rows, highest_possible_score, results = scan_kmer(amount, log_output, seq, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
     
     if results:
-        new_header, new_aa_sequence, new_nt_seq = finalise_seq(last_node, rows, highest_possible_score, insert_at, results, gap_start, last_node, seq, ids_to_coords, id_count, log_output)
+        new_header, new_aa_sequence, new_nt_seq = finalise_seq(last_node, rows, highest_possible_score, insert_at, results, gap_start, last_node, seq, ids_to_coords, id_count, log_output, minimum_aa)
         if new_header:
             new_aa.append((new_header, new_aa_sequence))
             new_nt.append((new_header, new_nt_seq))  
@@ -346,10 +346,10 @@ def scan_last_node(gap_start, gap_end, minimum_gap, max_gap, last_node, log_outp
         
     log_output.append("")   
             
-def scan_first_node(gap_start, gap_end, minimum_gap, max_gap, first_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex):
+def scan_first_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, first_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex, minimum_aa):
     amount = (gap_end - gap_start) * 3
     log_output.append("Left leading gap of {} with size {}".format(first_node.header, abs(amount)))
-    if amount < minimum_gap or amount >= max_gap:
+    if amount < minimum_gap_bp or amount >= max_gap_bp:
         log_output.append("Gap too small or too large\n")
         return
     
@@ -378,7 +378,7 @@ def scan_first_node(gap_start, gap_end, minimum_gap, max_gap, first_node, log_ou
     rows, highest_possible_score, results = scan_kmer(amount, log_output, seq, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
     
     if results:
-        new_header, new_aa_sequence, new_nt_seq = finalise_seq(first_node, rows, highest_possible_score, insert_at, results, gap_start, first_node, seq, ids_to_coords, id_count, log_output)
+        new_header, new_aa_sequence, new_nt_seq = finalise_seq(first_node, rows, highest_possible_score, insert_at, results, gap_start, first_node, seq, ids_to_coords, id_count, log_output, minimum_aa)
         if new_header:
             new_aa.append((new_header, new_aa_sequence))
             new_nt.append((new_header, new_nt_seq))
@@ -431,10 +431,11 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
     stop_penalty = 10
     ref_coverage_thresh = 0.7
     leftright_ref_coverage = 0.8
-    minimum_gap = 15
-    max_gap = 180
+    minimum_gap_bp = 15
+    max_gap_bp = 180
     ref_gap_thresh = 0.7
     min_consec_char = 5
+    minimum_aa = 5
     
     for node in aa_nodes:
         for id in node_to_ids(node.header.split("|")[3]):
@@ -457,17 +458,17 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
         gap_start = ref_median_start
         gap_end = first_node.start
         
-        scan_first_node(gap_start, gap_end, minimum_gap, max_gap, first_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex)
+        scan_first_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, first_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex, minimum_aa)
         
         gap_start = last_node.end
         gap_end = ref_median_end
-        scan_last_node(gap_start, gap_end, minimum_gap, max_gap, last_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex)        
+        scan_last_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, last_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex, minimum_aa)        
             
         for i in range(1, len(aa_subset)):
             node_a = aa_subset[i - 1]
             node_b = aa_subset[i]
             
-            overlap = get_overlap(node_a.start * 3, node_a.end * 3, node_b.start * 3, node_b.end * 3, -max_gap)
+            overlap = get_overlap(node_a.start * 3, node_a.end * 3, node_b.start * 3, node_b.end * 3, -max_gap_bp)
             if not overlap:
                 continue
             
@@ -475,7 +476,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             if amount >= 0:
                 continue
             
-            if abs(amount) < minimum_gap:
+            if abs(amount) < minimum_gap_bp:
                 continue
             
             ids = set(map(int_first_id, node_a.header.split("|")[3].replace("NODE_", "").split("&&"))).union(set(map(int_first_id, node_b.header.split("|")[3].replace("NODE_", "").split("&&"))))
@@ -512,7 +513,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             rows, highest_possible_score, results = scan_kmer(amount, log_output, splice_region, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
                        
             if results:
-                new_header, new_aa_sequence, new_nt_seq = finalise_seq(node_a, rows, highest_possible_score, insert_at, results, gap_start, node_b, splice_region, id_to_coords, id_count, log_output)
+                new_header, new_aa_sequence, new_nt_seq = finalise_seq(node_a, rows, highest_possible_score, insert_at, results, gap_start, node_b, splice_region, id_to_coords, id_count, log_output, minimum_aa)
                 if new_header:
                     new_aa.append((new_header, new_aa_sequence))
                     new_nt.append((new_header, new_nt_seq))
@@ -581,9 +582,9 @@ def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path):
         start, end = find_index_pair(node.sequence, "-")
         ids.append(quick_rec(node.header.split("|")[3], node.frame, node.sequence, start, end))
 
-    max_gap_size = round(len(aa_nodes[0].sequence) * 0.3) # Half MSA length
+    max_gap_bp_size = round(len(aa_nodes[0].sequence) * 0.3) # Half MSA length
 
-    clusters, _ = cluster_ids(ids, 100, max_gap_size, reference_cluster_data, req_seq_coverage=0) #TODO: Make distance an arg
+    clusters, _ = cluster_ids(ids, 100, max_gap_bp_size, reference_cluster_data, req_seq_coverage=0) #TODO: Make distance an arg
     
     if clusters:
         cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
