@@ -247,7 +247,7 @@ def finalise_seq(node, rows, highest_possible_score, insert_at, results, gap_sta
         if len(best_kmer) >= 10:
             log_output.append("Threshold: {}".format(round(highest_possible_score * 0.5)))
         else:
-            log_output.append("Threshold: {}".format(round(highest_possible_score * 0.70)))
+            log_output.append("Threshold: {}".format(round(highest_possible_score * 0.85)))
         log_output.append("Best match: {} - Score: {} - Highest possible score: {} - Other possible matches within 20% of score: {}".format(best_kmer, best_score, highest_possible_score, len(other)))
         log_output.append("\n".join(rows))
         if other:
@@ -277,7 +277,7 @@ def finalise_seq(node, rows, highest_possible_score, insert_at, results, gap_sta
             else:
                 log_output.append("Failed score threshold")
         else:
-            if best_score >= round(highest_possible_score * 0.7):
+            if best_score >= round(highest_possible_score * 0.85):
                 this_id = "&&".join(final_ids)
                 new_header_fields[3] = f"NODE_{this_id}"
                 new_header_fields[4] = str(best_frame)
