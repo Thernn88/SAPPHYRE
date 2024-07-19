@@ -163,7 +163,7 @@ def count_ref_gaps(gap_start, gap_end, ref_consensus, ref_gap_thresh):
     return ref_gaps, insert_at, longest_consecutive
 
             
-def scan_kmer(amount, log_output, splice_region, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty):
+def scan_kmer(qstart_offset, amount, log_output, splice_region, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty):
     kmer_size = (abs(amount) // 3) - len(ref_gaps) - flex
     # input(kmer_size)
     
@@ -210,7 +210,7 @@ def scan_kmer(amount, log_output, splice_region, ref_gaps, flex, this_consensus,
                 
                 kmer_score -= (stop_penalty * kmer.count("*"))
                 
-                best_qstart = (i * 3) + frame
+                best_qstart = (i * 3) + frame + qstart_offset
                 best_qend = best_qstart + (kmer_size * 3)
                 results.append((kmer, kmer_score, best_qstart, best_qend, frame))
     
@@ -334,7 +334,7 @@ def scan_last_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, last_node, lo
     log_output.append("\n".join(ref_seqs))
     log_output.append("")
     
-    rows, highest_possible_score, results = scan_kmer(amount, log_output, seq, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
+    rows, highest_possible_score, results = scan_kmer(last_node_og_end, amount, log_output, seq, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
     
     if results:
         new_header, new_aa_sequence, new_nt_seq = finalise_seq(last_node, rows, highest_possible_score, insert_at, results, gap_start, last_node, seq, ids_to_coords, id_count, log_output, minimum_aa)
@@ -375,7 +375,7 @@ def scan_first_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, first_node, 
     log_output.append("\n".join(ref_seqs))
     log_output.append("")
     
-    rows, highest_possible_score, results = scan_kmer(amount, log_output, seq, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
+    rows, highest_possible_score, results = scan_kmer(0, amount, log_output, seq, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
     
     if results:
         new_header, new_aa_sequence, new_nt_seq = finalise_seq(first_node, rows, highest_possible_score, insert_at, results, gap_start, first_node, seq, ids_to_coords, id_count, log_output, minimum_aa)
@@ -415,11 +415,10 @@ def align_and_trim_seq(node_a, node_b, genomic_sequence):
     end_of_b = start_of_b + node_b_len
     
     if end_of_a < start_of_b:
-        splice_region = genomic_sequence[end_of_a: start_of_b]
+        return end_of_a, genomic_sequence[end_of_a: start_of_b]
     else:
-        splice_region = genomic_sequence[end_of_b: start_of_a]
-          
-    return splice_region  
+        return end_of_b, genomic_sequence[end_of_b: start_of_a]
+
             
 def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, ref_count, ref_median_start, ref_median_end):
     new_aa = []
@@ -500,7 +499,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
 
             id_to_coords, genomic_sequence = generate_sequence(genomic_range, node_a.frame, head_to_seq)
                 
-            splice_region = align_and_trim_seq(node_a, node_b, genomic_sequence)
+            splice_start, splice_region = align_and_trim_seq(node_a, node_b, genomic_sequence)
             
             if splice_region is None:
                 log_output.append("Could not find coords of mapped sequences")
@@ -510,7 +509,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                 log_output.append("Splice region empty\n")
                 continue
             
-            rows, highest_possible_score, results = scan_kmer(amount, log_output, splice_region, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
+            rows, highest_possible_score, results = scan_kmer(splice_start, amount, log_output, splice_region, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
                        
             if results:
                 new_header, new_aa_sequence, new_nt_seq = finalise_seq(node_a, rows, highest_possible_score, insert_at, results, gap_start, node_b, splice_region, id_to_coords, id_count, log_output, minimum_aa)
