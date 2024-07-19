@@ -1274,8 +1274,8 @@ def log_excised_consensus(
 
         aa_sequence[node.header] = node.sequence
         node_kmer = node.sequence[node.start:node.end]
-        data_len = bp_count(node_kmer)
-        if data_len < 15:
+        data_bp = bp_count(node_kmer) * 3
+        if data_bp < 15:
             log_output.append(f"Kicking {node.header} due to < 15 bp after trimming")
             kicked_headers.add(node.header)
 
