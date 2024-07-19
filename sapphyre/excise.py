@@ -950,13 +950,13 @@ def splice_combo(add_results,
         for i, x in enumerate(range(left_last_codon, left_last_codon + 3)):
             prev_nt_seq[x] = orphan_codon[i]
             if add_results:
-                prev_og[prev_start_index + x - (prev_node.start * 3) + prev_insertions] = orphan_codon[i]
+                prev_og[prev_start_index + x - (prev_node.start * 3) - prev_insertions] = orphan_codon[i]
                 replacements[prev_node.header][x] = orphan_codon[i]
 
         for i, x in enumerate(range(right_end_codon, right_end_codon + 3)):
             node_seq[x] = orphan_codon[i]
             if add_results:
-                node_og[node_start_index + x - (node.start * 3) + node_insertions] = orphan_codon[i]
+                node_og[node_start_index + x - (node.start * 3) - node_insertions] = orphan_codon[i]
                 replacements[node.header][x] = orphan_codon[i]
                 
         prev_og = "".join(prev_og)
