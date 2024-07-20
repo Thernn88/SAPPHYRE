@@ -763,7 +763,7 @@ def cull_reference_outliers(reference_records: list, debug: int) -> list:
                 all_distances.append(dist)
 
         if not all_distances:
-            return reference_records, filtered, 0, 0, 0
+            return list(itertools.chain(*reference_records)), filtered, 0, 0, 0
 
         total_median = median(all_distances)
         q3, q1 = percentile(all_distances, [75, 25])
