@@ -404,7 +404,7 @@ def align_and_trim_seq(node_a, node_b, genomic_sequence):
     node_b_og_start = genomic_sequence.find(node_b_kmer)
     
     if node_a_og_start == -1 or node_b_og_start == -1:
-        return None
+        return None, None
     
     genomic_sequence = insert_gaps(genomic_sequence, node_a_internal_gap, node_a_og_start)
     genomic_sequence = insert_gaps(genomic_sequence, node_b_internal_gap, node_b_og_start+len(node_a_internal_gap))
