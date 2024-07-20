@@ -163,7 +163,7 @@ def count_ref_gaps(gap_start, gap_end, ref_consensus, ref_gap_thresh):
     return ref_gaps, insert_at, longest_consecutive
 
             
-def scan_kmer(qstart_offset, amount, log_output, splice_region, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty):
+def scan_kmer(amount, log_output, splice_region, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty):
     kmer_size = (abs(amount) // 3) - len(ref_gaps) - flex
     # input(kmer_size)
     
@@ -210,7 +210,7 @@ def scan_kmer(qstart_offset, amount, log_output, splice_region, ref_gaps, flex, 
                 
                 kmer_score -= (stop_penalty * kmer.count("*"))
                 
-                best_qstart = (i * 3) + frame + qstart_offset
+                best_qstart = (i * 3) + frame
                 best_qend = best_qstart + (kmer_size * 3)
                 results.append((kmer, kmer_score, best_qstart, best_qend, frame))
     
@@ -219,7 +219,7 @@ def scan_kmer(qstart_offset, amount, log_output, splice_region, ref_gaps, flex, 
     return rows, highest_possible_score, results
 
 
-def finalise_seq(node, rows, highest_possible_score, insert_at, results, gap_start, last_node, seq, ids_to_coords, id_count, log_output, minimum_aa):
+def finalise_seq(qstart_offset, node, rows, highest_possible_score, insert_at, results, gap_start, last_node, seq, ids_to_coords, id_count, log_output, minimum_aa):
     new_header = None
     new_aa_sequence = None
     new_nt_seq = None
@@ -232,7 +232,7 @@ def finalise_seq(node, rows, highest_possible_score, insert_at, results, gap_sta
         
         other = [f"{res[0]} - {res[1]}" for res in results if res[1] >= target_score and res[0] != best_kmer]
         
-        ids_in_qstart = [id for id, range in ids_to_coords.items() if best_qstart >= range[0] and best_qstart <= range[1] or best_qend >= range[0] and best_qend <= range[1]]
+        ids_in_qstart = [id for id, range in ids_to_coords.items() if best_qstart+qstart_offset >= range[0] and best_qstart+qstart_offset <= range[1] or best_qend+qstart_offset >= range[0] and best_qend+qstart_offset <= range[1]]
         new_header_fields = node.header.split("|")
         final_ids = []
         for id in ids_in_qstart:
@@ -334,10 +334,10 @@ def scan_last_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, last_node, lo
     log_output.append("\n".join(ref_seqs))
     log_output.append("")
     
-    rows, highest_possible_score, results = scan_kmer(last_node_og_end, amount, log_output, seq, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
+    rows, highest_possible_score, results = scan_kmer(amount, log_output, seq, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
     
     if results:
-        new_header, new_aa_sequence, new_nt_seq = finalise_seq(last_node, rows, highest_possible_score, insert_at, results, gap_start, last_node, seq, ids_to_coords, id_count, log_output, minimum_aa)
+        new_header, new_aa_sequence, new_nt_seq = finalise_seq(last_node_og_end, last_node, rows, highest_possible_score, insert_at, results, gap_start, last_node, seq, ids_to_coords, id_count, log_output, minimum_aa)
         if new_header:
             new_aa.append((new_header, new_aa_sequence))
             new_nt.append((new_header, new_nt_seq))  
@@ -375,10 +375,10 @@ def scan_first_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, first_node, 
     log_output.append("\n".join(ref_seqs))
     log_output.append("")
     
-    rows, highest_possible_score, results = scan_kmer(0, amount, log_output, seq, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
+    rows, highest_possible_score, results = scan_kmer(amount, log_output, seq, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
     
     if results:
-        new_header, new_aa_sequence, new_nt_seq = finalise_seq(first_node, rows, highest_possible_score, insert_at, results, gap_start, first_node, seq, ids_to_coords, id_count, log_output, minimum_aa)
+        new_header, new_aa_sequence, new_nt_seq = finalise_seq(0, first_node, rows, highest_possible_score, insert_at, results, gap_start, first_node, seq, ids_to_coords, id_count, log_output, minimum_aa)
         if new_header:
             new_aa.append((new_header, new_aa_sequence))
             new_nt.append((new_header, new_nt_seq))
@@ -509,10 +509,10 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                 log_output.append("Splice region empty\n")
                 continue
             
-            rows, highest_possible_score, results = scan_kmer(splice_start, amount, log_output, splice_region, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
+            rows, highest_possible_score, results = scan_kmer(amount, log_output, splice_region, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
                        
             if results:
-                new_header, new_aa_sequence, new_nt_seq = finalise_seq(node_a, rows, highest_possible_score, insert_at, results, gap_start, node_b, splice_region, id_to_coords, id_count, log_output, minimum_aa)
+                new_header, new_aa_sequence, new_nt_seq = finalise_seq(splice_start, node_a, rows, highest_possible_score, insert_at, results, gap_start, node_b, splice_region, id_to_coords, id_count, log_output, minimum_aa)
                 if new_header:
                     new_aa.append((new_header, new_aa_sequence))
                     new_nt.append((new_header, new_nt_seq))
