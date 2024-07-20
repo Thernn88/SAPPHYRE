@@ -600,12 +600,17 @@ def process_refs(
     all_dashes_by_index = {i: True for i in range(max_ref_length)}
 
     for _, sequence in references:
+        start, end = find_index_pair(sequence, "-")
         for i, char in enumerate(sequence.replace("*", "-")):
-            character_at_each_pos[i].append(char)
+            if i < start or i >= end:
+                character_at_each_pos[i].append("#")
+            else:
+                character_at_each_pos[i].append(char)
 
     for i, chars in list(character_at_each_pos.items()):
-        data_present = 1 - (chars.count("-") / len(chars))
-        all_dashes_by_index[i] = data_present <= 0.15
+        gap_present = (chars.count("-") + chars.count("#")) / len(chars) # Inlusive of leading and trailing gaps
+        data_present = 1 - (chars.count("-") / (len(chars)-chars.count("#"))) # Exclusive of leading and trailing gaps
+        all_dashes_by_index[i] = gap_present >= 0.85
         gap_present_threshold[i] = data_present >= gap_threshold
         if data_present < column_cull_percent:
             column_cull.add(i * 3)
