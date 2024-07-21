@@ -426,7 +426,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
     
     flex = 1
     max_score = 100
-    stop_penalty = 10
+    stop_penalty = 5
     ref_coverage_thresh = 0.7
     leftright_ref_coverage = 0.8
     minimum_gap_bp = 15
@@ -555,7 +555,7 @@ def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path):
                         reference_cluster_data.add(i)
                     ref_consensus[i].append(bp)
                 else:
-                    ref_consensus[i].append(" ")
+                    ref_consensus[i].append("-")
             continue
 
         frame = int(header.split("|")[4])
