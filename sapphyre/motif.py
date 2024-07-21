@@ -184,7 +184,7 @@ def scan_kmer(amount, log_output, splice_region, ref_gaps, flex, this_consensus,
     for x in range(gap_start, gap_end):
         if x in ref_gaps:
             continue
-        rows[0] += str(x) + "\t"   
+        rows[0] += str(x+1) + "\t"   
         for i, let in enumerate(all_posibilities):
             rows[i+1] += f"{this_consensus[x].count(let)}\t"
             
