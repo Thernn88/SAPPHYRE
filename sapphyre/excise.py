@@ -1863,6 +1863,7 @@ def log_excised_consensus(
                     node_start, node_end = find_index_pair("".join(node_seq), "-")
                     prev_start, prev_end = find_index_pair("".join(prev_nt_seq), "-")
                     prev_start -= 3
+                    add_gaps = 0
                     if prev_start < 0:
                         prev_start = 0
                         add_gaps = 3
