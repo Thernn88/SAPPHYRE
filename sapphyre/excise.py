@@ -1863,6 +1863,9 @@ def log_excised_consensus(
                     node_start, node_end = find_index_pair("".join(node_seq), "-")
                     prev_start, prev_end = find_index_pair("".join(prev_nt_seq), "-")
                     prev_start -= 3
+                    if prev_start < 0:
+                        prev_start = 0
+                        add_gaps = 3
                     node_end += 3
                     node_region = node.nt_sequence[prev_start: node_end]
                     node_region_start, _ = find_index_pair(node_region, "-")
@@ -1882,7 +1885,9 @@ def log_excised_consensus(
                     scan_log.append(f">{node.header}_orf")  
                     scan_log.append(('-' * gaps_needed) + this_node)  
                     scan_log.append(f">{prev_node.header}_excise_output")
-                    scan_log.append(prev_node.nt_sequence[prev_start: node_end])
+                    # scan_log.append("".join(prev_nt_seq))
+                    # scan_log.append(prev_node.nt_sequence)
+                    scan_log.append(("-" * add_gaps) + prev_node.nt_sequence[prev_start: node_end])
                     scan_log.append(f">{node.header}_excise_output")
                     scan_log.append(node_region)
                     scan_log.append("")
