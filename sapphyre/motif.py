@@ -37,21 +37,33 @@ class NODE(Struct):
     start: int
     end: int
 
-def insert_gaps(input_string, positions, offset, is_nt = False):
+def insert_gaps(input_string, positions, offset, ids_to_coords, is_nt=False):
     if is_nt:
         input_triplets = [input_string[i:i+3] for i in range(0, len(input_string), 3)]
         
         for coord in positions:
             input_triplets.insert(offset + coord, "---")
             
-        return "".join(input_triplets)
+        input_string = "".join(input_triplets)
     else:
         input_string = list(input_string)
         
         for coord in positions:
             input_string.insert(offset + coord, "-")
+            
+        input_string = "".join(input_string)
+    
+    if ids_to_coords:
+        for pos in positions:
+            for id in ids_to_coords:
+                start, end = ids_to_coords[id]
+                if start > offset + pos:
+                    ids_to_coords[id] = (start + 1, end + 1)
+                elif start <= offset + pos <= end:
+                    ids_to_coords[id] = (start, end + 1)
 
-        return "".join(input_string)
+    return input_string
+
   
 def int_first_id(x):
     return int(x.split("_")[0])
@@ -80,40 +92,41 @@ def scan_sequence(starting_id, left, frame, head_to_seq):
             this_seq += head_to_seq[starting_id + i][250:]
             
         ids.append(starting_id + i)
-        start = end
+        start = end-250
         end = len(this_seq)
         coords.append((start, end))
         if end >= 15000:
             break
         
-    if frame < 0:
-        this_seq = bio_revcomp(this_seq)
-        
     if left:
         coords = coords[::-1]
         
-    id_to_coords = {id: coord for id, coord in zip(ids, coords)}
+    ids_to_coords = {id: coord for id, coord in zip(ids, coords)}
+        
+    if frame < 0:
+        this_seq = bio_revcomp(this_seq)
+        ids_to_coords = {id: (len(this_seq) - end, len(this_seq) - start) for id, (start, end) in ids_to_coords.items()}
     
-    return id_to_coords, this_seq
+    return ids_to_coords, this_seq
 
 def generate_sequence(ids, frame, head_to_seq):
-    id_to_coords = {}
-    
+    ids_to_coords = {}
     prev_og = head_to_seq[ids[0]]
     start, end = 0, len(prev_og)
-    id_to_coords[ids[0]] = (start, end)
+    ids_to_coords[ids[0]] = (start, end)
     for i, child in enumerate(ids):
         if i == 0:
             continue
         prev_og += head_to_seq[child][250:]
-        start = end
+        start = end - 250
         end = len(prev_og)
-        id_to_coords[child] = (start, end)
+        ids_to_coords[child] = (start, end)
 
     if frame < 0:
         prev_og = bio_revcomp(prev_og)
+        ids_to_coords = {id: (len(prev_og) - end, len(prev_og) - start) for id, (start, end) in ids_to_coords.items()}
         
-    return id_to_coords, prev_og
+    return ids_to_coords, prev_og
   
   
 def filter_ref_consensus(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end, coverage_thresh):
@@ -232,22 +245,24 @@ def finalise_seq(qstart_offset, node, rows, highest_possible_score, insert_at, r
         
         other = [f"{res[0]} - {res[1]}" for res in results if res[1] >= target_score and res[0] != best_kmer]
         
-        ids_in_qstart = [id for id, range in ids_to_coords.items() if best_qstart+qstart_offset >= range[0] and best_qstart+qstart_offset <= range[1] or best_qend+qstart_offset >= range[0] and best_qend+qstart_offset <= range[1]]
+        ids_in_qstart = [int(id) for id, range in ids_to_coords.items() if best_qstart+qstart_offset >= range[0] and best_qstart+qstart_offset <= range[1] or best_qend+qstart_offset >= range[0] and best_qend+qstart_offset <= range[1]]
+        
         new_header_fields = node.header.split("|")
         final_ids = []
         for id in ids_in_qstart:
+            count = id_count[id]
+            if count == 0:
+                final_ids.append(str(id))
+            else:
+                final_ids.append(f"{id}_{count}")
                 
-                count = id_count[id]
-                if count == 0:
-                    final_ids.append(str(id))
-                else:
-                    final_ids.append(f"{id}_{count}")
-                    
-                id_count[id] += 1
+            id_count[id] += 1
+            
         if len(best_kmer) >= 10:
             log_output.append("Threshold: {}".format(round(highest_possible_score * 0.5)))
         else:
             log_output.append("Threshold: {}".format(round(highest_possible_score * 0.85)))
+            
         log_output.append("Best match: {} - Score: {} - Highest possible score: {} - Other possible matches within 20% of score: {}".format(best_kmer, best_score, highest_possible_score, len(other)))
         log_output.append("\n".join(rows))
         if other:
@@ -257,45 +272,29 @@ def finalise_seq(qstart_offset, node, rows, highest_possible_score, insert_at, r
         
 
         if len(best_kmer) >= 10:
-            if best_score >= round(highest_possible_score * 0.5):
-                this_id = "&&".join(final_ids)
-                new_header_fields[3] = f"NODE_{this_id}"
-                new_header_fields[4] = str(best_frame)
-                new_header_fields[5] = "1"
-                new_header = "|".join(new_header_fields)
-                
-                best_kmer = insert_gaps(best_kmer, insert_at, 0)
-                
-                new_aa_sequence = ("-" * (gap_start)) + best_kmer
-                new_aa_sequence += ("-" * (len(last_node.sequence) - len(new_aa_sequence)))
-                
-                nt_seq = seq[best_qstart: best_qend]
-                nt_seq = insert_gaps(nt_seq, insert_at, 0, True)
-                
-                new_nt_seq = ("-" * (gap_start * 3)) + nt_seq
-                new_nt_seq += "-" * (len(last_node.nt_sequence) - len(new_nt_seq))
-            else:
-                log_output.append("Failed score threshold")
+            highest_score_ratio = 0.5
         else:
-            if best_score >= round(highest_possible_score * 0.85):
-                this_id = "&&".join(final_ids)
-                new_header_fields[3] = f"NODE_{this_id}"
-                new_header_fields[4] = str(best_frame)
-                new_header_fields[5] = "1"
-                new_header = "|".join(new_header_fields)
-                
-                best_kmer = insert_gaps(best_kmer, insert_at, 0)
-                
-                new_aa_sequence = ("-" * (gap_start)) + best_kmer
-                new_aa_sequence += ("-" * (len(last_node.sequence) - len(new_aa_sequence)))
-                
-                nt_seq = seq[best_qstart: best_qend]
-                nt_seq = insert_gaps(nt_seq, insert_at, 0, True)
-                
-                new_nt_seq = ("-" * (gap_start * 3)) + nt_seq
-                new_nt_seq += "-" * (len(last_node.nt_sequence) - len(new_nt_seq))
-            else:
-                log_output.append("Failed score threshold")
+            highest_score_ratio = 0.85
+            
+        if best_score >= round(highest_possible_score * highest_score_ratio):
+            this_id = "&&".join(final_ids)
+            new_header_fields[3] = f"NODE_{this_id}"
+            new_header_fields[4] = str(best_frame)
+            new_header_fields[5] = "1"
+            new_header = "|".join(new_header_fields)
+            
+            best_kmer = insert_gaps(best_kmer, insert_at, 0, None)
+            
+            new_aa_sequence = ("-" * (gap_start)) + best_kmer
+            new_aa_sequence += ("-" * (len(last_node.sequence) - len(new_aa_sequence)))
+            
+            nt_seq = seq[best_qstart: best_qend]
+            nt_seq = insert_gaps(nt_seq, insert_at, 0, None, True)
+            
+            new_nt_seq = ("-" * (gap_start * 3)) + nt_seq
+            new_nt_seq += "-" * (len(last_node.nt_sequence) - len(new_nt_seq))
+        else:
+            log_output.append("Failed score threshold of {}. Score is: {}\n".format(round(highest_possible_score * highest_score_ratio), best_score))
     else:
         log_output.append("Kmer does not have enough bp: {}/{}".format(len(best_kmer), minimum_aa)) 
             
@@ -388,7 +387,7 @@ def scan_first_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, first_node, 
     log_output.append("")
             
             
-def align_and_trim_seq(node_a, node_b, genomic_sequence):
+def align_and_trim_seq(node_a, node_b, genomic_sequence, ids_to_coords):
     node_a_kmer = node_a.nt_sequence[node_a.start * 3: node_a.end * 3]
     node_b_kmer = node_b.nt_sequence[node_b.start * 3: node_b.end * 3]
 
@@ -406,8 +405,8 @@ def align_and_trim_seq(node_a, node_b, genomic_sequence):
     if node_a_og_start == -1 or node_b_og_start == -1:
         return None, None
     
-    genomic_sequence = insert_gaps(genomic_sequence, node_a_internal_gap, node_a_og_start)
-    genomic_sequence = insert_gaps(genomic_sequence, node_b_internal_gap, node_b_og_start+len(node_a_internal_gap))
+    genomic_sequence = insert_gaps(genomic_sequence, node_a_internal_gap, node_a_og_start, ids_to_coords)
+    genomic_sequence = insert_gaps(genomic_sequence, node_b_internal_gap, node_b_og_start+len(node_a_internal_gap), ids_to_coords)
 
     start_of_a = node_a_og_start    
     end_of_a = start_of_a + node_a_len
@@ -497,9 +496,9 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             log_output.append("\n".join(ref_seqs))
             log_output.append("")
 
-            id_to_coords, genomic_sequence = generate_sequence(genomic_range, node_a.frame, head_to_seq)
+            ids_to_coords, genomic_sequence = generate_sequence(genomic_range, node_a.frame, head_to_seq)
                 
-            splice_start, splice_region = align_and_trim_seq(node_a, node_b, genomic_sequence)
+            splice_start, splice_region = align_and_trim_seq(node_a, node_b, genomic_sequence, ids_to_coords)
             
             if splice_region is None:
                 log_output.append("Could not find coords of mapped sequences")
@@ -512,11 +511,11 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             rows, highest_possible_score, results = scan_kmer(amount, log_output, splice_region, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
                        
             if results:
-                new_header, new_aa_sequence, new_nt_seq = finalise_seq(splice_start, node_a, rows, highest_possible_score, insert_at, results, gap_start, node_b, splice_region, id_to_coords, id_count, log_output, minimum_aa)
+                new_header, new_aa_sequence, new_nt_seq = finalise_seq(splice_start, node_a, rows, highest_possible_score, insert_at, results, gap_start, node_b, splice_region, ids_to_coords, id_count, log_output, minimum_aa)
                 if new_header:
                     new_aa.append((new_header, new_aa_sequence))
                     new_nt.append((new_header, new_nt_seq))
-            log_output.append("")
+                    log_output.append("Inserted sequence: {}\n".format(new_header))
                 
                 
     return new_nt, new_aa
