@@ -609,7 +609,7 @@ def process_refs(
 
     for i, chars in list(character_at_each_pos.items()):
         gap_present = (chars.count("-") + chars.count("#")) / len(chars) # Inlusive of leading and trailing gaps
-        data_present = 1 - (chars.count("-") / (len(chars)-chars.count("#"))) # Exclusive of leading and trailing gaps
+        data_present = 1 - (chars.count("-") / (len(chars)-chars.count("#"))) if (len(chars)-chars.count("#")) > 0 else 0 # Exclusive of leading and trailing gaps
         all_dashes_by_index[i] = gap_present >= 0.85
         gap_present_threshold[i] = data_present >= gap_threshold
         if data_present < column_cull_percent:
