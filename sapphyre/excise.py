@@ -1500,6 +1500,9 @@ def log_excised_consensus(
         
         for start, end in merged:
             gap_size = end - start
+            if gap_size == 1:
+                continue
+            
             for node in aa_nodes:
                 overlap = get_overlap(start, end, node.start, node.end, 1)
 
@@ -1508,13 +1511,14 @@ def log_excised_consensus(
                 
                 amount = overlap[1] - overlap[0]
 
-                gap_region = node.sequence[overlap[0]: overlap[1]]
-                
-                if gap_region.count("-") == len(gap_region):
+                gap_region = node.sequence[start: end]
+                gaps_in_region = gap_region.count("-")
+                if gaps_in_region == len(gap_region) or gaps_in_region == 0:
                     continue
                 
-                internal_gap_offset = find_index_pair(gap_region, "-")
-                data_in_gap = gap_region[internal_gap_offset[0]:internal_gap_offset[1]]
+                gap_region_on_seq = node.sequence[overlap[0]: overlap[1]]
+                internal_gap_offset = find_index_pair(gap_region_on_seq, "-")
+                data_in_gap = gap_region_on_seq[internal_gap_offset[0]:internal_gap_offset[1]]
                 # right side or left side of the gap
                 
                 this_seq = list(node.sequence)
@@ -1561,7 +1565,7 @@ def log_excised_consensus(
                             this_nt_seq[(original_i*3):(original_i*3)+3] = ["-","-","-"]
                             
                             move_dict[node.header].append((original_i, new_i))
-                        
+  
                 node.sequence = "".join(this_seq)
                 node.nt_sequence = "".join(this_nt_seq)
                 node.start, node.end = find_index_pair(node.sequence, "-")
