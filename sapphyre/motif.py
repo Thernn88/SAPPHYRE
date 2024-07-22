@@ -340,6 +340,7 @@ def scan_last_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, last_node, lo
         if new_header:
             new_aa.append((new_header, new_aa_sequence))
             new_nt.append((new_header, new_nt_seq))  
+            log_output.append("Inserted sequence: {}\n".format(new_header))
     else:
         log_output.append("No suitable kmer found")
         
@@ -381,6 +382,7 @@ def scan_first_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, first_node, 
         if new_header:
             new_aa.append((new_header, new_aa_sequence))
             new_nt.append((new_header, new_nt_seq))
+            log_output.append("Inserted sequence: {}\n".format(new_header))
     else:
         log_output.append("No suitable kmer found")
         
