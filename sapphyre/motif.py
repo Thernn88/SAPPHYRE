@@ -129,12 +129,38 @@ def generate_sequence(ids, frame, head_to_seq):
     return ids_to_coords, prev_og
   
   
-def filter_ref_consensus(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end, coverage_thresh):
+def filter_ref_consensus(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end, coverage_thresh, data_cols_required):
+    left_data_cols, right_data_cols = data_cols_required
     log_output.append("Reference seqs:")
     ref_seqs = []
-    for y in range(ref_count):
-        this_seq = "".join(ref_consensus[x][y] for x in range(gap_start, gap_end) if x not in ref_gaps)
+    trimmed_cols = set()
+    if left_data_cols:
+        for x in range(gap_start, gap_end):
+            data_present = 1 - ((ref_consensus[x].count("-") + ref_consensus[x].count(" ")) / ref_count)
+            if data_present < left_data_cols:
+                trimmed_cols.add(x)
+                continue
+            else:
+                break
+    
+    if right_data_cols:
+        for x in range(gap_end-1, gap_start-1, -1):
+            data_present = 1 - ((ref_consensus[x].count("-") + ref_consensus[x].count(" ")) / ref_count)
+            if data_present < right_data_cols:
+                trimmed_cols.add(x)
+                continue
+            else:
+                break
         
+    if len(trimmed_cols) + len(ref_gaps) >= gap_end - gap_start:
+        log_output.append("All columns trimmed in references. Raw seqs:")
+        for y in range(ref_count):
+            log_output.append("".join(ref_consensus[x][y] for x in range(gap_start, gap_end)))
+        log_output.append("")
+        return {}, [], trimmed_cols
+    
+    for y in range(ref_count):
+        this_seq = "".join(ref_consensus[x][y] for x in range(gap_start, gap_end) if x not in ref_gaps and x not in trimmed_cols)
         this_seq_coverage = 1 - ((this_seq.count("-") + this_seq.count(" ")) / len(this_seq))
         ref_seqs.append((this_seq, this_seq_coverage))
         
@@ -147,9 +173,11 @@ def filter_ref_consensus(log_output, ref_count, ref_consensus, ref_gaps, gap_sta
     for x in range(gap_start, gap_end):
         if x in ref_gaps:
             continue
+        if x in trimmed_cols:
+            continue
         this_consensus[x] = [ref_consensus[x][y] for y in ref_indices if ref_consensus[x][y] != " " and ref_consensus[x][y] != "-"]
   
-    return this_consensus, ref_seqs
+    return this_consensus, ref_seqs, trimmed_cols
 
 
 def count_ref_gaps(gap_start, gap_end, ref_consensus, ref_gap_thresh):
@@ -173,11 +201,11 @@ def count_ref_gaps(gap_start, gap_end, ref_consensus, ref_gap_thresh):
     if longest_consecutive is None:
         longest_consecutive = 0
         
-    return ref_gaps, insert_at, longest_consecutive
+    return ref_gaps, insert_at, longest_consecutive,
 
             
-def scan_kmer(amount, log_output, splice_region, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty):
-    kmer_size = (abs(amount) // 3) - len(ref_gaps) - flex
+def scan_kmer(amount, log_output, splice_region, skips_cols, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty):
+    kmer_size = (abs(amount) // 3) - len(skips_cols) - flex
     # input(kmer_size)
     
     log_output.append("Raw splice region:")
@@ -195,18 +223,18 @@ def scan_kmer(amount, log_output, splice_region, ref_gaps, flex, this_consensus,
     for i, let in enumerate(all_posibilities):
         rows[i+1] += f"{let}\t"
     for x in range(gap_start, gap_end):
-        if x in ref_gaps:
+        if x in skips_cols:
             continue
         rows[0] += str(x+1) + "\t"   
         for i, let in enumerate(all_posibilities):
             rows[i+1] += f"{this_consensus[x].count(let)}\t"
             
-    ref_cols = [x for x in range(gap_start, gap_end) if x not in ref_gaps]
+    ref_cols = [x for x in range(gap_start, gap_end) if x not in skips_cols]
     
     highest_possible_score = 0
 
     for x in range(gap_start, gap_end):
-        if x in ref_gaps:
+        if x in skips_cols:
             continue
         max_count = max(this_consensus[x].count(let) for let in all_posibilities)
         highest_possible_score += min(max_count, max_score)
@@ -301,7 +329,7 @@ def finalise_seq(qstart_offset, node, rows, highest_possible_score, insert_at, r
     return new_header, new_aa_sequence, new_nt_seq
 
             
-def scan_last_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, last_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex, minimum_aa):
+def scan_last_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, last_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex, minimum_aa, required_end_data_cols):
     amount = (gap_end - gap_start) * 3
     log_output.append("Right trailing gap of {} with size {}".format(last_node.header, abs(amount)))
     
@@ -328,12 +356,17 @@ def scan_last_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, last_node, lo
         # log_output.append("No non-gap region with 5 char\n")
         return
     
-    this_consensus, ref_seqs = filter_ref_consensus(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end, leftright_ref_coverage)
+    this_consensus, ref_seqs, edge_trim_cols = filter_ref_consensus(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end, leftright_ref_coverage, (None, required_end_data_cols))
+    
+    if not this_consensus:
+        return
+    
+    skips_cols = edge_trim_cols.union(ref_gaps)
     
     log_output.append("\n".join(ref_seqs))
     log_output.append("")
     
-    rows, highest_possible_score, results = scan_kmer(amount, log_output, seq, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
+    rows, highest_possible_score, results = scan_kmer(amount, log_output, seq, skips_cols, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
     
     if results:
         new_header, new_aa_sequence, new_nt_seq = finalise_seq(last_node_og_end, last_node, rows, highest_possible_score, insert_at, results, gap_start, last_node, seq, ids_to_coords, id_count, log_output, minimum_aa)
@@ -346,7 +379,7 @@ def scan_last_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, last_node, lo
         
     log_output.append("")   
             
-def scan_first_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, first_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex, minimum_aa):
+def scan_first_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, first_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex, minimum_aa, required_end_data_cols):
     amount = (gap_end - gap_start) * 3
     log_output.append("Left leading gap of {} with size {}".format(first_node.header, abs(amount)))
     if amount < minimum_gap_bp or amount >= max_gap_bp:
@@ -370,12 +403,17 @@ def scan_first_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, first_node, 
     if longest_consecutive is None or longest_consecutive < min_consec_char:
         # log_output.append("No non-gap region with 5 char\n")
         return
-    this_consensus, ref_seqs = filter_ref_consensus(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end, leftright_ref_coverage)
+    this_consensus, ref_seqs, edge_trim_cols = filter_ref_consensus(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end, leftright_ref_coverage, (required_end_data_cols, None))
+    
+    if not this_consensus:
+        return
     
     log_output.append("\n".join(ref_seqs))
     log_output.append("")
     
-    rows, highest_possible_score, results = scan_kmer(amount, log_output, seq, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
+    skip_cols = edge_trim_cols.union(ref_gaps)
+    
+    rows, highest_possible_score, results = scan_kmer(amount, log_output, seq, skip_cols, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
     
     if results:
         new_header, new_aa_sequence, new_nt_seq = finalise_seq(0, first_node, rows, highest_possible_score, insert_at, results, gap_start, first_node, seq, ids_to_coords, id_count, log_output, minimum_aa)
@@ -436,6 +474,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
     ref_gap_thresh = 0.7
     min_consec_char = 5
     minimum_aa = 5
+    required_end_data_cols = 0.75
     
     for node in aa_nodes:
         for id in node_to_ids(node.header.split("|")[3]):
@@ -458,11 +497,11 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
         gap_start = ref_median_start
         gap_end = first_node.start
         
-        scan_first_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, first_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex, minimum_aa)
+        scan_first_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, first_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex, minimum_aa, required_end_data_cols)
         
         gap_start = last_node.end
         gap_end = ref_median_end
-        scan_last_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, last_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex, minimum_aa)        
+        scan_last_node(gap_start, gap_end, minimum_gap_bp, max_gap_bp, last_node, log_output, ref_consensus, head_to_seq, ref_count, ref_gap_thresh, leftright_ref_coverage, min_consec_char, id_count, new_aa, new_nt, max_score, stop_penalty, flex, minimum_aa, required_end_data_cols)        
             
         for i in range(1, len(aa_subset)):
             node_a = aa_subset[i - 1]
@@ -493,7 +532,10 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             
             log_output.append("Gap between {} and {} of size {}".format(node_a.header, node_b.header, abs(amount)))
                     
-            this_consensus, ref_seqs = filter_ref_consensus(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end, ref_coverage_thresh)
+            this_consensus, ref_seqs, edge_trim_cols = filter_ref_consensus(log_output, ref_count, ref_consensus, ref_gaps, gap_start, gap_end, ref_coverage_thresh, (None, None))
+            
+            if not this_consensus:
+                return
             
             log_output.append("\n".join(ref_seqs))
             log_output.append("")
@@ -510,7 +552,9 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
                 log_output.append("Splice region empty\n")
                 continue
             
-            rows, highest_possible_score, results = scan_kmer(amount, log_output, splice_region, ref_gaps, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
+            skip_cols = edge_trim_cols.union(ref_gaps)
+            
+            rows, highest_possible_score, results = scan_kmer(amount, log_output, splice_region, skip_cols, flex, this_consensus, gap_start, gap_end, max_score, stop_penalty)
                        
             if results:
                 new_header, new_aa_sequence, new_nt_seq = finalise_seq(splice_start, node_a, rows, highest_possible_score, insert_at, results, gap_start, node_b, splice_region, ids_to_coords, id_count, log_output, minimum_aa)
