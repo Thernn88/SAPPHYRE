@@ -548,7 +548,7 @@ def insert_gaps(input_string, positions, offset):
     return "".join(input_string)
 
 
-def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, GC_PENALTY, DNA_CODONS, ref_gaps, minimum_bp_for_splice = 15):
+def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, DELETION_PENALTY, GC_PENALTY, DNA_CODONS, ref_gaps, minimum_bp_for_splice = 15):
     this_results = []
                 
     for (gt_size, act_gt_index, gt_index, this_prev_extensions, is_gc), (ag_size, act_ag_index_rev, ag_index_rev, this_node_extensions) in product(gt_positions, ag_positions):
@@ -652,8 +652,10 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
             left_incomplete = "-" in left_codon and left_codon.count("-") != 3
             left_has_ref_gap = left_last_codon // 3 in ref_gaps
             
+            deletion_possible = 3 - left_codon.count("-") == right_codon.count("-")
+            
             # Has incomplete and either right or left is in the ref gap but not both
-            if (right_incomplete or left_incomplete) and (right_has_ref_gap or left_has_ref_gap) and (right_has_ref_gap != left_has_ref_gap):
+            if (right_incomplete or left_incomplete) and (((right_has_ref_gap or left_has_ref_gap) and (right_has_ref_gap != left_has_ref_gap)) or deletion_possible):
                 if right_has_ref_gap:
                     while right_end_codon // 3 in ref_gaps:
                         for i in range(right_end_codon, right_end_codon + 3):
@@ -669,6 +671,13 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
                             prev_nt_seq.insert(i, "-")
                             prev_nt_seq.pop(-1)
                         left_last_codon += 3
+                elif deletion_possible:
+                    if (right_end_codon - 3 - left_last_codon) % 3 == 0:
+                        for i in range(0, right_end_codon - left_last_codon):
+                            prev_gap_insertions.append(left_last_codon + i)
+                            prev_nt_seq.insert(left_last_codon + i, "#")
+                            prev_nt_seq.pop(-1)
+                            this_score += DELETION_PENALTY
                             
                 node_nt_start, node_nt_end = find_index_pair("".join(node_seq), "-")
                 length = node_nt_end - node_nt_start
@@ -1695,6 +1704,7 @@ def log_excised_consensus(
     FRANKENSTEIN_PENALTY = -20
     GC_PENALTY = -20
     SIMILARITY_SKIP = 0.95
+    DELETION_PENALTY = -2
     int_first_id = lambda x: int(x.split("_")[0])
     extensions = defaultdict(dict)
     extensions_aa = defaultdict(dict)
@@ -1800,7 +1810,7 @@ def log_excised_consensus(
                 # if "2A|AglaOr12CTE|splice_fix|NODE_343534&&343535|-3|1" not in prev_node.header:
                 #     continue
 
-                this_results = get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, GC_PENALTY, DNA_CODONS, ref_gaps)
+                this_results = get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, GC_PENALTY, DELETION_PENALTY, DNA_CODONS, ref_gaps)
                 splice_found = False
                 this_best_splice = None
                 if this_results:
