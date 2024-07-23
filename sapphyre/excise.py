@@ -677,7 +677,6 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
                 elif deletion_possible:
                     if (right_end_codon - 3 - left_last_codon) % 3 == 0:
                         for i in range(0, right_end_codon - left_last_codon):
-                            prev_gap_insertions.append(left_last_codon + i)
                             prev_nt_seq.insert(left_last_codon + i, "-")
                             prev_nt_seq.pop(-1)
                             this_score += DELETION_PENALTY
