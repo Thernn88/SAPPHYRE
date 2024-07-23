@@ -637,6 +637,9 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
                     orphan_codon.append(right_codon[i])
                 else:
                     orphan_codon.append(left_codon[i])
+                    
+            if "-" in orphan_codon:
+                continue
 
             joined = "".join(orphan_codon)
             if joined not in DNA_CODONS:
@@ -697,6 +700,8 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
                             orphan_codon.append(right_codon[i])
                         else:
                             orphan_codon.append(left_codon[i])
+                    if "-" in orphan_codon:
+                        continue
                     joined = "".join(orphan_codon)
                     if joined not in DNA_CODONS:
                         this_score += FRANKENSTEIN_PENALTY
