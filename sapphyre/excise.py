@@ -678,7 +678,7 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
                     if (right_end_codon - 3 - left_last_codon) % 3 == 0:
                         for i in range(0, right_end_codon - left_last_codon):
                             prev_gap_insertions.append(left_last_codon + i)
-                            prev_nt_seq.insert(left_last_codon + i, "#")
+                            prev_nt_seq.insert(left_last_codon + i, "-")
                             prev_nt_seq.pop(-1)
                             this_score += DELETION_PENALTY
                             
@@ -1709,7 +1709,7 @@ def log_excised_consensus(
     FRANKENSTEIN_PENALTY = -20
     GC_PENALTY = -20
     SIMILARITY_SKIP = 0.95
-    DELETION_PENALTY = -2
+    DELETION_PENALTY = 0
     int_first_id = lambda x: int(x.split("_")[0])
     extensions = defaultdict(dict)
     extensions_aa = defaultdict(dict)
