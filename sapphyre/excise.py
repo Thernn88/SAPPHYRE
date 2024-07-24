@@ -603,14 +603,14 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
         if ag_size > 2 and left_last_codon in range(act_ag_index_rev, act_ag_index_rev + ag_size):
             for i in range(act_ag_index_rev + 1, act_ag_index_rev + ag_size - 1):
                 if prev_nt_seq[i] != "-":
-                    prev_gap_insertions.append(i)
+                    prev_gap_insertions.append((False, i))
                     prev_nt_seq.insert(i, "-")
                     prev_nt_seq.pop(-1)
 
         if gt_size > 2 and right_end_codon in range(act_gt_index, act_gt_index + gt_size):
             for i in range(act_gt_index + gt_size - 1, act_gt_index + 1, -1):
                 if node_seq[i - 1] != "-":
-                    node_gap_insertions.append(i)
+                    node_gap_insertions.append((False, i))
                     node_seq.insert(i, "-")
                     node_seq.pop(0)
                 
@@ -662,7 +662,7 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
                 if right_has_ref_gap:
                     while right_end_codon // 3 in ref_gaps:
                         for i in range(right_end_codon, right_end_codon + 3):
-                            node_gap_insertions.append(i)
+                            node_gap_insertions.append((False, i))
                             node_seq.insert(i, "-")
                             node_seq.pop(0)
                         right_end_codon += 3
@@ -670,16 +670,18 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
                     # Extend left by ref gap and see if it meets the right
                     while left_last_codon // 3 in ref_gaps:
                         for i in range(left_last_codon, left_last_codon + 3):
-                            prev_gap_insertions.append(i)
+                            prev_gap_insertions.append((False, i))
                             prev_nt_seq.insert(i, "-")
                             prev_nt_seq.pop(-1)
                         left_last_codon += 3
                 elif deletion_possible:
                     if (right_end_codon - 3 - left_last_codon) % 3 == 0:
                         for i in range(0, right_end_codon - left_last_codon):
-                            prev_nt_seq.insert(left_last_codon + i, "-")
-                            prev_nt_seq.pop(-1)
-                            this_score += DELETION_PENALTY
+                            if prev_nt_seq[left_last_codon + i] != "-":
+                                prev_gap_insertions.append((True, left_last_codon + i))
+                                prev_nt_seq.insert(left_last_codon + i, "-")
+                                prev_nt_seq.pop(-1)
+                                this_score += DELETION_PENALTY
                             
                 node_nt_start, node_nt_end = find_index_pair("".join(node_seq), "-")
                 length = node_nt_end - node_nt_start
@@ -876,6 +878,8 @@ def splice_combo(add_results,
                  combo_log,
                  replacements,
                  replacements_aa,
+                 orphan_replacements,
+                 orphan_replacements_aa,
                  extensions,
                  extensions_aa,
                  gap_insertions_aa,
@@ -926,20 +930,26 @@ def splice_combo(add_results,
     prev_insertions = 0
     node_insertions = 0
         
-    for i in final_prev_insertions:
+    for (is_deletion_gap, i) in final_prev_insertions:
         if add_results:
             # if i % 3 == 0:
             #     gap_insertions_aa[prev_node.header].append((i//3, -1))
-            gap_insertions_nt[prev_node.header].append((i, -1))
+            if is_deletion_gap:
+                gap_insertions_nt[prev_node.header][0].append((i, -1))
+            else:
+                gap_insertions_nt[prev_node.header][1].append((i, -1))
         prev_nt_seq.insert(i, "-")
         prev_nt_seq.pop(-1)
         prev_insertions += 1
     
-    for i in final_node_insertions:
+    for (is_deletion_gap, i) in final_node_insertions:
         if add_results:
             # if i % 3 == 0:
             #     gap_insertions_aa[node.header].append((i//3, 0))
-            gap_insertions_nt[node.header].append((i, 0))
+            if is_deletion_gap:
+                gap_insertions_nt[prev_node.header][0].append((i, -1))
+            else:
+                gap_insertions_nt[prev_node.header][1].append((i, -1))
         node_seq.insert(i, "-")
         node_seq.pop(0)
         node_insertions += 1
@@ -954,8 +964,8 @@ def splice_combo(add_results,
         
         orphan_aa = DNA_CODONS[joined]
         if add_results:
-            replacements_aa[prev_node.header][left_last_codon//3] = orphan_aa
-            replacements_aa[node.header][right_end_codon//3] = orphan_aa
+            orphan_replacements_aa[prev_node.header][left_last_codon//3] = orphan_aa
+            orphan_replacements_aa[node.header][right_end_codon//3] = orphan_aa
 
         prev_og = list(prev_og)
         node_og = list(node_og)
@@ -964,13 +974,13 @@ def splice_combo(add_results,
             prev_nt_seq[x] = orphan_codon[i]
             if add_results:
                 prev_og[prev_start_index + x - (prev_node.start * 3) - prev_insertions] = orphan_codon[i]
-                replacements[prev_node.header][x] = orphan_codon[i]
+                orphan_replacements[prev_node.header][x] = orphan_codon[i]
 
         for i, x in enumerate(range(right_end_codon, right_end_codon + 3)):
             node_seq[x] = orphan_codon[i]
             if add_results:
                 node_og[node_start_index + x - (node.start * 3) - node_insertions] = orphan_codon[i]
-                replacements[node.header][x] = orphan_codon[i]
+                orphan_replacements[node.header][x] = orphan_codon[i]
                 
         prev_og = "".join(prev_og)
         node_og = "".join(node_og)
@@ -980,7 +990,7 @@ def splice_combo(add_results,
         
     node_seq = "".join(node_seq)
     prev_nt_seq = "".join(prev_nt_seq)
-        
+
     node_start, node_end = find_index_pair(node_seq, "-")
     prev_start, prev_end = find_index_pair(prev_nt_seq, "-")
     
@@ -1250,6 +1260,8 @@ def log_excised_consensus(
     kicked_headers = set()
     replacements = defaultdict(dict)
     replacements_aa = defaultdict(dict)
+    orphan_replacements = defaultdict(dict)
+    orphan_replacements_aa = defaultdict(dict)
 
     cluster_sets = [None]
     get_id = lambda header: header.split("|")[3].replace("NODE_","")
@@ -1712,8 +1724,8 @@ def log_excised_consensus(
     int_first_id = lambda x: int(x.split("_")[0])
     extensions = defaultdict(dict)
     extensions_aa = defaultdict(dict)
-    gap_insertions_aa = defaultdict(list)
-    gap_insertions_nt = defaultdict(list)
+    gap_insertions_aa = defaultdict(lambda: defaultdict(list))
+    gap_insertions_nt = defaultdict(lambda: defaultdict(list))
     ends = {}
     gff_out = defaultdict(dict)
     gff_coords = {}
@@ -1823,7 +1835,7 @@ def log_excised_consensus(
                     if len(highest_results) > 1:
                         best_change = None
                         for i, result in enumerate(highest_results):
-                            _, smallest_coords_change = splice_combo(False, i == 0, formed_seqs, result, prev_node, node, prev_og, node_og, DNA_CODONS, multi_log, [], replacements, replacements_aa, extensions, extensions_aa, gap_insertions_aa, gap_insertions_nt, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
+                            _, smallest_coords_change = splice_combo(False, i == 0, formed_seqs, result, prev_node, node, prev_og, node_og, DNA_CODONS, multi_log, [], replacements, replacements_aa, orphan_replacements, orphan_replacements_aa, extensions, extensions_aa, gap_insertions_aa, gap_insertions_nt, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
                             # print(smallest_coords_change)
                             if smallest_coords_change is not None and (best_change is None or smallest_coords_change < best_change):
                                 best_change = smallest_coords_change
@@ -1839,7 +1851,7 @@ def log_excised_consensus(
                             if has_exisiting_result[node.header]["Left"] >= this_best_splice[1]:
                                 continue
                         
-                        gff, _ = splice_combo(True, True, formed_seqs, this_best_splice, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, combo_log, replacements, replacements_aa, extensions, extensions_aa, gap_insertions_aa, gap_insertions_nt, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
+                        gff, _ = splice_combo(True, True, formed_seqs, this_best_splice, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, combo_log, replacements, replacements_aa, orphan_replacements, orphan_replacements_aa, extensions, extensions_aa, gap_insertions_aa, gap_insertions_nt, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
                         if gff:
                             has_exisiting_result[prev_node.header]["Right"] = this_best_splice[1]
                             has_exisiting_result[node.header]["Left"] = this_best_splice[1]
@@ -1934,7 +1946,7 @@ def log_excised_consensus(
                 seq[original_i] = "-"
             seq = "".join(seq)
         
-        if header in replacements_aa or header in extensions_aa or header in gap_insertions_aa:
+        if header in replacements_aa or header in orphan_replacements_aa or header in extensions_aa or header in gap_insertions_aa:
             seq = list(seq)
             if header in extensions_aa:
                 for i, bp in extensions_aa[header].items():
@@ -1946,6 +1958,10 @@ def log_excised_consensus(
             if header in replacements_aa:
                 for i, bp in replacements_aa[header].items():
                     seq[i] = bp
+                    
+            if header in orphan_replacements_aa:
+                for i, bp in orphan_replacements_aa[header].items():
+                    seq[i] = bp 
                     
             seq = "".join(seq)
         aa_output.append((header, seq))
@@ -1997,18 +2013,27 @@ def log_excised_consensus(
                     seq[(original_i*3):(original_i*3)+3] = ["-","-","-"]
                 seq = "".join(seq)
             
-            if header in replacements or header in extensions or header in gap_insertions_nt:
+            if header in replacements or header in orphan_replacements or header in extensions or header in gap_insertions_nt:
                 seq = list(seq)
                 if header in extensions: 
                     for i, bp in extensions[header].items():
                         seq[i] = bp
                 if header in gap_insertions_nt:
-                    for insert_i, pop_i in gap_insertions_nt[header]:
+                    for insert_i, pop_i in gap_insertions_nt[header][1]:
                         seq.insert(insert_i, "-")
                         seq.pop(pop_i)
                 if header in replacements:
                     for i, bp in replacements[header].items():
                         seq[i] = bp
+                if header in gap_insertions_nt:
+                    for insert_i, pop_i in gap_insertions_nt[header][0]:
+                        seq.insert(insert_i, "-")
+                        seq.pop(pop_i)
+                        
+                if header in orphan_replacements:
+                    for i, bp in orphan_replacements[header].items():
+                        seq[i] = bp
+                        
                 seq = "".join(seq)
                 
             if header in internal_headers:
