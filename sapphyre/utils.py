@@ -5,6 +5,7 @@ from collections.abc import Generator
 from queue import Queue
 from threading import Thread
 
+import sapphyre_tools
 from needletail import parse_fastx_file
 
 
@@ -90,3 +91,35 @@ def write2Line2Fasta(path: str, records: list[str], compress=False):
     with func(path, "wb") as fp:
         for i in range(0, len(records), 2):
             fp.write(f"{records[i]}\n{records[i+1]}\n".encode())
+
+
+def find_gap_regions(consensus: str, gap="-", min_length=6) -> str:
+    start = None
+    indices = []
+    for i, letter in enumerate(consensus):
+        print(i, letter, start)
+        if letter == gap:
+            if start is None:
+                start = i
+                continue
+        else:
+            if start:
+                if i - start + 1> min_length:
+                    indices.extend(range(start, i))
+                start = None
+    if start:
+        if len(consensus) - start + 1 > min_length:
+            indices.extend(range(start, len(consensus)))
+    return indices
+
+
+def cull_columns(sequences: list[str], consensus_threshold: 0.6, min_length=6) -> list[str]:
+    unmasked = sapphyre_tools.dumb_consensus(sequences, consensus_threshold, 0)
+    print("unmasked", unmasked)
+    mask = set(find_gap_regions(unmasked, gap="-", min_length=min_length))
+    print("mask", mask)
+    # to_be_culled = {i for i, char in enumerate(masked) if char == "?"}
+    output = []
+    for seq in sequences:
+        output.append("".join(seq[i] for i in range(len(unmasked)) if i not in mask))
+    return output
