@@ -18,6 +18,7 @@ def do_folder(
     specified_dna_table: dict,
     verbose: int,
     compress: bool,
+    use_exonerate: bool,
 ) -> bool:
     """
     Runs pr2codon in parallel on all genes for a given input
@@ -38,6 +39,10 @@ def do_folder(
 
     joined_align = input_path.joinpath(Path("align"))
     joined_nt_aligned = input_path.joinpath(Path("nt_aligned"))
+    
+    if use_exonerate:
+        joined_align = Path(input, "exonerate").joinpath(Path("align"))
+        joined_nt_aligned = Path(input, "exonerate").joinpath(Path("nt_aligned"))
 
     rmtree(joined_nt_aligned, ignore_errors=True)
     joined_nt_aligned.mkdir()
@@ -132,6 +137,7 @@ def worker(
         return False
 
     outfile_stem = out_file.stem
+    print(aa_file, nt_file)
     aligned_result = pn2codon(outfile_stem, specified_dna_table, seqs)
     aligned_lines = aligned_result.splitlines()
 
@@ -234,6 +240,7 @@ def main(args):
             specified_dna_table,
             args.verbose,
             args.compress,
+            args.use_exonerate,
         )
 
         if not success:
