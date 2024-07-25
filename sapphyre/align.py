@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 from collections import Counter, defaultdict, namedtuple
 import itertools
 import subprocess
@@ -793,11 +792,15 @@ def cull_reference_outliers(reference_records: list, debug: int) -> list:
     return output, filtered, total_median, allowable, iqr
 
 
-def cull_ref_columns(refs: list[tuple[str,str]], gap_consensus_threshold: float, min_gap_length: int) -> list[tuple[str,str]]:
+def cull_ref_columns(refs: list[str], gap_consensus_threshold: float, min_gap_length: int) -> list[tuple[str,str]]:
     headers = [refs[i] for i in range(0, len(refs), 2)]
     seqs = [refs[i] for i in range(1, len(refs), 2)]
     seqs = cull_columns(seqs, gap_consensus_threshold, min_gap_length)
-    return list(zip(headers, seqs))
+    output = []
+    for i in range(len(seqs)):
+        output.append(headers[i])
+        output.append(seqs[i])
+    return output
 
 def run_command(args: CmdArgs) -> None:
     keeper = TimeKeeper(KeeperMode.DIRECT)

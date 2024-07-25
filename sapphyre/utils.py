@@ -97,7 +97,6 @@ def find_gap_regions(consensus: str, gap="-", min_length=6) -> str:
     start = None
     indices = []
     for i, letter in enumerate(consensus):
-        print(i, letter, start)
         if letter == gap:
             if start is None:
                 start = i
@@ -115,10 +114,7 @@ def find_gap_regions(consensus: str, gap="-", min_length=6) -> str:
 
 def cull_columns(sequences: list[str], consensus_threshold: 0.6, min_length=6) -> list[str]:
     unmasked = sapphyre_tools.dumb_consensus(sequences, consensus_threshold, 0)
-    print("unmasked", unmasked)
     mask = set(find_gap_regions(unmasked, gap="-", min_length=min_length))
-    print("mask", mask)
-    # to_be_culled = {i for i, char in enumerate(masked) if char == "?"}
     output = []
     for seq in sequences:
         output.append("".join(seq[i] for i in range(len(unmasked)) if i not in mask))
