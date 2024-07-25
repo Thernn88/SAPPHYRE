@@ -83,10 +83,10 @@ def generate_sequence(ids, head_to_seq):
 
 
 class exonerate:
-    def __init__(self, folder, chomp_max_distance, orthoset_raw_path, exonerate_path, max_extend, target_to_taxon, entropy_percent) -> None:
+    def __init__(self, folder, chomp_max_distance, top_path, exonerate_path, max_extend, target_to_taxon, entropy_percent) -> None:
         self.folder = folder
         self.chomp_max_distance = chomp_max_distance
-        self.orthoset_raw_path = orthoset_raw_path
+        self.top_path = top_path
         self.exonerate_path = exonerate_path
         self.max_extend = max_extend
         self.target_to_taxon = target_to_taxon
@@ -137,7 +137,7 @@ class exonerate:
                     clusters.append((current_cluster[0], current_cluster[-1], current_strand))
             
             cluster_sets = [(set(range(a, b+1)), strand) for a, b, strand in clusters]
-            raw_path = path.join(self.orthoset_raw_path, gene_name+".fa")
+            raw_path = path.join(self.top_path, gene_name+".aln.fa")
             # max_cluster = max(clusters, key=lambda x: x[1] - x[0])
             # cluster = max_cluster
             
@@ -167,20 +167,20 @@ class exonerate:
                 _, cluster_seq = generate_sequence([str(i) for i in range(cluster_start, cluster_end + 1)], head_to_seq)
 
                 cluster_name = path.join(self.exonerate_path, f"{gene_name}_{cluster_start}-{cluster_end}.txt")
-                with NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()) as f, open(cluster_name, "w") as result:
+                with NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()) as f, NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()) as temp_raw, open(cluster_name, "w") as result:
                     writeFasta(f.name, [("cluster", cluster_seq)])
                     f.flush()
+                    writeFasta(temp_raw.name, [(header, sequence.replace("-","")) for header, sequence in parseFasta(raw_path)])
                     command = [
                         "exonerate",
                         "--geneticcode", "1",
                         "--ryo", '>%ti|%tcb/%tce|%s|%qcb/%qce|%qi\n%tcs\n',
                         "--score", "50",
                         "--model", "protein2genome",
-                        #"--showcigar", "no",
                         "--showvulgar", "no",
                         "--showalignment", "no",
                         "--verbose", "0",
-                        raw_path,
+                        temp_raw.name,
                         f.name
                     ]
                                         
@@ -250,9 +250,7 @@ def do_folder(folder, args):
 
     temp_source_file = NamedTemporaryFile(dir=gettempdir(), prefix="seqs_", suffix=".fa")
     writeFasta(temp_source_file.name, head_to_seq.items())
-
-    orthoset_path = path.join(args.orthoset_input, args.orthoset)
-    orthoset_raw_path = path.join(orthoset_path, "raw")
+    top_path = path.join(folder, "top")
 
     orthoset_db_path = path.join(args.orthoset_input, args.orthoset, "rocksdb")
     orthoset_db = RocksDB(orthoset_db_path)
@@ -281,13 +279,13 @@ def do_folder(folder, args):
     )
     batch_result = []
     if args.processes <= 1:
-        exonerate_obj = exonerate(folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend, target_to_taxon, args.entropy_percent)
+        exonerate_obj = exonerate(folder, args.chomp_max_distance, top_path, exonerate_path, args.max_extend, target_to_taxon, args.entropy_percent)
         for batch in batches:
             batch_result.append(exonerate_obj.run(*batch))
     else:
         with Pool(args.processes) as pool:
             batch_result.extend(pool.starmap(
-                exonerate(folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend, target_to_taxon, args.entropy_percent).run,
+                exonerate(folder, args.chomp_max_distance, top_path, exonerate_path, args.max_extend, target_to_taxon, args.entropy_percent).run,
                 batches,
             ))
             
