@@ -16,10 +16,7 @@ from sapphyre_tools import blosum62_distance, find_index_pair, sigclust, delete_
 from xxhash import xxh3_64
 from wrap_rocks import RocksDB
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import gettempdir, parseFasta, printv, writeFasta, cull_columns
-
-GAP_PERCENT = 0.6
-MIN_GAP_LENGTH = 6
+from .utils import gettempdir, parseFasta, printv, writeFasta
 
 def get_aln_path(orthoset_dir: str) -> str:
     """
@@ -791,17 +788,6 @@ def cull_reference_outliers(reference_records: list, debug: int) -> list:
 
     return output, filtered, total_median, allowable, iqr
 
-
-def cull_ref_columns(refs: list[str], gap_consensus_threshold: float, min_gap_length: int) -> list[tuple[str,str]]:
-    headers = [refs[i] for i in range(0, len(refs), 2)]
-    seqs = [refs[i] for i in range(1, len(refs), 2)]
-    seqs = cull_columns(seqs, gap_consensus_threshold, min_gap_length)
-    output = []
-    for i in range(len(seqs)):
-        output.append(headers[i])
-        output.append(seqs[i])
-    return output
-
 def run_command(args: CmdArgs) -> None:
     keeper = TimeKeeper(KeeperMode.DIRECT)
     debug = args.debug
@@ -951,7 +937,6 @@ def run_command(args: CmdArgs) -> None:
                 # cull reference outliers
                 references = list(parseFasta(top_aln_path, has_interleave=True))
                 references, filtered_refs, ref_total_median, ref_allowable, ref_iqr = cull_reference_outliers(references, args.debug)
-                references = cull_ref_columns(references, GAP_PERCENT, MIN_GAP_LENGTH)
                 references, _ = delete_empty_columns(references)
                 references = [(references[i], references[i + 1]) for i in range(0, len(references), 2)]
                 

@@ -18,8 +18,10 @@ from sapphyre_tools import bio_revcomp, get_overlap
 from wrap_rocks import RocksDB
 
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import gettempdir, parseFasta, printv, writeFasta
+from .utils import gettempdir, parseFasta, printv, writeFasta, cull_columns
 
+GAP_PERCENT = 0.6
+MIN_GAP_LENGTH = 6
 
 class ReferenceHit(Struct, frozen=True):
     query: str
@@ -539,6 +541,17 @@ def delete_empty_columns(records):
     return [(header, "".join([seq[i] for i in keep_indices])) for header, seq in records]
 
 
+def cull_ref_columns(refs: list[str], gap_consensus_threshold: float, min_gap_length: int) -> list[tuple[str,str]]:
+    headers = [ref[0] for ref in refs]
+    seqs = [ref[1] for ref in refs]
+    seqs = cull_columns(seqs, gap_consensus_threshold, min_gap_length)
+    output = []
+    for i in range(len(seqs)):
+        output.append((headers[i], seqs[i]))
+
+    return output
+
+
 def top_reference_realign(gene_path, most_common_taxa, target_to_taxon, top_path, gene, skip_realign, top_ref_arg):
     out = []
         
@@ -595,13 +608,8 @@ def top_reference_realign(gene_path, most_common_taxa, target_to_taxon, top_path
         )
         recs = list(parseFasta(tmp_result.name, True))
         
-        del_columns = set()
-        for i in range(len(recs[0][1])):
-            if all(j[1][i] == "-" or j[1][i] == "X" for j in recs):
-                del_columns.add(i)
-
-        out = [(header, "".join([let for i, let in enumerate(seq) if i not in del_columns])) for header, seq in recs]
-
+        out = cull_ref_columns(recs, GAP_PERCENT, MIN_GAP_LENGTH)
+        
         writeFasta(out_path, out)
 
     return gene, top_chosen
