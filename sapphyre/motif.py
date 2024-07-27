@@ -77,6 +77,9 @@ def scan_sequence(starting_id, left, frame, head_to_seq):
 
     i = 0
     while True:
+        if starting_id + i not in head_to_seq:
+            break
+        
         if left:
             i -= 1
             if head_to_seq[starting_id + i][-250:] != this_seq[:250]:
