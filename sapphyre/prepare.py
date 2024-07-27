@@ -90,6 +90,7 @@ class SeqDeduplicator:
         rename,
         skip_ntrim,
         prepared_output,
+        map_mode,
     ) -> None:
         self.original_coords = {}
         self.original_positions = {}
@@ -105,6 +106,7 @@ class SeqDeduplicator:
         self.skip_ntrim = skip_ntrim
         self.rename = rename
         self.transcript_mapped_to = defaultdict(dict)
+        self.map_mode = map_mode
 
     def __call__(
         self,
@@ -120,7 +122,11 @@ class SeqDeduplicator:
 
         self.original_inputs.append(str(fa_file_path))
 
-        if not self.this_genome:
+        if self.map_mode:
+            self.this_assembly = True
+            self.this_genome = False
+            
+        elif not self.this_genome:
             for _, seq in parseFasta(fa_file_path, True):
                 if len(seq) > CHOMP_CUTOFF:
                     self.this_genome = True
@@ -260,6 +266,7 @@ def map_taxa_runs(
     force_entropy,
     skip_entropy,
     skip_ntrim,
+    map_mode,
 ):
     """
     Removes duplicate sequences, renames them and inserts them into the taxa database.
@@ -309,6 +316,7 @@ def map_taxa_runs(
         rename,
         skip_ntrim,
         prepared_file,
+        map_mode,
     )
     for fa_file_path in components:
         deduper(
@@ -431,6 +439,7 @@ def main(args):
             args.force_entropy,
             args.skip_entropy,
             args.skip_ntrim,
+            args.map,
         )
 
     printv(
