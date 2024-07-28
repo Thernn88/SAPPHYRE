@@ -7,6 +7,7 @@ from math import ceil
 from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import copyfileobj, rmtree
+from statistics import median
 from tempfile import NamedTemporaryFile
 
 import wrap_rocks
@@ -900,6 +901,7 @@ def aln_function(
     final_path,
     debug_halves,
     skip_splice,
+    min_length = 0.5,
 ):
     """
     Calls the alignment program, runs some additional logic on the result and returns the aligned sequences
@@ -933,9 +935,15 @@ def aln_function(
 
     aligned_result = []
     aligned_dict = {}
+    lengths = []
     for header, seq in parseFasta(aln_file, True):
         header = trimmed_header_to_full[header[:127]]
         aligned_result.append((header, seq.upper()))
+        lengths.append(len(seq) - seq.count("-"))
+        
+    median_length = median(lengths)
+    
+    aligned_result = [(header, seq) for header, seq in aligned_result if len(seq) - seq.count("-") >= median_length * min_length]
 
     writeFasta(aln_file, aligned_result, False)
     
