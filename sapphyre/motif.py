@@ -661,6 +661,12 @@ def do_folder(folder, args):
     rocksdb_path = path.join(folder, "rocksdb", "sequences", "nt")
     nt_db = RocksDB(rocksdb_path)
     
+    is_genome = nt_db.get("get:isgenome")
+    is_genome = is_genome == "True"
+    
+    if not is_genome and not args.force:
+        printv("Not a genome, skipping", args.verbose, 0)
+    
     head_to_seq = get_head_to_seq(nt_db)
     
     input_aa_path = path.join(folder, "trimmed", "aa")

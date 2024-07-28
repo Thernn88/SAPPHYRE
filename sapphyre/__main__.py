@@ -964,7 +964,11 @@ def subcmd_motif(subparsers):
 
 
 def motif_args(par):
-    pass
+    par.add_argument(
+        "--force",
+        action="store_true",
+        help="Force motif to run.",
+    )
 
 
 def motif(args):
