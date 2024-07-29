@@ -446,9 +446,9 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
         unaligned_sequences = []
         required_frames = defaultdict(set)
         query_template = "{}|{}"
+        fallback = {}
+        nodes_in_gene = set()
         if is_full:
-            fallback = {}
-            nodes_in_gene = set()
             for hit in diamond_hits:
                 nodes_in_gene.add(hit.node)
                 query = query_template.format(hit.node, hit.frame)
