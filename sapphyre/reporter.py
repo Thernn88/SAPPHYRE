@@ -506,11 +506,11 @@ def do_trim(
             continue
 
         if r_end == 0:
-            nt_seq = nt_seq[(r_start * 3) :]
-            aa_seq = aa_seq[r_start:]
+            hit.seq = hit.seq[(r_start * 3) :]
+            hit.aa_sequence = hit.aa_sequence[r_start:]
         else:
-            nt_seq = nt_seq[(r_start * 3) : -(r_end * 3)]
-            aa_seq = aa_seq[r_start:-r_end]
+            hit.seq = hit.seq[(r_start * 3) : -(r_end * 3)]
+            hit.aa_sequence = hit.aa_sequence[r_start:-r_end]
             
         hit.qstart += (r_start * 3)
         hit.qend -= (r_end * 3)
@@ -520,7 +520,7 @@ def do_trim(
             hit.chomp_end -= r_end
 
         if debug_fp:
-            debug_fp.write(f">{header}\n{aa_seq}\n\n")
+            debug_fp.write(f">{header}\n{hit.aa_sequence}\n\n")
         out_hits.append(hit)
     return out_hits
 
