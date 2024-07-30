@@ -57,7 +57,6 @@ class Hit(HmmHit):#, frozen=True):
     
     def get_bp_trim(
         self,
-        this_aa: str,
         references: dict[str, str],
         matches: int,
         is_positive_match: callable,
@@ -77,7 +76,6 @@ class Hit(HmmHit):#, frozen=True):
 
         Args:
         ----
-            this_aa (str): The amino acid sequence to trim.
             references (dict[str, str]): A dictionary of reference sequences.
             matches (int): The number of matches to look for.
             mode (str): The mode to use. Can be "exact", "strict", or "lax".
@@ -93,10 +91,10 @@ class Hit(HmmHit):#, frozen=True):
         EXTEND_PENALTY = 1
 
         # Create blosum pairwise aligner profile
-        profile = profile_create_16(this_aa, blosum62)
+        profile = profile_create_16(self.aa_sequence, blosum62)
 
         if debug_fp:
-            debug_fp.write(f">{header}\n{this_aa}\n")
+            debug_fp.write(f">{header}\n{self.aa_sequence}\n")
 
         # For each reference sequence
         best_alignment = None
@@ -494,7 +492,6 @@ def do_trim(
     for hit in hits:
         header = f"NODE_{hit.node}|{hit.frame}"
         r_start, r_end = hit.get_bp_trim(
-            aa_seq,
             core_aa_seqs,
             trim_matches,
             is_positive_match,
