@@ -1187,8 +1187,8 @@ def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, gfm, nt_
                     Sequence(
                         None,
                         header,
-                        seq.replace("-",""),
-                        nt_seqs.get(seq_record.description).replace("-",""),
+                        seq,
+                        nt_seqs.get(seq_record.description),
                         taxon,
                         gene,
                         next(index),
@@ -1210,8 +1210,8 @@ def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, gfm, nt_
                         Sequence(
                             None, # Want to generate new style
                             header,
-                            str(seq_record.seq).replace("-",""),
-                            nt_seqs.get(seq_record.description).replace("-",""),
+                            str(seq_record.seq),
+                            nt_seqs.get(seq_record.description),
                             taxon,
                             gene,
                             next(index),
@@ -1236,8 +1236,8 @@ def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, gfm, nt_
                         Sequence(
                             f"{header} {data}",
                             header,
-                            seq.replace("-",""),
-                            nt_seqs.get(seq_record.description).replace("-",""),
+                            seq,
+                            nt_seqs.get(seq_record.description),
                             taxon,
                             gene,
                             next(index),
