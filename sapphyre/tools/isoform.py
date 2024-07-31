@@ -121,6 +121,8 @@ def worker(
         inserted += 1
         
     with NamedTemporaryFile(mode="w") as raw_fa_file, NamedTemporaryFile(mode="w") as aln_file:
+        for header, _ in out_sequences:
+            short_to_full[header[:128]] = header
         writeFasta(raw_fa_file.name, out_sequences)
         if align_method == "clustal":
             subprocess.run(
@@ -131,8 +133,10 @@ def worker(
                 ["mafft", "--thread", "1", "--quiet", "--anysymbol", raw_fa_file.name],
                 stdout=aln_file
             )
-            
-        writeFasta(out_path, parseFasta(aln_file.name, True))
+        out = []
+        for header, sequence in parseFasta(aln_file.name, True):
+            out.append((short_to_full[header[:128]], sequence))
+        writeFasta(out_path, out)
 
     return log
 
