@@ -666,6 +666,7 @@ def do_folder(folder, args):
     
     if not is_genome and not args.force:
         printv("Not a genome, skipping", args.verbose, 0)
+        return True
     
     head_to_seq = get_head_to_seq(nt_db)
     
