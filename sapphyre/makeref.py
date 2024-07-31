@@ -1182,6 +1182,12 @@ def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, gfm, nt_
                 taxon = seq_record.description.replace(" ","_").replace("|","-")
                 gene = os.path.basename(file).split(".")[0]
                 header = f"{gene}_{taxon}"
+                
+                if header in multiheaders:
+                    this_counter[header] += 1
+                    header = f"{header}_{this_counter[header]}"
+                    
+                multiheaders.add(header)
 
                 subset.add_sequence(
                     Sequence(
@@ -1205,18 +1211,20 @@ def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, gfm, nt_
                     header = f"{header}_{this_counter[header]}"
                     
                 # header = gene+"_"+header
-                if taxon.lower() not in taxon_to_kick:
-                    subset.add_sequence(
-                        Sequence(
-                            None, # Want to generate new style
-                            header,
-                            str(seq_record.seq),
-                            nt_seqs.get(seq_record.description),
-                            taxon,
-                            gene,
-                            next(index),
-                        )
+                if taxon.lower().strip() in taxon_to_kick:
+                    continue
+                
+                subset.add_sequence(
+                    Sequence(
+                        None, # Want to generate new style
+                        header,
+                        str(seq_record.seq),
+                        nt_seqs.get(seq_record.description),
+                        taxon,
+                        gene,
+                        next(index),
                     )
+                )
             else:
                 header, data = seq_record.description.split(" ", 1)
                 if header in multiheaders:
@@ -1227,22 +1235,23 @@ def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, gfm, nt_
                 seq = str(seq_record.seq)
                 taxon = data["organism_name"].replace(" ", "_")
                 if (
-                    taxon.lower() not in taxon_to_kick
-                    and data["organism_name"].lower() not in taxon_to_kick
+                    taxon.lower().strip() in taxon_to_kick
+                    or data["organism_name"].lower().strip() in taxon_to_kick
                 ):
-                    gene = data["pub_og_id"]
+                    continue
+                gene = data["pub_og_id"]
 
-                    subset.add_sequence(
-                        Sequence(
-                            f"{header} {data}",
-                            header,
-                            seq,
-                            nt_seqs.get(seq_record.description),
-                            taxon,
-                            gene,
-                            next(index),
-                        )
+                subset.add_sequence(
+                    Sequence(
+                        f"{header} {data}",
+                        header,
+                        seq,
+                        nt_seqs.get(seq_record.description),
+                        taxon,
+                        gene,
+                        next(index),
                     )
+                )
         del temp_file
     return subset
 
@@ -1275,7 +1284,7 @@ def main(args):
             kick = set()
         else:
             with open(kick) as fp:
-                kick = {line.lower() for line in fp.read().splitlines() if line.strip()}
+                kick = {line.lower().strip() for line in fp.read().splitlines() if line.strip()}
             printv(f"Found {len(kick)} taxon to kick.", verbosity)
     else:
         kick = set()
