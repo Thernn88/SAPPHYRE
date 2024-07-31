@@ -1553,6 +1553,35 @@ def taxonomy_filler(args):
         print()
         print(args.formathelp())
 
+def subcmd_isoform(subparser):
+    parser = subparser.add_parser(
+        "isoform", help="Isoform filter."
+    )
+    parser.add_argument("INPUT", help="Input directory", type=str)
+    parser.add_argument("OUTPUT", help="Output directory", type=str)
+    parser.add_argument(
+        "-alm",
+        "--align_method",
+        choices=["clustal", "mafft"],
+        default="mafft",
+        help="What alignment method to use.",
+    )
+    parser.add_argument(
+        "-t",
+        "--tsv",
+        type=str,
+        help="TSV Path.",
+    )
+    parser.set_defaults(func=isoform, formathelp=parser.format_help)
+
+
+def isoform(args):
+    from .tools import isoform
+
+    if not isoform.main(args):
+        print()
+        print(args.formathelp())
+
 def subcmd_toolset(subparser):
     parser = subparser.add_parser(
         "toolset", help="A set of useful tools developed with integration to the pipeline."
@@ -1561,6 +1590,7 @@ def subcmd_toolset(subparser):
 
     subcmd_taxonomy_filler(sub_sub_parser)
     subcmd_download(sub_sub_parser)
+    subcmd_isoform(sub_sub_parser)
 
 def main():
     # Check mafft exists
