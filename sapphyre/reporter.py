@@ -209,6 +209,7 @@ class Hit(HmmHit):#, frozen=True):
 def get_diamondhits(
     rocks_hits_db: RocksDB,
     list_of_wanted_genes: list,
+    is_genome,
 ) -> dict[str, list[Hit]]:
     """Returns a dictionary of gene to corresponding hits.
 
@@ -235,7 +236,10 @@ def get_diamondhits(
                 0,
             )
             continue
-        gene_based_results.append((gene, json.decode(gene_result, type=list[Hit])))
+        if is_genome:
+            gene_based_results.append((gene, json.decode(gene_result, type=list[Hit])))
+        else:
+            gene_based_results.append((gene, gene_result))
 
     return gene_based_results
 
@@ -627,7 +631,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     printv(f"Doing output for: {oargs.gene}", oargs.verbose, 2)
 
     # Unpack the hits
-    this_hits = oargs.list_of_hits
+    this_hits = oargs.list_of_hits if oargs.is_genome else json.decode(oargs.list_of_hits, type=list[Hit])
     gene_nodes = [hit.node for hit in this_hits]
 
     # Get reference sequences
@@ -772,10 +776,13 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
         f"Initialized databases. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing reciprocal diamond hits.",
         args.verbose,
     )
+    
+    top_refs, is_assembly, is_genome = get_toprefs(rocky.get_rock("rocks_nt_db"))
 
     transcripts_mapped_to = get_diamondhits(
         rocky.get_rock("rocks_hits_db"),
         list_of_wanted_genes,
+        is_genome,
     )
 
     printv(
@@ -784,7 +791,6 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     )
 
     target_taxon = get_gene_variants(rocky.get_rock("rocks_hits_db"))
-    top_refs, is_assembly, is_genome = get_toprefs(rocky.get_rock("rocks_nt_db"))
     gene_dupes = get_prepare_dupes(rocky.get_rock("rocks_nt_db"))
 
     coords_path = path.join(taxa_path, "coords")
