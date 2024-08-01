@@ -65,12 +65,13 @@ def worker(
             subprocess.run(
                 ["clustalo", "-i", raw_fa_file.name, "-o", aln_file.name, "--threads=1", "--force"]
             )
-        else:
+        elif align_method == "mafft":
             subprocess.run(
-                ["mafft", "--thread", "1", "--quiet", "--anysymbol", raw_fa_file.name],
+                ["mafft", "--thread", "1", "--quiet", "--anysymbol", "--legacygappenalty", raw_fa_file.name],
                 stdout=aln_file
             )
-        
+        else:
+            subprocess.run(["./famsa", "-t", "1", raw_fa_file.name, aln_file.name])
         aligned_sequences = [(short_to_full[header[:128]], sequence) for header, sequence in parseFasta(aln_file.name, True)]
 
     this_consensus = defaultdict(list)

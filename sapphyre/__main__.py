@@ -1562,8 +1562,8 @@ def subcmd_isoform(subparser):
     parser.add_argument(
         "-alm",
         "--align_method",
-        choices=["clustal", "mafft"],
-        default="mafft",
+        choices=["clustal", "mafft", "famsa"],
+        default="famsa",
         help="What alignment method to use.",
     )
     parser.add_argument(
