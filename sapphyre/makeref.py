@@ -582,7 +582,7 @@ def generate_aln(
         f.write("".join(splice_log_out))
         
     with open(str(violation_log_path), "w") as f:
-        f.write("Header,Difference\n")
+        f.write("Gene,Header,Difference\n")
         f.write("\n".join(violation_log_out))
         
     return set
@@ -922,7 +922,7 @@ def severe_violation(aligned_result, difference_threshold = 0.3):
             difference = distance / len(node_kmer)
             
             if difference > difference_threshold:
-                violations.append(f"{node.header},{difference}")
+                violations.append(f"{node.gene},{node.header},{difference}")
                 aligned_result[i] = None
     
     aligned_result = [node for node in aligned_result if node is not None]
