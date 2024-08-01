@@ -496,6 +496,7 @@ def generate_aln(
     cleaned_path.mkdir(exist_ok=True)    
     clean_log = set_path.joinpath("cleaned.log")
     splice_log_path = set_path.joinpath("splice.log")
+    violation_log_path = set_path.joinpath("violations.log")
 
     if has_nt:
         cleaned_nt_path.mkdir(exist_ok=True)
@@ -542,13 +543,15 @@ def generate_aln(
     printv("Writing Aln to RocksdDB", verbosity, 1)
     clean_log_out = []
     splice_log_out = []
+    violation_log_out = []
     aligned_genes = {}
     dupes_in_genes = {}
-    for gene, aligned_sequences, dupe_headers, distance_log, splice_log in aligned_sequences_components:
+    for gene, aligned_sequences, dupe_headers, distance_log, violation_log, splice_log in aligned_sequences_components:
         dupes_in_genes[gene] = dupe_headers
         aligned_genes[gene] = aligned_sequences
         clean_log_out.extend(distance_log)
         splice_log_out.extend(splice_log)
+        violation_log_out.extend(violation_log)
         
     subsets = set.seperate(processes)
     
@@ -577,6 +580,11 @@ def generate_aln(
             
     with open(str(splice_log_path), "w") as f:
         f.write("".join(splice_log_out))
+        
+    with open(str(violation_log_path), "w") as f:
+        f.write("Header,Difference\n")
+        f.write("\n".join(violation_log_out))
+        
     return set
 
 def do_merge(sequences):
@@ -895,6 +903,32 @@ def splice_overlap(records: list[aligned_record], candidate_consensus, allowed_a
 
     return records, has_merge, logs
 
+
+def severe_violation(aligned_result, difference_threshold = 0.3):
+    violations = []
+    node_matrix = defaultdict(list)
+    for node in aligned_result:
+        for i, let in enumerate(node.seq):
+            if i >= node.start and i < node.end:
+                node_matrix[i].append(let)
+            else:
+                node_matrix[i].append("?")
+                
+    this_consensus = "".join(Counter(node_matrix[i]).most_common(1)[0][0] for i in range(len(node_matrix)))
+    for i, node in enumerate(aligned_result):
+        node_kmer = node.seq[node.start: node.end]
+        distance = constrained_distance(node_kmer, this_consensus[node.start: node.end])
+        if distance > 0:
+            difference = distance / len(node_kmer)
+            
+            if difference > difference_threshold:
+                violations.append(f"{node.header},{difference}")
+                aligned_result[i] = None
+    
+    aligned_result = [node for node in aligned_result if node is not None]
+    return aligned_result, violations
+
+
 def aln_function(
     this_args: alnArgs,
     sequences,
@@ -978,6 +1012,8 @@ def aln_function(
     if this_args.do_cull:
         cull_result, aligned_result = cull(aligned_result, this_args.cull_percent, this_args.has_nt)
 
+    aligned_result, violation_log = severe_violation(aligned_result)
+    
     internal_result = {}
     if this_args.do_internal:
         internal_result, aligned_result = internal_cull(aligned_result, this_args.cull_internal, this_args.has_nt)
@@ -1098,7 +1134,7 @@ def aln_function(
             seq.aa_sequence = aligned_dict[seq.header]
             output.append(seq)
 
-    return this_args.gene, output, duped_headers, log, splice_log
+    return this_args.gene, output, duped_headers, log, violation_log, splice_log
 
 
 
