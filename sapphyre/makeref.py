@@ -582,7 +582,7 @@ def generate_aln(
         f.write("".join(splice_log_out))
         
     with open(str(violation_log_path), "w") as f:
-        f.write("Gene,Header,Difference\n")
+        f.write("Gene,Header,Upper Bound,Difference\n")
         f.write("\n".join(violation_log_out))
         
     return set
@@ -904,7 +904,7 @@ def splice_overlap(records: list[aligned_record], candidate_consensus, allowed_a
     return records, has_merge, logs
 
 
-def severe_violation(aligned_result, difference_threshold = 0.3):
+def severe_violation(aligned_result, threshold = 1.5, floor = 0.1):
     violations = []
     node_matrix = defaultdict(list)
     for node in aligned_result:
@@ -915,15 +915,24 @@ def severe_violation(aligned_result, difference_threshold = 0.3):
                 node_matrix[i].append("?")
                 
     this_consensus = "".join(Counter(node_matrix[i]).most_common(1)[0][0] for i in range(len(node_matrix)))
+    differences = []
     for i, node in enumerate(aligned_result):
         node_kmer = node.seq[node.start: node.end]
         distance = constrained_distance(node_kmer, this_consensus[node.start: node.end])
         if distance > 0:
             difference = distance / len(node_kmer)
             
-            if difference > difference_threshold:
-                violations.append(f"{node.gene},{node.header},{difference}")
-                aligned_result[i] = None
+            differences.append((i, difference))
+           
+    Q1 = np.percentile([i[1] for i in differences], 25)
+    Q3 = np.percentile([i[1] for i in differences], 75)
+    IQR = Q3 - Q1
+    upper_bound = max((Q3 + (threshold * IQR)), floor)
+    for i, difference in differences:
+        node = aligned_result[i]
+        if difference > upper_bound:
+            violations.append(f"{node.gene},{upper_bound},{node.header},{difference}")
+            aligned_result[i] = None
     
     aligned_result = [node for node in aligned_result if node is not None]
     return aligned_result, violations
