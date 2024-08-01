@@ -1291,8 +1291,8 @@ def subcmd_makeref(sp):
     par.add_argument(
         "-m",
         "--align_method",
-        choices=["clustal", "mafft"],
-        default="clustal",
+        choices=["clustal", "mafft", "famsa"],
+        default="famsa",
         help="What alignment method to use.",
     )
     par.add_argument(

@@ -968,8 +968,10 @@ def aln_function(
             os.system(
                 f"clustalo -i '{raw_fa_file}' -o '{aln_file}' --threads=1 --force",
             )
-        else:
-            os.system(f"mafft --thread 1 --quiet --anysymbol '{raw_fa_file}' > '{aln_file}'")
+        elif this_args.align_method == "mafft":
+            os.system(f"mafft --quiet --anysymbol --legacygappenalty --thread 1 '{raw_fa_file}' > '{aln_file}'")
+        else:  
+            os.system(f"./famsa -t 1 '{raw_fa_file}' '{aln_file}'")
 
     aligned_result = []
     aligned_dict = {}
@@ -1091,8 +1093,10 @@ def aln_function(
                         os.system(
                             f"clustalo -i '{temp.name}' -o '{final_file.name}' --threads=1 --force",
                         )
+                    elif this_args.align_method == "mafft":
+                        os.system(f"mafft --quiet --anysymbol --legacygappenalty --thread 1 '{temp.name}' > '{final_file.name}'")
                     else:
-                        os.system(f"mafft --quiet --anysymbol --thread 1 '{temp.name}' > '{final_file.name}'")
+                        os.system(f"./famsa -t 1 '{temp.name}' '{final_file.name}'")
 
                 realigned_sequences = {}
                 for header, seq in parseFasta(final_file.name, True):
