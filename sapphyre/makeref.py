@@ -923,16 +923,16 @@ def severe_violation(aligned_result, threshold = 1.5, floor = 0.1):
             difference = distance / len(node_kmer)
             
             differences.append((i, difference))
-           
-    Q1 = np.percentile([i[1] for i in differences], 25)
-    Q3 = np.percentile([i[1] for i in differences], 75)
-    IQR = Q3 - Q1
-    upper_bound = max((Q3 + (threshold * IQR)), floor)
-    for i, difference in differences:
-        node = aligned_result[i]
-        if difference > upper_bound:
-            violations.append(f"{node.gene},{upper_bound},{node.header},{difference}")
-            aligned_result[i] = None
+    if differences:
+        Q1 = np.percentile([i[1] for i in differences], 25)
+        Q3 = np.percentile([i[1] for i in differences], 75)
+        IQR = Q3 - Q1
+        upper_bound = max((Q3 + (threshold * IQR)), floor)
+        for i, difference in differences:
+            node = aligned_result[i]
+            if difference > upper_bound:
+                violations.append(f"{node.gene},{upper_bound},{node.header},{difference}")
+                aligned_result[i] = None
     
     aligned_result = [node for node in aligned_result if node is not None]
     return aligned_result, violations
