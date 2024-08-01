@@ -42,7 +42,6 @@ alnArgs = namedtuple(
         "no_halves",
         "skip_deviation_filter",
         "realign",
-        "final_path",
         "debug_halves",
         "skip_splice",
     ],
@@ -494,21 +493,13 @@ def generate_aln(
     if os.path.exists(cleaned_nt_path):
         rmtree(cleaned_nt_path)
             
-    final_path = None
-    if not skip_deviation_filter:
-        cleaned_path.mkdir(exist_ok=True)    
-        clean_log = set_path.joinpath("cleaned.log")
-        splice_log_path = set_path.joinpath("splice.log")
+    cleaned_path.mkdir(exist_ok=True)    
+    clean_log = set_path.joinpath("cleaned.log")
+    splice_log_path = set_path.joinpath("splice.log")
 
-        if has_nt:
-            cleaned_nt_path.mkdir(exist_ok=True)
-            nt_trimmed_path.mkdir(exist_ok=True)
-
-        if realign:
-            final_path = set_path.joinpath("final")
-            if os.path.exists(final_path):
-                rmtree(final_path)
-            final_path.mkdir(exist_ok=True)
+    if has_nt:
+        cleaned_nt_path.mkdir(exist_ok=True)
+        nt_trimmed_path.mkdir(exist_ok=True)
 
     arguments = []
     for gene, fasta in sequences.items():
@@ -532,7 +523,6 @@ def generate_aln(
                 no_halves,
                 skip_deviation_filter,
                 realign,
-                final_path,
                 debug_halves,
                 skip_splice,
             ),
@@ -1035,68 +1025,78 @@ def aln_function(
 
     log = []
     passed = aligned_result
+    failed = []
+    to_keep = None
+    to_keep2 = None
     if not this_args.skip_deviation_filter:
         passed, failed = filter_deviation(aligned_result, FULLSEQ_REPEATS, FULLSEQ_DISTANCE_EXPONENT, FULLSEQ_IQR_COEFFICIENT, FULLSEQ_CUTOFF_FLOOR, MIN_AA)
         for fail in failed:
             fail.fail = "full"
         to_keep = delete_empty_columns(passed)
-        if not this_args.no_halves:
-            passed, former, latter = check_halves(passed, HALFSEQ_REPEATS, HALFSEQ_DISTANCE_EXPONENT, HALFSEQ_IQR_COEFFICIENT, HALFSEQ_CUTOFF_FLOOR, MIN_AA, this_args.cleaned_path, this_args.gene+'.fa', this_args.debug_halves)
-            failed.extend(former)
-            failed.extend(latter)
-            to_keep2 = delete_empty_columns(passed)
-
-        clean_dict = {rec.header: rec.seq for rec in passed}
-
-        output = []
-        nt_result = []
-        for seq in sequences:
-            if seq.header in clean_dict:
-                seq.aa_sequence = clean_dict[seq.header]
-
-                if this_args.has_nt:
-                    nt_result.append((seq.header, seq.nt_sequence))
-
-                output.append(seq)
-        if nt_result:
-            nt_result = delete_nt_columns(nt_result, to_keep)
-            if not this_args.no_halves:
-                nt_result = delete_nt_columns(nt_result, to_keep2)
-        clean_file = this_args.cleaned_path.joinpath(this_args.gene + ".aln.fa")
-        clean_nt_file = this_args.cleaned_nt_path.joinpath(this_args.gene + ".nt.aln.fa")
-
-        writeFasta(clean_file, [(rec.header, rec.seq) for rec in passed], False)
-        if nt_result:
-            writeFasta(clean_nt_file, nt_result, False)
-
-        log = [f"{r.header.split()[0]},{r.end-r.start},{r.fail},{r.mean},{r.all_mean},{r.gene}\n" for r in failed]
-
-        if this_args.realign:
-            final_file = this_args.final_path.joinpath(this_args.gene + ".aln.fa")
+        
+    if this_args.realign:
+        with NamedTemporaryFile(dir=gettempdir()) as temp, NamedTemporaryFile(dir=gettempdir()) as final_file:
             if len(list(parseFasta(raw_fa_file))) == 1:
-                writeFasta(final_file, [(rec.header, rec.seq.replace("-","")) for rec in passed])
+                realigned_sequences = {rec.header: rec.seq for rec in passed}
             else:
                 with NamedTemporaryFile(dir=gettempdir()) as temp:
                     writeFasta(temp.name, [(rec.header, rec.seq.replace("-","")) for rec in passed], False)
 
                     if this_args.align_method == "clustal":
                         os.system(
-                            f"clustalo -i '{temp.name}' -o '{final_file}' --threads=1 --force",
+                            f"clustalo -i '{temp.name}' -o '{final_file.name}' --threads=1 --force",
                         )
                     else:
-                        os.system(f"mafft --quiet --anysymbol --thread 1 '{temp.name}' > '{final_file}'")
+                        os.system(f"mafft --quiet --anysymbol --thread 1 '{temp.name}' > '{final_file.name}'")
 
-            aligned_dict = {}
-            for header, seq in parseFasta(final_file, True):
-                aligned_dict[header] = seq
+                realigned_sequences = {}
+                for header, seq in parseFasta(final_file.name, True):
+                    realigned_sequences[header] = seq
+                    
+                for record in passed:
+                    record.seq = realigned_sequences[record.header]
+                    record.remake_indices()
+        
+    if not this_args.skip_deviation_filter and not this_args.no_halves:
+        passed, former, latter = check_halves(passed, HALFSEQ_REPEATS, HALFSEQ_DISTANCE_EXPONENT, HALFSEQ_IQR_COEFFICIENT, HALFSEQ_CUTOFF_FLOOR, MIN_AA, this_args.cleaned_path, this_args.gene+'.fa', this_args.debug_halves)
+        failed.extend(former)
+        failed.extend(latter)
+        to_keep2 = delete_empty_columns(passed)
 
-            output = []
-            nt_result = []
-            for seq in sequences:
-                if seq.header in aligned_dict:
-                    seq.aa_sequence = aligned_dict[seq.header]
+    clean_dict = {rec.header: rec.seq for rec in passed}
 
-                    output.append(seq)
+    output = []
+    nt_result = []
+    for seq in sequences:
+        if seq.header in clean_dict:
+            seq.aa_sequence = clean_dict[seq.header]
+
+            if this_args.has_nt:
+                nt_result.append((seq.header, seq.nt_sequence))
+
+            output.append(seq)
+    if nt_result:
+        if to_keep is not None:
+            nt_result = delete_nt_columns(nt_result, to_keep)
+        if not this_args.no_halves and to_keep2 is not None:
+            nt_result = delete_nt_columns(nt_result, to_keep2)
+    clean_file = this_args.cleaned_path.joinpath(this_args.gene + ".aln.fa")
+    clean_nt_file = this_args.cleaned_nt_path.joinpath(this_args.gene + ".nt.aln.fa")
+
+    writeFasta(clean_file, [(rec.header, rec.seq) for rec in passed], False)
+    if nt_result:
+        writeFasta(clean_nt_file, nt_result, False)
+
+    log = [f"{r.header.split()[0]},{r.end-r.start},{r.fail},{r.mean},{r.all_mean},{r.gene}\n" for r in failed]
+
+    aligned_dict = {rec.header: rec.seq for rec in passed}
+
+    output = []
+    nt_result = []
+    for seq in sequences:
+        if seq.header in aligned_dict:
+            seq.aa_sequence = aligned_dict[seq.header]
+            output.append(seq)
 
     return this_args.gene, output, duped_headers, log, splice_log
 
