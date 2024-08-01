@@ -1,7 +1,7 @@
 import gzip
 import os
 import sqlite3
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, namedtuple
 from itertools import combinations, count
 from math import ceil
 from multiprocessing.pool import Pool
@@ -20,6 +20,33 @@ import numpy as np
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import gettempdir, parseFasta, printv, writeFasta
 
+
+alnArgs = namedtuple(
+    "alnArgs",
+    [
+        "gene",
+        "raw_path",
+        "aln_path",
+        "trimmed_path",
+        "nt_trimmed_path",
+        "cleaned_path",
+        "cleaned_nt_path",
+        "align_method",
+        "overwrite",
+        "verbosity",
+        "do_cull",
+        "do_internal",
+        "cull_percent",
+        "cull_internal",
+        "has_nt",
+        "no_halves",
+        "skip_deviation_filter",
+        "realign",
+        "final_path",
+        "debug_halves",
+        "skip_splice",
+    ],
+)
 
 class aligned_record:
     __slots__ = ("header", "raw_header", "seq", "start", "end", "distances", "mean", "all_mean", "half",
@@ -486,9 +513,8 @@ def generate_aln(
     arguments = []
     for gene, fasta in sequences.items():
         arguments.append(
-            (
+            (alnArgs(
                 gene,
-                fasta,
                 raw_path,
                 aln_path,
                 trimmed_path,
@@ -510,6 +536,7 @@ def generate_aln(
                 debug_halves,
                 skip_splice,
             ),
+             fasta)
         )
 
     if processes > 1:
@@ -879,76 +906,48 @@ def splice_overlap(records: list[aligned_record], candidate_consensus, allowed_a
     return records, has_merge, logs
 
 def aln_function(
-    gene,
+    this_args: alnArgs,
     sequences,
-    raw_path,
-    aln_path,
-    trimmed_path,
-    nt_trimmed_path,
-    cleaned_path,
-    cleaned_nt_path,
-    align_method,
-    overwrite,
-    verbosity,
-    do_cull,
-    do_internal,
-    cull_percent,
-    cull_internal,
-    has_nt,
-    no_halves,
-    skip_deviation_filter,
-    realign,
-    final_path,
-    debug_halves,
-    skip_splice,
-    min_length = 0.5,
+    min_length=0.5,
 ):
     """
     Calls the alignment program, runs some additional logic on the result and returns the aligned sequences
     """
-    raw_fa_file = raw_path.joinpath(gene + ".fa")
-    aln_file = aln_path.joinpath(gene + ".aln.fa")
-    trimmed_path = trimmed_path.joinpath(gene + ".aln.fa")
-    nt_trimmed_path = nt_trimmed_path.joinpath(gene + ".nt.aln.fa")
+    raw_fa_file = this_args.raw_path.joinpath(this_args.gene + ".fa")
+    aln_file = this_args.aln_path.joinpath(this_args.gene + ".aln.fa")
+    trimmed_path = this_args.trimmed_path.joinpath(this_args.gene + ".aln.fa")
+    nt_trimmed_path = this_args.nt_trimmed_path.joinpath(this_args.gene + ".nt.aln.fa")
 
     trimmed_header_to_full = {}
     for header, _ in parseFasta(raw_fa_file):
         trimmed_header_to_full[header[:127]] = header
 
-    if not aln_file.exists() or overwrite:
-        printv(f"Generating: {gene}", verbosity, 2)
+    if not aln_file.exists() or this_args.overwrite:
+        printv(f"Generating: {this_args.gene}", this_args.verbosity, 2)
 
         if not raw_fa_file.exists():
             msg = f"Raw file {raw_fa_file} does not exist"
-            raise FileNotFoundError(
-                msg
-            )
-        
+            raise FileNotFoundError(msg)
+
         if len(list(parseFasta(raw_fa_file))) == 1:
             writeFasta(aln_file, parseFasta(raw_fa_file))
-        elif align_method == "clustal":
+        elif this_args.align_method == "clustal":
             os.system(
                 f"clustalo -i '{raw_fa_file}' -o '{aln_file}' --threads=1 --force",
-            )  # --verbose
+            )
         else:
             os.system(f"mafft --thread 1 --quiet --anysymbol '{raw_fa_file}' > '{aln_file}'")
 
     aligned_result = []
     aligned_dict = {}
-    lengths = []
     for header, seq in parseFasta(aln_file, True):
         header = trimmed_header_to_full[header[:127]]
         aligned_result.append((header, seq.upper()))
-        lengths.append(len(seq) - seq.count("-"))
-        
-    median_length = median(lengths)
-    
-    aligned_result = [(header, seq) for header, seq in aligned_result if len(seq) - seq.count("-") >= median_length * min_length]
 
     writeFasta(aln_file, aligned_result, False)
-    
-    aligned_result = [aligned_record(header.split(" ")[0], seq, gene) for header, seq in aligned_result]
-    
+
+    aligned_result = [aligned_record(header.split(" ")[0], seq, this_args.gene) for header, seq in aligned_result]
+
     duped_headers = set()
     seq_hashes = set()
     for record in aligned_result:
@@ -961,34 +960,38 @@ def aln_function(
 
     if duped_headers:
         aligned_result = [i for i in aligned_result if i.header not in duped_headers]
-        
+
     cand_consensus = defaultdict(list)
     for record in aligned_result:
         for i, let in enumerate(record.seq[record.start: record.end], record.start):
             if let != "-":
                 cand_consensus[i].append(let)
-        
+
     splice_log = []
-    if not skip_splice:
-        allowed_adjacency = 3 # Allow x bp of non-overlapping adjacent bp to merge
+    if not this_args.skip_splice:
+        allowed_adjacency = 3  # Allow x bp of non-overlapping adjacent bp to merge
         maximum_overlap = 0.5
         aligned_result, merged_header, splice_log = splice_overlap(aligned_result, cand_consensus, allowed_adjacency, maximum_overlap)
 
         for seq in sequences:
             if seq.header in merged_header:
                 seq.header = merged_header[seq.header]
-                
+    lengths = []
+    for node in aligned_result:
+        lengths.append(len(node.seq) - node.seq.count("-"))
+
+    median_length = median(lengths)
+
+    aligned_result = [node for node in aligned_result if len(node.seq) - node.seq.count("-") >= median_length * min_length]
+
     cull_result = {}
-    if do_cull:
-        cull_result, aligned_result = cull(aligned_result, cull_percent, has_nt)
+    if this_args.do_cull:
+        cull_result, aligned_result = cull(aligned_result, this_args.cull_percent, this_args.has_nt)
 
     internal_result = {}
-    if do_internal:
-        internal_result, aligned_result = internal_cull(aligned_result, cull_internal, has_nt)
+    if this_args.do_internal:
+        internal_result, aligned_result = internal_cull(aligned_result, this_args.cull_internal, this_args.has_nt)
 
-    # aligned_result = [i for i in aligned_result if len(i[1]) != i[1].count("-")]
-
-    # aligned_result = do_merge(aligned_result)
     aligned_dict = {rec.header: rec.seq for rec in aligned_result}
 
     output = []
@@ -996,8 +999,8 @@ def aln_function(
     for seq in sequences:
         if seq.header in aligned_dict:
             seq.aa_sequence = aligned_dict[seq.header]
-            
-            if has_nt:
+
+            if this_args.has_nt:
                 if cull_result:
                     left_bp_remove, right_bp_remove = cull_result.get(seq.header, (0, 0))
                     if left_bp_remove:
@@ -1013,82 +1016,73 @@ def aln_function(
                 nt_result.append((seq.header, seq.nt_sequence))
 
             output.append(seq)
-            
+
     trimmed_output = [(rec.header, rec.seq) for rec in aligned_result]
     writeFasta(trimmed_path, trimmed_output, False)
     if nt_result:
         writeFasta(nt_trimmed_path, nt_result, False)
-        
-    # increasing the exponent will increase penalty on high distance scores
-    # lowering will decrease the penalty
+
     FULLSEQ_DISTANCE_EXPONENT = 2.0
     HALFSEQ_DISTANCE_EXPONENT = 2.0
-    # increasing the iqr coefficient will raise the acceptable distance score
-    # lower the iqr coefficient will raise the acceptable distance score
     FULLSEQ_IQR_COEFFICIENT = 2
     HALFSEQ_IQR_COEFFICIENT = 2
-    # floor is the minimum cutoff value
-    # raising this will make lower distance files pass more sequences
     FULLSEQ_CUTOFF_FLOOR = 0.03
     HALFSEQ_CUTOFF_FLOOR = 0.05
 
-    # repeats is the number of times a check will rerun numbers if a seq is kicked
-    # if no seq is kicked, the loop will always terminate
     FULLSEQ_REPEATS = 2
     HALFSEQ_REPEATS = 1
-    # minimum distance between start and end indices
     MIN_AA = 15
 
     log = []
     passed = aligned_result
-    if not skip_deviation_filter:
+    if not this_args.skip_deviation_filter:
         passed, failed = filter_deviation(aligned_result, FULLSEQ_REPEATS, FULLSEQ_DISTANCE_EXPONENT, FULLSEQ_IQR_COEFFICIENT, FULLSEQ_CUTOFF_FLOOR, MIN_AA)
         for fail in failed:
             fail.fail = "full"
         to_keep = delete_empty_columns(passed)
-        if not no_halves:
-            passed, former, latter = check_halves(passed, HALFSEQ_REPEATS, HALFSEQ_DISTANCE_EXPONENT, HALFSEQ_IQR_COEFFICIENT, HALFSEQ_CUTOFF_FLOOR, MIN_AA,cleaned_path,gene+'.fa', debug_halves)
+        if not this_args.no_halves:
+            passed, former, latter = check_halves(passed, HALFSEQ_REPEATS, HALFSEQ_DISTANCE_EXPONENT, HALFSEQ_IQR_COEFFICIENT, HALFSEQ_CUTOFF_FLOOR, MIN_AA, this_args.cleaned_path, this_args.gene+'.fa', this_args.debug_halves)
             failed.extend(former)
             failed.extend(latter)
             to_keep2 = delete_empty_columns(passed)
-        
+
         clean_dict = {rec.header: rec.seq for rec in passed}
-        
+
         output = []
         nt_result = []
         for seq in sequences:
             if seq.header in clean_dict:
                 seq.aa_sequence = clean_dict[seq.header]
-                
-                if has_nt:
+
+                if this_args.has_nt:
                     nt_result.append((seq.header, seq.nt_sequence))
 
                 output.append(seq)
         if nt_result:
             nt_result = delete_nt_columns(nt_result, to_keep)
-            if not no_halves:
+            if not this_args.no_halves:
                 nt_result = delete_nt_columns(nt_result, to_keep2)
-        clean_file = cleaned_path.joinpath(gene + ".aln.fa")
-        clean_nt_file = cleaned_nt_path.joinpath(gene + ".nt.aln.fa")
-        
+        clean_file = this_args.cleaned_path.joinpath(this_args.gene + ".aln.fa")
+        clean_nt_file = this_args.cleaned_nt_path.joinpath(this_args.gene + ".nt.aln.fa")
+
         writeFasta(clean_file, [(rec.header, rec.seq) for rec in passed], False)
         if nt_result:
             writeFasta(clean_nt_file, nt_result, False)
-            
+
         log = [f"{r.header.split()[0]},{r.end-r.start},{r.fail},{r.mean},{r.all_mean},{r.gene}\n" for r in failed]
 
-        if realign:
-            final_file = final_path.joinpath(gene + ".aln.fa")
+        if this_args.realign:
+            final_file = this_args.final_path.joinpath(this_args.gene + ".aln.fa")
             if len(list(parseFasta(raw_fa_file))) == 1:
                 writeFasta(final_file, [(rec.header, rec.seq.replace("-","")) for rec in passed])
             else:
                 with NamedTemporaryFile(dir=gettempdir()) as temp:
                     writeFasta(temp.name, [(rec.header, rec.seq.replace("-","")) for rec in passed], False)
 
-                    if align_method == "clustal":
+                    if this_args.align_method == "clustal":
                         os.system(
                             f"clustalo -i '{temp.name}' -o '{final_file}' --threads=1 --force",
-                        )  # --verbose
+                        )
                     else:
                         os.system(f"mafft --quiet --anysymbol --thread 1 '{temp.name}' > '{final_file}'")
 
@@ -1104,7 +1098,8 @@ def aln_function(
 
                     output.append(seq)
 
-    return gene, output, duped_headers, log, splice_log
+    return this_args.gene, output, duped_headers, log, splice_log
+
 
 
 def make_diamonddb(set: Sequence_Set, processes):
