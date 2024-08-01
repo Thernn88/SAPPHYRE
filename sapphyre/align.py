@@ -1097,6 +1097,9 @@ def do_folder(folder, args):
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     align_path = path.join(folder, ALIGN_FOLDER)
     aa_path = path.join(folder, AA_FOLDER)
+    if args.use_miniprot:
+        aa_path = path.join(folder, "miniprot", "aa")
+        align_path = path.join(folder, "miniprot", "align")
     if not path.exists(aa_path):
         printv(f"ERROR: Can't find aa ({aa_path}) folder. Abort", args.verbose, 0)
         printv("Please make sure Reporter finished succesfully", args.verbose, 0)

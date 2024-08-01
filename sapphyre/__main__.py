@@ -315,13 +315,6 @@ def hmmsearch_args(par):
         default=100,
         help="Max distance for merging cluster in chomp",
     )
-    par.add_argument(
-        "-em",
-        "--edge_margin",
-        type=int,
-        default=50,
-        help="Max distance for expanding cluster for search",
-    )
 
 def hmmsearch(args):
     from . import hmmsearch
@@ -642,6 +635,55 @@ def outlier(argsobj):
         print(argsobj.formathelp())
 
 
+def subcmd_miniprot(subparsers):
+    par = subparsers.add_parser(
+        "miniprot",
+        help="Reference-guided De-novo Assembly Algorithm which merges overlapping reads "
+        "into contiguous segments (Contigs).",
+    )
+    par.add_argument(
+        "INPUT",
+        help="Path to directory of Input folder",
+        action="extend",
+        nargs="+",
+    )
+    miniprot_args(par)
+    par.set_defaults(func=miniprot, formathelp=par.format_help)
+
+
+def miniprot_args(par):
+    par.add_argument(
+        "-cd",
+        "--chomp_max_distance",
+        type=int,
+        default=100,
+        help="Max distance for merging cluster in chomp",
+    )
+    par.add_argument(
+        "-me",
+        "--max_extend",
+        type=int,
+        default=40,
+        help="Max distance to extend left and right (x * chomp length)",
+    )
+    par.add_argument(
+        "-ep",
+        "--entropy_percent",
+        type=float,
+        default=0.7,
+        help="Entropy percentage arg"
+    )
+        
+
+
+def miniprot(args):
+    from . import miniprot_module
+
+    if not miniprot_module.main(args):
+        print()
+        print(args.formathelp())
+
+
 def subcmd_Merge(subparsers):
     par = subparsers.add_parser(
         "Merge",
@@ -788,6 +830,13 @@ def align_args(par, skip_reconcile_overlap = False):
             default=False,
             help="Enable second run logic",
         )
+        par.add_argument(
+            "-um",
+            "--use_miniprot",
+            action="store_true",
+            default=False,
+            help="User miniprot input.",
+        )
     par.add_argument(
         "-ovw",
         "--overwrite",
@@ -835,6 +884,13 @@ def subcmd_pal2nal(subparsers):
 
 
 def pal2nal_args(par):
+    par.add_argument(
+        "-um",
+        "--use_miniprot",
+        action="store_true",
+        default=False,
+        help="User miniprot input.",
+    )
     par.add_argument("-t", "--table", type=int, default=1, help="Table ID.")
 
 
@@ -947,36 +1003,6 @@ def flexcull_args(par):
         help="Disables stop codon inner cull.",
     )
 
-
-def subcmd_motif(subparsers):
-    par = subparsers.add_parser(
-        "Motif",
-        help="Searches for motifs in the input sequences.",
-    )
-    par.add_argument(
-        "INPUT",
-        help="Path to directory of Input folder",
-        action="extend",
-        nargs="+",
-    )
-    motif_args(par)
-    par.set_defaults(func=motif, formathelp=par.format_help)
-
-
-def motif_args(par):
-    par.add_argument(
-        "--force",
-        action="store_true",
-        help="Force motif to run.",
-    )
-
-
-def motif(args):
-    from . import motif
-
-    if not motif.main(args):
-        print()
-        print(args.formathelp())
 
 def flexcull(args):
     from . import flexcull
@@ -1420,13 +1446,6 @@ def subcmd_auto(subparsers):
         help="Skip trying to glob *.fa from the input directory.",
     )
     par.add_argument(
-        "-sm",
-        "--skip_motif",
-        action="store_true",
-        default=False,
-        help="Skip motif.",
-    )
-    par.add_argument(
         "-c",
         "--config",
         type=str,
@@ -1553,35 +1572,6 @@ def taxonomy_filler(args):
         print()
         print(args.formathelp())
 
-def subcmd_isoform(subparser):
-    parser = subparser.add_parser(
-        "isoform", help="Isoform filter."
-    )
-    parser.add_argument("INPUT", help="Input directory", type=str)
-    parser.add_argument("OUTPUT", help="Output directory", type=str)
-    parser.add_argument(
-        "-alm",
-        "--align_method",
-        choices=["clustal", "mafft"],
-        default="mafft",
-        help="What alignment method to use.",
-    )
-    parser.add_argument(
-        "-t",
-        "--tsv",
-        type=str,
-        help="TSV Path.",
-    )
-    parser.set_defaults(func=isoform, formathelp=parser.format_help)
-
-
-def isoform(args):
-    from .tools import isoform
-
-    if not isoform.main(args):
-        print()
-        print(args.formathelp())
-
 def subcmd_toolset(subparser):
     parser = subparser.add_parser(
         "toolset", help="A set of useful tools developed with integration to the pipeline."
@@ -1590,7 +1580,6 @@ def subcmd_toolset(subparser):
 
     subcmd_taxonomy_filler(sub_sub_parser)
     subcmd_download(sub_sub_parser)
-    subcmd_isoform(sub_sub_parser)
 
 def main():
     # Check mafft exists
@@ -1686,12 +1675,12 @@ def main():
     subcmd_align(subparsers)
     subcmd_pal2nal(subparsers)
     subcmd_flexcull(subparsers)
-    subcmd_motif(subparsers)
     subcmd_outlier(subparsers)
     subcmd_internal(subparsers)
     subcmd_Merge(subparsers)
     subcmd_Combine(subparsers)
     subcmd_archive(subparsers)
+    subcmd_miniprot(subparsers)
 
     # Finalize
     subcmd_finalize(subparsers)
