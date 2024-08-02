@@ -544,16 +544,18 @@ def cull_ref_columns(refs: list[str], gap_consensus_threshold: float, min_gap_le
     return output
 
 
-def top_reference_realign(gene_path, most_common_taxa, target_to_taxon, top_path, gene, skip_realign, top_ref_arg):
+def top_reference_realign(gene_path, most_common_taxa, target_to_taxon, valid_variants, top_path, gene, skip_realign, top_ref_arg):
     out = []
         
     source = parseFasta(gene_path, True)
     top_chosen = []
     header_set = set()
-    ref_to_seq = {}
+    ref_to_seq = defaultdict(list)
     for header, seq in source:
         header = header.split(" ")[0]
         key = f"{gene}|{header}"
+        if valid_variants and not key in valid_variants:
+            continue
         if header in target_to_taxon:
             taxon = target_to_taxon[header]
         elif key in target_to_taxon:
@@ -564,16 +566,20 @@ def top_reference_realign(gene_path, most_common_taxa, target_to_taxon, top_path
         if not skip_realign:
             seq = seq.replace("-", "")
 
-        ref_to_seq[taxon] = (header, seq)
+        ref_to_seq[taxon].append((header, seq))
 
+    current_count = 0
     for taxa, _ in most_common_taxa:
-        if taxa in ref_to_seq:
-            header, seq = ref_to_seq[taxa]
+        if not taxa in ref_to_seq:
+            continue
+        
+        for header, seq in ref_to_seq[taxa]:
             header_set.add(header)
             top_chosen.append(taxa)
             out.append((header, seq))
+        current_count += 1
 
-        if len(out) == top_ref_arg:
+        if current_count == top_ref_arg:
             break
         
     out_path = path.join(top_path, gene+".aln.fa")
@@ -1144,7 +1150,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
             json_encoder.encode(variant_filter),
         )
 
-        del variant_filter
 
         head_to_seq = get_head_to_seq(nt_db, recipe)
 
@@ -1277,7 +1282,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 printv(f"ERROR: Could not find Aln for {gene}.", args.verbose, 0)
                 return False
             arguments.append(
-                (gene_path, most_common, gene_target_to_taxa[gene], top_path, gene, args.skip_realign, args.top_ref)
+                (gene_path, most_common, gene_target_to_taxa[gene], variant_filter.get(gene, []), top_path, gene, args.skip_realign, args.top_ref)
             )
 
         if post_threads > 1:
@@ -1286,6 +1291,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             for arg in arguments:
                 top_ref_result = []
                 top_ref_result.append(top_reference_realign(*arg))
+        del variant_filter
         if post_threads > 1:
             pool.close()
             pool.terminate()
