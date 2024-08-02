@@ -904,7 +904,7 @@ def splice_overlap(records: list[aligned_record], candidate_consensus, allowed_a
     return records, has_merge, logs
 
 
-def severe_violation(aligned_result, threshold = 1.5, floor = 0.1):
+def severe_violation(aligned_result, threshold = 1.5, floor = 0.2):
     violations = []
     node_matrix = defaultdict(list)
     for node in aligned_result:
