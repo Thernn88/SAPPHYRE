@@ -315,6 +315,13 @@ def hmmsearch_args(par):
         default=100,
         help="Max distance for merging cluster in chomp",
     )
+    par.add_argument(
+        "-em",
+        "--edge_margin",
+        type=int,
+        default=50,
+        help="Max distance for expanding cluster for search",
+    )
 
 def hmmsearch(args):
     from . import hmmsearch
@@ -633,6 +640,7 @@ def outlier(argsobj):
     if not outlier.main(argsobj):
         print()
         print(argsobj.formathelp())
+
 
 
 def subcmd_miniprot(subparsers):
@@ -1444,6 +1452,13 @@ def subcmd_auto(subparsers):
         action="store_true",
         default=False,
         help="Skip trying to glob *.fa from the input directory.",
+    )
+    par.add_argument(
+        "-sm",
+        "--skip_motif",
+        action="store_true",
+        default=False,
+        help="Skip motif.",
     )
     par.add_argument(
         "-c",
