@@ -1500,100 +1500,101 @@ def log_excised_consensus(
     #         node.nt_sequence = del_cols(node.nt_sequence, x_positions[node.header], True)
     #         node.start, node.end = find_index_pair(node.sequence, "-")
           
-    # Detect ref gap regoins
-    integers = list(ref_gaps)
+    move_dict = defaultdict(list)
     debug_out = []
     merged = []
-    if integers:
-        integers.sort()
-        start = integers[0]
-        end = integers[0]
+    if is_genome:
+        # Detect ref gap regoins
+        integers = list(ref_gaps)
+        if integers:
+            integers.sort()
+            start = integers[0]
+            end = integers[0]
 
-        for num in integers[1:]:
-            if num == end + 1:
-                end = num
-            else:
-                merged.append((start, end + 1))
-                start = num
-                end = num
+            for num in integers[1:]:
+                if num == end + 1:
+                    end = num
+                else:
+                    merged.append((start, end + 1))
+                    start = num
+                    end = num
 
-        merged.append((start, end + 1))
-           
-    move_dict = defaultdict(list)
-    for cluster_i, cluster_set in enumerate(cluster_sets):
-        aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
-        
-        for start, end in merged:
-            gap_size = end - start
-            if gap_size == 1:
-                continue
+            merged.append((start, end + 1))
             
-            for node in aa_nodes:
-                overlap = get_overlap(start, end, node.start, node.end, 1)
-
-                if overlap is None:
+        for cluster_i, cluster_set in enumerate(cluster_sets):
+            aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
+            
+            for start, end in merged:
+                gap_size = end - start
+                if gap_size == 1:
                     continue
                 
-                amount = overlap[1] - overlap[0]
+                for node in aa_nodes:
+                    overlap = get_overlap(start, end, node.start, node.end, 1)
 
-                gap_region = node.sequence[start: end]
-                gaps_in_region = gap_region.count("-")
-                if gaps_in_region == len(gap_region) or gaps_in_region == 0:
-                    continue
-                
-                gap_region_on_seq = node.sequence[overlap[0]: overlap[1]]
-                internal_gap_offset = find_index_pair(gap_region_on_seq, "-")
-                data_in_gap = gap_region_on_seq[internal_gap_offset[0]:internal_gap_offset[1]]
-                # right side or left side of the gap
-                
-                this_seq = list(node.sequence)
-                this_nt_seq = list(node.nt_sequence)
-
-                if overlap[0] == start and internal_gap_offset[0] == 0: # Left side
-                    match = True
-                    for i, let in enumerate(data_in_gap, overlap[0]+gap_size):
-                        if node.sequence[i] != "-" and let != node.sequence[i]:
-                            match = False
-                            break
-                        if not let in ref_consensus[i]:
-                            match = False
-                            break
-
-                    if match:
-                        for new_i, original_i in enumerate(range(overlap[0], overlap[0]+len(data_in_gap)), overlap[0] + gap_size):
-                            this_seq[new_i] = this_seq[original_i]
-                            this_seq[original_i] = "-"
-                            
-                            this_nt_seq[(new_i*3):(new_i*3)+3] = this_nt_seq[(original_i*3):(original_i*3)+3]
-                            this_nt_seq[(original_i*3):(original_i*3)+3] = ["-","-","-"]
-                            
-                            move_dict[node.header].append((original_i, new_i))          
-                else: # Right side
-                    match = True
-                    for i, let in enumerate(data_in_gap, start-len(data_in_gap)):
-                        
-                        if node.sequence[i] != "-" and let != node.sequence[i]:
-                            match = False
-                            break
-                        
-                        if not let in ref_consensus[i]:
-                            match = False
-                            break
+                    if overlap is None:
+                        continue
                     
-                    if match:
-                        for new_i, original_i in enumerate(range(overlap[0] + internal_gap_offset[0], overlap[0] + internal_gap_offset[1]), start - len(data_in_gap)):
-                            this_seq[new_i] = this_seq[original_i]
-                            this_seq[original_i] = "-"
+                    amount = overlap[1] - overlap[0]
+
+                    gap_region = node.sequence[start: end]
+                    gaps_in_region = gap_region.count("-")
+                    if gaps_in_region == len(gap_region) or gaps_in_region == 0:
+                        continue
+                    
+                    gap_region_on_seq = node.sequence[overlap[0]: overlap[1]]
+                    internal_gap_offset = find_index_pair(gap_region_on_seq, "-")
+                    data_in_gap = gap_region_on_seq[internal_gap_offset[0]:internal_gap_offset[1]]
+                    # right side or left side of the gap
+                    
+                    this_seq = list(node.sequence)
+                    this_nt_seq = list(node.nt_sequence)
+
+                    if overlap[0] == start and internal_gap_offset[0] == 0: # Left side
+                        match = True
+                        for i, let in enumerate(data_in_gap, overlap[0]+gap_size):
+                            if node.sequence[i] != "-" and let != node.sequence[i]:
+                                match = False
+                                break
+                            if not let in ref_consensus[i]:
+                                match = False
+                                break
+
+                        if match:
+                            for new_i, original_i in enumerate(range(overlap[0], overlap[0]+len(data_in_gap)), overlap[0] + gap_size):
+                                this_seq[new_i] = this_seq[original_i]
+                                this_seq[original_i] = "-"
+                                
+                                this_nt_seq[(new_i*3):(new_i*3)+3] = this_nt_seq[(original_i*3):(original_i*3)+3]
+                                this_nt_seq[(original_i*3):(original_i*3)+3] = ["-","-","-"]
+                                
+                                move_dict[node.header].append((original_i, new_i))          
+                    else: # Right side
+                        match = True
+                        for i, let in enumerate(data_in_gap, start-len(data_in_gap)):
                             
+                            if node.sequence[i] != "-" and let != node.sequence[i]:
+                                match = False
+                                break
                             
-                            this_nt_seq[(new_i*3):(new_i*3)+3] = this_nt_seq[(original_i*3):(original_i*3)+3]
-                            this_nt_seq[(original_i*3):(original_i*3)+3] = ["-","-","-"]
-                            
-                            move_dict[node.header].append((original_i, new_i))
-  
-                node.sequence = "".join(this_seq)
-                node.nt_sequence = "".join(this_nt_seq)
-                node.start, node.end = find_index_pair(node.sequence, "-")
+                            if not let in ref_consensus[i]:
+                                match = False
+                                break
+                        
+                        if match:
+                            for new_i, original_i in enumerate(range(overlap[0] + internal_gap_offset[0], overlap[0] + internal_gap_offset[1]), start - len(data_in_gap)):
+                                this_seq[new_i] = this_seq[original_i]
+                                this_seq[original_i] = "-"
+                                
+                                
+                                this_nt_seq[(new_i*3):(new_i*3)+3] = this_nt_seq[(original_i*3):(original_i*3)+3]
+                                this_nt_seq[(original_i*3):(original_i*3)+3] = ["-","-","-"]
+                                
+                                move_dict[node.header].append((original_i, new_i))
+    
+                    node.sequence = "".join(this_seq)
+                    node.nt_sequence = "".join(this_nt_seq)
+                    node.start, node.end = find_index_pair(node.sequence, "-")
 
     if had_region:
         after_data = []
@@ -1648,80 +1649,6 @@ def log_excised_consensus(
                     this_rescues.append(header)
                     
     aa_nodes = [node for node in aa_nodes if node.header not in kicked_headers]
-
-    DNA_CODONS = {
-        "GCT": "A",
-        "GCC": "A",
-        "GCA": "A",
-        "GCG": "A",
-        "TGT": "C",
-        "TGC": "C",
-        "GAT": "D",
-        "GAC": "D",
-        "GAA": "E",
-        "GAG": "E",
-        "TTT": "F",
-        "TTC": "F",
-        "GGT": "G",
-        "GGC": "G",
-        "GGA": "G",
-        "GGG": "G",
-        "CAT": "H",
-        "CAC": "H",
-        "ATA": "I",
-        "ATT": "I",
-        "ATC": "I",
-        "AAA": "K",
-        "AAG": "K",
-        "TTA": "L",
-        "TTG": "L",
-        "CTT": "L",
-        "CTC": "L",
-        "CTA": "L",
-        "CTG": "L",
-        "ATG": "M",
-        "AAT": "N",
-        "AAC": "N",
-        "CCT": "P",
-        "CCC": "P",
-        "CCA": "P",
-        "CCG": "P",
-        "CAA": "Q",
-        "CAG": "Q",
-        "CGT": "R",
-        "CGC": "R",
-        "CGA": "R",
-        "CGG": "R",
-        "AGA": "R",
-        "AGG": "R",
-        "TCT": "S",
-        "TCC": "S",
-        "TCA": "S",
-        "TCG": "S",
-        "AGT": "S",
-        "AGC": "S",
-        "ACT": "T",
-        "ACC": "T",
-        "ACA": "T",
-        "ACG": "T",
-        "GTT": "V",
-        "GTC": "V",
-        "GTA": "V",
-        "GTG": "V",
-        "TGG": "W",
-        "TAT": "Y",
-        "TAC": "Y",
-        "TAA": "*",
-        "TAG": "*",
-        "TGA": "*",
-        "---": "-",
-    }
-    
-    FRANKENSTEIN_PENALTY = -20
-    GC_PENALTY = -20
-    SIMILARITY_SKIP = 0.95
-    DELETION_PENALTY = 0
-    int_first_id = lambda x: int(x.split("_")[0])
     extensions = defaultdict(dict)
     extensions_aa = defaultdict(dict)
     gap_insertions_aa = defaultdict(lambda: defaultdict(list))
@@ -1731,213 +1658,288 @@ def log_excised_consensus(
     gff_coords = {}
     formed_seqs = {}
     has_exisiting_result = defaultdict(dict)
-    for cluster_i, cluster_set in enumerate(cluster_sets):
-        aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
-        aa_subset.sort(key = lambda x: x.start)
-        og_starts = {}
-        for prev_node, node in combinations(aa_subset, 2):
-            overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, -10)
-            if overlapping_coords:
-                amount = overlapping_coords[1] - overlapping_coords[0]
-                this_flipped = ""
-                if amount > 1:
-                    early_start = min(prev_node.start, node.start) * 3
-                    late_end = max(prev_node.end, node.end) * 3
+    if is_genome:
+        DNA_CODONS = {
+            "GCT": "A",
+            "GCC": "A",
+            "GCA": "A",
+            "GCG": "A",
+            "TGT": "C",
+            "TGC": "C",
+            "GAT": "D",
+            "GAC": "D",
+            "GAA": "E",
+            "GAG": "E",
+            "TTT": "F",
+            "TTC": "F",
+            "GGT": "G",
+            "GGC": "G",
+            "GGA": "G",
+            "GGG": "G",
+            "CAT": "H",
+            "CAC": "H",
+            "ATA": "I",
+            "ATT": "I",
+            "ATC": "I",
+            "AAA": "K",
+            "AAG": "K",
+            "TTA": "L",
+            "TTG": "L",
+            "CTT": "L",
+            "CTC": "L",
+            "CTA": "L",
+            "CTG": "L",
+            "ATG": "M",
+            "AAT": "N",
+            "AAC": "N",
+            "CCT": "P",
+            "CCC": "P",
+            "CCA": "P",
+            "CCG": "P",
+            "CAA": "Q",
+            "CAG": "Q",
+            "CGT": "R",
+            "CGC": "R",
+            "CGA": "R",
+            "CGG": "R",
+            "AGA": "R",
+            "AGG": "R",
+            "TCT": "S",
+            "TCC": "S",
+            "TCA": "S",
+            "TCG": "S",
+            "AGT": "S",
+            "AGC": "S",
+            "ACT": "T",
+            "ACC": "T",
+            "ACA": "T",
+            "ACG": "T",
+            "GTT": "V",
+            "GTC": "V",
+            "GTA": "V",
+            "GTG": "V",
+            "TGG": "W",
+            "TAT": "Y",
+            "TAC": "Y",
+            "TAA": "*",
+            "TAG": "*",
+            "TGA": "*",
+            "---": "-",
+        }
+        
+        FRANKENSTEIN_PENALTY = -20
+        GC_PENALTY = -20
+        SIMILARITY_SKIP = 0.95
+        DELETION_PENALTY = 0
+        int_first_id = lambda x: int(x.split("_")[0])
+        for cluster_i, cluster_set in enumerate(cluster_sets):
+            aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
+            aa_subset.sort(key = lambda x: x.start)
+            og_starts = {}
+            for prev_node, node in combinations(aa_subset, 2):
+                overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, -10)
+                if overlapping_coords:
+                    amount = overlapping_coords[1] - overlapping_coords[0]
+                    this_flipped = ""
+                    if amount > 1:
+                        early_start = min(prev_node.start, node.start) * 3
+                        late_end = max(prev_node.end, node.end) * 3
+                        
+                        distance = constrained_distance(prev_node.nt_sequence[early_start : late_end], node.nt_sequence[early_start : late_end])
+                        percent_matching = 1 - (distance / (late_end - early_start))
+                        if percent_matching >= SIMILARITY_SKIP:
+                            continue
+                        
+                        if amount == (node.end - node.start) or amount == (prev_node.end - prev_node.start):
+                            #Containment
+                            
+                            node_bp_indices = [i for i,let in enumerate(node.nt_sequence) if let != "-"]
+                            node_avg_bp_index = sum(node_bp_indices) / len(node_bp_indices)
+                            
+                            prev_bp_indices = [i for i,let in enumerate(prev_node.nt_sequence) if let != "-"]
+                            prev_avg_bp_index = sum(prev_bp_indices) / len(prev_bp_indices)
+                            
+                            if node_avg_bp_index < prev_avg_bp_index:
+                                prev_node, node = node, prev_node
+                                this_flipped = " (flipped)"
+                                
+                    scan_log.append("")
+                    scan_log.append("")
+                    scan_log.append(f"Comparing {prev_node.header} vs {node.header}" + this_flipped)
+
+                    prev_kmer = prev_node.nt_sequence[prev_node.start * 3 : prev_node.end * 3]
+                    prev_internal_gaps = [i for i, let in enumerate(prev_kmer) if let == "-"]
+                    prev_kmer = prev_kmer.replace("-","")
                     
-                    distance = constrained_distance(prev_node.nt_sequence[early_start : late_end], node.nt_sequence[early_start : late_end])
-                    percent_matching = 1 - (distance / (late_end - early_start))
-                    if percent_matching >= SIMILARITY_SKIP:
+                    kmer = node.nt_sequence[node.start * 3 : node.end * 3]
+                    kmer_internal_gaps = [i for i, let in enumerate(kmer) if let == "-"]
+                    kmer = kmer.replace("-","")
+                    
+                    if prev_node.header not in formed_seqs:
+                        children = list(map(int_first_id, prev_node.header.split("|")[3].replace("NODE_", "").split("&&")))
+                        prev_og = head_to_seq[children[0]]
+                        for i, child in enumerate(children):
+                            if i == 0:
+                                continue
+                            prev_og += head_to_seq[child][250:]
+
+                        if prev_node.frame < 0:
+                            prev_og = bio_revcomp(prev_og)
+                    
+                        formed_seqs[prev_node.header] = prev_og
+                    else:
+                        prev_og = formed_seqs[prev_node.header]
+                        
+                    if node.header not in formed_seqs:
+                        children = list(map(int_first_id, node.header.split("|")[3].replace("NODE_", "").split("&&")))
+                        node_og = head_to_seq[children[0]]
+                        for i, child in enumerate(children):
+                            if i == 0:
+                                continue
+                            node_og += head_to_seq[child][250:]
+
+                        if node.frame < 0:
+                            node_og = bio_revcomp(node_og)
+                        formed_seqs[node.header] = node_og
+                    else:
+                        node_og = formed_seqs[node.header]
+                    
+                    prev_start_index = prev_og.find(prev_kmer)
+                    if prev_start_index == -1:
                         continue
+
+                    prev_og = insert_gaps(prev_og, prev_internal_gaps, prev_start_index)
+                    prev_end_index = prev_start_index + len(prev_kmer) + len(prev_internal_gaps)
+
+                    node_start_index = node_og.find(kmer)
+                    if node_start_index == -1:
+                        continue
+
                     
-                    if amount == (node.end - node.start) or amount == (prev_node.end - prev_node.start):
-                        #Containment
-                        
-                        node_bp_indices = [i for i,let in enumerate(node.nt_sequence) if let != "-"]
-                        node_avg_bp_index = sum(node_bp_indices) / len(node_bp_indices)
-                        
-                        prev_bp_indices = [i for i,let in enumerate(prev_node.nt_sequence) if let != "-"]
-                        prev_avg_bp_index = sum(prev_bp_indices) / len(prev_bp_indices)
-                        
-                        if node_avg_bp_index < prev_avg_bp_index:
-                            prev_node, node = node, prev_node
-                            this_flipped = " (flipped)"
-                            
-                scan_log.append("")
-                scan_log.append("")
-                scan_log.append(f"Comparing {prev_node.header} vs {node.header}" + this_flipped)
+                    node_og = insert_gaps(node_og, kmer_internal_gaps, node_start_index)
+                    node_end_index = node_start_index + len(kmer) + len(kmer_internal_gaps)
 
-                prev_kmer = prev_node.nt_sequence[prev_node.start * 3 : prev_node.end * 3]
-                prev_internal_gaps = [i for i, let in enumerate(prev_kmer) if let == "-"]
-                prev_kmer = prev_kmer.replace("-","")
-                
-                kmer = node.nt_sequence[node.start * 3 : node.end * 3]
-                kmer_internal_gaps = [i for i, let in enumerate(kmer) if let == "-"]
-                kmer = kmer.replace("-","")
-                
-                if prev_node.header not in formed_seqs:
-                    children = list(map(int_first_id, prev_node.header.split("|")[3].replace("NODE_", "").split("&&")))
-                    prev_og = head_to_seq[children[0]]
-                    for i, child in enumerate(children):
-                        if i == 0:
-                            continue
-                        prev_og += head_to_seq[child][250:]
-
-                    if prev_node.frame < 0:
-                        prev_og = bio_revcomp(prev_og)
-                
-                    formed_seqs[prev_node.header] = prev_og
-                else:
-                    prev_og = formed_seqs[prev_node.header]
+                    prev_nt_seq = list(prev_node.nt_sequence)
+                    node_seq = list(node.nt_sequence)
                     
-                if node.header not in formed_seqs:
-                    children = list(map(int_first_id, node.header.split("|")[3].replace("NODE_", "").split("&&")))
-                    node_og = head_to_seq[children[0]]
-                    for i, child in enumerate(children):
-                        if i == 0:
-                            continue
-                        node_og += head_to_seq[child][250:]
+                    gt_positions, ag_positions = find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_index, node_end_index, DNA_CODONS, prev_og, node_og, prev_nt_seq, node_seq, ref_gaps)
 
-                    if node.frame < 0:
-                        node_og = bio_revcomp(node_og)
-                    formed_seqs[node.header] = node_og
-                else:
-                    node_og = formed_seqs[node.header]
-                
-                prev_start_index = prev_og.find(prev_kmer)
-                if prev_start_index == -1:
-                    continue
+                    # if "2A|AglaOr12CTE|splice_fix|NODE_343534&&343535|-3|1" not in prev_node.header:
+                    #     continue
 
-                prev_og = insert_gaps(prev_og, prev_internal_gaps, prev_start_index)
-                prev_end_index = prev_start_index + len(prev_kmer) + len(prev_internal_gaps)
-
-                node_start_index = node_og.find(kmer)
-                if node_start_index == -1:
-                    continue
-
-                
-                node_og = insert_gaps(node_og, kmer_internal_gaps, node_start_index)
-                node_end_index = node_start_index + len(kmer) + len(kmer_internal_gaps)
-
-                prev_nt_seq = list(prev_node.nt_sequence)
-                node_seq = list(node.nt_sequence)
-                
-                gt_positions, ag_positions = find_gt_ag(prev_node, node, prev_start_index, prev_end_index, node_start_index, node_end_index, DNA_CODONS, prev_og, node_og, prev_nt_seq, node_seq, ref_gaps)
-
-                # if "2A|AglaOr12CTE|splice_fix|NODE_343534&&343535|-3|1" not in prev_node.header:
-                #     continue
-
-                this_results = get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, GC_PENALTY, DELETION_PENALTY, DNA_CODONS, ref_gaps)
-                splice_found = False
-                this_best_splice = None
-                if this_results:
-                    this_best_score = max(i[1] for i in this_results)
-                    highest_results = [i for i in this_results if i[1] == this_best_score]
-                    if len(highest_results) > 1:
-                        best_change = None
-                        for i, result in enumerate(highest_results):
-                            _, smallest_coords_change = splice_combo(False, i == 0, formed_seqs, result, prev_node, node, prev_og, node_og, DNA_CODONS, multi_log, [], replacements, replacements_aa, orphan_replacements, orphan_replacements_aa, extensions, extensions_aa, gap_insertions_aa, gap_insertions_nt, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
-                            # print(smallest_coords_change)
-                            if smallest_coords_change is not None and (best_change is None or smallest_coords_change < best_change):
-                                best_change = smallest_coords_change
-                                this_best_splice = result
-                    else:
-                        this_best_splice = highest_results[0]
-                    
-                    if this_best_splice is not None:
-                        if "Right" in has_exisiting_result[prev_node.header]:
-                            if has_exisiting_result[prev_node.header]["Right"] >= this_best_splice[1]:
-                                continue
-                        if "Left" in has_exisiting_result[node.header]:
-                            if has_exisiting_result[node.header]["Left"] >= this_best_splice[1]:
-                                continue
+                    this_results = get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_PENALTY, GC_PENALTY, DELETION_PENALTY, DNA_CODONS, ref_gaps)
+                    splice_found = False
+                    this_best_splice = None
+                    if this_results:
+                        this_best_score = max(i[1] for i in this_results)
+                        highest_results = [i for i in this_results if i[1] == this_best_score]
+                        if len(highest_results) > 1:
+                            best_change = None
+                            for i, result in enumerate(highest_results):
+                                _, smallest_coords_change = splice_combo(False, i == 0, formed_seqs, result, prev_node, node, prev_og, node_og, DNA_CODONS, multi_log, [], replacements, replacements_aa, orphan_replacements, orphan_replacements_aa, extensions, extensions_aa, gap_insertions_aa, gap_insertions_nt, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
+                                # print(smallest_coords_change)
+                                if smallest_coords_change is not None and (best_change is None or smallest_coords_change < best_change):
+                                    best_change = smallest_coords_change
+                                    this_best_splice = result
+                        else:
+                            this_best_splice = highest_results[0]
                         
-                        gff, _ = splice_combo(True, True, formed_seqs, this_best_splice, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, combo_log, replacements, replacements_aa, orphan_replacements, orphan_replacements_aa, extensions, extensions_aa, gap_insertions_aa, gap_insertions_nt, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
-                        if gff:
-                            has_exisiting_result[prev_node.header]["Right"] = this_best_splice[1]
-                            has_exisiting_result[node.header]["Left"] = this_best_splice[1]
+                        if this_best_splice is not None:
+                            if "Right" in has_exisiting_result[prev_node.header]:
+                                if has_exisiting_result[prev_node.header]["Right"] >= this_best_splice[1]:
+                                    continue
+                            if "Left" in has_exisiting_result[node.header]:
+                                if has_exisiting_result[node.header]["Left"] >= this_best_splice[1]:
+                                    continue
                             
-                            splice_found = True
-                            prev_gff, node_gff = gff
-                            
-                            prev_id = get_id(prev_node.header)
-                            tup = original_coords.get(prev_id.split("&&")[0].split("_")[0], None)
-                            if tup:
-                                parent, chomp_start, chomp_end, input_len, chomp_len = tup
+                            gff, _ = splice_combo(True, True, formed_seqs, this_best_splice, prev_node, node, prev_og, node_og, DNA_CODONS, scan_log, combo_log, replacements, replacements_aa, orphan_replacements, orphan_replacements_aa, extensions, extensions_aa, gap_insertions_aa, gap_insertions_nt, prev_start_index, node_start_index, kmer, kmer_internal_gaps, prev_internal_gaps, gff_coords)
+                            if gff:
+                                has_exisiting_result[prev_node.header]["Right"] = this_best_splice[1]
+                                has_exisiting_result[node.header]["Left"] = this_best_splice[1]
                                 
-                                prev_start = prev_gff[0] + chomp_start
-                                prev_end = prev_gff[1] + chomp_start
+                                splice_found = True
+                                prev_gff, node_gff = gff
                                 
-                                if parent not in ends:
-                                    ends[parent] = input_len
+                                prev_id = get_id(prev_node.header)
+                                tup = original_coords.get(prev_id.split("&&")[0].split("_")[0], None)
+                                if tup:
+                                    parent, chomp_start, chomp_end, input_len, chomp_len = tup
                                     
-                                strand = "+" if prev_node.frame > 0 else "-"
-                                gff_out[parent][prev_id] = ((prev_start), f"{parent}\tSapphyre\texon\t{prev_start}\t{prev_end}\t.\t{strand}\t.\tID={prev_id};Parent={gene};Note={prev_node.frame};")
-                                
-                            node_id = get_id(node.header)
-                            tup = original_coords.get(node_id.split("&&")[0].split("_")[0], None)
-                            if tup:
-                                parent, chomp_start, chomp_end, input_len, chomp_len = tup
-                                
-                                node_start = node_gff[0] + chomp_start
-                                node_end = node_gff[1] + chomp_start
-                                
-                                if parent not in ends:
-                                    ends[parent] = input_len
+                                    prev_start = prev_gff[0] + chomp_start
+                                    prev_end = prev_gff[1] + chomp_start
                                     
-                                strand = "+" if node.frame > 0 else "-"
-                                gff_out[parent][node_id] = ((node_start), f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tID={node_id};Parent={gene};Note={node.frame};")
-                if True and not splice_found:    
-                    scan_log.append(f">{prev_node.header}_orf")
-                    # print(prev_start_index, node_end_index)
-                    # input()
-                    node_start, node_end = find_index_pair("".join(node_seq), "-")
-                    prev_start, prev_end = find_index_pair("".join(prev_nt_seq), "-")
-                    prev_start -= 3
-                    add_gaps = 0
-                    if prev_start < 0:
-                        prev_start = 0
-                        add_gaps = 3
-                    node_end += 3
-                    node_region = node.nt_sequence[prev_start: node_end]
-                    node_region_start, _ = find_index_pair(node_region, "-")
-                    
-                    
-                    this_prev = prev_og[prev_start_index - 3 :][:node_end]
-                    
-                    
-                    if node_start_index > prev_start_index:
-                        this_node = node_og[prev_start_index - 3 :][:node_end]
-                        gaps_needed = node_region_start - (node_start_index - prev_start_index) - 3
-                    else:
-                        gaps_needed = 0
-                        this_node = node_og[node_start_index - node_region_start :][:node_end]
-                    
-                    scan_log.append(this_prev)  
-                    scan_log.append(f">{node.header}_orf")  
-                    scan_log.append(('-' * gaps_needed) + this_node)  
-                    scan_log.append(f">{prev_node.header}_excise_output")
-                    # scan_log.append("".join(prev_nt_seq))
-                    # scan_log.append(prev_node.nt_sequence)
-                    scan_log.append(("-" * add_gaps) + prev_node.nt_sequence[prev_start: node_end])
-                    scan_log.append(f">{node.header}_excise_output")
-                    scan_log.append(node_region)
-                    scan_log.append("")
-                    scan_log.append("No result found.")
-                    scan_log.append("")
+                                    if parent not in ends:
+                                        ends[parent] = input_len
+                                        
+                                    strand = "+" if prev_node.frame > 0 else "-"
+                                    gff_out[parent][prev_id] = ((prev_start), f"{parent}\tSapphyre\texon\t{prev_start}\t{prev_end}\t.\t{strand}\t.\tID={prev_id};Parent={gene};Note={prev_node.frame};")
+                                    
+                                node_id = get_id(node.header)
+                                tup = original_coords.get(node_id.split("&&")[0].split("_")[0], None)
+                                if tup:
+                                    parent, chomp_start, chomp_end, input_len, chomp_len = tup
+                                    
+                                    node_start = node_gff[0] + chomp_start
+                                    node_end = node_gff[1] + chomp_start
+                                    
+                                    if parent not in ends:
+                                        ends[parent] = input_len
+                                        
+                                    strand = "+" if node.frame > 0 else "-"
+                                    gff_out[parent][node_id] = ((node_start), f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tID={node_id};Parent={gene};Note={node.frame};")
+                    if True and not splice_found:    
+                        scan_log.append(f">{prev_node.header}_orf")
+                        # print(prev_start_index, node_end_index)
+                        # input()
+                        node_start, node_end = find_index_pair("".join(node_seq), "-")
+                        prev_start, prev_end = find_index_pair("".join(prev_nt_seq), "-")
+                        prev_start -= 3
+                        add_gaps = 0
+                        if prev_start < 0:
+                            prev_start = 0
+                            add_gaps = 3
+                        node_end += 3
+                        node_region = node.nt_sequence[prev_start: node_end]
+                        node_region_start, _ = find_index_pair(node_region, "-")
+                        
+                        
+                        this_prev = prev_og[prev_start_index - 3 :][:node_end]
+                        
+                        
+                        if node_start_index > prev_start_index:
+                            this_node = node_og[prev_start_index - 3 :][:node_end]
+                            gaps_needed = node_region_start - (node_start_index - prev_start_index) - 3
+                        else:
+                            gaps_needed = 0
+                            this_node = node_og[node_start_index - node_region_start :][:node_end]
+                        
+                        scan_log.append(this_prev)  
+                        scan_log.append(f">{node.header}_orf")  
+                        scan_log.append(('-' * gaps_needed) + this_node)  
+                        scan_log.append(f">{prev_node.header}_excise_output")
+                        # scan_log.append("".join(prev_nt_seq))
+                        # scan_log.append(prev_node.nt_sequence)
+                        scan_log.append(("-" * add_gaps) + prev_node.nt_sequence[prev_start: node_end])
+                        scan_log.append(f">{node.header}_excise_output")
+                        scan_log.append(node_region)
+                        scan_log.append("")
+                        scan_log.append("No result found.")
+                        scan_log.append("")
                     
                     
     aa_raw_output = [(header, del_cols(seq, x_positions[header])) for header, seq in raw_aa if header not in kicked_headers]
     aa_output = []
     for header, seq in aa_raw_output:
-        this_id = get_id(header)
-        tup = original_coords.get(this_id.split("&&")[0].split("_")[0], None)
-        if tup:
-            parent, _, _, input_len, _ = tup
-            if parent not in ends:
-                ends[parent] = input_len
-                
-            if this_id not in gff_out[parent]:
-                gff_out[parent][this_id] = None
+        if is_genome:
+            this_id = get_id(header)
+            tup = original_coords.get(this_id.split("&&")[0].split("_")[0], None)
+            if tup:
+                parent, _, _, input_len, _ = tup
+                if parent not in ends:
+                    ends[parent] = input_len
+                    
+                if this_id not in gff_out[parent]:
+                    gff_out[parent][this_id] = None
                 
         if header in move_dict:
             seq = list(seq)
@@ -2088,8 +2090,11 @@ def get_args(args, genes, head_to_seq, is_assembly_or_genome, is_genome, input_f
                 map(get_id, header.split("|")[3].replace("NODE_", "").split("&&"))
             )
 
-        this_seqs = {i: head_to_seq[i] for i in set(this_headers)}
-        this_original_coords = {str(i): original_coords[str(i)] for i in set(this_headers)}
+        this_seqs = {}
+        this_original_coords = {}
+        if is_genome:
+            this_seqs = {i: head_to_seq[i] for i in set(this_headers)}
+            this_original_coords = {str(i): original_coords[str(i)] for i in set(this_headers)}
         
         yield (
             args.verbose,
