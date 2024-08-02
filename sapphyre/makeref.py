@@ -8,7 +8,6 @@ from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import copyfileobj, rmtree
 from statistics import median
-from subprocess import DEVNULL, run
 from tempfile import NamedTemporaryFile
 
 import wrap_rocks
@@ -972,7 +971,7 @@ def aln_function(
         elif this_args.align_method == "mafft":
             os.system(f"mafft --quiet --anysymbol --legacygappenalty --thread 1 '{raw_fa_file}' > '{aln_file}'")
         else:  
-            run(["./famsa", "-t", "1", str(raw_fa_file), str(aln_file)], stdout=DEVNULL)
+            os.system(f"./famsa -t 1 '{raw_fa_file}' '{aln_file}'")
 
     aligned_result = []
     aligned_dict = {}
@@ -1097,7 +1096,7 @@ def aln_function(
                     elif this_args.align_method == "mafft":
                         os.system(f"mafft --quiet --anysymbol --legacygappenalty --thread 1 '{temp.name}' > '{final_file.name}'")
                     else:
-                        run(["./famsa", "-t", "1", str(raw_fa_file), str(aln_file)], stdout=DEVNULL)
+                        os.system(f"./famsa -t 1 '{temp.name}' '{final_file.name}'")
 
                 realigned_sequences = {}
                 for header, seq in parseFasta(final_file.name, True):
