@@ -71,7 +71,7 @@ def worker(
                 stdout=aln_file
             )
         else:
-            subprocess.run(["./famsa", "-t", "1", raw_fa_file.name, aln_file.name])
+            subprocess.run(["./famsa", "-t", "1", raw_fa_file.name, aln_file.name], stdout=subprocess.DEVNULL)
         aligned_sequences = [(short_to_full[header[:128]], sequence) for header, sequence in parseFasta(aln_file.name, True)]
 
     this_consensus = defaultdict(list)
