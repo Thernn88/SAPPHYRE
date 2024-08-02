@@ -74,7 +74,8 @@ def main(args):
     time = TimeKeeper(KeeperMode.DIRECT)
     for script in scripts:
         sargs = config[script]
-        print(f"\nExecuting: {script.title()}")
+        if script != "motif":
+            print(f"\nExecuting: {script.title()}")
         this_args = global_args.copy()
         this_args.update(sargs)
         

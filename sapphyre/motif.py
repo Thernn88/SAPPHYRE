@@ -656,7 +656,7 @@ def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path):
     return log_output    
                         
 def do_folder(folder, args):
-    print(folder)
+    
     tk = TimeKeeper(KeeperMode.DIRECT)
     rocksdb_path = path.join(folder, "rocksdb", "sequences", "nt")
     nt_db = RocksDB(rocksdb_path)
@@ -665,8 +665,10 @@ def do_folder(folder, args):
     is_genome = is_genome == "True"
     
     if not is_genome and not args.force:
-        printv("Not a genome, skipping", args.verbose, 0)
+        # printv("Not a genome, skipping", args.verbose, 0)
         return True
+    
+    printv(f"Processing: {folder}", args.verbose, 0)
     
     head_to_seq = get_head_to_seq(nt_db)
     
