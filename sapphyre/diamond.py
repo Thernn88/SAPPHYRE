@@ -64,7 +64,6 @@ class ProcessingArgs(Struct, frozen=True):
     target_to_taxon: dict[str, tuple[str, str, int]]
     debug: bool
     result_fp: str
-    pairwise_refs: set[str]
     is_assembly_or_genome: bool
     evalue_threshold: float
 
@@ -462,17 +461,10 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                 for hits in gene_hits.values():
                     top_hit = hits[0]
 
-                    if pargs.is_assembly_or_genome:
-                        ref_seqs = [
-                            ReferenceHit(hit.target, hit.ref, hit.sstart, hit.send)
-                            for hit in hits[1:]
-                        ]
-                    else:
-                        ref_seqs = [
-                            ReferenceHit(hit.target, None, hit.sstart, hit.send)
-                            for hit in hits[1:]
-                            #if hit.ref in pargs.pairwise_refs TODO Check if this is used
-                        ]
+                    ref_seqs = [
+                        ReferenceHit(hit.target, hit.ref, hit.sstart, hit.send)
+                        for hit in hits[1:]
+                    ]
                     top_hit.refs.extend(ref_seqs)
 
                     output[top_hit.gene].append(top_hit)
@@ -902,8 +894,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
         gene, ref_taxa, _ = target_to_taxon[target]
         combined_count[ref_taxa] += count
 
-    pairwise_refs = set() # TODO Check if this is used
-
     top_refs = set()
     
     most_common = combined_count.most_common()
@@ -1003,7 +993,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 target_to_taxon,
                 args.debug,
                 temp_files[i].name,
-                pairwise_refs,
                 is_assembly_or_genome,
                 precision,
             )
