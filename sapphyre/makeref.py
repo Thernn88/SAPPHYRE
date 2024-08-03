@@ -1102,7 +1102,19 @@ def aln_function(
                 for header, seq in parseFasta(final_file.name, True):
                     realigned_sequences[header] = seq
                     
+                cull_result = {}
+                if this_args.do_cull:
+                    cull_result, passed = cull(passed, this_args.cull_percent, this_args.has_nt)
+                    
+                
+                    
                 for record in passed:
+                    if cull_result:
+                        left_bp_remove, right_bp_remove = cull_result.get(record.header, (0, 0))
+                        if left_bp_remove:
+                            record.nt_sequence = record.nt_sequence[left_bp_remove:]
+                        if right_bp_remove:
+                            record.nt_sequence = record.nt_sequence[:-right_bp_remove]
                     record.seq = realigned_sequences[record.header]
                     record.remake_indices()
         
