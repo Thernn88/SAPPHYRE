@@ -602,8 +602,10 @@ def top_reference_realign(gene_path, most_common_taxa, target_to_taxon, valid_va
         tmp_prealign.flush()
 
         system(
-            f"clustalo -i '{tmp_prealign.name}' -o '{tmp_result.name}' --thread=1 --force"
+            #f"clustalo -i '{tmp_prealign.name}' -o '{tmp_result.name}' --thread=1 --force"
+            f"./famsa -t 1 '{tmp_prealign.name}' '{tmp_result.name}'"
         )
+        
         recs = list(parseFasta(tmp_result.name, True))
         
         out = cull_ref_columns(recs, GAP_PERCENT, MIN_GAP_LENGTH)
