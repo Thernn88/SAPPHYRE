@@ -882,23 +882,34 @@ def run_process(args: Namespace, input_path: str) -> bool:
     global_log = []
     dupe_divy_headers = defaultdict(set)
 
-    target_counts = df["target"].value_counts()
+    # Initialize structures
     taxon_to_targets = defaultdict(list)
     target_to_gene = {}
     combined_count = Counter()
 
-    for target in target_counts.to_dict().keys():
+    # Populate taxon_to_targets and target_to_gene
+    for target in df["target"].unique():
         gene, ref_taxa, _ = target_to_taxon[target]
         taxon_to_targets[ref_taxa].append(target)
         target_to_gene[target] = gene
 
+    # Apply genome score filter if necessary
     if is_assembly_or_genome and genome_score_filter:
         filtered_df = df[df["score"] > genome_score_filter]
-        target_counts = filtered_df["target"].value_counts()
+    else:
+        filtered_df = df
 
-    for target, count in target_counts.to_dict().items():
-        gene, ref_taxa, _ = target_to_taxon[target]
-        combined_count[ref_taxa] += count
+    # Create a mapping of target to ref_taxa
+    filtered_df['ref_taxa'] = filtered_df['target'].map(lambda x: target_to_taxon[x][1])
+
+    # Keep only unique (header, ref_taxa) pairs
+    unique_pairs = filtered_df[['header', 'ref_taxa']].drop_duplicates()
+
+    # Count the number of unique headers for each ref_taxa
+    ref_taxa_counts = unique_pairs['ref_taxa'].value_counts()
+
+    # Update the combined count
+    combined_count.update(ref_taxa_counts.to_dict())
 
     top_refs = set()
     
