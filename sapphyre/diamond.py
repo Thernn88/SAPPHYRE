@@ -544,7 +544,7 @@ def cull_ref_columns(refs: list[str], gap_consensus_threshold: float, min_gap_le
     return output
 
 
-def top_reference_realign(gene_path, most_common_taxa, target_to_taxon, valid_variants, top_path, gene, skip_realign, top_ref_arg):
+def top_reference_realign(gene_path, most_common_taxa, target_to_taxon, valid_variants, top_path, gene, skip_realign, top_ref_arg, method):
     out = []
         
     source = parseFasta(gene_path, True)
@@ -601,10 +601,18 @@ def top_reference_realign(gene_path, most_common_taxa, target_to_taxon, valid_va
         tmp_prealign.write("\n".join([f">{i}\n{j}" for i, j in out]).encode())
         tmp_prealign.flush()
 
-        system(
-            #f"clustalo -i '{tmp_prealign.name}' -o '{tmp_result.name}' --thread=1 --force"
-            f"./famsa -t 1 '{tmp_prealign.name}' '{tmp_result.name}'"
-        )
+        if method == "clustal":
+            system(
+                f"clustalo -i '{tmp_prealign.name}' -o '{tmp_result.name}' --threads=1 --force"
+            )
+        elif method == "mafft":
+            system(
+                f"mafft --thread 1 --quiet --anysymbol '{tmp_prealign.name}' > '{tmp_result.name}'"
+            )
+        else:
+            system(
+                f"./famsa -t 1 '{tmp_prealign.name}' '{tmp_result.name}'"
+            )
         
         recs = list(parseFasta(tmp_result.name, True))
         
@@ -1295,7 +1303,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 printv(f"ERROR: Could not find Aln for {gene}.", args.verbose, 0)
                 return False
             arguments.append(
-                (gene_path, most_common, gene_target_to_taxa[gene], variant_filter.get(gene, []), top_path, gene, args.skip_realign, args.top_ref)
+                (gene_path, most_common, gene_target_to_taxa[gene], variant_filter.get(gene, []), top_path, gene, args.skip_realign, args.top_ref, args.align_method)
             )
 
         if post_threads > 1:

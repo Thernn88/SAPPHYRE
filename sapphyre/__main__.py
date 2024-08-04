@@ -152,6 +152,13 @@ def diamond_args(par):
         help="Overwrite existing files.",
     )
     par.add_argument(
+        "-alm",
+        "--align_method",
+        choices=["clustal", "mafft", "famsa"],
+        default="famsa",
+        help="What alignment method to use.",
+    )
+    par.add_argument(
         "-ot",
         "--overwrite_top",
         action="store_true",
