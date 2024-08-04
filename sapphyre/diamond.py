@@ -1228,11 +1228,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 output = [convert_and_cull(arg) for arg in arguments]
         passes = 0
         encoder = json.Encoder()
-        
-        BATCH_SIZE = 1000
-        recipe = []
-        this_batch = []
-        batch_index = 0
         for result in output:
             if is_assembly_or_genome:
                 hits, gene = result.hits, result.gene
@@ -1261,20 +1256,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 dupe_divy_headers[gene].add(hit.node)
 
             passes += len(out)
-            this_batch.append((gene, encoder.encode(out)))
-            if len(this_batch) == BATCH_SIZE:
-                batch_index += 1
-                recipe.append(str(batch_index))
-                db.put_bytes(f"get:diamondhits:{batch_index}", encoder.encode(this_batch))
-                this_batch = []
-            
-        if this_batch:
-            batch_index += 1
-            recipe.append(str(batch_index))
-            db.put_bytes(f"get:diamondhits:{batch_index}", encoder.encode(this_batch))
-            
-        db.put("getall:hitsrecipe", ",".join(recipe))
-
+            db.put_bytes(f"gethits:{gene}", encoder.encode(out))
 
         del head_to_seq
         if global_log:

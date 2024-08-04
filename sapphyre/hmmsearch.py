@@ -14,7 +14,6 @@ from Bio.Seq import Seq
 from .utils import parseFasta, printv, gettempdir, writeFasta
 from .diamond import ReferenceHit, ReporterHit as Hit
 from .timekeeper import TimeKeeper, KeeperMode
-from base64 import b64decode
 
 
 class HmmHit(Struct):
@@ -69,11 +68,17 @@ def get_diamondhits(
         return None
     genes_to_process = present_genes.split(",")
 
-    decoder = json.Decoder(type=list[tuple[str, str]])
-    recipe = rocks_hits_db.get("getall:hitsrecipe").split(",")
     gene_based_results = []
-    for i in recipe:
-        gene_based_results.extend(decoder.decode(rocks_hits_db.get_bytes(f"get:diamondhits:{i}")))
+    for gene in genes_to_process:
+        gene_result = rocks_hits_db.get_bytes(f"gethits:{gene}")
+        if not gene_result:
+            printv(
+                f"WARNING: No hits found for {gene}. If you are using a gene list file this may be a non-issue",
+                0,
+            )
+            continue
+        gene_based_results.append((gene, gene_result))
+
     return genes_to_process, gene_based_results
 
 
@@ -276,13 +281,12 @@ def add_full_cluster_search(clusters, edge_margin, nodes_in_genes, source_cluste
 def get_results(hmm_output, map_mode):
     data = defaultdict(list)
     high_score = 0
-    has_data = False
     with open(hmm_output) as f:
         for line in f:
             if line.startswith("#"):
-                has_data = True
                 continue
-
+            while "  " in line:
+                line = line.replace("  ", " ")
             line = line.strip().split()
 
             query = line[0]
@@ -292,9 +296,6 @@ def get_results(hmm_output, map_mode):
             high_score = max(high_score, score)
 
             data[query].append((start - 1, end, score, ali_start, ali_end))
-
-    if not has_data:
-        return None
 
     if map_mode:
         score_thresh = high_score * 0.9
@@ -384,10 +385,9 @@ def add_new_result(map_mode, gene, query, results, is_full, cluster_full, cluste
 def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_ref_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance, edge_margin):
     batch_result = []
     warnings.filterwarnings("ignore", category=BiopythonWarning)
-    this_seqs = load_Sequences(source_seqs) if source_seqs is not None else None
-    decoder = json.Decoder(list[Hit])
+    this_seqs = load_Sequences(source_seqs)#, nodes_in_gene)
     for gene, diamond_hits in batches:
-        diamond_hits = decoder.decode(b64decode(diamond_hits))
+        diamond_hits = json.decode(diamond_hits, type=list[Hit])
         printv(f"Processing: {gene}", verbose, 2)
         aligned_sequences = []
         this_hmm_output = path.join(hmm_output_folder, f"{gene}.hmmout")
@@ -478,11 +478,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
         hmm_log = []
         hmm_log_template = "{},{},{},{}"
         
-        queries = None
-        if debug <= 2 and path.exists(this_hmm_output) and not overwrite:
-            queries = get_results(this_hmm_output, map_mode)
-        
-        if queries is None:
+        if debug > 2 or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
             if is_full:
                 with NamedTemporaryFile(dir=gettempdir()) as unaligned_tmp, NamedTemporaryFile(dir=gettempdir()) as aln_tmp:
                     writeFasta(unaligned_tmp.name, unaligned_sequences)
@@ -524,15 +520,11 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                         #system(
                         #f"hmmsearch --nobias --domtblout {this_hmm_output} --domT 10.0 {hmm_temp_file.name} {aligned_files.name} > /dev/null",
                         #)
-        elif not is_full:
-            for header, seq in unaligned_sequences:
-                nt_sequences[header] = seq
 
         if debug > 2:
             continue#return "", [], [], [], []
 
-        if queries is None:
-            queries = get_results(this_hmm_output, map_mode)
+        queries = get_results(this_hmm_output, map_mode)
 
         for query, results in queries:
             add_new_result(map_mode, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template)
@@ -572,7 +564,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
         batch_result.append((gene, output, new_outs, hmm_log, diamond_kicks))
     return batch_result
 
-def get_head_to_seq(nt_db, recipe, requires_temp_file):
+def get_head_to_seq(nt_db, recipe):
     """Get a dictionary of headers to sequences.
 
     Args:
@@ -583,25 +575,19 @@ def get_head_to_seq(nt_db, recipe, requires_temp_file):
     -------
         dict[str, str]: A dictionary of headers to sequences.
     """
-    if requires_temp_file:
-        temp_file = NamedTemporaryFile(delete=False, dir=gettempdir())
-        for i in recipe:
-            temp_file.write(nt_db.get_bytes(f"ntbatch:{i}"))
-            
-        return temp_file.name, temp_file
-    else:
-        head_to_seq = {}
-        for i in recipe:
-            lines = nt_db.get_bytes(f"ntbatch:{i}").decode().splitlines()
-            head_to_seq.update(
-                {
-                    int(line[1:]): seq
-                    for line, seq in zip(lines[::2], lines[1::2])
-                    if line != ""
-                }
-            )
 
-        return head_to_seq, None
+    head_to_seq = {}
+    for i in recipe:
+        lines = nt_db.get_bytes(f"ntbatch:{i}").decode().splitlines()
+        head_to_seq.update(
+            {
+                int(lines[i][1:]): lines[i + 1]
+                for i in range(0, len(lines), 2)
+                if lines[i] != ""
+            },
+        )
+
+    return head_to_seq
 
 
 def miniscule_multi_filter(hits, debug):
@@ -678,11 +664,9 @@ def do_folder(input_folder, args):
     is_assembly = seq_db.get("get:isassembly")
     is_assembly = is_assembly == "True"
     is_full = is_genome or is_assembly or args.full
-    temp_source_file = None
-    seq_source = None
     if is_full:
         recipe = seq_db.get("getall:batches").split(",")
-        seq_source, temp_source_file = get_head_to_seq(seq_db, recipe, args.processes > 1)
+        head_to_seq = get_head_to_seq(seq_db, recipe)
     del seq_db
 
     hmm_output_folder = path.join(input_folder, "hmmsearch")
@@ -705,7 +689,13 @@ def do_folder(input_folder, args):
         return False
 
     per_batch = math.ceil(len(transcripts_mapped_to) / args.processes)
-
+    temp_source_file = None
+    if args.processes > 1:
+        temp_source_file = NamedTemporaryFile(dir=gettempdir(), prefix="seqs_", suffix=".fa")
+        writeFasta(temp_source_file.name, head_to_seq.items())
+        seq_source = temp_source_file.name
+    else:
+        seq_source = head_to_seq
     batches = [(transcripts_mapped_to[i:i + per_batch], seq_source, is_full, is_genome, hmm_output_folder, aln_ref_location, args.overwrite, args.map, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance, args.edge_margin) for i in range(0, len(transcripts_mapped_to), per_batch)]
 
     if args.processes <= 1:
@@ -735,7 +725,6 @@ def do_folder(input_folder, args):
             log.extend(logs)
             klog.extend(klogs)
             kick_log.extend(dkicks)
-
 
     mlog = ["Gene,Node,Score,Start,End,Reason,Master Gene,Header,Score,Start,End"]
     mkicks = 0
@@ -770,15 +759,8 @@ def do_folder(input_folder, args):
         
     printv(f"Kicked {mkicks} hits due to miniscule score", args.verbose, 1)
     printv("Writing results to db", args.verbose, 1)
-    encoder = json.Encoder()
-    BATCH_SIZE = 1000
-    recipe = []
-    for i in range(0, len(gene_based_results), BATCH_SIZE):
-        batch = [(gene, encoder.encode(hits)) for gene, hits in gene_based_results.items()][i:i + BATCH_SIZE]
-        recipe.append(str(i))
-        hits_db.put_bytes(f"getall:hmmbatch:{i}", encoder.encode(batch))
-
-    hits_db.put("getall:hmmbatches", ",".join(recipe))
+    for gene, hits in gene_based_results.items():
+        hits_db.put_bytes(f"gethmmhits:{gene}", json.encode(hits))
 
     del temp_source_file
     del hits_db

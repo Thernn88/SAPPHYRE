@@ -24,7 +24,7 @@ from . import rocky
 from .hmmsearch import HmmHit
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import printv, writeFasta
-from base64 import b64decode
+
 MainArgs = namedtuple(
     "MainArgs",
     [
@@ -206,7 +206,7 @@ class Hit(HmmHit):#, frozen=True):
     def get_merge_header(self):
         return "&&".join(map(str, [self.node] + self.children))
 
-def get_hmm_hits(
+def get_diamondhits(
     rocks_hits_db: RocksDB,
     list_of_wanted_genes: list,
     is_genome,
@@ -221,25 +221,25 @@ def get_hmm_hits(
         dict[str, list[Hit]]: Dictionary of gene to corresponding hits
     """
     present_genes = rocks_hits_db.get("getall:presentgenes")
-    hmm_batches = rocks_hits_db.get("getall:hmmbatches").split(",")
     if not present_genes:
         printv("ERROR: No genes found in hits database", 0)
         printv("Please make sure Diamond completed successfully", 0)
         return None
-    genes_to_process = set(list_of_wanted_genes or present_genes.split(","))
-    decoder = json.Decoder(type=list[tuple[str, str]])
-    hit_decoder = json.Decoder(type=list[Hit])
+    genes_to_process = list_of_wanted_genes or present_genes.split(",")
+
     gene_based_results = []
-    for batch in hmm_batches:
-        batch_decode = decoder.decode(rocks_hits_db.get(f"getall:hmmbatch:{batch}"))
-        
-        gene_based_results.extend(batch_decode)
-        
-    if genes_to_process:
-        gene_based_results = [i for i in gene_based_results if i[0] in genes_to_process]
-        
-    if is_genome:
-        gene_based_results = [(i[0], hit_decoder.decode(b64decode(i[1]))) for i in gene_based_results]
+    for gene in genes_to_process:
+        gene_result = rocks_hits_db.get_bytes(f"gethmmhits:{gene}")
+        if not gene_result:
+            printv(
+                f"WARNING: No hits found for {gene}. If you are using a gene list file this may be a non-issue",
+                0,
+            )
+            continue
+        if is_genome:
+            gene_based_results.append((gene, json.decode(gene_result, type=list[Hit])))
+        else:
+            gene_based_results.append((gene, gene_result))
 
     return gene_based_results
 
@@ -631,7 +631,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     printv(f"Doing output for: {oargs.gene}", oargs.verbose, 2)
 
     # Unpack the hits
-    this_hits = oargs.list_of_hits if oargs.is_genome else json.decode(b64decode(oargs.list_of_hits), type=list[Hit])
+    this_hits = oargs.list_of_hits if oargs.is_genome else json.decode(oargs.list_of_hits, type=list[Hit])
     gene_nodes = [hit.node for hit in this_hits]
 
     # Get reference sequences
@@ -677,7 +677,6 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     translate_sequences(this_hits)
     
     if not oargs.is_assembly_or_genome:
-        # if oargs.matches != 0 and oargs.EXACT_MATCH_AMOUNT != 0:
         this_hits = do_trim(this_hits, core_seq_aa_dict, oargs.matches, dist, debug_alignments, oargs.verbose, mat, oargs.EXACT_MATCH_AMOUNT, oargs.top_refs)
         
     this_hits = check_minimum_bp(this_hits, oargs.minimum_bp)
@@ -780,7 +779,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     
     top_refs, is_assembly, is_genome = get_toprefs(rocky.get_rock("rocks_nt_db"))
 
-    transcripts_mapped_to = get_hmm_hits(
+    transcripts_mapped_to = get_diamondhits(
         rocky.get_rock("rocks_hits_db"),
         list_of_wanted_genes,
         is_genome,
