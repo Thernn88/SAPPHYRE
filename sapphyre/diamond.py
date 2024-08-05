@@ -1050,6 +1050,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
             if args.debug:
                 global_log.append(this_log)
+            temp_file.close()
+            del temp_file
         del (
             this_output,
             mkicks,
