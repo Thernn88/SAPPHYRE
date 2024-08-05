@@ -1031,6 +1031,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
         else:
             for arg in arguments:
                 process_lines(arg)
+                
+        del df
 
         printv(
             f"Data processed. Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Consolidating threads",
@@ -1306,7 +1308,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
             arguments.append(
                 (gene_path, most_common, gene_target_to_taxa[gene], variant_filter.get(gene, []), top_path, gene, args.skip_realign, args.top_ref, args.align_method)
             )
-
         if post_threads > 1:
             top_ref_result = pool.starmap(top_reference_realign, arguments)
         else:
