@@ -481,7 +481,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
         result_file.write(json.encode(result))
 
 
-def get_head_to_seq(nt_db, recipe):
+def get_head_to_seq(nt_db, recipe, node_set):
     """Get a dictionary of headers to sequences.
 
     Args:
@@ -500,7 +500,7 @@ def get_head_to_seq(nt_db, recipe):
             {
                 int(lines[i][1:]): lines[i + 1]
                 for i in range(0, len(lines), 2)
-                if lines[i] != ""
+                if lines[i] != "" and int(lines[i][1:]) in node_set
             },
         )
 
@@ -1063,7 +1063,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
         
         requires_internal = defaultdict(dict)
         internal_order = []
+        node_set = set()
         for gene, hits in output.items():
+            node_set.update(hit.node for hit in hits)
             this_counter = Counter([i.node for i in hits]).most_common()
             if this_counter[0][1] > 1:
                 this_hits = sum(i[1] for i in this_counter if i[1] > 1)
@@ -1168,7 +1170,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
         )
 
 
-        head_to_seq = get_head_to_seq(nt_db, recipe)
+        head_to_seq = get_head_to_seq(nt_db, recipe, node_set)
+        del node_set
 
         cluster_out = []
         for gene, hits in output:
