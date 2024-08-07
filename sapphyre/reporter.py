@@ -14,16 +14,15 @@ from parasail import blosum62, nw_trace_scan_profile_16, profile_create_16
 #from sapphyre_tools import translate
 from wrap_rocks import RocksDB
 from xxhash import xxh3_64
-from Bio.Seq import Seq
 from sapphyre_tools import (
     find_index_pair,
     get_overlap
 )
-
 from . import rocky
 from .hmmsearch import HmmHit
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import printv, writeFasta
+from quickdna import DnaSequence
 
 MainArgs = namedtuple(
     "MainArgs",
@@ -122,6 +121,8 @@ class Hit(HmmHit):#, frozen=True):
                 continue #alignment failed, to investigate
             this_aa, ref_seq = result.traceback.query, result.traceback.ref
             if result.score > best_alignment_score:
+                if matches == 0 and exact_match_amount == 0: # Has top ref alignment, skip trim.
+                    return 0, 0
                 best_alignment = (this_aa, ref_seq)
                 best_alignment_score = result.score
 
@@ -226,6 +227,9 @@ def get_diamondhits(
         printv("Please make sure Diamond completed successfully", 0)
         return None
     genes_to_process = list_of_wanted_genes or present_genes.split(",")
+    
+    if is_genome:
+        decoder = json.Decoder(type=list[Hit])
 
     gene_based_results = []
     for gene in genes_to_process:
@@ -237,7 +241,7 @@ def get_diamondhits(
             )
             continue
         if is_genome:
-            gene_based_results.append((gene, json.decode(gene_result, type=list[Hit])))
+            gene_based_results.append((gene, decoder.decode(gene_result)))
         else:
             gene_based_results.append((gene, gene_result))
 
@@ -290,7 +294,7 @@ def translate_cdna(cdna_seq):
     # try:
     #     return translate(cdna_seq)
     # except:
-    return str(Seq(cdna_seq).translate())
+    return str(DnaSequence(cdna_seq).translate())
 
 def get_core_sequences(
     gene: str,
@@ -814,8 +818,8 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
         
     for gene, transcript_hits in transcripts_mapped_to:
         if transcript_hits:
-            for hit in transcript_hits:
-                if is_genome:
+            if is_genome:
+                for hit in transcript_hits:
                     parent, chomp_start, chomp_end, _, chomp_len = original_coords.get(str(hit.node), (None, None, None, None, None))
                     hit.parent = parent
                     if hit.frame < 0:
@@ -923,7 +927,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     rocky.get_rock("rocks_nt_db").put_bytes(key, data)
 
     printv(
-        f"Done! Took {time_keeper.differential():.2f}s overall. Trim took {time_keeper.lap():.2f}s and found {final_count} sequences.",
+        f"Done! Took {time_keeper.differential():.2f}s overall. Coords took {time_keeper.lap():.2f}s and found {final_count} sequences.",
         args.verbose,
     )
 
