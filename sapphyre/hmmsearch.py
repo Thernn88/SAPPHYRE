@@ -14,6 +14,7 @@ from Bio.Seq import Seq
 from .utils import parseFasta, printv, gettempdir, writeFasta
 from .diamond import ReferenceHit, ReporterHit as Hit
 from .timekeeper import TimeKeeper, KeeperMode
+from quickdna import DnaSequence
 
 
 class HmmHit(Struct):
@@ -281,12 +282,13 @@ def add_full_cluster_search(clusters, edge_margin, nodes_in_genes, source_cluste
 def get_results(hmm_output, map_mode):
     data = defaultdict(list)
     high_score = 0
+    has_data = False
     with open(hmm_output) as f:
         for line in f:
             if line.startswith("#"):
+                has_data = True
                 continue
-            while "  " in line:
-                line = line.replace("  ", " ")
+
             line = line.strip().split()
 
             query = line[0]
@@ -296,7 +298,8 @@ def get_results(hmm_output, map_mode):
             high_score = max(high_score, score)
 
             data[query].append((start - 1, end, score, ali_start, ali_end))
-
+    if not has_data:
+        return None
     if map_mode:
         score_thresh = high_score * 0.9
 
@@ -305,11 +308,11 @@ def get_results(hmm_output, map_mode):
             queries.append((query, [i for i in results if i[2] >= score_thresh]))
     else:
         queries = data.items()
-
+    
     return queries
 
 
-def add_new_result(map_mode, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template):
+def add_new_result(map_mode, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template, debug):
     node, frame = query.split("|")
     id = int(node)
     if id in cluster_full:
@@ -336,7 +339,8 @@ def add_new_result(map_mode, gene, query, results, is_full, cluster_full, cluste
                 cquery = cluster_queries[cluster_range]
 
                 new_hit = HmmHit(node=id, score=score, frame=int(frame), evalue=0, qstart=new_qstart, qend=new_qstart + len(sequence), gene=gene, query=cquery, uid=None, refs=[], seq=sequence)
-                hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, where_from))
+                if debug:
+                    hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, where_from))
                 output.append(new_hit)
         return
     
@@ -386,8 +390,9 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
     batch_result = []
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     this_seqs = load_Sequences(source_seqs)#, nodes_in_gene)
+    decoder = json.Decoder(type=list[Hit])
     for gene, diamond_hits in batches:
-        diamond_hits = json.decode(diamond_hits, type=list[Hit])
+        diamond_hits = decoder.decode(diamond_hits)
         printv(f"Processing: {gene}", verbose, 2)
         aligned_sequences = []
         this_hmm_output = path.join(hmm_output_folder, f"{gene}.hmmout")
@@ -477,8 +482,11 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
         passed_ids = set()
         hmm_log = []
         hmm_log_template = "{},{},{},{}"
+        queries = None
+        if debug <= 2 and not overwrite and path.exists(this_hmm_output):
+            queries = get_results(this_hmm_output, map_mode)
         
-        if debug > 2 or not path.exists(this_hmm_output) or stat(this_hmm_output).st_size == 0 or overwrite:
+        if queries is None:
             if is_full:
                 with NamedTemporaryFile(dir=gettempdir()) as unaligned_tmp, NamedTemporaryFile(dir=gettempdir()) as aln_tmp:
                     writeFasta(unaligned_tmp.name, unaligned_sequences)
@@ -497,7 +505,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
             else:
                 for header, seq in unaligned_sequences:
                     nt_sequences[header] = seq
-                    aligned_sequences.append((header, str(Seq(seq).translate())))
+                    aligned_sequences.append((header, str(DnaSequence(seq).translate())))
                     
                         
             with NamedTemporaryFile(dir=gettempdir()) as hmm_temp_file:
@@ -520,14 +528,18 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                         #system(
                         #f"hmmsearch --nobias --domtblout {this_hmm_output} --domT 10.0 {hmm_temp_file.name} {aligned_files.name} > /dev/null",
                         #)
-
+        elif not is_full:
+            for header, seq in unaligned_sequences:
+                nt_sequences[header] = seq
+                
         if debug > 2:
             continue#return "", [], [], [], []
 
-        queries = get_results(this_hmm_output, map_mode)
-
+        if queries is None:
+            queries = get_results(this_hmm_output, map_mode)
+        
         for query, results in queries:
-            add_new_result(map_mode, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template)
+            add_new_result(map_mode, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template, debug)
 
         diamond_kicks = []
         for hit in diamond_hits:
@@ -556,10 +568,12 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                         new_hit = HmmHit(node=hit.node, score=0, frame=hit.frame, evalue=hit.evalue, qstart=new_start, qend=new_end, gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=hit.seq)
                         output.append(new_hit)
                         parents_done.add(query_template.format(hit.node, hit.frame))
-                        hmm_log.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, f"Rescued by {neighbour}. Evalue: {hit.evalue}"))
+                        if debug:
+                            hmm_log.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, f"Rescued by {neighbour}. Evalue: {hit.evalue}"))
                         continue
 
-                diamond_kicks.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, f"Kicked. Evalue: {hit.evalue}"))
+                if debug:
+                    diamond_kicks.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, f"Kicked. Evalue: {hit.evalue}"))
                 
         batch_result.append((gene, output, new_outs, hmm_log, diamond_kicks))
     return batch_result
@@ -759,16 +773,18 @@ def do_folder(input_folder, args):
         
     printv(f"Kicked {mkicks} hits due to miniscule score", args.verbose, 1)
     printv("Writing results to db", args.verbose, 1)
+    encoder = json.Encoder()
     for gene, hits in gene_based_results.items():
-        hits_db.put_bytes(f"gethmmhits:{gene}", json.encode(hits))
+        hits_db.put_bytes(f"gethmmhits:{gene}", encoder.encode(hits))
 
     del temp_source_file
     del hits_db
-
-    with open(path.join(input_folder, "hmmsearch_log.log"), "w") as f:
-        f.write("\n".join(klog))
-    with open(path.join(input_folder, "hmmsearch_kick.log"), "w") as f:
-        f.write("\n".join(kick_log))
+    if klog:
+        with open(path.join(input_folder, "hmmsearch_log.log"), "w") as f:
+            f.write("\n".join(klog))
+    if kick_log:
+        with open(path.join(input_folder, "hmmsearch_kick.log"), "w") as f:
+            f.write("\n".join(kick_log))
     with open(path.join(input_folder, "hmmsearch_multi.log"), "w") as f:
         f.write("\n".join(mlog))
     with open(path.join(input_folder, "hmmsearch_zero_multis.log"), "w") as f:
