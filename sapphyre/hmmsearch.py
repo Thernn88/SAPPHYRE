@@ -14,7 +14,6 @@ from Bio.Seq import Seq
 from .utils import parseFasta, printv, gettempdir, writeFasta
 from .diamond import ReferenceHit, ReporterHit as Hit
 from .timekeeper import TimeKeeper, KeeperMode
-from quickdna import DnaSequence
 
 
 class HmmHit(Struct):
@@ -505,7 +504,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
             else:
                 for header, seq in unaligned_sequences:
                     nt_sequences[header] = seq
-                    aligned_sequences.append((header, str(DnaSequence(seq).translate())))
+                    aligned_sequences.append((header, str(Seq(seq).translate())))
                     
                         
             with NamedTemporaryFile(dir=gettempdir()) as hmm_temp_file:

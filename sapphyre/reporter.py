@@ -22,7 +22,7 @@ from . import rocky
 from .hmmsearch import HmmHit
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import printv, writeFasta
-from quickdna import DnaSequence
+from Bio.Seq import Seq
 
 MainArgs = namedtuple(
     "MainArgs",
@@ -294,7 +294,7 @@ def translate_cdna(cdna_seq):
     # try:
     #     return translate(cdna_seq)
     # except:
-    return str(DnaSequence(cdna_seq).translate())
+    return str(Seq(cdna_seq).translate())
 
 def get_core_sequences(
     gene: str,
