@@ -12,7 +12,7 @@ from time import time
 from typing import Union
 
 from msgspec import Struct, json
-from numpy import float32, float64, int8, uint16, where
+from numpy import float32, float64, int8, uint16, uint32, where
 from pandas import DataFrame, read_csv
 from sapphyre_tools import bio_revcomp, get_overlap
 from wrap_rocks import RocksDB
@@ -376,10 +376,6 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             if i == 0:
                 has_gene_key = "|" in key
 
-            # Skip if evalue is greater than threshold
-            if evalue > pargs.evalue_threshold:
-                continue
-
             # Negative frames coords are in reverse order.
             if frame < 0:
                 qend, qstart = qstart, qend
@@ -397,7 +393,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             refs = [ReferenceHit(target, ref, sstart, send)]
 
             this_hit = Hit(
-                int(row[0]),
+                row[0],
                 target,
                 row[2],
                 row[3],
@@ -670,15 +666,15 @@ def parse_csv(out_path: str) -> DataFrame:
             "coverage",
         ]
         dtype = {
-            "header": str,
+            "header": uint32,
             "target": str,
             "frame": int8,
             "evalue": float64,
             "score": float32,
             "qstart": uint16,
             "qend": uint16,
-            "sstart": uint16,
-            "send": uint16,
+            "sstart": uint32,
+            "send": uint32,
             "coverage": float32,
         }
     else:
@@ -694,15 +690,15 @@ def parse_csv(out_path: str) -> DataFrame:
             "send",
         ]
         dtype = {
-            "header": str,
+            "header": uint32,
             "target": str,
             "frame": int8,
             "evalue": float64,
             "score": float32,
             "qstart": uint16,
             "qend": uint16,
-            "sstart": uint16,
-            "send": uint16,
+            "sstart": uint32,
+            "send": uint32,
         }
 
     return read_csv(
@@ -942,8 +938,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
         gene_target_to_taxa[gene][target] = taxa
 
     target_has_hit = set(df["target"].unique())
-    # df = df[(df["target"].isin(top_targets))]
     headers = df["header"].unique()
+    df = df[df["evalue"] <= precision]
+
     if len(headers) > 0:
         per_thread = ceil(len(headers) / post_threads)
         if per_thread <= MINIMUM_CHUNKSIZE:
