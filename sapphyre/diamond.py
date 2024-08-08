@@ -354,9 +354,12 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
     output = defaultdict(list)
     multi_kicks = 0
     this_log = []
+    
+    df = pargs.grouped_data
+    df = df[df["evalue"] <= pargs.evalue_threshold]
 
     # Grab groups of data based on base header
-    for _, header_df in pargs.grouped_data.groupby("header"):
+    for _, header_df in df.groupby("header"):
         frame_to_hits = defaultdict(list)
         target_to_hits = defaultdict(list)
         pool_scores = {}
@@ -635,10 +638,6 @@ def top_reference_realign(gene_path, most_common_taxa, target_to_taxon, valid_va
             elif method == "mafft":
                 system(
                     f"mafft --thread 1 --quiet --anysymbol '{tmp_prealign.name}' > '{tmp_result.name}'"
-                )
-            else:
-                system(
-                    f"./famsa -t 1 '{tmp_prealign.name}' '{tmp_result.name}'"
                 )
             
             recs = list(parseFasta(tmp_result.name, True))
@@ -945,7 +944,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
     target_has_hit = set(df["target"].unique())
     headers = df["header"].unique()
-    df = df[df["evalue"] <= precision]
 
     if len(headers) > 0:
         per_thread = ceil(len(headers) / post_threads)
