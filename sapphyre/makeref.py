@@ -973,7 +973,7 @@ def aln_function(
             os.system(f"mafft --quiet --anysymbol --legacygappenalty --thread 1 '{raw_fa_file}' > '{aln_file}'")
         elif this_args.align_method == "famsa":  
             sequences = [Sequence(header.encode(),  seq.encode()) for header, seq in raw_seqs]
-            aligner = Aligner()
+            aligner = Aligner(threads=1)
             msa = aligner.align(sequences)
             aligned_seqs = [(sequence.id.decode(), sequence.sequence.decode()) for sequence in msa]
 
