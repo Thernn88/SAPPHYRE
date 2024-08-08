@@ -622,7 +622,7 @@ def top_reference_realign(gene_path, most_common_taxa, target_to_taxon, valid_va
             return gene, top_chosen
     if method == "famsa":
         sequences = [Sequence(header.encode(),  seq.encode()) for header, seq in out]
-        aligner = Aligner()
+        aligner = Aligner(threads=1)
         msa = aligner.align(sequences)
 
         recs = [(sequence.id.decode(), sequence.sequence.decode()) for sequence in msa]
