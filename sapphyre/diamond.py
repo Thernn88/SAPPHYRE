@@ -16,7 +16,7 @@ from numpy import float32, float64, int8, uint16, uint32, where
 from pandas import DataFrame, read_csv
 from sapphyre_tools import bio_revcomp, get_overlap
 from wrap_rocks import RocksDB
-
+from pyfamsa import Aligner, Sequence
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import gettempdir, parseFasta, printv, writeFasta, cull_columns
 
@@ -617,29 +617,35 @@ def top_reference_realign(gene_path, most_common_taxa, target_to_taxon, valid_va
     if path.exists(out_path):
         if header_set == set(header for header, _ in parseFasta(out_path, True)):
             return gene, top_chosen
-    
-    with NamedTemporaryFile(dir=gettempdir(), prefix=f"{gene}_") as tmp_prealign, NamedTemporaryFile(dir=gettempdir(), prefix=f"{gene}_") as tmp_result:
-        tmp_prealign.write("\n".join([f">{i}\n{j}" for i, j in out]).encode())
-        tmp_prealign.flush()
+    if method == "famsa":
+        sequences = [Sequence(header.encode(),  seq.encode()) for header, seq in out]
+        aligner = Aligner()
+        msa = aligner.align(sequences)
 
-        if method == "clustal":
-            system(
-                f"clustalo -i '{tmp_prealign.name}' -o '{tmp_result.name}' --threads=1 --force"
-            )
-        elif method == "mafft":
-            system(
-                f"mafft --thread 1 --quiet --anysymbol '{tmp_prealign.name}' > '{tmp_result.name}'"
-            )
-        else:
-            system(
-                f"./famsa -t 1 '{tmp_prealign.name}' '{tmp_result.name}'"
-            )
+        recs = [(sequence.id.decode(), sequence.sequence.decode()) for sequence in msa]
+    else:
+        with NamedTemporaryFile(dir=gettempdir(), prefix=f"{gene}_") as tmp_prealign, NamedTemporaryFile(dir=gettempdir(), prefix=f"{gene}_") as tmp_result:
+            tmp_prealign.write("\n".join([f">{i}\n{j}" for i, j in out]).encode())
+            tmp_prealign.flush()
+
+            if method == "clustal":
+                system(
+                    f"clustalo -i '{tmp_prealign.name}' -o '{tmp_result.name}' --threads=1 --force"
+                )
+            elif method == "mafft":
+                system(
+                    f"mafft --thread 1 --quiet --anysymbol '{tmp_prealign.name}' > '{tmp_result.name}'"
+                )
+            else:
+                system(
+                    f"./famsa -t 1 '{tmp_prealign.name}' '{tmp_result.name}'"
+                )
+            
+            recs = list(parseFasta(tmp_result.name, True))
         
-        recs = list(parseFasta(tmp_result.name, True))
-        
-        out = cull_ref_columns(recs, GAP_PERCENT, MIN_GAP_LENGTH)
-        
-        writeFasta(out_path, out)
+    out = cull_ref_columns(recs, GAP_PERCENT, MIN_GAP_LENGTH)
+    
+    writeFasta(out_path, out)
 
     return gene, top_chosen
 

@@ -952,7 +952,8 @@ def aln_function(
     nt_trimmed_path = this_args.nt_trimmed_path.joinpath(this_args.gene + ".nt.aln.fa")
 
     trimmed_header_to_full = {}
-    for header, _ in parseFasta(raw_fa_file):
+    raw_seqs = list(parseFasta(raw_fa_file))
+    for header, _ in raw_seqs:
         trimmed_header_to_full[header[:127]] = header
 
     if not aln_file.exists() or this_args.overwrite:
@@ -962,20 +963,23 @@ def aln_function(
             msg = f"Raw file {raw_fa_file} does not exist"
             raise FileNotFoundError(msg)
 
-        if len(list(parseFasta(raw_fa_file))) == 1:
-            writeFasta(aln_file, parseFasta(raw_fa_file))
+        if len(list(raw_seqs)) == 1:
+            writeFasta(aln_file, raw_seqs)
         elif this_args.align_method == "clustal":
             os.system(
                 f"clustalo -i '{raw_fa_file}' -o '{aln_file}' --threads=1 --force",
             )
         elif this_args.align_method == "mafft":
             os.system(f"mafft --quiet --anysymbol --legacygappenalty --thread 1 '{raw_fa_file}' > '{aln_file}'")
-        else:  
-            os.system(f"./famsa -t 1 '{raw_fa_file}' '{aln_file}'")
+        elif this_args.align_method == "famsa":  
+            sequences = [Sequence(header.encode(),  seq.encode()) for header, seq in raw_seqs]
+            aligner = Aligner()
+            msa = aligner.align(sequences)
+            aligned_seqs = [(sequence.id.decode(), sequence.sequence.decode()) for sequence in msa]
 
     aligned_result = []
     aligned_dict = {}
-    for header, seq in parseFasta(aln_file, True):
+    for header, seq in aligned_seqs if this_args.align_method == "famsa" else parseFasta(aln_file, True):
         header = trimmed_header_to_full[header[:127]]
         aligned_result.append((header, seq.upper()))
 
