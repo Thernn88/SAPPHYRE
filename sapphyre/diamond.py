@@ -657,6 +657,10 @@ def parse_csv(out_path: str) -> DataFrame:
     else:
         with open(out_path, "r") as f:
             tabs = f.readline().count("\t") + 1
+            
+    if tabs == 1:
+        return None
+            
     if tabs == 10:
         names = [
             "header",
@@ -905,6 +909,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
             return True
         
         df = parse_csv(out_path)
+        
+        if df is None:
+            printv("Diamond returned zero hits.", args.verbose, 0)
+            return True
     else:
         printv(
             f"Found existing Diamond output. Elapsed time {time_keeper.differential():.2f}s. Calculating targets.",
