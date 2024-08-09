@@ -390,8 +390,9 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     this_seqs = load_Sequences(source_seqs)#, nodes_in_gene)
     decoder = json.Decoder(type=list[Hit])
-    for gene, diamond_hits in batches:
-        diamond_hits = decoder.decode(diamond_hits)
+    for _ in range(len(batches)):
+        gene, raw_hits = batches.pop(0)
+        diamond_hits = decoder.decode(raw_hits)
         printv(f"Processing: {gene}", verbose, 2)
         aligned_sequences = []
         this_hmm_output = path.join(hmm_output_folder, f"{gene}.hmmout")
@@ -729,11 +730,13 @@ def do_folder(input_folder, args):
     header_based_results = defaultdict(list)
     printv("Processing results", args.verbose, 1)
     for batch in all_hits:
-        for gene, hits, logs, klogs, dkicks in batch:
+        for _ in range(len(batch)):
+            gene, hits, logs, klogs, dkicks = batch.pop(0)
             if not gene:
                 continue
 
-            for hit in hits:
+            for _ in range(len(hits)):
+                hit = hits.pop(0)
                 header_based_results[hit.node].append(hit)
             
             log.extend(logs)
@@ -753,7 +756,7 @@ def do_folder(input_folder, args):
         else:
             for hit in hits:
                 gene_based_results[hit.gene].append(hit)
-            
+    del header_based_results
     if args.processes <= 1:
         result = []
         for hits, debug in multi_filter_args:
