@@ -473,7 +473,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                 add_full_cluster_search(clusters, edge_margin, nodes_in_gene, source_clusters, cluster_full, nodes_in_gene, cluster_dict)
                       
         shift_targets(is_full, query_template, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp)
-
+        del hits_have_frames_already
         aln_file = path.join(aln_ref_location, f"{gene}.aln.fa")
         output = []
         new_outs = []
@@ -530,7 +530,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
         elif not is_full:
             for header, seq in unaligned_sequences:
                 nt_sequences[header] = seq
-                
+        del unaligned_sequences
         if debug > 2:
             continue#return "", [], [], [], []
 
@@ -656,7 +656,8 @@ def miniscule_multi_filter(hits, debug):
 
         # If the score difference is great enough
         # kick the candidate and log the kick.
-        log.append(internal_template_kick.format(candidate.gene, candidate.node, candidate.score, candidate.qstart, candidate.qend, master.gene, master.gene, master.node, master.score, master.qstart, master.qend))
+        if debug:
+            log.append(internal_template_kick.format(candidate.gene, candidate.node, candidate.score, candidate.qstart, candidate.qend, master.gene, master.gene, master.node, master.score, master.qstart, master.qend))
         kicked_indices.add(i)
 
     return [hit for i, hit in enumerate(hits) if i not in kicked_indices], len(list(kicked_indices)), log, edge_log
