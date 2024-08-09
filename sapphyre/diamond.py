@@ -2,7 +2,7 @@ from argparse import Namespace
 from collections import Counter, defaultdict
 from decimal import Decimal
 import gzip
-from itertools import combinations, count
+from itertools import chain, combinations, count
 from math import ceil
 from multiprocessing.pool import Pool
 from os import makedirs, path, stat, system
@@ -66,6 +66,7 @@ class ProcessingArgs(Struct, frozen=True):
     result_fp: str
     is_assembly_or_genome: bool
     evalue_threshold: float
+    top_ref: set
 
 
 class InternalArgs(Struct, frozen=True):
@@ -390,6 +391,9 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                 target = key
 
             gene, ref, _ = pargs.target_to_taxon[key]
+            
+            if not ref in pargs.top_ref:
+                continue
 
             # Create a list of ReferenceHit objects starting with the
             # reference hit for the current row
@@ -944,14 +948,102 @@ def run_process(args: Namespace, input_path: str) -> bool:
         if count >= target_count:
             top_refs.add(taxa)
             
+    # DOING VARIANT FILTER
+    target_has_hit = set(df["target"].unique())
+    variant_filter = defaultdict(list)
+
+    present_genes = set()
+    for target, ref_tuple in target_to_taxon.items():
+        gene, ref_taxon, data_length = ref_tuple
+        if target in target_has_hit:
+            present_genes.add(gene)
+        if ref_taxon in top_refs:
+            variant_filter[gene].append((ref_taxon, target, data_length))
+
+    dict_items = list(variant_filter.items())
+    for gene, targets in dict_items:
+        target_taxons = [i[0] for i in targets]
+        if len(target_taxons) != len(list(set(target_taxons))):
+            this_counts = Counter(target_taxons)
+            out_targets = [i[1] for i in targets if this_counts[i[0]] == 1]
+            for target, count in this_counts.most_common():
+                if count == 1:
+                    continue
+
+                this_targets = [i for i in targets if i[0] == target]
+                variants_with_hits = sum(
+                    i[1] in target_has_hit for i in this_targets
+                )
+                all_variants_kicked = variants_with_hits == 0
+                if all_variants_kicked:
+                    reintroduce = max(this_targets, key=lambda x: x[2])
+                    out_targets.append(reintroduce[1])
+                    continue
+
+                out_targets.extend(
+                    [i[1] for i in this_targets if i[1] in target_has_hit],
+                )
+
+            variant_filter[gene] = out_targets
+        else:
+            variant_filter.pop(gene, -1)
+
+    variant_filter = {k: list(v) for k, v in variant_filter.items()}
+
+    printv(
+        f"Got Targets. Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Writing top reference alignment.",
+        args.verbose,
+    )
+        
+    orthoset_raw_path = path.join(orthosets_dir, orthoset, "raw")
+    orthoset_aln_path = path.join(orthosets_dir, orthoset, "aln")
+    orthoset_trimmed_path = path.join(orthosets_dir, orthoset, "trimmed")
+    orthoset_clean_path = path.join(orthosets_dir, orthoset, "cleaned")
+    orthoset_final_path = path.join(orthosets_dir, orthoset, "final")
+    top_path = path.join(input_path, "top")
+
+    if args.overwrite_top and path.exists(top_path):
+        rmtree(top_path)
+    makedirs(top_path, exist_ok=True)
+
     gene_target_to_taxa = defaultdict(dict)
     for target, (gene, taxa, _) in target_to_taxon.items():
         if "|" in target:
             target = target.split("|", 1)[1]
         gene_target_to_taxa[gene][target] = taxa
+        
 
-    target_has_hit = set(df["target"].unique())
+    arguments = []
+    for gene in present_genes:
+        gene_path = None if args.skip_realign else path.join(orthoset_raw_path, gene + ".fa")
+        for ortho_path in [orthoset_final_path, orthoset_clean_path, orthoset_trimmed_path, orthoset_aln_path]:
+            potential = path.join(ortho_path, gene + ".aln.fa")
+            if path.exists(potential):
+                gene_path = potential
+                break
+        if gene_path is None:
+            printv(f"ERROR: Could not find Aln for {gene}.", args.verbose, 0)
+            return False
+        arguments.append(
+            (gene_path, most_common, gene_target_to_taxa[gene], variant_filter.get(gene, []), top_path, gene, args.skip_realign, args.top_ref, args.align_method)
+        )
+    if post_threads > 1:
+        top_ref_result = pool.starmap(top_reference_realign, arguments)
+    else:
+        for arg in arguments:
+            top_ref_result = []
+            top_ref_result.append(top_reference_realign(*arg))
+
+    top_ref_in_order = {gene: top_chosen for gene, top_chosen in top_ref_result}
+    top_ref = {*chain.from_iterable(top_ref_in_order.values())}
+    nt_db.put_bytes("getall:valid_refs", json.encode(top_ref_in_order))
+
     headers = df["header"].unique()
+    
+    printv(
+        f"Wrote top refs. Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Processing data.",
+        args.verbose,
+    )
 
     if len(headers) > 0:
         per_thread = ceil(len(headers) / post_threads)
@@ -1027,14 +1119,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 temp_files[i].name,
                 is_assembly_or_genome,
                 precision,
+                top_ref,
             )
             for i, index in enumerate(indices)
         )
 
-        printv(
-            f"Got targets. Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Processing data.",
-            args.verbose,
-        )
         if post_threads > 1:
             pool.map(process_lines, arguments)
         else:
@@ -1124,62 +1213,17 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         printv(
             f"Filtering done. Took {time_keeper.lap():.2f}s."
-            + f" Elapsed time {time_keeper.differential():.2f}s. Doing variant filter",
+            + f" Elapsed time {time_keeper.differential():.2f}s. Writing to DB",
             args.verbose,
         )
-        arguments = []
-        present_genes = []
-        present_genes = list(output.keys())
+
         output = output.items()
-
-        # DOING VARIANT FILTER
-        variant_filter = defaultdict(list)
-
-        for target, ref_tuple in target_to_taxon.items():
-            gene, ref_taxon, data_length = ref_tuple
-            if ref_taxon in top_refs:
-                variant_filter[gene].append((ref_taxon, target, data_length))
-
-        dict_items = list(variant_filter.items())
-        for gene, targets in dict_items:
-            target_taxons = [i[0] for i in targets]
-            if len(target_taxons) != len(list(set(target_taxons))):
-                this_counts = Counter(target_taxons)
-                out_targets = [i[1] for i in targets if this_counts[i[0]] == 1]
-                for target, count in this_counts.most_common():
-                    if count == 1:
-                        continue
-
-                    this_targets = [i for i in targets if i[0] == target]
-                    variants_with_hits = sum(
-                        i[1] in target_has_hit for i in this_targets
-                    )
-                    all_variants_kicked = variants_with_hits == 0
-                    if all_variants_kicked:
-                        reintroduce = max(this_targets, key=lambda x: x[2])
-                        out_targets.append(reintroduce[1])
-                        continue
-
-                    out_targets.extend(
-                        [i[1] for i in this_targets if i[1] in target_has_hit],
-                    )
-
-                variant_filter[gene] = out_targets
-            else:
-                variant_filter.pop(gene, -1)
-
-        variant_filter = {k: list(v) for k, v in variant_filter.items()}
-
-        printv(
-            f"Done! Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Writing to DB",
-            args.verbose,
-        )
 
         db.put_bytes(
             "getall:target_variants",
             json_encoder.encode(variant_filter),
         )
-
+        del variant_filter
 
         head_to_seq = get_head_to_seq(nt_db, recipe)
 
@@ -1235,8 +1279,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 output = pool.map(convert_and_cull, arguments)
             else:
                 output = [convert_and_cull(arg) for arg in arguments]
+        
         passes = 0
         encoder = json.Encoder()
+        present_genes = set()
         for result in output:
             if is_assembly_or_genome:
                 hits, gene = result.hits, result.gene
@@ -1263,10 +1309,13 @@ def run_process(args: Namespace, input_path: str) -> bool:
                     hit.seq = bio_revcomp(hit.seq)
                 out.append(hit)
                 dupe_divy_headers[gene].add(hit.node)
+            present_genes.add(gene)
 
             passes += len(out)
             db.put_bytes(f"gethits:{gene}", encoder.encode(out))
-
+        if post_threads > 1:
+            pool.close()
+            pool.terminate()
         del head_to_seq
         if global_log:
             with open(path.join(input_path, "multi.log"), "w") as fp:
@@ -1283,50 +1332,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
             f"Wrote {passes} results after {multi_kicks+internal_kicks} kicks.",
             args.verbose,
         )
-        orthoset_raw_path = path.join(orthosets_dir, orthoset, "raw")
-        orthoset_aln_path = path.join(orthosets_dir, orthoset, "aln")
-        orthoset_trimmed_path = path.join(orthosets_dir, orthoset, "trimmed")
-        orthoset_clean_path = path.join(orthosets_dir, orthoset, "cleaned")
-        orthoset_final_path = path.join(orthosets_dir, orthoset, "final")
-        top_path = path.join(input_path, "top")
-
-        if args.overwrite_top and path.exists(top_path):
-            rmtree(top_path)
-            
-        printv(
-            "Writing top reference alignments",
-            args.verbose,
-        )
-            
-        makedirs(top_path, exist_ok=True)
-
-        arguments = []
-        for gene in present_genes:
-            gene_path = None if args.skip_realign else path.join(orthoset_raw_path, gene + ".fa")
-            for ortho_path in [orthoset_final_path, orthoset_clean_path, orthoset_trimmed_path, orthoset_aln_path]:
-                potential = path.join(ortho_path, gene + ".aln.fa")
-                if path.exists(potential):
-                    gene_path = potential
-                    break
-            if gene_path is None:
-                printv(f"ERROR: Could not find Aln for {gene}.", args.verbose, 0)
-                return False
-            arguments.append(
-                (gene_path, most_common, gene_target_to_taxa[gene], variant_filter.get(gene, []), top_path, gene, args.skip_realign, args.top_ref, args.align_method)
-            )
-        if post_threads > 1:
-            top_ref_result = pool.starmap(top_reference_realign, arguments)
-        else:
-            for arg in arguments:
-                top_ref_result = []
-                top_ref_result.append(top_reference_realign(*arg))
-        del variant_filter
-        if post_threads > 1:
-            pool.close()
-            pool.terminate()
-
-        top_ref_in_order = {gene: top_chosen for gene, top_chosen in top_ref_result}
-        nt_db.put_bytes("getall:valid_refs", json.encode(top_ref_in_order))
 
         gene_dupe_count = defaultdict(dict)
         for gene, headers in dupe_divy_headers.items():
