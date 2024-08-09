@@ -2,7 +2,7 @@ import argparse
 import json
 import os
 from glob import glob
-
+import gc
 from .__main__ import (
     align_args,
     diamond_args,
@@ -100,31 +100,37 @@ def main(args):
 
             if not prepare.main(this_args):
                 print("Error in Prepare.")
+            gc.collect()
         elif script == "diamond":
             from . import diamond
 
             if not diamond.main(this_args):
                 print("Error in Diamond.")
+            gc.collect()
         elif script == "hmmsearch":
             from . import hmmsearch
 
             if not hmmsearch.main(this_args):
                 print("Error in Hmmsearch.")
+            gc.collect()
         elif script == "reporter":
             from . import reporter
 
             if not reporter.main(this_args):
                 print("Error in Reporter.")
+            gc.collect()
         elif script == "align":
             from . import align
 
             if not align.main(this_args):
                 print("Error in Align.")
+            gc.collect()
         elif script == "pal2nal":
             from . import pal2nal
 
             if not pal2nal.main(this_args):
                 print("Error in Pal2Nal.")
+            gc.collect()
         elif script == "flexcull":
             if args.map:
                 continue
@@ -132,6 +138,7 @@ def main(args):
 
             if not flexcull.main(this_args):
                 print("Error in FlexCull.")
+            gc.collect()
         elif script == "motif":
             if args.skip_motif:
                 continue
@@ -139,16 +146,19 @@ def main(args):
 
             if not motif.main(this_args):
                 print("Error in Motif.")
+            gc.collect()
         elif script == "outlier":
             from . import outlier
 
             if not outlier.main(this_args):
                 print("Error in Outlier.")
+            gc.collect()
         elif script == "merge":
             from . import consensus_merge
 
             if not consensus_merge.main(this_args):
                 print("Error in Merge.")
+            gc.collect()
 
     time = time.differential()
     print(f"Took {time:.2f}s overall.")
