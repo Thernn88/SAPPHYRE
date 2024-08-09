@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="sapphyre",
-    version="0.3.2",
+    version="0.3.3",
     description="An assembly-less solution for processing high-throughput sequencing reads for phylogenetics",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
@@ -21,7 +21,6 @@ setup(
     },
     install_requires=[
         "beautifulsoup4>=4.12.3",
-        "bio>=1.7.1",
         "biopython>=1.83",
         "msgspec>=0.18.6",
         "needletail>=0.5.0",
@@ -35,7 +34,6 @@ setup(
         "requests>=2.32.3",
         "sapphyre_tools>=0.9.0",
         "setuptools>=69.5.1",
-        "setuptools>=59.6.0",
         "tqdm>=4.66.2",
         "wrap_rocks>=0.3.8",
         "xxhash>=3.4.1",
