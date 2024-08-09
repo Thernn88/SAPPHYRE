@@ -1247,6 +1247,13 @@ def subcmd_makeref(sp):
         default=False,
     )
     par.add_argument(
+        "-kg",
+        "--kick_genes",
+        help="Percentage of taxa required after outlier",
+        type=float,
+        default=0.5,
+    )
+    par.add_argument(
         "-cp",
         "--cull_percent",
         help="Percentage of non-gap characters required for edge trim (percent of non gap characters >= this arg)",

@@ -151,6 +151,12 @@ class Sequence_Set:
         """
         return self.aligned_sequences
     
+    def get_taxon_consensus(self) -> set:
+        """
+        Returns a set of all taxon present
+        """
+        return set([seq.taxon for seq in self.sequences])
+    
     def get_gene_taxon_count(self) -> Counter:
         """
         Returns the count of genes present for each taxon
@@ -427,10 +433,12 @@ def raw_function(gene, sequences, raw_path, raw_nt_path, overwrite, verbosity):
             fp.write("".join([i.seq_with_regen_data(nt=True) for i in sequences]))
 
 
-def mine_aln(subset, genes, aligned_sequence_dict, dupes_in_genes):
+def mine_aln(subset, genes, aligned_sequence_dict, dupes_in_genes, taxon_set, kick_genes_percent):
     """
     Attempt at speeding up aln write to memory
     """
+    raw_seqs = subset.get_gene_dict(True)
+    genes_to_kick = []
     for gene in genes:
         dupe_headers = dupes_in_genes.get(gene)
         sequences = aligned_sequence_dict.get(gene)
@@ -438,9 +446,17 @@ def mine_aln(subset, genes, aligned_sequence_dict, dupes_in_genes):
         if dupe_headers:
             subset.kick_dupes(dupe_headers)
         
+        aligned_headers = {seq.header for seq in sequences}
+        raw_seqs_in_gene = [seq for seq in raw_seqs.get(gene, []) if seq.header in aligned_headers]
+        raw_taxon_set = {seq.taxon for seq in raw_seqs_in_gene}
+        if len(raw_taxon_set) / len(taxon_set) < kick_genes_percent:
+            genes_to_kick.append(gene)
+            continue
+        
+        
         subset.aligned_sequences[gene] = sequences
         
-    return subset
+    return subset, genes_to_kick
 
 
 def generate_aln(
@@ -459,6 +475,8 @@ def generate_aln(
     no_halves,
     skip_deviation_filter,
     realign,
+    taxon_set,
+    kick_genes_percent,
     debug_halves,
     skip_splice,
 ):
@@ -541,7 +559,7 @@ def generate_aln(
 
     set.has_aligned = True
 
-    printv("Writing Aln to RocksdDB", verbosity, 1)
+    
     clean_log_out = []
     splice_log_out = []
     violation_log_out = []
@@ -561,7 +579,7 @@ def generate_aln(
         this_align = {gene: aligned_genes[gene] for gene in genes}
         dupes = {gene: dupes_in_genes[gene] for gene in genes}
         
-        arguments.append((subset, genes, this_align, dupes))
+        arguments.append((subset, genes, this_align, dupes, taxon_set, kick_genes_percent))
     
     if processes > 1:
         with Pool(processes) as pool:
@@ -572,8 +590,20 @@ def generate_aln(
             subsets.append(mine_aln(*arg))
         
     set = Sequence_Set(set.name)
-    for subset in subsets:
+    for subset, thread_genes_to_kick in subsets:
         set.absorb(subset)
+        for gene in thread_genes_to_kick:
+            print(f"Kicking {gene}")
+            for path in [aln_path, trimmed_path, cleaned_path]:
+                file = path.joinpath(f"{gene}.aln.fa")
+                if file.exists():
+                    file.unlink()
+            for nt_path in [nt_trimmed_path, cleaned_nt_path]:
+                file = nt_path.joinpath(f"{gene}.nt.aln.fa")
+                if file.exists():
+                    file.unlink()
+                    
+    printv("Writing Aln to RocksdDB", verbosity, 1)
 
     if not skip_deviation_filter:        
         with open(str(clean_log), "w") as f:
@@ -957,6 +987,7 @@ def aln_function(
     for header, _ in raw_seqs:
         trimmed_header_to_full[header[:127]] = header
 
+    aligned_seqs = None
     if not aln_file.exists() or this_args.overwrite:
         printv(f"Generating: {this_args.gene}", this_args.verbosity, 2)
 
@@ -972,7 +1003,7 @@ def aln_function(
             )
         elif this_args.align_method == "mafft":
             os.system(f"mafft --quiet --anysymbol --legacygappenalty --thread 1 '{raw_fa_file}' > '{aln_file}'")
-        elif this_args.align_method == "famsa":  
+        if this_args.align_method == "famsa":  
             sequences = [pyfamsa.Sequence(header.encode(),  seq.encode()) for header, seq in raw_seqs]
             aligner = pyfamsa.Aligner(threads=1)
             msa = aligner.align(sequences)
@@ -980,7 +1011,7 @@ def aln_function(
 
     aligned_result = []
     aligned_dict = {}
-    for header, seq in aligned_seqs if this_args.align_method == "famsa" else parseFasta(aln_file, True):
+    for header, seq in aligned_seqs if aligned_seqs is not None and this_args.align_method == "famsa" else parseFasta(aln_file, True):
         header = trimmed_header_to_full[header[:127]]
         aligned_result.append((header, seq.upper()))
 
@@ -1087,41 +1118,41 @@ def aln_function(
         to_keep = delete_empty_columns(passed)
         
     if this_args.realign:
-        with NamedTemporaryFile(dir=gettempdir()) as temp, NamedTemporaryFile(dir=gettempdir()) as final_file:
-            if len(list(parseFasta(raw_fa_file))) == 1:
-                realigned_sequences = {rec.header: rec.seq for rec in passed}
-            else:
-                with NamedTemporaryFile(dir=gettempdir()) as temp:
-                    writeFasta(temp.name, [(rec.header, rec.seq.replace("-","")) for rec in passed], False)
+        if len(passed) == 1:
+            realigned_sequences = {rec.header: rec.seq for rec in passed}
+        elif this_args.align_method == "famsa":
+            pyfamsa_sequences = [pyfamsa.Sequence(rec.header.encode(),  rec.seq.encode()) for rec in passed]
+            aligner = pyfamsa.Aligner(threads=1)
+            msa = aligner.align(pyfamsa_sequences)
+            realigned_sequences = {sequence.id.decode(): sequence.sequence.decode() for sequence in msa}
+        else:
+            with NamedTemporaryFile(dir=gettempdir()) as temp, NamedTemporaryFile(dir=gettempdir()) as final_file:
+                writeFasta(temp.name, [(rec.header, rec.seq.replace("-","")) for rec in passed], False)
 
-                    if this_args.align_method == "clustal":
-                        os.system(
-                            f"clustalo -i '{temp.name}' -o '{final_file.name}' --threads=1 --force",
-                        )
-                    elif this_args.align_method == "mafft":
-                        os.system(f"mafft --quiet --anysymbol --legacygappenalty --thread 1 '{temp.name}' > '{final_file.name}'")
-                    else:
-                        os.system(f"./famsa -t 1 '{temp.name}' '{final_file.name}'")
-
+                if this_args.align_method == "clustal":
+                    os.system(
+                        f"clustalo -i '{temp.name}' -o '{final_file.name}' --threads=1 --force",
+                    )
+                elif this_args.align_method == "mafft":
+                    os.system(f"mafft --quiet --anysymbol --legacygappenalty --thread 1 '{temp.name}' > '{final_file.name}'")
+                        
                 realigned_sequences = {}
                 for header, seq in parseFasta(final_file.name, True):
                     realigned_sequences[header] = seq
                     
-                cull_result = {}
-                if this_args.do_cull:
-                    cull_result, passed = cull(passed, this_args.cull_percent, this_args.has_nt)
+        cull_result = {}
+        if this_args.do_cull:
+            cull_result, passed = cull(passed, this_args.cull_percent, this_args.has_nt)
                     
-                
-                    
-                for record in passed:
-                    if cull_result:
-                        left_bp_remove, right_bp_remove = cull_result.get(record.header, (0, 0))
-                        if left_bp_remove:
-                            record.nt_sequence = record.nt_sequence[left_bp_remove:]
-                        if right_bp_remove:
-                            record.nt_sequence = record.nt_sequence[:-right_bp_remove]
-                    record.seq = realigned_sequences[record.header]
-                    record.remake_indices()
+        for record in passed:
+            if cull_result:
+                left_bp_remove, right_bp_remove = cull_result.get(record.header, (0, 0))
+                if left_bp_remove:
+                    record.nt_sequence = record.nt_sequence[left_bp_remove:]
+                if right_bp_remove:
+                    record.nt_sequence = record.nt_sequence[:-right_bp_remove]
+            record.seq = realigned_sequences[record.header]
+            record.remake_indices()
         
     if not this_args.skip_deviation_filter and not this_args.no_halves:
         passed, former, latter = check_halves(passed, HALFSEQ_REPEATS, HALFSEQ_DISTANCE_EXPONENT, HALFSEQ_IQR_COEFFICIENT, HALFSEQ_CUTOFF_FLOOR, MIN_AA, this_args.cleaned_path, this_args.gene+'.fa', this_args.debug_halves)
@@ -1503,14 +1534,7 @@ def main(args):
 
     printv("Got input!", verbosity)
 
-    if do_count:
-        printv("Generating taxon stats", verbosity)
-        with open(os.path.join(set_path, "taxon_stats.csv"), "w") as fp:
-            fp.write("taxon,count\n")
-            counter = this_set.get_gene_taxon_count()
-
-            for taxon, tcount in counter.most_common():
-                fp.write(f"{taxon},{tcount}\n")
+    taxon_set = this_set.get_taxon_consensus()
 
     raw_path = set_path.joinpath("raw")
     raw_path.mkdir(exist_ok=True)
@@ -1549,6 +1573,8 @@ def main(args):
             no_halves,
             skip_deviation_filter,
             realign,
+            taxon_set,
+            args.kick_genes,
             args.debug,
             args.skip_splice,
         )
@@ -1560,6 +1586,13 @@ def main(args):
         target_to_taxon, taxon_to_sequences = make_diamonddb(
             this_set, processes
         )
+    if do_count:
+        taxon_counts = this_set.get_gene_taxon_count()
+        printv("Generating taxon stats", verbosity)
+        with open(os.path.join(set_path, "taxon_stats.csv"), "w") as fp:
+            fp.write("taxon,count\n")
+            for taxon, tcount in taxon_counts.most_common():
+                fp.write(f"{taxon},{tcount}\n")
 
     printv("Writing core sequences to RocksDB", verbosity, 1)
     rocks_db_path = set_path.joinpath("rocksdb")
