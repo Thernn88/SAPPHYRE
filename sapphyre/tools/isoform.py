@@ -8,7 +8,7 @@ from ..utils import parseFasta, writeFasta
 from Bio.Seq import Seq
 from xxhash import xxh3_64
 from multiprocessing import Pool
-
+from pyfamsa import Aligner, Sequence
 
 def dedupe(sequences):
     dupes = set()
@@ -53,26 +53,30 @@ def worker(
         if "isoform" in description:
             sequences.append(("isoform_///"+pub_gene_id+"///"+description, str(Seq(json_data["genome_sequence"]).translate()).strip("*")))
             # pub_to_transcripts[pub_gene_id].append((description, json_data["genome_sequence"]))
-            
-    with NamedTemporaryFile(mode="w") as raw_fa_file, NamedTemporaryFile(mode="w") as aln_file:
+    if align_method == "famsa":
+        sequences = [Sequence(header.encode(),  seq.encode()) for header, seq in sequences]
+        aligner = Aligner(threads=1)
+        msa = aligner.align(sequences)
+
+        aligned_sequences = [(sequence.id.decode(), sequence.sequence.decode()) for sequence in msa]
+    else:
+        with NamedTemporaryFile(mode="w") as raw_fa_file, NamedTemporaryFile(mode="w") as aln_file:
         
-        short_to_full = {}
-        for header, _ in out_sequences+sequences:
-            short_to_full[header[:128]] = header
+            short_to_full = {}
+            for header, _ in out_sequences+sequences:
+                short_to_full[header[:128]] = header
         
-        writeFasta(raw_fa_file.name, out_sequences+sequences)
-        if align_method == "clustal":
-            subprocess.run(
-                ["clustalo", "-i", raw_fa_file.name, "-o", aln_file.name, "--threads=1", "--force"]
-            )
-        elif align_method == "mafft":
-            subprocess.run(
-                ["mafft", "--thread", "1", "--quiet", "--anysymbol", "--legacygappenalty", raw_fa_file.name],
-                stdout=aln_file
-            )
-        else:
-            subprocess.run(["./famsa", "-t", "1", raw_fa_file.name, aln_file.name])
-        aligned_sequences = [(short_to_full[header[:128]], sequence) for header, sequence in parseFasta(aln_file.name, True)]
+            writeFasta(raw_fa_file.name, out_sequences+sequences)
+            if align_method == "clustal":
+                subprocess.run(
+                    ["clustalo", "-i", raw_fa_file.name, "-o", aln_file.name, "--threads=1", "--force"]
+                )
+            elif align_method == "mafft":
+                subprocess.run(
+                    ["mafft", "--thread", "1", "--quiet", "--anysymbol", "--legacygappenalty", raw_fa_file.name],
+                    stdout=aln_file
+                )
+            aligned_sequences = [(short_to_full[header[:128]], sequence) for header, sequence in parseFasta(aln_file.name, True)]
 
     this_consensus = defaultdict(list)
     for header, sequence in aligned_sequences:
