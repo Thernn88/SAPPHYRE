@@ -16,6 +16,7 @@ from Bio import SeqIO
 from msgspec import json
 from sapphyre_tools import constrained_distance, find_index_pair, get_overlap, blosum62_distance
 import numpy as np
+import pyfamsa
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import gettempdir, parseFasta, printv, writeFasta
@@ -972,8 +973,8 @@ def aln_function(
         elif this_args.align_method == "mafft":
             os.system(f"mafft --quiet --anysymbol --legacygappenalty --thread 1 '{raw_fa_file}' > '{aln_file}'")
         elif this_args.align_method == "famsa":  
-            sequences = [Sequence(header.encode(),  seq.encode()) for header, seq in raw_seqs]
-            aligner = Aligner(threads=1)
+            sequences = [pyfamsa.Sequence(header.encode(),  seq.encode()) for header, seq in raw_seqs]
+            aligner = pyfamsa.Aligner(threads=1)
             msa = aligner.align(sequences)
             aligned_seqs = [(sequence.id.decode(), sequence.sequence.decode()) for sequence in msa]
 
