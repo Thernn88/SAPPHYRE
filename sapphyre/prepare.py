@@ -1,4 +1,5 @@
 from collections import Counter, defaultdict
+import gzip
 import os
 import re
 from collections.abc import Generator
@@ -12,6 +13,7 @@ import sapphyre_tools
 import wrap_rocks
 import xxhash
 from msgspec import json
+from needletail import NeedletailError
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv
@@ -81,6 +83,12 @@ def group_taxa_in_glob(
 
     return taxa_runs
 
+
+def gz_size(fname):
+    with gzip.open(fname, 'rb') as f:
+        return f.seek(0, whence=2)
+
+
 class SeqDeduplicator:
     def __init__(
         self,
@@ -127,11 +135,15 @@ class SeqDeduplicator:
             self.this_genome = False
             
         elif not self.this_genome:
-            for _, seq in parseFasta(fa_file_path, True):
-                if len(seq) > CHOMP_CUTOFF:
-                    self.this_genome = True
-                    self.this_assembly = False
-                    break
+            try:
+                for _, seq in parseFasta(fa_file_path, True):
+                    if len(seq) > CHOMP_CUTOFF:
+                        self.this_genome = True
+                        self.this_assembly = False
+                        break
+            except NeedletailError as e:
+                printv("Failed to parse {} with error:\n\t{}\n".format(fa_file_path, e), self.verbose, 0)
+                return
 
                     
 
@@ -425,6 +437,10 @@ def main(args):
     taxa_runs = group_taxa_in_glob(globbed)
 
     for formatted_taxa_out, components in taxa_runs.items():
+        components = [i for i in components if gz_size(i) > 0]
+        if not components:
+            printv(f"Skipping {formatted_taxa_out} due to empty files.", args.verbose)
+            continue
         map_taxa_runs(
             formatted_taxa_out,
             secondary_directory,
