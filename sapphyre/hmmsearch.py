@@ -531,7 +531,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
         elif not is_full:
             for header, seq in unaligned_sequences:
                 nt_sequences[header] = seq
-        del unaligned_sequences
+        del (unaligned_sequences, aligned_sequences, diamond_ids)
         if debug > 2:
             continue#return "", [], [], [], []
 
