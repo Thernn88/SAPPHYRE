@@ -358,6 +358,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
     
     df = pargs.grouped_data
     df = df[df["evalue"] <= pargs.evalue_threshold]
+    df = df[df["target"].apply(lambda x: pargs.target_to_taxon[x][1]).isin(pargs.top_ref)]
 
     # Grab groups of data based on base header
     for _, header_df in df.groupby("header"):
@@ -392,8 +393,8 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
 
             gene, ref, _ = pargs.target_to_taxon[key]
             
-            if not ref in pargs.top_ref:
-                continue
+            # if not ref in pargs.top_ref:
+            #     continue
 
             # Create a list of ReferenceHit objects starting with the
             # reference hit for the current row
