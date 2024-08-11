@@ -519,18 +519,17 @@ def count_taxa(df, genome_score_filter, is_assembly_or_genome):
     else:
         filtered_df = df
 
-    # 3. Drop duplicates to keep only unique (header, ref_taxa) pairs
-    unique_pairs = filtered_df.drop_duplicates(subset=['header', 'ref_taxa'])
+    # 2. Drop duplicates to keep only unique (header, ref_taxa) pairs
+    unique_pairs = df[['header', 'ref_taxa']].drop_duplicates()
 
-    # 4. Count the number of unique headers for each ref_taxa
+    # 3. Efficiently count occurrences of each 'ref_taxa'
     ref_taxa_counts = unique_pairs['ref_taxa'].value_counts()
 
-    # 5. Update the combined count dictionary
+    # 4. Update the combined count dictionary
     combined_count.update(ref_taxa_counts.to_dict())
 
-    # 6. Get the most common taxa
+    # 5. Get the most common taxa
     most_common = combined_count.most_common()
-
     return most_common
 
 def delete_empty_columns(records):
@@ -933,10 +932,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
     # Assuming df is your DataFrame
     # 1. Create a Series for vectorized mapping from target_to_taxon dictionary
-    target_to_ref_taxa = Series({k: v[1] for k, v in target_to_taxon.items()})
+    target_taxon_df = DataFrame.from_dict({k: v[1] for k, v in target_to_taxon.items()}, orient='index', columns=['ref_taxa'])
 
     # 2. Map 'target' column to 'ref_taxa'
-    df['ref_taxa'] = df['target'].map(target_to_ref_taxa)
+    df = df.merge(target_taxon_df, left_on='target', right_index=True, how='left')
 
     most_common = count_taxa(df, genome_score_filter, is_assembly_or_genome)
     
