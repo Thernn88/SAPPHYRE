@@ -63,7 +63,6 @@ class ProcessingArgs(Struct, frozen=True):
     grouped_data: DataFrame
     target_to_taxon: dict[str, tuple[str, str, int]]
     debug: bool
-    result_fp: str
     is_assembly_or_genome: bool
     evalue_threshold: float
     top_ref: set
@@ -481,8 +480,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
 
     # Write the results as a compressed msgspec Struct JSON object to the temporary file
     # allocated to this thread
-    with open(pargs.result_fp, "wb") as result_file:
-        result_file.write(json.encode(result))
+    return json.encode(result)
 
 
 def get_head_to_seq(nt_db, recipe):
@@ -1118,7 +1116,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
                     end_index = len(df) - 1
 
                 indices.append((start_index, end_index))
-        temp_files = [NamedTemporaryFile(dir=gettempdir()) for _ in range(chunks)]
 
         arguments = (
             ProcessingArgs(
@@ -1126,7 +1123,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 df.iloc[index[0] : index[1] + 1],
                 target_to_taxon,
                 args.debug,
-                temp_files[i].name,
                 is_assembly_or_genome,
                 precision,
                 top_ref,
@@ -1135,10 +1131,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
         )
 
         if post_threads > 1:
-            pool.map(process_lines, arguments)
+            encoded_data = pool.map(process_lines, arguments)
         else:
-            for arg in arguments:
-                process_lines(arg)
+            encoded_data = [process_lines(arg) for arg in arguments]
                 
         del df
 
@@ -1150,9 +1145,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
         del arguments
         decoder = json.Decoder(tuple[str, int, dict[str, list[Hit]]])
         x = set()
-        for temp_file in temp_files:
-            with open(temp_file.name, "rb") as fp:
-                this_log, mkicks, this_output = decoder.decode(fp.read())
+        for temp_data in encoded_data:
+            this_log, mkicks, this_output = decoder.decode(temp_data)
 
             for gene, hits in this_output.items():
                 output[gene].extend(hits)
@@ -1160,12 +1154,12 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
             if args.debug:
                 global_log.append(this_log)
-            temp_file.close()
-            del temp_file
+
         del (
             this_output,
             mkicks,
             this_log,
+            encoded_data,
         )
         printv(
             f"Done! Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
