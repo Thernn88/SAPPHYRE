@@ -13,7 +13,7 @@ from typing import Union
 
 from msgspec import Struct, json
 from numpy import float32, float64, int8, uint16, uint32, where
-from pandas import DataFrame, read_csv
+from pandas import DataFrame, read_csv, Series
 from sapphyre_tools import bio_revcomp, get_overlap
 from wrap_rocks import RocksDB
 from pyfamsa import Aligner, Sequence
@@ -358,7 +358,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
     
     df = pargs.grouped_data
     df = df[df["evalue"] <= pargs.evalue_threshold]
-    df = df[df["target"].apply(lambda x: pargs.target_to_taxon[x][1]).isin(pargs.top_ref)]
+    df = df[df["ref_taxa"].isin(pargs.top_ref)]
 
     # Grab groups of data based on base header
     for _, header_df in df.groupby("header"):
@@ -511,7 +511,7 @@ def get_head_to_seq(nt_db, recipe):
     return head_to_seq
 
 
-def count_taxa(df, target_to_taxon, genome_score_filter, is_assembly_or_genome):
+def count_taxa(df, genome_score_filter, is_assembly_or_genome):
     # Initialize structures
     combined_count = Counter()
 
@@ -521,17 +521,16 @@ def count_taxa(df, target_to_taxon, genome_score_filter, is_assembly_or_genome):
     else:
         filtered_df = df
 
-    # Create a mapping of target to ref_taxa
-    filtered_df['ref_taxa'] = filtered_df['target'].map(lambda x: target_to_taxon[x][1])
+    # 3. Drop duplicates to keep only unique (header, ref_taxa) pairs
+    unique_pairs = filtered_df.drop_duplicates(subset=['header', 'ref_taxa'])
 
-    # Keep only unique (header, ref_taxa) pairs
-    unique_pairs = filtered_df[['header', 'ref_taxa']].drop_duplicates()
-
-    # Count the number of unique headers for each ref_taxa
+    # 4. Count the number of unique headers for each ref_taxa
     ref_taxa_counts = unique_pairs['ref_taxa'].value_counts()
 
-    # Update the combined count
+    # 5. Update the combined count dictionary
     combined_count.update(ref_taxa_counts.to_dict())
+
+    # 6. Get the most common taxa
     most_common = combined_count.most_common()
 
     return most_common
@@ -931,7 +930,17 @@ def run_process(args: Namespace, input_path: str) -> bool:
     global_log = []
     dupe_divy_headers = defaultdict(set)
 
-    most_common = count_taxa(df, target_to_taxon, genome_score_filter, is_assembly_or_genome)
+    # Initialize a Counter object
+    combined_count = Counter()
+
+    # Assuming df is your DataFrame
+    # 1. Create a Series for vectorized mapping from target_to_taxon dictionary
+    target_to_ref_taxa = Series({k: v[1] for k, v in target_to_taxon.items()})
+
+    # 2. Map 'target' column to 'ref_taxa'
+    df['ref_taxa'] = df['target'].map(target_to_ref_taxa)
+
+    most_common = count_taxa(df, genome_score_filter, is_assembly_or_genome)
     
     top_refs = set()
     with open(path.join(input_path, "diamond_top_ref.csv"), "w") as fp:
