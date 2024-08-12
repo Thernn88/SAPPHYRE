@@ -1241,24 +1241,24 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
             # If gene is not NCG and we don't want to keep codons, cull codons
             positions_to_trim = set()
-            # if not fargs.is_ncg and not fargs.keep_codons:
-            #     out_line, positions_to_trim, kick = cull_codons(
-            #         out_line,
-            #         cull_start,
-            #         cull_end,
-            #         fargs.amt_matches,
-            #         fargs.mismatches,
-            #         all_dashes_by_index,
-            #         character_at_each_pos,
-            #         gap_present_threshold,
-            #     )
-            #     if kick:
-            #         follow_through[header] = True, 0, 0, []
+            if not fargs.genome and not fargs.is_ncg and not fargs.keep_codons:
+                out_line, positions_to_trim, kick = cull_codons(
+                    out_line,
+                    cull_start,
+                    cull_end,
+                    fargs.amt_matches,
+                    fargs.mismatches,
+                    all_dashes_by_index,
+                    character_at_each_pos,
+                    gap_present_threshold,
+                )
+                if kick:
+                    follow_through[header] = True, 0, 0, []
 
-            #         if fargs.debug:
-            #             codon_log.append(f"{header},{kick[1]}\n")
-            #         kick = False
-            #         # continue
+                    if fargs.debug:
+                        codon_log.append(f"{header},{kick[1]}\n")
+                    kick = False
+                    # continue
 
             # Join sequence and check bp after cull
             out_line = "".join(out_line)
