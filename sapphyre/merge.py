@@ -174,7 +174,9 @@ class Sequence(Struct, frozen=True):
     sequence: str
 
     def get_count(self) -> str:
-        return int(self.header.split("|")[5])
+        if self.header.count("|") == 5:
+            return int(self.header.split("|")[5])
+        return 1
 
 
 
