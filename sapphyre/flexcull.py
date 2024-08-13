@@ -1345,20 +1345,20 @@ def do_gene(fargs: FlexcullArgs) -> None:
         reference_gap_col = {i for i, x in post_gap_present_threshold.items() if not x}
 
         # Trim large gaps
-        aa_out, gap_pass_through, trim_log, kicks = trim_large_gaps(
-            aa_out,
-            reference_gap_col,
-            fargs.amt_matches,
-            fargs.mismatches,
-            post_all_dashes_by_index,
-            post_character_at_each_pos,
-            post_gap_present_threshold,
-            fargs.bp,
-            fargs.debug,
-        )
+        # aa_out, gap_pass_through, trim_log, kicks = trim_large_gaps(
+        #     aa_out,
+        #     reference_gap_col,
+        #     fargs.amt_matches,
+        #     fargs.mismatches,
+        #     post_all_dashes_by_index,
+        #     post_character_at_each_pos,
+        #     post_gap_present_threshold,
+        #     fargs.bp,
+        #     fargs.debug,
+        # )
 
-        if fargs.debug:
-            log.extend(trim_log)
+        # if fargs.debug:
+        #     log.extend(trim_log)
 
         for kick in kicks:
             follow_through[kick] = True, 0, 0, []
@@ -1400,22 +1400,22 @@ def do_gene(fargs: FlexcullArgs) -> None:
             nt_out = align_col_removal(nt_out, aa_positions_to_keep)
             out_nt = []
             for header, sequence in nt_out:
-                gap_cull = gap_pass_through.get(header, None)
+                # gap_cull = gap_pass_through.get(header, None)
 
-                if gap_cull:
-                    out_nt.append(
-                        (
-                            header,
-                            "".join(
-                                [
-                                    sequence[i : i + 3] if i not in gap_cull else "---"
-                                    for i in range(0, len(sequence), 3)
-                                ],
-                            ),
-                        ),
-                    )
-                else:
-                    out_nt.append((header, sequence))
+                # if gap_cull:
+                #     out_nt.append(
+                #         (
+                #             header,
+                #             "".join(
+                #                 [
+                #                     sequence[i : i + 3] if i not in gap_cull else "---"
+                #                     for i in range(0, len(sequence), 3)
+                #                 ],
+                #             ),
+                #         ),
+                #     )
+                # else:
+                out_nt.append((header, sequence))
 
             # Align order
             out_nt = align_to_aa_order(out_nt, aa_out)
