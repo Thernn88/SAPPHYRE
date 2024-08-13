@@ -758,7 +758,6 @@ def cull_codons(
 
         # If the difference between the amount of data columns in the candidate and
         # the reference is less than 55%, cull the remainder side
-        cut_left, cut_right = False, False
         if (
             left_highest_consecutive < 30 and
             get_data_difference(
@@ -770,7 +769,7 @@ def cull_codons(
             for x in range(cull_start, i):
                 positions_to_trim.add(x * 3)
                 out_line[x] = "-"
-            cut_left = True
+
         if (
             right_highest_consecutive < 30 and
             get_data_difference(
@@ -782,14 +781,13 @@ def cull_codons(
             for x in range(i, cull_end):
                 positions_to_trim.add(x * 3)
                 out_line[x] = "-"
-            cut_right = True
 
         non_trimmed_codons.remove(i)
 
-        if not cut_left and not cut_right:
-            if gap_present_threshold[i]:
-                kick = True, i
-                return out_line, positions_to_trim, kick
+        # if not cut_left and not cut_right:
+        #     if gap_present_threshold[i]:
+        #         kick = True, i
+        #         return out_line, positions_to_trim, kick
 
     return out_line, positions_to_trim, kick
 
