@@ -16,6 +16,8 @@ from sapphyre_tools import (
     is_same_kmer,
     constrained_distance,
     bio_revcomp,
+    join_with_exclusions,
+    join_triplets_with_exclusions,
 )
 from .directional_cluster import cluster_ids, within_distance, node_to_ids, quick_rec
 from wrap_rocks import RocksDB
@@ -354,14 +356,9 @@ def indices_that_resolve(nodes, sequences_out_of_region, merge_percent):
 
 def del_cols(sequence, columns, nt=False):
     if nt:
-        seq = [sequence[i: i+3] for i in range(0, len(sequence), 3)]
-        for i in columns:
-            seq[i] = "---"
-        return "".join(seq)
-    seq = list(sequence)
-    for i in columns:
-        seq[i] = "-"
-    return "".join(seq)
+        return join_triplets_with_exclusions(sequence, set(), columns)
+
+    return join_with_exclusions(sequence, columns)
 
 
 def get_coverage(aa_seqs, ref_avg_len):
@@ -488,19 +485,19 @@ def do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, 
                         
                         if on_end:
                             for x in range(i, sub_aa_nodes[node_index].end):
-                                x_positions[sub_aa_nodes[node_index].header].add(x)
+                                x_positions[sub_aa_nodes[node_index].header].add(x * 3)
                         else:
                             for x in range(sub_aa_nodes[node_index].start, i + 1):
-                                x_positions[sub_aa_nodes[node_index].header].add(x)
+                                x_positions[sub_aa_nodes[node_index].header].add(x * 3)
 
                 if out_of_region and in_region:
                     for node_index, bp, on_end in in_region:
                         if on_end:
                             for x in range(i, sub_aa_nodes[node_index].end):
-                                x_positions[sub_aa_nodes[node_index].header].add(x)
+                                x_positions[sub_aa_nodes[node_index].header].add(x * 3)
                         else:
                             for x in range(sub_aa_nodes[node_index].start, i + 1):
-                                x_positions[sub_aa_nodes[node_index].header].add(x)
+                                x_positions[sub_aa_nodes[node_index].header].add(x * 3)
 
 
             #refresh aa
@@ -527,7 +524,7 @@ def do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, 
 
                 if not i is None:
                     for x in range(node.start , i + 1):
-                        x_positions[node.header].add(x)
+                        x_positions[node.header].add(x * 3)
 
                 i = None
                 for poss_i in range(node.end -1, node.end - 4, -1):
@@ -536,7 +533,7 @@ def do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, 
 
                 if not i is None:
                     for x in range(i, node.end):
-                        x_positions[node.header].add(x)
+                        x_positions[node.header].add(x * 3)
 
 
 def insert_gaps(input_string, positions, offset):
@@ -1426,10 +1423,10 @@ def log_excised_consensus(
                                         continue
                                     
                                     consecutive_match = False
-                                    node_positions.add(x)
+                                    node_positions.add(x * 3)
 
                                 for x in range(splice_index, prev_node.end):
-                                    prev_positions.add(x)
+                                    prev_positions.add(x * 3)
 
                                 log_output.append(f">{prev_node.header} vs {node.header}")
                                 log_output.append(f"Split at {splice_index}")
