@@ -436,7 +436,7 @@ def do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, 
     for cluster_set in cluster_sets:
         
         sub_aa_nodes = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
-
+        sub_x_positions = defaultdict(set)
         aa_sequences = [node.sequence for node in sub_aa_nodes]
         if aa_sequences:
             if no_dupes:
@@ -448,33 +448,22 @@ def do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, 
                 )
 
             cstart, cend = find_index_pair(consensus_seq, "X")
-            cstart, cend = find_index_pair(consensus_seq, "X")
 
-            for i, maj_bp in enumerate(consensus_seq[cstart:cend], cstart):
-                if maj_bp != "X":
-                    continue
             for i, maj_bp in enumerate(consensus_seq[cstart:cend], cstart):
                 if maj_bp != "X":
                     continue
 
                 in_region = []
-                out_of_region = []
+                out_of_region = False
                 for x, node in enumerate(sub_aa_nodes):
                     # within 3 bp
-                    within_left = node.start <= i <= node.start + 3
-                    within_right = node.end - 3 <= i <= node.end
-
-                    if within_left or within_right:
-                        in_region.append((x, node.sequence[i], within_right))
+                    if node.start <= i <= node.start + 3:
+                        in_region.append((x, node.sequence[i], False))
+                    elif node.end - 3 <= i <= node.end:
+                        in_region.append((x, node.sequence[i], True))
                     elif i >= node.start and i <= node.end:
-                        out_of_region.append((x, node.sequence[i], within_right))
-                    if within_left or within_right:
-                        in_region.append((x, node.sequence[i], within_right))
-                    elif i >= node.start and i <= node.end:
-                        out_of_region.append((x, node.sequence[i], within_right))
-
-                if not out_of_region and not in_region:
-                    continue
+                        out_of_region = True
+                        
                 if not out_of_region and not in_region:
                     continue
 
@@ -485,26 +474,27 @@ def do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, 
                         
                         if on_end:
                             for x in range(i, sub_aa_nodes[node_index].end):
-                                x_positions[sub_aa_nodes[node_index].header].add(x * 3)
+                                sub_x_positions[sub_aa_nodes[node_index].header].add(x * 3)
                         else:
                             for x in range(sub_aa_nodes[node_index].start, i + 1):
-                                x_positions[sub_aa_nodes[node_index].header].add(x * 3)
+                                sub_x_positions[sub_aa_nodes[node_index].header].add(x * 3)
 
                 if out_of_region and in_region:
                     for node_index, bp, on_end in in_region:
                         if on_end:
                             for x in range(i, sub_aa_nodes[node_index].end):
-                                x_positions[sub_aa_nodes[node_index].header].add(x * 3)
+                                sub_x_positions[sub_aa_nodes[node_index].header].add(x * 3)
                         else:
                             for x in range(sub_aa_nodes[node_index].start, i + 1):
-                                x_positions[sub_aa_nodes[node_index].header].add(x * 3)
+                                sub_x_positions[sub_aa_nodes[node_index].header].add(x * 3)
 
 
             #refresh aa
-            if x_positions:
+            if sub_x_positions:
                 for node in sub_aa_nodes:
-                    node.sequence = del_cols(node.sequence, x_positions[node.header])
+                    node.sequence = del_cols(node.sequence, sub_x_positions[node.header])
                     node.start, node.end = find_index_pair(node.sequence, "-")
+                    x_positions[node.header].update(sub_x_positions[node.header])
 
             if no_dupes:
                 aa_sequences = [x.sequence for x in sub_aa_nodes if x.header not in kicked_headers]
@@ -1227,19 +1217,15 @@ def log_excised_consensus(
 
     bp_count = lambda x: len(x) - x.count("-")
 
-    raw_aa = list(parseFasta(str(aa_in)))
-
     ref_lens = []
     aa_nodes = []
     reference_cluster_data = set()
     ref_consensus = defaultdict(list)
     ref_gaps = set()
-    for header, seq in raw_aa:
+    for header, seq in parseFasta(str(aa_in)):
         if header.endswith('.'):
             start, end = find_index_pair(seq, "-")
             for i, bp in enumerate(seq[start:end], start):
-                if bp != "-":
-                    reference_cluster_data.add(i)
                 ref_consensus[i].append(bp)
                 
             ref_lens.append(bp_count(seq))
@@ -1249,7 +1235,11 @@ def log_excised_consensus(
         aa_nodes.append(NODE(header, frame, seq, None, *find_index_pair(seq, "-"), []))
 
     ref_gap_percent = 0.7
+    gap_set = {"-"}
     for i, lets in ref_consensus.items():
+        if gap_set != set(lets):
+            reference_cluster_data.add(i)
+            
         if lets.count("-") / len(lets) > ref_gap_percent:
             ref_gaps.add(i)
 
@@ -1300,8 +1290,10 @@ def log_excised_consensus(
         if data_bp < 15:
             log_output.append(f"Kicking {node.header} due to < 15 bp after trimming")
             kicked_headers.add(node.header)
+            
+    aa_nodes = [node for node in aa_nodes if node.header not in kicked_headers]
 
-    raw_sequences = {header: del_cols(seq, x_positions[header], True) for header, seq in parseFasta(str(nt_in))}
+    raw_sequences = {header: del_cols(seq, x_positions[header], True) for header, seq in parseFasta(str(nt_in)) if header not in kicked_headers}
     for node in aa_nodes:
         nt_seq = raw_sequences[node.header]
         node.nt_sequence = nt_seq
@@ -1390,72 +1382,7 @@ def log_excised_consensus(
                 if len(sequences_in_region) > excise_maximum_depth:
                     continue
                 
-                nodes_in_region = None
-                if is_genome:
-                    continue
-                    tagged_in_region = [(int(node.header.split("|")[3].split("&&")[0].split("_")[1]), node) for node in sequences_in_region]
-                    tagged_in_region.sort(key=lambda x: x[0])
-                    clusters = cluster(tagged_in_region, true_cluster_threshold)
-
-                    log_output.append(f">{gene}_ambig_{region_start}:{region_end}\n{consensus_seq}")
-
-                    for clust in clusters:
-                        if len(clust) <= 1:
-                            continue
-
-                        clust.sort(key = lambda node: node.start)
-                        for (_, prev_node), (i, node) in combinations(enumerate(clust), 2):
-                            overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, 1)
-                            if overlapping_coords:
-                                kmer = node.sequence[overlapping_coords[0]:overlapping_coords[1]]
-                                prev_kmer = prev_node.sequence[overlapping_coords[0]:overlapping_coords[1]]
-
-                                if is_same_kmer(kmer, prev_kmer):
-                                    continue
-
-                                splice_index = calculate_split(prev_node, node, overlapping_coords, ref_consensus)
-                                prev_positions = set()
-                                node_positions = set()
-                                
-                                consecutive_match = True
-                                for x in range(splice_index - 1, node.start - 1, -1):
-                                    if consecutive_match and node.sequence[x] == prev_node.sequence[x]:
-                                        continue
-                                    
-                                    consecutive_match = False
-                                    node_positions.add(x * 3)
-
-                                for x in range(splice_index, prev_node.end):
-                                    prev_positions.add(x * 3)
-
-                                log_output.append(f">{prev_node.header} vs {node.header}")
-                                log_output.append(f"Split at {splice_index}")
-
-                                prev_node.sequence = del_cols(prev_node.sequence, prev_positions)
-                                node.sequence = del_cols(node.sequence, node_positions)
-
-                                if len(prev_node.sequence) - prev_node.sequence.count("-") < 15:
-                                    log_output.append(f"Kicking {prev_node.header} due to < 15 bp after splice")
-                                    kicked_headers.add(prev_node.header)
-                                    
-
-                                if len(node.sequence) - node.sequence.count("-") < 15:
-                                    log_output.append(f"Kicking {node.header} due to < 15 bp after splice")
-                                    kicked_headers.add(node.header)
-
-                                # if either_kicked:
-                                #     break
-
-                                prev_node.nt_sequence = del_cols(prev_node.nt_sequence, prev_positions, True)
-                                node.nt_sequence = del_cols(node.nt_sequence, node_positions, True)
-
-                                node.start, node.end = find_index_pair(node.sequence, "-")
-                                prev_node.start, prev_node.end = find_index_pair(prev_node.sequence, "-")
-
-                                x_positions[node.header].update(node_positions)
-                                x_positions[prev_node.header].update(prev_positions)
-                
-                else:
+                if not is_genome:
                     sequences_in_region = copy.deepcopy(sequences_in_region)
                     nodes_in_region = simple_assembly(sequences_in_region, excise_overlap_ambig)
 
@@ -1924,7 +1851,7 @@ def log_excised_consensus(
                         scan_log.append("")
                     
                     
-    aa_raw_output = [(header, del_cols(seq, x_positions[header])) for header, seq in raw_aa if header not in kicked_headers]
+    aa_raw_output = [(header, del_cols(seq, x_positions[header])) for header, seq in parseFasta(str(aa_in)) if header not in kicked_headers]
     aa_output = []
     for header, seq in aa_raw_output:
         if is_genome:
@@ -2076,45 +2003,64 @@ def move_flagged(to_move, processes):
 
 
 def get_args(args, genes, head_to_seq, is_assembly_or_genome, is_genome, input_folder, output_folder, compress, no_dupes, original_coords):
+    if is_genome:
+        get_id = lambda x: int(x.split("_")[0]) 
+        for gene in genes:
+            this_headers = []
+            for header, _ in parseFasta(str(Path(input_folder, "aa", gene))):
+                if header.endswith("."):
+                    continue
+                this_headers.extend(
+                    map(get_id, header.split("|")[3].replace("NODE_", "").split("&&"))
+                )
 
-    get_id = lambda x: int(x.split("_")[0]) 
-    for gene in genes:
-        this_headers = []
-        for header, _ in parseFasta(str(Path(input_folder, "aa", gene))):
-            if header.endswith("."):
-                continue
-            this_headers.extend(
-                map(get_id, header.split("|")[3].replace("NODE_", "").split("&&"))
-            )
-
-        this_seqs = {}
-        this_original_coords = {}
-        if is_genome:
-            this_seqs = {i: head_to_seq[i] for i in set(this_headers)}
-            this_original_coords = {str(i): original_coords[str(i)] for i in set(this_headers)}
+                this_seqs = {i: head_to_seq[i] for i in set(this_headers)}
+                this_original_coords = {str(i): original_coords[str(i)] for i in set(this_headers)}
         
-        yield (
-            args.verbose,
-            gene,
-            is_assembly_or_genome,
-            is_genome,
-            input_folder,
-            output_folder,
-            compress,
-            args.excise_overlap_merge,
-            args.excise_overlap_ambig,
-            args.excise_region_overlap,
-            args.excise_consensus,
-            args.excise_maximum_depth,
-            args.excise_minimum_ambig,
-            args.excise_allowed_distance,
-            args.excise_rescue_match,
-            no_dupes,
-            this_seqs,
-            this_original_coords,
-            args.excise_trim_consensus,
-        )
-
+            yield (
+                args.verbose,
+                gene,
+                is_assembly_or_genome,
+                is_genome,
+                input_folder,
+                output_folder,
+                compress,
+                args.excise_overlap_merge,
+                args.excise_overlap_ambig,
+                args.excise_region_overlap,
+                args.excise_consensus,
+                args.excise_maximum_depth,
+                args.excise_minimum_ambig,
+                args.excise_allowed_distance,
+                args.excise_rescue_match,
+                no_dupes,
+                this_seqs,
+                this_original_coords,
+                args.excise_trim_consensus,
+            )
+    else:
+        for gene in genes:
+            yield (
+                args.verbose,
+                gene,
+                is_assembly_or_genome,
+                is_genome,
+                input_folder,
+                output_folder,
+                compress,
+                args.excise_overlap_merge,
+                args.excise_overlap_ambig,
+                args.excise_region_overlap,
+                args.excise_consensus,
+                args.excise_maximum_depth,
+                args.excise_minimum_ambig,
+                args.excise_allowed_distance,
+                args.excise_rescue_match,
+                no_dupes,
+                {},
+                {},
+                args.excise_trim_consensus,
+            )   
 
 def get_head_to_seq(nt_db):
     """Get a dictionary of headers to sequences.
@@ -2194,16 +2140,15 @@ def main(args, sub_dir, is_genome, is_assembly_or_genome):
 
     rocksdb_path = path.join(folder, "rocksdb", "sequences", "nt")
     nt_db = RocksDB(rocksdb_path)
-    
-    head_to_seq = get_head_to_seq(nt_db)
-    
+
+    head_to_seq = {}
     original_coords = {}
     if is_genome:
         raw_data = nt_db.get("getall:original_coords")
         
         if raw_data:
             original_coords = json.decode(raw_data, type = dict[str, tuple[str, int, int, int, int]])
-    
+        head_to_seq = get_head_to_seq(nt_db)
     del nt_db
 
     compress = not args.uncompress_intermediates or args.compress
