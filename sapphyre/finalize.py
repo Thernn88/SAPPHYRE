@@ -47,7 +47,7 @@ def kick_taxa(content: list[tuple, tuple], to_kick: set) -> list:
     for header, sequence in content:
         taxon = header.split("|")[1].lower()
         taxa = header.split("|")[2].lower()
-        if taxon not in to_kick or taxa in to_kick:
+        if taxon not in to_kick and taxa not in to_kick:
             out.append((header, sequence))
     return out
 
