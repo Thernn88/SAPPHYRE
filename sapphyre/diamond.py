@@ -569,23 +569,21 @@ def cull_ref_columns(refs: list[str], gap_consensus_threshold: float, min_gap_le
     return output
 
 
-def top_reference_realign(gene_path, most_common_taxa, target_to_taxon, valid_variants, top_path, gene, skip_realign, top_ref_arg, method):
+def top_reference_realign(ortho_path, suffix, most_common_taxa, target_to_taxon, valid_variants, top_path, gene, skip_realign, top_ref_arg, method):
     out = []
-        
+    gene_path = path.join(ortho_path, gene + suffix) 
     source = parseFasta(gene_path, True)
     top_chosen = []
     header_set = set()
     ref_to_seq = defaultdict(list)
     for header, seq in source:
-        header = header.split(" ")[0]
+        header = header.split(" ", 1)[0]
         key = f"{gene}|{header}"
         if valid_variants and not key in valid_variants:
             continue
-        if header in target_to_taxon:
-            taxon = target_to_taxon[header]
-        elif key in target_to_taxon:
-            taxon = target_to_taxon[key]
-        else:
+        
+        taxon = target_to_taxon.get(header) or target_to_taxon.get(key)
+        if not taxon:
             continue
         
         if not skip_realign:
@@ -595,10 +593,11 @@ def top_reference_realign(gene_path, most_common_taxa, target_to_taxon, valid_va
 
     current_count = 0
     for taxa, _ in most_common_taxa:
-        if not taxa in ref_to_seq:
+        this_seqs = ref_to_seq[taxa]
+        if not this_seqs:
             continue
         
-        for header, seq in ref_to_seq[taxa]:
+        for header, seq in this_seqs:
             header_set.add(header)
             top_chosen.append(taxa)
             out.append((header, seq))
@@ -632,14 +631,14 @@ def top_reference_realign(gene_path, most_common_taxa, target_to_taxon, valid_va
             tmp_prealign.write("\n".join([f">{i}\n{j}" for i, j in out]).encode())
             tmp_prealign.flush()
 
+            align_cmd = ""
             if method == "clustal":
-                system(
-                    f"clustalo -i '{tmp_prealign.name}' -o '{tmp_result.name}' --threads=1 --force"
-                )
+                align_cmd = f"clustalo -i '{tmp_prealign.name}' -o '{tmp_result.name}' --threads=1 --force"
             elif method == "mafft":
-                system(
-                    f"mafft --thread 1 --quiet --anysymbol '{tmp_prealign.name}' > '{tmp_result.name}'"
-                )
+                align_cmd = f"mafft --thread 1 --quiet --anysymbol '{tmp_prealign.name}' > '{tmp_result.name}'"
+
+            if align_cmd:
+                system(align_cmd)
             
             recs = list(parseFasta(tmp_result.name, True))
         
@@ -1019,20 +1018,17 @@ def run_process(args: Namespace, input_path: str) -> bool:
             target = target.split("|", 1)[1]
         gene_target_to_taxa[gene][target] = taxa
         
-
+    ortho_path = orthoset_raw_path
+    suffix = ".fa"
+    for ortho_path in [orthoset_final_path, orthoset_clean_path, orthoset_trimmed_path, orthoset_aln_path]:
+        if path.exists(ortho_path):
+            suffix = ".aln.fa"
+            break
+        
     arguments = []
     for gene in present_genes:
-        gene_path = None if args.skip_realign else path.join(orthoset_raw_path, gene + ".fa")
-        for ortho_path in [orthoset_final_path, orthoset_clean_path, orthoset_trimmed_path, orthoset_aln_path]:
-            potential = path.join(ortho_path, gene + ".aln.fa")
-            if path.exists(potential):
-                gene_path = potential
-                break
-        if gene_path is None:
-            printv(f"ERROR: Could not find Aln for {gene}.", args.verbose, 0)
-            return False
         arguments.append(
-            (gene_path, most_common, gene_target_to_taxa[gene], variant_filter.get(gene, []), top_path, gene, args.skip_realign, args.top_ref, args.align_method)
+            (ortho_path, suffix, most_common, gene_target_to_taxa[gene], variant_filter.get(gene, []), top_path, gene, args.skip_realign, args.top_ref, args.align_method)
         )
     if post_threads > 1:
         top_ref_result = pool.starmap(top_reference_realign, arguments)
