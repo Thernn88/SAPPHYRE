@@ -45,8 +45,9 @@ class GeneConfig:
 def kick_taxa(content: list[tuple, tuple], to_kick: set) -> list:
     out = []
     for header, sequence in content:
-        taxon = header.split("|")[1]
-        if taxon not in to_kick:
+        taxon = header.split("|")[1].lower()
+        taxa = header.split("|")[2].lower()
+        if taxon not in to_kick or taxa in to_kick:
             out.append((header, sequence))
     return out
 
@@ -425,7 +426,7 @@ def process_folder(args, input_path):
     if args.kick:
         with open(taxa_folder.joinpath(args.kick), encoding="utf-8-sig") as fp:
             for line in fp:
-                to_kick.add(line.strip())
+                to_kick.add(line.strip().lower())
 
     target = set()
     if args.target_file:
