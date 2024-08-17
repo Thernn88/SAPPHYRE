@@ -388,7 +388,9 @@ def add_new_result(map_mode, gene, query, results, is_full, cluster_full, cluste
 def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_ref_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance, edge_margin):
     batch_result = []
     warnings.filterwarnings("ignore", category=BiopythonWarning)
-    this_seqs = load_Sequences(source_seqs)#, nodes_in_gene)
+    this_seqs = {}
+    if is_full:
+        this_seqs = load_Sequences(source_seqs)
     decoder = json.Decoder(type=list[Hit])
     for _ in range(len(batches)):
         gene, raw_hits = batches.pop(0)
@@ -704,13 +706,16 @@ def do_folder(input_folder, args):
         return False
 
     per_batch = math.ceil(len(transcripts_mapped_to) / args.processes)
-    temp_source_file = None
-    if args.processes > 1:
-        temp_source_file = NamedTemporaryFile(dir=gettempdir(), prefix="seqs_", suffix=".fa")
-        writeFasta(temp_source_file.name, head_to_seq.items())
-        seq_source = temp_source_file.name
-    else:
-        seq_source = head_to_seq
+    
+    if is_full:
+        temp_source_file = None
+        if args.processes > 1:
+            temp_source_file = NamedTemporaryFile(dir=gettempdir(), prefix="seqs_", suffix=".fa")
+            writeFasta(temp_source_file.name, head_to_seq.items())
+            seq_source = temp_source_file.name
+            del head_to_seq
+        else:
+            seq_source = head_to_seq
     batches = [(transcripts_mapped_to[i:i + per_batch], seq_source, is_full, is_genome, hmm_output_folder, aln_ref_location, args.overwrite, args.map, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance, args.edge_margin) for i in range(0, len(transcripts_mapped_to), per_batch)]
 
     if args.processes <= 1:
