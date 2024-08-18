@@ -79,7 +79,7 @@ def writeFasta(path: str, records: tuple[str, str], compress=False):
         mode = "wt"  # Write in text mode for gzip
     else:
         # Strip '.gz' if it exists and we're not compressing
-        path = path.rstrip(".gz")
+        path = path.replace(".gz", "")
         func = open
         mode = "w"
 
