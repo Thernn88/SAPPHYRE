@@ -7,6 +7,7 @@ from math import ceil
 from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import rmtree
+from sapphyre_tools import find_index_pair
 
 import requests
 from bs4 import BeautifulSoup
@@ -40,6 +41,7 @@ class GeneConfig:
     generating_names: bool
     no_references: bool
     compress: bool
+    internal_char: str
 
 
 def kick_taxa(content: list[tuple, tuple], to_kick: set) -> list:
@@ -196,6 +198,23 @@ def kick_gene(present_taxa, minimum_percentage, global_total_taxon):
     return (len(present_taxa) / len(global_total_taxon)) <= minimum_percentage
 
 
+def convert_gaps(aa_content, nt_content, internal_char):
+    out_aa = []
+    out_nt = []
+    coords = {}
+    for header, sequence in aa_content:
+        start, end = find_index_pair(sequence, "-")
+        coords[header] = start * 3, end * 3
+        sequence = sequence[:start] + sequence[start:end].replace("-", internal_char) + sequence[end:]
+        out_aa.append((header, sequence))
+    
+    for header, sequence in nt_content:
+        start, end = coords[header]
+        sequence = sequence[:start] + sequence[start:end].replace("-", internal_char) + sequence[end:]
+        out_nt.append((header, sequence))
+    
+    return out_aa, out_nt
+
 def clean_gene(gene_config: GeneConfig):
     printv(f"Doing: {gene_config.gene}", gene_config.verbose, 2)
     if not gene_config.no_references:
@@ -230,6 +249,8 @@ def clean_gene(gene_config: GeneConfig):
             gene_config.minimum_bp,
         )
         nt_content = align_kick_nt(nt_content, cols_to_kick, aa_kicks)
+
+    aa_content, nt_content = convert_gaps(aa_content, nt_content, gene_config.internal_char)
 
     processed_folder = gene_config.taxa_folder.joinpath("Processed")
 
@@ -475,6 +496,7 @@ def process_folder(args, input_path):
             generate_names,
             args.no_references,
             args.compress,
+            args.replace_internals,
         )
         arguments.append((this_config,))
 

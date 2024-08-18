@@ -1057,6 +1057,13 @@ def subcmd_finalize(subparsers):
         help="Kicks taxa listed in line seperated file.",
     )
     par.add_argument(
+        "-ri",
+        "--replace_internals",
+        type=str,
+        default="?",
+        help="Replace internal gaps with supplied character.",
+    )
+    par.add_argument(
         "-t",
         "--target_file",
         type=str,
