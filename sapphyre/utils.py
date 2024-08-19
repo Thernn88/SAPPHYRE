@@ -68,26 +68,18 @@ def parseFasta(
 
 def writeFasta(path: str, records: tuple[str, str], compress=False):
     """Writes sequence records to a Fasta format file."""
-    template = ">{}\n{}\n"
+    func = open
     path = str(path)
-    
-    # Check if we need to compress
     if compress:
         if not path.endswith(".gz"):
             path += ".gz"
         func = gzip.open
-        mode = "wt"  # Write in text mode for gzip
-    else:
-        # Strip '.gz' if it exists and we're not compressing
-        path = path.replace(".gz", "")
-        func = open
-        mode = "w"
+    elif path.endswith(".gz"):
+        path = path.rstrip(".gz")
 
-    # Open the file and write directly
-    with func(path, mode) as fp:
-        for header, sequence in records:
-            # Write each record directly to avoid large intermediate strings
-            fp.write(template.format(header, sequence))
+    with func(path, "wb") as fp:
+        data = [f">{header}\n{sequence}\n" for header, sequence in records]
+        fp.write("".join(data).encode())
 
 
 def write2Line2Fasta(path: str, records: list[str], compress=False):
