@@ -45,6 +45,7 @@ MainArgs = namedtuple(
 
 # Extend hit with new functions
 class Hit(HmmHit):#, frozen=True):
+    raw_node: int = None
     header: str = None
     base_header: str = None
     aa_sequence: str = None
@@ -53,6 +54,7 @@ class Hit(HmmHit):#, frozen=True):
     chomp_start: int = None
     chomp_end: int = None
     children: list = []
+    raw_children: list = []
     
     def get_bp_trim(
         self,
@@ -414,71 +416,97 @@ def tag(sequences: list[tuple[str, str]], prepare_dupes: dict[str, dict[str, int
 
 
 def merge_hits(hits: list[Hit], minimum_bp_overlap = 30) -> tuple[list[Hit], list[str]]:
-    get_base_id = lambda x: x if type(x) is int else int(x.split("_")[0])
-    hits.sort(key = lambda x: get_base_id(x.node))
+    hits.sort(key = lambda x: x.raw_node)
     log = ["Merges for: "+hits[0].gene]
-    indices = range(len(hits))
+    
     merge_occured = True
-    while merge_occured:
+    max_recursion = 15
+    CLUSTER_DISTANCE = 300
+    while merge_occured and max_recursion:
+        max_recursion -= 1
         merge_occured = False
-        for i, j in combinations(indices, 2):
-            if hits[i] is None or hits[j] is None:
-                continue
-            
-            if not any(b - a <= 1 for a, b in product(map(get_base_id, [hits[i].node] + hits[i].children), map(get_base_id, [hits[j].node] + hits[j].children))):
-                continue
-            
-            if get_overlap(hits[i].chomp_start, hits[i].chomp_end, hits[j].chomp_start, hits[j].chomp_end, minimum_bp_overlap) is None:
-                continue
-            
-            if hits[i].strand != hits[j].strand:
-                continue
-            
-            if abs(hits[i].chomp_start - hits[j].chomp_start) % 3 != 0:
-                continue # different frame same seq
-            
-            if hits[i].strand == "-":
-                gaps_a_start = max(hits[j].chomp_end - hits[i].chomp_end, 0)
-                gaps_b_start = max(hits[i].chomp_end - hits[j].chomp_end, 0)
-            else:
-                gaps_a_start = max(hits[i].chomp_start - hits[j].chomp_start, 0)
-                gaps_b_start = max(hits[j].chomp_start - hits[i].chomp_start, 0)
-
-            a_align_seq = ("-" * gaps_a_start) + hits[i].seq
-            b_align_seq = "-" * gaps_b_start + hits[j].seq
-
-            alignment_length = max(len(b_align_seq),len(a_align_seq))
-            a_align_seq += "-" * (alignment_length - len(a_align_seq))
-            b_align_seq += "-" * (alignment_length - len(b_align_seq))
-            
-            a_align_start, a_align_end = find_index_pair(a_align_seq, "-")
-            b_align_start, b_align_end = find_index_pair(b_align_seq, "-")
-            
-            overlap = get_overlap(a_align_start, a_align_end, b_align_start, b_align_end, 1)
-            if overlap is None:
-                continue
-            
-            a_kmer = a_align_seq[overlap[0]:overlap[1]]
-            b_kmer = b_align_seq[overlap[0]:overlap[1]]
-            
-            if translate_cdna(a_kmer) != translate_cdna(b_kmer):
-                continue
-            
-            merged_seq = "".join([a_align_seq[i] if a_align_seq[i] != "-" else b_align_seq[i] for i in range(len(a_align_seq))])
-
-            if get_base_id(hits[i].node) == get_base_id(hits[j].node):
-                log.append("WARNING: {} and {} same base node merge".format(hits[i].node, hits[j].node))
-            
-            hits[i].children.append(hits[j].node)
-            hits[i].seq = merged_seq
-            
-            # Update coords
-            hits[i].chomp_start = min(hits[i].chomp_start, hits[j].chomp_start)
-            hits[i].chomp_end = max(hits[i].chomp_end, hits[j].chomp_end)
-            
-            hits[j] = None
-            merge_occured = True
         
+        clusters = []
+        current_cluster = []
+        current_index = None
+        for i, hit in enumerate(hits):
+            if hit is None:
+                continue
+            if current_index is not None:
+                if hit.raw_node - current_index >= CLUSTER_DISTANCE:
+                    clusters.append(current_cluster)
+                    current_cluster = []
+                
+            current_cluster.append(i)
+            current_index = hit.raw_node
+
+        if current_cluster:
+            clusters.append(current_cluster)
+            
+        for indices in clusters:
+            for i, j in combinations(indices, 2):
+                if hits[i] is None or hits[j] is None:
+                    continue
+                
+                if hits[i].strand != hits[j].strand:
+                    continue
+                
+                if get_overlap(hits[i].chomp_start, hits[i].chomp_end, hits[j].chomp_start, hits[j].chomp_end, minimum_bp_overlap) is None:
+                    continue
+                
+                if not any(b - a <= 1 for a, b in product([hits[i].raw_node] + hits[i].raw_children, [hits[j].raw_node] + hits[j].raw_children)):
+                    continue
+                
+                if abs(hits[i].chomp_start - hits[j].chomp_start) % 3 != 0:
+                    continue # different frame same seq
+                
+                if hits[i].strand == "-":
+                    gaps_a_start = max(hits[j].chomp_end - hits[i].chomp_end, 0)
+                    gaps_b_start = max(hits[i].chomp_end - hits[j].chomp_end, 0)
+                else:
+                    gaps_a_start = max(hits[i].chomp_start - hits[j].chomp_start, 0)
+                    gaps_b_start = max(hits[j].chomp_start - hits[i].chomp_start, 0)
+
+                a_align_seq = ("-" * gaps_a_start) + hits[i].seq
+                b_align_seq = "-" * gaps_b_start + hits[j].seq
+
+                alignment_length = max(len(b_align_seq),len(a_align_seq))
+                a_align_seq += "-" * (alignment_length - len(a_align_seq))
+                b_align_seq += "-" * (alignment_length - len(b_align_seq))
+                
+                a_align_start, a_align_end = find_index_pair(a_align_seq, "-")
+                b_align_start, b_align_end = find_index_pair(b_align_seq, "-")
+                
+                overlap = get_overlap(a_align_start, a_align_end, b_align_start, b_align_end, 1)
+                if overlap is None:
+                    continue
+                
+                a_kmer = a_align_seq[overlap[0]:overlap[1]]
+                b_kmer = b_align_seq[overlap[0]:overlap[1]]
+                
+                if translate_cdna(a_kmer) != translate_cdna(b_kmer):
+                    continue
+                
+                merged_seq = "".join([a_align_seq[i] if a_align_seq[i] != "-" else b_align_seq[i] for i in range(len(a_align_seq))])
+
+                if hits[i].raw_node == hits[j].raw_node:
+                    log.append("WARNING: {} and {} same base node merge".format(hits[i].node, hits[j].node))
+                
+                hits[i].children.append(hits[j].node)
+                hits[i].raw_children.append(hits[j].raw_node)
+                
+                hits[i].children.extend(hits[j].children)
+                hits[i].raw_children.extend(hits[j].raw_children)
+                
+                hits[i].seq = merged_seq
+                
+                # Update coords
+                hits[i].chomp_start = min(hits[i].chomp_start, hits[j].chomp_start)
+                hits[i].chomp_end = max(hits[i].chomp_end, hits[j].chomp_end)
+                
+                hits[j] = None
+                merge_occured = True
+
     for hit in hits:
         if hit is not None and hit.children:
             log.append(hit.get_merge_header())
@@ -822,6 +850,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
                 for hit in transcript_hits:
                     parent, chomp_start, chomp_end, _, chomp_len = original_coords.get(str(hit.node), (None, None, None, None, None))
                     hit.parent = parent
+                    hit.raw_node = hit.node
                     if hit.frame < 0:
                         hit.strand = "-"
                         hit.chomp_start = (chomp_len - hit.qend) + chomp_start
