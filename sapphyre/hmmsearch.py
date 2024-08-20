@@ -708,6 +708,7 @@ def do_folder(input_folder, args):
     per_batch = math.ceil(len(transcripts_mapped_to) / args.processes)
 
     seq_source = None
+    temp_source_file = None
     if is_full:
         temp_source_file = None
         if args.processes > 1:
