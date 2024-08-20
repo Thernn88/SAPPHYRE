@@ -375,8 +375,6 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             frame = row[2]
             qstart = row[5]
             qend = row[6]
-            evalue = row[3]
-
             if i == 0:
                 has_gene_key = "|" in key
 
@@ -397,7 +395,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
 
             # Create a list of ReferenceHit objects starting with the
             # reference hit for the current row
-            refs = [ReferenceHit(target, ref, sstart, send)]
+            refs = []
 
             this_hit = Hit(
                 row[0],
@@ -414,6 +412,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                 ref,
                 refs,
             )
+            
 
             # Used to calculate the sum of each targets' individual scores
             if target not in pool_scores:
@@ -422,7 +421,9 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                 pool_scores[target] += this_hit.score
 
             # Add the hit to a dict based on target
-            target_to_hits[target].append(this_hit)
+            target_to_hits[target].append(len(hits))
+            hits.append(this_hit)
+            
 
         if pool_scores:
             top_score = max(pool_scores.values())
@@ -430,47 +431,48 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
 
             # Filter hits based on target where the sum of scores is not greater than 90% of
             # the highest targets' sum.
-            for target, hits in target_to_hits.items():
+            for target, indices in target_to_hits.items():
                 if pool_scores[target] >= top_score:
-                    for this_hit in hits:
-                        frame_to_hits[this_hit.frame].append(this_hit)
+                    for i in indices:
+                        frame_to_hits[hits[i].frame].append(i)
 
-        for hits in frame_to_hits.values():
-            hits.sort(key=lambda x: x.score, reverse=True)
-            genes_present = {hit.gene for hit in hits}
+        for indices in frame_to_hits.values():
+            indices.sort(key=lambda x: hits[x].score, reverse=True)
+            genes_present = {hits[i].gene for i in indices}
 
             # Run multi filter if hits map to multiple genes
             kicks = set()
             if len(genes_present) > 1:
-                result = multi_filter(MultiArgs(hits, pargs.debug))
+                result = multi_filter(MultiArgs([hits[i] for i in indices], pargs.debug))
                 kicks = result.this_kicks
                 multi_kicks += result.kick_count
                 if pargs.debug:
                     this_log.extend(result.log)
 
-            if any(hits):
-                # Delegate hits into a gene based dict. If multi was ran then apply kicks
-                if len(genes_present) > 1:
-                    gene_hits = defaultdict(list)
-                    for hit in hits:
-                        if hit.uid not in kicks:
-                            gene_hits[hit.gene].append(hit)
-                else:
-                    gene_hits = {
-                        hits[0].gene: [hit for hit in hits if hit.uid not in kicks]
-                    }
+            # Delegate hits into a gene based dict. If multi was ran then apply kicks
+            if len(genes_present) > 1:
+                gene_hits = defaultdict(list)
+                for i in indices:
+                    hit = hits[i]
+                    if hit.uid not in kicks:
+                        gene_hits[hit.gene].append(hit)
+            else:
+                gene_hits = {
+                    hits[0].gene: [hits[i] for i in indices if hits[i].uid not in kicks]
+                }
 
-                # Output the top hit for each gene with the remaining hits as references
-                for hits in gene_hits.values():
-                    top_hit = hits[0]
+            # Output the top hit for each gene with the remaining hits as references
+            for result in gene_hits.values():
+                top_hit = result[0]
+                top_score = top_hit.score * 0.75
 
-                    ref_seqs = [
-                        ReferenceHit(hit.target, hit.ref, hit.sstart, hit.send)
-                        for hit in hits[1:]
-                    ]
-                    top_hit.refs.extend(ref_seqs)
+                ref_seqs = [
+                    ReferenceHit(hit.target, hit.ref, hit.sstart, hit.send)
+                    for hit in result if hit.score >= top_score
+                ]
+                top_hit.refs.extend(ref_seqs)
 
-                    output[top_hit.gene].append(top_hit)
+                output[top_hit.gene].append(top_hit)
 
     result = (
         "\n".join([",".join([str(i) for i in line]) for line in this_log]),
@@ -497,14 +499,28 @@ def get_head_to_seq(nt_db, recipe):
 
     head_to_seq = {}
     for i in recipe:
-        lines = nt_db.get_bytes(f"ntbatch:{i}").decode().splitlines()
-        head_to_seq.update(
-            {
-                int(lines[i][1:]): lines[i + 1]
-                for i in range(0, len(lines), 2)
-                if lines[i] != ""
-            },
-        )
+        lines = nt_db.get_bytes(f"ntbatch:{i}")
+        
+        # Using memory-efficient chunk reading and processing
+        start = 0
+        while start < len(lines):
+            # Find the end of the current header line
+            end = lines.find(b'\n', start)
+            if end == -1:
+                break
+
+            header = int(lines[start + 1:end])  # Skipping the '>'
+            start = end + 1  # Move to the sequence line
+
+            # Find the end of the current sequence line
+            end = lines.find(b'\n', start)
+            if end == -1:
+                break
+            
+            sequence = lines[start:end].decode()  # Decode the sequence to string
+            head_to_seq[header] = sequence
+
+            start = end + 1  # Move to the next header
 
     return head_to_seq
 
