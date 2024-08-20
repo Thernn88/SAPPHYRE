@@ -563,7 +563,7 @@ def outlier_args(par):
         "--no_dupes",
         default=False,
         action="store_true",
-        help="Use prepare and reporter dupe counts in consensus generation",
+        help="Don't use prepare and reporter dupe counts in consensus generation",
     )
     par.add_argument(
         "-me",
