@@ -157,8 +157,8 @@ class SeqDeduplicator:
         requires = False
         for line_index, (raw_header, parent_seq) in for_loop:
             raw_header = raw_header.replace(" |", "|").replace("| ", "|").replace(" ", "_")
-            if line_index == 0:
-                requires = any(l.islower() for l in parent_seq)
+            if line_index == 0 or self.this_genome:
+                requires = any(l.islower() for l in parent_seq) or requires
             if len(parent_seq) < self.minimum_sequence_length:
                 continue
 
