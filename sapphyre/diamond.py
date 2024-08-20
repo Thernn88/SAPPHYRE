@@ -474,7 +474,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
     return log_result, multi_kicks, output
 
 
-def get_head_to_seq(nt_db, recipe):
+def get_head_to_seq(nt_db, recipe, nodes_in_gene):
     """Get a dictionary of headers to sequences.
 
     Args:
@@ -499,6 +499,7 @@ def get_head_to_seq(nt_db, recipe):
                 break
 
             header = int(lines[start + 1:end])  # Skipping the '>'
+
             start = end + 1  # Move to the sequence line
 
             # Find the end of the current sequence line
@@ -506,8 +507,8 @@ def get_head_to_seq(nt_db, recipe):
             if end == -1:
                 break
             
-            sequence = lines[start:end].decode()  # Decode the sequence to string
-            head_to_seq[header] = sequence
+            if header in nodes_in_gene:
+                head_to_seq[header] = lines[start:end]
 
             start = end + 1  # Move to the next header
 
@@ -525,7 +526,7 @@ def count_taxa(df, genome_score_filter, is_assembly_or_genome):
         filtered_df = df
 
     # 2. Drop duplicates to keep only unique (header, ref_taxa) pairs
-    unique_pairs = df[['header', 'ref_taxa']].drop_duplicates()
+    unique_pairs = filtered_df[['header', 'ref_taxa']].drop_duplicates()
 
     # 3. Efficiently count occurrences of each 'ref_taxa'
     ref_taxa_counts = unique_pairs['ref_taxa'].value_counts()
@@ -1164,8 +1165,10 @@ def run_process(args: Namespace, input_path: str) -> bool:
         
         requires_internal = defaultdict(dict)
         internal_order = []
+        nodes_in_gene = set()
         for gene, hits in output.items():
             this_counter = Counter([i.node for i in hits]).most_common()
+            nodes_in_gene.update(i.node for i in hits)
             if this_counter[0][1] > 1:
                 this_hits = sum(i[1] for i in this_counter if i[1] > 1)
                 this_common = {i[0] for i in this_counter if i[1] > 1}
@@ -1224,7 +1227,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         )
         del variant_filter
 
-        head_to_seq = get_head_to_seq(nt_db, recipe)
+        head_to_seq = get_head_to_seq(nt_db, recipe, nodes_in_gene)
 
         cluster_out = []
         for gene, hits in output:
@@ -1303,7 +1306,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                         hit.refs,
                         None,
                     )
-                hit.seq = head_to_seq[hit.node][hit.qstart - 1 : hit.qend]
+                hit.seq = head_to_seq[hit.node][hit.qstart - 1 : hit.qend].decode()
                 if hit.frame < 0:
                     hit.seq = bio_revcomp(hit.seq)
                 out.append(hit)
