@@ -1362,27 +1362,28 @@ def log_excised_consensus(
             if region_start:
                 has_region = True
                 had_region = True
-                sequences_in_region = []
-                sequences_out_of_region = []      
-
-                for i, node in enumerate(aa_subset):
-
-                    if node.header in kicked_headers:
-                        continue
-
-                    overlap_coords = get_overlap(region_start, region_end, node.start * 3, node.end * 3, 1)
-                    if overlap_coords:
-                        overlap_amount = overlap_coords[1] - overlap_coords[0]
-                        overlap_percent = overlap_amount / (node.end - node.start)
-                        if overlap_percent >= excise_region_overlap: # Adjustable percent
-                            sequences_in_region.append(aa_subset[i])
-                        else:
-                            sequences_out_of_region.append(aa_subset[i])
-
-                if len(sequences_in_region) > excise_maximum_depth:
-                    continue
                 
                 if not is_genome:
+                    sequences_in_region = []
+                    sequences_out_of_region = []      
+
+                    for i, node in enumerate(aa_subset):
+
+                        if node.header in kicked_headers:
+                            continue
+
+                        overlap_coords = get_overlap(region_start, region_end, node.start * 3, node.end * 3, 1)
+                        if overlap_coords:
+                            overlap_amount = overlap_coords[1] - overlap_coords[0]
+                            overlap_percent = overlap_amount / (node.end - node.start)
+                            if overlap_percent >= excise_region_overlap: # Adjustable percent
+                                sequences_in_region.append(aa_subset[i])
+                            else:
+                                sequences_out_of_region.append(aa_subset[i])
+
+                    if len(sequences_in_region) > excise_maximum_depth:
+                        continue
+                
                     sequences_in_region = copy.deepcopy(sequences_in_region)
                     nodes_in_region = simple_assembly(sequences_in_region, excise_overlap_ambig)
 
@@ -1403,13 +1404,16 @@ def log_excised_consensus(
                         kicked_headers.add(node.header)
                         kicked_headers.update(node.children)
 
-                if sequences_in_region:
-                    log_output.append(f">{gene}_ambig_{region_start}:{region_end}\n{consensus_seq}")
-                    if nodes_in_region:
-                        log_output.extend([f">{node.contig_header()}_{'kept' if i in keep_indices else 'kicked'}\n{node.nt_sequence}" for i, node in enumerate(nodes_in_region)])
-                    else:
-                        log_output.extend([f">{node.header}_{'kept' if node.header not in kicked_headers else 'kicked'}\n{node.nt_sequence}" for node in sequences_in_region])
-                    log_output.append("\n")
+                    if sequences_in_region:
+                        log_output.append(f">{gene}_ambig_{region_start}:{region_end}\n{consensus_seq}")
+                        if nodes_in_region:
+                            log_output.extend([f">{node.contig_header()}_{'kept' if i in keep_indices else 'kicked'}\n{node.nt_sequence}" for i, node in enumerate(nodes_in_region)])
+                        else:
+                            log_output.extend([f">{node.header}_{'kept' if node.header not in kicked_headers else 'kicked'}\n{node.nt_sequence}" for node in sequences_in_region])
+                        log_output.append("\n")
+                elif is_genome and has_region:
+                    # Only need for reporting purposes
+                    break
                 
         if recursion_max <= 0:
             break
@@ -1923,7 +1927,7 @@ def log_excised_consensus(
         gene_coverage = 1#get_coverage([seq for header, seq in aa_output if header[-1] != "."], ref_avg_len)
         req_coverage = 0.4 if is_assembly_or_genome else 0.01
         if gene_coverage < req_coverage:
-            log_output.append(f">{gene}_kicked_coverage_{gene_coverage}_of_{req_coverage}\n{consensus_seq}")
+            log_output.append(f">{gene}_kicked_coverage_{gene_coverage}_of_{req_coverage}\n")
             return log_output, False, False, gene, False, len(aa_nodes), this_rescues, scan_log, multi_log, ends, gff_out, debug_out
         
         writeFasta(aa_out, aa_output, compress_intermediates)
