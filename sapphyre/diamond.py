@@ -41,7 +41,7 @@ class Hit(Struct, frozen=True):
     sstart: int
     send: int
     gene: str
-    uid: int
+    uid: str|int
     ref: str
     refs: list[ReferenceHit]
 
@@ -53,7 +53,7 @@ class ReporterHit(Struct):
     qend: int
     gene: str
     query: str
-    uid: int
+    uid: str|int
     refs: list[ReferenceHit]
     seq: str | None
 
@@ -64,10 +64,7 @@ class ProcessingArgs(Struct, frozen=True):
     target_to_taxon: dict[str, tuple[str, str, int]]
     debug: bool
     is_assembly_or_genome: bool
-    evalue_threshold: float
-    top_ref: set
-
-
+    
 class InternalArgs(Struct, frozen=True):
     gene: str
     this_hits: list[Hit]
@@ -356,8 +353,6 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
     this_log = []
     
     df = pargs.grouped_data
-    df = df[df["evalue"] <= pargs.evalue_threshold]
-    df = df[df["ref_taxa"].isin(pargs.top_ref)]
 
     # Grab groups of data based on base header
     for _, header_df in df.groupby("header"):
@@ -366,6 +361,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
         pool_scores = {}
 
         hits = []
+        uid_template = "{}{}{}"
         has_gene_key = False
         for i, row in enumerate(header_df.values):
             # These values are referenced multiple times
@@ -408,7 +404,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                 sstart,
                 send,
                 gene,
-                abs(hash(time())) // (pargs.i + 1),
+                uid_template.format(row[0], target, qstart),
                 ref,
                 refs,
             )
@@ -423,7 +419,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             # Add the hit to a dict based on target
             target_to_hits[target].append(len(hits))
             hits.append(this_hit)
-            
+        
 
         if pool_scores:
             top_score = max(pool_scores.values())
@@ -473,16 +469,9 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                 top_hit.refs.extend(ref_seqs)
 
                 output[top_hit.gene].append(top_hit)
+    log_result = "\n".join([",".join([str(i) for i in line]) for line in this_log])
 
-    result = (
-        "\n".join([",".join([str(i) for i in line]) for line in this_log]),
-        multi_kicks,
-        output,
-    )
-
-    # Write the results as a compressed msgspec Struct JSON object to the temporary file
-    # allocated to this thread
-    return json.encode(result)
+    return log_result, multi_kicks, output
 
 
 def get_head_to_seq(nt_db, recipe):
@@ -1056,14 +1045,16 @@ def run_process(args: Namespace, input_path: str) -> bool:
     top_ref_in_order = {gene: top_chosen for gene, top_chosen in top_ref_result}
     top_ref = {*chain.from_iterable(top_ref_in_order.values())}
     nt_db.put_bytes("getall:valid_refs", json.encode(top_ref_in_order))
-
-    headers = df["header"].unique()
     
     printv(
         f"Wrote top refs. Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Processing data.",
         args.verbose,
     )
-
+    
+    df = df[df["evalue"] <= precision]
+    df = df[df["ref_taxa"].isin(top_ref)]
+    headers = df["header"].unique()
+    
     if len(headers) > 0:
         per_thread = ceil(len(headers) / post_threads)
         if per_thread <= MINIMUM_CHUNKSIZE:
@@ -1135,8 +1126,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 target_to_taxon,
                 args.debug,
                 is_assembly_or_genome,
-                precision,
-                top_ref,
             )
             for i, index in enumerate(indices)
         )
@@ -1145,7 +1134,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
             encoded_data = pool.map(process_lines, arguments)
         else:
             encoded_data = [process_lines(arg) for arg in arguments]
-                
         del df
 
         printv(
@@ -1154,11 +1142,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
         )
 
         del arguments
-        decoder = json.Decoder(tuple[str, int, dict[str, list[Hit]]])
-        x = set()
-        for temp_data in encoded_data:
-            this_log, mkicks, this_output = decoder.decode(temp_data)
-
+        for this_log, mkicks, this_output in encoded_data:
             for gene, hits in this_output.items():
                 output[gene].extend(hits)
             multi_kicks += mkicks
