@@ -82,13 +82,16 @@ def scan_sequence(starting_id, left, frame, head_to_seq):
         
         if left:
             i -= 1
+            if starting_id + i not in head_to_seq:
+                break
             if head_to_seq[starting_id + i][-250:] != this_seq[:250]:
                 break
             
             this_seq = head_to_seq[starting_id + i][:-250] + this_seq
         else:
             i += 1
-            
+            if starting_id + i not in head_to_seq:
+                break
             if head_to_seq[starting_id + i][:250] != this_seq[-250:]:
                 break
             
