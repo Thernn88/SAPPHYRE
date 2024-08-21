@@ -85,8 +85,11 @@ def group_taxa_in_glob(
 
 
 def gz_size(fname):
-    with gzip.open(fname, 'rb') as f:
-        return f.seek(0, whence=2)
+    if fname.suffix == ".gz":
+        with gzip.open(fname, 'rb') as f:
+            return f.seek(0, whence=2)
+    else:
+        return fname.stat().st_size
 
 
 class SeqDeduplicator:
