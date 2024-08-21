@@ -311,7 +311,7 @@ def get_results(hmm_output, map_mode):
     return queries
 
 
-def add_new_result(map_mode, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template, debug):
+def add_new_result(new_uid_template, map_mode, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template, debug):
     node, frame = query.split("|")
     id = int(node)
     if id in cluster_full:
@@ -377,7 +377,7 @@ def add_new_result(map_mode, gene, query, results, is_full, cluster_full, cluste
             else:
                 new_qstart = hit.qstart + start
 
-            new_uid = hit.uid + start + end
+            new_uid = new_uid_template.format(hit.uid,start,end)
 
             passed_ids.add(hit.node)
             parents_done.add(f"{hit.node}|{frame}")
@@ -392,6 +392,9 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
     if is_full:
         this_seqs = load_Sequences(source_seqs)
     decoder = json.Decoder(type=list[Hit])
+    
+    new_uid_template = "{}_{}{}"
+    
     for _ in range(len(batches)):
         gene, raw_hits = batches.pop(0)
         diamond_hits = decoder.decode(raw_hits)
@@ -541,7 +544,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
             queries = get_results(this_hmm_output, map_mode)
         
         for query, results in queries:
-            add_new_result(map_mode, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template, debug)
+            add_new_result(new_uid_template, map_mode, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template, debug)
 
         diamond_kicks = []
         for hit in diamond_hits:
