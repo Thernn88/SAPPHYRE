@@ -573,12 +573,12 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
     return new_nt, new_aa
 
 
-def do_genes(genes, input_aa, input_nt, seq_source, out_aa_path, out_nt_path):
+def do_genes(genes, input_aa, input_nt, seq_source, out_aa_path, out_nt_path, verbosity):
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     batch_result = []
     head_to_seq = {int(head): seq for head, seq in parseFasta(seq_source)}
     for gene in genes:
-        # print(gene)
+        printv(gene, verbosity, 2)
         batch_result.extend(do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path))
         
     return batch_result
@@ -671,7 +671,7 @@ def do_folder(folder, args):
         # printv("Not a genome, skipping", args.verbose, 0)
         return True
     
-    printv(f"Processing: {folder}", args.verbose, 0)
+    printv(f"Processing: {folder}", args.verbose)
     
     head_to_seq = get_head_to_seq(nt_db)
     
@@ -692,7 +692,7 @@ def do_folder(folder, args):
     
     genes = [i for i in listdir(input_aa_path) if ".fa"]
     per_batch = ceil(len(genes) / args.processes)
-    arguments = [(genes[i: i+per_batch], input_aa_path, input_nt_path, head_to_seq_source.name, out_aa_path, out_nt_path) for i in range(0, len(genes), per_batch)]
+    arguments = [(genes[i: i+per_batch], input_aa_path, input_nt_path, head_to_seq_source.name, out_aa_path, out_nt_path, args.verbose) for i in range(0, len(genes), per_batch)]
     new_seqs = []
     if args.processes == 1:
         for arg in arguments:
@@ -709,7 +709,7 @@ def do_folder(folder, args):
         
     del head_to_seq_source
         
-    print(f"Done! Took {tk.differential():.2f}s")
+    printv(f"Done! Took {tk.differential():.2f}s", args.verbose)
     
     return True
 
