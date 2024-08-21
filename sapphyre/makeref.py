@@ -757,7 +757,7 @@ def check_halves(references: list,
                  debug_halves):
     # repeats is the number of checks to do during the filter
     for ref in references:
-        ref.start, ref.end, ref_first_start, ref_first_end = ref.first_start, ref.first_end, ref.start, ref.end
+        ref.start, ref.end = ref.first_start, ref.first_end
 
     if debug_halves:
         os.makedirs(Path(out_dir, 'first'), exist_ok=True)
@@ -775,7 +775,7 @@ def check_halves(references: list,
                                                  min_aa)
 
     for ref in references:
-        ref.start, ref.end, ref_first_start, ref_first_end = ref.first_start, ref.first_end, ref.start, ref.end
+        ref.start, ref.end = ref.first_start, ref.first_end
     # remake failed seqs for debug output
 
     for fail in first_failing:

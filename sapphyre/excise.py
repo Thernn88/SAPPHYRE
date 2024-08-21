@@ -1243,7 +1243,6 @@ def log_excised_consensus(
         if lets.count("-") / len(lets) > ref_gap_percent:
             ref_gaps.add(i)
 
-    ref_avg_len = sum(ref_lens) / len(ref_lens)
     kicked_headers = set()
     replacements = defaultdict(dict)
     replacements_aa = defaultdict(dict)
@@ -1252,7 +1251,6 @@ def log_excised_consensus(
 
     cluster_sets = [None]
     get_id = lambda header: header.split("|")[3].replace("NODE_","")
-    get_parent_id = lambda header: int(header.split("|")[3].split("&&")[0].split("_")[1])
     if is_genome:
         ids = []
         for node in aa_nodes:
@@ -1262,13 +1260,8 @@ def log_excised_consensus(
     
         max_gap_size = round(len(aa_nodes[0].sequence) * 0.3) # Half MSA length
     
-        clusters, kicks = cluster_ids(ids, 100, max_gap_size, reference_cluster_data) #TODO: Make distance an arg
-        # if kicks:
-        #     for node in aa_nodes:
-        #         if node.header.split("|")[3] in kicks:
-        #             kicked_headers.add(node.header)
-        #             log_output.append(f"Kicking {node.header} due to low coverage")
-        
+        clusters, _ = cluster_ids(ids, 100, max_gap_size, reference_cluster_data) #TODO: Make distance an arg
+
         if clusters:
             cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
         
@@ -1663,7 +1656,6 @@ def log_excised_consensus(
         for cluster_i, cluster_set in enumerate(cluster_sets):
             aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
             aa_subset.sort(key = lambda x: x.start)
-            og_starts = {}
             for prev_node, node in combinations(aa_subset, 2):
                 overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, -10)
                 if overlapping_coords:
@@ -1791,7 +1783,7 @@ def log_excised_consensus(
                                 prev_id = get_id(prev_node.header)
                                 tup = original_coords.get(prev_id.split("&&")[0].split("_")[0], None)
                                 if tup:
-                                    parent, chomp_start, chomp_end, input_len, chomp_len = tup
+                                    parent, chomp_start, _, input_len, _ = tup
                                     
                                     prev_start = prev_gff[0] + chomp_start
                                     prev_end = prev_gff[1] + chomp_start
@@ -1805,7 +1797,7 @@ def log_excised_consensus(
                                 node_id = get_id(node.header)
                                 tup = original_coords.get(node_id.split("&&")[0].split("_")[0], None)
                                 if tup:
-                                    parent, chomp_start, chomp_end, input_len, chomp_len = tup
+                                    parent, chomp_start, _, input_len, _ = tup
                                     
                                     node_start = node_gff[0] + chomp_start
                                     node_end = node_gff[1] + chomp_start

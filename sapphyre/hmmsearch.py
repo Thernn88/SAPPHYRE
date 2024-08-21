@@ -292,11 +292,11 @@ def get_results(hmm_output, map_mode):
 
             query = line[0]
 
-            start, end, ali_start, ali_end, score = int(line[17]), int(line[18]), int(line[15]), int(line[16]), float(line[13])
+            start, end, score = int(line[17]), int(line[18]), float(line[13])
 
             high_score = max(high_score, score)
 
-            data[query].append((start - 1, end, score, ali_start, ali_end))
+            data[query].append((start - 1, end, score))
     if not has_data:
         return None
     if map_mode:
@@ -318,7 +318,7 @@ def add_new_result(new_uid_template, map_mode, gene, query, results, is_full, cl
         if not query in parents_done:
             frame = int(frame)
             for result in results:
-                start, end, score, ali_start, ali_end = result
+                start, end, score = result
                 start = start * 3
                 end = end * 3
 
@@ -354,7 +354,7 @@ def add_new_result(new_uid_template, map_mode, gene, query, results, is_full, cl
             hit = children[query]
             frame = int(query.split("|")[1])
         for result in results:
-            start, end, score, ali_start, ali_end = result
+            start, end, score = result
             start = start * 3
             end = end * 3
 

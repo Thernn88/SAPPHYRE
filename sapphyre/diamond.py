@@ -932,9 +932,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
     global_log = []
     dupe_divy_headers = defaultdict(set)
 
-    # Initialize a Counter object
-    combined_count = Counter()
-
     # Assuming df is your DataFrame
     # 1. Create a Series for vectorized mapping from target_to_taxon dictionary
     target_taxon_df = DataFrame.from_dict({k: v[1] for k, v in target_to_taxon.items()}, orient='index', columns=['ref_taxa'])

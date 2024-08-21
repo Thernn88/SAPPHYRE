@@ -47,7 +47,6 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
     logs = []
     cluster_consensi = {}
 
-    get_id = lambda header: int(header.split("|")[3].split("&&")[0].split("_")[1])
     ref_consensus = defaultdict(set)
     sequences = []
 
@@ -62,7 +61,6 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
             continue
 
         start, end = find_index_pair(seq, "-")
-        data_cols = {i for i, let in enumerate(seq[start:end], start) if let != "-"}
 
         frame = int(header.split("|")[4])
         ids.append(quick_rec(header.split("|")[3], frame, seq, start, end))
@@ -70,7 +68,7 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
         msa_length = len(seq)
 
     max_gap_size = round(msa_length * 0.3)
-    clusters, kicks = cluster_ids(ids, 100, max_gap_size, reference_data_cols, req_seq_coverage=0)
+    clusters, _ = cluster_ids(ids, 100, max_gap_size, reference_data_cols, req_seq_coverage=0)
 
     final_clusters = []
     for cluster in clusters:

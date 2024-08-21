@@ -1254,7 +1254,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
                     follow_through[header] = True, 0, 0, []
 
                     if fargs.debug:
-                        codon_log.append(f"{header},{kick[1]}\n")
+                        codon_log.append(f"{header},{kick}\n")
                     kick = False
                     # continue
 
@@ -1329,9 +1329,9 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
         (
             _,
-            post_character_at_each_pos,
+            _,#post_character_at_each_pos,
             post_gap_present_threshold,
-            post_all_dashes_by_index,
+            _,#post_all_dashes_by_index,
             _,
         ) = process_refs(
             post_references,
@@ -1340,7 +1340,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
             fargs.filtered_mat,
         )
 
-        reference_gap_col = {i for i, x in post_gap_present_threshold.items() if not x}
+        # reference_gap_col = {i for i, x in post_gap_present_threshold.items() if not x}
 
         # Trim large gaps
         # aa_out, gap_pass_through, trim_log, kicks = trim_large_gaps(

@@ -315,7 +315,7 @@ def get_core_sequences(
         orthoset_db.get(f"getcore:{gene}"),
         type=dict[str, list[tuple[str, str, str]]],
     )
-    return core_seqs["aa"], core_seqs["nt"]
+    return core_seqs["aa"]#, core_seqs["nt"]
 
 
 def print_core_sequences(
@@ -667,7 +667,8 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     gene_nodes = [hit.node for hit in this_hits]
 
     # Get reference sequences
-    core_sequences, core_sequences_nt = get_core_sequences(
+    # core_sequences, core_sequences_nt = get_core_sequences(
+    core_sequences = get_core_sequences(
         oargs.gene,
         rocky.get_rock("rocks_orthoset_db"),
     )
