@@ -25,7 +25,7 @@ class HmmHit(Struct):
     qend: int
     gene: str
     query: str
-    uid: int|None
+    uid: int|str|None
     refs: list[ReferenceHit]
     seq: str = None
     
