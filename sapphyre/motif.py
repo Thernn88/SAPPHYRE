@@ -578,7 +578,7 @@ def do_genes(genes, input_aa, input_nt, seq_source, out_aa_path, out_nt_path):
     batch_result = []
     head_to_seq = {int(head): seq for head, seq in parseFasta(seq_source)}
     for gene in genes:
-        print(gene)
+        # print(gene)
         batch_result.extend(do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path))
         
     return batch_result
