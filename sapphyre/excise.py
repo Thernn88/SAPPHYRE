@@ -698,7 +698,7 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
                 else:
                     continue
                 
-            elif right_incomplete or left_incomplete and not (right_has_ref_gap or left_has_ref_gap):
+            else:
                 continue
                 
 
