@@ -934,9 +934,9 @@ def splice_combo(add_results,
             # if i % 3 == 0:
             #     gap_insertions_aa[node.header].append((i//3, 0))
             if is_deletion_gap:
-                gap_insertions_nt[prev_node.header][0].append((i, -1))
+                gap_insertions_nt[node.header][0].append((i, 0))
             else:
-                gap_insertions_nt[prev_node.header][1].append((i, -1))
+                gap_insertions_nt[node.header][1].append((i, 0))
         node_seq.insert(i, "-")
         node_seq.pop(0)
         node_insertions += 1
