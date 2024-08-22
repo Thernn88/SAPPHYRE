@@ -212,24 +212,31 @@ class miniprot:
                             
                             ref_start = int(data[1])
                             ref_end = int(data[2])
+                            offset = int(fields[7])
                             
                             start = int(fields[3])
                             end = int(fields[4])
                             strand = fields[6]
                             
+                            sequence = cluster_seq[start-1:end]
+                            
+                            
                             if strand == "-":
-                                frame = -((start % 3) + 1)
                                 
                                 sequence = bio_revcomp(cluster_seq[start-1:end])
                             else:
-                                frame = (start % 3) + 1
                                 sequence = cluster_seq[start-1:end]
-
+                                
+                            sequence = sequence[offset:]
+                            frame = (offset % 3 + 1)
+                            if strand == "-":
+                                frame = -frame  
                             if len(sequence) % 3 != 0:
                                 sequence = sequence[:-(len(sequence) % 3)]
-                                
-                            this_nodes[(alignment_score, alignment_against)].append(Node(None, sequence, start, end, frame, ref_start, ref_end, ref_id))
 
+                            this_nodes[(alignment_score, alignment_against)].append(Node(None, sequence, start, end, frame, ref_start, ref_end, ref_id))
+                    if not this_nodes:
+                        continue
                     this_nodes = max(this_nodes.items(), key=lambda x: x[0])[1]
 
                     # sequence_template = ">{}|{}\n{}\n"
@@ -311,7 +318,7 @@ def do_folder(folder, args):
     
     aa_input = path.join(p_path, "aa")
 
-    genes = [(path.basename(f).split(".")[0], path.join(aa_input, f)) for f in listdir(aa_input) if ".fa" in f]
+    genes = [(path.basename(f).split(".")[0], path.join(aa_input, f)) for f in listdir(aa_input) if ".fa" in f and "12762at8782" in f]
     per_batch = ceil(len(genes) / args.processes)
     batches = [(genes[i:i+per_batch], temp_source_file.name) for i in range(0, len(genes), per_batch)]
     
