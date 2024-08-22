@@ -648,7 +648,7 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
             if (right_incomplete or left_incomplete) and (((right_has_ref_gap or left_has_ref_gap) and (right_has_ref_gap != left_has_ref_gap)) or deletion_possible):
                 if right_has_ref_gap:
                     while right_end_codon // 3 in ref_gaps:
-                        for i in range(right_end_codon, right_end_codon + 3):
+                        for i in range(right_end_codon + 3,right_end_codon,-1):
                             node_gap_insertions.append((False, i))
                             node_seq.insert(i, "-")
                             node_seq.pop(0)
