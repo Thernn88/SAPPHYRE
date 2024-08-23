@@ -1,3 +1,4 @@
+from argparse import Namespace
 from collections import Counter, defaultdict
 from itertools import combinations
 from math import ceil
@@ -5,9 +6,9 @@ from pathlib import Path
 from shutil import rmtree
 import subprocess
 from tempfile import NamedTemporaryFile
-from time import time
+from .align import main as aln_main
 from wrap_rocks import RocksDB
-from os import listdir, mkdir, path
+from os import listdir, makedirs, path, stat
 from .utils import gettempdir, parseFasta, printv, writeFasta
 from sapphyre_tools import (
     find_index_pair,
@@ -19,7 +20,7 @@ from .directional_cluster import node_to_ids
 from Bio.Seq import Seq
 from multiprocessing import Pool
 from msgspec import json
-from .pal2nal import worker
+from .pal2nal import do_folder as pal2nal_do_folder
 import xxhash
 from .diamond import ReferenceHit, ReporterHit as Hit
 
@@ -84,7 +85,7 @@ def generate_sequence(ids, head_to_seq):
 
 
 class miniprot:
-    def __init__(self, folder, chomp_max_distance, top_path, miniprot_path, max_extend, target_to_taxon, entropy_percent) -> None:
+    def __init__(self, folder, chomp_max_distance, top_path, miniprot_path, max_extend, target_to_taxon, entropy_percent, debug, compress) -> None:
         self.folder = folder
         self.chomp_max_distance = chomp_max_distance
         self.top_path = top_path
@@ -92,6 +93,8 @@ class miniprot:
         self.max_extend = max_extend
         self.target_to_taxon = target_to_taxon
         self.entropy_percent = entropy_percent
+        self.debug = debug
+        self.compress = compress
         
     def run(self, batches, temp_source_file):
         head_to_seq = dict(parseFasta(temp_source_file))
@@ -147,6 +150,9 @@ class miniprot:
             nt_path = path.join(self.miniprot_path, "nt", gene_name+".nt.fa")
             final_aa = []
             final_nt = []
+            
+            if path.exists(aa_path) and path.exists(nt_path) and stat(aa_path).st_size > 0 and stat(nt_path).st_size > 0:
+                continue
 
             for cluster_i, (cluster_start, cluster_end, strand) in enumerate(clusters):
 
@@ -170,7 +176,18 @@ class miniprot:
                 cluster_name = path.join(self.miniprot_path, f"{gene_name}_{cluster_start}-{cluster_end}.txt")
                 cluster_input = path.join(self.miniprot_path, f"{gene_name}_{cluster_start}-{cluster_end}.fa")
                 #NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()) as f
-                with open(cluster_input, "w") as f, NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()) as temp_raw, open(cluster_name, "w") as result:
+                
+                if self.debug == 1:
+                    cluster_input_f = NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir())
+                    result_f = open(cluster_name, "w")
+                elif self.debug > 1:
+                    cluster_input_f = open(cluster_input, "w")
+                    result_f = open(cluster_name, "w")
+                else:
+                    cluster_input_f = NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir())
+                    result_f = NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".txt", dir=gettempdir())
+                
+                with cluster_input_f as f, NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()) as temp_raw, result_f as result:
                     writeFasta(f.name, [("cluster", cluster_seq)])
                     f.flush()
                     writeFasta(temp_raw.name, [(header, sequence.replace("-","")) for header, sequence in parseFasta(raw_path)])
@@ -237,6 +254,9 @@ class miniprot:
                                 sequence = sequence[:-(len(sequence) % 3)]
 
                             this_nodes[(alignment_score, alignment_against)].append(Node(None, sequence, start, end, frame, ref_start, ref_end, ref_id))
+                            
+                    del (cluster_input_f, result_f)
+                            
                     if not this_nodes:
                         continue
                     this_nodes = max(this_nodes.items(), key=lambda x: x[0])[1]
@@ -278,8 +298,8 @@ class miniprot:
                         final_nt.append((header, nt_sequence))
                         
             if final_aa:
-                writeFasta(aa_path, raw_references+final_aa)
-                writeFasta(nt_path, final_nt)
+                writeFasta(aa_path, raw_references+final_aa, self.compress)
+                writeFasta(nt_path, final_nt, self.compress)
                         
                         
 
@@ -287,14 +307,14 @@ class miniprot:
 
 def do_folder(folder, args):
     miniprot_path = path.join(folder, "miniprot")
-    if path.exists(miniprot_path):
+    if args.overwrite and path.exists(miniprot_path):
         rmtree(miniprot_path)
-    mkdir(miniprot_path)
+    makedirs(miniprot_path, exist_ok=True)
     
     miniprot_aa_path = path.join(miniprot_path, "aa")
-    mkdir(miniprot_aa_path)
+    makedirs(miniprot_aa_path, exist_ok=True)
     miniprot_nt_path = path.join(miniprot_path, "nt")
-    mkdir(miniprot_nt_path)
+    makedirs(miniprot_nt_path, exist_ok=True)
         
     nt_db_path = path.join(folder, "rocksdb", "sequences", "nt")
     nt_db = RocksDB(nt_db_path)
@@ -331,19 +351,22 @@ def do_folder(folder, args):
     )
     batch_result = []
     if args.processes <= 1:
-        miniprot_obj = miniprot(folder, args.chomp_max_distance, top_path, miniprot_path, args.max_extend, target_to_taxon, args.entropy_percent)
+        miniprot_obj = miniprot(folder, args.chomp_max_distance, top_path, miniprot_path, args.max_extend, target_to_taxon, args.entropy_percent, args.debug, args.compress)
         for batch in batches:
             batch_result.append(miniprot_obj.run(*batch))
     else:
         with Pool(args.processes) as pool:
             batch_result.extend(pool.starmap(
-                miniprot(folder, args.chomp_max_distance, top_path, miniprot_path, args.max_extend, target_to_taxon, args.entropy_percent).run,
+                miniprot(folder, args.chomp_max_distance, top_path, miniprot_path, args.max_extend, target_to_taxon, args.entropy_percent, args.debug, args.compress).run,
                 batches,
             ))
             
 
-    del temp_source_file
-
+    del nt_db, orthoset_db, temp_source_file
+    aln_args = Namespace(compress=args.compress, gene_finding_mode=args.gene_finding_mode, map=args.map, verbose=args.verbose, processes=args.processes, orthoset_input=args.orthoset_input, orthoset=args.orthoset, INPUT=[folder], debug=False, second_run=False, use_miniprot=True, overwrite=False, align_method='clustal', chomp_max_distance=100)
+    aln_main(aln_args)
+    pal2nal_do_folder(args.processes, folder, 1, args.verbose, args.compress, True)
+    
     return True    
 
 def main(args):

@@ -661,6 +661,19 @@ def subcmd_miniprot(subparsers):
 
 def miniprot_args(par):
     par.add_argument(
+        "-d",
+        "--debug",
+        action="count",
+        default=0,
+        help="Enable debug. When enabled Output log of culls.",
+    )
+    par.add_argument(
+        "-ovw",
+        "--overwrite",
+        action="store_true",
+        help="Overwrite existing files.",
+    )
+    par.add_argument(
         "-cd",
         "--chomp_max_distance",
         type=int,
