@@ -18,6 +18,7 @@ def do_folder(
     specified_dna_table: dict,
     verbose: int,
     compress: bool,
+    use_miniprot: bool,
 ) -> bool:
     """
     Runs pr2codon in parallel on all genes for a given input
@@ -38,6 +39,10 @@ def do_folder(
 
     joined_align = input_path.joinpath(Path("align"))
     joined_nt_aligned = input_path.joinpath(Path("nt_aligned"))
+    
+    if use_miniprot:
+        joined_align = Path(input, "miniprot").joinpath(Path("align"))
+        joined_nt_aligned = Path(input, "miniprot").joinpath(Path("nt_aligned"))
 
     rmtree(joined_nt_aligned, ignore_errors=True)
     joined_nt_aligned.mkdir()
@@ -61,7 +66,7 @@ def do_folder(
             [
                 aa_path,
                 nt_path,
-                Path(input, "nt_aligned", ospath.basename(nt_path)),
+                Path(joined_nt_aligned, ospath.basename(nt_path)),
                 specified_dna_table,
                 verbose,
                 compress,
@@ -234,6 +239,7 @@ def main(args):
             specified_dna_table,
             args.verbose,
             args.compress,
+            args.use_miniprot,
         )
 
         if not success:
