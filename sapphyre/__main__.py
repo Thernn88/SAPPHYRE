@@ -1494,7 +1494,8 @@ def subcmd_auto(subparsers):
     par.add_argument(
         "INPUT",
         help="Path to directory of Input folder",
-        type=str,
+        action="extend",
+        nargs="+",
     )
     par.add_argument(
         "-in",

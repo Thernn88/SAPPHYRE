@@ -86,87 +86,91 @@ def main(args):
                 this_args['overwrite'] = True
 
         this_args = argparse.Namespace(**this_args)
-        if args.solo:
-            this_args.INPUT = [args.INPUT]
-        elif script == "prepare":
-            this_args.INPUT = args.INPUT
-        else:
-            this_args.INPUT = sorted(
-                glob(
-                    os.path.join(args.in_folder, os.path.split(args.INPUT)[-1], "*.fa"),
-                ),
-            )
-
-        if script == "prepare":
-            from . import prepare
-
-            if not prepare.main(this_args):
-                print("Error in Prepare.")
-            gc.collect()
-        elif script == "diamond":
-            from . import diamond
-
-            if not diamond.main(this_args):
-                print("Error in Diamond.")
-            gc.collect()
-        elif script == "hmmsearch":
-            from . import hmmsearch
-
-            if not hmmsearch.main(this_args):
-                print("Error in Hmmsearch.")
-            gc.collect()
-        elif script == "reporter":
-            from . import reporter
-
-            if not reporter.main(this_args):
-                print("Error in Reporter.")
-            gc.collect()
-        elif script == "align":
-            from . import align
-
-            if not align.main(this_args):
-                print("Error in Align.")
-            gc.collect()
-        elif script == "pal2nal":
-            from . import pal2nal
-
-            if not pal2nal.main(this_args):
-                print("Error in Pal2Nal.")
-            gc.collect()
-        elif script == "flexcull":
-            if args.map:
+        for input_path in this_args.INPUT:
+            if not os.path.isdir(input_path) or not os.path.exists(input_path):
                 continue
-            from . import flexcull
+            
+            if args.solo:
+                this_args.INPUT = [input_path]
+            elif script == "prepare":
+                this_args.INPUT = input_path
+            else:
+                this_args.INPUT = sorted(
+                    glob(
+                        os.path.join(args.in_folder, os.path.split(input_path)[-1], "*.fa"),
+                    ),
+                )
+                
+            if script == "prepare":
+                from . import prepare
 
-            if not flexcull.main(this_args):
-                print("Error in FlexCull.")
-            gc.collect()
-        elif script == "motif":
-            if args.skip_motif:
-                continue
-            from . import motif
+                if not prepare.main(this_args):
+                    print("Error in Prepare.")
+                gc.collect()
+            elif script == "diamond":
+                from . import diamond
 
-            if not motif.main(this_args):
-                print("Error in Motif.")
-            gc.collect()
-        elif script == "outlier":
-            from . import outlier
+                if not diamond.main(this_args):
+                    print("Error in Diamond.")
+                gc.collect()
+            elif script == "hmmsearch":
+                from . import hmmsearch
 
-            if not outlier.main(this_args):
-                print("Error in Outlier.")
-            gc.collect()
-        elif script == "miniprot":
-            from . import miniprot
+                if not hmmsearch.main(this_args):
+                    print("Error in Hmmsearch.")
+                gc.collect()
+            elif script == "reporter":
+                from . import reporter
 
-            if not miniprot.main(this_args):
-                print("Error in Miniprot.")
-            gc.collect()
-        elif script == "merge":
-            from . import consensus_merge
+                if not reporter.main(this_args):
+                    print("Error in Reporter.")
+                gc.collect()
+            elif script == "align":
+                from . import align
 
-            if not consensus_merge.main(this_args):
-                print("Error in Merge.")
-            gc.collect()
+                if not align.main(this_args):
+                    print("Error in Align.")
+                gc.collect()
+            elif script == "pal2nal":
+                from . import pal2nal
+
+                if not pal2nal.main(this_args):
+                    print("Error in Pal2Nal.")
+                gc.collect()
+            elif script == "flexcull":
+                if args.map:
+                    continue
+                from . import flexcull
+
+                if not flexcull.main(this_args):
+                    print("Error in FlexCull.")
+                gc.collect()
+            elif script == "motif":
+                if args.skip_motif:
+                    continue
+                from . import motif
+
+                if not motif.main(this_args):
+                    print("Error in Motif.")
+                gc.collect()
+            elif script == "outlier":
+                from . import outlier
+
+                if not outlier.main(this_args):
+                    print("Error in Outlier.")
+                gc.collect()
+            elif script == "miniprot":
+                from . import miniprot
+
+                if not miniprot.main(this_args):
+                    print("Error in Miniprot.")
+                gc.collect()
+            elif script == "merge":
+                from . import consensus_merge
+
+                if not consensus_merge.main(this_args):
+                    print("Error in Merge.")
+                gc.collect()
 
     time = time.differential()
     print(f"Took {time:.2f}s overall.")
