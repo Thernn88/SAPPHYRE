@@ -524,6 +524,8 @@ def count_taxa(df, genome_score_filter, is_assembly_or_genome):
         filtered_df = df[df["score"] > genome_score_filter]
     else:
         filtered_df = df[df["score"] > 100]
+        
+    print("Hits after filter:", len(filtered_df))
 
     # 2. Drop duplicates to keep only unique (header, ref_taxa) pairs
     unique_pairs = filtered_df[['header', 'ref_taxa']].drop_duplicates()
@@ -938,6 +940,15 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
     # 2. Map 'target' column to 'ref_taxa'
     df = df.merge(target_taxon_df, left_on='target', right_index=True, how='left')
+    
+    # Total Hits
+    print("Total hits: ", len(df))
+    # Average score
+    print("Average score: ", df["score"].mean())
+    # Average evalue
+    print("Average evalue: ", df["evalue"].mean())
+    # Average length abs(qend - qstart)
+    print("Average length: ", (df["qend"] - df["qstart"]).abs().mean())
 
     most_common = count_taxa(df, genome_score_filter, is_assembly_or_genome)
     
