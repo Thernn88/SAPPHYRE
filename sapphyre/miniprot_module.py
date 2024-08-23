@@ -171,7 +171,7 @@ class miniprot:
                         break
                     cluster_end += i
                     
-                ids_to_coords, cluster_seq = generate_sequence([str(i) for i in range(cluster_start, cluster_end + 1)], head_to_seq)
+                ids_to_coords, cluster_seq = generate_sequence([str(i) for i in range(max(cluster_start, 1), cluster_end + 1)], head_to_seq)
 
                 cluster_name = path.join(self.miniprot_path, f"{gene_name}_{cluster_start}-{cluster_end}.txt")
                 cluster_input = path.join(self.miniprot_path, f"{gene_name}_{cluster_start}-{cluster_end}.fa")
