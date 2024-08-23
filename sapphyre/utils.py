@@ -1,5 +1,5 @@
 # © 2022 GPLv3+ Sapphyre Team
-import gzip
+from isal import igzip as isal_gzip
 import os
 from collections.abc import Generator
 from queue import Queue
@@ -73,7 +73,7 @@ def writeFasta(path: str, records: tuple[str, str], compress=False):
     if compress:
         if not path.endswith(".gz"):
             path += ".gz"
-        func = gzip.open
+        func = isal_gzip.open
     elif path.endswith(".gz"):
         path = path.rstrip(".gz")
 
@@ -86,7 +86,7 @@ def write2Line2Fasta(path: str, records: list[str], compress=False):
     func = open
     if compress:
         path += ".gz"
-        func = gzip.open
+        func = isal_gzip.open
 
     with func(path, "wb") as fp:
         for i in range(0, len(records), 2):

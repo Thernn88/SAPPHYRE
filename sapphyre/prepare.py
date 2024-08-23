@@ -1,5 +1,5 @@
 from collections import Counter, defaultdict
-import gzip
+from isal import igzip as isal_gzip
 import os
 import re
 from collections.abc import Generator
@@ -86,7 +86,7 @@ def group_taxa_in_glob(
 
 def gz_size(fname):
     if fname.suffix == ".gz":
-        with gzip.open(fname, 'rb') as f:
+        with isal_gzip.open(fname, 'rb') as f:
             return f.seek(0, whence=2)
     else:
         return fname.stat().st_size

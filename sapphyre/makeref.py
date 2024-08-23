@@ -1,4 +1,4 @@
-import gzip
+from isal import igzip as isal_gzip
 import os
 import sqlite3
 from collections import Counter, defaultdict, namedtuple
@@ -1241,7 +1241,7 @@ def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, gfm, nt_
         temp_file = None
         if raw_file.endswith(".gz"):
             with NamedTemporaryFile(dir=gettempdir(), delete=False) as temp_file:
-                with gzip.open(raw_file, 'rb') as f_in, open(temp_file.name, 'wb') as f_out:
+                with isal_gzip.open(raw_file, 'rb') as f_in, open(temp_file.name, 'wb') as f_out:
                     copyfileobj(f_in, f_out)
                 file = temp_file.name
         else:

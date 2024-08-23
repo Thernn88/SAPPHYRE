@@ -1,7 +1,7 @@
 from argparse import Namespace
 from collections import Counter, defaultdict
 from decimal import Decimal
-import gzip
+from isal import igzip as isal_gzip
 from itertools import chain, combinations, count
 from math import ceil
 from multiprocessing.pool import Pool
@@ -668,8 +668,10 @@ def parse_csv(out_path: str) -> DataFrame:
 
     # Get amount of tabs in the first line
     if out_path.endswith(".gz"):
-        with gzip.open(out_path, "rt") as f:
+        with isal_gzip.open(out_path, 'rt') as f:
             tabs = f.readline().count("\t") + 1
+        #with gzip.open(out_path, "rt") as f:
+            #tabs = f.readline().count("\t") + 1
     else:
         with open(out_path, "r") as f:
             tabs = f.readline().count("\t") + 1
