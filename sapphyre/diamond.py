@@ -518,10 +518,16 @@ def get_head_to_seq(nt_db, recipe, nodes_in_gene):
 def count_taxa(df, genome_score_filter, is_assembly_or_genome):
     # Initialize structures
     combined_count = Counter()
+    
+    # Average length abs(qend - qstart)
+    average_length = (df['qend'] - df['qstart']).abs().mean()
+    print("Average length: ", average_length)
 
     # Apply score filters
     if is_assembly_or_genome and genome_score_filter:
         filtered_df = df[df["score"] > genome_score_filter]
+    elif average_length < 100:
+        filtered_df = df[df["score"] > 60]
     else:
         filtered_df = df[df["score"] > 100]
         
@@ -947,8 +953,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
     print("Average score: ", df["score"].mean())
     # Average evalue
     print("Average evalue: ", df["evalue"].mean())
-    # Average length abs(qend - qstart)
-    print("Average length: ", (df['qend'] - df['qstart']).abs().mean())
     most_common = count_taxa(df, genome_score_filter, is_assembly_or_genome)
     
     top_refs = set()
