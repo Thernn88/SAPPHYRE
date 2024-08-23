@@ -73,6 +73,8 @@ def generate_sequence(ids, head_to_seq):
     for i, child in enumerate(ids):
         if i == 0:
             continue
+        if child not in head_to_seq:
+            break
         prev_og += head_to_seq[child][250:]
         start = end - 250
         end = len(prev_og)
