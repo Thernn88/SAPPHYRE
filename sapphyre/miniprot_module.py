@@ -268,34 +268,40 @@ class miniprot:
                     # for header, _ in passing_fasta:
                     #     passing_headers.add(header.strip()[1:])
                             
-
-                    for node in this_nodes:
-                        ids_in_qstart = [int(id) for id, range in ids_to_coords.items() if node.start >= range[0] and node.start <= range[1] or node.end >= range[0] and node.end <= range[1]]
+                    cdna_ids = []
+                    cdna_sequence = ""
+                    cdna_target = ""
+                    for i, node in enumerate(this_nodes):
+                        if i == 0:
+                            cdna_frame = node.frame 
+                        cdna_ids.extend(int(id) for id, range in ids_to_coords.items() if node.start >= range[0] and node.start <= range[1] or node.end >= range[0] and node.end <= range[1])
+                        cdna_sequence += node.seq
+                        cdna_target = node.ref_name
     
-                        final_ids = []
-                        for id in ids_in_qstart:
-                            count = id_count[id]
-                            if count == 0:
-                                final_ids.append(str(id))
-                            else:
-                                final_ids.append(f"{id}_{count}")
-                                
-                            id_count[id] += 1
+                    final_ids = []
+                    for id in cdna_ids:
+                        count = id_count[id]
+                        if count == 0:
+                            final_ids.append(str(id))
+                        else:
+                            final_ids.append(f"{id}_{count}")
                             
-                        node.head = "&&".join(final_ids)
-                            
-                        target = node.ref_name
-                        key = f"{gene_name}|{target}"
+                        id_count[id] += 1
                         
-                        _, ref, _ = self.target_to_taxon[key]
-                        additions += 1
+                    head = "&&".join(final_ids)
                         
-                        header = f"{gene_name}|{target}|{ref}|NODE_{node.head}|{node.frame}|1"
-                        nt_sequence = node.seq
-                        aa_sequence = Seq(node.seq).translate()
-                        
-                        final_aa.append((header, str(aa_sequence)))
-                        final_nt.append((header, nt_sequence))
+                    target = cdna_target
+                    key = f"{gene_name}|{target}"
+                    
+                    _, ref, _ = self.target_to_taxon[key]
+                    additions += 1
+                    
+                    header = f"{gene_name}|{target}|{ref}|NODE_{head}|{cdna_frame}|1"
+                    nt_sequence = cdna_sequence
+                    aa_sequence = Seq(cdna_sequence).translate()
+                    
+                    final_aa.append((header, str(aa_sequence)))
+                    final_nt.append((header, nt_sequence))
                         
             if final_aa:
                 writeFasta(aa_path, raw_references+final_aa, self.compress)
