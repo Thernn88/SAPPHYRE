@@ -12,7 +12,7 @@ from time import time
 from typing import Union
 
 from msgspec import Struct, json
-from numpy import float32, float64, int8, uint16, uint32, where
+from numpy import float32, float64, int16, int8, uint16, uint32, where
 from pandas import DataFrame, read_csv, Series
 from sapphyre_tools import bio_revcomp, get_overlap
 from wrap_rocks import RocksDB
@@ -688,8 +688,8 @@ def parse_csv(out_path: str) -> DataFrame:
             "frame": int8,
             "evalue": float64,
             "score": float32,
-            "qstart": uint16,
-            "qend": uint16,
+            "qstart": int16,
+            "qend": int16,
             "sstart": uint32,
             "send": uint32,
             "coverage": float32,
@@ -712,8 +712,8 @@ def parse_csv(out_path: str) -> DataFrame:
             "frame": int8,
             "evalue": float64,
             "score": float32,
-            "qstart": uint16,
-            "qend": uint16,
+            "qstart": int16,
+            "qend": int16,
             "sstart": uint32,
             "send": uint32,
         }
@@ -948,8 +948,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     # Average evalue
     print("Average evalue: ", df["evalue"].mean())
     # Average length abs(qend - qstart)
-    print("Average length: ", (df["qend"] - df["qstart"]).abs().mean())
-
+    print("Average length: ", (df['qend'] - df['qstart']).abs().mean())
     most_common = count_taxa(df, genome_score_filter, is_assembly_or_genome)
     
     top_refs = set()
