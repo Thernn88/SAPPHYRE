@@ -37,7 +37,7 @@ def main(args):
                     if column_name not in order:
                         target_col = list(map(lambda x: x.lower(), order)).index(column_name.lower())
                         if target_col == -1:
-                            printv(f"Column {column_name} not found in the input file", verbose)
+                            printv(f"Column {column_name} not found in the input file. Use -col to set organism col", verbose)
                             return False
                     else:
                         target_col = order.index(column_name)
@@ -56,9 +56,9 @@ def main(args):
                     order.append(col.value)
 
                 if column_name not in order:
-                    target_col = list(map(lambda x: x.lower(), order).index(column_name.lower()))
+                    target_col = list(map(lambda x: x.lower(), order)).index(column_name.lower())
                     if target_col == -1:
-                        printv(f"Column {column_name} not found in the input file", verbose)
+                        printv(f"Column {column_name} not found in the input file. Use -col to set organism col", verbose)
                         return False
                 else:
                     target_col = order.index(column_name)
