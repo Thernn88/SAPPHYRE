@@ -10,6 +10,7 @@ from .__main__ import (
     motif_args,
     merge_args,
     outlier_args,
+    miniprot_args,
     pal2nal_args,
     prepare_args,
     reporter_args,
@@ -40,6 +41,7 @@ def main(args):
         "flexcull": get_args(flexcull_args),
         "motif": get_args(motif_args),
         "outlier": get_args(outlier_args),
+        "miniprot": get_args(miniprot_args),
         "merge": get_args(merge_args),
     }
 
@@ -152,6 +154,12 @@ def main(args):
 
             if not outlier.main(this_args):
                 print("Error in Outlier.")
+            gc.collect()
+        elif script == "miniprot":
+            from . import miniprot
+
+            if not miniprot.main(this_args):
+                print("Error in Miniprot.")
             gc.collect()
         elif script == "merge":
             from . import consensus_merge
