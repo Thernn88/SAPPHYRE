@@ -519,11 +519,11 @@ def count_taxa(df, genome_score_filter, is_assembly_or_genome):
     # Initialize structures
     combined_count = Counter()
 
-    # Apply genome score filter if necessary
+    # Apply score filters
     if is_assembly_or_genome and genome_score_filter:
         filtered_df = df[df["score"] > genome_score_filter]
     else:
-        filtered_df = df
+        filtered_df = df[df["score"] > 100]
 
     # 2. Drop duplicates to keep only unique (header, ref_taxa) pairs
     unique_pairs = filtered_df[['header', 'ref_taxa']].drop_duplicates()
