@@ -246,12 +246,12 @@ class miniprot:
                             else:
                                 sequence = cluster_seq[start-1:end]
                                 
-                            sequence = sequence[offset:]
+                            # sequence = sequence[offset:]
                             frame = (offset % 3 + 1)
                             if strand == "-":
                                 frame = -frame  
-                            if len(sequence) % 3 != 0:
-                                sequence = sequence[:-(len(sequence) % 3)]
+                            # if len(sequence) % 3 != 0:
+                            #     sequence = sequence[:-(len(sequence) % 3)]
 
                             this_nodes[(alignment_score, alignment_against)].append(Node(None, sequence, start, end, frame, ref_start, ref_end, ref_id))
                             
@@ -346,7 +346,7 @@ def do_folder(folder, args):
     
     aa_input = path.join(p_path, "aa")
 
-    genes = [(path.basename(f).split(".")[0], path.join(aa_input, f)) for f in listdir(aa_input) if ".fa" in f]
+    genes = [(path.basename(f).split(".")[0], path.join(aa_input, f)) for f in listdir(aa_input) if ".fa" in f and "10055at8782" in f]
     per_batch = ceil(len(genes) / args.processes)
     batches = [(genes[i:i+per_batch], temp_source_file.name) for i in range(0, len(genes), per_batch)]
     
