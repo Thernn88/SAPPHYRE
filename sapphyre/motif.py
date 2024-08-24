@@ -583,7 +583,7 @@ def do_genes(genes, input_aa, input_nt, seq_source, out_aa_path, out_nt_path, ve
         
     return batch_result
 
-def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path):
+def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path, compress):
     aa_nodes = []
     reference_cluster_data = set()
     ref_consensus = defaultdict(list)
@@ -653,8 +653,8 @@ def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path):
     
     nt_seqs = [(header, nt_sequences[header]) for header in aa_header_order]
 
-    writeFasta(path.join(out_aa_path, gene), aa_references+aa_candidates)
-    writeFasta(path.join(out_nt_path, gene.replace(".aa.", ".nt.")), nt_seqs)
+    writeFasta(path.join(out_aa_path, gene), aa_references+aa_candidates, compress)
+    writeFasta(path.join(out_nt_path, gene.replace(".aa.", ".nt.")), nt_seqs, compress)
                     
     return log_output    
                         
@@ -692,7 +692,7 @@ def do_folder(folder, args):
     
     genes = [i for i in listdir(input_aa_path) if ".fa"]
     per_batch = ceil(len(genes) / args.processes)
-    arguments = [(genes[i: i+per_batch], input_aa_path, input_nt_path, head_to_seq_source.name, out_aa_path, out_nt_path, args.verbose) for i in range(0, len(genes), per_batch)]
+    arguments = [(genes[i: i+per_batch], input_aa_path, input_nt_path, head_to_seq_source.name, out_aa_path, out_nt_path, args.verbose, args.compress) for i in range(0, len(genes), per_batch)]
     new_seqs = []
     if args.processes == 1:
         for arg in arguments:
