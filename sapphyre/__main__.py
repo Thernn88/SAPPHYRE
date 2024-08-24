@@ -857,14 +857,13 @@ def align_args(par, skip_reconcile_overlap = False):
             default=False,
             help="Enable second run logic",
         )
-        par.add_argument(
-            "-um",
-            "--use_miniprot",
-            action="store_true",
-            default=False,
-            help="User miniprot input.",
-        )
-        
+    par.add_argument(
+        "-um",
+        "--use_miniprot",
+        action="store_true",
+        default=False,
+        help="User miniprot input.",
+    ) 
     par.add_argument(
         "-ovw",
         "--overwrite",
