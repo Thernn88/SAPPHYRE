@@ -526,12 +526,9 @@ def count_taxa(df, genome_score_filter, is_assembly_or_genome):
     # Apply score filters
     if is_assembly_or_genome and genome_score_filter:
         filtered_df = df[df["score"] > genome_score_filter]
-    elif average_length < 100:
-        filtered_df = df[df["score"] > 60]
-    elif average_length > 250:
-        filtered_df = df[df["score"] > 100]
     else:
-        filtered_df = df[df["score"] > 80]
+        top_score = df["score"].max()
+        filtered_df = df[df["score"] >= top_score * 0.75]
         
     print("Hits after filter:", len(filtered_df))
 
