@@ -214,7 +214,7 @@ def shift_targets(is_full, query_template, nodes_in_gene, diamond_hits, cluster_
                 # Forward frame 1
                 query = query_template.format(node, 1)
                 nt_sequences[query] = parent_seq
-                required_frames[node].update({1,2,3})
+                required_frames[node].add(1)
                 if query not in parents and node not in cluster_full:
                     children[query] = fallback[node]
 
@@ -234,7 +234,7 @@ def shift_targets(is_full, query_template, nodes_in_gene, diamond_hits, cluster_
                 bio_revcomp_seq = bio_revcomp(parent_seq)
                 query = query_template.format(node, -1)
                 nt_sequences[query] = bio_revcomp_seq
-                required_frames[node].update({-1,-2,-3})
+                required_frames[node].add(-1)
                 if query not in parents and node not in cluster_full:
                     children[query] = fallback[node]
 
@@ -284,26 +284,28 @@ def add_full_cluster_search(clusters, edge_margin, source_clusters, cluster_full
 def get_results(hmm_output, map_mode):
     data = defaultdict(list)
     high_score = 0
-    has_data = False
     with open(hmm_output) as f:
-        for line in f:
-            if line.startswith("#"):
-                has_data = True
-                continue
-
-            line = line.split()
-
-            query = line[0]
-            start = int(line[17])
-            end = int(line[18])
-            score = float(line[13])
-
-            if score > high_score:
-                high_score = score
-
-            data[query].append((start - 1, end, score))
-    if not has_data:
+        file_content = f.readlines()
+        
+    if not file_content:
         return None
+        
+    for line in file_content:
+        if line.startswith("#"):
+            continue
+
+        line = line.split()
+
+        query = line[0]
+        start = int(line[17]) - 1
+        end = int(line[18])
+        score = float(line[13])
+
+        if score > high_score:
+            high_score = score
+
+        data[query].append((start, end, score))
+        
     if map_mode:
         score_thresh = high_score * 0.9
 
@@ -505,10 +507,10 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                     #system(f"fastatranslate {unaligned_tmp.name} > {aln_tmp.name}")
 
                     for header, seq in parseFasta(aln_tmp.name, True):
-                        frame = int(header[-3])
+                        frame = 1
                         if "rev" in header:
                             frame = -frame
-                        header = int(header.split(" ")[0])
+                        header = int(header.split(" ", 1)[0])
                         if frame in required_frames[header]:
                             query = query_template.format(header, frame)
                             aligned_sequences.append((query, seq))
@@ -805,8 +807,8 @@ def do_folder(input_folder, args):
     printv(f"Kicked {mkicks} hits due to miniscule score", args.verbose, 1)
     printv("Writing results to db", args.verbose, 1)
     encoder = json.Encoder()
-    # for gene, hits in gene_based_results.items():
-    #     hits_db.put_bytes(f"gethmmhits:{gene}", encoder.encode(hits))
+    for gene, hits in gene_based_results.items():
+        hits_db.put_bytes(f"gethmmhits:{gene}", encoder.encode(hits))
 
     del temp_source_file
     del hits_db
