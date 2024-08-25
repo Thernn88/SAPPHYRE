@@ -64,6 +64,7 @@ class ProcessingArgs(Struct, frozen=True):
     target_to_taxon: dict[str, tuple[str, str, int]]
     debug: bool
     is_assembly_or_genome: bool
+    is_genome: bool
     
 class InternalArgs(Struct, frozen=True):
     gene: str
@@ -461,12 +462,12 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             for result in gene_hits.values():
                 top_hit = result[0]
                 top_score = top_hit.score * 0.75
-
-                ref_seqs = [
-                    ReferenceHit(hit.target, hit.ref, hit.sstart, hit.send)
-                    for hit in result if hit.score >= top_score
-                ]
-                top_hit.refs.extend(ref_seqs)
+                if not pargs.is_genome:
+                    ref_seqs = [
+                        ReferenceHit(hit.target, hit.ref, hit.sstart, hit.send)
+                        for hit in result if hit.score >= top_score
+                    ]
+                    top_hit.refs.extend(ref_seqs)
 
                 output[top_hit.gene].append(top_hit)
     log_result = "\n".join([",".join([str(i) for i in line]) for line in this_log])
@@ -1139,6 +1140,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 target_to_taxon,
                 args.debug,
                 is_assembly_or_genome,
+                dbis_genome,
             )
             for i, index in enumerate(indices)
         )
