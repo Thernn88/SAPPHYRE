@@ -199,6 +199,9 @@ def shift_targets(is_full, query_template, nodes_in_gene, diamond_hits, cluster_
     if is_full:
         for node in nodes_in_gene:
             parent_seq = this_seqs.get(node)
+            if isinstance(parent_seq, bytes):
+                parent_seq = parent_seq.decode()
+
             if parent_seq is None:
                 # Full cluster search introduced header not found in db.
                 # Quicker to filter after the fact 
@@ -262,7 +265,7 @@ def shift_targets(is_full, query_template, nodes_in_gene, diamond_hits, cluster_
                     children[new_query] = hit
 
 
-def add_full_cluster_search(clusters, edge_margin, nodes_in_genes, source_clusters, cluster_full, nodes_in_gene, cluster_dict):
+def add_full_cluster_search(clusters, edge_margin, source_clusters, cluster_full, nodes_in_gene, cluster_dict):
     for cluster in clusters:
         for i in range(cluster[0][0] - edge_margin, cluster[0][1] + edge_margin + 1):
             header = i
@@ -288,13 +291,15 @@ def get_results(hmm_output, map_mode):
                 has_data = True
                 continue
 
-            line = line.strip().split()
+            line = line.split()
 
             query = line[0]
+            start = int(line[17])
+            end = int(line[18])
+            score = float(line[13])
 
-            start, end, score = int(line[17]), int(line[18]), float(line[13])
-
-            high_score = max(high_score, score)
+            if score > high_score:
+                high_score = score
 
             data[query].append((start - 1, end, score))
     if not has_data:
@@ -476,7 +481,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                 
             if is_genome and clusters:
                 cluster_queries = {k: max(set(v), key=v.count) for k, v in cluster_queries.items()}
-                add_full_cluster_search(clusters, edge_margin, nodes_in_gene, source_clusters, cluster_full, nodes_in_gene, cluster_dict)
+                add_full_cluster_search(clusters, edge_margin, source_clusters, cluster_full, nodes_in_gene, cluster_dict)
                       
         shift_targets(is_full, query_template, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp)
         del hits_have_frames_already
@@ -597,14 +602,28 @@ def get_head_to_seq(nt_db, recipe):
 
     head_to_seq = {}
     for i in recipe:
-        lines = nt_db.get_bytes(f"ntbatch:{i}").decode().splitlines()
-        head_to_seq.update(
-            {
-                int(lines[i][1:]): lines[i + 1]
-                for i in range(0, len(lines), 2)
-                if lines[i] != ""
-            },
-        )
+        lines = nt_db.get_bytes(f"ntbatch:{i}")
+        
+        # Using memory-efficient chunk reading and processing
+        start = 0
+        while start < len(lines):
+            # Find the end of the current header line
+            end = lines.find(b'\n', start)
+            if end == -1:
+                break
+
+            header = int(lines[start + 1:end])  # Skipping the '>'
+
+            start = end + 1  # Move to the sequence line
+
+            # Find the end of the current sequence line
+            end = lines.find(b'\n', start)
+            if end == -1:
+                break
+            
+            head_to_seq[header] = lines[start:end]
+
+            start = end + 1  # Move to the next header
 
     return head_to_seq
 
@@ -678,6 +697,8 @@ def do_folder(input_folder, args):
     )
 
     head_to_seq = {}
+    seq_source = None
+    temp_source_file = None
     seq_db = RocksDB(path.join(input_folder, "rocksdb", "sequences", "nt"))
     is_genome = seq_db.get("get:isgenome")
     is_genome = is_genome == "True"
@@ -685,8 +706,16 @@ def do_folder(input_folder, args):
     is_assembly = is_assembly == "True"
     is_full = is_genome or is_assembly or args.full
     if is_full:
-        recipe = seq_db.get("getall:batches").split(",")
-        head_to_seq = get_head_to_seq(seq_db, recipe)
+        temp_source_file = None
+        if args.processes > 1:
+            recipe = seq_db.get("getall:batches").split(",")
+            temp_source_file = NamedTemporaryFile(dir=gettempdir(), prefix="seqs_", suffix=".fa")
+            for i in recipe:
+                temp_source_file.write(seq_db.get_bytes(f"ntbatch:{i}"))
+            temp_source_file.flush()
+            seq_source = temp_source_file.name
+        else:
+            seq_source = get_head_to_seq(seq_db, seq_db.get("getall:batches").split(","))
     del seq_db
 
     hmm_output_folder = path.join(input_folder, "hmmsearch")
@@ -710,17 +739,6 @@ def do_folder(input_folder, args):
 
     per_batch = math.ceil(len(transcripts_mapped_to) / args.processes)
 
-    seq_source = None
-    temp_source_file = None
-    if is_full:
-        temp_source_file = None
-        if args.processes > 1:
-            temp_source_file = NamedTemporaryFile(dir=gettempdir(), prefix="seqs_", suffix=".fa")
-            writeFasta(temp_source_file.name, head_to_seq.items())
-            seq_source = temp_source_file.name
-            del head_to_seq
-        else:
-            seq_source = head_to_seq
     batches = [(transcripts_mapped_to[i:i + per_batch], seq_source, is_full, is_genome, hmm_output_folder, aln_ref_location, args.overwrite, args.map, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance, args.edge_margin) for i in range(0, len(transcripts_mapped_to), per_batch)]
 
     if args.processes <= 1:
@@ -787,8 +805,8 @@ def do_folder(input_folder, args):
     printv(f"Kicked {mkicks} hits due to miniscule score", args.verbose, 1)
     printv("Writing results to db", args.verbose, 1)
     encoder = json.Encoder()
-    for gene, hits in gene_based_results.items():
-        hits_db.put_bytes(f"gethmmhits:{gene}", encoder.encode(hits))
+    # for gene, hits in gene_based_results.items():
+    #     hits_db.put_bytes(f"gethmmhits:{gene}", encoder.encode(hits))
 
     del temp_source_file
     del hits_db
