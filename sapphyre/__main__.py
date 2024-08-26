@@ -704,9 +704,9 @@ def miniprot_args(par):
 
 
 def miniprot(args):
-    from . import miniprot_module
+    from . import miniprot
 
-    if not miniprot_module.main(args):
+    if not miniprot.main(args):
         print()
         print(args.formathelp())
 
