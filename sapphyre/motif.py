@@ -573,13 +573,13 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
     return new_nt, new_aa
 
 
-def do_genes(genes, input_aa, input_nt, seq_source, out_aa_path, out_nt_path, verbosity):
+def do_genes(genes, input_aa, input_nt, seq_source, out_aa_path, out_nt_path, verbosity, compress):
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     batch_result = []
     head_to_seq = {int(head): seq for head, seq in parseFasta(seq_source)}
     for gene in genes:
         printv(gene, verbosity, 2)
-        batch_result.extend(do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path))
+        batch_result.extend(do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path, compress))
         
     return batch_result
 
