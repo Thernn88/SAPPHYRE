@@ -346,7 +346,7 @@ def do_folder(folder, args):
     
     aa_input = path.join(p_path, "aa")
 
-    genes = [(path.basename(f).split(".")[0], path.join(aa_input, f)) for f in listdir(aa_input) if ".fa" in f and "10055at8782" in f]
+    genes = [(path.basename(f).split(".")[0], path.join(aa_input, f)) for f in listdir(aa_input) if ".fa" in f]
     per_batch = ceil(len(genes) / args.processes)
     batches = [(genes[i:i+per_batch], temp_source_file.name) for i in range(0, len(genes), per_batch)]
     
