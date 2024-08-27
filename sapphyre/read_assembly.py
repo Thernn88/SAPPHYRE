@@ -67,7 +67,7 @@ def check_covered_bad_regions(consensus, min_ambiguous, ambig_char='X', max_dist
     return regions
 
 
-def has_region(nodes, threshold, no_dupes, minimum_ambig):
+def get_regions(nodes, threshold, no_dupes, minimum_ambig):
     sequences = [x[1] for x in nodes]
     if no_dupes:
         consensus_seq = dumb_consensus(sequences, threshold, 0)
@@ -88,6 +88,9 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress):
     region_min_ambig = 9
     min_ambig_bp_overlap = 6
 
+    has_region = False
+    kicks = 0
+
     nodes = []
     log_output = []
     aa_gene = path.join(aa_input, gene)
@@ -97,13 +100,14 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress):
 
     # Check bad region
     
-    regions = has_region(nodes, region_threshold, no_dupes, region_min_ambig)
+    regions = get_regions(nodes, region_threshold, no_dupes, region_min_ambig)
 
     if not regions:
         writeFasta(path.join(aa_output, gene), parseFasta(aa_gene), compress)
         writeFasta(path.join(nt_output, nt_gene), nodes, compress)
-        return log_output
+        return log_output, has_region, kicks
 
+    has_region = True
     # Assembly
 
     with TemporaryDirectory(dir=gettempdir(), prefix=f"{gene}_") as temp:
@@ -144,11 +148,12 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress):
                     if get_overlap(r_start, r_end, n_start, n_end, min_ambig_bp_overlap):
                         log_output.append(f"{gene} - Kicked: {node[0]}")
                         kicked.add(node[0])
+                        kicks += 1
             nt_out = [i for i in nodes if i[0] not in kicked]
             if nt_out:
                 writeFasta(path.join(aa_output, gene), [i for i in parseFasta(aa_gene) if i[0] not in kicked], compress)
                 writeFasta(path.join(nt_output, nt_gene), nt_out, compress)
-            return log_output
+            return log_output, has_region, kicks
         
         # Translate and Align
         translate_file = path.join(temp, "translate.fa")
@@ -203,6 +208,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress):
     aa_out = []
     for header, seq in parseFasta(aa_gene):
         if header.split("|")[3] in kicked_nodes:
+            kicks += 1
             continue
         else:
             aa_out.append((header, seq))
@@ -211,7 +217,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress):
         writeFasta(path.join(aa_output, gene), aa_out, compress)
         writeFasta(path.join(nt_output, nt_gene), nt_out, compress)
             
-    return log_output
+    return log_output, has_region, kicks
 
 
 def main(args, sub_dir):
@@ -254,9 +260,15 @@ def main(args, sub_dir):
             )
  
     log_final = []
-    for log in results:
+    ambig_count = 0
+    total_kicks = 0
+    for log, has_ambig, kicks in results:
+        ambig_count += 1 if has_ambig else 0
+        total_kicks += kicks
         log_final.extend(log)
     
+    printv(f"{folder}: {ambig_count} ambiguous loci found. Kicked {total_kicks} sequences total.", args.verbose)
+
     with open(output_folder.joinpath("excise.log"), "w") as log_file:
         log_file.write("\n".join(log_final))
 
