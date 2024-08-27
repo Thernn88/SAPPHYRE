@@ -83,7 +83,8 @@ def get_regions(nodes, threshold, no_dupes, minimum_ambig):
 
 def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, excise_consensus):
 
-    within_identity = 0.9
+    # within_identity = 0.9
+    min_contig_overlap = 3
     region_min_ambig = 9
     min_ambig_bp_overlap = 6
 
@@ -188,19 +189,32 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
                     matches += 1
             length = end - start
             identity = matches / length
-            with_identity.append((header, identity, matches, length))
+            with_identity.append((header, start, end, identity, matches, length))
+
+
         kicked_nodes = set()
-        top_identity = max([x[1] for x in with_identity]) * within_identity
-        for header, identity, matches, length in with_identity:
-            if identity < top_identity:
-                kicked_nodes.update(contigs[header])
-                log_output.append(
-                    f"{gene} - {header} has ({', '.join(contigs[header])})\nwith {matches} matches over {length} length equals {identity:.2f}/{top_identity:.2f} identity Kicked -"
-                )
-            else:
-                log_output.append(
-                    f"{gene} - {header} has ({', '.join(contigs[header])})\nwith {matches} matches over {length} length equals {identity:.2f}/{top_identity:.2f} identity Kept +"
-                )
+        kicked_contigs = set()
+        with_identity.sort(key=lambda x: x[3], reverse=True)
+
+        for contig_a, contig_b in combinations(with_identity, 2):
+            if contig_a[0] in kicked_contigs or contig_b[0] in kicked_contigs:
+                continue
+            coords = get_overlap(contig_a[1], contig_a[2], contig_b[1], contig_b[2], min_contig_overlap)
+            if coords:
+                percent = ((coords[1] - coords[0]) / min((contig_a[2] - contig_a[1]), (contig_b[2] - contig_b[1]))) * 100
+                if contig_a[3] > contig_b[3]:
+                    kicked_contigs.add(contig_b[0])
+                    kicked_nodes.update(contigs[contig_b[0]])
+                    log_output.append(
+                        f"{gene} - {contig_a[0]} has ({', '.join(contigs[contig_a[0]])})\nwith {contig_a[4]} matches over {contig_a[5]} length equals {contig_a[3]:.2f} + Kept\nvs ({percent:.2f}% Overlap)\n{gene} - {contig_b[0]} has ({', '.join(contigs[contig_b[0]])})\nwith {contig_b[4]} matches over {contig_b[5]} length equals {contig_b[3]:.2f} - Kicked\n"
+                    )
+                else:
+                    kicked_contigs.add(contig_a[0])
+                    kicked_nodes.update(contigs[contig_a[0]])
+                    log_output.append(
+                        f"{gene} - {contig_b[0]} has ({', '.join(contigs[contig_b[0]])})\nwith {contig_b[4]} matches over {contig_b[5]} length equals {contig_b[3]:.2f} + Kept\nvs ({percent:.2f}% Overlap)\n{gene} - {contig_a[0]} has ({', '.join(contigs[contig_a[0]])})\nwith {contig_a[4]} matches over {contig_a[5]} length equals {contig_a[3]:.2f} - Kicked\n"
+                    )
+
     nt_out = []
     for header, seq in nodes:
         if header.split("|")[3] in kicked_nodes:
