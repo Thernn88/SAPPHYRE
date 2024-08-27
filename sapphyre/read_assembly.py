@@ -81,10 +81,9 @@ def get_regions(nodes, threshold, no_dupes, minimum_ambig):
 
     return regions
 
-def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress):
+def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, excise_consensus):
 
     within_identity = 0.9
-    region_threshold = 0.5
     region_min_ambig = 9
     min_ambig_bp_overlap = 6
 
@@ -100,7 +99,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress):
 
     # Check bad region
     
-    regions = get_regions(nodes, region_threshold, no_dupes, region_min_ambig)
+    regions = get_regions(nodes, excise_consensus, no_dupes, region_min_ambig)
 
     if not regions:
         writeFasta(path.join(aa_output, gene), parseFasta(aa_gene), compress)
@@ -250,7 +249,7 @@ def main(args, sub_dir):
 
     genes = [fasta for fasta in listdir(aa_input) if ".fa" in fasta]
 
-    arguments = [(gene, aa_input, nt_input, aa_output, nt_output, args.no_dupes, compress) for gene in genes]
+    arguments = [(gene, aa_input, nt_input, aa_output, nt_output, args.no_dupes, compress, args.excise_consensus) for gene in genes]
     if args.processes > 1:
         with Pool(args.processes) as pool:
             results = pool.starmap(do_gene, arguments)
