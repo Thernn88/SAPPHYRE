@@ -173,7 +173,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
         out = list(parseFasta(aligned_file, True))
         writeFasta(aligned_file, out)
 
-        flex_consensus = defaultdict(set)
+        flex_consensus = defaultdict(list)
         formed_contigs = []
         for header, seq in out:
             if "Contig" in header:
@@ -181,14 +181,16 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
             elif header.endswith("."):
                 start,end = find_index_pair(seq, "-")
                 for i, base in enumerate(seq[start:end],start):
-                    flex_consensus[i].add(base)
+                    flex_consensus[i].append(base)
         
+        strict_conensus = {i: max(flex_consensus[i], key=flex_consensus[i].count) for i in flex_consensus}
+
         with_identity = []
         for header, seq in formed_contigs:
             start, end = find_index_pair(seq, "-")
             matches = 0
             for i in range(start, end):
-                if seq[i] in flex_consensus[i]:
+                if seq[i] == strict_conensus[i]:
                     matches += 1
             length = end - start
             identity = matches / length
