@@ -83,7 +83,7 @@ def get_regions(nodes, threshold, no_dupes, minimum_ambig):
 
 def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress):
 
-    min_identity = 0.8
+    within_identity = 0.9
     region_threshold = 0.5
     region_min_ambig = 9
     min_ambig_bp_overlap = 6
@@ -180,7 +180,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress):
                 for i, base in enumerate(seq[start:end],start):
                     flex_consensus[i].add(base)
         
-        kicked_nodes = set()
+        with_identity = []
         for header, seq in formed_contigs:
             start, end = find_index_pair(seq, "-")
             matches = 0
@@ -189,14 +189,18 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress):
                     matches += 1
             length = end - start
             identity = matches / length
-            if identity < min_identity:
+            with_identity.append((header, identity, matches, length))
+        kicked_nodes = set()
+        top_identity = max([x[1] for x in with_identity]) * within_identity
+        for header, identity, matches, length in with_identity:
+            if identity < top_identity:
                 kicked_nodes.update(contigs[header])
                 log_output.append(
-                    f"{gene} - {header} has {','.join(contigs[header])}\nwith {matches} matches over {length} length equals {identity:.2f}/{min_identity} identity Kicked -"
+                    f"{gene} - {header} has ({', '.join(contigs[header])})\nwith {matches} matches over {length} length equals {identity:.2f}/{top_identity:.2f} identity Kicked -"
                 )
             else:
                 log_output.append(
-                    f"{gene} - {header} has {','.join(contigs[header])}\nwith {matches} matches over {length} length equals {identity:.2f}/{min_identity} identity Kept +"
+                    f"{gene} - {header} has ({', '.join(contigs[header])})\nwith {matches} matches over {length} length equals {identity:.2f}/{top_identity:.2f} identity Kept +"
                 )
     nt_out = []
     for header, seq in nodes:
