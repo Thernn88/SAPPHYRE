@@ -8,6 +8,7 @@ from shutil import move
 import copy
 import subprocess
 from tempfile import TemporaryDirectory
+import warnings
 from msgspec import Struct, json
 from sapphyre_tools import (
     convert_consensus,
@@ -21,6 +22,7 @@ from sapphyre_tools import (
     join_with_exclusions,
     join_triplets_with_exclusions,
 )
+from Bio import BiopythonWarning
 from Bio.Seq import Seq
 from .directional_cluster import cluster_ids, within_distance, node_to_ids, quick_rec
 from wrap_rocks import RocksDB
@@ -82,7 +84,7 @@ def get_regions(nodes, threshold, no_dupes, minimum_ambig):
     return regions
 
 def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, excise_consensus):
-
+    warnings.filterwarnings("ignore", category=BiopythonWarning)
     # within_identity = 0.9
     min_difference = 0.05
     min_contig_overlap = 0.5
@@ -158,12 +160,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
         
         # Translate and Align
         translate_file = path.join(temp, "translate.fa")
-        tout = []
-        for header, seq in parseFasta(contig_file, True):
-            if len(seq) % 3 != 0:
-                print(gene,'-',header,'-',len(seq),' Error')
-            tout.append((header, str(Seq(seq).translate())))
-        writeFasta(translate_file, tout)
+        writeFasta(translate_file, [(header, str(Seq(seq).translate())) for header, seq in parseFasta(contig_file, True)])
 
         temp_aa = path.join(temp, "aa.fa")
         writeFasta(temp_aa, [i for i in parseFasta(aa_gene) if i[0].endswith(".")])
