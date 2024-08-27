@@ -68,7 +68,7 @@ def main(argsobj):
             from_folder = "hmmfilter"    
 
         if not is_genome:
-            printv("Detecting and Removing Ambiguous Reads.", argsobj.verbose)
+            printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
             excise_passed = read_assembly.main(this_args, from_folder)
             if not excise_passed:
                 print()
