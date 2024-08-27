@@ -158,7 +158,12 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
         
         # Translate and Align
         translate_file = path.join(temp, "translate.fa")
-        writeFasta(translate_file, [(header, str(Seq(seq).translate())) for header, seq in parseFasta(contig_file, True)])
+        tout = []
+        for header, seq in parseFasta(contig_file, True):
+            if len(seq) % 3 != 0:
+                print(gene,'-',header,'-',len(seq),' Error')
+            tout.append((header, str(Seq(seq).translate())))
+        writeFasta(translate_file, tout)
 
         temp_aa = path.join(temp, "aa.fa")
         writeFasta(temp_aa, [i for i in parseFasta(aa_gene) if i[0].endswith(".")])
