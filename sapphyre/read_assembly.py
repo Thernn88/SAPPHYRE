@@ -85,7 +85,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
 
     # within_identity = 0.9
     min_difference = 0.05
-    min_contig_overlap = 3
+    min_contig_overlap = 0.5
     region_min_ambig = 9
     min_ambig_bp_overlap = 6
 
@@ -195,12 +195,12 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
 
         kicked_nodes = set()
         kicked_contigs = set()
-        with_identity.sort(key=lambda x: x[3], reverse=True)
+        with_identity.sort(key=lambda x: x[5], reverse=True)
 
         for contig_a, contig_b in combinations(with_identity, 2):
             if contig_a[0] in kicked_contigs or contig_b[0] in kicked_contigs:
                 continue
-            coords = get_overlap(contig_a[1], contig_a[2], contig_b[1], contig_b[2], min_contig_overlap)
+            coords = get_overlap(contig_a[1], contig_a[2], contig_b[1], contig_b[2], 1)
             contig_a_identity = contig_a[3]
             contig_b_identity = contig_b[3]
 
@@ -212,6 +212,9 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
 
             if coords:
                 percent = ((coords[1] - coords[0]) / min((contig_a[2] - contig_a[1]), (contig_b[2] - contig_b[1]))) * 100
+                if percent < min_contig_overlap:
+                    continue
+
                 if contig_a[4] > contig_b[4]:
                     kicked_contigs.add(contig_b[0])
                     kicked_nodes.update(contigs[contig_b[0]])
