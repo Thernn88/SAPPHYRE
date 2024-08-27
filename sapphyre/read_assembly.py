@@ -84,6 +84,7 @@ def get_regions(nodes, threshold, no_dupes, minimum_ambig):
 def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, excise_consensus):
 
     # within_identity = 0.9
+    min_difference = 0.05
     min_contig_overlap = 3
     region_min_ambig = 9
     min_ambig_bp_overlap = 6
@@ -200,9 +201,18 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
             if contig_a[0] in kicked_contigs or contig_b[0] in kicked_contigs:
                 continue
             coords = get_overlap(contig_a[1], contig_a[2], contig_b[1], contig_b[2], min_contig_overlap)
+            contig_a_identity = contig_a[3]
+            contig_b_identity = contig_b[3]
+
+            if max(contig_a_identity, contig_b_identity) - min(contig_a_identity, contig_b_identity) < min_difference:
+                log_output.append(
+                    f"{gene} - {contig_a[0]} has ({', '.join(contigs[contig_a[0]])})\nwith {contig_a[4]} matches over {contig_a[5]} length equals {contig_a[3]:.2f} + Kept\nvs (?% Overlap)\n{gene} - {contig_b[0]} has ({', '.join(contigs[contig_b[0]])})\nwith {contig_b[4]} matches over {contig_b[5]} length equals {contig_b[3]:.2f} - Kept (Below identity min gap)\n"
+                )
+                continue
+
             if coords:
                 percent = ((coords[1] - coords[0]) / min((contig_a[2] - contig_a[1]), (contig_b[2] - contig_b[1]))) * 100
-                if contig_a[3] > contig_b[3]:
+                if contig_a[4] > contig_b[4]:
                     kicked_contigs.add(contig_b[0])
                     kicked_nodes.update(contigs[contig_b[0]])
                     log_output.append(
