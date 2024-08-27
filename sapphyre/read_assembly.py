@@ -86,6 +86,7 @@ def get_regions(nodes, threshold, no_dupes, minimum_ambig):
 def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, excise_consensus):
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     # within_identity = 0.9
+    max_score = 8
     min_difference = 0.05
     min_contig_overlap = 0.5
     region_min_ambig = 9
@@ -183,18 +184,14 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
                 for i, base in enumerate(seq[start:end],start):
                     flex_consensus[i].append(base)
         
-        strict_conensus = {i: max(flex_consensus[i], key=flex_consensus[i].count) for i in flex_consensus}
-
         with_identity = []
         for header, seq in formed_contigs:
             start, end = find_index_pair(seq, "-")
             matches = 0
             for i in range(start, end):
-                if seq[i] == strict_conensus[i]:
-                    matches += 1
+                matches += min(flex_consensus[i].count(seq[i]), max_score)
             length = end - start
-            identity = matches / length
-            with_identity.append((header, start, end, identity, matches, length))
+            with_identity.append((header, start, end, seq, matches, length))
 
 
         kicked_nodes = set()
@@ -205,32 +202,36 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
             if contig_a[0] in kicked_contigs or contig_b[0] in kicked_contigs:
                 continue
             coords = get_overlap(contig_a[1], contig_a[2], contig_b[1], contig_b[2], 1)
-            contig_a_identity = contig_a[3]
-            contig_b_identity = contig_b[3]
-
-            if max(contig_a_identity, contig_b_identity) - min(contig_a_identity, contig_b_identity) < min_difference:
-                log_output.append(
-                    f"{gene} - {contig_a[0]} has ({', '.join(contigs[contig_a[0]])})\nwith {contig_a[4]} matches over {contig_a[5]} length equals {contig_a[3]:.2f} + Kept\nvs (?% Overlap)\n{gene} - {contig_b[0]} has ({', '.join(contigs[contig_b[0]])})\nwith {contig_b[4]} matches over {contig_b[5]} length equals {contig_b[3]:.2f} - Kept (Below identity min gap)\n"
-                )
-                continue
-
             if coords:
-                percent = ((coords[1] - coords[0]) / min((contig_a[2] - contig_a[1]), (contig_b[2] - contig_b[1]))) * 100
+                percent = ((coords[1] - coords[0]) / min((contig_a[2] - contig_a[1]), (contig_b[2] - contig_b[1])))
                 if percent < min_contig_overlap:
                     continue
 
-                if contig_a[4] > contig_b[4]:
-                    kicked_contigs.add(contig_b[0])
-                    kicked_nodes.update(contigs[contig_b[0]])
+                contig_a_kmer = contig_a[3][coords[0]: coords[1]]
+                contig_b_kmer = contig_b[3][coords[0]: coords[1]]
+
+                distance = constrained_distance(contig_a_kmer, contig_b_kmer)
+                difference = distance / (coords[1] - coords[0])
+
+                if difference <= min_difference:
                     log_output.append(
-                        f"{gene} - {contig_a[0]} has ({', '.join(contigs[contig_a[0]])})\nwith {contig_a[4]} matches over {contig_a[5]} length equals {contig_a[3]:.2f} + Kept\nvs ({percent:.2f}% Overlap)\n{gene} - {contig_b[0]} has ({', '.join(contigs[contig_b[0]])})\nwith {contig_b[4]} matches over {contig_b[5]} length equals {contig_b[3]:.2f} - Kicked\n"
+                        f"{gene} - {contig_a[0]} has ({', '.join(contigs[contig_a[0]])})\nwith {contig_a[4]} score over {contig_a[5]} length + Kept\nvs ({percent * 100:.2f}% Overlap) ({difference * 100:.2f}% Difference)\n{gene} - {contig_b[0]} has ({', '.join(contigs[contig_b[0]])})\nwith {contig_b[4]} score over {contig_b[5]} length + Kept (Within 95% similar)\n"
                     )
-                else:
-                    kicked_contigs.add(contig_a[0])
-                    kicked_nodes.update(contigs[contig_a[0]])
-                    log_output.append(
-                        f"{gene} - {contig_b[0]} has ({', '.join(contigs[contig_b[0]])})\nwith {contig_b[4]} matches over {contig_b[5]} length equals {contig_b[3]:.2f} + Kept\nvs ({percent:.2f}% Overlap)\n{gene} - {contig_a[0]} has ({', '.join(contigs[contig_a[0]])})\nwith {contig_a[4]} matches over {contig_a[5]} length equals {contig_a[3]:.2f} - Kicked\n"
-                    )
+                    continue
+
+                if coords:
+                    if contig_a[4] > contig_b[4]:
+                        kicked_contigs.add(contig_b[0])
+                        kicked_nodes.update(contigs[contig_b[0]])
+                        log_output.append(
+                            f"{gene} - {contig_a[0]} has ({', '.join(contigs[contig_a[0]])})\nwith {contig_a[4]} score over {contig_a[5]} length + Kept\nvs ({percent * 100:.2f}% Overlap) ({difference * 100:.2f}% Difference)\n{gene} - {contig_b[0]} has ({', '.join(contigs[contig_b[0]])})\nwith {contig_b[4]} matches over {contig_b[5]} length - Kicked\n"
+                        )
+                    else:
+                        kicked_contigs.add(contig_a[0])
+                        kicked_nodes.update(contigs[contig_a[0]])
+                        log_output.append(
+                            f"{gene} - {contig_b[0]} has ({', '.join(contigs[contig_b[0]])})\nwith {contig_b[4]} score over {contig_b[5]} length + Kept\nvs ({percent * 100:.2f}% Overlap) ({difference * 100:.2f}% Difference)\n{gene} - {contig_a[0]} has ({', '.join(contigs[contig_a[0]])})\nwith {contig_a[4]} matches over {contig_a[5]} length - Kicked\n"
+                        )
 
     nt_out = []
     for header, seq in nodes:
