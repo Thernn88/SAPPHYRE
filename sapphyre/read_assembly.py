@@ -195,14 +195,14 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress):
                 )
     nt_out = []
     for header, seq in nodes:
-        if header in kicked_nodes:
+        if header.split("|")[3] in kicked_nodes:
             continue
         else:
             nt_out.append((header, seq))
 
     aa_out = []
     for header, seq in parseFasta(aa_gene):
-        if header in kicked_nodes:
+        if header.split("|")[3] in kicked_nodes:
             continue
         else:
             aa_out.append((header, seq))
