@@ -159,7 +159,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
         writeFasta(translate_file, [(header, str(Seq(seq).translate())) for header, seq in parseFasta(contig_file, True)])
 
         temp_aa = path.join(temp, "aa.fa")
-        writeFasta(temp_aa, parseFasta(aa_gene))
+        writeFasta(temp_aa, [i for i in parseFasta(aa_gene) if i[0].endswith(".")])
 
         mafft = ["mafft","--anysymbol","--quiet","--jtt","1","--addfragments",translate_file,"--thread","1",temp_aa]
         aligned_file = path.join(temp, "aligned.fa")
