@@ -2,7 +2,7 @@ import argparse
 import os
 from shutil import rmtree
 from wrap_rocks import RocksDB
-from . import blosum, excise, hmmfilter, internal, cluster_consensus, read_assembly
+from . import blosum, genome_splice, hmmfilter, internal, cluster_consensus, read_assembly
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import printv
 
@@ -51,13 +51,6 @@ def main(argsobj):
         if argsobj.map:
             continue
 
-        
-        # printv("Simple Assembly To Ensure Consistency.", argsobj.verbose)
-        # if not collapser.main(this_args, from_folder):
-        #     print()
-        #     print(argsobj.formathelp())
-        #     return
-        # continue
 
         if is_assembly:
             printv("Filtering Using Hmmsearch Scores.", argsobj.verbose)
@@ -70,6 +63,14 @@ def main(argsobj):
         if not is_genome:
             printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
             excise_passed = read_assembly.main(this_args, from_folder)
+            if not excise_passed:
+                print()
+                print(argsobj.formathelp())
+            from_folder = "excise"
+        
+        if is_genome or is_assembly:
+            printv("Detecting and Splicing Ambiguous Regions in Clusters.", argsobj.verbose)
+            excise_passed = genome_splice.main(this_args, from_folder)
             if not excise_passed:
                 print()
                 print(argsobj.formathelp())
