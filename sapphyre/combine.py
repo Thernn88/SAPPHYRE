@@ -37,9 +37,9 @@ def parse_gene(path):
     return {path: (this_out, taxon_to_target, this_refs)}
 
 
-def write_gene(path, gene_sequences, compress):
+def write_gene(path, gene_sequences, extension, compress):
     for gene, sequences in gene_sequences:
-        gene_out = Path(path, gene)
+        gene_out = Path(path, gene+extension)
         writeFasta(gene_out, sequences, compress)
 
 
@@ -78,7 +78,7 @@ def main(args):
                             taxon_to_target,
                             ref_sequences,
                         ) = out_tuple
-                        path = path.name
+                        path = path.name.split(".")[0]
                         already_grabbed = grabbed_aa_references[path]
                         references = []
                         for taxon_targets in taxon_to_target.values():
@@ -106,7 +106,7 @@ def main(args):
                             taxon_to_target,
                             ref_sequences,
                         ) = out_tuple
-                        path = path.name
+                        path = path.name.split(".")[0]
                         already_grabbed = grabbed_nt_references[path]
                         references = []
                         for taxon_targets in taxon_to_target.values():
@@ -134,7 +134,7 @@ def main(args):
         per_thread = ceil(len(aa_sequences) / args.processes)
 
         aa_arguments = [
-            (aa_out_path, aa_sequences[i : i + per_thread], args.compress)
+            (aa_out_path, aa_sequences[i : i + per_thread], ".aa.fa", args.compress)
             for i in range(0, len(aa_sequences), per_thread)
         ]
 
@@ -143,7 +143,7 @@ def main(args):
         del aa_arguments
 
         nt_arguments = [
-            (nt_out_path, nt_sequences[i : i + per_thread], args.compress)
+            (nt_out_path, nt_sequences[i : i + per_thread], ".nt.fa", args.compress)
             for i in range(0, len(nt_sequences), per_thread)
         ]
 
