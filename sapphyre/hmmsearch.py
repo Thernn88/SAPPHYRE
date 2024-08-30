@@ -510,8 +510,9 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                         frame = 1
                         if "rev" in header:
                             frame = -frame
-                        header = int(header.split(" ", 1)[0])
-                        if frame in required_frames[header]:
+                        node = int(header.split(" ", 1)[0])
+                        if frame in required_frames[node]:
+                            frame = int(header[header.find("slate(")+6]) * frame
                             query = query_template.format(header, frame)
                             aligned_sequences.append((query, seq))
             else:
