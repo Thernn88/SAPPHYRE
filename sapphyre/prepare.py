@@ -104,7 +104,6 @@ class SeqDeduplicator:
         map_mode,
     ) -> None:
         self.original_coords = {}
-        self.original_positions = {}
         self.original_inputs = []
         self.lines = []
         self.prepared_output = prepared_output
@@ -112,7 +111,7 @@ class SeqDeduplicator:
         self.minimum_sequence_length = minimum_sequence_length
         self.verbose = verbose
         self.this_assembly = False
-        self.this_genome = False
+        self.is_genome = False
         self.overlap_length = overlap_length
         self.skip_ntrim = skip_ntrim
         self.rename = rename
@@ -135,13 +134,13 @@ class SeqDeduplicator:
 
         if self.map_mode:
             self.this_assembly = True
-            self.this_genome = False
+            self.is_genome = False
             
-        elif not self.this_genome:
+        elif not self.is_genome:
             try:
                 for _, seq in parseFasta(fa_file_path, True):
                     if len(seq) > CHOMP_CUTOFF:
-                        self.this_genome = True
+                        self.is_genome = True
                         self.this_assembly = False
                         break
             except NeedletailError as e:
@@ -160,7 +159,7 @@ class SeqDeduplicator:
         requires = False
         for line_index, (raw_header, parent_seq) in for_loop:
             raw_header = raw_header.replace(" |", "|").replace("| ", "|").replace(" ", "_")
-            if line_index == 0 or self.this_genome:
+            if line_index == 0 or self.is_genome:
                 requires = any(l.islower() for l in parent_seq) or requires
             if len(parent_seq) < self.minimum_sequence_length:
                 continue
@@ -203,7 +202,7 @@ class SeqDeduplicator:
                 else:
                     header = raw_header.split(" ")[0]
 
-                if not self.this_genome:
+                if not self.is_genome:
                     seq_hash = xxhash.xxh3_64(seq).hexdigest()
 
                     this_hash_subset = self.transcript_mapped_to[seq_len]
@@ -238,8 +237,6 @@ class SeqDeduplicator:
                     if not self.rename and len(n_sequences) > 1:
                         this_header = append_index_template.format(header, individual_index)
                         next(individual_index)
-
-                    self.original_positions[this_header] = (self.file_index, line_index)
 
                     self.lines.append(sequence_template.format(this_header, seq))
                     if self.prepared_output is not None:
@@ -347,9 +344,8 @@ def map_taxa_runs(
 
     fa_file_out = deduper.lines
     this_is_assembly = deduper.this_assembly
-    this_is_genome = deduper.this_genome
+    this_is_genome = deduper.is_genome
     original_coords = deduper.original_coords
-    original_positions = deduper.original_positions
     original_inputs = deduper.original_inputs
     del deduper
     run_entropy = force_entropy or (not skip_entropy and not this_is_genome)
@@ -402,10 +398,8 @@ def map_taxa_runs(
     )
 
     # Store the original positions
-    if not (this_is_assembly or this_is_genome):
-        nt_db.put_bytes("getall:original_positions", json.encode(original_positions))
+    if this_is_genome:
         nt_db.put_bytes("getall:original_inputs", json.encode(original_inputs))
-    elif this_is_genome:
         nt_db.put_bytes("getall:original_coords", json.encode(original_coords))
 
     # Store the count of dupes in the database
