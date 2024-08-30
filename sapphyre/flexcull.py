@@ -455,7 +455,7 @@ def do_cull(
         # Scan until amt_matches is reached, end of sequence is reached or mismatch is exhausted
         while checks > 0:
             # Scan will extend beyond the end of the sequence
-            if i + match_i >= len(sequence):
+            if i + match_i + 1 >= len(sequence):
                 pass_all = False
                 break
 
