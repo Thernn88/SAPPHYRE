@@ -513,7 +513,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                         node = int(header.split(" ", 1)[0])
                         if frame in required_frames[node]:
                             frame = int(header[header.find("slate(")+6]) * frame
-                            query = query_template.format(header, frame)
+                            query = query_template.format(node, frame)
                             aligned_sequences.append((query, seq))
             else:
                 for header, seq in unaligned_sequences:
