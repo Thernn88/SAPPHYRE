@@ -1,6 +1,7 @@
 from collections import defaultdict
 from functools import cached_property
 from itertools import combinations, product
+from math import ceil, floor
 from multiprocessing import Pool
 from os import listdir, makedirs, path, stat
 from pathlib import Path
@@ -139,9 +140,10 @@ def make_duped_consensus(
     return dumb_consensus_dupe(bundled_seqs, threshold, 0)
 
 
-def check_covered_bad_regions(consensus, min_ambiguous, ambig_char='X', max_distance=18):
+def check_covered_bad_regions(nodes, consensus, min_ambiguous, max_distance, ambig_char):
     x_indices = []
     current_group = []
+    regions = []
 
     start, stop = find_index_pair(consensus, "X")
 
@@ -156,12 +158,42 @@ def check_covered_bad_regions(consensus, min_ambiguous, ambig_char='X', max_dist
             current_group.append(num)
         else:
             if len(current_group) >= min_ambiguous:
-                return True
+                regions.append((current_group[0], current_group[-1] + 1))
             current_group = [num]
 
     if current_group:
         if len(current_group) >= min_ambiguous:
-            return True
+            regions.append((current_group[0], current_group[-1] + 1))
+
+    # MERGE
+    merge_occured = True
+    while merge_occured:
+        merge_occured = False
+        for (i, region_a), (j, region_b) in combinations(enumerate(regions), 2):
+            #gap_between = region_a[1], region_b[0]
+            aa_gap_region = floor(region_a[1] / 3), ceil(region_b[0] / 3)
+            seqs_in_gap = [(node.start, node.end) for node in nodes if get_overlap(node.start, node.end, aa_gap_region[0], aa_gap_region[1], 1)]
+            if seqs_in_gap:
+                all_overlap = True
+                cr_start, cr_end = seqs_in_gap[0]
+                for start, end in seqs_in_gap[1:]:
+                    if get_overlap(cr_start, cr_end, start, end, 1) is None:       
+                        all_overlap = False
+                        break
+                    else:
+                        cr_start, cr_end = min(cr_start, start), max(cr_end, end)
+                    
+                if all_overlap:
+                    regions[i] = (region_a[0], region_b[1])
+                    regions[j] = None
+                    merge_occured = True
+
+        regions = [i for i in regions if i]
+        
+    if regions:
+        return regions
+
+    return None, None
 
 
 def simple_assembly(nodes, min_overlap = 0.01):
@@ -204,18 +236,21 @@ def simple_assembly(nodes, min_overlap = 0.01):
     return nodes
 
 
-def has_region(nodes, threshold, no_dupes, minimum_ambig):
-    sequences = [x[1] for x in nodes]
+def get_regions(seqeunces, nodes, threshold, no_dupes, minimum_ambig, return_regions, minimum_distance=30, ambig_char='X'):
+    sequences = [x[1] for x in seqeunces]
     if no_dupes:
         consensus_seq = dumb_consensus(sequences, threshold, 0)
     else:
         consensus_seq = make_duped_consensus(
-            nodes, threshold
+            seqeunces, threshold
         )
 
     consensus_seq = convert_consensus(sequences, consensus_seq)
-    return check_covered_bad_regions(consensus_seq, minimum_ambig)
 
+    if return_regions:
+        return check_covered_bad_regions(nodes, consensus_seq, minimum_ambig, minimum_distance, ambig_char)
+    else:
+        return consensus_seq.count(ambig_char) >= minimum_ambig
 
 def apply_positions(aa_nodes, x_positions, kicked_headers, log_output, position_subset):
     for node in aa_nodes:
@@ -295,7 +330,7 @@ def do_trim(aa_nodes, x_positions, ref_consensus, kicked_headers, no_dupes, exci
 
     #refresh aa
     apply_positions(aa_nodes, x_positions, kicked_headers, log_output, first_positions)
-            
+
     if no_dupes:
         aa_sequences = [x.sequence for x in aa_nodes if x.header not in kicked_headers]
         consensus_seq = dumb_consensus(aa_sequences, excise_trim_consensus, 0)
@@ -328,8 +363,7 @@ def do_trim(aa_nodes, x_positions, ref_consensus, kicked_headers, no_dupes, exci
     #refresh aa
     apply_positions(aa_nodes, x_positions, kicked_headers, log_output, second_positions)
 
-
-def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, excise_consensus, allowed_mismatches):
+def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, excise_consensus, allowed_mismatches, region_overlap):
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     # within_identity = 0.9
     max_score = 8
@@ -350,7 +384,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
 
     # Check bad region
     
-    gene_has_region = has_region(raw_nodes, excise_consensus, no_dupes, region_min_ambig)
+    gene_has_region = get_regions(raw_nodes, None, excise_consensus, no_dupes, region_min_ambig, False)
 
     if not gene_has_region:
         writeFasta(path.join(aa_output, gene), parseFasta(aa_gene), compress)
@@ -386,40 +420,71 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
     nodes = [node for node in nodes if node.header not in kicked_nodes]
     for node in nodes:
         node.nt_sequence = del_cols(node.nt_sequence, cull_positions[node.header], True)
-    
-    merged_nodes = simple_assembly(nodes.copy())
-    
-    contigs = [node for node in merged_nodes if len(node.children) >= 5] # Min children to be considered a contig
-    for i, node in enumerate(contigs):
-        node.codename = f"Contig{i}"
-    
-    with_identity = []
-    for node in contigs:
-        matches = 0
-        for i in range(node.start, node.end):
-            matches += min(flex_consensus[i].count(node.sequence[i]), max_score)
-        length = (node.end - node.start)
-        log_output.append(f"{node.codename} with ({len(node.children)}: {node.get_children()})\nhas a score of {matches} over {length} AA\n{node.nt_sequence}\n")
-        with_identity.append((node, matches, length))
-        
-    
-    best_contig = max(with_identity, key=lambda x: x[1])[0]
-    log_output.append(f"\nBest contig: {best_contig.codename}\n\nComparing against reads")
-    
-    for i, read in enumerate(nodes):
-        overlap_coords = get_overlap(best_contig.start * 3, best_contig.end * 3, read.start * 3, read.end * 3, 1)
-        if overlap_coords is None:
-            continue
-        kmer_node = read.nt_sequence[overlap_coords[0]:overlap_coords[1]]
-        kmer_best = best_contig.nt_sequence[overlap_coords[0]:overlap_coords[1]]
-        distance = constrained_distance(kmer_node, kmer_best)
 
-        if distance < allowed_mismatches:
-            continue
+    recursion_limit = 5
+    regions = get_regions([(i.header, i.sequence) for i in nodes], nodes, excise_consensus, no_dupes, region_min_ambig, True)
+    changes_made = True
+    while regions[0] is not None and changes_made and recursion_limit >= 0:
+        recursion_limit -= 1
+        changes_made = False
+        for start, end in regions:
+            log_output.append(f"Found region between {start} - {end}\n")
+            nodes_in_region = []
+            for node in nodes:
+                coords = get_overlap(node.start, node.end, start, end, 1)
+                if coords is None:
+                    continue
+                percent = (coords[1] - coords[0]) / (node.end - node.start)
+                if percent < region_overlap:
+                    continue
+
+                nodes_in_region.append(node)
+
+            merged_nodes = simple_assembly(copy.deepcopy(nodes_in_region))
+            
+            contigs = [node for node in merged_nodes if len(node.children) >= 5] # Min children to be considered a contig
+            for i, node in enumerate(contigs):
+                node.codename = f"Contig{i}"
+            
+            if not contigs:
+                for read in nodes_in_region:
+                    kicked_nodes.add(read.header)
+                    log_output.append(f"Kicked >{read.header} due to no contig resolution in gene\n{read.nt_sequence}\n")
+                continue
+            
+            with_identity = []
+            for node in contigs:
+                matches = 0
+                for i in range(node.start, node.end):
+                    matches += min(flex_consensus[i].count(node.sequence[i]), max_score)
+                length = (node.end - node.start)
+                log_output.append(f"{node.codename} with ({len(node.children)}: {node.get_children()})\nhas a score of {matches} over {length} AA\n{node.nt_sequence}\n")
+                with_identity.append((node, matches, length))
+                
+            
+            best_contig = max(with_identity, key=lambda x: x[1])[0]
+            log_output.append(f"\nBest contig: {best_contig.codename}\n\nComparing against reads")
+            
+            for i, read in enumerate(nodes_in_region):
+                overlap_coords = get_overlap(best_contig.start * 3, best_contig.end * 3, read.start * 3, read.end * 3, 1)
+                if overlap_coords is None:
+                    continue
+                kmer_node = read.nt_sequence[overlap_coords[0]:overlap_coords[1]]
+                kmer_best = best_contig.nt_sequence[overlap_coords[0]:overlap_coords[1]]
+                distance = constrained_distance(kmer_node, kmer_best)
+
+                if distance < allowed_mismatches:
+                    log_output.append(f"Kept >{read.header} due to matching the best contig ({distance} mismatches)\n{read.nt_sequence}\n")
+                    continue
+                
+                changes_made = True
+                kicked_nodes.add(read.header)
+                log_output.append(f"Kicked >{read.header} due to distance from best contig ({distance} mismatches)\n{read.nt_sequence}\n")
+        nodes = [node for node in nodes if node.header not in kicked_nodes]
+        if not nodes:
+            break
+        regions = get_regions([(i.header, i.sequence) for i in nodes], nodes, excise_consensus, no_dupes, region_min_ambig, True)
         
-        kicked_nodes.add(read.header)
-        log_output.append(f"Kicked >{read.header} due to distance from best contig ({distance} mismatches)\n{read.nt_sequence}\n")
-    
     nt_out = []
     for header, seq in raw_nodes:
         if header in kicked_nodes:
@@ -427,19 +492,19 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
         else:
             nt_out.append((header, seq))
 
-    aa_out = []
-    for header, seq in raw_aa:
-        if header in kicked_nodes:
-            kicks += 1
-            continue
-        else:
-            aa_out.append((header, seq))
-
     if nt_out:
+        aa_out = []
+        for header, seq in raw_aa:
+            if header in kicked_nodes:
+                kicks += 1
+                continue
+            else:
+                aa_out.append((header, seq))
+    
         writeFasta(path.join(aa_output, gene), aa_out, compress)
         writeFasta(path.join(nt_output, nt_gene), nt_out, compress)
             
-    return log_output, has_region, kicks
+    return log_output, gene_has_region, kicks
 
 
 def main(args, sub_dir):
@@ -468,7 +533,7 @@ def main(args, sub_dir):
 
     genes = [fasta for fasta in listdir(aa_input) if ".fa" in fasta]
 
-    arguments = [(gene, aa_input, nt_input, aa_output, nt_output, args.no_dupes, compress, args.excise_consensus, args.excise_allowed_distance) for gene in genes]
+    arguments = [(gene, aa_input, nt_input, aa_output, nt_output, args.no_dupes, compress, args.excise_consensus, args.excise_allowed_distance, args.excise_region_overlap) for gene in genes]
     if args.processes > 1:
         with Pool(args.processes) as pool:
             results = pool.starmap(do_gene, arguments)
@@ -487,7 +552,8 @@ def main(args, sub_dir):
     for log, has_ambig, kicks in results:
         ambig_count += 1 if has_ambig else 0
         total_kicks += kicks
-        log_final.extend(log)
+        if len(log) > 1:
+            log_final.extend(log)
     
     printv(f"{folder}: {ambig_count} ambiguous loci found. Kicked {total_kicks} sequences total.", args.verbose)
 
