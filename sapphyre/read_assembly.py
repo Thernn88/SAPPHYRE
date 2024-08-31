@@ -250,7 +250,8 @@ def get_regions(seqeunces, nodes, threshold, no_dupes, minimum_ambig, return_reg
     if return_regions:
         return check_covered_bad_regions(nodes, consensus_seq, minimum_ambig, minimum_distance, ambig_char)
     else:
-        return consensus_seq.count(ambig_char) >= minimum_ambig
+        rstart, rend = find_index_pair(consensus_seq, "X")
+        return consensus_seq[rstart:rend].find("X") != -1
 
 def apply_positions(aa_nodes, x_positions, kicked_headers, log_output, position_subset):
     for node in aa_nodes:
@@ -331,11 +332,16 @@ def do_trim(aa_nodes, x_positions, ref_consensus, kicked_headers, no_dupes, exci
     #refresh aa
     apply_positions(aa_nodes, x_positions, kicked_headers, log_output, first_positions)
 
+    nodes = [node for node in aa_nodes if node.header not in kicked_headers]
+    if not nodes:
+        log_output.append("No nodes left after trimming\n")
+        return
+
     if no_dupes:
-        aa_sequences = [x.sequence for x in aa_nodes if x.header not in kicked_headers]
+        aa_sequences = [x.sequence for x in nodes]
         consensus_seq = dumb_consensus(aa_sequences, excise_trim_consensus, 0)
     else:
-        current_raw_aa = [(node.header, node.sequence) for node in aa_nodes if node.header not in kicked_headers]
+        current_raw_aa = [(node.header, node.sequence) for node in nodes]
         consensus_seq = make_duped_consensus(
             current_raw_aa, excise_trim_consensus
         )
@@ -379,17 +385,16 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
     cull_positions = defaultdict(set)
     aa_gene = path.join(aa_input, gene)
     nt_gene = gene.replace(".aa.", ".nt.")
-    for header, sequence in parseFasta(path.join(nt_input, nt_gene)):
-        raw_nodes.append((header, sequence))
+    raw_nodes = list(parseFasta(path.join(nt_input, nt_gene)))
 
     # Check bad region
     
-    gene_has_region = get_regions(raw_nodes, None, excise_consensus, no_dupes, region_min_ambig, False)
+    gene_has_mismatch = get_regions(raw_nodes, None, excise_consensus, no_dupes, region_min_ambig, False)
 
-    if not gene_has_region:
+    if not gene_has_mismatch:
         writeFasta(path.join(aa_output, gene), parseFasta(aa_gene), compress)
         writeFasta(path.join(nt_output, nt_gene), raw_nodes, compress)
-        return log_output, gene_has_region, kicks
+        return log_output, False, kicks
     # Assembly
     
     log_output.append(f"Log output for {gene}\n")
@@ -418,13 +423,17 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
     do_trim(nodes, cull_positions, flex_consensus, kicked_nodes, no_dupes, excise_consensus, log_output)
     
     nodes = [node for node in nodes if node.header not in kicked_nodes]
+    if not nodes:
+        return log_output, False, len(raw_nodes)
     for node in nodes:
         node.nt_sequence = del_cols(node.nt_sequence, cull_positions[node.header], True)
 
     recursion_limit = 5
     regions = get_regions([(i.header, i.sequence) for i in nodes], nodes, excise_consensus, no_dupes, region_min_ambig, True)
     changes_made = True
+    had_region = False
     while regions[0] is not None and changes_made and recursion_limit >= 0:
+        had_region = True
         recursion_limit -= 1
         changes_made = False
         for start, end in regions:
@@ -504,7 +513,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
         writeFasta(path.join(aa_output, gene), aa_out, compress)
         writeFasta(path.join(nt_output, nt_gene), nt_out, compress)
             
-    return log_output, gene_has_region, kicks
+    return log_output, had_region, kicks
 
 
 def main(args, sub_dir):
