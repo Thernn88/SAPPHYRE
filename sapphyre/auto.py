@@ -41,7 +41,6 @@ def main(args):
         "flexcull": get_args(flexcull_args),
         "motif": get_args(motif_args),
         "outlier": get_args(outlier_args),
-        "miniprot": get_args(miniprot_args),
         "merge": get_args(merge_args),
     }
 
@@ -76,7 +75,7 @@ def main(args):
     time = TimeKeeper(KeeperMode.DIRECT)
     for script in scripts:
         sargs = config[script]
-        if script != "motif" and script != "miniprot":
+        if script != "motif":
             print(f"\nExecuting: {script.title()}")
         this_args = global_args.copy()
         this_args.update(sargs)
@@ -158,12 +157,6 @@ def main(args):
 
                 if not outlier.main(this_args):
                     print("Error in Outlier.")
-                gc.collect()
-            elif script == "miniprot":
-                from . import miniprot
-
-                if not miniprot.main(this_args):
-                    print("Error in Miniprot.")
                 gc.collect()
             elif script == "merge":
                 from . import consensus_merge

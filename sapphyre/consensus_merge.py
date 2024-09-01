@@ -438,10 +438,19 @@ class do_gene():
 
 def do_folder(input_folder, args):
     print("Processing:", input_folder)
-    gene_input_folder = path.join(input_folder, "miniprot")
+    for p_folder in ["excise", "clusters", "blosum"]:
+        p_path = path.join(input_folder, "outlier", p_folder)
+        if not path.exists(p_path):
+            p_path = None
+        else:
+            break
+    
+    if p_path is None:
+        printv("ERROR: Outlier folder not found.", args.verbose, 0)
+        return False
 
-    aa_gene_input = path.join(gene_input_folder, "align")
-    nt_gene_input = path.join(gene_input_folder, "nt_aligned")
+    aa_gene_input = path.join(p_path, "aa")
+    nt_gene_input = path.join(p_path, "nt")
 
     aa_gene_output = path.join(input_folder, "aa_merged")
     nt_gene_output = path.join(input_folder, "nt_merged")
