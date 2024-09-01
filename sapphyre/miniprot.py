@@ -312,6 +312,15 @@ class miniprot:
         return None, additions
 
 def do_folder(folder, args):
+    nt_db_path = path.join(folder, "rocksdb", "sequences", "nt")
+    nt_db = RocksDB(nt_db_path)
+    is_genome = nt_db.get("get:isgenome")
+    is_genome = is_genome == "True"
+    
+    if not is_genome:
+        # printv("Not a genome, skipping", args.verbose, 0)
+        return True
+    
     miniprot_path = path.join(folder, "miniprot")
     if args.overwrite and path.exists(miniprot_path):
         rmtree(miniprot_path)
@@ -322,8 +331,7 @@ def do_folder(folder, args):
     miniprot_nt_path = path.join(miniprot_path, "nt")
     makedirs(miniprot_nt_path, exist_ok=True)
         
-    nt_db_path = path.join(folder, "rocksdb", "sequences", "nt")
-    nt_db = RocksDB(nt_db_path)
+
     head_to_seq = get_head_to_seq(nt_db)
 
     temp_source_file = NamedTemporaryFile(dir=gettempdir(), prefix="seqs_", suffix=".fa")
