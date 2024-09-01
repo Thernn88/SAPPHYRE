@@ -40,6 +40,7 @@ class NODE(Struct):
     end: int
     children: list
     codename: str
+    is_contig: bool
 
     def extend(self, node_2, overlap_coord):
         """
@@ -54,6 +55,7 @@ class NODE(Struct):
         -------
             None
         """
+        before = len(self.sequence) - self.sequence.count("-")
         # If node_2 is contained inside self
         if node_2.start >= self.start and node_2.end <= self.end:
             self.sequence = (
@@ -110,6 +112,8 @@ class NODE(Struct):
         # Save node_2 and the children of node_2 to self
         self.children.append(node_2.header)
         self.children.extend(node_2.children)
+        if (len(self.sequence) - self.sequence.count("-")) > before:
+            self.is_contig = True
 
     def get_children(self):
         """
@@ -378,6 +382,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
     region_min_ambig = 9
     min_ambig_bp_overlap = 6
     kicks = 0
+    min_children = 1
 
     kicked_nodes = set()
     raw_nodes = []
@@ -400,7 +405,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
     log_output.append(f"Log output for {gene}\n")
 
     nodes = {header:
-        NODE(header, "", sequence, None, None, [], None) for header, sequence in raw_nodes
+        NODE(header, "", sequence, None, None, [], None, False) for header, sequence in raw_nodes
     }
     
     
@@ -451,7 +456,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
 
             merged_nodes = simple_assembly(copy.deepcopy(nodes_in_region))
             
-            contigs = [node for node in merged_nodes if len(node.children) >= 5] # Min children to be considered a contig
+            contigs = [node for node in merged_nodes if len(node.children) >= min_children and node.is_contig]
             for i, node in enumerate(contigs):
                 node.codename = f"Contig{i}"
             
