@@ -512,7 +512,7 @@ def outlier_args(par):
     par.add_argument(
         "-ero",
         "--excise_region_overlap",
-        default=0.25,
+        default=0.1,
         type=float,
         help="Minimum overlap percent for sequences and ambigous regions",
     )
@@ -533,7 +533,7 @@ def outlier_args(par):
     par.add_argument(
         "-ead",
         "--excise_allowed_distance",
-        default=9,
+        default=0,
         type=int,
         help="# of bp allowed to deviate from a resolving master in excise",
     )
