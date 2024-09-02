@@ -250,7 +250,6 @@ def get_regions(seqeunces, nodes, threshold, no_dupes, minimum_ambig, return_reg
         )
 
     consensus_seq = convert_consensus(sequences, consensus_seq)
-
     if return_regions:
         return check_covered_bad_regions(nodes, consensus_seq, minimum_ambig, minimum_distance, ambig_char)
     else:
@@ -373,14 +372,10 @@ def do_trim(aa_nodes, x_positions, ref_consensus, kicked_headers, no_dupes, exci
     #refresh aa
     apply_positions(aa_nodes, x_positions, kicked_headers, log_output, second_positions)
 
-def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, excise_consensus, allowed_mismatches, region_overlap):
+def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, excise_consensus, allowed_mismatches, region_overlap, region_min_ambig):
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     # within_identity = 0.9
     max_score = 8
-    min_difference = 0.05
-    min_contig_overlap = 0.5
-    region_min_ambig = 9
-    min_ambig_bp_overlap = 6
     kicks = 0
     min_children = 1
 
@@ -395,7 +390,6 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
     # Check bad region
     
     gene_has_mismatch = get_regions(raw_nodes, None, excise_consensus, no_dupes, region_min_ambig, False)
-
     if not gene_has_mismatch:
         writeFasta(path.join(aa_output, gene), parseFasta(aa_gene), compress)
         writeFasta(path.join(nt_output, nt_gene), raw_nodes, compress)
@@ -434,7 +428,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
         node.nt_sequence = del_cols(node.nt_sequence, cull_positions[node.header], True)
 
     recursion_limit = 5
-    regions = get_regions([(i.header, i.sequence) for i in nodes], nodes, excise_consensus, no_dupes, region_min_ambig, True)
+    regions = get_regions([(i.header, i.nt_sequence) for i in nodes], nodes, excise_consensus, no_dupes, region_min_ambig, True)
     changes_made = True
     had_region = False
     while regions[0] is not None and changes_made and recursion_limit >= 0:
@@ -445,7 +439,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
             log_output.append(f"Found region between {start} - {end}\n")
             nodes_in_region = []
             for node in nodes:
-                coords = get_overlap(node.start, node.end, start, end, 1)
+                coords = get_overlap(node.start * 3, node.end * 3, start, end, 1)
                 if coords is None:
                     continue
                 percent = (coords[1] - coords[0]) / (node.end - node.start)
@@ -459,7 +453,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
             contigs = [node for node in merged_nodes if len(node.children) >= min_children and node.is_contig]
             for i, node in enumerate(contigs):
                 node.codename = f"Contig{i}"
-            
+
             if not contigs:
                 for read in nodes_in_region:
                     kicked_nodes.add(read.header)
@@ -497,7 +491,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
         nodes = [node for node in nodes if node.header not in kicked_nodes]
         if not nodes:
             break
-        regions = get_regions([(i.header, i.sequence) for i in nodes], nodes, excise_consensus, no_dupes, region_min_ambig, True)
+        regions = get_regions([(i.header, i.nt_sequence) for i in nodes], nodes, excise_consensus, no_dupes, region_min_ambig, True)
         
     nt_out = []
     for header, seq in raw_nodes:
@@ -547,7 +541,7 @@ def main(args, sub_dir):
 
     genes = [fasta for fasta in listdir(aa_input) if ".fa" in fasta]
 
-    arguments = [(gene, aa_input, nt_input, aa_output, nt_output, args.no_dupes, compress, args.excise_consensus, args.excise_allowed_distance, args.excise_region_overlap) for gene in genes]
+    arguments = [(gene, aa_input, nt_input, aa_output, nt_output, args.no_dupes, compress, args.excise_consensus, args.excise_allowed_distance, args.excise_region_overlap, args.excise_minimum_ambig) for gene in genes]
     if args.processes > 1:
         with Pool(args.processes) as pool:
             results = pool.starmap(do_gene, arguments)
