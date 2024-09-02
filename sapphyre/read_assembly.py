@@ -378,6 +378,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
     max_score = 8
     kicks = 0
     min_children = 1
+    min_bp = 100
 
     kicked_nodes = set()
     raw_nodes = []
@@ -450,7 +451,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
 
             merged_nodes = simple_assembly(copy.deepcopy(nodes_in_region))
             
-            contigs = [node for node in merged_nodes if len(node.children) >= min_children and node.is_contig]
+            contigs = [node for node in merged_nodes if len(node.children) >= min_children and node.is_contig and len(node.nt_sequence) - node.nt_sequence.count("-") >= min_bp]
             for i, node in enumerate(contigs):
                 node.codename = f"Contig{i}"
 
