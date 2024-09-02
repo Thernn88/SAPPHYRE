@@ -67,14 +67,6 @@ def main(argsobj):
                 print()
                 print(argsobj.formathelp())
             from_folder = "excise"
-        
-        if is_genome or is_assembly:
-            printv("Detecting and Splicing Ambiguous Regions in Clusters.", argsobj.verbose)
-            excise_passed = genome_splice.main(this_args, from_folder)
-            if not excise_passed:
-                print()
-                print(argsobj.formathelp())
-            from_folder = "excise"
 
         if not argsobj.gene_finding_mode and is_genome:
             printv("Filtering Clusters.", argsobj.verbose)
@@ -83,6 +75,14 @@ def main(argsobj):
                 print(argsobj.formathelp())
                 return
             from_folder = "clusters"
+        
+        if is_genome or is_assembly:
+            printv("Detecting and Splicing Ambiguous Regions in Clusters.", argsobj.verbose)
+            excise_passed = genome_splice.main(this_args, from_folder)
+            if not excise_passed:
+                print()
+                print(argsobj.formathelp())
+            from_folder = "excise"
 
         if debug > 1 or this_args.add_hmmfilter_dupes:
             continue
