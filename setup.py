@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="sapphyre",
-    version="0.3.4",
+    version="0.3.5",
     description="An assembly-less solution for processing high-throughput sequencing reads for phylogenetics",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
@@ -39,6 +39,7 @@ setup(
         "tqdm>=4.66.2",
         "wrap_rocks>=0.3.8",
         "xxhash>=3.4.1",
+        "isal>=1.7.0",
         
     ],
     dependency_links=[
