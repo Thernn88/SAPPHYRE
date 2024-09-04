@@ -14,7 +14,8 @@ from Bio.Seq import Seq
 from .utils import parseFasta, printv, gettempdir, writeFasta
 from .diamond import ReferenceHit, ReporterHit as Hit
 from .timekeeper import TimeKeeper, KeeperMode
-
+import pyhmmer
+from isal import igzip as isal_gzip
 
 class HmmHit(Struct):
     node: int
@@ -284,13 +285,19 @@ def add_full_cluster_search(clusters, edge_margin, source_clusters, cluster_full
 def get_results(hmm_output, map_mode):
     data = defaultdict(list)
     high_score = 0
-    with open(hmm_output) as f:
-        file_content = f.readlines()
+    
+    if hmm_output.endswith(".gz"):
+        with isal_gzip.open(hmm_output, "rb") as f:
+            file_content = f.readlines()
+    else:
+        with open(hmm_output, "rb") as f:
+            file_content = f.readlines()
         
     if not file_content:
         return None
         
     for line in file_content:
+        line = line.decode()
         if line.startswith("#"):
             continue
 
@@ -300,6 +307,9 @@ def get_results(hmm_output, map_mode):
         start = int(line[17]) - 1
         end = int(line[18])
         score = float(line[13])
+
+        if round(score) <= 0:
+            continue
 
         if score > high_score:
             high_score = score
@@ -401,13 +411,15 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
     decoder = json.Decoder(type=list[Hit])
     
     new_uid_template = "{}_{}{}"
-    
+    alphabet = pyhmmer.easel.Alphabet.amino()
+    background = pyhmmer.plan7.Background(alphabet)
+    pipeline = pyhmmer.plan7.Pipeline(alphabet, background=background)
     for _ in range(len(batches)):
         gene, raw_hits = batches.pop(0)
         diamond_hits = decoder.decode(raw_hits)
         printv(f"Processing: {gene}", verbose, 2)
         aligned_sequences = []
-        this_hmm_output = path.join(hmm_output_folder, f"{gene}.hmmout")
+        this_hmm_output = path.join(hmm_output_folder, f"{gene}.hmmout.gz")
 
         
         hits_have_frames_already = defaultdict(set)
@@ -505,7 +517,6 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                     ft = ["fastatranslate", unaligned_tmp.name]
                     subprocess.run(ft, stdout=aln_tmp)
                     #system(f"fastatranslate {unaligned_tmp.name} > {aln_tmp.name}")
-
                     for header, seq in parseFasta(aln_tmp.name, True):
                         frame = 1
                         if "rev" in header:
@@ -519,38 +530,47 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                 for header, seq in unaligned_sequences:
                     nt_sequences[header] = seq
                     aligned_sequences.append((header, str(Seq(seq).translate())))
+            
+            builder = pyhmmer.plan7.Builder(alphabet)
+            with pyhmmer.easel.MSAFile(aln_file, digital=True, alphabet=alphabet) as msa_file:
+                msa = msa_file.read()
+                msa.name = gene.encode()
+                hmm, _, _ = builder.build_msa(msa, background)
+            
+            seq_msa = pyhmmer.easel.TextSequenceBlock([pyhmmer.easel.TextSequence(name=header.encode(), sequence=seq) for header, seq in aligned_sequences]).digitize(alphabet)
+            top_hits = pipeline.search_hmm(hmm, seq_msa)
+            
+            with isal_gzip.open(this_hmm_output, "wb") as f:
+                top_hits.write(f, format="domains")
+            
+            data = defaultdict(list)
+            high_score = 0
+            for this_result in top_hits:
+                this_node = this_result.name.decode()
+                for domain in this_result.domains:
+                    score = domain.score
+                    start = domain.alignment.target_from - 1
+                    end = domain.alignment.target_to
                     
-                        
-            with NamedTemporaryFile(dir=gettempdir()) as hmm_temp_file:
-                hmmb = ["hmmbuild", hmm_temp_file.name, aln_file]
-                subprocess.run(hmmb, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                #system(f"hmmbuild '{hmm_temp_file.name}' '{aln_file}' > /dev/null")
+                    if round(score) <= 0:
+                        continue
+                    
+                    score = round(domain.score, 1)
+                    
+                    if score > high_score:
+                        high_score = score
 
-                if debug > 2:
-                    this_hmm_in = path.join(hmm_output_folder, f"{gene}_input.fa")
-                    writeFasta(this_hmm_in, aligned_sequences)
-                    system(
-                    f"hmmsearch -o {this_hmm_output} --nobias --domT 10.0 {hmm_temp_file.name} {this_hmm_in} > /dev/null",
-                    )
-                else:
-                    with NamedTemporaryFile(dir=gettempdir()) as aligned_files:
-                        writeFasta(aligned_files.name, aligned_sequences)
-                        aligned_files.flush()
-                        hmms = ["hmmsearch", "--nobias", "--domtblout", this_hmm_output, "--domT", "10.0", hmm_temp_file.name, aligned_files.name]
-                        subprocess.run(hmms, stdout=subprocess.DEVNULL)
-                        #system(
-                        #f"hmmsearch --nobias --domtblout {this_hmm_output} --domT 10.0 {hmm_temp_file.name} {aligned_files.name} > /dev/null",
-                        #)
-        elif not is_full:
-            for header, seq in unaligned_sequences:
-                nt_sequences[header] = seq
-        del (unaligned_sequences, aligned_sequences, diamond_ids)
-        if debug > 2:
-            continue#return "", [], [], [], []
+                    data[this_node].append((start, end, score))
+            
+            if map_mode:
+                score_thresh = high_score * 0.9
 
-        if queries is None:
-            queries = get_results(this_hmm_output, map_mode)
-        
+                queries = []
+                for query, results in data.items():
+                    queries.append((query, [i for i in results if i[2] >= score_thresh]))
+            else:
+                queries = data.items()
+                
         for query, results in queries:
             add_new_result(new_uid_template, map_mode, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template, debug)
 
@@ -586,9 +606,11 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                         continue
 
                 if debug:
-                    diamond_kicks.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, f"Kicked. Evalue: {hit.evalue}"))
-                
+                    diamond_kicks.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, f"Kicked. Evalue: {hit.evalue}"))  
+        
         batch_result.append((gene, output, new_outs, hmm_log, diamond_kicks))
+    if not batch_result:
+        print(batch_result)
     return batch_result
 
 def get_head_to_seq(nt_db, recipe):
@@ -743,7 +765,6 @@ def do_folder(input_folder, args):
     per_batch = math.ceil(len(transcripts_mapped_to) / args.processes)
 
     batches = [(transcripts_mapped_to[i:i + per_batch], seq_source, is_full, is_genome, hmm_output_folder, aln_ref_location, args.overwrite, args.map, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance, args.edge_margin) for i in range(0, len(transcripts_mapped_to), per_batch)]
-
     if args.processes <= 1:
         all_hits = []
         for this_arg in batches:
@@ -760,6 +781,7 @@ def do_folder(input_folder, args):
     multi_causing_log = ["Gene,Node,Frame,Evalue,Master Gene"]
     header_based_results = defaultdict(list)
     printv("Processing results", args.verbose, 1)
+
     for batch in all_hits:
         for _ in range(len(batch)):
             gene, hits, logs, klogs, dkicks = batch.pop(0)
@@ -804,10 +826,11 @@ def do_folder(input_folder, args):
 
         for hit in hits:
             gene_based_results[hit.gene].append(hit)
-        
+            
     printv(f"Kicked {mkicks} hits due to miniscule score", args.verbose, 1)
     printv("Writing results to db", args.verbose, 1)
     encoder = json.Encoder()
+    
     for gene, hits in gene_based_results.items():
         hits_db.put_bytes(f"gethmmhits:{gene}", encoder.encode(hits))
 
