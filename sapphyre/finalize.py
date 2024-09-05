@@ -283,7 +283,7 @@ def clean_gene(gene_config: GeneConfig):
                 candidate_count += 1
 
             for i, char in enumerate(sequence):
-                col_dict[i].append(char.replace("X", "-"))
+                col_dict[i].append(char.replace("X", "-").replace("?","-"))
 
         for col, chars in col_dict.items():
             this_most_common = Counter(chars).most_common()
@@ -363,7 +363,7 @@ def taxon_present(aa_content: list) -> dict:
             taxa_present.add(taxa)
 
         taxonc_present[taxon]["p"] += 1
-        taxonc_present[taxon]["bp"] += len(sequence) - sequence.count("-")
+        taxonc_present[taxon]["bp"] += len(sequence) - sequence.count("-") - sequence.count("X") - sequence.count("?")
 
     return taxonc_present, gene_taxon_to_taxa, taxa_present
 
