@@ -1004,9 +1004,9 @@ def aln_function(
         elif this_args.align_method == "mafft":
             os.system(f"mafft --quiet --anysymbol --legacygappenalty --thread 1 '{raw_fa_file}' > '{aln_file}'")
         if this_args.align_method == "famsa":  
-            sequences = [pyfamsa.Sequence(header.encode(),  seq.encode()) for header, seq in raw_seqs]
+            famsa_sequences = [pyfamsa.Sequence(header.encode(),  seq.encode()) for header, seq in raw_seqs]
             aligner = pyfamsa.Aligner(threads=1)
-            msa = aligner.align(sequences)
+            msa = aligner.align(famsa_sequences)
             aligned_seqs = [(sequence.id.decode(), sequence.sequence.decode()) for sequence in msa]
 
     aligned_result = []
