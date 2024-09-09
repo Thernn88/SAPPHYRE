@@ -378,7 +378,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
     max_score = 8
     kicks = 0
     min_children = 1
-    min_bp = 100
+    min_bp = 300
 
     kicked_nodes = set()
     unresolved = []
