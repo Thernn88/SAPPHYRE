@@ -242,6 +242,10 @@ def simple_assembly(nodes, min_overlap = 0.01):
 def contigs_that_resolve(possible_contigs, nodes_out_of_region, min_overlap = 0.25):
     contigs = []
     for contig in possible_contigs:
+         # Check if contig is longer than 250bp and immediately pass it if so
+        if (contig.end - contig.start) * 3 > 250:
+            contigs.append(contig)
+            continue
         for node in nodes_out_of_region:
             overlap_coords = get_overlap(contig.start * 3, contig.end * 3, node.start * 3, node.end * 3, 1)
             if overlap_coords is None:
