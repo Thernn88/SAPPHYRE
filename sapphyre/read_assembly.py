@@ -239,6 +239,28 @@ def simple_assembly(nodes, min_overlap = 0.01):
 
     return nodes
 
+def contigs_that_resolve(possible_contigs, nodes_out_of_region, min_overlap = 0.25):
+    contigs = []
+    for contig in possible_contigs:
+        for node in nodes_out_of_region:
+            overlap_coords = get_overlap(contig.start * 3, contig.end * 3, node.start * 3, node.end * 3, 1)
+            if overlap_coords is None:
+                continue
+            
+            percent = (overlap_coords[1] - overlap_coords[0]) / min(contig.end - contig.start, node.end - node.start)
+            if percent < min_overlap:
+                continue
+
+            # Overlap with kmer match
+            # kmer_node = node.nt_sequence[overlap_coords[0]:overlap_coords[1]]
+            # kmer_contig = contig.nt_sequence[overlap_coords[0]:overlap_coords[1]]
+
+            # if is_same_kmer(kmer_node, kmer_contig):
+            contigs.append(contig)
+            break
+    
+    return contigs
+
 
 def get_regions(seqeunces, nodes, threshold, no_dupes, minimum_ambig, return_regions, minimum_distance=30, ambig_char='X'):
     sequences = [x[1] for x in seqeunces]
@@ -378,7 +400,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
     max_score = 8
     kicks = 0
     min_children = 1
-    min_bp = 300
+    min_bp = 100
 
     kicked_nodes = set()
     unresolved = []
@@ -441,19 +463,22 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
             log_output.append(f"Found region between {start} - {end}")
             log_output.append(f"{consensus_seq}\n")
             nodes_in_region = []
+            nodes_out_of_region = []
             for node in nodes:
                 coords = get_overlap(node.start * 3, node.end * 3, start, end, 1)
-                if coords is None:
-                    continue
-                percent = (coords[1] - coords[0]) / (node.end - node.start)
+                percent = 0 if coords is None else (coords[1] - coords[0]) / (node.end - node.start)
                 if percent < region_overlap:
+                    nodes_out_of_region.append(node)
                     continue
 
                 nodes_in_region.append(node)
 
             merged_nodes = simple_assembly(copy.deepcopy(nodes_in_region))
             
-            contigs = [node for node in merged_nodes if len(node.children) >= min_children and node.is_contig and len(node.nt_sequence) - node.nt_sequence.count("-") >= min_bp]
+            possible_contigs = [node for node in merged_nodes if (len(node.children) >= min_children and 
+                                                                  node.is_contig and # BP increase due to merge
+                                                                  len(node.nt_sequence) - node.nt_sequence.count("-") >= min_bp)]
+            contigs = contigs_that_resolve(possible_contigs, nodes_out_of_region)
             for i, node in enumerate(contigs):
                 node.codename = f"Contig{i}"
 
