@@ -239,7 +239,7 @@ def simple_assembly(nodes, min_overlap = 0.01):
 
     return nodes
 
-def contigs_that_resolve(possible_contigs, nodes_out_of_region, min_overlap = 0.01):
+def contigs_that_resolve(possible_contigs, nodes_out_of_region, min_overlap = 0.25):
     contigs = []
     for contig in possible_contigs:
         for node in nodes_out_of_region:
@@ -252,12 +252,12 @@ def contigs_that_resolve(possible_contigs, nodes_out_of_region, min_overlap = 0.
                 continue
 
             # Overlap with kmer match
-            kmer_node = node.nt_sequence[overlap_coords[0]:overlap_coords[1]]
-            kmer_contig = contig.nt_sequence[overlap_coords[0]:overlap_coords[1]]
+            # kmer_node = node.nt_sequence[overlap_coords[0]:overlap_coords[1]]
+            # kmer_contig = contig.nt_sequence[overlap_coords[0]:overlap_coords[1]]
 
-            if is_same_kmer(kmer_node, kmer_contig):
-                contigs.append(contig)
-                break
+            # if is_same_kmer(kmer_node, kmer_contig):
+            contigs.append(contig)
+            break
     
     return contigs
 
