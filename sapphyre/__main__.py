@@ -751,6 +751,13 @@ def merge_args(par, skip_reconcile_overlap=False):
             help="Ignore overlapping chunks and merge all candidates for a reference taxon.",
         )
     par.add_argument(
+        "-min",
+        "--min_count",
+        type=int,
+        default=0,
+        help="Minimum nodes (dupes inclusive) required in a contig sequence.",
+    )
+    par.add_argument(
         "-sm",
         "--special_merge",
         action="store_true",

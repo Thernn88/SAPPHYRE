@@ -225,6 +225,7 @@ def do_protein(
     special_merge,
     DNA_CODONS,
     debug,
+    min_count,
     aa_order_feed = {},
 ):
     references, candidates = parse_fasta(gene_path)
@@ -314,8 +315,11 @@ def do_protein(
                         this_taxa = most_occuring[0]
 
             if ignore_overlap_chunks:
+                total = sum([i[2] for i in consists_of])
+                if total < min_count:
+                    continue
                 base_header = "|".join(
-                    [this_gene, this_taxa, this_taxa_id, "contig_sequence"],
+                    [this_gene, this_taxa, this_taxa_id, f"contig_sequence_{total}"],
                 )
                 final_header = base_header
             else:
@@ -564,6 +568,7 @@ def do_gene(
     ignore_overlap_chunks,
     special_merge,
     compress,
+    min_count,
 ) -> None:
     """Merge main loop. Opens fasta file, parses sequences and merges based on taxa."""
     already_calculated_splits = {}
@@ -651,6 +656,7 @@ def do_gene(
         special_merge,
         DNA_CODONS,
         debug,
+        min_count,
     )
 
     nt_path, nt_data, _ = do_protein(
@@ -667,6 +673,7 @@ def do_gene(
         special_merge,
         DNA_CODONS,
         debug,
+        min_count,
         aa_order_feed = aa_order_feed,
     )
 
@@ -739,6 +746,7 @@ def do_folder(folder: Path, args):
                     args.ignore_overlap_chunks,
                     args.special_merge,
                     args.compress,
+                    args.min_count,
                 ),
             )
         with Pool(args.processes) as pool:
@@ -761,6 +769,7 @@ def do_folder(folder: Path, args):
                 args.ignore_overlap_chunks,
                 args.special_merge,
                 args.compress,
+                args.min_count,
             )
     printv(f"Done! Took {folder_time.differential():.2f}s", args.verbose)
 
