@@ -479,6 +479,10 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
                                                                   node.is_contig and # BP increase due to merge
                                                                   len(node.nt_sequence) - node.nt_sequence.count("-") >= min_bp)]
             contigs = contigs_that_resolve(possible_contigs, nodes_out_of_region)
+
+            if contigs == []:
+                contigs = possible_contigs
+
             for i, node in enumerate(contigs):
                 node.codename = f"Contig{i}"
 
