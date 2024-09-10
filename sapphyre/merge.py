@@ -173,10 +173,13 @@ class Sequence(Struct, frozen=True):
     header: str
     sequence: str
 
-    def get_count(self, no_tag_result = 1) -> str:
+    def get_count(self, second_run = False) -> str:
+        if second_run:
+            return int(self.header.split("|")[4])
+        
         if self.header.count("|") == 5:
             return int(self.header.split("|")[5])
-        return no_tag_result
+        return 1
 
 
 
@@ -226,6 +229,7 @@ def do_protein(
     DNA_CODONS,
     debug,
     min_count,
+    second_run,
     aa_order_feed = {},
 ):
     references, candidates = parse_fasta(gene_path)
@@ -249,8 +253,12 @@ def do_protein(
     for header, sequence in candidates:
         start, end = find_index_pair(sequence, "-")
         this_object = Sequence(start, end, header, sequence)
-        if min_count and this_object.get_count(min_count) < min_count: # Ugly but works. If no tag we want to pass
-            continue
+        
+        if second_run:
+            if header.count("|") == 4:
+                if int(header.split("|")[4]) < min_count:
+                    continue
+        
         taxa = get_taxa(header)
         taxa_groups.setdefault(taxa, []).append(this_object)
 
@@ -561,6 +569,7 @@ def do_gene(
     nt_path,  # this one
     skip_dupes,
     ref_stats,
+    second_run,
     debug,
     majority,
     minimum_mr_amount,
@@ -657,6 +666,7 @@ def do_gene(
         DNA_CODONS,
         debug,
         min_count,
+        second_run,
     )
 
     nt_path, nt_data, _ = do_protein(
@@ -674,6 +684,7 @@ def do_gene(
         DNA_CODONS,
         debug,
         min_count,
+        second_run,
         aa_order_feed = aa_order_feed,
     )
 
@@ -739,6 +750,7 @@ def do_folder(folder: Path, args):
                     target_nt_path,
                     skip_dupes,
                     ref_stats,
+                    args.second_run,
                     args.debug,
                     args.majority,
                     args.majority_count,
@@ -762,6 +774,7 @@ def do_folder(folder: Path, args):
                 target_nt_path,
                 skip_dupes,
                 ref_stats,
+                args.second_run,
                 args.debug,
                 args.majority,
                 args.majority_count,
