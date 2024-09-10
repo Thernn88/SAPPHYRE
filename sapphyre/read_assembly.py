@@ -403,7 +403,8 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
     # within_identity = 0.9
     max_score = 8
     kicks = 0
-    min_children = 1
+    min_children = 4
+    contig_depth_reward = 0.001
     min_bp = 100
 
     kicked_nodes = set()
@@ -497,10 +498,13 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
                     matches = 0
                     for i in range(node.start, node.end):
                         matches += min(flex_consensus[i].count(node.sequence[i]), max_score)
+                    
+                    score = matches * (1 + (len(node.children) * contig_depth_reward))
+                    
                     length = (node.end - node.start)
                     children = node.get_children()
-                    log_output.append(f"{node.codename} with ({len(children)}: {', '.join(children)})\nhas a score of {matches} over {length} AA\n{node.nt_sequence}\n")
-                    with_identity.append((node, matches, length))
+                    log_output.append(f"{node.codename} with ({len(children)}: {', '.join(children)})\nhas a score of {score} over {length} AA\n{node.nt_sequence}\n")
+                    with_identity.append((node, score, length))
                     
                 
                 best_contig = max(with_identity, key=lambda x: x[1])[0]
