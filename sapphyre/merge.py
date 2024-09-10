@@ -173,10 +173,10 @@ class Sequence(Struct, frozen=True):
     header: str
     sequence: str
 
-    def get_count(self) -> str:
+    def get_count(self, no_tag_result = 1) -> str:
         if self.header.count("|") == 5:
             return int(self.header.split("|")[5])
-        return 1
+        return no_tag_result
 
 
 
@@ -249,6 +249,8 @@ def do_protein(
     for header, sequence in candidates:
         start, end = find_index_pair(sequence, "-")
         this_object = Sequence(start, end, header, sequence)
+        if min_count and this_object.get_count(min_count) < min_count: # Ugly but works. If no tag we want to pass
+            continue
         taxa = get_taxa(header)
         taxa_groups.setdefault(taxa, []).append(this_object)
 
@@ -316,8 +318,6 @@ def do_protein(
 
             if ignore_overlap_chunks:
                 total = sum([i[2] for i in consists_of])
-                if total < min_count:
-                    continue
                 base_header = "|".join(
                     [this_gene, this_taxa, this_taxa_id, f"contig_sequence_{total}"],
                 )
