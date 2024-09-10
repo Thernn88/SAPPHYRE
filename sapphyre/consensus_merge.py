@@ -373,8 +373,9 @@ class do_gene():
 
             for group in nt_overlap_groups:
                 new_node, new_ref, old_taxa = get_header_parts([i.header for i in group])
+                total = sum(node.count for node in group)
 
-                new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}"
+                new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}|{total}"
                 triplets = defaultdict(list)
                 
                 min_start = min(node.start for node in group)
@@ -417,8 +418,9 @@ class do_gene():
                         
             for group in aa_overlap_groups:
                 new_node, new_ref, old_taxa = get_header_parts([i.header for i in group])
+                total = sum(node.count for node in group)
 
-                new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}"
+                new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}|{total}"
 
                 new_seq = []
                 
