@@ -1323,7 +1323,7 @@ def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, gfm, nt_
                     this_counter[header] += 1
                     header = f"{header}_{this_counter[header]}"
                 #Assuming ID {JSON}
-                data = json.decode(data)
+                data = json.decode(data.replace("'", '"'))
                 seq = str(seq_record.seq)
                 taxon = data["organism_name"].replace(" ", "_")
                 if (
