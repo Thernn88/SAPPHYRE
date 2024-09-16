@@ -785,25 +785,26 @@ def main_process(
 
 def do_folder(folder, args, is_genome, gene_source):
     ALLOWED_EXTENSIONS = {".fa", ".fas", ".fasta", ".gz", ".fq", ".fastq"}
-    reference_kick_path = Path(folder, "reference_kicks.log")
+    orthoset = args.orthoset
+    reference_kick_path = Path(folder, orthoset, "reference_kicks.log")
     if path.exists(reference_kick_path):
         remove(reference_kick_path)
 
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
-    wanted_aa_path = Path(folder, "outlier", gene_source, "aa")
+    wanted_aa_path = Path(folder, orthoset, "outlier", gene_source, "aa")
     if not args.map and wanted_aa_path.exists():
         aa_input = wanted_aa_path
-        nt_input = Path(folder, "outlier", gene_source, "nt")
+        nt_input = Path(folder, orthoset, "outlier", gene_source, "nt")
     elif gene_source == "trimmed" or gene_source == "motif":
-        aa_input = Path(folder, gene_source, "aa")
-        nt_input = Path(folder, gene_source, "nt")
+        aa_input = Path(folder, orthoset, gene_source, "aa")
+        nt_input = Path(folder, orthoset, gene_source, "nt")
         if not aa_input.exists():
             if gene_source == "motif":
-                aa_input = Path(folder, "trimmed", "aa")
-                nt_input = Path(folder, "trimmed", "nt")
+                aa_input = Path(folder, orthoset, "trimmed", "aa")
+                nt_input = Path(folder, orthoset, "trimmed", "nt")
             else:
-                aa_input = Path(folder, "align")
-                nt_input = Path(folder, "nt_aligned")
+                aa_input = Path(folder, orthoset, "align")
+                nt_input = Path(folder, orthoset, "nt_aligned")
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
     if not rocks_db_path.exists():
         err = f"cannot find dupe databases for {folder}"
@@ -830,7 +831,7 @@ def do_folder(folder, args, is_genome, gene_source):
         for gene in aa_input.iterdir() 
         if ".aa" in gene.suffixes and gene.suffix in ALLOWED_EXTENSIONS
     ]
-    output_path = Path(folder, "outlier", "blosum")
+    output_path = Path(folder, orthoset, "outlier", "blosum")
     nt_output_path = path.join(output_path, "nt")
     folder_check(output_path, args.debug)
 

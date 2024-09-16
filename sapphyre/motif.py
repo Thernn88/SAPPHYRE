@@ -670,6 +670,7 @@ def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path, com
 def do_folder(folder, args):
     
     tk = TimeKeeper(KeeperMode.DIRECT)
+    orthoset = args.orthoset
     rocksdb_path = path.join(folder, "rocksdb", "sequences", "nt")
     nt_db = RocksDB(rocksdb_path)
     
@@ -684,10 +685,10 @@ def do_folder(folder, args):
     
     head_to_seq = get_head_to_seq(nt_db)
     
-    input_aa_path = path.join(folder, "trimmed", "aa")
-    input_nt_path = path.join(folder, "trimmed", "nt")
+    input_aa_path = path.join(folder, orthoset, "trimmed", "aa")
+    input_nt_path = path.join(folder, orthoset, "trimmed", "nt")
     
-    output_folder = path.join(folder, "motif")
+    output_folder = path.join(folder, orthoset, "motif")
     out_aa_path = path.join(output_folder, "aa")
     out_nt_path = path.join(output_folder, "nt")
     

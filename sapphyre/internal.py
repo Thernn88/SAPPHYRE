@@ -300,9 +300,9 @@ def main(args, from_folder):
 
     with Pool(args.processes) as pool:
         folder = args.INPUT
-
-        aa_input = Path(folder, "outlier", from_folder, "aa")
-        nt_input = Path(folder, "outlier", from_folder, "nt")
+        orthoset = args.orthoset
+        aa_input = Path(folder, orthoset, "outlier", from_folder, "aa")
+        nt_input = Path(folder, orthoset, "outlier", from_folder, "nt")
 
         file_inputs = [
             gene
@@ -310,7 +310,7 @@ def main(args, from_folder):
             if ".aa" in gene.suffixes and gene.suffix in ALLOWED_EXTENSIONS
         ]
 
-        output_path = Path(folder, "outlier", "internal")
+        output_path = Path(folder, orthoset, "outlier", "internal")
         nt_output_path = path.join(output_path, "nt")
         aa_log_path, nt_log_path = folder_check(output_path)
         file_inputs.sort(key=lambda x: x.stat().st_size, reverse=True)

@@ -1092,14 +1092,14 @@ def run_command(args: CmdArgs) -> None:
 def do_folder(folder, args):
     ALIGN_FOLDER = "align"
     AA_FOLDER = "aa"
-
+    orthoset = args.orthoset
     printv(f"Processing: {path.basename(folder)}", args.verbose, 0)
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
-    align_path = path.join(folder, ALIGN_FOLDER)
-    aa_path = path.join(folder, AA_FOLDER)
+    align_path = path.join(folder, orthoset, ALIGN_FOLDER)
+    aa_path = path.join(folder, orthoset, AA_FOLDER)
     if args.use_miniprot:
-        aa_path = path.join(folder, "miniprot", "aa")
-        align_path = path.join(folder, "miniprot", "align")
+        aa_path = path.join(folder, orthoset, "miniprot", "aa")
+        align_path = path.join(folder, orthoset, "miniprot", "align")
     if not path.exists(aa_path):
         printv(f"ERROR: Can't find aa ({aa_path}) folder. Abort", args.verbose, 0)
         printv("Please make sure Reporter finished succesfully", args.verbose, 0)
@@ -1126,7 +1126,7 @@ def do_folder(folder, args):
 
     command = "clustalo -i {in_file} -o {out_file} --threads=1 --full"
 
-    top_folder = path.join(folder, "top")
+    top_folder = path.join(folder, orthoset, "top")
 
     intermediates = "intermediates"
     if not path.exists(intermediates) and args.debug:
@@ -1185,7 +1185,7 @@ def do_folder(folder, args):
         cluster_logs.sort(key=lambda x: x[0])
         cluster_logs = [x[1] for x in cluster_logs]
             
-        with open(path.join(folder, "align_clusters.csv"), "w") as f:
+        with open(path.join(folder, orthoset, "align_clusters.csv"), "w") as f:
             f.write("Gene,Seq count,Cluster count,Cluster ranges\n")
             f.write("\n".join(cluster_logs))
 

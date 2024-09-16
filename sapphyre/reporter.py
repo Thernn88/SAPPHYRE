@@ -782,6 +782,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
 
     num_threads = args.processes
+    orthoset = args.orthoset
 
     # Grab gene list file if present
     if args.gene_list_file:
@@ -793,8 +794,8 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     aa_out = "aa"
     nt_out = "nt"
 
-    aa_out_path = path.join(taxa_path, aa_out)
-    nt_out_path = path.join(taxa_path, nt_out)
+    aa_out_path = path.join(taxa_path, orthoset, aa_out)
+    nt_out_path = path.join(taxa_path, orthoset, nt_out)
 
     if not args.keep_output:
         if path.exists(aa_out_path):
@@ -826,7 +827,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     target_taxon = get_gene_variants(rocky.get_rock("rocks_hits_db"))
     gene_dupes = get_prepare_dupes(rocky.get_rock("rocks_nt_db"))
 
-    coords_path = path.join(taxa_path, "coords")
+    coords_path = path.join(taxa_path, orthoset, "coords")
     if path.exists(coords_path):
         rmtree(coords_path)
 
@@ -949,7 +950,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
             with open(path.join(coords_path, "coords.gff"), "w") as fp:
                 fp.write("\n".join(gff_output))
         if args.debug:
-            with open(path.join(taxa_path, "coords.txt"), "w") as fp:
+            with open(path.join(taxa_path, orthoset, "coords.txt"), "w") as fp:
                 fp.write("\n".join(global_out))
 
     key = "getall:hmm_gene_scores"
@@ -988,13 +989,14 @@ def main(args):
         )
         EXACT_MATCH_AMOUNT = args.matches
     for input_path in args.INPUT:
-        rocks_db_path = path.join(input_path, "rocksdb")
+        rocks_nt_db_path = path.join(input_path, "rocksdb", "sequences", "nt")
+        rocks_hit_db_path = path.join(input_path, args.orthoset, "rocksdb", "hits")
         rocky.create_pointer(
             "rocks_nt_db",
-            path.join(rocks_db_path, "sequences", "nt"),
+            rocks_nt_db_path,
         )
 
-        rocky.create_pointer("rocks_hits_db", path.join(rocks_db_path, "hits"))
+        rocky.create_pointer("rocks_hits_db", rocks_hit_db_path)
         result.append(
             do_taxa(
                 input_path,

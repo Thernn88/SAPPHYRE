@@ -312,6 +312,7 @@ class miniprot:
         return None, additions
 
 def do_folder(folder, args):
+    orthoset = args.orthoset
     nt_db_path = path.join(folder, "rocksdb", "sequences", "nt")
     nt_db = RocksDB(nt_db_path)
     is_genome = nt_db.get("get:isgenome")
@@ -321,7 +322,7 @@ def do_folder(folder, args):
         # printv("Not a genome, skipping", args.verbose, 0)
         return True
     
-    miniprot_path = path.join(folder, "miniprot")
+    miniprot_path = path.join(folder, orthoset, "miniprot")
     if args.overwrite and path.exists(miniprot_path):
         rmtree(miniprot_path)
     makedirs(miniprot_path, exist_ok=True)
@@ -336,13 +337,13 @@ def do_folder(folder, args):
 
     temp_source_file = NamedTemporaryFile(dir=gettempdir(), prefix="seqs_", suffix=".fa")
     writeFasta(temp_source_file.name, head_to_seq.items())
-    top_path = path.join(folder, "top")
+    top_path = path.join(folder, orthoset, "top")
 
     orthoset_db_path = path.join(args.orthoset_input, args.orthoset, "rocksdb")
     orthoset_db = RocksDB(orthoset_db_path)
     
     for p_folder in ["excise", "clusters", "blosum"]:
-        p_path = path.join(folder, "outlier", p_folder)
+        p_path = path.join(folder, orthoset, "outlier", p_folder)
         if not path.exists(p_path):
             p_path = None
         else:

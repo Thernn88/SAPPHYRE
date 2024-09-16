@@ -59,8 +59,8 @@ def main(args):
         for item in inputs:
             printv(f"Merging directory: {item}", args.verbose, 0)
             for taxa in item.iterdir():
-                aa_path = Path(taxa, "aa_merged")
-                nt_path = Path(taxa, "nt_merged")
+                aa_path = Path(taxa, args.orthoset, "aa_merged")
+                nt_path = Path(taxa, args.orthoset, "nt_merged")
                 if not aa_path.exists() or not nt_path.exists():
                     printv(
                         f"WARNING: Either {aa_path} or {nt_path} doesn't exists. Abort",

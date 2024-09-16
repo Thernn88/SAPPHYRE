@@ -684,11 +684,12 @@ def main(args, sub_dir):
             )
 
     folder = args.INPUT
-    input_folder = Path(folder, "outlier", sub_dir)
+    orthoset = args.orthoset
+    input_folder = Path(folder, orthoset, "outlier", sub_dir)
     if not input_folder.exists():
-        input_folder = Path(folder, sub_dir)
+        input_folder = Path(folder, orthoset, sub_dir)
 
-    output_folder = Path(folder, "outlier", "excise")
+    output_folder = Path(folder, orthoset, "outlier", "excise")
 
     output_aa_folder = output_folder.joinpath("aa")
     output_nt_folder = output_folder.joinpath("nt")

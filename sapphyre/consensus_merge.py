@@ -447,8 +447,9 @@ class do_gene():
 
 def do_folder(input_folder, args):
     print("Processing:", input_folder)
+    orthoset = args.orthoset
     for p_folder in ["excise", "clusters", "blosum"]:
-        p_path = path.join(input_folder, "outlier", p_folder)
+        p_path = path.join(input_folder, orthoset, "outlier", p_folder)
         if not path.exists(p_path):
             p_path = None
         else:
@@ -467,8 +468,8 @@ def do_folder(input_folder, args):
     aa_gene_input = path.join(p_path, "aa")
     nt_gene_input = path.join(p_path, "nt")
 
-    aa_gene_output = path.join(input_folder, "aa_merged")
-    nt_gene_output = path.join(input_folder, "nt_merged")
+    aa_gene_output = path.join(input_folder, orthoset, "aa_merged")
+    nt_gene_output = path.join(input_folder, orthoset, "nt_merged")
 
     if path.exists(aa_gene_output):
         rmtree(aa_gene_output)

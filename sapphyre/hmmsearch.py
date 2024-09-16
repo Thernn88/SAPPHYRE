@@ -692,8 +692,9 @@ def miniscule_multi_filter(hits, debug):
 
 
 def do_folder(input_folder, args):
+    orthoset = args.orthoset
     printv(f"Processing {input_folder}", args.verbose, 1)
-    hits_db = RocksDB(path.join(input_folder, "rocksdb", "hits"))
+    hits_db = RocksDB(path.join(input_folder, orthoset, "rocksdb", "hits"))
     tk = TimeKeeper(KeeperMode.DIRECT)
     diamond_genes, transcripts_mapped_to = get_diamondhits(
         hits_db
@@ -721,14 +722,14 @@ def do_folder(input_folder, args):
             seq_source = get_head_to_seq(seq_db, seq_db.get("getall:batches").split(","))
     del seq_db
 
-    hmm_output_folder = path.join(input_folder, "hmmsearch")
+    hmm_output_folder = path.join(input_folder, orthoset, "hmmsearch")
     
     if (args.debug > 1 or args.overwrite) and path.exists(hmm_output_folder):
         rmtree(hmm_output_folder, ignore_errors=True)
     if not path.exists(hmm_output_folder):
         system(f"mkdir {hmm_output_folder}")
 
-    aln_ref_location = path.join(input_folder, "top")
+    aln_ref_location = path.join(input_folder, orthoset, "top")
     if not path.exists(aln_ref_location):
         orthoset_path = path.join(args.orthoset_input, args.orthoset)
         aln_ref_location = None
@@ -814,14 +815,14 @@ def do_folder(input_folder, args):
     del temp_source_file
     del hits_db
     if klog:
-        with open(path.join(input_folder, "hmmsearch_log.log"), "w") as f:
+        with open(path.join(input_folder, orthoset, "hmmsearch_log.log"), "w") as f:
             f.write("\n".join(klog))
     if kick_log:
-        with open(path.join(input_folder, "hmmsearch_kick.log"), "w") as f:
+        with open(path.join(input_folder, orthoset, "hmmsearch_kick.log"), "w") as f:
             f.write("\n".join(kick_log))
-    with open(path.join(input_folder, "hmmsearch_multi.log"), "w") as f:
+    with open(path.join(input_folder, orthoset, "hmmsearch_multi.log"), "w") as f:
         f.write("\n".join(mlog))
-    with open(path.join(input_folder, "hmmsearch_zero_multis.log"), "w") as f:
+    with open(path.join(input_folder, orthoset, "hmmsearch_zero_multis.log"), "w") as f:
         f.write("\n".join(multi_causing_log))
 
     printv(f"Done with {input_folder}. Took {tk.lap():.2f}s", args.verbose, 1)

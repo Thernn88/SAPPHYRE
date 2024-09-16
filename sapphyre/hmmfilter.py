@@ -36,6 +36,7 @@ class HmmfilterArgs(Struct):
     matching_consensus_percent: float
     add_hmmfilter_dupes: bool
     no_dupes: bool
+    orthoset: str
 
 
 class BatchArgs(Struct):
@@ -555,8 +556,8 @@ def do_folder(args: HmmfilterArgs, input_path: str):
         bool: True if the folder was processed successfully, False otherwise
     """
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
-
-    hmmfilter_path = path.join(input_path, "outlier", "hmmfilter")
+    orthoset = args.orthoset
+    hmmfilter_path = path.join(input_path, orthoset, "outlier", "hmmfilter")
     nt_out_path = path.join(hmmfilter_path, "nt")
     aa_out_path = path.join(hmmfilter_path, "aa")
 
@@ -572,8 +573,8 @@ def do_folder(args: HmmfilterArgs, input_path: str):
         gene_scores = json.decode(nt_db.get("getall:hmm_gene_scores"), type=dict[str, dict[str, float]])
         del nt_db
 
-    nt_input_path = path.join(input_path, "outlier", args.from_folder, "nt")
-    aa_input_path = path.join(input_path, "outlier", args.from_folder, "aa")
+    nt_input_path = path.join(input_path, orthoset, "outlier", args.from_folder, "nt")
+    aa_input_path = path.join(input_path, orthoset, "outlier", args.from_folder, "aa")
 
     # Process NT
     genes = [
@@ -672,6 +673,7 @@ def main(args, from_folder):
         matching_consensus_percent = args.matching_consensus_percent,
         add_hmmfilter_dupes = args.add_hmmfilter_dupes,
         no_dupes = args.no_dupes,
+        orthoset = args.orthoset,
     )
     return do_folder(this_args, args.INPUT)
 

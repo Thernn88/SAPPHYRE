@@ -1423,12 +1423,12 @@ def do_gene(fargs: FlexcullArgs) -> None:
     return log, culled_references, codon_log
 
 
-def do_folder(folder, args: MainArgs, non_coding_gene: set):
+def do_folder(folder, orthoset, args: MainArgs, non_coding_gene: set):
     folder_time = TimeKeeper(KeeperMode.DIRECT)
     printv(f"Processing: {folder}", args.verbose, 0)
-    aa_path = path.join(folder, args.amino_acid)
-    nt_path = path.join(folder, args.nucleotide)
-    output_path = path.join(folder, args.output)
+    aa_path = path.join(folder, orthoset, args.amino_acid)
+    nt_path = path.join(folder, orthoset, args.nucleotide)
+    output_path = path.join(folder, orthoset, args.output)
     if not path.exists(aa_path) or not path.exists(nt_path):
         printv(
             f"WARNING: Can't find aa ({aa_path}) and nt ({nt_path}) folders. Abort",
@@ -1563,7 +1563,7 @@ def main(args):
     )
 
     for folder in args.INPUT:
-        do_folder(folder, args, orthoset_non_coding_genes)
+        do_folder(folder, orthoset, args, orthoset_non_coding_genes)
     if len(args.INPUT) > 1 or not args.verbose:
         printv(f"Took {global_time.differential():.2f}s overall.", args.verbose, 0)
     return True

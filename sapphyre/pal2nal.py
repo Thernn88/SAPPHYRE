@@ -15,6 +15,7 @@ from .utils import parseFasta, printv, writeFasta
 def do_folder(
     num_threads: int,
     input: str,
+    orthoset: str,
     specified_dna_table: dict,
     verbose: int,
     compress: bool,
@@ -35,14 +36,14 @@ def do_folder(
         bool: Whether all genes were processed successfully
     """
 
-    input_path = Path(input)
+    input_path = Path(input, orthoset)
 
     joined_align = input_path.joinpath(Path("align"))
     joined_nt_aligned = input_path.joinpath(Path("nt_aligned"))
     
     if use_miniprot:
-        joined_align = Path(input, "miniprot").joinpath(Path("align"))
-        joined_nt_aligned = Path(input, "miniprot").joinpath(Path("nt_aligned"))
+        joined_align = Path(input, orthoset, "miniprot").joinpath(Path("align"))
+        joined_nt_aligned = Path(input, orthoset, "miniprot").joinpath(Path("nt_aligned"))
 
     rmtree(joined_nt_aligned, ignore_errors=True)
     joined_nt_aligned.mkdir()
@@ -236,6 +237,7 @@ def main(args):
         success = do_folder(
             args.processes,
             folder,
+            args.orthoset,
             specified_dna_table,
             args.verbose,
             args.compress,

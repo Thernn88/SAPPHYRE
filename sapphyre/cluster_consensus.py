@@ -231,12 +231,13 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
 
 def do_folder(args, folder: str, from_folder: str):
     arguments = []
-    gene_input_path = path.join(folder, "outlier", from_folder)
+    orthoset = args.orthoset
+    gene_input_path = path.join(folder, orthoset, "outlier", from_folder)
 
     aa_gene_input_path = path.join(gene_input_path, "aa")
     nt_gene_input_path = path.join(gene_input_path, "nt")
 
-    gene_output_path = path.join(folder, "outlier", "clusters")
+    gene_output_path = path.join(folder, orthoset, "outlier", "clusters")
 
     aa_gene_output_path = path.join(gene_output_path, "aa")
     nt_gene_output_path = path.join(gene_output_path, "nt")

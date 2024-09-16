@@ -775,7 +775,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     printv(f"Processing: {taxa}", args.verbose, 0)
     printv("Grabbing necessary directories.", args.verbose)
     # make dirs
-    diamond_path = path.join(input_path, "diamond")
+    diamond_path = path.join(input_path, orthoset, "diamond")
     if args.overwrite and path.exists(diamond_path):
         rmtree(diamond_path)
     makedirs(diamond_path, exist_ok=True)
@@ -935,7 +935,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
             args.verbose,
         )
 
-    db = RocksDB(path.join(input_path, "rocksdb", "hits"))
+    hits_db_path = path.join(input_path, orthoset, "rocksdb", "hits")
+    makedirs(hits_db_path, exist_ok=True)
+    db = RocksDB(hits_db_path)
     output = defaultdict(list)
     multi_kicks = 0
 
@@ -958,7 +960,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     most_common = count_taxa(df, genome_score_filter, is_assembly_or_genome)
     
     top_refs = set()
-    with open(path.join(input_path, "diamond_top_ref.csv"), "w") as fp:
+    with open(path.join(input_path, orthoset, "diamond_top_ref.csv"), "w") as fp:
         fp.write("Global count\n")
         for k, v in most_common:
             fp.write(f"{k},{v}\n")
@@ -1025,7 +1027,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     orthoset_trimmed_path = path.join(orthosets_dir, orthoset, "trimmed")
     orthoset_clean_path = path.join(orthosets_dir, orthoset, "cleaned")
     orthoset_final_path = path.join(orthosets_dir, orthoset, "final")
-    top_path = path.join(input_path, "top")
+    top_path = path.join(input_path, orthoset, "top")
 
     if args.overwrite_top and path.exists(top_path):
         rmtree(top_path)
@@ -1274,7 +1276,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         if args.debug:
             cluster_out.sort(key=lambda x: x[0] )
-            with open(path.join(input_path, "diamond_clusters.csv"), "w") as fp:
+            with open(path.join(input_path, orthoset, "diamond_clusters.csv"), "w") as fp:
                 fp.write("Gene,Seq count,Cluster count,Cluster ranges\n")
                 for line in cluster_out:
                     fp.write(line[1] + "\n")
@@ -1334,7 +1336,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             pool.terminate()
         del head_to_seq
         if global_log:
-            with open(path.join(input_path, "multi.log"), "w") as fp:
+            with open(path.join(input_path, orthoset, "multi.log"), "w") as fp:
                 fp.write("\n".join(global_log))
         printv(
             f"{multi_kicks} multi kicks",
