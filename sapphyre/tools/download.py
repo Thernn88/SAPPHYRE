@@ -14,6 +14,7 @@ from ..utils import printv
 
 def download_parallel_srr(arguments):
     command, srr_acession, path_to_download, verbose = arguments
+    printv(f"Attempting to download: {srr_acession}", verbose)
     printv(f"Download {srr_acession} to {path_to_download}...", verbose)
 
     with Popen(
@@ -31,7 +32,8 @@ def download_parallel_srr(arguments):
 
 
 def download_parallel_wgs(arguments):
-    download_link, path_to_download, verbose = arguments
+    download_link, prefix, path_to_download, verbose = arguments
+    printv(f"Attempting to download: {prefix}", verbose)
 
     file_name = download_link.split("/")[-1]
 
@@ -55,6 +57,7 @@ def main(args):
         os.getcwd(), "input", csvfile.name.removesuffix(this_suffix)
     )
     os.makedirs(path_to_download, exist_ok=True)
+    printv("Grabbing download links before downloading...", verbose)
     if args.wgs:
         if "csv" in csvfile.suffix:
             with open(csvfile, encoding="utf-8") as fp:
@@ -76,8 +79,6 @@ def main(args):
                     container = em.find_parent()
                     for a in container.find_all("a", href=True):
                         if "sra-download.ncbi.nlm.nih.gov" in a["href"]:
-                            print(f"Attempting to download: {a.contents[0]}")
-
                             arguments.append(
                                 (a["href"], path_to_download, args.verbose)
                             )
@@ -103,9 +104,7 @@ def main(args):
                 container = em.find_parent()
                 for a in container.find_all("a", href=True):
                     if "sra-download.ncbi.nlm.nih.gov" in a["href"]:
-                        print(f"Attempting to download: {a.contents[0]}")
-
-                        arguments.append((a["href"], path_to_download, args.verbose))
+                        arguments.append((a["href"], prefix, path_to_download, args.verbose))
     elif this_suffix == ".csv":
         with open(csvfile, encoding="utf-8") as fp:
             csv_read = csv.reader(fp, delimiter=",", quotechar='"')
@@ -117,7 +116,7 @@ def main(args):
 
                 elif fields[0] != "":
                     acession = fields[0]
-                    print(f"Searching for runs in SRA: {acession}")
+                    printv(f"Searching for runs in SRA: {acession}", verbose)
 
                     url = f"https://www.ncbi.nlm.nih.gov/sra/{acession}[accn]"
                     # TODO handle network errors
@@ -128,7 +127,6 @@ def main(args):
                         for a in soup.find_all("a", href=True)
                         if a["href"].startswith("//trace.ncbi.nlm.nih.gov/Traces?run")
                     ):
-                        print(f"Attempting to download: {srr_acession}")
                         out_fields.append(f'"{srr_acession}"')
 
                         # TODO: verify download is successful
@@ -148,7 +146,7 @@ def main(args):
                 out_fields.append('"SRR Accession"')
             elif fields[0] != "":
                 accession = fields[0]
-                print(f"Searching for runs in SRA: {accession}")
+                printv(f"Searching for runs in SRA: {accession}", verbose)
                 url = f"https://www.ncbi.nlm.nih.gov/sra/{accession}[accn]"
 
                 # TODO handle network errors
@@ -160,7 +158,6 @@ def main(args):
                     for a in soup.find_all("a", href=True)
                     if a["href"].startswith("//trace.ncbi.nlm.nih.gov/Traces?run")
                 ):
-                    print(f"Attempting to download: {srr_accession}")
                     out_fields.append(f'"{srr_accession}"')
 
                     # TODO: verify download is successful
