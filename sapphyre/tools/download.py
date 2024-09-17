@@ -57,7 +57,7 @@ def main(args):
         os.getcwd(), "input", csvfile.name.removesuffix(this_suffix)
     )
     os.makedirs(path_to_download, exist_ok=True)
-    printv("Grabbing download links before downloading...", verbose)
+    printv("Grabbing download links before downloading...", args.verbose)
     if args.wgs:
         if "csv" in csvfile.suffix:
             with open(csvfile, encoding="utf-8") as fp:
