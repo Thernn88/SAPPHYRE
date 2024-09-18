@@ -1261,6 +1261,8 @@ def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, gfm, nt_
                         header = line.split(" ")[0]
                     elif "|" in line:
                         header = line.split("|")[2]
+                    else:
+                        header = None
                         
                     if header in headers:
                         multiheaders.add(header)
