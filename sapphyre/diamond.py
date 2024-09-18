@@ -1041,8 +1041,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
         
     ortho_path = orthoset_raw_path
     suffix = ".fa"
-    for ortho_path in [orthoset_final_path, orthoset_clean_path, orthoset_trimmed_path, orthoset_aln_path]:
-        if path.exists(ortho_path):
+    for possible_path in [orthoset_final_path, orthoset_clean_path, orthoset_trimmed_path, orthoset_aln_path]:
+        if path.exists(possible_path):
+            ortho_path = possible_path
             suffix = ".aln.fa"
             break
         
