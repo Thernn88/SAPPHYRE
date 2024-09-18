@@ -528,8 +528,10 @@ def count_taxa(df, genome_score_filter, is_assembly_or_genome):
     if is_assembly_or_genome and genome_score_filter:
         filtered_df = df[df["score"] > genome_score_filter]
     else:
-        top_score = df["score"].max()
-        filtered_df = df[df["score"] >= top_score * 0.75]
+        top_25_percent_count = int(len(df) * 0.25)
+        filtered_df = df.nlargest(top_25_percent_count, 'score')
+        # threshold = df["score"].quantile(0.75)
+        # filtered_df = df[df["score"] >= threshold]
         
     print("Hits after filter:", len(filtered_df))
 
