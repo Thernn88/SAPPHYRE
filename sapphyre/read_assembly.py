@@ -35,6 +35,7 @@ from .utils import gettempdir, parseFasta, printv, writeFasta
 class NODE(Struct):
     header: str
     sequence: str
+    count: int
     nt_sequence: str
     start: int
     end: int
@@ -201,6 +202,7 @@ def check_covered_bad_regions(nodes, consensus, min_ambiguous, max_distance, amb
 
 
 def simple_assembly(nodes, min_overlap = 0.01):
+    nodes.sort(key=lambda x: (x.start, -x.count))
     merged = set()
     for i, node in enumerate(nodes):
         if i in merged:
@@ -428,7 +430,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
     log_output.append(f"Log output for {gene}\n")
 
     nodes = {header:
-        NODE(header, "", sequence, None, None, [], None, False) for header, sequence in raw_nodes
+        NODE(header, "", int(header.split("|")[5]), sequence, None, None, [], None, False) for header, sequence in raw_nodes
     }
     
     
