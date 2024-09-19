@@ -380,7 +380,7 @@ def outlier_args(par):
         "-rcp",
         "--rescue_consensus_percent",
         type=float,
-        default=0.5,
+        default=0.8,
         help="Minimum percent of matching columns of a sequence to the candidate consensus to rescue"
     )
     par.add_argument(
