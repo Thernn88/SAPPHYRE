@@ -25,7 +25,7 @@ def parse_gene(path):
     this_refs = {}
     already_grabbed_references = set()
     taxon_to_target = defaultdict(list)
-    for header, sequence in parseFasta(str(path)):
+    for header, sequence in parseFasta(str(path), True):
         if header.endswith("."):
             fields = header.split("|")
             if fields[2] not in already_grabbed_references:
