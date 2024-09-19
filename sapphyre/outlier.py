@@ -38,7 +38,7 @@ def main(argsobj):
 
         is_genome, is_assembly = get_genome_assembly(folder)
 
-        from_folder = "motif"
+        from_folder = "trimmed"
 
         printv("Blosum62 Outlier Removal.", argsobj.verbose)
         blosum_passed = blosum.main(this_args, is_genome, from_folder)

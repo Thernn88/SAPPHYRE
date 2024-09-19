@@ -39,7 +39,7 @@ def main(args):
         "align": get_args(align_args),
         "pal2nal": get_args(pal2nal_args),
         "flexcull": get_args(flexcull_args),
-        "motif": get_args(motif_args),
+        # "motif": get_args(motif_args),
         "outlier": get_args(outlier_args),
         "merge": get_args(merge_args),
     }
@@ -144,14 +144,14 @@ def main(args):
                 if not flexcull.main(this_args):
                     print("Error in FlexCull.")
                 gc.collect()
-            elif script == "motif":
-                if args.skip_motif:
-                    continue
-                from . import motif
+            # elif script == "motif":
+            #     if args.skip_motif:
+            #         continue
+            #     from . import motif
 
-                if not motif.main(this_args):
-                    print("Error in Motif.")
-                gc.collect()
+            #     if not motif.main(this_args):
+            #         print("Error in Motif.")
+            #     gc.collect()
             elif script == "outlier":
                 from . import outlier
 
