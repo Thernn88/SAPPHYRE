@@ -284,7 +284,7 @@ def get_regions(seqeunces, nodes, threshold, no_dupes, minimum_ambig, return_reg
         rstart, rend = find_index_pair(consensus_seq, "X")
         return consensus_seq[rstart:rend].find("X") != -1
 
-def apply_positions(aa_nodes, x_positions, kicked_headers, log_output, position_subset):
+def apply_positions(aa_nodes, x_positions, kicked_headers, log_output, debug, position_subset):
     for node in aa_nodes:
         positions = position_subset[node.header]
         if positions:
@@ -292,7 +292,8 @@ def apply_positions(aa_nodes, x_positions, kicked_headers, log_output, position_
             node.start, node.end = find_index_pair(node.sequence, "-")
             if len(node.sequence) - node.sequence.count("-") < 15:
                 kicked_headers.add(node.header)
-                log_output.append(f"Kicked >{node.header} due to low length after trimming (<15 AA)\n{node.sequence}\n")
+                if debug:
+                    log_output.append(f"Kicked >{node.header} due to low length after trimming (<15 AA)\n{node.sequence}\n")
                 continue
             x_positions[node.header].update(positions)
 
@@ -304,7 +305,7 @@ def del_cols(sequence, columns, nt=False):
     return join_with_exclusions(sequence, columns)
 
 
-def do_trim(aa_nodes, x_positions, ref_consensus, kicked_headers, no_dupes, excise_trim_consensus, log_output):
+def do_trim(aa_nodes, x_positions, ref_consensus, kicked_headers, no_dupes, excise_trim_consensus, log_output, debug):
     aa_sequences = [x.sequence for x in aa_nodes]
     if no_dupes:
         consensus_seq = dumb_consensus(aa_sequences, excise_trim_consensus, 0)
@@ -361,11 +362,12 @@ def do_trim(aa_nodes, x_positions, ref_consensus, kicked_headers, no_dupes, exci
 
 
     #refresh aa
-    apply_positions(aa_nodes, x_positions, kicked_headers, log_output, first_positions)
+    apply_positions(aa_nodes, x_positions, kicked_headers, log_output, debug, first_positions)
 
     nodes = [node for node in aa_nodes if node.header not in kicked_headers]
     if not nodes:
-        log_output.append("No nodes left after trimming\n")
+        if debug:
+            log_output.append("No nodes left after trimming\n")
         return
 
     if no_dupes:
@@ -398,9 +400,9 @@ def do_trim(aa_nodes, x_positions, ref_consensus, kicked_headers, no_dupes, exci
                 second_positions[node.header].add(x * 3)
     
     #refresh aa
-    apply_positions(aa_nodes, x_positions, kicked_headers, log_output, second_positions)
+    apply_positions(aa_nodes, x_positions, kicked_headers, log_output, debug, second_positions)
 
-def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, excise_consensus, allowed_mismatches, region_overlap, region_min_ambig):
+def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, excise_consensus, allowed_mismatches, region_overlap, region_min_ambig, debug):
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     # within_identity = 0.9
     max_score = 8
@@ -426,8 +428,8 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
         writeFasta(path.join(nt_output, nt_gene), raw_nodes, compress)
         return log_output, False, kicks, unresolved
     # Assembly
-    
-    log_output.append(f"Log output for {gene}\n")
+    if debug:
+        log_output.append(f"Log output for {gene}\n")
 
     nodes = {header:
         NODE(header, "", int(header.split("|")[5]), sequence, None, None, [], None, False) for header, sequence in raw_nodes
@@ -450,7 +452,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
 
     nodes = list(nodes.values())
     
-    do_trim(nodes, cull_positions, flex_consensus, kicked_nodes, no_dupes, excise_consensus, log_output)
+    do_trim(nodes, cull_positions, flex_consensus, kicked_nodes, no_dupes, excise_consensus, log_output, debug)
     
     nodes = [node for node in nodes if node.header not in kicked_nodes]
     if not nodes:
@@ -467,8 +469,9 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
         recursion_limit -= 1
         changes_made = False
         for start, end in regions:
-            log_output.append(f"Found region between {start} - {end}")
-            log_output.append(f"{consensus_seq}\n")
+            if debug:
+                log_output.append(f"Found region between {start} - {end}")
+                log_output.append(f"{consensus_seq}\n")
             nodes_in_region = []
             nodes_out_of_region = []
             for node in nodes:
@@ -493,7 +496,8 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
                 changes_made = True
                 for read in nodes_in_region:
                     kicked_nodes.add(read.header)
-                    log_output.append(f"Kicked >{read.header} due to no contig resolution in gene\n{read.nt_sequence}\n")
+                    if debug:
+                        log_output.append(f"Kicked >{read.header} due to no contig resolution in gene\n{read.nt_sequence}\n")
             else:
                 with_identity = []
                 for node in contigs:
@@ -505,12 +509,14 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
                     
                     length = (node.end - node.start)
                     children = node.get_children()
-                    log_output.append(f"{node.codename} with ({len(children)}: {', '.join(children)})\nhas a score of {score} over {length} AA\n{node.nt_sequence}\n")
+                    if debug:
+                        log_output.append(f"{node.codename} with ({len(children)}: {', '.join(children)})\nhas a score of {score} over {length} AA\n{node.nt_sequence}\n")
                     with_identity.append((node, score, length))
                     
                 
                 best_contig = max(with_identity, key=lambda x: x[1])[0]
-                log_output.append(f"\nBest contig: {best_contig.codename}\n\nComparing against reads")
+                if debug:
+                    log_output.append(f"\nBest contig: {best_contig.codename}\n\nComparing against reads")
                 
                 for i, read in enumerate(nodes_in_region):
                     overlap_coords = get_overlap(best_contig.start * 3, best_contig.end * 3, read.start * 3, read.end * 3, 1)
@@ -521,12 +527,14 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
                     distance = constrained_distance(kmer_node, kmer_best)
 
                     if distance <= allowed_mismatches:
-                        log_output.append(f"Kept >{read.header} due to matching the best contig ({distance} mismatches)\n{read.nt_sequence}\n")
+                        if debug:
+                            log_output.append(f"Kept >{read.header} due to matching the best contig ({distance} mismatches)\n{read.nt_sequence}\n")
                         continue
                     
                     changes_made = True
                     kicked_nodes.add(read.header)
-                    log_output.append(f"Kicked >{read.header} due to distance from best contig ({distance} mismatches)\n{read.nt_sequence}\n")
+                    if debug:
+                        log_output.append(f"Kicked >{read.header} due to distance from best contig ({distance} mismatches)\n{read.nt_sequence}\n")
 
         nodes = [node for node in nodes if node.header not in kicked_nodes]
         if not nodes:
@@ -585,7 +593,7 @@ def main(args, sub_dir):
 
     genes = [fasta for fasta in listdir(aa_input) if ".fa" in fasta]
 
-    arguments = [(gene, aa_input, nt_input, aa_output, nt_output, args.no_dupes, compress, args.excise_consensus, args.excise_allowed_distance, args.excise_region_overlap, args.excise_minimum_ambig) for gene in genes]
+    arguments = [(gene, aa_input, nt_input, aa_output, nt_output, args.no_dupes, compress, args.excise_consensus, args.excise_allowed_distance, args.excise_region_overlap, args.excise_minimum_ambig, args.debug) for gene in genes]
     if args.processes > 1:
         with Pool(args.processes) as pool:
             results = pool.starmap(do_gene, arguments)
@@ -611,10 +619,13 @@ def main(args, sub_dir):
     
     printv(f"{folder}: {ambig_count} ambiguous loci found. Kicked {total_kicks} sequences total. {len(total_unresolved)} unresolved ambiguous", args.verbose)
 
-    with open(output_folder.joinpath("excise.log"), "w") as log_file:
-        log_file.write("\n".join(log_final))
-    with open(output_folder.joinpath("unresolved.log"), "w") as log_file:
-        log_file.write("\n".join(total_unresolved))
+    if args.debug:
+        with open(output_folder.joinpath("excise.log"), "w") as log_file:
+            for line in log_final:
+                log_file.write(line+"\n")
+        with open(output_folder.joinpath("unresolved.log"), "w") as log_file:
+            for line in log_final:
+                log_file.write(line+"\n")
 
     printv(f"Done! Took {timer.differential():.2f} seconds", args.verbose)
 
