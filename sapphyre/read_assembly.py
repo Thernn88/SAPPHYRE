@@ -202,7 +202,7 @@ def check_covered_bad_regions(nodes, consensus, min_ambiguous, max_distance, amb
 
 
 def simple_assembly(nodes, min_overlap = 0.01):
-    nodes.sort(key=lambda x: (x.start, -x.count))
+    nodes.sort(key=lambda x: x.count, reverse=True)
     merged = set()
     for i, node in enumerate(nodes):
         if i in merged:
