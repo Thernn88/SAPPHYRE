@@ -293,7 +293,9 @@ def apply_positions(aa_nodes, x_positions, kicked_headers, log_output, debug, po
             if len(node.sequence) - node.sequence.count("-") < 15:
                 kicked_headers.add(node.header)
                 if debug:
-                    log_output.append(f"Kicked >{node.header} due to low length after trimming (<15 AA)\n{node.sequence}\n")
+                    log_output.append(f"Kicked >{node.header} due to low length after trimming (<15 AA)\n")
+                    if debug > 1:
+                        log_output.append(f"{node.sequence}\n")
                 continue
             x_positions[node.header].update(positions)
 
@@ -497,7 +499,9 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
                 for read in nodes_in_region:
                     kicked_nodes.add(read.header)
                     if debug:
-                        log_output.append(f"Kicked >{read.header} due to no contig resolution in gene\n{read.nt_sequence}\n")
+                        log_output.append(f"Kicked >{read.header} due to no contig resolution in gene\n")
+                        if debug > 1:
+                            log_output.append(f"{read.nt_sequence}\n")
             else:
                 with_identity = []
                 for node in contigs:
@@ -527,14 +531,16 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
                     distance = constrained_distance(kmer_node, kmer_best)
 
                     if distance <= allowed_mismatches:
-                        if debug:
+                        if debug > 1:
                             log_output.append(f"Kept >{read.header} due to matching the best contig ({distance} mismatches)\n{read.nt_sequence}\n")
                         continue
                     
                     changes_made = True
                     kicked_nodes.add(read.header)
                     if debug:
-                        log_output.append(f"Kicked >{read.header} due to distance from best contig ({distance} mismatches)\n{read.nt_sequence}\n")
+                        log_output.append(f"Kicked >{read.header} due to distance from best contig ({distance} mismatches)\n")
+                        if debug > 1:
+                            log_output.append(f"{read.nt_sequence}\n")
 
         nodes = [node for node in nodes if node.header not in kicked_nodes]
         if not nodes:
@@ -624,7 +630,7 @@ def main(args, sub_dir):
             for line in log_final:
                 log_file.write(line+"\n")
         with open(output_folder.joinpath("unresolved.log"), "w") as log_file:
-            for line in log_final:
+            for line in total_unresolved:
                 log_file.write(line+"\n")
 
     printv(f"Done! Took {timer.differential():.2f} seconds", args.verbose)
