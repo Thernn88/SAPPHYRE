@@ -400,6 +400,7 @@ def outlier_args(par):
         "-d",
         "--debug",
         action="count",
+        default=0,
         help="Log outliers to csv files",
     )
     par.add_argument(
