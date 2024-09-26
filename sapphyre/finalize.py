@@ -569,6 +569,16 @@ def process_folder(args, input_path):
         _,
         _,
     ) in to_write:
+        if args.gene_kick:
+            if kick_gene(taxa_local, gene_kick, taxa_global):
+                aa_path, nt_path = path_to
+                aa_glob = aa_path.replace(".gz", "") + "*"
+                nt_glob = nt_path.replace(".gz", "") + "*"
+                for fasta in glob(aa_glob):
+                    os.remove(fasta)
+                for fasta in glob(nt_glob):
+                    os.remove(fasta)
+                continue
         this_lax = 0
         this_strict = 0
         this_inform = 0
@@ -603,16 +613,6 @@ def process_folder(args, input_path):
             )
         )
 
-        if args.gene_kick:
-            if kick_gene(taxa_local, gene_kick, taxa_global):
-                aa_path, nt_path = path_to
-                aa_glob = aa_path.replace(".gz", "") + "*"
-                nt_glob = nt_path.replace(".gz", "") + "*"
-                for fasta in glob(aa_glob):
-                    os.remove(fasta)
-                for fasta in glob(nt_glob):
-                    os.remove(fasta)
-                continue
         if args.count:
             taxon_to_taxa.update(gene_taxon_to_taxa)
             for taxon, count in taxon_count.items():
