@@ -14,6 +14,8 @@ Post-processing:
 import argparse
 from shutil import which
 
+from sapphyre import exonerate
+
 
 class CaseInsensitiveArgumentParser(argparse.ArgumentParser):
     def _parse_known_args(self, arg_strings, *args, **kwargs):
@@ -353,6 +355,8 @@ def reporter(args):
         args.gene_list_file,
         args.keep_output,
     )
+    if not exonerate.main(mainargs):
+        print(args.formathelp())
     if not reporter.main(mainargs):
         print(args.formathelp())
 
