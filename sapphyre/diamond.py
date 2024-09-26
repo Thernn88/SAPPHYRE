@@ -8,12 +8,11 @@ from multiprocessing.pool import Pool
 from os import makedirs, path, stat, system
 from shutil import rmtree
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-from time import time
 from typing import Union
 
 from msgspec import Struct, json
-from numpy import float32, float64, int16, int8, uint16, uint32, where
-from pandas import DataFrame, read_csv, Series
+from numpy import float32, float64, int16, int8, uint32, where
+from pandas import DataFrame, read_csv
 from sapphyre_tools import bio_revcomp, get_overlap
 from wrap_rocks import RocksDB
 from pyfamsa import Aligner, Sequence
@@ -1059,7 +1058,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             top_ref_result = []
             top_ref_result.append(top_reference_realign(*arg))
 
-    top_ref_in_order = {gene: top_chosen for gene, top_chosen in top_ref_result}
+    top_ref_in_order = dict(top_ref_result)
     top_ref = {*chain.from_iterable(top_ref_in_order.values())}
     nt_db.put_bytes("getall:valid_refs", json.encode(top_ref_in_order))
     

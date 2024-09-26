@@ -699,7 +699,6 @@ def do_folder(input_folder, args):
         hits_db
     )
 
-    head_to_seq = {}
     seq_source = None
     temp_source_file = None
     seq_db = RocksDB(path.join(input_folder, "rocksdb", "sequences", "nt"))

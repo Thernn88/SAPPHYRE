@@ -151,11 +151,11 @@ class Sequence_Set:
         """
         return self.aligned_sequences
     
-    def get_taxon_consensus(self) -> set:
+    def get_taxon_present(self) -> set:
         """
         Returns a set of all taxon present
         """
-        return set([seq.taxon for seq in self.sequences])
+        return {seq.taxon for seq in self.sequences}
     
     def get_gene_taxon_count(self) -> Counter:
         """
@@ -1536,7 +1536,7 @@ def main(args):
 
     printv("Got input!", verbosity)
 
-    taxon_set = this_set.get_taxon_consensus()
+    taxon_set = this_set.get_taxon_present()
 
     raw_path = set_path.joinpath("raw")
     raw_path.mkdir(exist_ok=True)

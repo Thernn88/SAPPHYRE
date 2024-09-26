@@ -107,7 +107,7 @@ def scan_sequence(starting_id, left, frame, head_to_seq):
     if left:
         coords = coords[::-1]
         
-    ids_to_coords = {id: coord for id, coord in zip(ids, coords)}
+    ids_to_coords = dict(zip(ids, coords))
         
     if frame < 0:
         this_seq = bio_revcomp(this_seq)
@@ -658,7 +658,7 @@ def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path, com
     aa_candidates.sort(key=lambda x: int(x[0].split("|")[3].split("&&")[0].split("_")[1]))
     
     aa_header_order = [i[0] for i in aa_candidates]
-    nt_sequences = {header: seq for header, seq in raw_nt+new_nt}
+    nt_sequences = dict(raw_nt+new_nt)
     
     nt_seqs = [(header, nt_sequences[header]) for header in aa_header_order]
 

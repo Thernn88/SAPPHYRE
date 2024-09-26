@@ -1,16 +1,12 @@
 from collections import defaultdict
-from functools import cached_property
-from itertools import combinations, product
+from itertools import combinations
 from math import ceil, floor
 from multiprocessing import Pool
-from os import listdir, makedirs, path, stat
+from os import listdir, makedirs, path
 from pathlib import Path
-from shutil import move
 import copy
-import subprocess
-from tempfile import TemporaryDirectory
 import warnings
-from msgspec import Struct, json
+from msgspec import Struct
 from sapphyre_tools import (
     convert_consensus,
     dumb_consensus,
@@ -19,17 +15,13 @@ from sapphyre_tools import (
     get_overlap,
     is_same_kmer,
     constrained_distance,
-    bio_revcomp,
     join_with_exclusions,
     join_triplets_with_exclusions,
 )
 from Bio import BiopythonWarning
-from Bio.Seq import Seq
-from .directional_cluster import cluster_ids, within_distance, node_to_ids, quick_rec
-from wrap_rocks import RocksDB
 
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import gettempdir, parseFasta, printv, writeFasta
+from .utils import parseFasta, printv, writeFasta
 
 
 class NODE(Struct):

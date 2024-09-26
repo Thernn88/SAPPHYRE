@@ -209,7 +209,7 @@ class Hit(HmmHit):#, frozen=True):
     def get_merge_header(self):
         return "&&".join(map(str, [self.node] + self.children))
 
-def get_diamondhits(
+def get_hmmresults(
     rocks_hits_db: RocksDB,
     list_of_wanted_genes: list,
     is_genome,
@@ -226,7 +226,7 @@ def get_diamondhits(
     present_genes = rocks_hits_db.get("getall:presentgenes")
     if not present_genes:
         printv("ERROR: No genes found in hits database", 0)
-        printv("Please make sure Diamond completed successfully", 0)
+        printv("Please make sure Hmmsearch completed successfully", 0)
         return None
     genes_to_process = list_of_wanted_genes or present_genes.split(",")
     
@@ -806,13 +806,13 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     makedirs(nt_out_path, exist_ok=True)
 
     printv(
-        f"Initialized databases. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing reciprocal diamond hits.",
+        f"Initialized databases. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Grabbing reciprocal Hmmer hits.",
         args.verbose,
     )
     
     top_refs, is_assembly, is_genome = get_toprefs(rocky.get_rock("rocks_nt_db"))
 
-    transcripts_mapped_to = get_diamondhits(
+    transcripts_mapped_to = get_hmmresults(
         rocky.get_rock("rocks_hits_db"),
         list_of_wanted_genes,
         is_genome,

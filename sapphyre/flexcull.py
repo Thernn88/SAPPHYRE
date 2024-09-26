@@ -1327,18 +1327,18 @@ def do_gene(fargs: FlexcullArgs) -> None:
         # Recalcuate position based tables
         post_references = [i for i in aa_out if i[0].endswith(".")]
 
-        (
-            _,
-            _,#post_character_at_each_pos,
-            post_gap_present_threshold,
-            _,#post_all_dashes_by_index,
-            _,
-        ) = process_refs(
-            post_references,
-            fargs.gap_threshold,
-            fargs.column_cull_percent,
-            fargs.filtered_mat,
-        )
+        # (
+        #     _,
+        #     _,#post_character_at_each_pos,
+        #     post_gap_present_threshold,
+        #     _,#post_all_dashes_by_index,
+        #     _,
+        # ) = process_refs(
+        #     post_references,
+        #     fargs.gap_threshold,
+        #     fargs.column_cull_percent,
+        #     fargs.filtered_mat,
+        # )
 
         # reference_gap_col = {i for i, x in post_gap_present_threshold.items() if not x}
 

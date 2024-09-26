@@ -10,7 +10,7 @@ from os import mkdir, path, listdir
 from shutil import rmtree
 from typing import Any
 
-from msgspec import Struct, json
+from msgspec import Struct
 from sapphyre_tools import find_index_pair, get_overlap
 from .directional_cluster import cluster_ids, within_distance, node_to_ids, quick_rec
 from wrap_rocks import RocksDB
