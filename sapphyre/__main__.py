@@ -1264,11 +1264,18 @@ def subcmd_archive(sp):
         action="store_true",
         help="Unarchive directories.",
     )
+    par.add_argument(
+        "-ko",
+        "--keep_original",
+        default=False,
+        action="store_true",
+        help="Keep the original file archived.",
+    )
     par.set_defaults(func=archive, formathelp=par.format_help)
 
 
 def archive(argsobj):
-    from . import archive
+    from .tools import archive
 
     if not archive.main(argsobj):
         print()
@@ -1698,6 +1705,7 @@ def subcmd_toolset(subparser):
     subcmd_taxonomy_filler(sub_sub_parser)
     subcmd_download(sub_sub_parser)
     subcmd_isoform(sub_sub_parser)
+    subcmd_archive(sub_sub_parser)
 
 def main():
     # Check mafft exists
@@ -1798,7 +1806,6 @@ def main():
     subcmd_internal(subparsers)
     subcmd_Merge(subparsers)
     subcmd_Combine(subparsers)
-    subcmd_archive(subparsers)
     subcmd_miniprot(subparsers)
 
     # Finalize
