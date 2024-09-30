@@ -39,7 +39,7 @@ def truncate_taxa(taxa: str, extension=None) -> str:
     """
 
     result = taxa.replace("_001", "")
-    m = re.search(r"(_\d{1,2}.fa)|(_R\d{1,2}.fa)|(_part\d{1,2}.fa)", result + extension)
+    m = re.search(r"(_\d{1,2}.fa)|(_R\d{1,2}.fa)|(_I\d{1,2}.fa)|(_part\d{1,2}.fa)", result + extension)
 
     if m:
         tail_length = m.end() - m.start() - len(extension)
