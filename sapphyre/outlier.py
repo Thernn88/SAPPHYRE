@@ -1,6 +1,7 @@
 import argparse
 import os
 from shutil import rmtree
+from sapphyre import excise
 from wrap_rocks import RocksDB
 from . import blosum, genome_splice, hmmfilter, internal, cluster_consensus, read_assembly
 from .timekeeper import KeeperMode, TimeKeeper
@@ -78,7 +79,7 @@ def main(argsobj):
         
         if is_genome or is_assembly:
             printv("Detecting and Splicing Ambiguous Regions in Clusters.", argsobj.verbose)
-            excise_passed = genome_splice.main(this_args, from_folder)
+            excise_passed = excise.main(this_args, from_folder)
             if not excise_passed:
                 print()
                 print(argsobj.formathelp())
