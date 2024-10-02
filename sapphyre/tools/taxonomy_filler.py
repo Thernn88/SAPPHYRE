@@ -64,7 +64,7 @@ def main(args):
                     target_col = order.index(column_name)
             else:
                 rows.append(row)
-                organism_name = row[target_col].value
+                organism_name = row[target_col].value.replace(" sp.","").replace(" spp.","")
                 to_scrape.append(organism_name)
 
     to_scrape = list(set(to_scrape))
