@@ -61,46 +61,34 @@ def main(argsobj):
                 return
             from_folder = "hmmfilter"    
 
-        if not is_genome:
+        elif is_genome:
+            if not argsobj.gene_finding_mode:
+                printv("Filtering Clusters.", argsobj.verbose)
+                if not cluster_consensus.main(this_args, from_folder):
+                    print()
+                    print(argsobj.formathelp())
+                    return
+                from_folder = "clusters"
+                
+            printv("Detecting and Splicing Ambiguous Regions in Clusters.", argsobj.verbose)
+            excise_passed = genome_splice.main(this_args, from_folder)
+            if not excise_passed:
+                print()
+                print(argsobj.formathelp())
+            from_folder = "excise"
+        else:   
             printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
             excise_passed = read_assembly.main(this_args, from_folder)
             if not excise_passed:
                 print()
                 print(argsobj.formathelp())
             from_folder = "excise"
-
-        if not argsobj.gene_finding_mode and is_genome:
-            printv("Filtering Clusters.", argsobj.verbose)
-            if not cluster_consensus.main(this_args, from_folder):
-                print()
-                print(argsobj.formathelp())
-                return
-            from_folder = "clusters"
         
-        if is_genome or is_assembly:
-            printv("Detecting and Splicing Ambiguous Regions in Clusters.", argsobj.verbose)
-            excise_passed = excise.main(this_args, from_folder)
-            if not excise_passed:
-                print()
-                print(argsobj.formathelp())
-            from_folder = "excise"
-
-        if debug > 1 or this_args.add_hmmfilter_dupes:
-            continue
-        if not (is_assembly or is_genome):
             printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
             if not internal.main(this_args, from_folder):
                 print()
                 print(argsobj.format)
             from_folder = "internal"
-            
-        # if is_genome:
-        #     printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
-        #     excise_passed = excise.main(this_args, from_folder, is_genome, is_assembly or is_genome)
-        #     if not excise_passed:
-        #         print()
-        #         print(argsobj.formathelp())
-        #     from_folder = "excise"
 
     printv(f"Took {timer.differential():.2f} seconds overall.", argsobj.verbose)
 
