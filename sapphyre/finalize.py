@@ -301,7 +301,7 @@ def clean_gene(gene_config: GeneConfig):
                 )
             column_stats[col] = (
                 len(chars),
-                len(chars) - chars.count("-"),
+                len(chars) - chars.count("-") - chars.count("X")- chars.count("?"),
                 most_common_inclusive,
                 most_common_AA_count,
             )
