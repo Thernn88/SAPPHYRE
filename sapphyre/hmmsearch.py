@@ -1,12 +1,11 @@
 import math
-from types import MappingProxyType
 import warnings
 import subprocess
 from collections import defaultdict
 from shutil import rmtree
 from tempfile import NamedTemporaryFile
 from os import path, system, stat
-from multiprocessing.pool import ThreadPool, Pool
+from multiprocessing import Pool
 from wrap_rocks import RocksDB
 from msgspec import Struct, json
 from sapphyre_tools import bio_revcomp, get_overlap
@@ -16,13 +15,6 @@ from .utils import parseFasta, printv, gettempdir, writeFasta
 from .diamond import ReferenceHit, ReporterHit as Hit
 from .timekeeper import TimeKeeper, KeeperMode
 
-class Multi(Struct):
-    uid: str
-    node: int
-    gene: str
-    qstart: int
-    qend: int
-    score: float
 
 class HmmHit(Struct):
     node: int
@@ -130,6 +122,50 @@ def get_overlap_amount(a_start: int, a_end: int, b_start: int, b_end: int) -> in
         return 0
 
     return overlap_coords[1] - overlap_coords[0]
+
+
+def internal_filter_gene(this_gene_hits, debug, min_overlap_internal=0.9, score_diff_internal=1.5):
+    this_gene_hits.sort(key=lambda hit: hit[0].score, reverse=True)
+    filtered_sequences_log = []
+
+    internal_log_template = "{},{},{},{},{},{},Internal Overlapped with Highest Score,{},{},{},{},{},{}"
+
+    for i, (hit_a, start_a, end_a) in enumerate(this_gene_hits):
+        if not hit_a:
+            continue
+        for j in range(len(this_gene_hits) - 1, i, -1):
+            hit_b, start_b, end_b = this_gene_hits[j]
+            if hit_b:
+                if hit_a.node != hit_b.node:
+                    if ((hit_a.score / hit_b.score) if hit_b.score != 0 else 0) < score_diff_internal:
+                        break
+
+                    amount_of_overlap = get_overlap_amount(start_a, end_a, start_b, end_b)
+                    distance = (end_b - start_b) + 1  # Inclusive
+                    percentage_of_overlap = amount_of_overlap / distance
+
+                    if percentage_of_overlap >= min_overlap_internal:
+                        this_gene_hits[j] = None, None, None
+                        if debug:
+                            filtered_sequences_log.append(
+                                internal_log_template.format(
+                                    hit_b.gene,
+                                    hit_b.node,
+                                    hit_b.frame,
+                                    hit_b.score,
+                                    start_b,
+                                    end_b,
+                                    hit_a.gene,
+                                    hit_a.node,
+                                    hit_a.frame,
+                                    hit_a.score,
+                                    start_a,
+                                    end_a,
+                                )
+                            )
+
+
+    return [i[0] for i in this_gene_hits if i[0] is not None], filtered_sequences_log
 
 
 def merge_clusters(clusters):
@@ -308,7 +344,7 @@ def add_new_result(new_uid_template, map_mode, gene, query, results, is_full, cl
                 where_from = "Cluster Full"
                 cquery = cluster_queries[cluster_range]
 
-                new_hit = HmmHit(node=id, score=score, frame=int(frame), evalue=0, qstart=new_qstart, qend=new_qstart + len(sequence), gene=gene, query=cquery, uid=f"{id}{frame}{gene}{new_qstart}", refs=[], seq=sequence)
+                new_hit = HmmHit(node=id, score=score, frame=int(frame), evalue=0, qstart=new_qstart, qend=new_qstart + len(sequence), gene=gene, query=cquery, uid=None, refs=[], seq=sequence)
                 if debug:
                     hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, where_from))
                 output.append(new_hit)
@@ -356,10 +392,12 @@ def add_new_result(new_uid_template, map_mode, gene, query, results, is_full, cl
             output.append(new_hit)
 
 
-def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_ref_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance, edge_margin):
+def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_ref_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance, edge_margin):
     batch_result = []
-    encoder = json.Encoder()
     warnings.filterwarnings("ignore", category=BiopythonWarning)
+    this_seqs = {}
+    if is_full:
+        this_seqs = load_Sequences(source_seqs)
     decoder = json.Decoder(type=list[Hit])
     
     new_uid_template = "{}_{}{}"
@@ -550,13 +588,10 @@ def hmm_search(batches, this_seqs, is_full, is_genome, hmm_output_folder, aln_re
                 if debug:
                     diamond_kicks.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, f"Kicked. Evalue: {hit.evalue}"))
                 
-        headers = set(hit.node for hit in output)
-        multi_tuples = [Multi(hit.uid, hit.node, hit.gene, hit.qstart, hit.qend, hit.score) for hit in output]
-        output = encoder.encode(output)
-        batch_result.append((gene, output, headers, multi_tuples, new_outs, hmm_log, diamond_kicks))
+        batch_result.append((gene, output, new_outs, hmm_log, diamond_kicks))
     return batch_result
 
-def get_head_to_seq(nt_db, head_to_seq):
+def get_head_to_seq(nt_db, recipe):
     """Get a dictionary of headers to sequences.
 
     Args:
@@ -567,9 +602,8 @@ def get_head_to_seq(nt_db, head_to_seq):
     -------
         dict[str, str]: A dictionary of headers to sequences.
     """
-    
-    recipe = nt_db.get("getall:batches").split(",")
 
+    head_to_seq = {}
     for i in recipe:
         lines = nt_db.get_bytes(f"ntbatch:{i}")
         
@@ -597,23 +631,15 @@ def get_head_to_seq(nt_db, head_to_seq):
     return head_to_seq
 
 
-def apply_kicks(gene, hits, kicked_uids):
-    hits = json.decode(hits, type=list[HmmHit])
-    return gene, json.encode([hit for hit in hits if hit.uid not in kicked_uids])
-
-
-def miniscule_multi_filter(genes_hits, target_header, debug):
-    hits = []
-    for this_hits in genes_hits:
-        hits.extend(hit for hit in this_hits if hit.node == target_header)
+def miniscule_multi_filter(hits, debug):
+    hits.sort(key=lambda hit: hit.score, reverse=True)
     
-    hits.sort(key=lambda x: x.score, reverse=True)
     MULTI_PERCENTAGE_OF_OVERLAP = 0.3
     MULTI_SCORE_DIFFERENCE = 1.1
 
     edge_log = []
     log = []
-    kicked_uids = set()
+    kicked_indices = set()
 
     # Assign the highest scoring hit as the 'master'
     master = hits[0]
@@ -624,9 +650,9 @@ def miniscule_multi_filter(genes_hits, target_header, debug):
     internal_template = "{},{},{},{},{},Kicked due to miniscule score,{},{},{},{},{}"
     internal_template_kick = "{},{},{},{},{},Kicked due to not being in highest scoring gene: {},{},{},{},{},{}"
 
-    for candidate in candidates:
+    for i, candidate in enumerate(candidates, 1):
         # Skip if the candidate has been kicked already or if master and candidate are internal hits:
-        if candidate.uid in kicked_uids or master.gene == candidate.gene:
+        if i in kicked_indices or master.gene == candidate.gene:
             continue
 
         # Get the distance between the master and candidate
@@ -651,16 +677,18 @@ def miniscule_multi_filter(genes_hits, target_header, debug):
                     # we can't determine a viable hit on a single gene and must kick all.
                     if debug:
                         log = [internal_template.format(hit.gene, hit.node, hit.score, hit.qstart, hit.qend, master.gene, master.node, master.score, master.qstart, master.qend) for hit in hits if hit]
-                    return [node.uid for node in hits], len(hits), log, edge_log
+
+                    return [], len(hits), log, edge_log
             else:
-                edge_log.append(f"{candidate.gene},{candidate.node},{master.gene}")
+                edge_log.append(f"{candidate.gene},{candidate.node},{candidate.frame},{candidate.evalue},{master.gene}")
 
         # If the score difference is great enough
         # kick the candidate and log the kick.
         if debug:
             log.append(internal_template_kick.format(candidate.gene, candidate.node, candidate.score, candidate.qstart, candidate.qend, master.gene, master.gene, master.node, master.score, master.qstart, master.qend))
-        kicked_uids.add(candidate.uid)
-    return kicked_uids, len(kicked_uids), log, edge_log
+        kicked_indices.add(i)
+
+    return [hit for i, hit in enumerate(hits) if i not in kicked_indices], len(list(kicked_indices)), log, edge_log
 
 
 def do_folder(input_folder, args):
@@ -680,10 +708,16 @@ def do_folder(input_folder, args):
     is_assembly = is_assembly == "True"
     is_full = is_genome or is_assembly or args.full
     if is_full:
-        # manager = Manager()
-        seq_source = {}
-        get_head_to_seq(seq_db, seq_source)
-        seq_source = MappingProxyType(seq_source)
+        temp_source_file = None
+        if args.processes > 1:
+            recipe = seq_db.get("getall:batches").split(",")
+            temp_source_file = NamedTemporaryFile(dir=gettempdir(), prefix="seqs_", suffix=".fa")
+            for i in recipe:
+                temp_source_file.write(seq_db.get_bytes(f"ntbatch:{i}"))
+            temp_source_file.flush()
+            seq_source = temp_source_file.name
+        else:
+            seq_source = get_head_to_seq(seq_db, seq_db.get("getall:batches").split(","))
     del seq_db
 
     hmm_output_folder = path.join(input_folder, "hmmsearch")
@@ -714,85 +748,70 @@ def do_folder(input_folder, args):
         for this_arg in batches:
             all_hits.append(hmm_search(*this_arg))
     else:
-        with ThreadPool(args.processes) as p:
+        with Pool(args.processes) as p:
             all_hits = p.starmap(hmm_search, batches)
+
+    printv("Running miniscule score filter", args.verbose, 1)
 
     log = ["Gene,Node,Frame"]
     klog = ["Gene,Node,Frame"]
     kick_log = ["Gene,Node,Frame"]
     multi_causing_log = ["Gene,Node,Frame,Evalue,Master Gene"]
-    header_based_results = defaultdict(set)
-    gene_based_results = {}
-    gene_based_multi_data = {}
+    header_based_results = defaultdict(list)
     printv("Processing results", args.verbose, 1)
     for batch in all_hits:
         for _ in range(len(batch)):
-            gene, hits, headers, multi_data, logs, klogs, dkicks = batch.pop(0)
+            gene, hits, logs, klogs, dkicks = batch.pop(0)
             if not gene:
                 continue
 
-            gene_based_results[gene] = hits
-            for header in headers:
-                header_based_results[header].add(gene)
+            for _ in range(len(hits)):
+                hit = hits.pop(0)
+                header_based_results[hit.node].append(hit)
             
-            gene_based_multi_data[gene] = multi_data
             log.extend(logs)
             klog.extend(klogs)
             kick_log.extend(dkicks)
 
-    printv("Running miniscule score filter", args.verbose, 1)
     mlog = ["Gene,Node,Score,Start,End,Reason,Master Gene,Header,Score,Start,End"]
     mkicks = 0
 
     multi_filter_args = []
-    genes_with_multi = set()
-    for header, genes in header_based_results.items():
-        if len(genes) <= 1:
-            continue
-        
-        genes_with_multi.update(genes)
-        
-        multi_filter_args.append(([gene_based_multi_data[gene] for gene in genes], header, args.debug))
-    del gene_based_multi_data, header_based_results
-    
-    genes_without_multi = set(gene_based_results.keys()) - genes_with_multi
-    for gene in genes_without_multi:
-        data = gene_based_results.pop(gene)
-        hits_db.put_bytes(f"gethmmhits:{gene}", data)
-    
+
+    gene_based_results = {gene: [] for gene in diamond_genes}
+    for hits in header_based_results.values():
+        genes_present = {hit.gene for hit in hits}
+        if len(genes_present) > 1:
+            multi_filter_args.append((hits, args.debug))
+        else:
+            for hit in hits:
+                gene_based_results[hit.gene].append(hit)
+    del header_based_results
     if args.processes <= 1:
         result = []
-        for hits, header, debug in multi_filter_args:
-            result.append(miniscule_multi_filter(hits, header, debug))
+        for hits, debug in multi_filter_args:
+            result.append(miniscule_multi_filter(hits, debug))
     else:
         with Pool(args.processes) as p:
             result = p.starmap(miniscule_multi_filter, multi_filter_args)
-    del multi_filter_args
-    uids_to_kick = set()
-    for kicked_uids, kicked_count, this_log, edge_log in result:
+    
+    for hits, kicked_count, this_log, edge_log in result:
         mlog.extend(this_log)
         multi_causing_log.extend(edge_log)
         if kicked_count:
             mkicks += kicked_count
 
-        uids_to_kick.update(kicked_uids)
-    del result
+        for hit in hits:
+            gene_based_results[hit.gene].append(hit)
         
-    
-    printv("Applying Kicks", args.verbose, 1)
-    if args.processes <= 1:
-        for gene in genes_with_multi:
-            hits_db.put_bytes(f"gethmmhits:{gene}", apply_kicks(gene, gene_based_results[gene], uids_to_kick))
-    else:
-        arguments = [(gene, gene_based_results[gene], uids_to_kick) for gene in genes_with_multi]
-        with Pool(args.processes) as p:
-            new_results = p.starmap(apply_kicks, arguments)
-            for gene, hits in new_results:
-                hits_db.put_bytes(f"gethmmhits:{gene}", hits)
-            del new_results
-    del gene_based_results, temp_source_file, hits_db
     printv(f"Kicked {mkicks} hits due to miniscule score", args.verbose, 1)
     printv("Writing results to db", args.verbose, 1)
+    encoder = json.Encoder()
+    for gene, hits in gene_based_results.items():
+        hits_db.put_bytes(f"gethmmhits:{gene}", encoder.encode(hits))
+
+    del temp_source_file
+    del hits_db
     if klog:
         with open(path.join(input_folder, "hmmsearch_log.log"), "w") as f:
             f.write("\n".join(klog))
