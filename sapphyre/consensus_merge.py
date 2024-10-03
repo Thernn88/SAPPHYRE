@@ -447,7 +447,7 @@ class do_gene():
 
 def do_folder(input_folder, args):
     print("Processing:", input_folder)
-    for p_folder in ["excise", "clusters", "blosum"]:
+    for p_folder in ["internal", "excise", "clusters", "hmmfilter", "blosum"]:
         p_path = path.join(input_folder, "outlier", p_folder)
         if not path.exists(p_path):
             p_path = None
