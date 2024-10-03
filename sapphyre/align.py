@@ -249,6 +249,8 @@ def generate_tmp_aln(
     debug: float,
     this_intermediates: str,
     align_method: str,
+    second_run: bool,
+    gene,
 ) -> None:
     """Grabs target reference sequences. If the current align method is equal to base, then delete empty columns.
     For all other methods, return the sequences without gaps and realign them.
@@ -263,6 +265,7 @@ def generate_tmp_aln(
     Returns:
         None
     """
+    culled_references = []
     with NamedTemporaryFile(
         dir=parent_tmpdir, mode="w+", prefix="References_"
     ) as tmp_prealign:
@@ -324,22 +327,34 @@ def generate_tmp_aln(
                     f"mafft --localpair --quiet --thread 1 --anysymbol '{tmp_prealign.name}' > '{dest.name}'"
                 )
 
-            recs = list(parseFasta(dest.name, True))
-        
-            del_columns = set()
-            for i in range(len(recs[0][1])):
-                if all(j[1][i] == "-" or j[1][i] == "X" for j in recs):
-                    del_columns.add(i)
+            references = list(parseFasta(dest.name, True))
+            if second_run:
+                del_columns = set()
+                for i in range(len(references[0][1])):
+                    if all(j[1][i].replace("X","-") == "-" for j in references):
+                        del_columns.add(i)
 
-            out = [(header, "".join([let for i, let in enumerate(seq) if i not in del_columns])) for header, seq in recs]
+                references = [(header, "".join([let for i, let in enumerate(seq) if i not in del_columns])) for header, seq in references]
+            else:
+                references, filtered_refs, ref_total_median, ref_allowable, ref_iqr = cull_reference_outliers(references, debug)
+                references, _ = delete_empty_columns(references)
+                references = [(references[i], references[i + 1]) for i in range(0, len(references), 2)]
+                
+                if filtered_refs:
+                    culled_references.append(f'{gene} total median: {ref_total_median}\n')
+                    culled_references.append(f'{gene} threshold: {ref_allowable}\n')
+                    culled_references.append(f'{gene} standard deviation: {ref_iqr}\n')
+                    for ref_kick, ref_median, kick in filtered_refs:
+                        culled_references.append(f'{ref_kick[0]},{ref_median},{kick}\n')
 
-            writeFasta(dest.name, out)
+            writeFasta(dest.name, references)
     dest.flush()
     if debug:
         writeFasta(
             path.join(this_intermediates, "references.fa"), parseFasta(dest.name, True)
         )
 
+    return culled_references
 
 CmdArgs = namedtuple(
     "CmdArgs",
@@ -928,40 +943,35 @@ def run_command(args: CmdArgs) -> None:
                 )  # Debug
 
                 # Grab target reference sequences
-
                 top_aln_path = path.join(args.top_folder, args.gene + ".aln.fa")
-                realign_rec = args.second_run # Realign if required
-                if not path.exists(top_aln_path):
-                    realign_rec = True # Force realignment if the top alignment doesn't exist
-                    top_aln_path = path.join(args.aln_path, args.gene + ".aln.fa")
-                # cull reference outliers
-                references = list(parseFasta(top_aln_path, has_interleave=True))
-                references, filtered_refs, ref_total_median, ref_allowable, ref_iqr = cull_reference_outliers(references, args.debug)
-                references, _ = delete_empty_columns(references)
-                references = [(references[i], references[i + 1]) for i in range(0, len(references), 2)]
-                
-                culled_references = []
-                if filtered_refs:
-                    culled_references.append(f'{args.gene} total median: {ref_total_median}\n')
-                    culled_references.append(f'{args.gene} threshold: {ref_allowable}\n')
-                    culled_references.append(f'{args.gene} standard deviation: {ref_iqr}\n')
-                    for ref_kick, ref_median, kick in filtered_refs:
-                        culled_references.append(f'{ref_kick[0]},{ref_median},{kick}\n')
-                tmp_aln = NamedTemporaryFile(dir=parent_tmpdir, mode="w+", prefix="References_")
+                realign_rec = args.second_run or not path.exists(top_aln_path)
 
+                tmp_aln = NamedTemporaryFile(dir=parent_tmpdir, mode="w+", prefix="References_")
                 if realign_rec:
-                    print(aln_file)
-                    generate_tmp_aln(
+                    culled_references = generate_tmp_aln(
                         aln_file,
-                        # references,
                         targets,
                         tmp_aln,
                         parent_tmpdir,
                         debug,
                         this_intermediates,
                         args.align_method,
+                        args.second_run,
+                        args.gene,
                     )
                 else:
+                    references = list(parseFasta(top_aln_path, has_interleave=True))
+                    references, filtered_refs, ref_total_median, ref_allowable, ref_iqr = cull_reference_outliers(references, args.debug)
+                    references, _ = delete_empty_columns(references)
+                    references = [(references[i], references[i + 1]) for i in range(0, len(references), 2)]
+                    
+                    culled_references = []
+                    if filtered_refs:
+                        culled_references.append(f'{args.gene} total median: {ref_total_median}\n')
+                        culled_references.append(f'{args.gene} threshold: {ref_allowable}\n')
+                        culled_references.append(f'{args.gene} standard deviation: {ref_iqr}\n')
+                        for ref_kick, ref_median, kick in filtered_refs:
+                            culled_references.append(f'{ref_kick[0]},{ref_median},{kick}\n')
                     writeFasta(tmp_aln.name, references)
                     tmp_aln.flush()
                     
