@@ -193,7 +193,7 @@ def check_covered_bad_regions(nodes, consensus, min_ambiguous, max_distance, amb
     return [(None, None)], consensus
 
 
-def simple_assembly(nodes, min_overlap = 0.01):
+def simple_assembly(nodes, min_overlap = 0.1):
     nodes.sort(key=lambda x: x.count, reverse=True)
     merged = set()
     for i, node in enumerate(nodes):
@@ -447,7 +447,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
 
     nodes = list(nodes.values())
     
-    do_trim(nodes, cull_positions, flex_consensus, kicked_nodes, no_dupes, excise_consensus, log_output, debug)
+    # do_trim(nodes, cull_positions, flex_consensus, kicked_nodes, no_dupes, excise_consensus, log_output, debug)
     
     nodes = [node for node in nodes if node.header not in kicked_nodes]
     if not nodes:
@@ -533,6 +533,11 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
                     overlap_coords = get_overlap(best_contig.start * 3, best_contig.end * 3, read.start * 3, read.end * 3, 1)
                     if overlap_coords is None:
                         continue
+                    
+                    overlap_percent = (overlap_coords[1] - overlap_coords[0]) / min(best_contig.end - best_contig.start, read.end - read.start)
+                    if overlap_percent < 0.01:
+                        continue
+                    
                     kmer_node = read.nt_sequence[overlap_coords[0]:overlap_coords[1]]
                     kmer_best = best_contig.nt_sequence[overlap_coords[0]:overlap_coords[1]]
                     distance = constrained_distance(kmer_node, kmer_best)
