@@ -278,7 +278,7 @@ def clean_gene(gene_config: GeneConfig):
             )
 
         col_dict = defaultdict(list)
-        for header, sequence in aa_content:
+        for header, sequence in nt_content:
             if not header.endswith("."):
                 candidate_count += 1
 
@@ -295,9 +295,9 @@ def clean_gene(gene_config: GeneConfig):
                     most_common_AA_count = this_most_common[0][1]
             else:
                 most_common_AA_count = (
-                    this_most_common[0][1]
+                    this_most_common[1][1]
                     if this_most_common[0][0] == "-"
-                    else this_most_common[1][1]
+                    else this_most_common[0][1]
                 )
             column_stats[col] = (
                 len(chars),
