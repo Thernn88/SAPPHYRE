@@ -211,7 +211,7 @@ def simple_assembly(nodes, min_overlap = 0.01):
                 overlap_coords=  get_overlap(node.start*3, node.end*3, node_b.start*3, node_b.end*3, 1)
                 if overlap_coords:
                     overlap_amount = overlap_coords[1] - overlap_coords[0]
-                    overlap_percent = overlap_amount / (node.end - node.start)
+                    overlap_percent = overlap_amount / ((node.end - node.start) * 3)
                     if overlap_percent < min_overlap:
                         continue
 
