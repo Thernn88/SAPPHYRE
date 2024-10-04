@@ -202,7 +202,7 @@ def simple_assembly(nodes, min_overlap = 0.01):
         merge_occured = True
         while merge_occured:
             merge_occured = False
-            for j, node_b in enumerate(nodes):
+            for j, node_b in enumerate(nodes): # When merge occurs start again at the beginning with highest count
                 if j in merged:
                     continue
                 if i == j:
@@ -223,11 +223,12 @@ def simple_assembly(nodes, min_overlap = 0.01):
 
                     merged.add(j)
 
-                    overlap_coord = overlap_coords[0]
+                    overlap_coord = overlap_coords[0]   
                     merge_occured = True
                     node.extend(node_b, overlap_coord)
 
                     nodes[j] = None
+                    break
     
     nodes = [node for node in nodes if node is not None]
 
@@ -463,6 +464,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
         recursion_limit -= 1
         changes_made = False
         for start, end in regions:
+            nodes = [node for node in nodes if node.header not in kicked_nodes]
             if debug:
                 log_output.append(f"Found region between {start} - {end}")
                 log_output.append(f"{consensus_seq}\n")
@@ -507,13 +509,26 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
                     children = node.get_children()
                     if debug:
                         log_output.append(f"{node.codename} with ({len(children)}: {', '.join(children)})\nhas a score of {score} over {length} AA\n{node.nt_sequence}\n")
+
+                    consists_of = []
+                    if debug > 1:
+                        for header in node.children:
+                            for node in nodes:
+                                if node.header == header:
+                                    consists_of.append(node)
+                                    break
+                    
+                    consists_of.sort(key=lambda x: x.start)
+                    for node in consists_of:
+                        log_output.append(f">{node.header}\n{node.nt_sequence}")
+
                     with_identity.append((node, score, length))
                     
                 
                 best_contig = max(with_identity, key=lambda x: x[1])[0]
                 if debug:
                     log_output.append(f"\nBest contig: {best_contig.codename}\n\nComparing against reads")
-                
+
                 for i, read in enumerate(nodes_in_region):
                     overlap_coords = get_overlap(best_contig.start * 3, best_contig.end * 3, read.start * 3, read.end * 3, 1)
                     if overlap_coords is None:
