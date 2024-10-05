@@ -193,7 +193,7 @@ def check_covered_bad_regions(nodes, consensus, min_ambiguous, max_distance, amb
     return [(None, None)], consensus
 
 
-def simple_assembly(nodes, min_overlap = 0.1):
+def simple_assembly(nodes, min_overlap_percent=0.15, min_overlap_chars=10):
     nodes.sort(key=lambda x: x.count, reverse=True)
     merged = set()
     for i, node in enumerate(nodes):
@@ -202,17 +202,22 @@ def simple_assembly(nodes, min_overlap = 0.1):
         merge_occured = True
         while merge_occured:
             merge_occured = False
-            for j, node_b in enumerate(nodes): # When merge occurs start again at the beginning with highest count
+            for j, node_b in enumerate(nodes):  # When merge occurs start again at the beginning with highest count
                 if j in merged:
                     continue
                 if i == j:
                     continue
 
-                overlap_coords=  get_overlap(node.start*3, node.end*3, node_b.start*3, node_b.end*3, 1)
+                overlap_coords = get_overlap(node.start * 3, node.end * 3, node_b.start * 3, node_b.end * 3, 1)
                 if overlap_coords:
                     overlap_amount = overlap_coords[1] - overlap_coords[0]
+                    
+                    # Calculate percent overlap and compare to minimum overlap
                     overlap_percent = overlap_amount / ((node.end - node.start) * 3)
-                    if overlap_percent < min_overlap:
+                    required_overlap = max(min_overlap_chars, (node.end - node.start) * 3 * min_overlap_percent)
+
+                    # Use whichever is greater: percentage overlap or 10 characters
+                    if overlap_amount < required_overlap:
                         continue
 
                     kmer_a = node.nt_sequence[overlap_coords[0]:overlap_coords[1]]
@@ -223,13 +228,13 @@ def simple_assembly(nodes, min_overlap = 0.1):
 
                     merged.add(j)
 
-                    overlap_coord = overlap_coords[0]   
+                    overlap_coord = overlap_coords[0]
                     merge_occured = True
                     node.extend(node_b, overlap_coord)
 
                     nodes[j] = None
                     break
-    
+
     nodes = [node for node in nodes if node is not None]
 
     return nodes

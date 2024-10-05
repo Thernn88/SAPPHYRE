@@ -278,8 +278,8 @@ def compare_means(
             margin = 0.02
             #if IQR <= .2: margin = .025
             #if IQR <= .1: margin = .05
-            IQR = max(IQR, 0.05)
-            upper_bound = Q3 + (threshold * IQR) + margin
+            IQR = max(IQR, 0.02)
+            upper_bound = Q3 + (threshold * IQR)
         else:  # if no ref_distances, reject
             upper_bound = "N/A"
             IQR = "N/A"
