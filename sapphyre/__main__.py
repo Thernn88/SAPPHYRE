@@ -99,6 +99,12 @@ def prepare_args(par):
         help="Writes the prepared input fasta into the output taxa directory.",
     )
     par.add_argument(
+        "-asm",
+        "--assembly",
+        action="store_true",
+        help="Force dataset as assembly only.",
+    )
+    par.add_argument(
         "-ol",
         "--overlap_length",
         type=int,
@@ -437,7 +443,7 @@ def outlier_args(par):
         "-sdi",
         "--score_diff_internal",
         type=float,
-        default=1.2,
+        default=1.15,
         help="Minimum score difference for hmmfilter.",
     )
     par.add_argument(
@@ -882,7 +888,7 @@ def align_args(par, skip_reconcile_overlap = False):
     par.add_argument(
         "-alm",
         "--align_method",
-        choices=["clustal", "mafft", "base", "frags"],
+        choices=["clustal", "famsa", "mafft", "base", "frags"],
         default="clustal",
         help="What alignment method to use.",
     )
