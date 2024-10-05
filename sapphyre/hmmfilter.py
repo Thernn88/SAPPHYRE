@@ -131,7 +131,6 @@ def process_kicks(nodes, debug, gene, filtered_sequences_log):
 
 # def compare_hit_to_leaf(hit_a, targets, overlap, score_diff, kicks, safe, debug, gene, filtered_sequences_log) -> None:
 def compare_hit_to_leaf(hit_a, targets, overlap, score_diff) -> None:
-
     for hit_b in targets:
         # if hit_b is None:
         #     continue
@@ -237,9 +236,10 @@ def internal_filter_gene(nodes, debug, gene, min_overlap_internal, score_diff_in
                 continue
             if hit_b.score == 0:
                 continue
+
             if hit_a.score / hit_b.score < score_diff_internal:
                 break
-
+            
             overlap_coords = get_overlap(
                 hit_a.start,
                 hit_a.end,
@@ -307,7 +307,6 @@ def kick_read_consensus(
             read.start,
             read.end,
         )
-
         if average_matching_cols < match_percent:
             if debug:
                 length = read.end - read.start
@@ -410,7 +409,7 @@ def process_batch(
             aa_count += 1
 
             start, end = find_index_pair(sequence, "-")
-            base = header.split("|")[3]
+            base = header.split("|")[3].replace("NODE_","")
             score_key = "_".join(base.split("_")[0:2])
             nodes.append(
                 NODE(
@@ -467,7 +466,6 @@ def process_batch(
                 amount_of_overlap = 0 if overlap_coords is None else overlap_coords[1] - overlap_coords[0]
                 distance = (hit_b.end - hit_b.start) + 1
                 percentage_of_overlap = amount_of_overlap / distance
-
                 if percentage_of_overlap >= 0.8:
                     kicked_headers.add(hit_b.header)
                     if args.debug:
@@ -476,8 +474,8 @@ def process_batch(
                         )
         
         nodes = [i for i in nodes if i.header not in kicked_headers]
-        nodes, internal_header_kicks, internal_log = internal_filter_gene2(nodes.copy(), args.debug, gene, args.min_overlap_internal, args.score_diff_internal)
-        # nodes, internal_log, internal_header_kicks = internal_filter_gene(nodes, batch_args.debug, gene, batch_args.min_overlap_internal, batch_args.score_diff_internal)
+        # nodes, internal_header_kicks, internal_log = internal_filter_gene2(nodes.copy(), args.debug, gene, args.min_overlap_internal, args.score_diff_internal)
+        nodes, internal_log, internal_header_kicks = internal_filter_gene(nodes, args.debug, gene, args.min_overlap_internal, args.score_diff_internal)
         # assert nodes == nodes2, "nodes have changed"
         # assert internal_header_kicks == internal_header_kicks2, "kicks have changed"
         kicked_headers.update(internal_header_kicks)
