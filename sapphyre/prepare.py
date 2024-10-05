@@ -136,7 +136,7 @@ class SeqDeduplicator:
             self.this_assembly = True
             self.is_genome = False
             
-        elif not self.is_genome:
+        elif not self.map_mode and not self.is_genome:
             try:
                 for _, seq in parseFasta(fa_file_path, True):
                     if len(seq) > CHOMP_CUTOFF:
