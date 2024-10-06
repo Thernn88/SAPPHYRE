@@ -1,7 +1,7 @@
 import argparse
 import os
 from shutil import rmtree
-from sapphyre import excise
+from sapphyre import excise, recover
 from wrap_rocks import RocksDB
 from . import blosum, genome_splice, hmmfilter, internal, cluster_consensus, read_assembly
 from .timekeeper import KeeperMode, TimeKeeper
@@ -89,6 +89,12 @@ def main(argsobj):
                 print()
                 print(argsobj.format)
             from_folder = "internal"
+
+            printv("Recovering lost reads.", argsobj.verbose)
+            if not recover.main(this_args, from_folder):
+                print()
+                print(argsobj.format)
+            from_folder = "recovered"
 
     printv(f"Took {timer.differential():.2f} seconds overall.", argsobj.verbose)
 
