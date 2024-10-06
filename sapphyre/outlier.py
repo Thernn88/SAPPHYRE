@@ -37,7 +37,7 @@ def main(argsobj):
         this_args["INPUT"] = folder
         this_args = argparse.Namespace(**this_args)
 
-        is_genome, is_assembly = False,False#get_genome_assembly(folder)
+        is_genome, is_assembly = get_genome_assembly(folder)
 
         from_folder = "trimmed"
 
