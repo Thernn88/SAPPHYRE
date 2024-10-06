@@ -376,6 +376,13 @@ def subcmd_outlier(subparsers):
 
 def outlier_args(par):
     par.add_argument(
+        "-s",
+        "--solo",
+        choices=["blosum", "splice", "assembly", "hmmfilter", "internal", "cluster"],
+        default=None,
+        help="Run solo on a script.",
+    )
+    par.add_argument(
         "-rpc",
         "--rescue_passing_cluster",
         type=float,
