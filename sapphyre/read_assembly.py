@@ -214,7 +214,7 @@ def simple_assembly(nodes, min_overlap_percent=0.15, min_overlap_chars=10):
                     
                     # Calculate percent overlap and compare to minimum overlap
                     overlap_percent = overlap_amount / ((node.end - node.start) * 3)
-                    required_overlap = max(min_overlap_chars, (node.end - node.start) * 3 * min_overlap_percent)
+                    required_overlap = max(min_overlap_chars, min((node.end - node.start), (node_b.end - node_b.start)) * 3 * min_overlap_percent)
 
                     # Use whichever is greater: percentage overlap or 10 characters
                     if overlap_amount < required_overlap:
