@@ -192,48 +192,54 @@ def check_covered_bad_regions(nodes, consensus, min_ambiguous, max_distance, amb
 
     return [(None, None)], consensus
 
+def scan_extend(node, nodes, i, merged, min_overlap_percent=0.15, min_overlap_chars=10):
+    merge_occured = True
+    while merge_occured:
+        merge_occured = False
+        
+        for j, node_b in enumerate(nodes):  # When merge occurs start again at the beginning with highest count
+            if j in merged:
+                continue
+            if i == j:
+                continue
+            overlap_coords = get_overlap(node.start * 3, node.end * 3, node_b.start * 3, node_b.end * 3, 1)
 
-def simple_assembly(nodes, min_overlap_percent=0.15, min_overlap_chars=10):
+            
+            if overlap_coords:
+                overlap_amount = overlap_coords[1] - overlap_coords[0]
+
+                # Calculate percent overlap and compare to minimum overlap
+                overlap_percent = overlap_amount / ((node.end - node.start) * 3)
+                required_overlap = max(min_overlap_chars, min((node.end - node.start), (node_b.end - node_b.start)) * 3 * min_overlap_percent)
+                
+                # Use whichever is greater: percentage overlap or 10 characters
+                if overlap_amount < required_overlap:
+                    continue
+
+                kmer_a = node.nt_sequence[overlap_coords[0]:overlap_coords[1]]
+                kmer_b = node_b.nt_sequence[overlap_coords[0]:overlap_coords[1]]
+
+                if not is_same_kmer(kmer_a, kmer_b):
+                    continue
+
+
+                merged.add(j)
+
+                overlap_coord = overlap_coords[0]
+                merge_occured = True
+                node.extend(node_b, overlap_coord)
+                
+                nodes[j] = None
+                break
+    return node
+
+def simple_assembly(nodes):
     nodes.sort(key=lambda x: x.count, reverse=True)
     merged = set()
     for i, node in enumerate(nodes):
         if i in merged:
             continue
-        merge_occured = True
-        while merge_occured:
-            merge_occured = False
-            for j, node_b in enumerate(nodes):  # When merge occurs start again at the beginning with highest count
-                if j in merged:
-                    continue
-                if i == j:
-                    continue
-
-                overlap_coords = get_overlap(node.start * 3, node.end * 3, node_b.start * 3, node_b.end * 3, 1)
-                if overlap_coords:
-                    overlap_amount = overlap_coords[1] - overlap_coords[0]
-                    
-                    # Calculate percent overlap and compare to minimum overlap
-                    overlap_percent = overlap_amount / ((node.end - node.start) * 3)
-                    required_overlap = max(min_overlap_chars, min((node.end - node.start), (node_b.end - node_b.start)) * 3 * min_overlap_percent)
-
-                    # Use whichever is greater: percentage overlap or 10 characters
-                    if overlap_amount < required_overlap:
-                        continue
-
-                    kmer_a = node.nt_sequence[overlap_coords[0]:overlap_coords[1]]
-                    kmer_b = node_b.nt_sequence[overlap_coords[0]:overlap_coords[1]]
-
-                    if not is_same_kmer(kmer_a, kmer_b):
-                        continue
-
-                    merged.add(j)
-
-                    overlap_coord = overlap_coords[0]
-                    merge_occured = True
-                    node.extend(node_b, overlap_coord)
-
-                    nodes[j] = None
-                    break
+        nodes[i] = scan_extend(node, nodes, i, merged)
 
     nodes = [node for node in nodes if node is not None]
 
@@ -402,6 +408,57 @@ def do_trim(aa_nodes, x_positions, ref_consensus, kicked_headers, no_dupes, exci
     #refresh aa
     apply_positions(aa_nodes, x_positions, kicked_headers, log_output, debug, second_positions)
 
+
+def get_score_difference(score_a: float, score_b: float) -> float:
+    """Get the decimal difference between two scores.
+
+    Args:
+    ----
+        score_a (float): The first score.
+        score_b (float): The second score.
+
+    Returns:
+    -------
+        float: The decimal difference between the two scores.
+    """
+    # If either score is zero return zero.
+    if score_a == 0.0 or score_b == 0.0:
+        return 0.0
+
+    # Return the decimal difference between the largest score and the smallest score.
+    return max(score_a, score_b) / min(score_a, score_b)
+
+
+def get_score(contigs, flex_consensus, nodes, max_score, contig_depth_reward, log_output, debug):
+    with_identity = []
+    for node in contigs:
+        matches = 0
+        for i in range(node.start, node.end):
+            matches += min(flex_consensus[i].count(node.sequence[i]), max_score)
+        
+        score = matches * (1 + (len(node.children) * contig_depth_reward))
+        
+        length = (node.end - node.start)
+        children = node.get_children()
+        if debug:
+            log_output.append(f"{node.codename} with ({len(children)}: {', '.join(children)})\nhas a score of {score} over {length} AA\n{node.nt_sequence}\n")
+
+        consists_of = []
+        if debug > 1:
+            for header in node.children:
+                for node in nodes:
+                    if node.header == header:
+                        consists_of.append(node)
+                        break
+        
+        consists_of.sort(key=lambda x: x.start)
+        for node in consists_of:
+            log_output.append(f">{node.header}\n{node.nt_sequence}")
+
+        with_identity.append((node, score, length))
+
+    return with_identity
+
 def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, excise_consensus, allowed_mismatches, region_overlap, region_min_ambig, debug):
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     # within_identity = 0.9
@@ -409,6 +466,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
     kicks = 0
     min_children = 4
     contig_depth_reward = 0.001
+    tie_breaker_percent = 1.15
     min_bp = 100
 
     kicked_nodes = set()
@@ -502,35 +560,26 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
                         if debug > 1:
                             log_output.append(f"{read.nt_sequence}\n")
             else:
-                with_identity = []
-                for node in contigs:
-                    matches = 0
-                    for i in range(node.start, node.end):
-                        matches += min(flex_consensus[i].count(node.sequence[i]), max_score)
+                with_identity = get_score(contigs, flex_consensus, nodes, max_score, contig_depth_reward, log_output, debug)
                     
-                    score = matches * (1 + (len(node.children) * contig_depth_reward))
-                    
-                    length = (node.end - node.start)
-                    children = node.get_children()
-                    if debug:
-                        log_output.append(f"{node.codename} with ({len(children)}: {', '.join(children)})\nhas a score of {score} over {length} AA\n{node.nt_sequence}\n")
-
-                    consists_of = []
-                    if debug > 1:
-                        for header in node.children:
-                            for node in nodes:
-                                if node.header == header:
-                                    consists_of.append(node)
-                                    break
-                    
-                    consists_of.sort(key=lambda x: x.start)
-                    for node in consists_of:
-                        log_output.append(f">{node.header}\n{node.nt_sequence}")
-
-                    with_identity.append((node, score, length))
-                    
+                with_identity.sort(key=lambda x: x[1], reverse=True)
+                best_contig, best_score, _ = with_identity[0]
                 
-                best_contig = max(with_identity, key=lambda x: x[1])[0]
+                tie_breaker = []
+                for contig, score, _ in with_identity[1:]:
+                    if get_score_difference(best_score, score) < tie_breaker_percent:
+                        tie_breaker.append(contig)
+                        
+                if tie_breaker and True: # Set True to False to disable tiebreaker
+                    tie_breaker.insert(0, best_contig)
+                    if debug:
+                        log_output.append(f"\nBest contig: {best_contig.codename}\n\nComparing against reads")
+                        log_output.append(f"Multiple contigs with similar scores, choosing the best contig by merging into unambig\n")
+                    for i, contig in enumerate(tie_breaker):
+                        tie_breaker[i] = scan_extend(contig, sorted(copy.deepcopy(nodes_out_of_region), key=lambda x: x.start), None, set())
+                    with_identity = get_score(tie_breaker, flex_consensus, nodes, max_score, contig_depth_reward, log_output, debug)
+                    best_contig = max(with_identity, key=lambda x: x[1])[0]
+                    
                 if debug:
                     log_output.append(f"\nBest contig: {best_contig.codename}\n\nComparing against reads")
 
