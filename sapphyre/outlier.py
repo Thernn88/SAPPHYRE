@@ -45,6 +45,7 @@ def main(argsobj):
                 "splice": ("clusters", genome_splice.main),
                 "assembly": ("blosum", read_assembly.main),
                 "internal": ("excise", internal.main),
+                "recover": ("internal", recover.main),
             }
             from_folder, script = default_path[script_name]
             

@@ -378,7 +378,7 @@ def outlier_args(par):
     par.add_argument(
         "-s",
         "--solo",
-        choices=["blosum", "splice", "assembly", "hmmfilter", "internal", "cluster"],
+        choices=["blosum", "splice", "assembly", "hmmfilter", "internal", "cluster", "recover"],
         default=None,
         help="Run solo on a script.",
     )
