@@ -114,7 +114,7 @@ def scan_extend(node, nodes, i, merged, min_overlap_percent=0.15, min_overlap_ch
     merge_occured = True
     while merge_occured:
         merge_occured = False
-        
+        possible_merges = []
         for j, node_b in enumerate(nodes):  # When merge occurs start again at the beginning with highest count
             if j in merged:
                 continue
@@ -139,7 +139,6 @@ def scan_extend(node, nodes, i, merged, min_overlap_percent=0.15, min_overlap_ch
 
                 if not is_same_kmer(kmer_a, kmer_b):
                     continue
-
 
                 merged.add(j)
 
@@ -226,6 +225,7 @@ def do_gene(gene, blosum_folder, trimmed_folder, aa_input, nt_input, aa_output, 
     out_nt = internal_seqs.copy()
     out_aa = list(parseFasta(Path(aa_input, gene.replace(".nt.",".aa."))))
     aa_seqs = dict(trimmed_aa_seqs)
+    recovered = 0
     if internal_contigs:
         kicked_nodes = []
         for header, sequence in kicked_sequences:
@@ -245,7 +245,7 @@ def do_gene(gene, blosum_folder, trimmed_folder, aa_input, nt_input, aa_output, 
             )
         
         add_occured = True
-        merged_already = set()
+        saved_headers = set()
         while add_occured:
             add_occured = False
             contig_regions = [(contig.start, contig.end, contig) for contig in internal_contigs]
@@ -253,34 +253,44 @@ def do_gene(gene, blosum_folder, trimmed_folder, aa_input, nt_input, aa_output, 
             nodes_outside_of_region = []
             for rstart, rend, contigs in flattened_regions:
                 for node in kicked_nodes:
-                    if node.header in merged_already:
+                    if node.header in saved_headers:
                         continue
                     overlap_coords = get_overlap(rstart, rend, node.start, node.end, 1)
                     overlap_amount = 0 if not overlap_coords else overlap_coords[1] - overlap_coords[0]
-                    if overlap_amount >= 12:
-                        nodes_outside_of_region.append(node)
+                    # If overlaps but is not contained in region
+                    if overlap_amount == min((node.end - node.start), (rend - rstart)):
+                        continue
+                    
+                    nodes_outside_of_region.append(node)
                 
                 for contig in contigs:
                     merged_indices = set()
                     this_possible_merges = sorted(copy.deepcopy(nodes_outside_of_region), key=lambda x: x.start)
                     scan_extend(contig, this_possible_merges, None, merged_indices)
                     for i in merged_indices:
-                        merged_already.add(this_possible_merges[i].header)
+                        saved_headers.add(this_possible_merges[i].header)
                     
             already_added = set()
             for node in kicked_nodes:
-                for contig in internal_contigs:
-                    if node.header in already_added:
-                        continue
-                    already_added.add(node.header)
-                    if node.header.split("|")[3] in contig.get_children():
-                        print("Recovered",node.header)
-                        out_nt.append((node.header, node.nt_sequence))
-                        out_aa.append((node.header, node.sequence))
-                        
+                if not node.header in saved_headers:
+                    continue
+                if node.header in already_added:
+                    continue
+                already_added.add(node.header)
+                recovered += 1
+                print("Recovered",node.header)
+                out_nt.append((node.header, node.nt_sequence))
+                out_aa.append((node.header, node.sequence))
+                
+        out_aa.sort(key=lambda x: find_index_pair(x[1], "-")[0])
+        aa_order = [header for header, _ in out_aa]
+        nt_sequences = dict(out_nt)
+        out_nt = [(header, nt_sequences[header]) for header in aa_order if not header.endswith('.')]
+                
         writeFasta(Path(nt_output, gene), out_nt)
         writeFasta(Path(aa_output, gene.replace(".nt.",".aa.")), out_aa)
 
+    return recovered
 
 def main(args, sub_dir):
     timer = TimeKeeper(KeeperMode.DIRECT)
@@ -323,6 +333,8 @@ def main(args, sub_dir):
                     *arg
                 )
             )
+ 
+    print("Added", sum(results), "sequences")
  
     printv(f"Done! Took {timer.differential():.2f} seconds", args.verbose)
 
