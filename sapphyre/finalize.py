@@ -608,7 +608,7 @@ def process_folder(args, input_path):
 
         column_stats_res.append(
             (
-                this_strict,
+                gene,
                 f"{gene},{str(this_lax)},{str(this_strict)},{str(this_inform)},{str(this_inform_lax)}",
             )
         )
