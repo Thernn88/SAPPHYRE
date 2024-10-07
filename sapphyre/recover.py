@@ -152,24 +152,18 @@ def find_non_depth_regions(sequence, buffer=10):
     return merged_regions
 
 
-def do_gene(gene, blosum_folder, trimmed_folder, aa_input, nt_input, aa_output, nt_output, debug):
-    # print(gene)
+def do_gene(gene, blosum_folder, trimmed_folder, aa_input, nt_input, aa_output, nt_output, verbose):
+    printv(f"Processing: {gene}", verbose, 2)
+    aa_gene = gene.replace(".nt.", ".aa.")
     no_dupes = False
 
     internal_seqs = list(parseFasta(Path(nt_input, gene)))
-    out_aa = list(parseFasta(Path(aa_input, gene.replace(".nt.", ".aa."))))
-    blosum_seqs = list(parseFasta(Path(blosum_folder, gene)))
     trimmed_seqs = list(parseFasta(Path(trimmed_folder, "nt", gene)))
-    trimmed_aa_seqs = list(parseFasta(Path(trimmed_folder, "aa", gene.replace(".nt.", ".aa."))))
-    
-    blosum_headers = {header for header, _ in blosum_seqs}
-    trimmed_headers = {header for header, _ in trimmed_seqs}
-    kicked = trimmed_headers - blosum_headers
-    
-    internal_headers = {header for header, _ in internal_seqs}
-    kicked = kicked - internal_headers
+
+    kicked = ({header for header, _ in trimmed_seqs} - {header for header, _ in parseFasta(Path(blosum_folder, gene))}) -  {header for header, _ in internal_seqs}
+
     kicked_sequences = [(header, sequence) for header, sequence in trimmed_seqs if header in kicked]
-    recovered = 0
+    recovered = []
     saved_headers = set()
     
     # added_sequences = set()
@@ -216,30 +210,37 @@ def do_gene(gene, blosum_folder, trimmed_folder, aa_input, nt_input, aa_output, 
         
         if to_check:   
             for header, sequence, start, end, rstart, rend, seq_start, seq_end in to_check:
-                
                 kick_kmer = sequence[start:end]
                 consensus_kmer = consensus_seq[start:end]
                 if is_same_kmer(kick_kmer, consensus_kmer):
-                    recovered += 1
-                    print("Recovered", header)
+                    recovered.append(header)
                     saved_headers.add(header)
                     internal_seqs.append((header, sequence))
                     new_seq_added = True
-
     
     out_nt = internal_seqs.copy()
+    
+    aa_references = []
+    aa_candidates = []
+    for header, sequence in parseFasta(Path(aa_input, aa_gene)):
+        if header.endswith('.'):
+            aa_references.append((header, sequence))
+        else:
+            aa_candidates.append((header, sequence))
+    
     if saved_headers:
-        for header, sequence in trimmed_aa_seqs:
+        for header, sequence in parseFasta(Path(trimmed_folder, "aa", aa_gene)):
             if header in saved_headers:
-                out_aa.append((header, sequence))
-        
-    out_aa.sort(key=lambda x: find_index_pair(x[1], "-")[0])
-    aa_order = [header for header, _ in out_aa]
-    nt_sequences = dict(out_nt)
-    out_nt = [(header, nt_sequences[header]) for header in aa_order if not header.endswith('.')]
-                
-    writeFasta(Path(nt_output, gene), out_nt)
-    writeFasta(Path(aa_output, gene.replace(".nt.",".aa.")), out_aa)
+                aa_candidates.append((header, sequence))
+    
+    if aa_candidates:
+        aa_candidates.sort(key=lambda x: find_index_pair(x[1], "-")[0])
+        aa_order = [header for header, _ in aa_candidates]
+        nt_sequences = dict(out_nt)
+        out_nt = [(header, nt_sequences[header]) for header in aa_order if not header.endswith('.')]
+                    
+        writeFasta(Path(nt_output, gene), out_nt)
+        writeFasta(Path(aa_output, gene.replace(".nt.",".aa.")), aa_references + aa_candidates)
 
     return recovered
 
@@ -272,7 +273,7 @@ def main(args, sub_dir):
 
     genes = [fasta for fasta in listdir(nt_input) if ".fa" in fasta]
 
-    arguments = [(gene, blosum_folder, trimmed_folder, aa_input, nt_input, aa_output, nt_output, args.debug) for gene in genes]
+    arguments = [(gene, blosum_folder, trimmed_folder, aa_input, nt_input, aa_output, nt_output, args.verbose) for gene in genes]
     if args.processes > 1:
         with Pool(args.processes) as pool:
             results = pool.starmap(do_gene, arguments)
@@ -285,7 +286,14 @@ def main(args, sub_dir):
                 )
             )
  
-    print("Added", sum(results), "sequences")
+    printv(f"Recovered {sum(len(i) for i in results)} sequences.", args.verbose)
+    
+    if args.debug:
+        with open(Path(output_folder, "recovered_sequences.txt"), "w") as f:
+            for gene_result in results:
+                for header in gene_result:
+                    if header:
+                        f.write(header + "\n")
  
     printv(f"Done! Took {timer.differential():.2f} seconds", args.verbose)
 
