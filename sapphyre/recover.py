@@ -110,86 +110,54 @@ class NODE(Struct):
         children_nodes = "|".join([i.split("|")[3] for i in self.children])
         return f"CONTIG_{contig_node}|{children_nodes}"
 
-def scan_extend(node, nodes, i, merged, min_overlap_percent=0.15, min_overlap_chars=10):
-    merge_occured = True
-    while merge_occured:
-        merge_occured = False
-        possible_merges = []
-        for j, node_b in enumerate(nodes):  # When merge occurs start again at the beginning with highest count
-            if j in merged:
-                continue
-            if i == j:
-                continue
-            overlap_coords = get_overlap(node.start, node.end, node_b.start, node_b.end, 1)
 
-            
-            if overlap_coords:
-                overlap_amount = overlap_coords[1] - overlap_coords[0]
+def make_duped_consensus(
+    raw_sequences: list, threshold: float
+) -> str:
+    bundled_seqs = [(seq, int(header.split("|")[5])) for header, seq in raw_sequences if header[-1] != "."]
+    return dumb_consensus_dupe(bundled_seqs, threshold, 0)
 
-                # Calculate percent overlap and compare to minimum overlap
-                overlap_percent = overlap_amount / ((node.end - node.start))
-                required_overlap = max(min_overlap_chars, min((node.end - node.start), (node_b.end - node_b.start)) * min_overlap_percent)
-                
-                # Use whichever is greater: percentage overlap or 10 characters
-                if overlap_amount < required_overlap:
-                    continue
+def find_non_depth_regions(sequence, buffer=10):
+    regions = []
+    start = None  # To track the start of a region
 
-                kmer_a = node.nt_sequence[overlap_coords[0]:overlap_coords[1]]
-                kmer_b = node_b.nt_sequence[overlap_coords[0]:overlap_coords[1]]
-
-                if not is_same_kmer(kmer_a, kmer_b):
-                    continue
-
-                merged.add(j)
-
-                overlap_coord = overlap_coords[0]
-                merge_occured = True
-                node.extend(node_b, overlap_coord)
-                break
-    return node
-
-def simple_assembly(nodes):
-    nodes.sort(key=lambda x: x.count, reverse=True)
-    merged = set()
-    for i, node in enumerate(nodes):
-        if i in merged:
-            continue
-        nodes[i] = scan_extend(node, nodes, i, merged)
-
-    nodes = [node for node in nodes if node is not None]
-
-    return nodes
-
-
-def merge_regions(regions, buffer=10):
-    # Sort regions by start position
-    regions = sorted(regions, key=lambda x: x[0])
-    
-    merged = []
-    current_start, current_end, current_seq = regions[0]
-    current_seqs = [current_seq]
-
-    for start, end, contig in regions[1:]:
-        # Check if the current region overlaps or is within 10bp of the next region
-        if start <= current_end + buffer:
-            # Extend the current region
-            current_end = max(current_end, end)
-            current_seqs.append(contig)
+    # First pass: Identify all regions of non-'X' and non-'?'
+    for i, char in enumerate(sequence):
+        if char != 'X' and char != '?':
+            if start is None:
+                start = i  # Start of a new region
         else:
-            # Append the current region and start a new one
-            merged.append((current_start, current_end, current_seqs))
-            current_start, current_end, current_seq = start, end, contig
-            current_seqs = [current_seq]
-    
-    # Add the last region
-    merged.append((current_start, current_end, current_seqs))
-    
-    return merged
+            if start is not None:
+                regions.append((start, i))  # End of a region
+                start = None
+
+    # If the last character is not 'X' or '?', we need to close the final region
+    if start is not None:
+        regions.append((start, len(sequence)))
+
+    # Second pass: Merge regions within the buffer distance
+    merged_regions = []
+    current_start, current_end = regions[0]
+
+    for start, end in regions[1:]:
+        if start <= current_end + buffer:
+            current_end = max(current_end, end)  # Extend the current region
+        else:
+            merged_regions.append((current_start, current_end))  # Finalize the current region
+            current_start, current_end = start, end  # Start a new region
+
+    # Add the last merged region
+    merged_regions.append((current_start, current_end))
+
+    return merged_regions
 
 
 def do_gene(gene, blosum_folder, trimmed_folder, aa_input, nt_input, aa_output, nt_output, debug):
+    # print(gene)
+    no_dupes = False
 
     internal_seqs = list(parseFasta(Path(nt_input, gene)))
+    out_aa = list(parseFasta(Path(aa_input, gene.replace(".nt.", ".aa."))))
     blosum_seqs = list(parseFasta(Path(blosum_folder, gene)))
     trimmed_seqs = list(parseFasta(Path(trimmed_folder, "nt", gene)))
     trimmed_aa_seqs = list(parseFasta(Path(trimmed_folder, "aa", gene.replace(".nt.", ".aa."))))
@@ -201,94 +169,77 @@ def do_gene(gene, blosum_folder, trimmed_folder, aa_input, nt_input, aa_output, 
     internal_headers = {header for header, _ in internal_seqs}
     kicked = kicked - internal_headers
     kicked_sequences = [(header, sequence) for header, sequence in trimmed_seqs if header in kicked]
-    
-    # Form contigs with internal seqs
-    internal_nodes = []
-    for header, sequence in internal_seqs:
-        start, end = find_index_pair(sequence, "-")
-        internal_nodes.append(
-            NODE(
-                header=header,
-                count=int(header.split("|")[5]),
-                sequence=None,
-                nt_sequence=sequence,
-                start=start,
-                end=end,
-                children=[],
-                codename=None,
-                is_contig=False,
-            )
-        )
-        
-    internal_contigs = [contig for contig in simple_assembly(internal_nodes) if contig.is_contig]
-    
-    out_nt = internal_seqs.copy()
-    out_aa = list(parseFasta(Path(aa_input, gene.replace(".nt.",".aa."))))
-    aa_seqs = dict(trimmed_aa_seqs)
     recovered = 0
-    if internal_contigs:
-        kicked_nodes = []
+    saved_headers = set()
+    
+    # added_sequences = set()
+    new_seq_added = True
+    while new_seq_added:
+        new_seq_added = False
+        internal_sequences = [x[1] for x in internal_seqs]
+        if no_dupes:
+            consensus_seq = dumb_consensus(internal_sequences, 0.5, 0)
+        else:
+            consensus_seq = make_duped_consensus(
+                internal_seqs, 0.5
+            )
+            
+        kicked_sequences = [(header, sequence) for header, sequence in kicked_sequences if header not in saved_headers]
+        if not kicked_sequences:
+            break
+        
+        consensus_seq = convert_consensus(internal_sequences, consensus_seq)
+        regions = find_non_depth_regions(consensus_seq)
+        to_check = []
         for header, sequence in kicked_sequences:
             start, end = find_index_pair(sequence, "-")
-            kicked_nodes.append(
-                NODE(
-                    header=header,
-                    count=int(header.split("|")[5]),
-                    sequence=aa_seqs[header],
-                    nt_sequence=sequence,
-                    start=start,
-                    end=end,
-                    children=[],
-                    codename=None,
-                    is_contig=False,
-                )
-            )
+            
+            doesnt_overlap = True
+            best_small_overlap = 0
+            bso_coords = None
+            for rstart, rend in regions:
+                overlap_coords = get_overlap(start, end, rstart, rend, 1)
+                if overlap_coords:
+                    amount = overlap_coords[1] - overlap_coords[0]
+                    
+                    if amount > 60 or amount >= min((end - start), (rend - rstart)): # Max overlap 60
+                        doesnt_overlap = False
+                        break
+                    
+                    if amount > best_small_overlap:
+                        best_small_overlap = amount
+                        bso_coords = overlap_coords
+                        region = (rstart, rend)
+            
+            if doesnt_overlap and bso_coords:
+                to_check.append((header, sequence, bso_coords[0], bso_coords[1], region[0], region[1], start, end))
         
-        add_occured = True
-        saved_headers = set()
-        while add_occured:
-            add_occured = False
-            contig_regions = [(contig.start, contig.end, contig) for contig in internal_contigs]
-            flattened_regions = merge_regions(contig_regions)
-            nodes_outside_of_region = []
-            for rstart, rend, contigs in flattened_regions:
-                for node in kicked_nodes:
-                    if node.header in saved_headers:
-                        continue
-                    overlap_coords = get_overlap(rstart, rend, node.start, node.end, 1)
-                    overlap_amount = 0 if not overlap_coords else overlap_coords[1] - overlap_coords[0]
-                    # If overlaps but is not contained in region
-                    if overlap_amount == min((node.end - node.start), (rend - rstart)):
-                        continue
-                    
-                    nodes_outside_of_region.append(node)
+        if to_check:   
+            for header, sequence, start, end, rstart, rend, seq_start, seq_end in to_check:
                 
-                for contig in contigs:
-                    merged_indices = set()
-                    this_possible_merges = sorted(copy.deepcopy(nodes_outside_of_region), key=lambda x: x.start)
-                    scan_extend(contig, this_possible_merges, None, merged_indices)
-                    for i in merged_indices:
-                        saved_headers.add(this_possible_merges[i].header)
-                    
-            already_added = set()
-            for node in kicked_nodes:
-                if not node.header in saved_headers:
-                    continue
-                if node.header in already_added:
-                    continue
-                already_added.add(node.header)
-                recovered += 1
-                print("Recovered",node.header)
-                out_nt.append((node.header, node.nt_sequence))
-                out_aa.append((node.header, node.sequence))
+                kick_kmer = sequence[start:end]
+                consensus_kmer = consensus_seq[start:end]
+                if is_same_kmer(kick_kmer, consensus_kmer):
+                    recovered += 1
+                    print("Recovered", header)
+                    saved_headers.add(header)
+                    internal_seqs.append((header, sequence))
+                    new_seq_added = True
+
+    
+    out_nt = internal_seqs.copy()
+    if saved_headers:
+        for header, sequence in trimmed_aa_seqs:
+            if header in saved_headers:
+                out_aa.append((header, sequence))
+        
+    out_aa.sort(key=lambda x: find_index_pair(x[1], "-")[0])
+    aa_order = [header for header, _ in out_aa]
+    nt_sequences = dict(out_nt)
+    out_nt = [(header, nt_sequences[header]) for header in aa_order if not header.endswith('.')]
                 
-        out_aa.sort(key=lambda x: find_index_pair(x[1], "-")[0])
-        aa_order = [header for header, _ in out_aa]
-        nt_sequences = dict(out_nt)
-        out_nt = [(header, nt_sequences[header]) for header in aa_order if not header.endswith('.')]
-                
-        writeFasta(Path(nt_output, gene), out_nt)
-        writeFasta(Path(aa_output, gene.replace(".nt.",".aa.")), out_aa)
+    writeFasta(Path(nt_output, gene), out_nt)
+    writeFasta(Path(aa_output, gene.replace(".nt.",".aa.")), out_aa)
 
     return recovered
 
