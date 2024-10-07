@@ -195,18 +195,18 @@ def do_gene(gene, blosum_folder, trimmed_folder, aa_input, nt_input, aa_output, 
             start, end = find_index_pair(sequence, "-")
             
             doesnt_overlap = True
-            best_small_overlap = 0
+            best_small_overlap = 12
             bso_coords = None
             for rstart, rend in regions:
                 overlap_coords = get_overlap(start, end, rstart, rend, 1)
                 if overlap_coords:
                     amount = overlap_coords[1] - overlap_coords[0]
                     
-                    if amount > 60 or amount >= min((end - start), (rend - rstart)): # Max overlap 60
+                    if amount >= min((end - start), (rend - rstart)):
                         doesnt_overlap = False
                         break
                     
-                    if amount > best_small_overlap:
+                    if amount >= best_small_overlap: # Greater than 12
                         best_small_overlap = amount
                         bso_coords = overlap_coords
                         region = (rstart, rend)
