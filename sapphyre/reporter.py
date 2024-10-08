@@ -56,156 +56,6 @@ class Hit(HmmHit):#, frozen=True):
     children: list = []
     raw_children: list = []
     
-    def get_bp_trim(
-        self,
-        references: dict[str, str],
-        matches: int,
-        is_positive_match: callable,
-        debug_fp: TextIO,
-        header: str,
-        mat: dict,
-        exact_match_amount: int,
-        top_refs: set,
-    ) -> tuple[int, int]:
-        """Get the bp to trim from each end so that the alignment matches for 'matches' bp.
-
-        BP Trim has 3 different modes. Exact, Strict, and Lax. Exact is the most strict, and
-        will only match if the reference and query are identical. Strict will match if the
-        reference and query are identical, or if the blosum substitution matrix score is
-        greater than 0. Lax will match if the reference and query are identical, or if the
-        blosum substitution matrix score is greater than or equal to 0.
-
-        Args:
-        ----
-            references (dict[str, str]): A dictionary of reference sequences.
-            matches (int): The number of matches to look for.
-            mode (str): The mode to use. Can be "exact", "strict", or "lax".
-            debug_fp (TextIO): A file pointer to write debug information to.
-            header (str): The header of the sequence.
-
-        Returns:
-        -------
-            tuple[int, int]: The number of bp to trim from the start and end of the sequence.
-        """
-        MISMATCH_AMOUNT = 1
-        GAP_PENALTY = 2
-        EXTEND_PENALTY = 1
-
-        # Create blosum pairwise aligner profile
-        profile = profile_create_16(self.aa_sequence, blosum62)
-
-        if debug_fp:
-            debug_fp.write(f">{header}\n{self.aa_sequence}\n")
-
-        # For each reference sequence
-        best_alignment = None
-        best_alignment_score = 0
-
-        if not self.refs:
-            return 0, 0
-
-        for number, ref in enumerate(self.refs):
-            if not ref.ref in top_refs:
-                continue
-            ref_seq = references[ref.query]
-            ref_seq = ref_seq[ref.start - 1 : ref.end]
-
-            # Pairwise align the reference and query
-            result = nw_trace_scan_profile_16(
-                profile,
-                ref_seq,
-                GAP_PENALTY,
-                EXTEND_PENALTY,
-            )
-
-            # Get the aligned sequence with the highest score
-            if not hasattr(result, "traceback"):
-                continue #alignment failed, to investigate
-            this_aa, ref_seq = result.traceback.query, result.traceback.ref
-            if result.score > best_alignment_score:
-                if matches == 0 and exact_match_amount == 0: # Has top ref alignment, skip trim.
-                    return 0, 0
-                best_alignment = (this_aa, ref_seq)
-                best_alignment_score = result.score
-
-            this_aa_len = len(this_aa)
-            if debug_fp:
-                debug_fp.write(
-                    f">ref_{number} = {result.score}\n{ref_seq}\n>aln\n{this_aa}\n"
-                )
-
-        if debug_fp:
-            debug_fp.write("\n")
-
-        if best_alignment:
-            reg_start = None
-            reg_end = None
-            # Find which start position matches for 'matches' bases
-            skip_l = 0
-            for i, let in enumerate(this_aa):
-                this_pass = True
-                if let == "-":
-                    skip_l += 1
-                    continue
-
-                l_mismatch = MISMATCH_AMOUNT
-                l_exact_matches = 0
-                for j in range(0, matches):
-                    if (i + j) > (this_aa_len - 1):
-                        this_pass = False
-                        break
-                    if this_aa[i + j] == ref_seq[i + j]:
-                        l_exact_matches += 1
-
-                    if not is_positive_match(ref_seq[i + j], this_aa[i + j], mat):
-                        if j == 0 or this_aa[i + j] == "*":
-                            this_pass = False
-                            break
-                        l_mismatch -= 1
-                        if l_mismatch < 0:
-                            this_pass = False
-                            break
-
-                if this_pass and l_exact_matches >= exact_match_amount:
-                    reg_start = i - skip_l
-                    break
-
-            # Find which end position matches for 'matches' bases
-            skip_r = 0
-            for i in range(this_aa_len - 1, -1, -1):
-                this_pass = True
-                if this_aa[i] == "-":
-                    skip_r += 1
-                    continue
-
-                r_mismatch = MISMATCH_AMOUNT
-                r_exact_matches = 0
-                for j in range(0, matches):
-                    if i - j < 0:
-                        this_pass = False
-                        break
-
-                    if this_aa[i - j] == ref_seq[i - j]:
-                        r_exact_matches += 1
-
-                    if not is_positive_match(ref_seq[i - j], this_aa[i - j], mat):
-                        if j == 0 or this_aa[i - j] == "*":
-                            this_pass = False
-                            break
-
-                        r_mismatch -= 1
-                        if r_mismatch < 0:
-                            this_pass = False
-                            break
-
-                if this_pass and r_exact_matches >= exact_match_amount:
-                    reg_end = this_aa_len - i - (1 + skip_r)
-                    break
-            return reg_start, reg_end
-
-        # If no trims were found, return None
-        return None, None
-
     def get_merge_header(self):
         return "&&".join(map(str, [self.node] + self.children))
 
@@ -512,55 +362,6 @@ def merge_hits(hits: list[Hit], minimum_bp_overlap = 30) -> tuple[list[Hit], lis
             log.append(hit.get_merge_header())
     return [i for i in hits if i is not None], log
 
-
-def do_trim(
-        hits: list[Hit],
-        core_aa_seqs: list,
-        trim_matches: int,
-        is_positive_match: callable,
-        debug_fp: TextIO,
-        verbose: int,
-        mat: dict,
-        exact_match_amount: int,
-        top_refs: set,
-    ):
-    out_hits = []
-    for hit in hits:
-        header = f"NODE_{hit.node}|{hit.frame}"
-        r_start, r_end = hit.get_bp_trim(
-            core_aa_seqs,
-            trim_matches,
-            is_positive_match,
-            debug_fp,
-            header,
-            mat,
-            exact_match_amount,
-            top_refs,
-        )
-        if r_start is None or r_end is None:
-            printv(f"WARNING: Trim kicked: {header}", verbose, 2)
-            continue
-
-        if r_end == 0:
-            hit.seq = hit.seq[(r_start * 3) :]
-            hit.aa_sequence = hit.aa_sequence[r_start:]
-        else:
-            hit.seq = hit.seq[(r_start * 3) : -(r_end * 3)]
-            hit.aa_sequence = hit.aa_sequence[r_start:-r_end]
-            
-        hit.qstart += (r_start * 3)
-        hit.qend -= (r_end * 3)
-        
-        if hit.chomp_start is not None:
-            hit.chomp_start += r_start
-            hit.chomp_end -= r_end
-
-        if debug_fp:
-            debug_fp.write(f">{header}\n{hit.aa_sequence}\n\n")
-        out_hits.append(hit)
-    return out_hits
-
-
 def translate_sequences(hits):
     for hit in hits:
         hit.aa_sequence = translate_cdna(hit.seq)
@@ -648,8 +449,8 @@ def do_dupe_check(hits, header_template, is_assembly_or_genome, dupe_debug_fp, t
     return [i for i in hits if i is not None], dupes
 
 
-def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
-    """Trims, dedupes and writes the output for a given gene.
+def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
+    """Merges, dedupes and writes the output for a given gene.
 
     Args:
     ----
@@ -667,7 +468,6 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     gene_nodes = [hit.node for hit in this_hits]
 
     # Get reference sequences
-    # core_sequences, core_sequences_nt = get_core_sequences(
     core_sequences = get_core_sequences(
         oargs.gene,
         rocky.get_rock("rocks_orthoset_db"),
@@ -675,43 +475,15 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
 
     core_seq_aa_dict = {target: seq for _, target, seq in core_sequences}
     this_aa_path = path.join(oargs.aa_out_path, oargs.gene + ".aa.fa")
-    debug_alignments = None
     debug_dupes = None
     if oargs.debug:
         makedirs(f"align_debug/{oargs.gene}", exist_ok=True)
-        debug_alignments = open(
-            f"align_debug/{oargs.gene}/{oargs.taxa_id}.alignments",
-            "w",
-        )
-        debug_alignments.write(
-            "GAP_PENALTY: 2\nEXTEND_PENALTY: 1\n",
-        )
         debug_dupes = open(f"align_debug/{oargs.gene}/{oargs.taxa_id}.dupes", "w")
 
-    # Initialize blosum matrix and distance function
-    mat = BLOSUM(62)
-    if oargs.blosum_strictness == "exact":
-
-        def dist(bp_a, bp_b, _):
-            return bp_a == bp_b and bp_a != "-" and bp_b != "-"
-
-    elif oargs.blosum_strictness == "strict":
-
-        def dist(bp_a, bp_b, mat):
-            return mat[bp_a][bp_b] > 0.0 and bp_a != "-" and bp_b != "-"
-
-    else:
-
-        def dist(bp_a, bp_b, mat):
-            return mat[bp_a][bp_b] >= 0.0 and bp_a != "-" and bp_b != "-"
-        
     header_template = "{}|{}|{}|NODE_{}|{}"
         
     translate_sequences(this_hits)
     
-    if not oargs.is_assembly_or_genome:
-        this_hits = do_trim(this_hits, core_seq_aa_dict, oargs.matches, dist, debug_alignments, oargs.verbose, mat, oargs.EXACT_MATCH_AMOUNT, oargs.top_refs)
-        
     this_hits = check_minimum_bp(this_hits, oargs.minimum_bp)
         
     this_hits, this_gene_dupes = do_dupe_check(this_hits, header_template, oargs.is_assembly_or_genome, debug_dupes, oargs.taxa_id)
@@ -730,8 +502,7 @@ def trim_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         this_hits,
         oargs.is_assembly_or_genome,
     )
-    if debug_alignments:
-        debug_alignments.close()
+    if debug_dupes:
         debug_dupes.close()
 
     aa_output = tag(aa_output, oargs.prepare_dupes, this_gene_dupes)
@@ -889,9 +660,9 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
 
     if num_threads > 1:
         with Pool(num_threads) as pool:
-            recovered = pool.starmap(trim_and_write, arguments, chunksize=1)
+            recovered = pool.starmap(merge_and_write, arguments, chunksize=1)
     else:
-        recovered = [trim_and_write(i[0]) for i in arguments]
+        recovered = [merge_and_write(i[0]) for i in arguments]
         
     
     printv(
@@ -957,7 +728,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     rocky.get_rock("rocks_nt_db").put_bytes(key, data)
 
     printv(
-        f"Done! Took {time_keeper.differential():.2f}s overall. Coords took {time_keeper.lap():.2f}s and found {final_count} sequences.",
+        f"Done! Took {time_keeper.differential():.2f}s overall. Coords took {time_keeper.lap():.2f}s. Found {final_count} sequences.",
         args.verbose,
     )
 

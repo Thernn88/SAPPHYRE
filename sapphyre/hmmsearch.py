@@ -12,7 +12,7 @@ from sapphyre_tools import bio_revcomp, get_overlap
 from Bio import BiopythonWarning
 from Bio.Seq import Seq
 from .utils import parseFasta, printv, gettempdir, writeFasta
-from .diamond import ReferenceHit, ReporterHit as Hit
+from .diamond import ReporterHit as Hit
 from .timekeeper import TimeKeeper, KeeperMode
 
 
@@ -26,7 +26,6 @@ class HmmHit(Struct):
     gene: str
     query: str
     uid: int|str|None
-    refs: list[ReferenceHit]
     seq: str = None
     
 
@@ -335,7 +334,7 @@ def add_new_result(new_uid_template, gene, query, results, is_full, cluster_full
                 where_from = "Cluster Full"
                 cquery = cluster_queries[cluster_range]
 
-                new_hit = HmmHit(node=id, score=score, frame=int(frame), evalue=0, qstart=new_qstart, qend=new_qstart + len(sequence), gene=gene, query=cquery, uid=None, refs=[], seq=sequence)
+                new_hit = HmmHit(node=id, score=score, frame=int(frame), evalue=0, qstart=new_qstart, qend=new_qstart + len(sequence), gene=gene, query=cquery, uid=None, seq=sequence)
                 if debug:
                     hmm_log.append(hmm_log_template.format(new_hit.gene, new_hit.node, new_hit.frame, where_from))
                 output.append(new_hit)
@@ -373,7 +372,7 @@ def add_new_result(new_uid_template, gene, query, results, is_full, cluster_full
 
             passed_ids.add(hit.node)
             parents_done.add(f"{hit.node}|{frame}")
-            new_hit = HmmHit(node=hit.node, score=score, frame=frame, evalue=hit.evalue, qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=new_uid, refs=hit.refs, seq=sequence)
+            new_hit = HmmHit(node=hit.node, score=score, frame=frame, evalue=hit.evalue, qstart=new_qstart, qend=new_qstart + len(sequence), gene=hit.gene, query=hit.query, uid=new_uid, seq=sequence)
             output.append(new_hit)
 
 
@@ -563,7 +562,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
                             new_start = hit.qstart
                             new_end = new_start + len(hit.seq)
                         
-                        new_hit = HmmHit(node=hit.node, score=0, frame=hit.frame, evalue=hit.evalue, qstart=new_start, qend=new_end, gene=hit.gene, query=hit.query, uid=hit.uid, refs=hit.refs, seq=hit.seq)
+                        new_hit = HmmHit(node=hit.node, score=0, frame=hit.frame, evalue=hit.evalue, qstart=new_start, qend=new_end, gene=hit.gene, query=hit.query, uid=hit.uid, seq=hit.seq)
                         output.append(new_hit)
                         parents_done.add(query_template.format(hit.node, hit.frame))
                         if debug:

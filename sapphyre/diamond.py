@@ -22,13 +22,6 @@ from .utils import gettempdir, parseFasta, printv, writeFasta, cull_columns
 GAP_PERCENT = 0.6
 MIN_GAP_LENGTH = 6
 
-class ReferenceHit(Struct, frozen=True):
-    query: str
-    ref: Union[str, None]
-    start: int
-    end: int
-
-
 class Hit(Struct, frozen=True):
     node: int
     target: str
@@ -42,7 +35,6 @@ class Hit(Struct, frozen=True):
     gene: str
     uid: str|int
     ref: str
-    refs: list[ReferenceHit]
 
 class ReporterHit(Struct):
     node: int
@@ -53,7 +45,6 @@ class ReporterHit(Struct):
     gene: str
     query: str
     uid: str|int
-    refs: list[ReferenceHit]
     seq: str | None
 
 
@@ -328,7 +319,6 @@ def convert_and_cull(this_args: ConvertArgs) -> ConvertReturn:
                 hit.gene,
                 hit.ref,
                 hit.uid,
-                hit.refs,
                 None,
             ),
         )
@@ -389,9 +379,6 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             # if not ref in pargs.top_ref:
             #     continue
 
-            # Create a list of ReferenceHit objects starting with the
-            # reference hit for the current row
-            refs = []
 
             this_hit = Hit(
                 row[0],
@@ -406,7 +393,6 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                 gene,
                 uid_template.format(row[0], target, qstart),
                 ref,
-                refs,
             )
             
 
@@ -447,28 +433,18 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
 
             # Delegate hits into a gene based dict. If multi was ran then apply kicks
             if len(genes_present) > 1:
-                gene_hits = defaultdict(list)
+                gene_done = set()
                 for i in indices:
                     hit = hits[i]
-                    if hit.uid not in kicks:
-                        gene_hits[hit.gene].append(hit)
+                    if hit.uid in kicks:
+                        continue
+                    if hit.gene in gene_done:
+                        continue
+                    output[hit.gene].append(hit)
             else:
-                gene_hits = {
-                    hits[0].gene: [hits[i] for i in indices if hits[i].uid not in kicks]
-                }
-
-            # Output the top hit for each gene with the remaining hits as references
-            for result in gene_hits.values():
-                top_hit = result[0]
-                top_score = top_hit.score * 0.75
-                if not pargs.is_genome:
-                    ref_seqs = [
-                        ReferenceHit(hit.target, hit.ref, hit.sstart, hit.send)
-                        for hit in result if hit.score >= top_score
-                    ]
-                    top_hit.refs.extend(ref_seqs)
-
+                top_hit = hits[indices[0]]
                 output[top_hit.gene].append(top_hit)
+
     log_result = "\n".join([",".join([str(i) for i in line]) for line in this_log])
 
     return log_result, multi_kicks, output
@@ -1319,7 +1295,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
                         hit.gene,
                         hit.ref,
                         hit.uid,
-                        hit.refs,
                         None,
                     )
                 hit.seq = head_to_seq[hit.node][hit.qstart - 1 : hit.qend].decode()
