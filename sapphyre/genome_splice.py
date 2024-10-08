@@ -350,7 +350,6 @@ def log_excised_consensus(
     compress_intermediates: bool,
     excise_region_overlap,
     excise_consensus,
-    excise_maximum_depth,
     excise_minimum_ambig,
     excise_rescue_match,
     excise_trim_consensus,
@@ -496,9 +495,6 @@ def log_excised_consensus(
                             sequences_in_region.append(aa_subset[i])
                         else:
                             sequences_out_of_region.append(aa_subset[i])
-
-                if len(sequences_in_region) > excise_maximum_depth:
-                    continue
                 
                 tagged_in_region = [(int(node.header.split("|")[3].split("&&")[0].split("_")[1]), node) for node in sequences_in_region]
                 tagged_in_region.sort(key=lambda x: x[0])
@@ -696,7 +692,6 @@ def main(args, sub_dir):
                 args.compress,
                 args.excise_region_overlap,
                 args.excise_consensus,
-                args.excise_maximum_depth,
                 args.excise_minimum_ambig,
                 args.excise_rescue_match,
                 args.excise_trim_consensus,
@@ -717,7 +712,6 @@ def main(args, sub_dir):
                     args.compress,
                     args.excise_region_overlap,
                     args.excise_consensus,
-                    args.excise_maximum_depth,
                     args.excise_minimum_ambig,
                     args.excise_rescue_match,
                     args.excise_trim_consensus,

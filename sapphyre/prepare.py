@@ -101,7 +101,6 @@ class SeqDeduplicator:
         rename,
         skip_ntrim,
         prepared_output,
-        map_mode,
         assembly_mode,
     ) -> None:
         self.original_coords = {}
@@ -117,7 +116,6 @@ class SeqDeduplicator:
         self.skip_ntrim = skip_ntrim
         self.rename = rename
         self.transcript_mapped_to = defaultdict(dict)
-        self.map_mode = map_mode
         self.assembly_mode = assembly_mode
 
     def __call__(
@@ -134,11 +132,11 @@ class SeqDeduplicator:
 
         self.original_inputs.append(str(fa_file_path))
 
-        if self.map_mode or self.assembly_mode:
+        if  self.assembly_mode:
             self.this_assembly = True
             self.is_genome = False
             
-        elif not self.map_mode and not self.assembly_mode and not self.is_genome:
+        elif not self.assembly_mode and not self.is_genome:
             try:
                 for _, seq in parseFasta(fa_file_path, True):
                     if len(seq) > CHOMP_CUTOFF:
@@ -280,7 +278,6 @@ def map_taxa_runs(
     force_entropy,
     skip_entropy,
     skip_ntrim,
-    map_mode,
     assembly_mode,
 ):
     """
@@ -331,7 +328,6 @@ def map_taxa_runs(
         rename,
         skip_ntrim,
         prepared_file,
-        map_mode,
         assembly_mode,
     )
     for fa_file_path in components:
@@ -456,7 +452,6 @@ def main(args):
             args.force_entropy,
             args.skip_entropy,
             args.skip_ntrim,
-            args.map,
             args.assembly,
         )
 

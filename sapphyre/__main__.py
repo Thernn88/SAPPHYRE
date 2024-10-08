@@ -375,6 +375,7 @@ def subcmd_outlier(subparsers):
 
 
 def outlier_args(par):
+    # Globally used args
     par.add_argument(
         "-s",
         "--solo",
@@ -383,64 +384,20 @@ def outlier_args(par):
         help="Run solo on a script.",
     )
     par.add_argument(
-        "-rpc",
-        "--rescue_passing_cluster",
-        type=float,
-        default=0.5,
-        help="Minimum percent of passing candidates in a cluster to rescue kicked sequences in blosum.",
-    )
-    par.add_argument(
-        "-rcp",
-        "--rescue_consensus_percent",
-        type=float,
-        default=0.8,
-        help="Minimum percent of matching columns of a sequence to the candidate consensus to rescue in blosum."
-    )
-    # Globally used args
-    par.add_argument(
         "-d",
         "--debug",
         action="count",
         default=0,
         help="Enable debug. When enabled each outlier script will output a log of changes made.",
     )
-    # Outlier main loop
     par.add_argument(
-        "-t",
-        "--threshold",
-        type=float,
-        default=175,
-        help="Percent scaling IQR in upper bound calculation in blosum.",
-    )
-    #
-    par.add_argument(
-        "-moi",
-        "--min_overlap_internal",
-        type=float,
-        default=0.6,
-        help="Minimum overlap percent between reads to constitute and internal kick in hmmfilter",
-    )
-    #
-    par.add_argument(
-        "-mcp",
-        "--matching_consensus_percent",
-        help="Minimum percent of similar columns required for candidates to match the consensus in hmmfilter",
-        type=float,
-        default=0.3,
-    )
-    par.add_argument(
-        "-sdi",
-        "--score_diff_internal",
-        type=float,
-        default=1.15,
-        help="Minimum score difference between reads for hmmfilter internal overlap filter.",
-    )
-    par.add_argument(
-        "--no-references",
-        action="store_true",
+        "-nd",
+        "--no_dupes",
         default=False,
-        help="Disable output of reference sequences in blosum.",
+        action="store_true",
+        help="Don't use prepare and reporter dupe counts in consensus generation",
     )
+    # Blosum args
     par.add_argument(
         "-ccp",
         "--col-cull-percent",
@@ -470,19 +427,40 @@ def outlier_args(par):
         help="Minimum bp for index group after column cull in blosum.",
     )
     par.add_argument(
-        "-cor",
-        "--cluster_overlap_requirement",
-        help="Overlap requirement to compare clusters in cluster consensus for genomic data",
+        "-rpc",
+        "--rescue_passing_cluster",
         type=float,
         default=0.5,
+        help="Minimum percent of passing candidates in a cluster to rescue kicked sequences in blosum.",
     )
-    # Collapser commands
+    par.add_argument(
+        "-rcp",
+        "--rescue_consensus_percent",
+        type=float,
+        default=0.8,
+        help="Minimum percent of matching columns of a sequence to the candidate consensus to rescue in blosum."
+    )
+    par.add_argument(
+        "-t",
+        "--threshold",
+        type=float,
+        default=175,
+        help="Percent scaling IQR in upper bound calculation in blosum.",
+    )
     par.add_argument(
         "-tct",
         "--true_cluster_threshold",
         help="Largest distance between two ids to be considered in the same cluster for id based clustering",
         type=int,
         default=100,
+    )
+    #Hmmfilter args
+    par.add_argument(
+        "-moh",
+        "--min_overlap_hmmfilter",
+        type=float,
+        default=0.6,
+        help="Minimum overlap percent between reads to constitute and internal kick in hmmfilter",
     )
     par.add_argument(
         "-hc",
@@ -491,6 +469,29 @@ def outlier_args(par):
         type=float,
         help="Threshold for selecting a consensus bp in hmmfilter",
     )
+    par.add_argument(
+        "-mcp",
+        "--matching_consensus_percent",
+        help="Minimum percent of similar columns required for candidates to match the consensus in hmmfilter",
+        type=float,
+        default=0.3,
+    )
+    par.add_argument(
+        "-sdi",
+        "--score_diff_internal",
+        type=float,
+        default=1.15,
+        help="Minimum score difference between reads for hmmfilter internal overlap filter.",
+    )
+    
+    par.add_argument(
+        "-cor",
+        "--cluster_overlap_requirement",
+        help="Overlap requirement to compare clusters in cluster consensus for genomic data",
+        type=float,
+        default=0.5,
+    )
+    # Excise args
     par.add_argument(
         "-ero",
         "--excise_region_overlap",
@@ -513,13 +514,6 @@ def outlier_args(par):
         help="# of bp a read is allowed to deviate from a resolving contig in excise",
     )
     par.add_argument(
-        "-emd",
-        "--excise_maximum_depth",
-        default=100000,
-        type=int,
-        help="Maximum depth for excise ambigous region assembly",
-    )
-    par.add_argument(
         "-ema",
         "--excise_minimum_ambig",
         default=5,
@@ -540,13 +534,7 @@ def outlier_args(par):
         type=float,
         help="Minimum percent of allowable X characters in edge trim for genomic splice",
     )
-    par.add_argument(
-        "-nd",
-        "--no_dupes",
-        default=False,
-        action="store_true",
-        help="Don't use prepare and reporter dupe counts in consensus generation",
-    )
+    # Internal Args
     par.add_argument(
         "-md",
         "--minimum-depth",
@@ -1505,6 +1493,12 @@ def subcmd_auto(subparsers):
         default=None,
         help="Config file to use. If not specified, will use default configuration.",
     )
+    par.add_argument(
+        "-asm",
+        "--assembly",
+        action="store_true",
+        help="Force prepare to set any datasets as assembly only.",
+    )
     par.set_defaults(func=auto, formathelp=par.format_help)
 
 
@@ -1712,12 +1706,6 @@ def main():
         action="store_true",
         default=False,
         help="Alternative logic for gene finding mode",
-    )
-    parser.add_argument(
-        "--map",
-        action="store_true",
-        default=False,
-        help="Enables map mode logic",
     )
     parser.add_argument(
         "-v",

@@ -281,7 +281,7 @@ def add_full_cluster_search(clusters, edge_margin, source_clusters, cluster_full
                 nodes_in_gene.add(header)
 
 
-def get_results(hmm_output, map_mode):
+def get_results(hmm_output):
     data = defaultdict(list)
     high_score = 0
     with open(hmm_output) as f:
@@ -306,19 +306,10 @@ def get_results(hmm_output, map_mode):
 
         data[query].append((start, end, score))
         
-    if map_mode:
-        score_thresh = high_score * 0.9
-
-        queries = []
-        for query, results in data.items():
-            queries.append((query, [i for i in results if i[2] >= score_thresh]))
-    else:
-        queries = data.items()
-    
-    return queries
+    return data.items()
 
 
-def add_new_result(new_uid_template, map_mode, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template, debug):
+def add_new_result(new_uid_template, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template, debug):
     node, frame = query.split("|")
     id = int(node)
     if id in cluster_full:
@@ -365,13 +356,7 @@ def add_new_result(new_uid_template, map_mode, gene, query, results, is_full, cl
             start = start * 3
             end = end * 3
 
-            if map_mode:
-                sequence = nt_sequences[query]
-                if len(sequence) % 3 != 0:
-                    sequence += ("N" * (3 - len(sequence) % 3))
-                start = 0
-            else:
-                sequence = nt_sequences[query][start: end]
+            sequence = nt_sequences[query][start: end]
 
             if is_full:
                 new_qstart = start
@@ -392,7 +377,7 @@ def add_new_result(new_uid_template, map_mode, gene, query, results, is_full, cl
             output.append(new_hit)
 
 
-def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_ref_location, overwrite, map_mode, debug, verbose, evalue_threshold, chomp_max_distance, edge_margin):
+def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_ref_location, overwrite, debug, verbose, evalue_threshold, chomp_max_distance, edge_margin):
     batch_result = []
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     this_seqs = {}
@@ -496,7 +481,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
         hmm_log_template = "{},{},{},{}"
         queries = None
         if debug <= 2 and not overwrite and path.exists(this_hmm_output):
-            queries = get_results(this_hmm_output, map_mode)
+            queries = get_results(this_hmm_output)
         
         if queries is None:
             if is_full:
@@ -549,10 +534,10 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
             continue#return "", [], [], [], []
 
         if queries is None:
-            queries = get_results(this_hmm_output, map_mode)
+            queries = get_results(this_hmm_output)
         
         for query, results in queries:
-            add_new_result(new_uid_template, map_mode, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template, debug)
+            add_new_result(new_uid_template, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template, debug)
 
         diamond_kicks = []
         for hit in diamond_hits:
@@ -741,7 +726,7 @@ def do_folder(input_folder, args):
 
     per_batch = math.ceil(len(transcripts_mapped_to) / args.processes)
 
-    batches = [(transcripts_mapped_to[i:i + per_batch], seq_source, is_full, is_genome, hmm_output_folder, aln_ref_location, args.overwrite, args.map, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance, args.edge_margin) for i in range(0, len(transcripts_mapped_to), per_batch)]
+    batches = [(transcripts_mapped_to[i:i + per_batch], seq_source, is_full, is_genome, hmm_output_folder, aln_ref_location, args.overwrite, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance, args.edge_margin) for i in range(0, len(transcripts_mapped_to), per_batch)]
 
     if args.processes <= 1:
         all_hits = []

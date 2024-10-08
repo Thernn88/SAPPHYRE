@@ -30,7 +30,6 @@ def main(argsobj):
             )
             return
 
-        printv(f"Processing: {folder}", argsobj.verbose)
         rmtree(os.path.join(folder, "outlier"), ignore_errors=True)
         
         this_args = vars(argsobj)
@@ -69,10 +68,6 @@ def main(argsobj):
                 print(argsobj.formathelp())
                 return
             from_folder = "blosum"
-
-            if argsobj.map:
-                continue
-
 
             if is_assembly:
                 printv("Filtering Using Hmmsearch Scores.", argsobj.verbose)

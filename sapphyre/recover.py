@@ -152,8 +152,11 @@ def find_non_depth_regions(sequence, buffer=10):
     return merged_regions
 
 
-def do_gene(gene, blosum_folder, trimmed_folder, aa_input, nt_input, aa_output, nt_output, verbose):
+def do_gene(gene, blosum_folder, trimmed_folder, aa_input, nt_input, aa_output, nt_output, verbose, compress):
     printv(f"Processing: {gene}", verbose, 2)
+    
+    min_overlap = 12 # Minimum overlap between read and consensus data
+    
     aa_gene = gene.replace(".nt.", ".aa.")
     no_dupes = False
 
@@ -189,7 +192,7 @@ def do_gene(gene, blosum_folder, trimmed_folder, aa_input, nt_input, aa_output, 
             start, end = find_index_pair(sequence, "-")
             
             doesnt_overlap = True
-            best_small_overlap = 12
+            best_small_overlap = min_overlap
             bso_coords = None
             for rstart, rend in regions:
                 overlap_coords = get_overlap(start, end, rstart, rend, 1)
@@ -239,8 +242,8 @@ def do_gene(gene, blosum_folder, trimmed_folder, aa_input, nt_input, aa_output, 
         nt_sequences = dict(out_nt)
         out_nt = [(header, nt_sequences[header]) for header in aa_order if not header.endswith('.')]
                     
-        writeFasta(Path(nt_output, gene), out_nt)
-        writeFasta(Path(aa_output, gene.replace(".nt.",".aa.")), aa_references + aa_candidates)
+        writeFasta(Path(nt_output, gene), out_nt, compress)
+        writeFasta(Path(aa_output, gene.replace(".nt.",".aa.")), aa_references + aa_candidates, compress)
 
     return recovered
 
@@ -269,11 +272,9 @@ def main(args, sub_dir):
     aa_input = input_folder.joinpath("aa")
     nt_input = input_folder.joinpath("nt")
 
-    compress = not args.uncompress_intermediates or args.compress
-
     genes = [fasta for fasta in listdir(nt_input) if ".fa" in fasta]
 
-    arguments = [(gene, blosum_folder, trimmed_folder, aa_input, nt_input, aa_output, nt_output, args.verbose) for gene in genes]
+    arguments = [(gene, blosum_folder, trimmed_folder, aa_input, nt_input, aa_output, nt_output, args.verbose, args.compress) for gene in genes]
     if args.processes > 1:
         with Pool(args.processes) as pool:
             results = pool.starmap(do_gene, arguments)

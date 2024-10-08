@@ -80,6 +80,10 @@ def main(args):
         this_args = global_args.copy()
         this_args.update(sargs)
         
+        if args.assembly:
+            if 'assembly' in this_args:
+                this_args['assembly'] = True
+        
         if args.overwrite:
             if 'overwrite' in this_args:
                 this_args['overwrite'] = True

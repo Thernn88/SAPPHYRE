@@ -598,7 +598,6 @@ def main_process(
     nt_input,
     args_output,
     args_threshold,
-    args_references,
     nt_output_path: str,
     debug: bool,
     verbose: int,
@@ -613,8 +612,6 @@ def main_process(
     passing_rescue_percent: float,
     rescue_consensus_percent: float,
 ):
-    keep_refs = not args_references
-
     file_input = args_input
     filename = path.basename(file_input)
 
@@ -649,10 +646,10 @@ def main_process(
     else:
         refs_in_file = len(ref_seqs)
     regulars = []
-    if keep_refs:
-        for ref in reference_records:
-            regulars.append(ref.id)
-            regulars.append(ref.raw)
+
+    for ref in reference_records:
+        regulars.append(ref.id)
+        regulars.append(ref.raw)
 
     raw_regulars, passing, failing = compare_means(
         reference_records,
@@ -791,7 +788,7 @@ def do_folder(folder, args, is_genome, gene_source):
 
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     wanted_aa_path = Path(folder, "outlier", gene_source, "aa")
-    if not args.map and wanted_aa_path.exists():
+    if wanted_aa_path.exists():
         aa_input = wanted_aa_path
         nt_input = Path(folder, "outlier", gene_source, "nt")
     elif gene_source == "trimmed" or gene_source == "motif":
@@ -868,7 +865,6 @@ def do_folder(folder, args, is_genome, gene_source):
                     nt_input,
                     output_path,
                     args.threshold,
-                    args.no_references,
                     nt_output_path,
                     args.debug,
                     args.verbose,
@@ -898,11 +894,10 @@ def do_folder(folder, args, is_genome, gene_source):
                     nt_input,
                     output_path,
                     args.threshold,
-                    args.no_references,
                     nt_output_path,
                     args.debug,
                     args.verbose,
-                    compress,
+                    args.compress,
                     args.true_cluster_threshold,
                     args.col_cull_percent,
                     args.index_group_min_bp,

@@ -30,7 +30,7 @@ class HmmfilterArgs(Struct):
     consensus: float
 
     from_folder: str
-    min_overlap_internal: float
+    min_overlap_hmmfilter: float
     score_diff_internal: float
     matching_consensus_percent: float
     no_dupes: bool
@@ -157,7 +157,7 @@ def compare_hit_to_leaf(hit_a, targets, overlap, score_diff) -> None:
             hit_a.saves.append(hit_b.index)
 
 
-def internal_filter_gene2(nodes, debug, gene, min_overlap_internal, score_diff_internal):
+def internal_filter_gene2(nodes, debug, gene, min_overlap_hmmfilter, score_diff_internal):
     intervals = {(node.start, node.end) for node in nodes}
     intervals = {tup: Leaf(tup[1] - tup[0]) for tup in intervals}
     tree = OverlapTree()
@@ -191,7 +191,7 @@ def internal_filter_gene2(nodes, debug, gene, min_overlap_internal, score_diff_i
                 length = length + 1
                 coords = get_overlap(node.start, node.end, interval_start, interval_end, 0)
                 start, end = coords
-                if (end - start)/length < min_overlap_internal:
+                if (end - start)/length < min_overlap_hmmfilter:
                     continue
                 working.append(((interval[0], interval[1]), coords))
                 memoize[(node.start, node.end)] = working
@@ -213,7 +213,7 @@ def internal_filter_gene2(nodes, debug, gene, min_overlap_internal, score_diff_i
     return process_kicks(nodes, debug, gene, filtered_sequence_log)
 
 
-def internal_filter_gene(nodes, debug, gene, min_overlap_internal, score_diff_internal):
+def internal_filter_gene(nodes, debug, gene, min_overlap_hmmfilter, score_diff_internal):
     nodes.sort(key=lambda hit: hit.score, reverse=True)
     filtered_sequences_log = []
     kicks = set()
@@ -248,7 +248,7 @@ def internal_filter_gene(nodes, debug, gene, min_overlap_internal, score_diff_in
 
             length = min((hit_b.end - hit_b.start), (hit_a.end - hit_a.start)) + 1  # Inclusive
             percentage_of_overlap = amount_of_overlap / length
-            if percentage_of_overlap >= min_overlap_internal:
+            if percentage_of_overlap >= min_overlap_hmmfilter:
 
                 kmer_a = hit_a.sequence[overlap_coords[0]: overlap_coords[1]]
                 kmer_b = hit_b.sequence[overlap_coords[0]: overlap_coords[1]]
@@ -471,8 +471,8 @@ def process_batch(
                         )
         
         nodes = [i for i in nodes if i.header not in kicked_headers]
-        # nodes, internal_header_kicks, internal_log = internal_filter_gene2(nodes.copy(), args.debug, gene, args.min_overlap_internal, args.score_diff_internal)
-        nodes, internal_log, internal_header_kicks = internal_filter_gene(nodes, args.debug, gene, args.min_overlap_internal, args.score_diff_internal)
+        # nodes, internal_header_kicks, internal_log = internal_filter_gene2(nodes.copy(), args.debug, gene, args.min_overlap_hmmfilter, args.score_diff_internal)
+        nodes, internal_log, internal_header_kicks = internal_filter_gene(nodes, args.debug, gene, args.min_overlap_hmmfilter, args.score_diff_internal)
         # assert nodes == nodes2, "nodes have changed"
         # assert internal_header_kicks == internal_header_kicks2, "kicks have changed"
         kicked_headers.update(internal_header_kicks)
@@ -635,7 +635,7 @@ def main(args, from_folder):
         debug=args.debug,
         consensus=args.hmmfilter_consensus,
         from_folder=from_folder,
-        min_overlap_internal = args.min_overlap_internal,
+        min_overlap_hmmfilter = args.min_overlap_hmmfilter,
         score_diff_internal = args.score_diff_internal,
         matching_consensus_percent = args.matching_consensus_percent,
         no_dupes = args.no_dupes,
