@@ -459,7 +459,7 @@ def get_score(contigs, flex_consensus, nodes, max_score, contig_depth_reward, lo
 
     return with_identity
 
-def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, excise_consensus, allowed_mismatches, region_overlap, region_min_ambig, debug):
+def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, excise_consensus, allowed_mismatches, region_min_ambig, debug):
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     kicks = 0
     
@@ -471,6 +471,8 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
     contig_read_overlap = 0.01 # Min overlap between reads and contigs for kick
     min_overlap_percent = 0.15 # Min overlap percent for reads in simple assembly
     min_overlap_chars = 10 # Min overlap chars for reads in simple assembly
+    min_ambig_overlap_chars = 10 # Min overlap chars for reads into regions
+    region_overlap = 0.15 # Min overlap percent for reads into regions
 
     kicked_nodes = set()
     unresolved = []
@@ -538,8 +540,9 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
             nodes_out_of_region = []
             for node in nodes:
                 coords = get_overlap(node.start * 3, node.end * 3, start, end, 1)
-                percent = 0 if coords is None else (coords[1] - coords[0]) / (node.end - node.start)
-                if percent < region_overlap:
+                overlap_amount = 0 if coords is None else coords[1] - coords[0]
+                percent = 0 if coords is None else overlap_amount / (node.end - node.start)
+                if percent < region_overlap and overlap_amount < min_ambig_overlap_chars:
                     nodes_out_of_region.append(node)
                     continue
 
@@ -666,7 +669,7 @@ def main(args, sub_dir):
 
     genes = [fasta for fasta in listdir(aa_input) if ".fa" in fasta]
 
-    arguments = [(gene, aa_input, nt_input, aa_output, nt_output, args.no_dupes, args.compress, args.excise_consensus, args.excise_allowed_distance, args.excise_region_overlap, args.excise_minimum_ambig, args.debug) for gene in genes]
+    arguments = [(gene, aa_input, nt_input, aa_output, nt_output, args.no_dupes, args.compress, args.excise_consensus, args.excise_allowed_distance, args.excise_minimum_ambig, args.debug) for gene in genes]
     if args.processes > 1:
         with Pool(args.processes) as pool:
             results = pool.starmap(do_gene, arguments)

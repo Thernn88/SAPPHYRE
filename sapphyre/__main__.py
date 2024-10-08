@@ -486,13 +486,6 @@ def outlier_args(par):
     )
     # Excise args
     par.add_argument(
-        "-ero",
-        "--excise_region_overlap",
-        default=0.1,
-        type=float,
-        help="Minimum overlap percent for sequences and ambigous regions to consider it an ambigous sequence",
-    )
-    par.add_argument(
         "-ec",
         "--excise_consensus",
         default=0.85,
@@ -587,68 +580,6 @@ def outlier(argsobj):
     if not outlier.main(argsobj):
         print()
         print(argsobj.formathelp())
-
-
-def subcmd_miniprot(subparsers):
-    par = subparsers.add_parser(
-        "miniprot",
-        help="Reference-guided De-novo Assembly Algorithm which merges overlapping reads "
-        "into contiguous segments (Contigs).",
-    )
-    par.add_argument(
-        "INPUT",
-        help="Path to directory of Input folder",
-        action="extend",
-        nargs="+",
-    )
-    miniprot_args(par)
-    par.set_defaults(func=miniprot, formathelp=par.format_help)
-
-
-def miniprot_args(par):
-    par.add_argument(
-        "-d",
-        "--debug",
-        action="count",
-        default=0,
-        help="Enable debug. When enabled Output log of culls.",
-    )
-    par.add_argument(
-        "-ovw",
-        "--overwrite",
-        action="store_true",
-        help="Overwrite existing files.",
-    )
-    par.add_argument(
-        "-cd",
-        "--chomp_max_distance",
-        type=int,
-        default=100,
-        help="Max distance for merging cluster in chomp",
-    )
-    par.add_argument(
-        "-me",
-        "--max_extend",
-        type=int,
-        default=40,
-        help="Max distance to extend left and right (x * chomp length)",
-    )
-    par.add_argument(
-        "-ep",
-        "--entropy_percent",
-        type=float,
-        default=0.7,
-        help="Entropy percentage arg"
-    )
-        
-
-
-def miniprot(args):
-    from . import miniprot
-
-    if not miniprot.main(args):
-        print()
-        print(args.formathelp())
 
 
 def subcmd_Merge(subparsers):
@@ -804,13 +735,6 @@ def align_args(par, skip_reconcile_overlap = False):
             default=False,
             help="Enable second run logic",
         )
-        par.add_argument(
-            "-um",
-            "--use_miniprot",
-            action="store_true",
-            default=False,
-            help="User miniprot input.",
-        )
         
     par.add_argument(
         "-ovw",
@@ -859,13 +783,6 @@ def subcmd_pal2nal(subparsers):
 
 
 def pal2nal_args(par):
-    par.add_argument(
-        "-um",
-        "--use_miniprot",
-        action="store_true",
-        default=False,
-        help="User miniprot input.",
-    )
     par.add_argument("-t", "--table", type=int, default=1, help="Table ID.")
 
 
@@ -1745,8 +1662,6 @@ def main():
     subcmd_internal(subparsers)
     subcmd_Merge(subparsers)
     subcmd_Combine(subparsers)
-    subcmd_miniprot(subparsers)
-
     # Finalize
     subcmd_finalize(subparsers)
 

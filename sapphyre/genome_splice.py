@@ -348,13 +348,14 @@ def log_excised_consensus(
     input_path: Path,
     output_path: Path,
     compress_intermediates: bool,
-    excise_region_overlap,
     excise_consensus,
     excise_minimum_ambig,
     excise_rescue_match,
     excise_trim_consensus,
     no_dupes,
     true_cluster_threshold = 24,
+    min_overlap_percent = 0.15,
+    min_overlap_amount = 10,
 ):
     """
     By default, this does non-dupe consensus. If you pass "dupes=True", it will call
@@ -491,7 +492,10 @@ def log_excised_consensus(
                     if overlap_coords:
                         overlap_amount = overlap_coords[1] - overlap_coords[0]
                         overlap_percent = overlap_amount / (node.end - node.start)
-                        if overlap_percent >= excise_region_overlap: # Adjustable percent
+                        
+                        
+                        
+                        if overlap_percent >= min_overlap_percent or overlap_amount >= min_overlap_amount:
                             sequences_in_region.append(aa_subset[i])
                         else:
                             sequences_out_of_region.append(aa_subset[i])
@@ -654,14 +658,6 @@ def main(args, sub_dir):
             raise ValueError(
                 "Cannot convert excise_consensus to a percent. Use a decimal or a whole number between 0 and 100"
             )
-    if args.excise_region_overlap > 1.0:
-        if 0 < args.excise_region_overlap <= 100:
-            args.excise_region_overlap = args.excise_region_overlap / 100
-        else:
-            raise ValueError(
-                "Cannot convert excise_region_overlap to a percent. Use a decimal or a whole number between 0 and 100"
-            )
-
     folder = args.INPUT
     input_folder = Path(folder, "outlier", sub_dir)
     if not input_folder.exists():
@@ -690,7 +686,6 @@ def main(args, sub_dir):
                 input_folder,
                 output_folder,
                 args.compress,
-                args.excise_region_overlap,
                 args.excise_consensus,
                 args.excise_minimum_ambig,
                 args.excise_rescue_match,
@@ -710,7 +705,6 @@ def main(args, sub_dir):
                     input_folder,
                     output_folder,
                     args.compress,
-                    args.excise_region_overlap,
                     args.excise_consensus,
                     args.excise_minimum_ambig,
                     args.excise_rescue_match,
