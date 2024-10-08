@@ -1,7 +1,7 @@
 import argparse
 import os
 from shutil import rmtree
-from sapphyre import excise
+from sapphyre import excise, recover
 from wrap_rocks import RocksDB
 from . import blosum, genome_splice, hmmfilter, internal, cluster_consensus, read_assembly
 from .timekeeper import KeeperMode, TimeKeeper
@@ -29,6 +29,9 @@ def main(argsobj):
                 "ERROR: All folders passed as argument must exists.", argsobj.verbose, 0
             )
             return
+
+        printv(f"Processing: {folder}", argsobj.verbose)
+        rmtree(os.path.join(folder, "outlier"), ignore_errors=True)
         
         this_args = vars(argsobj)
         this_args["INPUT"] = folder
@@ -45,6 +48,7 @@ def main(argsobj):
                 "splice": ("clusters", genome_splice.main),
                 "assembly": ("blosum", read_assembly.main),
                 "internal": ("excise", internal.main),
+                "recover": ("internal", recover.main),
             }
             from_folder, script = default_path[script_name]
             
@@ -106,6 +110,12 @@ def main(argsobj):
                     print()
                     print(argsobj.format)
                 from_folder = "internal"
+
+                printv("Recovering lost reads.", argsobj.verbose)
+                if not recover.main(this_args, from_folder):
+                    print()
+                    print(argsobj.format)
+                from_folder = "recovered"
 
     printv(f"Took {timer.differential():.2f} seconds overall.", argsobj.verbose)
 

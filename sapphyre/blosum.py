@@ -751,7 +751,7 @@ def main_process(
         cluster_out = (gene, f"{gene},{len(ids)},{len(clusters)},{cluster_string}")
 
     # regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
-    regulars, allowed_columns = delete_empty_columns(raw_regulars)
+    # regulars, allowed_columns = delete_empty_columns(raw_regulars)
     # if assembly:
     #     to_be_excluded = make_asm_exclusions(passing, failing)
     # else:
@@ -774,7 +774,7 @@ def main_process(
         non_empty_lines = remove_excluded_sequences(lines, to_be_excluded)
         # if assembly:
         #     non_empty_lines = align_intron_removal(non_empty_lines, header_to_indices)
-        non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
+        # non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
 
         write2Line2Fasta(nt_output_path, non_empty_lines, compress)
 
