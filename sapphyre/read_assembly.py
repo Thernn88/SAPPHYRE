@@ -192,7 +192,7 @@ def check_covered_bad_regions(nodes, consensus, min_ambiguous, max_distance, amb
 
     return [(None, None)], consensus
 
-def scan_extend(node, nodes, i, merged, min_overlap_percent=0.15, min_overlap_chars=10):
+def scan_extend(node, nodes, i, merged, min_overlap_percent, min_overlap_chars):
     merge_occured = True
     while merge_occured:
         merge_occured = False
@@ -233,13 +233,13 @@ def scan_extend(node, nodes, i, merged, min_overlap_percent=0.15, min_overlap_ch
                 break
     return node
 
-def simple_assembly(nodes):
+def simple_assembly(nodes, min_overlap_percent, min_overlap_chars):
     nodes.sort(key=lambda x: x.count, reverse=True)
     merged = set()
     for i, node in enumerate(nodes):
         if i in merged:
             continue
-        nodes[i] = scan_extend(node, nodes, i, merged)
+        nodes[i] = scan_extend(node, nodes, i, merged, min_overlap_percent, min_overlap_chars)
 
     nodes = [node for node in nodes if node is not None]
 
@@ -461,13 +461,16 @@ def get_score(contigs, flex_consensus, nodes, max_score, contig_depth_reward, lo
 
 def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, excise_consensus, allowed_mismatches, region_overlap, region_min_ambig, debug):
     warnings.filterwarnings("ignore", category=BiopythonWarning)
-    # within_identity = 0.9
-    max_score = 8
     kicks = 0
-    min_children = 4
-    contig_depth_reward = 0.001
-    tie_breaker_percent = 1.15
-    min_bp = 100
+    
+    max_score = 8 # Maximum count for matching columns in motif scoring
+    min_children = 4 # Minimum children a contig must have to be considered
+    contig_depth_reward = 0.001 # Reward for each child a contig has
+    tie_breaker_percent = 1.15 # If top contig scores are within 15% trigger tie breaker which merges non ambig reads into the contigs to see if they can continue merging
+    min_contig_bp = 100 # Minimum contig bp
+    contig_read_overlap = 0.01 # Min overlap between reads and contigs for kick
+    min_overlap_percent = 0.15 # Min overlap percent for reads in simple assembly
+    min_overlap_chars = 10 # Min overlap chars for reads in simple assembly
 
     kicked_nodes = set()
     unresolved = []
@@ -542,11 +545,11 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
 
                 nodes_in_region.append(node)
 
-            merged_nodes = simple_assembly(copy.deepcopy(nodes_in_region))
+            merged_nodes = simple_assembly(copy.deepcopy(nodes_in_region), min_overlap_percent, min_overlap_chars)
             
             possible_contigs = [node for node in merged_nodes if (len(node.children) >= min_children and 
                                                                   node.is_contig and # BP increase due to merge
-                                                                  len(node.nt_sequence) - node.nt_sequence.count("-") >= min_bp)]
+                                                                  len(node.nt_sequence) - node.nt_sequence.count("-") >= min_contig_bp)]
             contigs = contigs_that_resolve(possible_contigs, nodes_out_of_region)
             for i, node in enumerate(contigs):
                 node.codename = f"Contig{i}"
@@ -576,7 +579,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
                         log_output.append(f"\nBest contig: {best_contig.codename}\n\nComparing against reads")
                         log_output.append(f"Multiple contigs with similar scores, choosing the best contig by merging into unambig\n")
                     for i, contig in enumerate(tie_breaker):
-                        tie_breaker[i] = scan_extend(contig, sorted(copy.deepcopy(nodes_out_of_region), key=lambda x: x.start), None, set())
+                        tie_breaker[i] = scan_extend(contig, sorted(copy.deepcopy(nodes_out_of_region), key=lambda x: x.start), None, set(), min_overlap_percent, min_overlap_chars)
                     with_identity = get_score(tie_breaker, flex_consensus, nodes, max_score, contig_depth_reward, log_output, debug)
                     best_contig = max(with_identity, key=lambda x: x[1])[0]
                     
@@ -589,7 +592,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
                         continue
                     
                     overlap_percent = (overlap_coords[1] - overlap_coords[0]) / min(best_contig.end - best_contig.start, read.end - read.start)
-                    if overlap_percent < 0.01:
+                    if overlap_percent < contig_read_overlap:
                         continue
                     
                     kmer_node = read.nt_sequence[overlap_coords[0]:overlap_coords[1]]
@@ -661,11 +664,9 @@ def main(args, sub_dir):
     aa_input = input_folder.joinpath("aa")
     nt_input = input_folder.joinpath("nt")
 
-    compress = not args.uncompress_intermediates or args.compress
-
     genes = [fasta for fasta in listdir(aa_input) if ".fa" in fasta]
 
-    arguments = [(gene, aa_input, nt_input, aa_output, nt_output, args.no_dupes, compress, args.excise_consensus, args.excise_allowed_distance, args.excise_region_overlap, args.excise_minimum_ambig, args.debug) for gene in genes]
+    arguments = [(gene, aa_input, nt_input, aa_output, nt_output, args.no_dupes, args.compress, args.excise_consensus, args.excise_allowed_distance, args.excise_region_overlap, args.excise_minimum_ambig, args.debug) for gene in genes]
     if args.processes > 1:
         with Pool(args.processes) as pool:
             results = pool.starmap(do_gene, arguments)

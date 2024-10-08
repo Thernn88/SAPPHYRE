@@ -834,8 +834,6 @@ def do_folder(folder, args, is_genome, gene_source):
     nt_output_path = path.join(output_path, "nt")
     folder_check(output_path, args.debug)
 
-    compress = not args.uncompress_intermediates or args.compress
-
     #  convert threshold to percent
     args.threshold = args.threshold / 100
     if not 0 < args.col_cull_percent < 1.0:
@@ -874,7 +872,7 @@ def do_folder(folder, args, is_genome, gene_source):
                     nt_output_path,
                     args.debug,
                     args.verbose,
-                    compress,
+                    args.compress,
                     args.true_cluster_threshold,
                     args.col_cull_percent,
                     args.index_group_min_bp,

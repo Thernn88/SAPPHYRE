@@ -387,26 +387,14 @@ def outlier_args(par):
         "--rescue_passing_cluster",
         type=float,
         default=0.5,
-        help="Minimum percent of passing candidates in a cluster to rescue kicked sequences.",
+        help="Minimum percent of passing candidates in a cluster to rescue kicked sequences in blosum.",
     )
     par.add_argument(
         "-rcp",
         "--rescue_consensus_percent",
         type=float,
         default=0.8,
-        help="Minimum percent of matching columns of a sequence to the candidate consensus to rescue"
-    )
-    par.add_argument(
-        "-aid",
-        "--add_internal_dupes",
-        action="store_true",
-        help="Add dupes to internal",
-    )
-    par.add_argument(
-        "-ahd",
-        "--add_hmmfilter_dupes",
-        action="store_true",
-        help="Add dupes to hmmfilter",
+        help="Minimum percent of matching columns of a sequence to the candidate consensus to rescue in blosum."
     )
     # Globally used args
     par.add_argument(
@@ -414,13 +402,7 @@ def outlier_args(par):
         "--debug",
         action="count",
         default=0,
-        help="Log outliers to csv files",
-    )
-    par.add_argument(
-        "-uci",
-        "--uncompress-intermediates",
-        action="store_true",
-        help="Compress intermediate files",
+        help="Enable debug. When enabled each outlier script will output a log of changes made.",
     )
     # Outlier main loop
     par.add_argument(
@@ -428,7 +410,7 @@ def outlier_args(par):
         "--threshold",
         type=float,
         default=175,
-        help="Percent scaling IQR in upper bound calculation. Default is 100%%.",
+        help="Percent scaling IQR in upper bound calculation in blosum.",
     )
     #
     par.add_argument(
@@ -436,13 +418,13 @@ def outlier_args(par):
         "--min_overlap_internal",
         type=float,
         default=0.6,
-        help="Minimum overlap percent between reads in hmmfilter",
+        help="Minimum overlap percent between reads to constitute and internal kick in hmmfilter",
     )
     #
     par.add_argument(
         "-mcp",
         "--matching_consensus_percent",
-        help="Minimum percent of similar columns required for consensus ",
+        help="Minimum percent of similar columns required for candidates to match the consensus in hmmfilter",
         type=float,
         default=0.3,
     )
@@ -451,46 +433,46 @@ def outlier_args(par):
         "--score_diff_internal",
         type=float,
         default=1.15,
-        help="Minimum score difference for hmmfilter.",
+        help="Minimum score difference between reads for hmmfilter internal overlap filter.",
     )
     par.add_argument(
         "--no-references",
         action="store_true",
         default=False,
-        help="Disable output of reference sequences",
+        help="Disable output of reference sequences in blosum.",
     )
     par.add_argument(
         "-ccp",
         "--col-cull-percent",
         type=float,
         default=0.33,
-        help="Minimum percentage of data required not to cull column.",
+        help="Minimum percentage of data required not to ignore column during blosum distance comparison.",
     )
     par.add_argument(
         "-refcp",
         "--ref-gap-percent",
         type=float,
         default=0.5,
-        help="Minimum percent of non-gap characters in a reference sequence after cull to pass.",
+        help="Minimum percent of non-gap characters in a reference sequence after cull to keep it.",
     )
     par.add_argument(
         "-refmp",
         "--ref-min-percent",
         type=float,
         default=0.33,
-        help="Minimum percent of references required after kick",
+        help="Minimum percent of references required after reference kick.",
     )
     par.add_argument(
         "-imp",
         "--index_group_min_bp",
         type=int,
         default=10,
-        help="Minimum bp for index group after column cull.",
+        help="Minimum bp for index group after column cull in blosum.",
     )
     par.add_argument(
         "-cor",
         "--cluster_overlap_requirement",
-        help="Overlap requirement to compare clusters in cluster consensus for genome",
+        help="Overlap requirement to compare clusters in cluster consensus for genomic data",
         type=float,
         default=0.5,
     )
@@ -498,7 +480,7 @@ def outlier_args(par):
     par.add_argument(
         "-tct",
         "--true_cluster_threshold",
-        help="Largest distance between two reads to be considered in the same cluster",
+        help="Largest distance between two ids to be considered in the same cluster for id based clustering",
         type=int,
         default=100,
     )
@@ -510,67 +492,53 @@ def outlier_args(par):
         help="Threshold for selecting a consensus bp in hmmfilter",
     )
     par.add_argument(
-        "-eom",
-        "--excise_overlap_merge",
-        default=0.25,
-        type=float,
-        help="Minimum overlap percent for merging non-ambig sequences into ambig sequences",
-    )
-    par.add_argument(
-        "-eoa",
-        "--excise_overlap_ambig",
-        default=0.025,
-        type=float,
-        help="Minimum overlap percent for merging ambigous sequences together",
-    )
-    par.add_argument(
         "-ero",
         "--excise_region_overlap",
         default=0.1,
         type=float,
-        help="Minimum overlap percent for sequences and ambigous regions",
-    )
-    par.add_argument(
-        "-etc",
-        "--excise_trim_consensus",
-        default=0.85,
-        type=float,
-        help="Minimum percent of allowable X characters in edge trim for excise",
+        help="Minimum overlap percent for sequences and ambigous regions to consider it an ambigous sequence",
     )
     par.add_argument(
         "-ec",
         "--excise_consensus",
         default=0.85,
         type=float,
-        help="Minimum percent of allowable X characters in consensus",
+        help="Consensus threshold for read assembly and excise",
     )
     par.add_argument(
         "-ead",
         "--excise_allowed_distance",
         default=0,
         type=int,
-        help="# of bp allowed to deviate from a resolving master in excise",
+        help="# of bp a read is allowed to deviate from a resolving contig in excise",
     )
     par.add_argument(
         "-emd",
         "--excise_maximum_depth",
         default=100000,
         type=int,
-        help="Maximum depth for excise assembly",
+        help="Maximum depth for excise ambigous region assembly",
     )
     par.add_argument(
         "-ema",
         "--excise_minimum_ambig",
         default=5,
         type=int,
-        help="Minimum ambigous characters for excise assembly",
+        help="Minimum ambigous characters for excise to consider a region for assembly",
     )
     par.add_argument(
         "-erm",
         "--excise_rescue_match",
         default=0.75,
         type=float,
-        help="Minimum ambigous characters for excise assembly",
+        help="Minimum percent of matching characters to the references a read must have for it to be rescued in excise",
+    )
+    par.add_argument(
+        "-etc",
+        "--excise_trim_consensus",
+        default=0.85,
+        type=float,
+        help="Minimum percent of allowable X characters in edge trim for genomic splice",
     )
     par.add_argument(
         "-nd",
@@ -580,70 +548,47 @@ def outlier_args(par):
         help="Don't use prepare and reporter dupe counts in consensus generation",
     )
     par.add_argument(
-        "-me",
-        "--majority_excise",
-        default=0.35,
-        help="Percentage of loci containg bad regions to move",
-    )
-    par.add_argument(
-        "-mf",
-        "--move_fails",
-        default="datasets/bad",
-        help="Percentage of loci containg bad regions to move",
-    )
-    par.add_argument(
-        "--cut",
-        default=False,
-        action="store_true",
-        help="Remove any regions flagged by excise.",
-    )
-    par.add_argument(
-        "-out", "--output", type=str, default="internal", help="Path to output directory"
-    )
-    par.add_argument(
         "-md",
         "--minimum-depth",
         type=int,
         default=5,
-        help="Minimum depth for choosing a character in the consensus sequence"
+        help="Minimum depth for choosing a character in the consensus sequence in internal."
     )
     par.add_argument(
         "-mcl",
         "--minimum-candidate-length",
         type=int,
         default=5,
-        help="Minimum length a candidate region must have to be compared to the consensus"
+        help="Minimum length a candidate region must have to be compared to the consensus in internal."
     )
     par.add_argument(
         "-mco",
         "--minimum-candidate-overlap",
         type=int,
         default=5,
-        help="Minimum overlap necessary to enable the distance check between a candidate region and the consensus"
+        help="Minimum overlap necessary to enable the distance check between a candidate region and the consensus in internal."
     )
     par.add_argument(
         "-ict",
         "--internal_consensus_threshold",
         type=float,
         default=0.67,
-        dest="internal_consensus_threshold",
-        help="Minimum ratio for choosing a character in the consensus sequence",
+        help="Minimum ratio for choosing a character in the consensus sequence in internal.",
     )  
     par.add_argument(
         "-idt",
         "--internal_distance_threshold",
         type=float,
         default=0.075,
-        dest="internal_distance_threshold",
-        help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence.",
-    )
+        help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence in internal.",
+    ) 
     par.add_argument(
         "-ictn",
         "--internal_consensus_threshold_nt",
         type=float,
         default=0.65,
         dest="internal_consensus_threshold_nt",
-        help="Minimum ratio for choosing a character in the consensus sequence in the nt run",
+        help="Minimum ratio for choosing a character in the consensus sequence in the nt run of internal.",
     )  
     par.add_argument(
         "-idtn",
@@ -651,7 +596,7 @@ def outlier_args(par):
         type=float,
         default=0.075,
         dest="internal_distance_threshold_nt",
-        help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence in the nt run.",
+        help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence in the nt run of internal.",
     )
 
 

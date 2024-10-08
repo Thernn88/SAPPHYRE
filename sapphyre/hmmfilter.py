@@ -23,7 +23,6 @@ from .utils import parseFasta, printv, writeFasta
 
 class HmmfilterArgs(Struct):
     compress: bool
-    uncompress_intermediates: bool
     processes: int
 
     verbose: int
@@ -34,7 +33,6 @@ class HmmfilterArgs(Struct):
     min_overlap_internal: float
     score_diff_internal: float
     matching_consensus_percent: float
-    add_hmmfilter_dupes: bool
     no_dupes: bool
 
 
@@ -48,7 +46,6 @@ class BatchArgs(Struct):
     compress: bool
     gene_scores: dict
     has_dupes: bool
-    add_hmmfilter_dupes: bool
 
 
 class NODE(Struct):
@@ -499,29 +496,6 @@ def process_batch(
             if header not in kicked_headers
         ]
 
-        aa_out_dupes = []
-        nt_out_dupes = []
-        if batch_args.add_hmmfilter_dupes and batch_args.has_dupes:
-            #insert aa dupes
-            for header, seq in aa_output:
-                node = header.split("|")[3]
-                dupes = int(header.split("|")[5])
-                aa_out_dupes.append((header, seq))
-                for i in range(dupes - 1):
-                    aa_out_dupes.append((f"{header}_dupe_{i}", seq))
-            #insert nt dupes
-            for header, seq in nt_sequences:
-                node = header.split("|")[3]
-                dupes = int(header.split("|")[5])
-            
-                nt_out_dupes.append((header, seq))
-                for i in range(dupes - 1):
-                
-                    nt_out_dupes.append((f"{header}_dupe{i}", seq))
-        else:
-            aa_out_dupes = aa_output
-            nt_out_dupes = nt_sequences
-
         aa_has_candidate = False
         for header, sequence in aa_output:
             if not header.endswith("."):
@@ -529,8 +503,8 @@ def process_batch(
                 break
 
         if aa_has_candidate:
-            writeFasta(aa_out, aa_out_dupes, batch_args.compress)
-            writeFasta(nt_out, nt_out_dupes, batch_args.compress)
+            writeFasta(aa_out, aa_output, batch_args.compress)
+            writeFasta(nt_out, nt_sequences, batch_args.compress)
 
 
     return (
@@ -582,8 +556,6 @@ def do_folder(args: HmmfilterArgs, input_path: str):
 
     per_thread = ceil(len(genes) / args.processes)
 
-    compress = not args.uncompress_intermediates or args.compress
-
     batched_arguments = []
     for i in range(0, len(genes), per_thread):
         this_batch_genes = genes[i : i + per_thread]
@@ -600,10 +572,9 @@ def do_folder(args: HmmfilterArgs, input_path: str):
                 nt_out_path,
                 aa_input_path,
                 aa_out_path,
-                compress,
+                args.compress,
                 this_batch_scores,
                 has_dupes,
-                args.add_hmmfilter_dupes,
             ))
 
 
@@ -659,7 +630,6 @@ def main(args, from_folder):
             )
     this_args = HmmfilterArgs(
         compress=args.compress,
-        uncompress_intermediates=args.uncompress_intermediates,
         processes=args.processes,
         verbose=args.verbose,
         debug=args.debug,
@@ -668,7 +638,6 @@ def main(args, from_folder):
         min_overlap_internal = args.min_overlap_internal,
         score_diff_internal = args.score_diff_internal,
         matching_consensus_percent = args.matching_consensus_percent,
-        add_hmmfilter_dupes = args.add_hmmfilter_dupes,
         no_dupes = args.no_dupes,
     )
     return do_folder(this_args, args.INPUT)

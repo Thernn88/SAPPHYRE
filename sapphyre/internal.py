@@ -190,19 +190,17 @@ def run_internal(
     consensus_threshold_nt,
     distance_threshold_nt,
     no_dupes,
-    decompress,
+    compression,
     aa_log_path,
     nt_log_path,
     minimum_depth,
     minimum_length,
     minimum_overlap,
-    add_internal_dupes,
 ):
     """
     Given a gene, reads the aa file and compares the candidates to their consensus sequence.
     If a candidate has too many locations that disagree with the consensus, kicks the sequence.
     """
-    compression = not decompress
     aa_passing, aa_failing, aa_references, aa_fail_dict, aa_consensus = do_internal(
         gene,
         consensus_threshold,
@@ -244,23 +242,9 @@ def run_internal(
     if not aa_passing:  # if no eligible candidates, don't create the output file
         return
     
-    if add_internal_dupes and not no_dupes:
-        aa_out = [rec.get_pair() for rec in aa_references]
-        nt_out = [rec.get_pair() for rec in nt_references]
-        for rec in aa_passing:
-            dupes = int(rec.id.split("|")[5])
-            aa_out.append(rec.get_pair())
-            for i in range(dupes - 1):
-                aa_out.append((f"{rec.id}_dupe{i}", rec.seq))
-
-        for rec in nt_passing:
-            dupes = int(rec.id.split("|")[5])
-            nt_out.append(rec.get_pair())
-            for i in range(dupes - 1):
-                nt_out.append((f"{rec.id}_dupe{i}", rec.seq))
-    else:
-        aa_out = [rec.get_pair() for rec in aa_references + aa_passing]
-        nt_out = [rec.get_pair() for rec in nt_references + nt_passing]
+    
+    aa_out = [rec.get_pair() for rec in aa_references + aa_passing]
+    nt_out = [rec.get_pair() for rec in nt_references + nt_passing]
 
     aa_output = Path(output_path, "aa", gene.name)
     writeFasta(
@@ -328,13 +312,12 @@ def main(args, from_folder):
                     args.internal_consensus_threshold_nt,
                     args.internal_distance_threshold_nt,
                     args.no_dupes,
-                    args.uncompress_intermediates,
+                    args.compress,
                     aa_log_path,
                     nt_log_path,
                     args.minimum_depth,
                     args.minimum_candidate_length,
                     args.minimum_candidate_overlap,
-                    args.add_internal_dupes,
                 ),
             )
         pool.starmap(run_internal, arguments, chunksize=1)

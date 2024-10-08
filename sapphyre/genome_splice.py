@@ -348,13 +348,10 @@ def log_excised_consensus(
     input_path: Path,
     output_path: Path,
     compress_intermediates: bool,
-    excise_overlap_merge,
-    excise_overlap_ambig,
     excise_region_overlap,
     excise_consensus,
     excise_maximum_depth,
     excise_minimum_ambig,
-    allowed_distance,
     excise_rescue_match,
     excise_trim_consensus,
     no_dupes,
@@ -654,20 +651,6 @@ def log_excised_consensus(
 
 def main(args, sub_dir):
     timer = TimeKeeper(KeeperMode.DIRECT)
-    if args.excise_overlap_merge > 1.0:
-        if 0 < args.excise_overlap_merge <= 100:
-            args.excise_overlap_merge = args.excise_overlap_merge / 100
-        else:
-            raise ValueError(
-                "Cannot convert excise_overlap_merge to a percent. Use a decimal or a whole number between 0 and 100"
-            )
-    if args.excise_overlap_ambig > 1.0:
-        if 0 < args.excise_overlap_ambig <= 100:
-            args.excise_overlap_ambig = args.excise_overlap_ambig / 100
-        else:
-            raise ValueError(
-                "Cannot convert excise_overlap_ambig to a percent. Use a decimal or a whole number between 0 and 100"
-            )
     if args.excise_consensus > 1.0:
         if 0 < args.excise_consensus <= 100:
             args.excise_consensus = args.excise_consensus / 100
@@ -699,7 +682,6 @@ def main(args, sub_dir):
 
     aa_input = input_folder.joinpath("aa")
 
-    compress = not args.uncompress_intermediates or args.compress
     no_dupes = False
 
     genes = [fasta for fasta in listdir(aa_input) if ".fa" in fasta]
@@ -711,14 +693,11 @@ def main(args, sub_dir):
                 gene,
                 input_folder,
                 output_folder,
-                compress,
-                args.excise_overlap_merge,
-                args.excise_overlap_ambig,
+                args.compress,
                 args.excise_region_overlap,
                 args.excise_consensus,
                 args.excise_maximum_depth,
                 args.excise_minimum_ambig,
-                args.excise_allowed_distance,
                 args.excise_rescue_match,
                 args.excise_trim_consensus,
                 no_dupes,
@@ -735,14 +714,11 @@ def main(args, sub_dir):
                     gene,
                     input_folder,
                     output_folder,
-                    compress,
-                    args.excise_overlap_merge,
-                    args.excise_overlap_ambig,
+                    args.compress,
                     args.excise_region_overlap,
                     args.excise_consensus,
                     args.excise_maximum_depth,
                     args.excise_minimum_ambig,
-                    args.excise_allowed_distance,
                     args.excise_rescue_match,
                     args.excise_trim_consensus,
                     no_dupes,
@@ -805,8 +781,8 @@ def main(args, sub_dir):
     printv(f"Done! Took {timer.differential():.2f} seconds", args.verbose)
     if len(genes) == 0:
         printv("WARNING: No genes in output.", args.verbose, 0)
-        return True, True
-    return True, loci_containing_bad_regions / len(genes) >= args.majority_excise
+        return True
+    return True
 
 
 if __name__ == "__main__":
