@@ -17,6 +17,10 @@ from xxhash import xxh3_64
 from wrap_rocks import RocksDB
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import gettempdir, parseFasta, printv, writeFasta
+from .directional_cluster import cluster_ids, quick_rec
+import pyfamsa
+
+
 
 def get_aln_path(orthoset_dir: str) -> str:
     """
@@ -105,35 +109,6 @@ def process_genefile(
     return len(data), data, targets, reinsertions, trimmed_header_to_full
 
 
-def compare_cluster(
-    cluster_a: list[str],
-    cluster_b: list[str],
-    kmers: dict[str, set],
-) -> float:
-    """Calculates the average kmer similarity between children of two clusters.
-
-    Args:
-    ----
-        cluster_a (list[str]): A list of headers in cluster a
-        cluster_b (list[str]): A list of headers in cluster b
-        kmers (dict[str, set]): A dictionary of header -> set of kmers
-    Returns:
-        float: The average similarity between children of two clusters
-    """
-    average_identity = []
-    for head_a in cluster_a:
-        for head_b in cluster_b:
-            if head_a == head_b:
-                continue
-            akmers = kmers[head_a]
-            bkmers = kmers[head_b]
-
-            similar = akmers.intersection(bkmers)
-            average_identity.append(len(similar) / min(len(akmers), len(bkmers)))
-
-    return sum(average_identity) / len(average_identity)
-
-
 def generate_clusters(data: dict[str, str], second_run) -> list[list[str]]:
     """Generates clusters from a dictionary of header -> sequence.
 
@@ -154,14 +129,6 @@ def generate_clusters(data: dict[str, str], second_run) -> list[list[str]]:
         writeFasta(tmp_in.name, data.items())
         tmp_in.flush()
 
-        # if second_run:
-        #     system(
-        #         f"diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 85 --member-cover 65 --threads 1 --ignore-warnings --quiet"
-        #     )
-        # else:
-        #     system(
-        #         f"diamond cluster -d {tmp_in.name} -o {tmp_result.name} --approx-id 85 --member-cover 70 --threads 1 --ignore-warnings --quiet"
-        #     )
         terminal_args = [
             "diamond", "cluster",
             "-d", str(tmp_in.name),
@@ -314,8 +281,15 @@ def generate_tmp_aln(
         else:
             writeFasta(tmp_prealign.name, to_write)
             tmp_prealign.flush()
+            
+            if align_method == "famsa":
+                famsa_sequences = [pyfamsa.Sequence(header.encode(),  seq.encode()) for header, seq in to_write]
+                aligner = pyfamsa.Aligner(threads=1)
+                msa = aligner.align(famsa_sequences)
+                aligned_sequences = [(sequence.id.decode(), sequence.sequence.decode()) for sequence in msa]
+                writeFasta(dest.name, aligned_sequences)
 
-            if align_method == "clustal":
+            elif align_method == "clustal":
                 
                 cmd = ["clustalo", "-i", tmp_prealign.name, "-o", dest.name, "--thread=1", "--full", "--force"]
                 subprocess.run(cmd, stdout=subprocess.DEVNULL)
@@ -359,7 +333,6 @@ def generate_tmp_aln(
 CmdArgs = namedtuple(
     "CmdArgs",
     [
-        "string",
         "gene_file",
         "result_file",
         "gene",
@@ -411,7 +384,7 @@ def align_cluster(
     aligned_files_tmp,
     debug,
     this_intermediates,
-    command_string,
+    method,
 ):
     """
     Performs a pairwise alignment on a cluster of sequences.
@@ -451,30 +424,35 @@ def align_cluster(
             )
         return (aligned_cluster, len(cluster_seqs), cluster_i)
 
-    writeFasta(raw_cluster, cluster_seqs)
-    if debug:
-        writeFasta(
-            path.join(this_intermediates, this_clus_align),
-            cluster_seqs,
-        )
+    
 
-    command = command_string.format(
-        in_file=raw_cluster,
-        out_file=aligned_cluster,
-    )
-    system(command)
+    if method == "famsa":
+        famsa_sequences = [pyfamsa.Sequence(header.encode(),  seq.encode()) for header, seq in cluster_seqs]
+        aligner = pyfamsa.Aligner(threads=1)
+        msa = aligner.align(famsa_sequences)
+        aligned_sequences = [(sequence.id.decode(), sequence.sequence.decode()) for sequence in msa]
+        writeFasta(aligned_cluster, aligned_sequences)
+    else:
+        writeFasta(raw_cluster, cluster_seqs)
+        if debug:
+            writeFasta(
+                path.join(this_intermediates, this_clus_align),
+                cluster_seqs,
+            )
+            
+        system(f"clustalo -i {raw_cluster} -o {aligned_cluster} --threads=1 --full")
 
-    aligned_sequences = list(parseFasta(aligned_cluster, True))
+        aligned_sequences = list(parseFasta(aligned_cluster, True))
 
-    if debug:
-        print(command)
-        writeFasta(
-            path.join(
-                this_intermediates,
-                this_clus_align,
-            ),
-            aligned_sequences,
-        )
+        if debug:
+            print(f"clustalo -i {raw_cluster} -o {aligned_cluster} --threads=1 --full")
+            writeFasta(
+                path.join(
+                    this_intermediates,
+                    this_clus_align,
+                ),
+                aligned_sequences,
+            )
 
     return (aligned_cluster, len(aligned_sequences), cluster_i)
 
@@ -483,7 +461,7 @@ def create_subalignment(
     align_method: str,
     parent_tmpdir: str,
     file: str,
-    tmp_aln: str,
+    tmp_aln_seqs: str,
     cluster_i: int,
     seq_count: int,
     debug: bool,
@@ -513,31 +491,51 @@ def create_subalignment(
         system(command)
 
         return list(parseFasta(out_file, True))
+    
 
     out_file = path.join(parent_tmpdir, f"part_{cluster_i}.fa")
 
-    if seq_count >= 1:
-        is_profile = "--is-profile"
+    if align_method == "famsa":
+        raw_seqs = list(parseFasta(file, True))
+        tmp_aln = pyfamsa.Alignment([pyfamsa.GappedSequence(header, seq) for header, seq in tmp_aln_seqs])
+        if len(raw_seqs) == 1:
+            aligner = pyfamsa.Aligner(threads=1)
+            famsa_sequences = [pyfamsa.Sequence(gapseq.id,  gapseq.sequence.replace(b"-",b"")) for gapseq in tmp_aln]
+            msa = aligner.align(famsa_sequences)
+            writeFasta(out_file, [(sequence.id.decode(), sequence.sequence.decode()) for sequence in msa])
+        else:
+            famsa_msa = pyfamsa.Alignment(
+                    sequences = [
+                        pyfamsa.GappedSequence(header.encode(), seq.encode()) for header, seq in raw_seqs
+                    ]
+                )
+            aligner = pyfamsa.Aligner(threads=1)  
+            profile_alignment = aligner.align_profiles(famsa_msa, tmp_aln)
+            writeFasta(out_file, [(sequence.id.decode(), sequence.sequence.decode()) for sequence in profile_alignment])
     else:
-        is_profile = ""
+        tmp_aln = tmp_aln_seqs
+        if seq_count >= 1:
+            is_profile = "--is-profile"
+        else:
+            is_profile = ""
 
-    cmd = ["clustalo", "--p1", tmp_aln, "--p2", file, "-o", out_file, "--threads=1", "--full", is_profile, "--force"]
-    subprocess.run(cmd)
-    #system(
-        #f"clustalo --p1 {tmp_aln} --p2 {file} -o {out_file} --threads=1 --full {is_profile} --force",
-    #)
+        cmd = ["clustalo", "--p1", tmp_aln, "--p2", file, "-o", out_file, "--threads=1", "--full", is_profile, "--force"]
+        subprocess.run(cmd)
+        #system(
+            #f"clustalo --p1 {tmp_aln} --p2 {file} -o {out_file} --threads=1 --full {is_profile} --force",
+        #)
 
-    if debug:
-        print(
-            f"clustalo --p1 {tmp_aln} --p2 {file} -o {out_file} --threads=1 --full {is_profile} --force"
-        )
-        writeFasta(
-            path.join(
-                this_intermediates,
-                f"reference_subalignment_{cluster_i}.fa",
-            ),
-            parseFasta(out_file, True),
-        )
+        if debug:
+            print(
+                f"clustalo --p1 {tmp_aln} --p2 {file} -o {out_file} --threads=1 --full {is_profile} --force"
+            )
+            writeFasta(
+                path.join(
+                    this_intermediates,
+                    f"reference_subalignment_{cluster_i}.fa",
+                ),
+                parseFasta(out_file, True),
+            )
 
     return []
 
@@ -625,7 +623,7 @@ def insert_sequences(
     subalignments: list, alignment_insertion_coords: list[int]
 ) -> list[tuple[str, str]]:
     """
-    Inserts insertion gaps into the candidate sequences while ignoring and masking existing gaps.
+    Combines seqences into a single alignment by merging the subalignments and inserting gaps.
 
     Args:
     ----
@@ -646,100 +644,6 @@ def insert_sequences(
     out_seqs.sort(key=lambda x: find_index_pair(x[1], "-")[0])
 
     return out_seqs
-
-
-def do_cluster(ids, ref_coords, id_chomp_distance=100):
-    clusters = []
-    ids.sort(key = lambda x: x[0])
-    grouped_ids = defaultdict(list)
-    for i, (child_index, seq_coords, start, end) in enumerate(ids):
-        id = int(child_index.split("_")[0])
-        grouped_ids[id].append((i, child_index, seq_coords, start, end))
-        
-    ids_ascending = sorted(grouped_ids.keys())
-    
-
-    req_seq_coverage = 0.5
-
-    current_cluster = []
-    
-    for id in ids_ascending:
-        seq_list = grouped_ids[id]
-        if not current_cluster:
-            current_cluster = [(id, len(seq_coords.intersection(ref_coords)) / len(ref_coords), i) for i, _, seq_coords, _, _ in seq_list]
-            current_index = id
-            current_seqs = seq_list
-            current_direction = "bi"
-        else:
-            passed = False
-            passing_direction = None
-            if abs(id - current_index) <= id_chomp_distance:
-                for i, child_index, seq_coords, start, end in seq_list:
-                    for _, _, _, current_start, current_end in current_seqs:
-                        this_direction = None
-                        if start == current_start and end == current_end:
-                            this_direction = "bi"
-                        else:
-                            if start == current_start:
-                                if end >= current_end:
-                                    this_direction = "forward"
-                                else:
-                                    this_direction = "reverse"
-                            else:
-                                if start >= current_start:
-                                    this_direction = "forward"
-                                else:
-                                    this_direction = "reverse"
-
-                     
-                        if current_direction == "bi" or this_direction == "bi" or this_direction == current_direction:
-                            passed = True
-                            passing_direction = this_direction
-                            break
-                    if passed:
-                        break
-                
-            if passed:
-                current_cluster.extend([(id, len(seq_coords.intersection(ref_coords)) / len(ref_coords), i) for i, _, seq_coords, _, _ in seq_list])
-                current_index = id
-                current_seqs = seq_list
-                if passing_direction != "bi":
-                    current_direction = passing_direction
-                
-            else:
-                if len(current_cluster) >= 2:
-                    cluster_data_cols = set()
-                    for _, _, index in current_cluster:
-                        cluster_data_cols.update(ids[index][1])
-                        
-                    cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
-
-                    clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage))
-                elif len(current_cluster) == 1:
-                    if current_cluster[0][1] > req_seq_coverage:
-                        cluster_coverage = current_cluster[0][1]
-                        clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage))
-                        
-                current_cluster = [(id, len(seq_coords.intersection(ref_coords)) / len(ref_coords), i) for i, _, seq_coords, _, _ in seq_list]
-                current_index = id
-                current_seqs = seq_list
-                current_direction = "bi"
-    
-    if current_cluster:
-        if len(current_cluster) >= 2:
-            cluster_data_cols = set()
-            for _, _, index in current_cluster:
-                cluster_data_cols.update(ids[index][1])
-                
-            cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
-
-            clusters.append((current_cluster[0][0], current_cluster[-1][0], cluster_coverage))
-        elif len(current_cluster) == 1:
-            if current_cluster[0][1] > req_seq_coverage:
-                cluster_coverage = current_cluster[0][1]
-                clusters.append((current_cluster[0][0], current_cluster[0][0], cluster_coverage))
-                
-    return clusters
 
 
 def cull_reference_outliers(reference_records: list, debug: int) -> list:
@@ -803,7 +707,7 @@ def cull_reference_outliers(reference_records: list, debug: int) -> list:
 
     return output, filtered, total_median, allowable, iqr
 
-def run_command(args: CmdArgs) -> None:
+def do_gene(args: CmdArgs) -> None:
     keeper = TimeKeeper(KeeperMode.DIRECT)
     debug = args.debug
     printv(f"Doing: {args.gene} ", args.verbose, 2)
@@ -811,11 +715,6 @@ def run_command(args: CmdArgs) -> None:
     temp_dir = gettempdir()
 
     aligned_ingredients = []
-    if args.is_genome:
-        get_id = lambda header: header.split("|")[3].split("&&")[0].replace("NODE_","")
-    else:
-        get_id = lambda header: header
-
     if not path.exists(args.result_file) or stat(args.result_file).st_size == 0:
         this_intermediates = path.join("intermediates", args.gene)
         if debug and not path.exists(this_intermediates):
@@ -928,7 +827,7 @@ def run_command(args: CmdArgs) -> None:
                             aligned_files_tmp,
                             debug,
                             this_intermediates,
-                            args.string,
+                            args.align_method,
                         )
                     )
 
@@ -947,6 +846,8 @@ def run_command(args: CmdArgs) -> None:
                 realign_rec = args.second_run or not path.exists(top_aln_path)
 
                 tmp_aln = NamedTemporaryFile(dir=parent_tmpdir, mode="w+", prefix="References_")
+
+                temp_aln = tmp_aln.name
                 if realign_rec:
                     culled_references = generate_tmp_aln(
                         aln_file,
@@ -959,6 +860,9 @@ def run_command(args: CmdArgs) -> None:
                         args.second_run,
                         args.gene,
                     )
+                    if args.align_method == "famsa":
+                        print("Convert temp aln")
+                        temp_aln = [(header.encode(), seq.encode()) for header, seq in parseFasta(tmp_aln.name, True) if "-" in seq]
                 else:
                     references = list(parseFasta(top_aln_path, has_interleave=True))
                     references, filtered_refs, ref_total_median, ref_allowable, ref_iqr = cull_reference_outliers(references, args.debug)
@@ -974,6 +878,9 @@ def run_command(args: CmdArgs) -> None:
                             culled_references.append(f'{ref_kick[0]},{ref_median},{kick}\n')
                     writeFasta(tmp_aln.name, references)
                     tmp_aln.flush()
+                    if args.align_method == "famsa":
+                        print("Convert temp aln")
+                        temp_aln = [(header.encode(), seq.encode()) for header, seq in references if "-" in seq]
                     
                 for i, (file, seq_count, cluster_i) in enumerate(aligned_ingredients):
                     printv(
@@ -981,12 +888,13 @@ def run_command(args: CmdArgs) -> None:
                         args.verbose,
                         3,
                     )
-                    # If frags we want to save the final_sequences from the aligned result
+                    # If frags all seqs get aligned in a single event.
+                    # We want to save these as our final sequences
                     final_sequences = create_subalignment(
                         args.align_method,
                         parent_tmpdir,
                         file,
-                        tmp_aln.name, #if realign_rec else top_aln_path,
+                        temp_aln,
                         cluster_i,
                         seq_count,
                         debug,
@@ -1038,6 +946,7 @@ def run_command(args: CmdArgs) -> None:
             to_write.append((header, sequence))
 
         if args.is_genome:
+            # Sort genomic TODO explain
             reordered = []
             group = defaultdict(list)
             for header, seq in to_write:
@@ -1061,10 +970,13 @@ def run_command(args: CmdArgs) -> None:
         writeFasta(args.result_file, references + to_write, compress=args.compress)
         
         ids = []
-        for header, seq in to_write:
+        for x, (header, seq) in enumerate(to_write):
             start, end = find_index_pair(seq, "-")
-            data_cols = {i for i, let in enumerate(seq[start:end], start) if let != "-"}
-            ids.append((get_id(header), data_cols, start, end))
+            fields = header.split("|")
+            ids.append(quick_rec(fields[3], int(fields[4]), sequence, start, end))
+            if x == 0:
+                max_gap_size = round(len(seq) * 0.3) # Half MSA length
+            
         ref_coords = set()
         for _, seq in references:
             start, end = find_index_pair(seq, "-")
@@ -1074,7 +986,7 @@ def run_command(args: CmdArgs) -> None:
     else:
         ids = []
         ref_coords = set()
-        for header, seq in parseFasta(args.result_file):
+        for x, (header, seq) in enumerate(parseFasta(args.result_file)):
             if header.endswith("."):
                 start, end = find_index_pair(seq, "-")
                 for i, let in enumerate(seq[start:end], start):
@@ -1083,13 +995,15 @@ def run_command(args: CmdArgs) -> None:
                 continue
 
             start, end = find_index_pair(seq, "-")
-            data_cols = {i for i, let in enumerate(seq[start:end], start) if let != "-"}
-            ids.append((get_id(header), data_cols, start, end))
+            fields = header.split("|")
+            ids.append(quick_rec(fields[3], int(fields[4]), sequence, start, end))
+            if x == 0:
+                max_gap_size = round(len(seq) * 0.3) # Half MSA length
+    
 
     clusters = []
     if args.is_genome:
-        clusters = do_cluster(ids, ref_coords, args.chomp_max_distance)
-
+        clusters, _ = cluster_ids(ids, args.chomp_max_distance, max_gap_size, ref_coords)
         cluster_string = ", ".join([f"{cluster[0]}-{cluster[1]} {(cluster[2]*100):.2f}%" for cluster in clusters])         
             
     printv(f"Done. Took {keeper.differential():.2f}", args.verbose, 3)  # Debug
@@ -1107,9 +1021,6 @@ def do_folder(folder, args):
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     align_path = path.join(folder, ALIGN_FOLDER)
     aa_path = path.join(folder, AA_FOLDER)
-    if args.use_miniprot:
-        aa_path = path.join(folder, "miniprot", "aa")
-        align_path = path.join(folder, "miniprot", "align")
     if not path.exists(aa_path):
         printv(f"ERROR: Can't find aa ({aa_path}) folder. Abort", args.verbose, 0)
         printv("Please make sure Reporter finished succesfully", args.verbose, 0)
@@ -1123,7 +1034,7 @@ def do_folder(folder, args):
         (gene, stat(path.join(aa_path, gene)).st_size)
         for gene in listdir(aa_path)
         if gene.split(".")[-1] in ["fa", "gz", "fq", "fastq", "fasta"]
-    ]
+    ][:1200]
     genes.sort(key=lambda x: x[1], reverse=True)
     orthoset_path = path.join(args.orthoset_input, args.orthoset)
     aln_path = get_aln_path(orthoset_path)
@@ -1133,8 +1044,6 @@ def do_folder(folder, args):
     if not path.exists(aln_path):
         printv("ERROR: Aln folder not found.", args.verbose, 0)
         return False
-
-    command = "clustalo -i {in_file} -o {out_file} --threads=1 --full"
 
     top_folder = path.join(folder, "top")
 
@@ -1168,7 +1077,6 @@ def do_folder(folder, args):
         func_args.append(
             (
                 CmdArgs(
-                    command,
                     gene_file,
                     result_file,
                     gene,
@@ -1187,10 +1095,10 @@ def do_folder(folder, args):
 
     if args.processes > 1:
         with Pool(args.processes) as pool:
-            cluster_logs = pool.starmap(run_command, func_args, chunksize=1)
+            cluster_logs = pool.starmap(do_gene, func_args, chunksize=1)
     else:
-        cluster_logs = [run_command(arg[0]) for arg in func_args]
-
+        cluster_logs = [do_gene(arg[0]) for arg in func_args]
+    
     if any(cluster_logs):
         cluster_logs.sort(key=lambda x: x[0])
         cluster_logs = [x[1] for x in cluster_logs]

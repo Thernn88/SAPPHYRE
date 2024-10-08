@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="sapphyre",
-    version="0.3.7.1",
+    version="0.3.8",
     description="An assembly-less solution for processing high-throughput sequencing reads for phylogenetics",
     long_description=open("README.md").read(),
     long_description_content_type="text/markdown",
@@ -27,7 +27,7 @@ setup(
         "needletail>=0.5.0",
         "numpy>=2.0.1",
         "openpyxl>=3.1.2",
-        "pandas==2.2.2",
+        "pandas>=2.2.2",
         "parasail>=1.3.4",
         "pr2codon>=1.1.18",
         "psutil>=5.9.8",
