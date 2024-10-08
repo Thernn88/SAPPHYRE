@@ -65,13 +65,6 @@ def prepare_args(par):
         help="Skip ntrim and allow N seqs to pass through.",
     )
     par.add_argument(
-        "-force",
-        "--force_entropy",
-        help="Force entropy calculation.",
-        default=False,
-        action="store_true",
-    )
-    par.add_argument(
         "-skip",
         "--skip_entropy",
         help="Skip entropy calculation.",

@@ -275,7 +275,6 @@ def map_taxa_runs(
     components,
     keep_prepared,
     chunk_size,
-    force_entropy,
     skip_entropy,
     skip_ntrim,
     assembly_mode,
@@ -348,7 +347,7 @@ def map_taxa_runs(
     original_coords = deduper.original_coords
     original_inputs = deduper.original_inputs
     del deduper
-    run_entropy = force_entropy or (not skip_entropy and not this_is_genome)
+    run_entropy = not skip_entropy and not this_is_genome
     if run_entropy:
         fa_file_out = sapphyre_tools.entropy_filter(fa_file_out, 0.7)
     recipe = []
@@ -449,7 +448,6 @@ def main(args):
             components,
             args.keep_prepared,
             args.chunk_size,
-            args.force_entropy,
             args.skip_entropy,
             args.skip_ntrim,
             args.assembly,
