@@ -476,7 +476,7 @@ def outlier_args(par):
         default=1.15,
         help="Minimum score difference between reads for hmmfilter internal overlap filter.",
     )
-    
+    # Cluster consensus args
     par.add_argument(
         "-cor",
         "--cluster_overlap_requirement",
