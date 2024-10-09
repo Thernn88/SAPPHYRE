@@ -626,14 +626,14 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
         if ag_size > 2 and left_last_codon in range(act_ag_index_rev, act_ag_index_rev + ag_size):
             for i in range(act_ag_index_rev + 1, act_ag_index_rev + ag_size - 1):
                 if prev_nt_seq[i] != "-":
-                    prev_gap_insertions.append((False, i))
+                    prev_gap_insertions.append(i)
                     prev_nt_seq.insert(i, "-")
                     prev_nt_seq.pop(-1)
 
         if gt_size > 2 and right_end_codon in range(act_gt_index, act_gt_index + gt_size):
             for i in range(act_gt_index + gt_size - 1, act_gt_index + 1, -1):
                 if node_nt_seq[i - 1] != "-":
-                    node_gap_insertions.append((False, i))
+                    node_gap_insertions.append(i)
                     node_nt_seq.insert(i, "-")
                     node_nt_seq.pop(0)
                 
@@ -944,7 +944,7 @@ def splice_combo(add_results,
     prev_insertions = 0
     node_insertions = 0
         
-    for (is_deletion_gap, i) in final_prev_insertions:
+    for i in final_prev_insertions:
         # if add_results:
             # if i % 3 == 0:
             #     gap_insertions_aa[prev_node.header].append((i//3, -1))
@@ -952,7 +952,7 @@ def splice_combo(add_results,
         prev_nt_seq.pop(-1)
         prev_insertions += 1
     
-    for (is_deletion_gap, i) in final_node_insertions:
+    for i in final_node_insertions:
         # if add_results:
             # if i % 3 == 0:
             #     gap_insertions_aa[node.header].append((i//3, 0))
@@ -1255,10 +1255,6 @@ def log_excised_consensus(
             ref_gaps.add(i)
 
     kicked_headers = set()
-    replacements = defaultdict(dict)
-    replacements_aa = defaultdict(dict)
-    orphan_replacements = defaultdict(dict)
-    orphan_replacements_aa = defaultdict(dict)
 
     cluster_sets = [None]
     get_id = lambda header: header.split("|")[3].replace("NODE_","")
@@ -1335,7 +1331,6 @@ def log_excised_consensus(
             if regions[0] is None:
                 continue
             for ri, (region_start, region_end) in enumerate(regions):
-                change_made = False
                 if ri == 0:
                     if region_start == last_region.get(cluster_i, -1):
                         recursion_max -= 1

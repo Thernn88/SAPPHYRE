@@ -209,10 +209,10 @@ def do_gene(gene, blosum_folder, trimmed_folder, aa_input, nt_input, aa_output, 
                         region = (rstart, rend)
             
             if doesnt_overlap and bso_coords:
-                to_check.append((header, sequence, bso_coords[0], bso_coords[1], region[0], region[1], start, end))
+                to_check.append((header, sequence, bso_coords[0], bso_coords[1]))
         
         if to_check:   
-            for header, sequence, start, end, rstart, rend, seq_start, seq_end in to_check:
+            for header, sequence, start, end in to_check:
                 kick_kmer = sequence[start:end]
                 consensus_kmer = consensus_seq[start:end]
                 if is_same_kmer(kick_kmer, consensus_kmer):

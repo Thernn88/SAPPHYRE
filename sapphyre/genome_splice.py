@@ -413,8 +413,7 @@ def log_excised_consensus(
 
     ref_avg_len = sum(ref_lens) / len(ref_lens)
     kicked_headers = set()
-
-    get_parent_id = lambda header: int(header.split("|")[3].split("&&")[0].split("_")[1])
+    
     ids = []
     for node in aa_nodes:
         start, end = find_index_pair(node.sequence, "-")
@@ -541,8 +540,6 @@ def log_excised_consensus(
                             prev_node.sequence = del_cols(prev_node.sequence, prev_positions)
                             node.sequence = del_cols(node.sequence, node_positions)
 
-                            cluster_resolve_failed = False
-
                             if len(prev_node.sequence) - prev_node.sequence.count("-") < 15:
                                 log_output.append(f"Kicking {prev_node.header} due to < 15 bp after splice")
                                 kicked_headers.add(prev_node.header)
@@ -551,9 +548,6 @@ def log_excised_consensus(
                             if len(node.sequence) - node.sequence.count("-") < 15:
                                 log_output.append(f"Kicking {node.header} due to < 15 bp after splice")
                                 kicked_headers.add(node.header)
-
-                            # if either_kicked:
-                            #     break
 
                             prev_node.nt_sequence = del_cols(prev_node.nt_sequence, prev_positions, True)
                             node.nt_sequence = del_cols(node.nt_sequence, node_positions, True)

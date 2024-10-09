@@ -463,8 +463,7 @@ def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.gene,
         rocky.get_rock("rocks_orthoset_db"),
     )
-
-    core_seq_aa_dict = {target: seq for _, target, seq in core_sequences}
+   
     this_aa_path = path.join(oargs.aa_out_path, oargs.gene + ".aa.fa")
     debug_dupes = None
     if oargs.debug:

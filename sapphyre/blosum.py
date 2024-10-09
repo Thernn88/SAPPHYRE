@@ -275,7 +275,7 @@ def compare_means(
                 )
             # Interquartile range (IQR)
             IQR = Q3 - Q1
-            margin = 0.02
+            # margin = 0.02
             #if IQR <= .2: margin = .025
             #if IQR <= .1: margin = .05
             IQR = max(IQR, 0.02)

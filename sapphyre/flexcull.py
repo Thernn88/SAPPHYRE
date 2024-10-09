@@ -1325,7 +1325,7 @@ def do_gene(fargs: FlexcullArgs) -> None:
             return log, culled_references, codon_log  # Only refs
 
         # Recalcuate position based tables
-        post_references = [i for i in aa_out if i[0].endswith(".")]
+        # post_references = [i for i in aa_out if i[0].endswith(".")]
 
         # (
         #     _,

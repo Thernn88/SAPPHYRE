@@ -209,7 +209,7 @@ def scan_extend(node, nodes, i, merged, min_overlap_percent, min_overlap_chars):
                 overlap_amount = overlap_coords[1] - overlap_coords[0]
 
                 # Calculate percent overlap and compare to minimum overlap
-                overlap_percent = overlap_amount / ((node.end - node.start) * 3)
+                # overlap_percent = overlap_amount / ((node.end - node.start) * 3)
                 required_overlap = max(min_overlap_chars, min((node.end - node.start), (node_b.end - node_b.start)) * 3 * min_overlap_percent)
                 
                 # Use whichever is greater: percentage overlap or 10 characters
