@@ -684,7 +684,7 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
                 if right_has_ref_gap:
                     while right_end_codon // 3 in ref_gaps:
                         for i in range(right_end_codon + 3,right_end_codon, -1):
-                            node_gap_insertions.append((False, i))
+                            node_gap_insertions.append((i))
                             node_nt_seq.insert(i, "-")
                             node_nt_seq.pop(0)
                         right_end_codon -= 3
@@ -692,7 +692,7 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
                     # Extend left by ref gap and see if it meets the right
                     while left_last_codon // 3 in ref_gaps:
                         for i in range(left_last_codon, left_last_codon + 3):
-                            prev_gap_insertions.append((False, i))
+                            prev_gap_insertions.append((i))
                             prev_nt_seq.insert(i, "-")
                             prev_nt_seq.pop(-1)
                         left_last_codon += 3
@@ -700,7 +700,7 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
                     if (right_end_codon - 3 - left_last_codon) % 3 == 0:
                         for i in range(0, right_end_codon - left_last_codon):
                             if prev_nt_seq[left_last_codon + i] != "-":
-                                prev_gap_insertions.append((True, left_last_codon + i))
+                                prev_gap_insertions.append((left_last_codon + i))
                                 prev_nt_seq.insert(left_last_codon + i, "-")
                                 prev_nt_seq.pop(-1)
                                 this_score += DELETION_PENALTY
