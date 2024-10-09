@@ -599,6 +599,13 @@ def merge_args(par, skip_reconcile_overlap=False):
             help="Enable second run logic",
         )
         par.add_argument(
+            "-nm",
+            "--no_merge",
+            action="store_true",
+            default=False,
+            help="Combine will grab from blosum instead of merge and reconcile will skip last merge.",
+        )
+        par.add_argument(
             "-io",
             "--ignore_overlap_chunks",
             action="store_true",
@@ -663,7 +670,15 @@ def subcmd_Combine(subparsers):
     combine_args(par)
     par.set_defaults(func=Combine, formathelp=par.format_help)
 
-def combine_args(par):
+def combine_args(par, skip_reconcile_overlap=False):
+    if not skip_reconcile_overlap:
+        par.add_argument(
+            "-nm",
+            "--no_merge",
+            action="store_true",
+            default=False,
+            help="Combine will grab from blosum instead of merge and reconcile will skip last merge.",
+        )
     par.add_argument(
         "-pd",
         "--prepend-directory",
@@ -719,7 +734,7 @@ def align_args(par, skip_reconcile_overlap = False):
             default=False,
             help="Enable second run logic",
         )
-        
+
     par.add_argument(
         "-ovw",
         "--overwrite",
@@ -1302,13 +1317,20 @@ def subcmd_wrap_final(sp):
         help="Enable second run logic",
     )
     par.add_argument(
+        "-nm",
+        "--no_merge",
+        action="store_true",
+        default=False,
+        help="Combine will grab from blosum instead of merge and reconcile will skip last merge.",
+    )
+    par.add_argument(
         "-io",
         "--ignore_overlap_chunks",
         action="store_false",
         default=True,
         help="Ignore overlapping chunks and merge all candidates for a reference taxon.",
     )
-    combine_args(par)
+    combine_args(par, True)
     pal2nal_args(par)
     align_args(par, True)
     merge_args(par, True)
@@ -1335,10 +1357,11 @@ def wrap_final(argsobj):
     if not pal2nal.main(next_args):
         print()
         print(argsobj.formathelp())
-    print("Triggering Merge")
-    if not merge.main(next_args):
-        print()
-        print(argsobj.formathelp())
+    if not current_args["no_merge"]:
+        print("Triggering Merge")
+        if not merge.main(next_args):
+            print()
+            print(argsobj.formathelp())
 
 
 def subcmd_auto(subparsers):

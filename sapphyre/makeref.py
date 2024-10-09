@@ -1430,6 +1430,9 @@ def main(args):
     if os.path.exists(os.path.join(input_file, "aa_merged")):
         nt_input = os.path.join(input_file, "nt_merged")
         input_file = os.path.join(input_file, "aa_merged")
+    elif os.path.exists(os.path.join(input_file, "align")):
+        nt_input = os.path.join(input_file, "nt_aligned")
+        input_file = os.path.join(input_file, "align")
     else:
         #detect super dir
         if any(os.path.exists(os.path.join(input_file, i, "aa_merged")) for i in os.listdir(input_file)):
