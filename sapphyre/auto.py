@@ -140,8 +140,6 @@ def main(args):
                     print("Error in Pal2Nal.")
                 gc.collect()
             elif script == "flexcull":
-                if args.map:
-                    continue
                 from . import flexcull
 
                 if not flexcull.main(this_args):
