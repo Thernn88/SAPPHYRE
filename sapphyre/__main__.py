@@ -1597,9 +1597,9 @@ def main():
     parser.add_argument(
         "-gfm",
         "--gene_finding_mode",
-        action="store_true",
-        default=False,
-        help="Alternative logic for gene finding mode",
+        type=int,
+        default=0,
+        help="Alternative logic for gene finding mode. 0 = Off, 1 = On",
     )
     parser.add_argument(
         "-v",

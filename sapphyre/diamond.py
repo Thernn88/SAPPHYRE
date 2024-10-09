@@ -489,7 +489,7 @@ def get_head_to_seq(nt_db, recipe, nodes_in_gene):
     return head_to_seq
 
 
-def count_taxa(df, genome_score_filter, is_assembly_or_genome):
+def count_taxa(df, gfm, genome_score_filter, is_assembly_or_genome):
     # Initialize structures
     combined_count = Counter()
     
@@ -498,7 +498,9 @@ def count_taxa(df, genome_score_filter, is_assembly_or_genome):
     print("Average length: ", average_length)
 
     # Apply score filters
-    if is_assembly_or_genome and genome_score_filter:
+    if gfm:
+        filtered_df = df
+    elif is_assembly_or_genome and genome_score_filter:
         filtered_df = df[df["score"] > genome_score_filter]
     else:
         top_25_percent_count = int(len(df) * 0.25)
@@ -733,13 +735,19 @@ def run_process(args: Namespace, input_path: str) -> bool:
     # Minimum headers to try to estimate thread distrubution
     MINIMUM_HEADERS = 32000
     # Minimum amount of hits to delegate to a process
-    MINIMUM_CHUNKSIZE = 50
+    MINIMUM_CHUNKSIZE = 5000
     # Hard coded values for assembly datasets
     ASSEMBLY_EVALUE = 5
     ASSEMBLY_MIN_ORF = 15
     # Default min orf value
     NORMAL_MIN_ORF = 15
-
+    
+    gfm = args.gene_finding_mode
+    if gfm:
+        print("Gene finding mode is enabled. Skipping top reference filters.")
+        args.genome_score_filter = 0.0
+        args.top_ref = -1
+        
     json_encoder = json.Encoder()
 
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
@@ -933,7 +941,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     print("Average score: ", df["score"].mean())
     # Average evalue
     print("Average evalue: ", df["evalue"].mean())
-    most_common = count_taxa(df, genome_score_filter, is_assembly_or_genome)
+    most_common = count_taxa(df, gfm, genome_score_filter, is_assembly_or_genome)
     
     top_refs = set()
     with open(path.join(input_path, "diamond_top_ref.csv"), "w") as fp:
@@ -1031,12 +1039,12 @@ def run_process(args: Namespace, input_path: str) -> bool:
     if post_threads > 1:
         top_ref_result = pool.starmap(top_reference_realign, arguments)
     else:
-        for arg in arguments:
-            top_ref_result = []
-            top_ref_result.append(top_reference_realign(*arg))
+        top_ref_result = [top_reference_realign(*arg) for arg in arguments]
 
     top_ref_in_order = dict(top_ref_result)
-    top_ref = {*chain.from_iterable(top_ref_in_order.values())}
+    top_ref = set()
+    for gene in present_genes:
+        top_ref.update(top_ref_in_order[gene])
     nt_db.put_bytes("getall:valid_refs", json.encode(top_ref_in_order))
     
     printv(
@@ -1150,6 +1158,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
             this_log,
             encoded_data,
         )
+
         printv(
             f"Done! Took {time_keeper.lap():.2f}s. Elapsed time {time_keeper.differential():.2f}s. Doing internal filters",
             args.verbose,
