@@ -1,9 +1,9 @@
 import argparse
 import os
 from shutil import rmtree
-from sapphyre import recover#, excise
+from sapphyre import recover
 from wrap_rocks import RocksDB
-from . import blosum, genome_splice, hmmfilter, internal, cluster_consensus, read_assembly
+from . import blosum, excise, splice, hmmfilter, internal, cluster_consensus, read_assembly
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import printv
 
@@ -44,7 +44,7 @@ def main(argsobj):
                 "blosum": ("trimmed", blosum.main),
                 "hmmfilter": ("blosum", hmmfilter.main),
                 "clusters": ("blosum", cluster_consensus.main),
-                "splice": ("clusters", genome_splice.main),
+                "splice": ("clusters", excise.main),
                 "assembly": ("blosum", read_assembly.main),
                 "internal": ("excise", internal.main),
                 "recover": ("internal", recover.main),
@@ -86,11 +86,18 @@ def main(argsobj):
                         return
                     from_folder = "clusters"
                     
-                printv("Detecting and Splicing Ambiguous Regions in Clusters.", argsobj.verbose)
-                excise_passed = genome_splice.main(this_args, from_folder)
-                if not excise_passed:
-                    print()
-                    print(argsobj.formathelp())
+                if argsobj.gene_finding_mode:
+                    printv("Detecting and Splicing Ambiguous Regions.", argsobj.verbose)
+                    excise_passed = splice.main(this_args, from_folder)
+                    if not excise_passed:
+                        print()
+                        print(argsobj.formathelp())
+                else:
+                    printv("Using Reference Consensus to Cut Genomic Sequences.", argsobj.verbose)
+                    excise_passed = excise.main(this_args, from_folder)
+                    if not excise_passed:
+                        print()
+                        print(argsobj.formathelp())
                 from_folder = "excise"
             else:   
                 printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
