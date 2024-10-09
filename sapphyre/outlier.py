@@ -86,7 +86,7 @@ def main(argsobj):
                         return
                     from_folder = "clusters"
                     
-                if argsobj.gene_finding_mode:
+                if argsobj.gene_finding_mode == 1:
                     printv("Detecting and Splicing Ambiguous Regions.", argsobj.verbose)
                     excise_passed = splice.main(this_args, from_folder)
                     if not excise_passed:

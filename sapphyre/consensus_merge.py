@@ -477,8 +477,10 @@ def do_folder(input_folder, args):
 
     mkdir(aa_gene_output)
     mkdir(nt_gene_output)
+    
+    alternative_gene_finding_mode = args.gene_finding_mode == 1
 
-    gene_func = do_gene(aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, is_genome, args.gene_finding_mode, args.compress, args.debug, args.consensus_threshold)
+    gene_func = do_gene(aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, is_genome, alternative_gene_finding_mode, args.compress, args.debug, args.consensus_threshold)
 
     arguments = []
     for aa_gene in listdir(aa_gene_input):

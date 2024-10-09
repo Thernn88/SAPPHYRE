@@ -74,7 +74,7 @@ def main(args):
     time = TimeKeeper(KeeperMode.DIRECT)
     for script in scripts:
         sargs = config[script]
-        if script != "motif":
+        if script != "motif" and not (args.gene_finding_mode == 2 and script == "flexcull"):
             print(f"\nExecuting: {script.title()}")
         this_args = global_args.copy()
         this_args.update(sargs)
@@ -140,6 +140,8 @@ def main(args):
                     print("Error in Pal2Nal.")
                 gc.collect()
             elif script == "flexcull":
+                if args.gene_finding_mode == 2:
+                    continue
                 from . import flexcull
 
                 if not flexcull.main(this_args):

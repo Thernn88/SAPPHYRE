@@ -1599,7 +1599,7 @@ def main():
         "--gene_finding_mode",
         type=int,
         default=0,
-        help="Alternative logic for gene finding mode. 0 = Off, 1 = On",
+        help="Alternative logic for gene finding mode. 0 - Normal, 1 - Alternative, 2 - Map Mode",
     )
     parser.add_argument(
         "-v",

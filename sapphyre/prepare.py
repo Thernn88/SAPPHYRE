@@ -450,7 +450,7 @@ def main(args):
             args.chunk_size,
             args.skip_entropy,
             args.skip_ntrim,
-            args.assembly,
+            args.assembly or args.gene_finding_mode == 2,
         )
 
     printv(

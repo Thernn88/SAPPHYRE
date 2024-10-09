@@ -1594,7 +1594,7 @@ def log_excised_consensus(
         aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
         aa_subset.sort(key = lambda x: x.start)
         for prev_node, node in combinations(aa_subset, 2):
-            overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, -10)
+            overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, -40)
             if overlapping_coords:
                 amount = overlapping_coords[1] - overlapping_coords[0]
                 this_flipped = ""
