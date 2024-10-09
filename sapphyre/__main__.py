@@ -246,24 +246,10 @@ def reporter_args(par):
         help="Amount of bp required after trim.",
     )
     par.add_argument(
-        "-m",
-        "--matches",
-        type=int,
-        default=0,
-        help="Amount of matches for dynamic pairwise aligned edge trim.",
-    )
-    par.add_argument(
         "--gene_list_file",
         type=str,
         default=None,
         help="Path to a txt file containing target genes for processing. Processes all genes in the input folder if not specified.",
-    )
-    par.add_argument(
-        "-bs",
-        "--blosum_strictness",
-        choices=["exact", "strict", "lax"],
-        default="strict",
-        help="Pairwise edge trim strictness setting.",
     )
     par.add_argument(
         "-d",
@@ -346,8 +332,6 @@ def reporter(args):
         args.orthoset_input,
         args.orthoset,
         args.compress,
-        args.matches,
-        args.blosum_strictness,
         args.minimum_bp,
         args.gene_list_file,
         args.keep_output,

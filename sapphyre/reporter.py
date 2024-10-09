@@ -6,12 +6,8 @@ from itertools import combinations, product
 from multiprocessing.pool import Pool
 from os import makedirs, path
 from shutil import rmtree
-from typing import TextIO
 
-from blosum import BLOSUM
 from msgspec import json
-from parasail import blosum62, nw_trace_scan_profile_16, profile_create_16
-#from sapphyre_tools import translate
 from wrap_rocks import RocksDB
 from xxhash import xxh3_64
 from sapphyre_tools import (
@@ -34,8 +30,6 @@ MainArgs = namedtuple(
         "orthoset_input",
         "orthoset",
         "compress",
-        "matches",
-        "blosum_strictness",
         "minimum_bp",
         "gene_list_file",
         "keep_output",
@@ -232,9 +226,6 @@ OutputArgs = namedtuple(
         "target_taxon",
         "prepare_dupes",
         "top_refs",
-        "matches",
-        "blosum_strictness",
-        "EXACT_MATCH_AMOUNT",
         "minimum_bp",
         "debug",
         "is_assembly_or_genome",
@@ -537,7 +528,7 @@ def get_prepare_dupes(rocks_nt_db: RocksDB) -> dict[str, dict[str, int]]:
     return prepare_dupe_counts
 
 
-def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: int):
+def do_taxa(taxa_path: str, taxa_id: str, args: Namespace):
     """Main function for processing a given taxa.
 
     Args:
@@ -545,7 +536,6 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
         path (str): Path to the taxa directory
         taxa_id (str): Taxa ID
         args (Namespace): Reporter arguments
-        EXACT_MATCH_AMOUNT (int): Number of exact matches to look for
     Returns:
         bool: True if the taxa was processed successfully, False otherwise
     """
@@ -604,7 +594,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
     makedirs(coords_path, exist_ok=True)
 
     printv(
-        f"Got reference data. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Trimming hits to alignment coords.",
+        f"Got reference data. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Writing sequences.",
         args.verbose,
     )
 
@@ -645,9 +635,6 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace, EXACT_MATCH_AMOUNT: i
                         set(target_taxon.get(gene, [])),
                         gene_dupes.get(gene, {}),
                         top_refs.get(gene, []),
-                        args.matches,
-                        args.blosum_strictness,
-                        EXACT_MATCH_AMOUNT,
                         args.minimum_bp,
                         args.debug,
                         is_assembly or is_genome,
@@ -745,19 +732,6 @@ def main(args):
         path.join(args.orthoset_input, args.orthoset, "rocksdb"),
     )
     result = []
-    EXACT_MATCH_AMOUNT = 2
-    if args.matches < EXACT_MATCH_AMOUNT:
-        printv(
-            f"WARNING: Impossible match paramaters. {EXACT_MATCH_AMOUNT} exact matches required whereas only {args.matches} matches are checked.",
-            args.verbose,
-            0,
-        )
-        printv(
-            f"Setting exact matches to {args.matches}.\n",
-            args.verbose,
-            0,
-        )
-        EXACT_MATCH_AMOUNT = args.matches
     for input_path in args.INPUT:
         rocks_db_path = path.join(input_path, "rocksdb")
         rocky.create_pointer(
@@ -771,7 +745,6 @@ def main(args):
                 input_path,
                 path.basename(input_path).split(".")[0],
                 args,
-                EXACT_MATCH_AMOUNT,
             ),
         )
         rocky.close_pointer("rocks_nt_db")
