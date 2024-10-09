@@ -595,6 +595,9 @@ def top_reference_realign(ortho_path, suffix, most_common_taxa, target_to_taxon,
         if current_count == top_ref_arg:
             break
         
+    if len(out) == 0:
+        return gene, top_chosen
+        
     out_path = path.join(top_path, gene+".aln.fa")
     if skip_realign:
         if len(out) > 0:
