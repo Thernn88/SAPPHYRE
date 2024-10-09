@@ -782,7 +782,7 @@ def check_halves(references: list,
         fail.fail = "first half"
     # swap seq and saved half
     for ref in references:
-        ref.start, ref.end, ref_second_start, ref_second_end = ref.second_start, ref.second_end, ref.start, ref.end
+        ref.start, ref.end, ref.ref_second_start, ref.ref_second_end = ref.second_start, ref.second_end, ref.start, ref.end
     if debug_halves:
         os.makedirs(Path(out_dir, 'second'), exist_ok=True)
         second_path = Path(out_dir, 'second', fasta_name)
@@ -802,7 +802,7 @@ def check_halves(references: list,
         fail.fail = "second half"
     # remake passing refs for normal output
     for ref in references:
-        ref.start, ref.end, ref_second_start, ref_second_end = ref.second_start, ref.second_end, ref.start, ref.end
+        ref.start, ref.end, ref.ref_second_start, ref.ref_second_end = ref.second_start, ref.second_end, ref.start, ref.end
     return references, first_failing, second_failing
 
 
