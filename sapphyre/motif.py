@@ -1,24 +1,15 @@
 from collections import Counter, defaultdict
-from functools import cached_property
-from itertools import combinations, product
 from math import ceil, floor
 from multiprocessing import Pool
 from os import listdir, makedirs, path
-from pathlib import Path
-from shutil import move, rmtree
-import copy
+from shutil import rmtree
 from statistics import median
 from tempfile import NamedTemporaryFile
 import warnings
-from msgspec import Struct, json
+from msgspec import Struct
 from sapphyre_tools import (
-    convert_consensus,
-    dumb_consensus,
-    dumb_consensus_dupe,
     find_index_pair,
     get_overlap,
-    is_same_kmer,
-    constrained_distance,
     bio_revcomp,
 )
 from .directional_cluster import cluster_ids, within_distance, node_to_ids, quick_rec

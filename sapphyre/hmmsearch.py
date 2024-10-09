@@ -4,7 +4,7 @@ import subprocess
 from collections import defaultdict
 from shutil import rmtree
 from tempfile import NamedTemporaryFile
-from os import path, system, stat
+from os import path, system
 from multiprocessing import Pool
 from wrap_rocks import RocksDB
 from msgspec import Struct, json

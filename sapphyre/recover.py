@@ -1,11 +1,6 @@
-from collections import defaultdict
-from itertools import combinations
-from math import ceil, floor
 from multiprocessing import Pool
 from os import listdir, makedirs, path
 from pathlib import Path
-import copy
-import warnings
 from msgspec import Struct
 from sapphyre_tools import (
     convert_consensus,
@@ -14,12 +9,7 @@ from sapphyre_tools import (
     find_index_pair,
     get_overlap,
     is_same_kmer,
-    constrained_distance,
-    join_with_exclusions,
-    join_triplets_with_exclusions,
 )
-from Bio import BiopythonWarning
-
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
 

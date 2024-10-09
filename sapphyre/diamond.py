@@ -8,8 +8,6 @@ from multiprocessing.pool import Pool
 from os import makedirs, path, stat, system
 from shutil import rmtree
 from tempfile import NamedTemporaryFile, TemporaryDirectory
-from typing import Union
-
 from msgspec import Struct, json
 from numpy import float32, float64, int16, int8, uint32, where
 from pandas import DataFrame, read_csv

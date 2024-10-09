@@ -1,5 +1,4 @@
 from collections import defaultdict
-from functools import cached_property
 from itertools import combinations, product
 from math import ceil, floor
 from multiprocessing import Pool

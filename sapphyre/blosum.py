@@ -13,7 +13,7 @@ from numpy import float16, isnan, nanpercentile,nanmedian
 from sapphyre_tools import (
     blosum62_candidate_to_reference,
     blosum62_distance,
-    delete_empty_columns,
+    # delete_empty_columns,
     find_index_pair,
     get_overlap
 )

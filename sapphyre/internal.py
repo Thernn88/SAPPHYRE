@@ -2,7 +2,7 @@ from multiprocessing.pool import Pool
 from os import path
 from pathlib import Path
 
-from msgspec import Struct, json
+from msgspec import Struct
 from sapphyre_tools import (
     dumb_consensus,
     dumb_consensus_dupe,

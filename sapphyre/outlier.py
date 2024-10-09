@@ -1,7 +1,7 @@
 import argparse
 import os
 from shutil import rmtree
-from sapphyre import excise, recover
+from sapphyre import recover#, excise
 from wrap_rocks import RocksDB
 from . import blosum, genome_splice, hmmfilter, internal, cluster_consensus, read_assembly
 from .timekeeper import KeeperMode, TimeKeeper

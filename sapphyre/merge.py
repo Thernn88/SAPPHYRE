@@ -12,7 +12,7 @@ from shutil import rmtree
 from typing import Literal
 
 from Bio.Seq import Seq
-from msgspec import Struct, json
+from msgspec import Struct
 from numpy import uint8
 from sapphyre_tools import find_index_pair, get_overlap
 from wrap_rocks import RocksDB

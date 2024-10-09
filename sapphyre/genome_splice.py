@@ -3,7 +3,6 @@ from itertools import combinations
 from multiprocessing import Pool
 from os import listdir, makedirs, path
 from pathlib import Path
-import copy
 from msgspec import Struct
 from sapphyre_tools import (
     convert_consensus,
@@ -12,7 +11,6 @@ from sapphyre_tools import (
     find_index_pair,
     get_overlap,
     is_same_kmer,
-    constrained_distance,
 )
 from .directional_cluster import cluster_ids, within_distance, node_to_ids, quick_rec
 from .timekeeper import KeeperMode, TimeKeeper
