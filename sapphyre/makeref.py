@@ -82,11 +82,10 @@ class Sequence:
         "nt_sequence",
         "taxon",
         "gene",
-        "id",
     )
 
     def __init__(
-        self, raw_head, header, aa_sequence, nt_sequence, taxon, gene, id
+        self, raw_head, header, aa_sequence, nt_sequence, taxon, gene
     ) -> None:
         self.raw_head = raw_head
         self.header = header
@@ -190,7 +189,7 @@ class Sequence_Set:
 
         return list(data)
 
-    def get_gene_dict(self, raw=False, nt=False) -> dict:
+    def get_gene_dict(self, raw=False) -> dict:
         """Returns a dictionary with every gene and its corresponding sequences."""
         data = {}
         for sequence in self.sequences:
@@ -483,7 +482,7 @@ def generate_aln(
     """
     Generates the .aln.fa files for each gene in the set.
     """
-    sequences = set.get_gene_dict(True).copy()
+    sequences = set.get_gene_dict(True)
 
     aln_path = set_path.joinpath("aln")
     aln_path.mkdir(exist_ok=True)
@@ -1291,7 +1290,6 @@ def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, gfm, nt_
                         nt_seqs.get(seq_record.description),
                         taxon,
                         gene,
-                        next(index),
                     )
                 )
             elif "|" in seq_record.description and " " not in seq_record.description:
@@ -1316,7 +1314,6 @@ def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, gfm, nt_
                         nt_seqs.get(seq_record.description),
                         taxon,
                         gene,
-                        next(index),
                     )
                 )
             else:
@@ -1343,7 +1340,6 @@ def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, gfm, nt_
                         nt_seqs.get(seq_record.description),
                         taxon,
                         gene,
-                        next(index),
                     )
                 )
         del temp_file

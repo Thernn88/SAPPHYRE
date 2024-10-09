@@ -218,7 +218,6 @@ def do_protein(
     protein: Literal["aa", "nt"],
     gene_path,
     output_dir: Path,
-    skip_dupes,
     ref_stats,
     already_calculated_splits,
     gene,
@@ -567,7 +566,6 @@ def do_gene(
     output_dir: Path,
     aa_path,
     nt_path,  # this one
-    skip_dupes,
     ref_stats,
     second_run,
     debug,
@@ -655,7 +653,6 @@ def do_gene(
         "aa",
         aa_path,
         output_dir,
-        skip_dupes,
         ref_stats,
         already_calculated_splits,
         gene,
@@ -673,7 +670,6 @@ def do_gene(
         "nt",
         nt_path,
         output_dir,
-        skip_dupes,
         ref_stats,
         already_calculated_splits,
         make_nt_name(gene),
@@ -704,12 +700,10 @@ def do_folder(folder: Path, args):
     tmp_dir = directory_check(folder)
     dupe_tmp_file = Path(tmp_dir, "DupeSeqs.tmp")
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
-    skip_dupes = False
     if rocks_db_path.exists():
         rocksdb_db = RocksDB(str(rocks_db_path))
         ref_stats = rocksdb_db.get("getall:valid_refs").split(",")
     else:
-        skip_dupes = True
         ref_stats = []
 
     if args.second_run:
