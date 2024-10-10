@@ -1742,7 +1742,7 @@ def log_excised_consensus(
                                     ends[parent] = input_len
                                     
                                 strand = "+" if prev_node.frame > 0 else "-"
-                                gff_out[parent][prev_id] = ((prev_start), f"{parent}\tSapphyre\texon\t{prev_start}\t{prev_end}\t.\t{strand}\t.\tID={prev_id};Parent={gene};Note={prev_node.frame};")
+                                gff_out[parent][prev_id] = ((prev_start), f"{parent}\tSapphyre\texon\t{prev_start}\t{prev_end}\t.\t{strand}\t.\tName={prev_id};Parent={gene};Note={prev_node.frame};")
                                 
                             node_id = get_id(node.header)
                             tup = original_coords.get(node_id.split("&&")[0].split("_")[0], None)
@@ -1756,7 +1756,7 @@ def log_excised_consensus(
                                     ends[parent] = input_len
                                     
                                 strand = "+" if node.frame > 0 else "-"
-                                gff_out[parent][node_id] = ((node_start), f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tID={node_id};Parent={gene};Note={node.frame};")
+                                gff_out[parent][node_id] = ((node_start), f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tName={node_id};Parent={gene};Note={node.frame};")
                 if True and not splice_found:    
                     scan_log.append(f">{prev_node.header}_orf")
                     # print(prev_start_index, node_end_index)
@@ -2075,7 +2075,7 @@ def main(args, sub_dir):
                 if line.startswith("#"):
                     continue
                 line = line.strip().split("\t")
-                #AGOUTI_SCAF_51|6429119BP|CTG001940_1,CTG001110_1,CTG004120_1	Sapphyre	exon	4815540	4815717	.	-	.	ID=136854;Parent=1.aa.fa;Note=-2;
+                #AGOUTI_SCAF_51|6429119BP|CTG001940_1,CTG001110_1,CTG004120_1	Sapphyre	exon	4815540	4815717	.	-	.	Name=136854;Parent=1.aa.fa;Note=-2;
                 parent = line[0]
                 id = line[-1].split(";")[0].split("=")[1]
                 start = int(line[3])
