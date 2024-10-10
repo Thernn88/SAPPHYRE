@@ -1584,7 +1584,7 @@ def log_excised_consensus(
         "TGA": "*",
         "---": "-",
     }
-    
+    gene_name = gene.split(".")[0]
     FRANKENSTEIN_PENALTY = -20
     GC_PENALTY = -20
     SIMILARITY_SKIP = 0.95
@@ -1742,7 +1742,7 @@ def log_excised_consensus(
                                     ends[parent] = input_len
                                     
                                 strand = "+" if prev_node.frame > 0 else "-"
-                                gff_out[parent][prev_id] = ((prev_start), f"{parent}\tSapphyre\texon\t{prev_start}\t{prev_end}\t.\t{strand}\t.\tName={prev_id};Parent={gene};Note={prev_node.frame};")
+                                gff_out[parent][prev_id] = ((prev_start), f"{parent}\tSapphyre\texon\t{prev_start}\t{prev_end}\t.\t{strand}\t.\tDescription={prev_id};Name={gene_name};ID={gene_name};Note={prev_node.frame};")
                                 
                             node_id = get_id(node.header)
                             tup = original_coords.get(node_id.split("&&")[0].split("_")[0], None)
@@ -1756,7 +1756,7 @@ def log_excised_consensus(
                                     ends[parent] = input_len
                                     
                                 strand = "+" if node.frame > 0 else "-"
-                                gff_out[parent][node_id] = ((node_start), f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tName={node_id};Parent={gene};Note={node.frame};")
+                                gff_out[parent][node_id] = ((node_start), f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tDescription={node_id};Name={gene_name};ID={gene_name};Note={node.frame};")
                 if True and not splice_found:    
                     scan_log.append(f">{prev_node.header}_orf")
                     # print(prev_start_index, node_end_index)
