@@ -455,7 +455,7 @@ def do_cull(
         # Scan until amt_matches is reached, end of sequence is reached or mismatch is exhausted
         while checks > 0:
             # Scan will extend beyond the end of the sequence
-            if i + match_i >= len(sequence):
+            if i + match_i + 1 >= len(sequence):
                 pass_all = False
                 break
 
@@ -600,12 +600,17 @@ def process_refs(
     all_dashes_by_index = {i: True for i in range(max_ref_length)}
 
     for _, sequence in references:
+        start, end = find_index_pair(sequence, "-")
         for i, char in enumerate(sequence.replace("*", "-")):
-            character_at_each_pos[i].append(char)
+            if i < start or i >= end:
+                character_at_each_pos[i].append("#")
+            else:
+                character_at_each_pos[i].append(char)
 
     for i, chars in list(character_at_each_pos.items()):
-        data_present = 1 - (chars.count("-") / len(chars))
-        all_dashes_by_index[i] = data_present == 0
+        gap_present = (chars.count("-") + chars.count("#")) / len(chars) # Inlusive of leading and trailing gaps
+        data_present = 1 - (chars.count("-") / (len(chars)-chars.count("#"))) if (len(chars)-chars.count("#")) > 0 else 0 # Exclusive of leading and trailing gaps
+        all_dashes_by_index[i] = gap_present >= 0.85
         gap_present_threshold[i] = data_present >= gap_threshold
         if data_present < column_cull_percent:
             column_cull.add(i * 3)
@@ -753,7 +758,6 @@ def cull_codons(
 
         # If the difference between the amount of data columns in the candidate and
         # the reference is less than 55%, cull the remainder side
-        cut_left, cut_right = False, False
         if (
             left_highest_consecutive < 30 and
             get_data_difference(
@@ -765,7 +769,7 @@ def cull_codons(
             for x in range(cull_start, i):
                 positions_to_trim.add(x * 3)
                 out_line[x] = "-"
-            cut_left = True
+
         if (
             right_highest_consecutive < 30 and
             get_data_difference(
@@ -777,14 +781,13 @@ def cull_codons(
             for x in range(i, cull_end):
                 positions_to_trim.add(x * 3)
                 out_line[x] = "-"
-            cut_right = True
 
         non_trimmed_codons.remove(i)
 
-        if not cut_left and not cut_right:
-            if gap_present_threshold[i]:
-                kick = True, i
-                return out_line, positions_to_trim, kick
+        # if not cut_left and not cut_right:
+        #     if gap_present_threshold[i]:
+        #         kick = True, i
+        #         return out_line, positions_to_trim, kick
 
     return out_line, positions_to_trim, kick
 
@@ -886,12 +889,12 @@ def trim_large_gaps(
                                 left_of_trim_data_columns,
                                 left_side_ref_data_columns,
                             )
-                            < 0.55
+                            < 0.75
                             and get_data_difference(
                                 right_of_trim_data_columns,
                                 right_side_ref_data_columns,
                             )
-                            < 0.55
+                            < 0.75
                         ):
                             keep_left = len(left_after) - left_after.count(
                                 "-",
@@ -1147,14 +1150,14 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
     references, candidates = parse_fasta(gene_path)
 
-    references, filtered_refs, total_median, allowable, iqr = cull_reference_outliers(references, fargs.debug)
+    # references, filtered_refs, total_median, allowable, iqr = cull_reference_outliers(references, fargs.debug)
     culled_references = []
-    if filtered_refs:
-        culled_references.append(f'{this_gene} total median: {total_median}\n')
-        culled_references.append(f'{this_gene} threshold: {allowable}\n')
-        culled_references.append(f'{this_gene} standard deviation: {iqr}\n')
-        for ref_kick, ref_median, kick in filtered_refs:
-            culled_references.append(f'{ref_kick[0]},{ref_median},{kick}\n')
+    # if filtered_refs:
+    #     culled_references.append(f'{this_gene} total median: {total_median}\n')
+    #     culled_references.append(f'{this_gene} threshold: {allowable}\n')
+    #     culled_references.append(f'{this_gene} standard deviation: {iqr}\n')
+    #     for ref_kick, ref_median, kick in filtered_refs:
+    #         culled_references.append(f'{ref_kick[0]},{ref_median},{kick}\n')
 
     if not references:
         printv(f"No references for {this_gene} after cull", fargs.verbosity, 1)
@@ -1236,24 +1239,24 @@ def do_gene(fargs: FlexcullArgs) -> None:
 
             # If gene is not NCG and we don't want to keep codons, cull codons
             positions_to_trim = set()
-            # if not fargs.is_ncg and not fargs.keep_codons:
-            #     out_line, positions_to_trim, kick = cull_codons(
-            #         out_line,
-            #         cull_start,
-            #         cull_end,
-            #         fargs.amt_matches,
-            #         fargs.mismatches,
-            #         all_dashes_by_index,
-            #         character_at_each_pos,
-            #         gap_present_threshold,
-            #     )
-            #     if kick:
-            #         follow_through[header] = True, 0, 0, []
+            if not fargs.genome and not fargs.is_ncg and not fargs.keep_codons:
+                out_line, positions_to_trim, kick = cull_codons(
+                    out_line,
+                    cull_start,
+                    cull_end,
+                    fargs.amt_matches,
+                    fargs.mismatches,
+                    all_dashes_by_index,
+                    character_at_each_pos,
+                    gap_present_threshold,
+                )
+                if kick:
+                    follow_through[header] = True, 0, 0, []
 
-            #         if fargs.debug:
-            #             codon_log.append(f"{header},{kick[1]}\n")
-            #         kick = False
-            #         # continue
+                    if fargs.debug:
+                        codon_log.append(f"{header},{kick}\n")
+                    kick = False
+                    # continue
 
             # Join sequence and check bp after cull
             out_line = "".join(out_line)
@@ -1322,38 +1325,38 @@ def do_gene(fargs: FlexcullArgs) -> None:
             return log, culled_references, codon_log  # Only refs
 
         # Recalcuate position based tables
-        post_references = [i for i in aa_out if i[0].endswith(".")]
+        # post_references = [i for i in aa_out if i[0].endswith(".")]
 
-        (
-            _,
-            post_character_at_each_pos,
-            post_gap_present_threshold,
-            post_all_dashes_by_index,
-            _,
-        ) = process_refs(
-            post_references,
-            fargs.gap_threshold,
-            fargs.column_cull_percent,
-            fargs.filtered_mat,
-        )
+        # (
+        #     _,
+        #     _,#post_character_at_each_pos,
+        #     post_gap_present_threshold,
+        #     _,#post_all_dashes_by_index,
+        #     _,
+        # ) = process_refs(
+        #     post_references,
+        #     fargs.gap_threshold,
+        #     fargs.column_cull_percent,
+        #     fargs.filtered_mat,
+        # )
 
-        reference_gap_col = {i for i, x in post_gap_present_threshold.items() if not x}
+        # reference_gap_col = {i for i, x in post_gap_present_threshold.items() if not x}
 
         # Trim large gaps
-        aa_out, gap_pass_through, trim_log, kicks = trim_large_gaps(
-            aa_out,
-            reference_gap_col,
-            fargs.amt_matches,
-            fargs.mismatches,
-            post_all_dashes_by_index,
-            post_character_at_each_pos,
-            post_gap_present_threshold,
-            fargs.bp,
-            fargs.debug,
-        )
+        # aa_out, gap_pass_through, trim_log, kicks = trim_large_gaps(
+        #     aa_out,
+        #     reference_gap_col,
+        #     fargs.amt_matches,
+        #     fargs.mismatches,
+        #     post_all_dashes_by_index,
+        #     post_character_at_each_pos,
+        #     post_gap_present_threshold,
+        #     fargs.bp,
+        #     fargs.debug,
+        # )
 
-        if fargs.debug:
-            log.extend(trim_log)
+        # if fargs.debug:
+        #     log.extend(trim_log)
 
         for kick in kicks:
             follow_through[kick] = True, 0, 0, []
@@ -1395,22 +1398,22 @@ def do_gene(fargs: FlexcullArgs) -> None:
             nt_out = align_col_removal(nt_out, aa_positions_to_keep)
             out_nt = []
             for header, sequence in nt_out:
-                gap_cull = gap_pass_through.get(header, None)
+                # gap_cull = gap_pass_through.get(header, None)
 
-                if gap_cull:
-                    out_nt.append(
-                        (
-                            header,
-                            "".join(
-                                [
-                                    sequence[i : i + 3] if i not in gap_cull else "---"
-                                    for i in range(0, len(sequence), 3)
-                                ],
-                            ),
-                        ),
-                    )
-                else:
-                    out_nt.append((header, sequence))
+                # if gap_cull:
+                #     out_nt.append(
+                #         (
+                #             header,
+                #             "".join(
+                #                 [
+                #                     sequence[i : i + 3] if i not in gap_cull else "---"
+                #                     for i in range(0, len(sequence), 3)
+                #                 ],
+                #             ),
+                #         ),
+                #     )
+                # else:
+                out_nt.append((header, sequence))
 
             # Align order
             out_nt = align_to_aa_order(out_nt, aa_out)

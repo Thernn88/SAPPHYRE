@@ -25,7 +25,7 @@ def parse_gene(path):
     this_refs = {}
     already_grabbed_references = set()
     taxon_to_target = defaultdict(list)
-    for header, sequence in parseFasta(str(path)):
+    for header, sequence in parseFasta(str(path), True):
         if header.endswith("."):
             fields = header.split("|")
             if fields[2] not in already_grabbed_references:
@@ -37,9 +37,9 @@ def parse_gene(path):
     return {path: (this_out, taxon_to_target, this_refs)}
 
 
-def write_gene(path, gene_sequences, compress):
+def write_gene(path, gene_sequences, extension, compress):
     for gene, sequences in gene_sequences:
-        gene_out = Path(path, gene)
+        gene_out = Path(path, gene+extension)
         writeFasta(gene_out, sequences, compress)
 
 
@@ -59,8 +59,12 @@ def main(args):
         for item in inputs:
             printv(f"Merging directory: {item}", args.verbose, 0)
             for taxa in item.iterdir():
-                aa_path = Path(taxa, "aa_merged")
-                nt_path = Path(taxa, "nt_merged")
+                if args.no_merge:
+                    aa_path = Path(taxa, "outlier", "blosum", "aa")
+                    nt_path = Path(taxa, "outlier", "blosum", "nt")
+                else:
+                    aa_path = Path(taxa, "aa_merged")
+                    nt_path = Path(taxa, "nt_merged")
                 if not aa_path.exists() or not nt_path.exists():
                     printv(
                         f"WARNING: Either {aa_path} or {nt_path} doesn't exists. Abort",
@@ -78,7 +82,7 @@ def main(args):
                             taxon_to_target,
                             ref_sequences,
                         ) = out_tuple
-                        path = path.name
+                        path = path.name.split(".")[0]
                         already_grabbed = grabbed_aa_references[path]
                         references = []
                         for taxon_targets in taxon_to_target.values():
@@ -106,7 +110,7 @@ def main(args):
                             taxon_to_target,
                             ref_sequences,
                         ) = out_tuple
-                        path = path.name
+                        path = path.name.split(".")[0]
                         already_grabbed = grabbed_nt_references[path]
                         references = []
                         for taxon_targets in taxon_to_target.values():
@@ -134,7 +138,7 @@ def main(args):
         per_thread = ceil(len(aa_sequences) / args.processes)
 
         aa_arguments = [
-            (aa_out_path, aa_sequences[i : i + per_thread], args.compress)
+            (aa_out_path, aa_sequences[i : i + per_thread], ".aa.fa", args.compress)
             for i in range(0, len(aa_sequences), per_thread)
         ]
 
@@ -143,7 +147,7 @@ def main(args):
         del aa_arguments
 
         nt_arguments = [
-            (nt_out_path, nt_sequences[i : i + per_thread], args.compress)
+            (nt_out_path, nt_sequences[i : i + per_thread], ".nt.fa", args.compress)
             for i in range(0, len(nt_sequences), per_thread)
         ]
 

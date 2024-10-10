@@ -23,7 +23,6 @@ from .utils import parseFasta, printv, writeFasta
 
 class HmmfilterArgs(Struct):
     compress: bool
-    uncompress_intermediates: bool
     processes: int
 
     verbose: int
@@ -31,10 +30,10 @@ class HmmfilterArgs(Struct):
     consensus: float
 
     from_folder: str
-    min_overlap_internal: float
+    min_overlap_hmmfilter: float
     score_diff_internal: float
     matching_consensus_percent: float
-    add_hmmfilter_dupes: bool
+    no_dupes: bool
 
 
 class BatchArgs(Struct):
@@ -46,10 +45,7 @@ class BatchArgs(Struct):
     aa_out_path: str
     compress: bool
     gene_scores: dict
-    prepare_dupe_counts: dict
-    reporter_dupe_counts: dict
     has_dupes: bool
-    add_hmmfilter_dupes: bool
 
 
 class NODE(Struct):
@@ -64,14 +60,12 @@ class NODE(Struct):
     saves: list
     has_been_saved: bool
 
-def do_consensus(nodes, threshold, prepare_dupe_counts, reporter_dupe_counts):
+def do_consensus(nodes, threshold, dupes):
     if not nodes:
         return "", False
     
-    if prepare_dupe_counts or reporter_dupe_counts:
-        bundle = [(node.header, node.sequence) for node in nodes]
-        sequences = bundle_seqs_and_dupes(bundle, prepare_dupe_counts, reporter_dupe_counts)
-
+    if dupes:
+        sequences = [(node.sequence, int(node.header.split("|")[5])) for node in nodes]
         consensus_seq = dumb_consensus_dupe(sequences, threshold, 0)
         converted = convert_consensus([node.sequence for node in nodes], consensus_seq)
     else:
@@ -134,7 +128,6 @@ def process_kicks(nodes, debug, gene, filtered_sequences_log):
 
 # def compare_hit_to_leaf(hit_a, targets, overlap, score_diff, kicks, safe, debug, gene, filtered_sequences_log) -> None:
 def compare_hit_to_leaf(hit_a, targets, overlap, score_diff) -> None:
-
     for hit_b in targets:
         # if hit_b is None:
         #     continue
@@ -164,7 +157,7 @@ def compare_hit_to_leaf(hit_a, targets, overlap, score_diff) -> None:
             hit_a.saves.append(hit_b.index)
 
 
-def internal_filter_gene2(nodes, debug, gene, min_overlap_internal, score_diff_internal):
+def internal_filter_gene2(nodes, debug, gene, min_overlap_hmmfilter, score_diff_internal):
     intervals = {(node.start, node.end) for node in nodes}
     intervals = {tup: Leaf(tup[1] - tup[0]) for tup in intervals}
     tree = OverlapTree()
@@ -198,7 +191,7 @@ def internal_filter_gene2(nodes, debug, gene, min_overlap_internal, score_diff_i
                 length = length + 1
                 coords = get_overlap(node.start, node.end, interval_start, interval_end, 0)
                 start, end = coords
-                if (end - start)/length < min_overlap_internal:
+                if (end - start)/length < min_overlap_hmmfilter:
                     continue
                 working.append(((interval[0], interval[1]), coords))
                 memoize[(node.start, node.end)] = working
@@ -220,7 +213,7 @@ def internal_filter_gene2(nodes, debug, gene, min_overlap_internal, score_diff_i
     return process_kicks(nodes, debug, gene, filtered_sequence_log)
 
 
-def internal_filter_gene(nodes, debug, gene, min_overlap_internal, score_diff_internal):
+def internal_filter_gene(nodes, debug, gene, min_overlap_hmmfilter, score_diff_internal):
     nodes.sort(key=lambda hit: hit.score, reverse=True)
     filtered_sequences_log = []
     kicks = set()
@@ -240,9 +233,10 @@ def internal_filter_gene(nodes, debug, gene, min_overlap_internal, score_diff_in
                 continue
             if hit_b.score == 0:
                 continue
+
             if hit_a.score / hit_b.score < score_diff_internal:
                 break
-
+            
             overlap_coords = get_overlap(
                 hit_a.start,
                 hit_a.end,
@@ -254,7 +248,7 @@ def internal_filter_gene(nodes, debug, gene, min_overlap_internal, score_diff_in
 
             length = min((hit_b.end - hit_b.start), (hit_a.end - hit_a.start)) + 1  # Inclusive
             percentage_of_overlap = amount_of_overlap / length
-            if percentage_of_overlap >= min_overlap_internal:
+            if percentage_of_overlap >= min_overlap_hmmfilter:
 
                 kmer_a = hit_a.sequence[overlap_coords[0]: overlap_coords[1]]
                 kmer_b = hit_b.sequence[overlap_coords[0]: overlap_coords[1]]
@@ -310,7 +304,6 @@ def kick_read_consensus(
             read.start,
             read.end,
         )
-
         if average_matching_cols < match_percent:
             if debug:
                 length = read.end - read.start
@@ -321,23 +314,6 @@ def kick_read_consensus(
             nodes[i] = None
 
     return [i for i in nodes if i is not None]
-
-
-def bundle_seqs_and_dupes(sequences: list, prepare_dupe_counts, reporter_dupe_counts):
-    """
-    Pairs each record object with its dupe count from prepare and reporter databases.
-    Given dupe count dictionaries and a list of Record objects, makes tuples of the records
-    and their dupe counts. Returns the tuples in a list.
-    """
-    output = []
-    for header, seq in sequences:
-        node = header.split("|")[3]
-        dupes = prepare_dupe_counts.get(node, 1) + sum(
-            prepare_dupe_counts.get(node, 1)
-            for node in reporter_dupe_counts.get(node, [])
-        )
-        output.append((seq, dupes))
-    return output
 
 
 def average_match(seq_a, consensus, start, end):
@@ -395,7 +371,6 @@ def process_batch(
         int: The total number of sequences that passed
     """
     args = batch_args.args
-
     consensus_kicks = []
     reported_regions = []
     overlap_kicks = []
@@ -403,8 +378,6 @@ def process_batch(
 
     for input_gene in batch_args.genes:
         gene = input_gene.split('.')[0]
-        prepare_dupe_count = batch_args.prepare_dupe_counts.get(gene, {})
-        reporter_dupe_count = batch_args.reporter_dupe_counts.get(gene, {})
         kicked_headers = set()
         printv(f"Doing: {gene}", args.verbose, 2)
 
@@ -433,7 +406,7 @@ def process_batch(
             aa_count += 1
 
             start, end = find_index_pair(sequence, "-")
-            base = header.split("|")[3]
+            base = header.split("|")[3].replace("NODE_","")
             score_key = "_".join(base.split("_")[0:2])
             nodes.append(
                 NODE(
@@ -490,7 +463,6 @@ def process_batch(
                 amount_of_overlap = 0 if overlap_coords is None else overlap_coords[1] - overlap_coords[0]
                 distance = (hit_b.end - hit_b.start) + 1
                 percentage_of_overlap = amount_of_overlap / distance
-
                 if percentage_of_overlap >= 0.8:
                     kicked_headers.add(hit_b.header)
                     if args.debug:
@@ -499,15 +471,15 @@ def process_batch(
                         )
         
         nodes = [i for i in nodes if i.header not in kicked_headers]
-        nodes, internal_header_kicks, internal_log = internal_filter_gene2(nodes.copy(), args.debug, gene, args.min_overlap_internal, args.score_diff_internal)
-        # nodes, internal_log, internal_header_kicks = internal_filter_gene(nodes, args.debug, gene, args.min_overlap_internal, args.score_diff_internal)
+        # nodes, internal_header_kicks, internal_log = internal_filter_gene2(nodes.copy(), args.debug, gene, args.min_overlap_hmmfilter, args.score_diff_internal)
+        nodes, internal_log, internal_header_kicks = internal_filter_gene(nodes, args.debug, gene, args.min_overlap_hmmfilter, args.score_diff_internal)
         # assert nodes == nodes2, "nodes have changed"
         # assert internal_header_kicks == internal_header_kicks2, "kicks have changed"
         kicked_headers.update(internal_header_kicks)
         internal_kicks.extend(internal_log)
 
         x_cand_consensus, _ = do_consensus(
-            nodes, args.consensus, prepare_dupe_count, reporter_dupe_count
+            nodes, args.consensus, batch_args.has_dupes
         )
 
         for i, let in enumerate(x_cand_consensus):
@@ -524,35 +496,6 @@ def process_batch(
             if header not in kicked_headers
         ]
 
-        aa_out_dupes = []
-        nt_out_dupes = []
-        if batch_args.add_hmmfilter_dupes and batch_args.has_dupes:
-            #insert aa dupes
-            for header, seq in aa_output:
-                node = header.split("|")[3]
-                dupes = prepare_dupe_count.get(node, 1) + sum(
-                    prepare_dupe_count.get(node, 1)
-                    for node in reporter_dupe_count.get(node, [])
-                )
-                aa_out_dupes.append((header, seq))
-                for i in range(dupes - 1):
-                    aa_out_dupes.append((f"{header}_dupe_{i}", seq))
-            #insert nt dupes
-            for header, seq in nt_sequences:
-                node = header.split("|")[3]
-                dupes = prepare_dupe_count.get(node, 1) + sum(
-                    prepare_dupe_count.get(node, 1)
-                    for node in reporter_dupe_count.get(node, [])
-                )
-            
-                nt_out_dupes.append((header, seq))
-                for i in range(dupes - 1):
-                
-                    nt_out_dupes.append((f"{header}_dupe{i}", seq))
-        else:
-            aa_out_dupes = aa_output
-            nt_out_dupes = nt_sequences
-
         aa_has_candidate = False
         for header, sequence in aa_output:
             if not header.endswith("."):
@@ -560,8 +503,8 @@ def process_batch(
                 break
 
         if aa_has_candidate:
-            writeFasta(aa_out, aa_out_dupes, batch_args.compress)
-            writeFasta(nt_out, nt_out_dupes, batch_args.compress)
+            writeFasta(aa_out, aa_output, batch_args.compress)
+            writeFasta(nt_out, nt_sequences, batch_args.compress)
 
 
     return (
@@ -595,17 +538,9 @@ def do_folder(args: HmmfilterArgs, input_path: str):
 
     nt_db_path = path.join(input_path, "rocksdb", "sequences", "nt")
     gene_scores = {}
-    has_dupes = False
-    prepare_dupe_counts, reporter_dupe_counts = {}, {}
+    has_dupes = not args.no_dupes
     if path.exists(nt_db_path):
-        has_dupes = True
         nt_db = RocksDB(nt_db_path)
-        prepare_dupe_counts = json.decode(
-            nt_db.get("getall:gene_dupes"), type=dict[str, dict[str, int]]
-        )
-        reporter_dupe_counts = json.decode(
-            nt_db.get("getall:reporter_dupes"), type=dict[str, dict[str, list]]
-        )
         gene_scores = json.decode(nt_db.get("getall:hmm_gene_scores"), type=dict[str, dict[str, float]])
         del nt_db
 
@@ -620,8 +555,6 @@ def do_folder(args: HmmfilterArgs, input_path: str):
     ]
 
     per_thread = ceil(len(genes) / args.processes)
-
-    compress = not args.uncompress_intermediates or args.compress
 
     batched_arguments = []
     for i in range(0, len(genes), per_thread):
@@ -639,12 +572,9 @@ def do_folder(args: HmmfilterArgs, input_path: str):
                 nt_out_path,
                 aa_input_path,
                 aa_out_path,
-                compress,
+                args.compress,
                 this_batch_scores,
-                prepare_dupe_counts, 
-                reporter_dupe_counts,
                 has_dupes,
-                args.add_hmmfilter_dupes,
             ))
 
 
@@ -700,16 +630,15 @@ def main(args, from_folder):
             )
     this_args = HmmfilterArgs(
         compress=args.compress,
-        uncompress_intermediates=args.uncompress_intermediates,
         processes=args.processes,
         verbose=args.verbose,
         debug=args.debug,
         consensus=args.hmmfilter_consensus,
         from_folder=from_folder,
-        min_overlap_internal = args.min_overlap_internal,
+        min_overlap_hmmfilter = args.min_overlap_hmmfilter,
         score_diff_internal = args.score_diff_internal,
         matching_consensus_percent = args.matching_consensus_percent,
-        add_hmmfilter_dupes = args.add_hmmfilter_dupes
+        no_dupes = args.no_dupes,
     )
     return do_folder(this_args, args.INPUT)
 

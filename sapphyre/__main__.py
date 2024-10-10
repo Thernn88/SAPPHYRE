@@ -65,13 +65,6 @@ def prepare_args(par):
         help="Skip ntrim and allow N seqs to pass through.",
     )
     par.add_argument(
-        "-force",
-        "--force_entropy",
-        help="Force entropy calculation.",
-        default=False,
-        action="store_true",
-    )
-    par.add_argument(
         "-skip",
         "--skip_entropy",
         help="Skip entropy calculation.",
@@ -97,6 +90,12 @@ def prepare_args(par):
         "--keep_prepared",
         action="store_true",
         help="Writes the prepared input fasta into the output taxa directory.",
+    )
+    par.add_argument(
+        "-asm",
+        "--assembly",
+        action="store_true",
+        help="Force dataset as assembly only.",
     )
     par.add_argument(
         "-ol",
@@ -152,6 +151,13 @@ def diamond_args(par):
         help="Overwrite existing files.",
     )
     par.add_argument(
+        "-alm",
+        "--align_method",
+        choices=["clustal", "mafft", "famsa"],
+        default="famsa",
+        help="What alignment method to use.",
+    )
+    par.add_argument(
         "-ot",
         "--overwrite_top",
         action="store_true",
@@ -196,7 +202,7 @@ def diamond_args(par):
         "-tr",
         "--top-ref",
         type=int,
-        default=8,
+        default=10,
         help="How many references are sampled. We recommend lowering this number if you have a broadly sampled reference set with few closely related species.",
     )
     par.add_argument(
@@ -240,24 +246,10 @@ def reporter_args(par):
         help="Amount of bp required after trim.",
     )
     par.add_argument(
-        "-m",
-        "--matches",
-        type=int,
-        default=0,
-        help="Amount of matches for dynamic pairwise aligned edge trim.",
-    )
-    par.add_argument(
         "--gene_list_file",
         type=str,
         default=None,
         help="Path to a txt file containing target genes for processing. Processes all genes in the input folder if not specified.",
-    )
-    par.add_argument(
-        "-bs",
-        "--blosum_strictness",
-        choices=["exact", "strict", "lax"],
-        default="strict",
-        help="Pairwise edge trim strictness setting.",
     )
     par.add_argument(
         "-d",
@@ -315,6 +307,13 @@ def hmmsearch_args(par):
         default=100,
         help="Max distance for merging cluster in chomp",
     )
+    par.add_argument(
+        "-em",
+        "--edge_margin",
+        type=int,
+        default=50,
+        help="Max distance for expanding cluster for search",
+    )
 
 def hmmsearch(args):
     from . import hmmsearch
@@ -333,8 +332,6 @@ def reporter(args):
         args.orthoset_input,
         args.orthoset,
         args.compress,
-        args.matches,
-        args.blosum_strictness,
         args.minimum_bp,
         args.gene_list_file,
         args.keep_output,
@@ -355,124 +352,92 @@ def subcmd_outlier(subparsers):
 
 
 def outlier_args(par):
-    par.add_argument(
-        "-rpc",
-        "--rescue_passing_cluster",
-        type=float,
-        default=0.5,
-        help="Minimum percent of passing candidates in a cluster to rescue kicked sequences.",
-    )
-    par.add_argument(
-        "-rcp",
-        "--rescue_consensus_percent",
-        type=float,
-        default=0.5,
-        help="Minimum percent of matching columns of a sequence to the candidate consensus to rescue"
-    )
-    par.add_argument(
-        "-aid",
-        "--add_internal_dupes",
-        action="store_true",
-        help="Add dupes to internal",
-    )
-    par.add_argument(
-        "-ahd",
-        "--add_hmmfilter_dupes",
-        action="store_true",
-        help="Add dupes to hmmfilter",
-    )
     # Globally used args
+    par.add_argument(
+        "-s",
+        "--solo",
+        choices=["blosum", "splice", "assembly", "hmmfilter", "internal", "cluster", "recover"],
+        default=None,
+        help="Run solo on a script.",
+    )
     par.add_argument(
         "-d",
         "--debug",
         action="count",
-        help="Log outliers to csv files",
+        default=0,
+        help="Enable debug. When enabled each outlier script will output a log of changes made.",
     )
     par.add_argument(
-        "-uci",
-        "--uncompress-intermediates",
-        action="store_true",
-        help="Compress intermediate files",
-    )
-    # Outlier main loop
-    par.add_argument(
-        "-t",
-        "--threshold",
-        type=float,
-        default=200,
-        help="Percent scaling IQR in upper bound calculation. Default is 100%%.",
-    )
-    #
-    par.add_argument(
-        "-moi",
-        "--min_overlap_internal",
-        type=float,
-        default=0.6,
-        help="Minimum overlap percent between reads in hmmfilter",
-    )
-    #
-    par.add_argument(
-        "-mcp",
-        "--matching_consensus_percent",
-        help="Minimum percent of similar columns required for consensus ",
-        type=float,
-        default=0.3,
-    )
-    par.add_argument(
-        "-sdi",
-        "--score_diff_internal",
-        type=float,
-        default=1.2,
-        help="Minimum score difference for hmmfilter.",
-    )
-    par.add_argument(
-        "--no-references",
-        action="store_true",
+        "-nd",
+        "--no_dupes",
         default=False,
-        help="Disable output of reference sequences",
+        action="store_true",
+        help="Don't use prepare and reporter dupe counts in consensus generation",
     )
+    # Blosum args
     par.add_argument(
         "-ccp",
         "--col-cull-percent",
         type=float,
         default=0.33,
-        help="Minimum percentage of data required not to cull column.",
+        help="Minimum percentage of data required not to ignore column during blosum distance comparison.",
     )
     par.add_argument(
         "-refcp",
         "--ref-gap-percent",
         type=float,
         default=0.5,
-        help="Minimum percent of non-gap characters in a reference sequence after cull to pass.",
+        help="Minimum percent of non-gap characters in a reference sequence after cull to keep it.",
     )
     par.add_argument(
         "-refmp",
         "--ref-min-percent",
         type=float,
         default=0.33,
-        help="Minimum percent of references required after kick",
+        help="Minimum percent of references required after reference kick.",
     )
     par.add_argument(
         "-imp",
         "--index_group_min_bp",
         type=int,
         default=10,
-        help="Minimum bp for index group after column cull.",
+        help="Minimum bp for index group after column cull in blosum.",
     )
     par.add_argument(
-        "-cor",
-        "--cluster_overlap_requirement",
-        help="Overlap requirement to compare clusters in cluster consensus for genome",
+        "-rpc",
+        "--rescue_passing_cluster",
         type=float,
         default=0.5,
+        help="Minimum percent of passing candidates in a cluster to rescue kicked sequences in blosum.",
     )
-    # Collapser commands
+    par.add_argument(
+        "-rcp",
+        "--rescue_consensus_percent",
+        type=float,
+        default=0.8,
+        help="Minimum percent of matching columns of a sequence to the candidate consensus to rescue in blosum."
+    )
+    par.add_argument(
+        "-t",
+        "--threshold",
+        type=float,
+        default=175,
+        help="Percent scaling IQR in upper bound calculation in blosum.",
+    )
     par.add_argument(
         "-tct",
         "--true_cluster_threshold",
-        help="Largest distance between two reads to be considered in the same cluster",
+        help="Largest distance between two ids to be considered in the same cluster for id based clustering",
         type=int,
         default=100,
+    )
+    #Hmmfilter args
+    par.add_argument(
+        "-moh",
+        "--min_overlap_hmmfilter",
+        type=float,
+        default=0.6,
+        help="Minimum overlap percent between reads to constitute and internal kick in hmmfilter",
     )
     par.add_argument(
         "-hc",
@@ -482,140 +447,106 @@ def outlier_args(par):
         help="Threshold for selecting a consensus bp in hmmfilter",
     )
     par.add_argument(
-        "-eom",
-        "--excise_overlap_merge",
-        default=0.25,
+        "-mcp",
+        "--matching_consensus_percent",
+        help="Minimum percent of similar columns required for candidates to match the consensus in hmmfilter",
         type=float,
-        help="Minimum overlap percent for merging non-ambig sequences into ambig sequences",
+        default=0.3,
     )
     par.add_argument(
-        "-eoa",
-        "--excise_overlap_ambig",
-        default=0.025,
+        "-sdi",
+        "--score_diff_internal",
         type=float,
-        help="Minimum overlap percent for merging ambigous sequences together",
+        default=1.15,
+        help="Minimum score difference between reads for hmmfilter internal overlap filter.",
     )
+    # Cluster consensus args
     par.add_argument(
-        "-ero",
-        "--excise_region_overlap",
-        default=0.25,
+        "-cor",
+        "--cluster_overlap_requirement",
+        help="Overlap requirement to compare clusters in cluster consensus for genomic data",
         type=float,
-        help="Minimum overlap percent for sequences and ambigous regions",
+        default=0.5,
     )
-    par.add_argument(
-        "-etc",
-        "--excise_trim_consensus",
-        default=0.85,
-        type=float,
-        help="Minimum percent of allowable X characters in edge trim for excise",
-    )
+    # Excise args
     par.add_argument(
         "-ec",
         "--excise_consensus",
         default=0.85,
         type=float,
-        help="Minimum percent of allowable X characters in consensus",
+        help="Consensus threshold for read assembly and excise",
     )
     par.add_argument(
         "-ead",
         "--excise_allowed_distance",
-        default=4,
+        default=0,
         type=int,
-        help="# of bp allowed to deviate from a resolving master in excise",
-    )
-    par.add_argument(
-        "-emd",
-        "--excise_maximum_depth",
-        default=100000,
-        type=int,
-        help="Maximum depth for excise assembly",
+        help="# of bp a read is allowed to deviate from a resolving contig in excise",
     )
     par.add_argument(
         "-ema",
         "--excise_minimum_ambig",
         default=5,
         type=int,
-        help="Minimum ambigous characters for excise assembly",
+        help="Minimum ambigous characters for excise to consider a region for assembly",
     )
     par.add_argument(
         "-erm",
         "--excise_rescue_match",
         default=0.75,
         type=float,
-        help="Minimum ambigous characters for excise assembly",
+        help="Minimum percent of matching characters to the references a read must have for it to be rescued in excise",
     )
     par.add_argument(
-        "-nd",
-        "--no_dupes",
-        default=False,
-        action="store_true",
-        help="Use prepare and reporter dupe counts in consensus generation",
+        "-etc",
+        "--excise_trim_consensus",
+        default=0.85,
+        type=float,
+        help="Minimum percent of allowable X characters in edge trim for genomic splice",
     )
-    par.add_argument(
-        "-me",
-        "--majority_excise",
-        default=0.35,
-        help="Percentage of loci containg bad regions to move",
-    )
-    par.add_argument(
-        "-mf",
-        "--move_fails",
-        default="datasets/bad",
-        help="Percentage of loci containg bad regions to move",
-    )
-    par.add_argument(
-        "--cut",
-        default=False,
-        action="store_true",
-        help="Remove any regions flagged by excise.",
-    )
-    par.add_argument(
-        "-out", "--output", type=str, default="internal", help="Path to output directory"
-    )
+    # Internal Args
     par.add_argument(
         "-md",
         "--minimum-depth",
         type=int,
         default=5,
-        help="Minimum depth for choosing a character in the consensus sequence"
+        help="Minimum depth for choosing a character in the consensus sequence in internal."
     )
     par.add_argument(
         "-mcl",
         "--minimum-candidate-length",
         type=int,
         default=5,
-        help="Minimum length a candidate region must have to be compared to the consensus"
+        help="Minimum length a candidate region must have to be compared to the consensus in internal."
     )
     par.add_argument(
         "-mco",
         "--minimum-candidate-overlap",
         type=int,
         default=5,
-        help="Minimum overlap necessary to enable the distance check between a candidate region and the consensus"
+        help="Minimum overlap necessary to enable the distance check between a candidate region and the consensus in internal."
     )
     par.add_argument(
         "-ict",
         "--internal_consensus_threshold",
         type=float,
         default=0.67,
-        dest="internal_consensus_threshold",
-        help="Minimum ratio for choosing a character in the consensus sequence",
+        help="Minimum ratio for choosing a character in the consensus sequence in internal.",
     )  
     par.add_argument(
         "-idt",
         "--internal_distance_threshold",
         type=float,
         default=0.075,
-        dest="internal_distance_threshold",
-        help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence.",
-    )
+        help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence in internal.",
+    ) 
     par.add_argument(
         "-ictn",
         "--internal_consensus_threshold_nt",
         type=float,
         default=0.65,
         dest="internal_consensus_threshold_nt",
-        help="Minimum ratio for choosing a character in the consensus sequence in the nt run",
+        help="Minimum ratio for choosing a character in the consensus sequence in the nt run of internal.",
     )  
     par.add_argument(
         "-idtn",
@@ -623,7 +554,7 @@ def outlier_args(par):
         type=float,
         default=0.075,
         dest="internal_distance_threshold_nt",
-        help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence in the nt run.",
+        help="Maximum allowable ratio of distance/len for a candidate and the consensus sequence in the nt run of internal.",
     )
 
 
@@ -717,12 +648,26 @@ def merge_args(par, skip_reconcile_overlap=False):
             help="Enable second run logic",
         )
         par.add_argument(
+            "-nm",
+            "--no_merge",
+            action="store_true",
+            default=False,
+            help="Combine will grab from blosum instead of merge and reconcile will skip last merge.",
+        )
+        par.add_argument(
             "-io",
             "--ignore_overlap_chunks",
             action="store_true",
             default=False,
             help="Ignore overlapping chunks and merge all candidates for a reference taxon.",
         )
+    par.add_argument(
+        "-min",
+        "--min_count",
+        type=int,
+        default=0,
+        help="Minimum nodes (dupes inclusive) required in a contig sequence.",
+    )
     par.add_argument(
         "-sm",
         "--special_merge",
@@ -774,7 +719,15 @@ def subcmd_Combine(subparsers):
     combine_args(par)
     par.set_defaults(func=Combine, formathelp=par.format_help)
 
-def combine_args(par):
+def combine_args(par, skip_reconcile_overlap=False):
+    if not skip_reconcile_overlap:
+        par.add_argument(
+            "-nm",
+            "--no_merge",
+            action="store_true",
+            default=False,
+            help="Combine will grab from blosum instead of merge and reconcile will skip last merge.",
+        )
     par.add_argument(
         "-pd",
         "--prepend-directory",
@@ -830,6 +783,7 @@ def align_args(par, skip_reconcile_overlap = False):
             default=False,
             help="Enable second run logic",
         )
+
     par.add_argument(
         "-ovw",
         "--overwrite",
@@ -839,7 +793,7 @@ def align_args(par, skip_reconcile_overlap = False):
     par.add_argument(
         "-alm",
         "--align_method",
-        choices=["clustal", "mafft", "base", "frags"],
+        choices=["clustal", "famsa", "mafft", "base", "frags"],
         default="clustal",
         help="What alignment method to use.",
     )
@@ -990,6 +944,36 @@ def flexcull_args(par):
     )
 
 
+def subcmd_motif(subparsers):
+    par = subparsers.add_parser(
+        "Motif",
+        help="Searches for motifs in the input sequences.",
+    )
+    par.add_argument(
+        "INPUT",
+        help="Path to directory of Input folder",
+        action="extend",
+        nargs="+",
+    )
+    motif_args(par)
+    par.set_defaults(func=motif, formathelp=par.format_help)
+
+
+def motif_args(par):
+    par.add_argument(
+        "--force",
+        action="store_true",
+        help="Force motif to run.",
+    )
+
+
+def motif(args):
+    from . import motif
+
+    if not motif.main(args):
+        print()
+        print(args.formathelp())
+
 def flexcull(args):
     from . import flexcull
 
@@ -1060,6 +1044,13 @@ def subcmd_finalize(subparsers):
         type=str,
         default=None,
         help="Kicks taxa listed in line seperated file.",
+    )
+    par.add_argument(
+        "-ri",
+        "--replace_internals",
+        type=str,
+        default="?",
+        help="Replace internal gaps with supplied character.",
     )
     par.add_argument(
         "-t",
@@ -1177,11 +1168,18 @@ def subcmd_archive(sp):
         action="store_true",
         help="Unarchive directories.",
     )
+    par.add_argument(
+        "-ko",
+        "--keep_original",
+        default=False,
+        action="store_true",
+        help="Keep the original file archived.",
+    )
     par.set_defaults(func=archive, formathelp=par.format_help)
 
 
 def archive(argsobj):
-    from . import archive
+    from .tools import archive
 
     if not archive.main(argsobj):
         print()
@@ -1252,6 +1250,13 @@ def subcmd_makeref(sp):
         default=False,
     )
     par.add_argument(
+        "-kg",
+        "--kick_genes",
+        help="Percentage of taxa required after outlier",
+        type=float,
+        default=0.5,
+    )
+    par.add_argument(
         "-cp",
         "--cull_percent",
         help="Percentage of non-gap characters required for edge trim (percent of non gap characters >= this arg)",
@@ -1303,8 +1308,8 @@ def subcmd_makeref(sp):
     par.add_argument(
         "-m",
         "--align_method",
-        choices=["clustal", "mafft"],
-        default="clustal",
+        choices=["clustal", "mafft", "famsa"],
+        default="famsa",
         help="What alignment method to use.",
     )
     par.add_argument(
@@ -1361,13 +1366,20 @@ def subcmd_wrap_final(sp):
         help="Enable second run logic",
     )
     par.add_argument(
+        "-nm",
+        "--no_merge",
+        action="store_true",
+        default=False,
+        help="Combine will grab from blosum instead of merge and reconcile will skip last merge.",
+    )
+    par.add_argument(
         "-io",
         "--ignore_overlap_chunks",
         action="store_false",
         default=True,
         help="Ignore overlapping chunks and merge all candidates for a reference taxon.",
     )
-    combine_args(par)
+    combine_args(par, True)
     pal2nal_args(par)
     align_args(par, True)
     merge_args(par, True)
@@ -1394,10 +1406,11 @@ def wrap_final(argsobj):
     if not pal2nal.main(next_args):
         print()
         print(argsobj.formathelp())
-    print("Triggering Merge")
-    if not merge.main(next_args):
-        print()
-        print(argsobj.formathelp())
+    if not current_args["no_merge"]:
+        print("Triggering Merge")
+        if not merge.main(next_args):
+            print()
+            print(argsobj.formathelp())
 
 
 def subcmd_auto(subparsers):
@@ -1408,7 +1421,8 @@ def subcmd_auto(subparsers):
     par.add_argument(
         "INPUT",
         help="Path to directory of Input folder",
-        type=str,
+        action="extend",
+        nargs="+",
     )
     par.add_argument(
         "-in",
@@ -1432,11 +1446,24 @@ def subcmd_auto(subparsers):
         help="Skip trying to glob *.fa from the input directory.",
     )
     par.add_argument(
+        "-sm",
+        "--skip_motif",
+        action="store_true",
+        default=False,
+        help="Skip motif.",
+    )
+    par.add_argument(
         "-c",
         "--config",
         type=str,
         default=None,
         help="Config file to use. If not specified, will use default configuration.",
+    )
+    par.add_argument(
+        "-asm",
+        "--assembly",
+        action="store_true",
+        help="Force prepare to set any datasets as assembly only.",
     )
     par.set_defaults(func=auto, formathelp=par.format_help)
 
@@ -1558,6 +1585,35 @@ def taxonomy_filler(args):
         print()
         print(args.formathelp())
 
+def subcmd_isoform(subparser):
+    parser = subparser.add_parser(
+        "isoform", help="Isoform filter."
+    )
+    parser.add_argument("INPUT", help="Input directory", type=str)
+    parser.add_argument("OUTPUT", help="Output directory", type=str)
+    parser.add_argument(
+        "-alm",
+        "--align_method",
+        choices=["clustal", "mafft", "famsa"],
+        default="famsa",
+        help="What alignment method to use.",
+    )
+    parser.add_argument(
+        "-t",
+        "--tsv",
+        type=str,
+        help="TSV Path.",
+    )
+    parser.set_defaults(func=isoform, formathelp=parser.format_help)
+
+
+def isoform(args):
+    from .tools import isoform
+
+    if not isoform.main(args):
+        print()
+        print(args.formathelp())
+
 def subcmd_toolset(subparser):
     parser = subparser.add_parser(
         "toolset", help="A set of useful tools developed with integration to the pipeline."
@@ -1566,6 +1622,8 @@ def subcmd_toolset(subparser):
 
     subcmd_taxonomy_filler(sub_sub_parser)
     subcmd_download(sub_sub_parser)
+    subcmd_isoform(sub_sub_parser)
+    subcmd_archive(sub_sub_parser)
 
 def main():
     # Check mafft exists
@@ -1611,15 +1669,9 @@ def main():
     parser.add_argument(
         "-gfm",
         "--gene_finding_mode",
-        action="store_true",
-        default=False,
-        help="Alternative logic for gene finding mode",
-    )
-    parser.add_argument(
-        "--map",
-        action="store_true",
-        default=False,
-        help="Enables map mode logic",
+        type=int,
+        default=0,
+        help="Alternative logic for gene finding mode. 0 - Normal, 1 - Alternative, 2 - Map Mode",
     )
     parser.add_argument(
         "-v",
@@ -1655,18 +1707,19 @@ def main():
     # the subcommands will be displayed.
     subcmd_prepare(subparsers)
     subcmd_diamond(subparsers)
+    subcmd_Exonerate(subparsers)
     subcmd_hmmsearch(subparsers)
     subcmd_reporter(subparsers)
 
     subcmd_align(subparsers)
     subcmd_pal2nal(subparsers)
     subcmd_flexcull(subparsers)
+    subcmd_motif(subparsers)
     subcmd_outlier(subparsers)
     subcmd_internal(subparsers)
     subcmd_Merge(subparsers)
     subcmd_Combine(subparsers)
     subcmd_archive(subparsers)
-    subcmd_Exonerate(subparsers)
 
     # Finalize
     subcmd_finalize(subparsers)

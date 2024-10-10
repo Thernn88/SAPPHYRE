@@ -61,7 +61,7 @@ def do_folder(
             [
                 aa_path,
                 nt_path,
-                Path(input, "nt_aligned", ospath.basename(nt_path)),
+                Path(joined_nt_aligned, ospath.basename(nt_path)),
                 specified_dna_table,
                 verbose,
                 compress,

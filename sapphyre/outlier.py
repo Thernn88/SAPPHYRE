@@ -1,8 +1,9 @@
 import argparse
 import os
 from shutil import rmtree
+from sapphyre import recover
 from wrap_rocks import RocksDB
-from . import blosum, excise, hmmfilter, internal, cluster_consensus
+from . import blosum, excise, splice, hmmfilter, internal, cluster_consensus, read_assembly
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import printv
 
@@ -29,76 +30,94 @@ def main(argsobj):
             )
             return
 
-        printv(f"Processing: {folder}", argsobj.verbose)
         rmtree(os.path.join(folder, "outlier"), ignore_errors=True)
         
         this_args = vars(argsobj)
         this_args["INPUT"] = folder
         this_args = argparse.Namespace(**this_args)
-
-        is_genome, is_assembly = get_genome_assembly(folder)
-
-        from_folder = "trimmed"
-
-        printv("Blosum62 Outlier Removal.", argsobj.verbose)
-        blosum_passed = blosum.main(this_args, is_genome, from_folder)
-        if not blosum_passed:
-            print()
-            print(argsobj.formathelp())
-            return
-        from_folder = "blosum"
-
-        if argsobj.map:
-            continue
-
         
-        # printv("Simple Assembly To Ensure Consistency.", argsobj.verbose)
-        # if not collapser.main(this_args, from_folder):
-        #     print()
-        #     print(argsobj.formathelp())
-        #     return
-        # continue
-
-        if is_assembly:
-            printv("Filtering Using Hmmsearch Scores.", argsobj.verbose)
-            if not hmmfilter.main(this_args, from_folder):
-                print()
-                print(argsobj.formathelp())
-                return
-            from_folder = "hmmfilter"    
-
-        if not is_genome:
-            printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
-            excise_passed = excise.main(this_args, from_folder, is_genome, is_assembly or is_genome)
-            if not excise_passed:
-                print()
-                print(argsobj.formathelp())
-            from_folder = "excise"
-
-        if not argsobj.gene_finding_mode and is_genome:
-            printv("Filtering Clusters.", argsobj.verbose)
-            if not cluster_consensus.main(this_args, from_folder):
-                print()
-                print(argsobj.formathelp())
-                return
-            from_folder = "clusters"
-
-        if debug > 1 or this_args.add_hmmfilter_dupes:
-            continue
-        if not (is_assembly or is_genome):
-            printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
-            if not internal.main(this_args, from_folder):
-                print()
-                print(argsobj.format)
-            from_folder = "internal"
+        is_genome, is_assembly = get_genome_assembly(folder)
+        
+        if argsobj.solo:
+            script_name = argsobj.solo.lower()
+            default_path = {
+                "blosum": ("trimmed", blosum.main),
+                "hmmfilter": ("blosum", hmmfilter.main),
+                "clusters": ("blosum", cluster_consensus.main),
+                "splice": ("clusters", excise.main),
+                "assembly": ("blosum", read_assembly.main),
+                "internal": ("excise", internal.main),
+                "recover": ("internal", recover.main),
+            }
+            from_folder, script = default_path[script_name]
             
-        if is_genome:
-            printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
-            excise_passed = excise.main(this_args, from_folder, is_genome, is_assembly or is_genome)
-            if not excise_passed:
+            if script_name == "blosum":
+                script(this_args, is_genome, from_folder)
+            else:
+                script(this_args, from_folder)
+            
+        else:
+            printv(f"Processing: {folder}", argsobj.verbose)
+            rmtree(os.path.join(folder, "outlier"), ignore_errors=True)
+            from_folder = "trimmed"
+
+            printv("Blosum62 Outlier Removal.", argsobj.verbose)
+            blosum_passed = blosum.main(this_args, is_genome, from_folder)
+            if not blosum_passed:
                 print()
                 print(argsobj.formathelp())
-            from_folder = "excise"
+                return
+            from_folder = "blosum"
+
+            if is_assembly:
+                printv("Filtering Using Hmmsearch Scores.", argsobj.verbose)
+                if not hmmfilter.main(this_args, from_folder):
+                    print()
+                    print(argsobj.formathelp())
+                    return
+                from_folder = "hmmfilter"    
+
+            elif is_genome:
+                if not argsobj.gene_finding_mode:
+                    printv("Filtering Clusters.", argsobj.verbose)
+                    if not cluster_consensus.main(this_args, from_folder):
+                        print()
+                        print(argsobj.formathelp())
+                        return
+                    from_folder = "clusters"
+                    
+                if argsobj.gene_finding_mode == 1:
+                    printv("Detecting and Splicing Ambiguous Regions.", argsobj.verbose)
+                    excise_passed = splice.main(this_args, from_folder)
+                    if not excise_passed:
+                        print()
+                        print(argsobj.formathelp())
+                else:
+                    printv("Using Reference Consensus to Cut Genomic Sequences.", argsobj.verbose)
+                    excise_passed = excise.main(this_args, from_folder)
+                    if not excise_passed:
+                        print()
+                        print(argsobj.formathelp())
+                from_folder = "excise"
+            else:   
+                printv("Detecting and Removing Ambiguous Regions.", argsobj.verbose)
+                excise_passed = read_assembly.main(this_args, from_folder)
+                if not excise_passed:
+                    print()
+                    print(argsobj.formathelp())
+                from_folder = "excise"
+            
+                printv("Removing Gross Consensus Disagreements.", argsobj.verbose)
+                if not internal.main(this_args, from_folder):
+                    print()
+                    print(argsobj.format)
+                from_folder = "internal"
+
+                printv("Recovering lost reads.", argsobj.verbose)
+                if not recover.main(this_args, from_folder):
+                    print()
+                    print(argsobj.format)
+                from_folder = "recovered"
 
     printv(f"Took {timer.differential():.2f} seconds overall.", argsobj.verbose)
 

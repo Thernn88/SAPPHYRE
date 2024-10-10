@@ -10,7 +10,7 @@ from os import mkdir, path, listdir
 from shutil import rmtree
 from typing import Any
 
-from msgspec import Struct, json
+from msgspec import Struct
 from sapphyre_tools import find_index_pair, get_overlap
 from .directional_cluster import cluster_ids, within_distance, node_to_ids, quick_rec
 from wrap_rocks import RocksDB
@@ -224,7 +224,7 @@ def detect_ambig_with_gaps(nodes, gap_percentage=0.25):
     return regions
 
 class do_gene():
-    def __init__(self, aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, is_gfm, compress, debug, threshold) -> None:
+    def __init__(self, aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, is_genome, is_gfm, compress, debug, threshold) -> None:
         self.aa_gene_input = aa_gene_input
         self.nt_gene_input = nt_gene_input
 
@@ -236,6 +236,7 @@ class do_gene():
 
         self.threshold = threshold
         self.is_gfm = is_gfm
+        self.is_genome = is_genome
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         return self.do_gene(*args, **kwds)
@@ -373,8 +374,12 @@ class do_gene():
 
             for group in nt_overlap_groups:
                 new_node, new_ref, old_taxa = get_header_parts([i.header for i in group])
+                if self.is_genome:
+                    new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}"
+                else:
+                    total = sum(node.count for node in group)
 
-                new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}"
+                    new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}|{total}"
                 triplets = defaultdict(list)
                 
                 min_start = min(node.start for node in group)
@@ -417,8 +422,12 @@ class do_gene():
                         
             for group in aa_overlap_groups:
                 new_node, new_ref, old_taxa = get_header_parts([i.header for i in group])
+                if self.is_genome:
+                    new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}"
+                else:
+                    total = sum(node.count for node in group)
 
-                new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}"
+                    new_header = f"{raw_gene}|{new_ref}|{old_taxa}|{new_node}|{total}"
 
                 new_seq = []
                 
@@ -438,20 +447,25 @@ class do_gene():
 
 def do_folder(input_folder, args):
     print("Processing:", input_folder)
-    gene_input_folder = path.join(input_folder, "outlier", "blosum") if args.map else None
-    if gene_input_folder is None:
-        for folder in ["excise", "internal", "clusters", "hmmfilter", "collapsed", "blosum"]:
-            if path.exists(path.join(input_folder, "outlier", folder)):
-                gene_input_folder = path.join(input_folder, "outlier", folder)
-                break
+    for p_folder in ["internal", "excise", "clusters", "hmmfilter", "blosum"]:
+        p_path = path.join(input_folder, "outlier", p_folder)
+        if not path.exists(p_path):
+            p_path = None
+        else:
+            break
+    
+    if p_path is None:
+        printv("ERROR: Outlier folder not found.", args.verbose, 0)
+        return False
+    
+    rocks_db_path = path.join(input_folder, "rocksdb", "sequences", "nt")
+    rocksdb_db = RocksDB(str(rocks_db_path))
+    is_genome = rocksdb_db.get("get:isgenome")
+    is_genome = is_genome == "True"
+    del rocksdb_db
 
-    if gene_input_folder is None:
-        printv(f"No gene input folder found in {input_folder}", args.verbose, 2)
-    else:
-        printv(f"Current gene: {gene_input_folder}", args.verbose, 2)
-
-    aa_gene_input = path.join(gene_input_folder, "aa")
-    nt_gene_input = path.join(gene_input_folder, "nt")
+    aa_gene_input = path.join(p_path, "aa")
+    nt_gene_input = path.join(p_path, "nt")
 
     aa_gene_output = path.join(input_folder, "aa_merged")
     nt_gene_output = path.join(input_folder, "nt_merged")
@@ -463,8 +477,10 @@ def do_folder(input_folder, args):
 
     mkdir(aa_gene_output)
     mkdir(nt_gene_output)
+    
+    alternative_gene_finding_mode = args.gene_finding_mode == 1
 
-    gene_func = do_gene(aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, args.gene_finding_mode, args.compress, args.debug, args.consensus_threshold)
+    gene_func = do_gene(aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, is_genome, alternative_gene_finding_mode, args.compress, args.debug, args.consensus_threshold)
 
     arguments = []
     for aa_gene in listdir(aa_gene_input):

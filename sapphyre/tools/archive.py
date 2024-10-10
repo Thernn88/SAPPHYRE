@@ -3,50 +3,62 @@ import tarfile
 from multiprocessing.pool import Pool
 from shutil import rmtree
 
-from .timekeeper import KeeperMode, TimeKeeper
-from .utils import printv
+from ..timekeeper import KeeperMode, TimeKeeper
+from ..utils import printv
 
 
-def archive_worker(folder_to_archive, verbosity) -> None:
+def archive_worker(folder_to_archive, verbosity, keep_original) -> None:
     if os.path.isdir(folder_to_archive) or os.path.isfile(folder_to_archive):
-        printv(f"Archiving {folder_to_archive}", verbosity, 2)
-        with tarfile.open(str(folder_to_archive) + ".tar.gz", "w:gz") as tf:
-            tf.add(str(folder_to_archive), arcname=os.path.split(folder_to_archive)[-1])
+        printv(f"Archiving {folder_to_archive}", verbosity, 1)
+        tar_path = str(folder_to_archive) + ".tar.gz"
+        try:
+            with tarfile.open(tar_path, "w:gz") as tf:
+                tf.add(str(folder_to_archive), arcname=os.path.split(folder_to_archive)[-1])
+        except:
+            printv(f"Failed to archive {folder_to_archive}, retrying", verbosity, 0)
+            os.remove(tar_path, ignore_errors=True)
+            with tarfile.open(tar_path, "w:gz") as tf:
+                tf.add(str(folder_to_archive), arcname=os.path.split(folder_to_archive)[-1])
 
-        if os.path.isdir(folder_to_archive):
-            rmtree(folder_to_archive)
-        else:
-            os.remove(folder_to_archive)
+        if not keep_original:
+            if os.path.isdir(folder_to_archive):
+                rmtree(folder_to_archive)
+            else:
+                os.remove(folder_to_archive)
 
 
-def unarchive_worker(file_to_unarchive, verbosity) -> None:
+def unarchive_worker(file_to_unarchive, verbosity, _) -> None:
     if os.path.exists(file_to_unarchive):
-        printv(f"Unarchiving {file_to_unarchive}", verbosity, 2)
+        printv(f"Unarchiving {file_to_unarchive}", verbosity, 1)
         with tarfile.open(file_to_unarchive) as tf:
             tf.extractall(os.path.split(file_to_unarchive)[0])
 
 
 def process_folder(args, superfolder_path):
     if not args.specific_directories:
-        directories_to_archive = [
+        directories_to_archive = {
             "align",
             "nt_aligned",
-            "blosum",
-            "collapsed",
-            "excise",
-            "internal",
+            "outlier",
             "trimmed",
-            "hmmfilter",
             "aa_merged",
             "nt_merged",
             "hmmsearch",
             "rocksdb",
-            "blast",
+            "motif",
+            "miniprot",
+            "exonerate",
+            "coords",
             "aa",
             "nt",
             "top",
             "very.tsv",
-        ]
+            "fast.tsv",
+            "sensitive.tsv",
+            "mid.tsv",
+            "more.tsv",
+            "ultra.tsv",
+        }
     else:
         directories_to_archive = args.specific_directories
 
@@ -65,6 +77,7 @@ def process_folder(args, superfolder_path):
                         (
                             os.path.join(root, file),
                             args.verbose,
+                            args.keep_original,
                         ),
                     )
         #  archive logic
@@ -80,6 +93,7 @@ def process_folder(args, superfolder_path):
                 (
                     root,
                     args.verbose,
+                    args.keep_original,
                 ),
             )
         else:
@@ -89,6 +103,7 @@ def process_folder(args, superfolder_path):
                         (
                             os.path.join(root, file),
                             args.verbose,
+                            args.keep_original,
                         ),
                     )
     return arguments
@@ -105,9 +120,9 @@ def main(args):
         arguments.extend(process_folder(args, input_path))
     command = unarchive_worker if args.unarchive else archive_worker
     if args.unarchive:
-        printv(f"Found {len(arguments)} directories to unarchive", args.verbose)
+        printv(f"Found {len(arguments)} directories to unarchive", args.verbose, 0)
     else:
-        printv(f"Found {len(arguments)} directories to archive", args.verbose)
+        printv(f"Found {len(arguments)} directories to archive", args.verbose, 0)
     with Pool(args.processes) as pool:
         pool.starmap(command, arguments)
 

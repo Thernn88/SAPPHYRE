@@ -13,7 +13,7 @@ from numpy import float16, isnan, nanpercentile,nanmedian
 from sapphyre_tools import (
     blosum62_candidate_to_reference,
     blosum62_distance,
-    delete_empty_columns,
+    # delete_empty_columns,
     find_index_pair,
     get_overlap
 )
@@ -275,11 +275,11 @@ def compare_means(
                 )
             # Interquartile range (IQR)
             IQR = Q3 - Q1
-            margin = 0.02
+            # margin = 0.02
             #if IQR <= .2: margin = .025
             #if IQR <= .1: margin = .05
-            IQR = max(IQR, 0.05)
-            upper_bound = Q3 + (threshold * IQR) + margin
+            IQR = max(IQR, 0.02)
+            upper_bound = Q3 + (threshold * IQR)
         else:  # if no ref_distances, reject
             upper_bound = "N/A"
             IQR = "N/A"
@@ -598,7 +598,6 @@ def main_process(
     nt_input,
     args_output,
     args_threshold,
-    args_references,
     nt_output_path: str,
     debug: bool,
     verbose: int,
@@ -613,8 +612,6 @@ def main_process(
     passing_rescue_percent: float,
     rescue_consensus_percent: float,
 ):
-    keep_refs = not args_references
-
     file_input = args_input
     filename = path.basename(file_input)
 
@@ -649,10 +646,10 @@ def main_process(
     else:
         refs_in_file = len(ref_seqs)
     regulars = []
-    if keep_refs:
-        for ref in reference_records:
-            regulars.append(ref.id)
-            regulars.append(ref.raw)
+
+    for ref in reference_records:
+        regulars.append(ref.id)
+        regulars.append(ref.raw)
 
     raw_regulars, passing, failing = compare_means(
         reference_records,
@@ -751,7 +748,7 @@ def main_process(
         cluster_out = (gene, f"{gene},{len(ids)},{len(clusters)},{cluster_string}")
 
     # regulars, allowed_columns = delete_empty_columns(raw_regulars, verbose)
-    regulars, allowed_columns = delete_empty_columns(raw_regulars)
+    # regulars, allowed_columns = delete_empty_columns(raw_regulars)
     # if assembly:
     #     to_be_excluded = make_asm_exclusions(passing, failing)
     # else:
@@ -774,7 +771,7 @@ def main_process(
         non_empty_lines = remove_excluded_sequences(lines, to_be_excluded)
         # if assembly:
         #     non_empty_lines = align_intron_removal(non_empty_lines, header_to_indices)
-        non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
+        # non_empty_lines = align_col_removal(non_empty_lines, allowed_columns)
 
         write2Line2Fasta(nt_output_path, non_empty_lines, compress)
 
@@ -791,15 +788,19 @@ def do_folder(folder, args, is_genome, gene_source):
 
     time_keeper = TimeKeeper(KeeperMode.DIRECT)
     wanted_aa_path = Path(folder, "outlier", gene_source, "aa")
-    if not args.map and wanted_aa_path.exists():
+    if wanted_aa_path.exists():
         aa_input = wanted_aa_path
         nt_input = Path(folder, "outlier", gene_source, "nt")
-    elif gene_source == "trimmed":
-        aa_input = Path(folder, "trimmed", "aa")
-        nt_input = Path(folder, "trimmed", "nt")
+    elif gene_source == "trimmed" or gene_source == "motif":
+        aa_input = Path(folder, gene_source, "aa")
+        nt_input = Path(folder, gene_source, "nt")
         if not aa_input.exists():
-            aa_input = Path(folder, "align")
-            nt_input = Path(folder, "nt_aligned")
+            if gene_source == "motif":
+                aa_input = Path(folder, "trimmed", "aa")
+                nt_input = Path(folder, "trimmed", "nt")
+            else:
+                aa_input = Path(folder, "align")
+                nt_input = Path(folder, "nt_aligned")
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
     if not rocks_db_path.exists():
         err = f"cannot find dupe databases for {folder}"
@@ -829,8 +830,6 @@ def do_folder(folder, args, is_genome, gene_source):
     output_path = Path(folder, "outlier", "blosum")
     nt_output_path = path.join(output_path, "nt")
     folder_check(output_path, args.debug)
-
-    compress = not args.uncompress_intermediates or args.compress
 
     #  convert threshold to percent
     args.threshold = args.threshold / 100
@@ -866,11 +865,10 @@ def do_folder(folder, args, is_genome, gene_source):
                     nt_input,
                     output_path,
                     args.threshold,
-                    args.no_references,
                     nt_output_path,
                     args.debug,
                     args.verbose,
-                    compress,
+                    args.compress,
                     args.true_cluster_threshold,
                     args.col_cull_percent,
                     args.index_group_min_bp,
@@ -896,11 +894,10 @@ def do_folder(folder, args, is_genome, gene_source):
                     nt_input,
                     output_path,
                     args.threshold,
-                    args.no_references,
                     nt_output_path,
                     args.debug,
                     args.verbose,
-                    compress,
+                    args.compress,
                     args.true_cluster_threshold,
                     args.col_cull_percent,
                     args.index_group_min_bp,

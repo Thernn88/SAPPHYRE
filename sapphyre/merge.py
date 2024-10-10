@@ -12,7 +12,7 @@ from shutil import rmtree
 from typing import Literal
 
 from Bio.Seq import Seq
-from msgspec import Struct, json
+from msgspec import Struct
 from numpy import uint8
 from sapphyre_tools import find_index_pair, get_overlap
 from wrap_rocks import RocksDB
@@ -173,8 +173,13 @@ class Sequence(Struct, frozen=True):
     header: str
     sequence: str
 
-    def get_count(self) -> str:
-        return int(self.header.split("|")[5])
+    def get_count(self, second_run = False) -> str:
+        if second_run:
+            return int(self.header.split("|")[4])
+        
+        if self.header.count("|") == 5:
+            return int(self.header.split("|")[5])
+        return 1
 
 
 
@@ -213,7 +218,6 @@ def do_protein(
     protein: Literal["aa", "nt"],
     gene_path,
     output_dir: Path,
-    skip_dupes,
     ref_stats,
     already_calculated_splits,
     gene,
@@ -223,6 +227,8 @@ def do_protein(
     special_merge,
     DNA_CODONS,
     debug,
+    min_count,
+    second_run,
     aa_order_feed = {},
 ):
     references, candidates = parse_fasta(gene_path)
@@ -246,6 +252,12 @@ def do_protein(
     for header, sequence in candidates:
         start, end = find_index_pair(sequence, "-")
         this_object = Sequence(start, end, header, sequence)
+        
+        if second_run:
+            if header.count("|") == 4:
+                if int(header.split("|")[4]) < min_count:
+                    continue
+        
         taxa = get_taxa(header)
         taxa_groups.setdefault(taxa, []).append(this_object)
 
@@ -312,8 +324,9 @@ def do_protein(
                         this_taxa = most_occuring[0]
 
             if ignore_overlap_chunks:
+                total = sum([i[2] for i in consists_of])
                 base_header = "|".join(
-                    [this_gene, this_taxa, this_taxa_id, "contig_sequence"],
+                    [this_gene, this_taxa, this_taxa_id, f"contig_sequence_{total}"],
                 )
                 final_header = base_header
             else:
@@ -553,8 +566,8 @@ def do_gene(
     output_dir: Path,
     aa_path,
     nt_path,  # this one
-    skip_dupes,
     ref_stats,
+    second_run,
     debug,
     majority,
     minimum_mr_amount,
@@ -562,6 +575,7 @@ def do_gene(
     ignore_overlap_chunks,
     special_merge,
     compress,
+    min_count,
 ) -> None:
     """Merge main loop. Opens fasta file, parses sequences and merges based on taxa."""
     already_calculated_splits = {}
@@ -639,7 +653,6 @@ def do_gene(
         "aa",
         aa_path,
         output_dir,
-        skip_dupes,
         ref_stats,
         already_calculated_splits,
         gene,
@@ -649,13 +662,14 @@ def do_gene(
         special_merge,
         DNA_CODONS,
         debug,
+        min_count,
+        second_run,
     )
 
     nt_path, nt_data, _ = do_protein(
         "nt",
         nt_path,
         output_dir,
-        skip_dupes,
         ref_stats,
         already_calculated_splits,
         make_nt_name(gene),
@@ -665,6 +679,8 @@ def do_gene(
         special_merge,
         DNA_CODONS,
         debug,
+        min_count,
+        second_run,
         aa_order_feed = aa_order_feed,
     )
 
@@ -684,12 +700,10 @@ def do_folder(folder: Path, args):
     tmp_dir = directory_check(folder)
     dupe_tmp_file = Path(tmp_dir, "DupeSeqs.tmp")
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
-    skip_dupes = False
     if rocks_db_path.exists():
         rocksdb_db = RocksDB(str(rocks_db_path))
         ref_stats = rocksdb_db.get("getall:valid_refs").split(",")
     else:
-        skip_dupes = True
         ref_stats = []
 
     if args.second_run:
@@ -697,7 +711,7 @@ def do_folder(folder: Path, args):
         nt_input = Path(str(folder), "nt_aligned")
     else:
         input_path = None
-        for subfolder in ["excise", "internal", "clusters", "hmmfilter", "collapsed", "blosum"]:
+        for subfolder in ["internal", "excise", "clusters", "hmmfilter", "blosum"]:
             if Path(folder, "outlier", subfolder).exists():
                 input_path = Path(str(folder), "outlier", subfolder)
                 break
@@ -730,6 +744,7 @@ def do_folder(folder: Path, args):
                     target_nt_path,
                     skip_dupes,
                     ref_stats,
+                    args.second_run,
                     args.debug,
                     args.majority,
                     args.majority_count,
@@ -737,6 +752,7 @@ def do_folder(folder: Path, args):
                     args.ignore_overlap_chunks,
                     args.special_merge,
                     args.compress,
+                    args.min_count,
                 ),
             )
         with Pool(args.processes) as pool:
@@ -752,6 +768,7 @@ def do_folder(folder: Path, args):
                 target_nt_path,
                 skip_dupes,
                 ref_stats,
+                args.second_run,
                 args.debug,
                 args.majority,
                 args.majority_count,
@@ -759,6 +776,7 @@ def do_folder(folder: Path, args):
                 args.ignore_overlap_chunks,
                 args.special_merge,
                 args.compress,
+                args.min_count,
             )
     printv(f"Done! Took {folder_time.differential():.2f}s", args.verbose)
 

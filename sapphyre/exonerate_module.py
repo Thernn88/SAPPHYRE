@@ -7,19 +7,14 @@ import subprocess
 from tempfile import NamedTemporaryFile
 from time import time
 from wrap_rocks import RocksDB
-from os import listdir, mkdir, path
+from os import mkdir, path
 from .utils import gettempdir, parseFasta, printv, writeFasta
 from sapphyre_tools import (
-    find_index_pair,
-    get_overlap,
     entropy_filter,
 )
-from Bio.Seq import Seq
 from multiprocessing import Pool
 from msgspec import json
-from .pal2nal import worker
-import xxhash
-from .diamond import ReferenceHit, ReporterHit as Hit
+from .diamond import ReporterHit as Hit
 
 def get_head_to_seq(nt_db):
     """Get a dictionary of headers to sequences.
@@ -224,7 +219,6 @@ class exonerate:
                             gene=gene_name,
                             query=ref,
                             uid=round(time()),
-                            refs=[ReferenceHit(target, ref, node.ref_start, node.ref_end)],
                             seq = node.seq
                         ))
 

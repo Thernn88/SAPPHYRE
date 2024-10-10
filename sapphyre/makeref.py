@@ -1,12 +1,13 @@
-import gzip
+from isal import igzip as isal_gzip
 import os
 import sqlite3
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, namedtuple
 from itertools import combinations, count
 from math import ceil
 from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import copyfileobj, rmtree
+from statistics import median
 from tempfile import NamedTemporaryFile
 
 import wrap_rocks
@@ -15,10 +16,37 @@ from Bio import SeqIO
 from msgspec import json
 from sapphyre_tools import constrained_distance, find_index_pair, get_overlap, blosum62_distance
 import numpy as np
+import pyfamsa
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import gettempdir, parseFasta, printv, writeFasta
 
+
+alnArgs = namedtuple(
+    "alnArgs",
+    [
+        "gene",
+        "raw_path",
+        "aln_path",
+        "trimmed_path",
+        "nt_trimmed_path",
+        "cleaned_path",
+        "cleaned_nt_path",
+        "align_method",
+        "overwrite",
+        "verbosity",
+        "do_cull",
+        "do_internal",
+        "cull_percent",
+        "cull_internal",
+        "has_nt",
+        "no_halves",
+        "skip_deviation_filter",
+        "realign",
+        "debug_halves",
+        "skip_splice",
+    ],
+)
 
 class aligned_record:
     __slots__ = ("header", "raw_header", "seq", "start", "end", "distances", "mean", "all_mean", "half",
@@ -54,11 +82,10 @@ class Sequence:
         "nt_sequence",
         "taxon",
         "gene",
-        "id",
     )
 
     def __init__(
-        self, raw_head, header, aa_sequence, nt_sequence, taxon, gene, id
+        self, raw_head, header, aa_sequence, nt_sequence, taxon, gene
     ) -> None:
         self.raw_head = raw_head
         self.header = header
@@ -123,6 +150,12 @@ class Sequence_Set:
         """
         return self.aligned_sequences
     
+    def get_taxon_present(self) -> set:
+        """
+        Returns a set of all taxon present
+        """
+        return {seq.taxon for seq in self.sequences}
+    
     def get_gene_taxon_count(self) -> Counter:
         """
         Returns the count of genes present for each taxon
@@ -156,7 +189,7 @@ class Sequence_Set:
 
         return list(data)
 
-    def get_gene_dict(self, raw=False, nt=False) -> dict:
+    def get_gene_dict(self, raw=False) -> dict:
         """Returns a dictionary with every gene and its corresponding sequences."""
         data = {}
         for sequence in self.sequences:
@@ -399,10 +432,12 @@ def raw_function(gene, sequences, raw_path, raw_nt_path, overwrite, verbosity):
             fp.write("".join([i.seq_with_regen_data(nt=True) for i in sequences]))
 
 
-def mine_aln(subset, genes, aligned_sequence_dict, dupes_in_genes):
+def mine_aln(subset, genes, aligned_sequence_dict, dupes_in_genes, taxon_set, kick_genes_percent):
     """
     Attempt at speeding up aln write to memory
     """
+    raw_seqs = subset.get_gene_dict(True)
+    genes_to_kick = []
     for gene in genes:
         dupe_headers = dupes_in_genes.get(gene)
         sequences = aligned_sequence_dict.get(gene)
@@ -410,9 +445,17 @@ def mine_aln(subset, genes, aligned_sequence_dict, dupes_in_genes):
         if dupe_headers:
             subset.kick_dupes(dupe_headers)
         
+        aligned_headers = {seq.header for seq in sequences}
+        raw_seqs_in_gene = [seq for seq in raw_seqs.get(gene, []) if seq.header in aligned_headers]
+        raw_taxon_set = {seq.taxon for seq in raw_seqs_in_gene}
+        if len(raw_taxon_set) / len(taxon_set) < kick_genes_percent:
+            genes_to_kick.append(gene)
+            continue
+        
+        
         subset.aligned_sequences[gene] = sequences
         
-    return subset
+    return subset, genes_to_kick
 
 
 def generate_aln(
@@ -431,13 +474,15 @@ def generate_aln(
     no_halves,
     skip_deviation_filter,
     realign,
+    taxon_set,
+    kick_genes_percent,
     debug_halves,
     skip_splice,
 ):
     """
     Generates the .aln.fa files for each gene in the set.
     """
-    sequences = set.get_gene_dict(True).copy()
+    sequences = set.get_gene_dict(True)
 
     aln_path = set_path.joinpath("aln")
     aln_path.mkdir(exist_ok=True)
@@ -466,28 +511,20 @@ def generate_aln(
     if os.path.exists(cleaned_nt_path):
         rmtree(cleaned_nt_path)
             
-    final_path = None
-    if not skip_deviation_filter:
-        cleaned_path.mkdir(exist_ok=True)    
-        clean_log = set_path.joinpath("cleaned.log")
-        splice_log_path = set_path.joinpath("splice.log")
+    cleaned_path.mkdir(exist_ok=True)    
+    clean_log = set_path.joinpath("cleaned.log")
+    splice_log_path = set_path.joinpath("splice.log")
+    violation_log_path = set_path.joinpath("violations.log")
 
-        if has_nt:
-            cleaned_nt_path.mkdir(exist_ok=True)
-            nt_trimmed_path.mkdir(exist_ok=True)
-
-        if realign:
-            final_path = set_path.joinpath("final")
-            if os.path.exists(final_path):
-                rmtree(final_path)
-            final_path.mkdir(exist_ok=True)
+    if has_nt:
+        cleaned_nt_path.mkdir(exist_ok=True)
+        nt_trimmed_path.mkdir(exist_ok=True)
 
     arguments = []
     for gene, fasta in sequences.items():
         arguments.append(
-            (
+            (alnArgs(
                 gene,
-                fasta,
                 raw_path,
                 aln_path,
                 trimmed_path,
@@ -505,10 +542,10 @@ def generate_aln(
                 no_halves,
                 skip_deviation_filter,
                 realign,
-                final_path,
                 debug_halves,
                 skip_splice,
             ),
+             fasta)
         )
 
     if processes > 1:
@@ -521,16 +558,18 @@ def generate_aln(
 
     set.has_aligned = True
 
-    printv("Writing Aln to RocksdDB", verbosity, 1)
+    
     clean_log_out = []
     splice_log_out = []
+    violation_log_out = []
     aligned_genes = {}
     dupes_in_genes = {}
-    for gene, aligned_sequences, dupe_headers, distance_log, splice_log in aligned_sequences_components:
+    for gene, aligned_sequences, dupe_headers, distance_log, violation_log, splice_log in aligned_sequences_components:
         dupes_in_genes[gene] = dupe_headers
         aligned_genes[gene] = aligned_sequences
         clean_log_out.extend(distance_log)
         splice_log_out.extend(splice_log)
+        violation_log_out.extend(violation_log)
         
     subsets = set.seperate(processes)
     
@@ -539,7 +578,7 @@ def generate_aln(
         this_align = {gene: aligned_genes[gene] for gene in genes}
         dupes = {gene: dupes_in_genes[gene] for gene in genes}
         
-        arguments.append((subset, genes, this_align, dupes))
+        arguments.append((subset, genes, this_align, dupes, taxon_set, kick_genes_percent))
     
     if processes > 1:
         with Pool(processes) as pool:
@@ -550,8 +589,20 @@ def generate_aln(
             subsets.append(mine_aln(*arg))
         
     set = Sequence_Set(set.name)
-    for subset in subsets:
+    for subset, thread_genes_to_kick in subsets:
         set.absorb(subset)
+        for gene in thread_genes_to_kick:
+            print(f"Kicking {gene}")
+            for path in [aln_path, trimmed_path, cleaned_path]:
+                file = path.joinpath(f"{gene}.aln.fa")
+                if file.exists():
+                    file.unlink()
+            for nt_path in [nt_trimmed_path, cleaned_nt_path]:
+                file = nt_path.joinpath(f"{gene}.nt.aln.fa")
+                if file.exists():
+                    file.unlink()
+                    
+    printv("Writing Aln to RocksdDB", verbosity, 1)
 
     if not skip_deviation_filter:        
         with open(str(clean_log), "w") as f:
@@ -559,6 +610,11 @@ def generate_aln(
             
     with open(str(splice_log_path), "w") as f:
         f.write("".join(splice_log_out))
+        
+    with open(str(violation_log_path), "w") as f:
+        f.write("Gene,Header,Upper Bound,Difference\n")
+        f.write("\n".join(violation_log_out))
+        
     return set
 
 def do_merge(sequences):
@@ -700,7 +756,7 @@ def check_halves(references: list,
                  debug_halves):
     # repeats is the number of checks to do during the filter
     for ref in references:
-        ref.start, ref.end, ref_first_start, ref_first_end = ref.first_start, ref.first_end, ref.start, ref.end
+        ref.start, ref.end = ref.first_start, ref.first_end
 
     if debug_halves:
         os.makedirs(Path(out_dir, 'first'), exist_ok=True)
@@ -718,14 +774,14 @@ def check_halves(references: list,
                                                  min_aa)
 
     for ref in references:
-        ref.start, ref.end, ref_first_start, ref_first_end = ref.first_start, ref.first_end, ref.start, ref.end
+        ref.start, ref.end = ref.first_start, ref.first_end
     # remake failed seqs for debug output
 
     for fail in first_failing:
         fail.fail = "first half"
     # swap seq and saved half
     for ref in references:
-        ref.start, ref.end, ref_second_start, ref_second_end = ref.second_start, ref.second_end, ref.start, ref.end
+        ref.start, ref.end, ref.ref_second_start, ref.ref_second_end = ref.second_start, ref.second_end, ref.start, ref.end
     if debug_halves:
         os.makedirs(Path(out_dir, 'second'), exist_ok=True)
         second_path = Path(out_dir, 'second', fasta_name)
@@ -745,7 +801,7 @@ def check_halves(references: list,
         fail.fail = "second half"
     # remake passing refs for normal output
     for ref in references:
-        ref.start, ref.end, ref_second_start, ref_second_end = ref.second_start, ref.second_end, ref.start, ref.end
+        ref.start, ref.end, ref.ref_second_start, ref.ref_second_end = ref.second_start, ref.second_end, ref.start, ref.end
     return references, first_failing, second_failing
 
 
@@ -877,70 +933,91 @@ def splice_overlap(records: list[aligned_record], candidate_consensus, allowed_a
 
     return records, has_merge, logs
 
+
+def severe_violation(aligned_result, threshold = 1.5, floor = 0.2):
+    violations = []
+    node_matrix = defaultdict(list)
+    for node in aligned_result:
+        for i, let in enumerate(node.seq):
+            if i >= node.start and i < node.end:
+                node_matrix[i].append(let)
+            else:
+                node_matrix[i].append("?")
+                
+    this_consensus = "".join(Counter(node_matrix[i]).most_common(1)[0][0] for i in range(len(node_matrix)))
+    differences = []
+    for i, node in enumerate(aligned_result):
+        node_kmer = node.seq[node.start: node.end]
+        distance = constrained_distance(node_kmer, this_consensus[node.start: node.end])
+        if distance > 0:
+            difference = distance / len(node_kmer)
+            
+            differences.append((i, difference))
+    if differences:
+        Q1 = np.percentile([i[1] for i in differences], 25)
+        Q3 = np.percentile([i[1] for i in differences], 75)
+        IQR = Q3 - Q1
+        upper_bound = max((Q3 + (threshold * IQR)), floor)
+        for i, difference in differences:
+            node = aligned_result[i]
+            if difference > upper_bound:
+                violations.append(f"{node.gene},{upper_bound},{node.header},{difference}")
+                aligned_result[i] = None
+    
+    aligned_result = [node for node in aligned_result if node is not None]
+    return aligned_result, violations
+
+
 def aln_function(
-    gene,
+    this_args: alnArgs,
     sequences,
-    raw_path,
-    aln_path,
-    trimmed_path,
-    nt_trimmed_path,
-    cleaned_path,
-    cleaned_nt_path,
-    align_method,
-    overwrite,
-    verbosity,
-    do_cull,
-    do_internal,
-    cull_percent,
-    cull_internal,
-    has_nt,
-    no_halves,
-    skip_deviation_filter,
-    realign,
-    final_path,
-    debug_halves,
-    skip_splice,
+    min_length=0.5,
 ):
     """
     Calls the alignment program, runs some additional logic on the result and returns the aligned sequences
     """
-    raw_fa_file = raw_path.joinpath(gene + ".fa")
-    aln_file = aln_path.joinpath(gene + ".aln.fa")
-    trimmed_path = trimmed_path.joinpath(gene + ".aln.fa")
-    nt_trimmed_path = nt_trimmed_path.joinpath(gene + ".nt.aln.fa")
+    raw_fa_file = this_args.raw_path.joinpath(this_args.gene + ".fa")
+    aln_file = this_args.aln_path.joinpath(this_args.gene + ".aln.fa")
+    trimmed_path = this_args.trimmed_path.joinpath(this_args.gene + ".aln.fa")
+    nt_trimmed_path = this_args.nt_trimmed_path.joinpath(this_args.gene + ".nt.aln.fa")
 
     trimmed_header_to_full = {}
-    for header, _ in parseFasta(raw_fa_file):
+    raw_seqs = list(parseFasta(raw_fa_file))
+    for header, _ in raw_seqs:
         trimmed_header_to_full[header[:127]] = header
 
-    if not aln_file.exists() or overwrite:
-        printv(f"Generating: {gene}", verbosity, 2)
+    aligned_seqs = None
+    if not aln_file.exists() or this_args.overwrite:
+        printv(f"Generating: {this_args.gene}", this_args.verbosity, 2)
 
         if not raw_fa_file.exists():
             msg = f"Raw file {raw_fa_file} does not exist"
-            raise FileNotFoundError(
-                msg
-            )
-        
-        if len(list(parseFasta(raw_fa_file))) == 1:
-            writeFasta(aln_file, parseFasta(raw_fa_file))
-        elif align_method == "clustal":
+            raise FileNotFoundError(msg)
+
+        if len(list(raw_seqs)) == 1:
+            writeFasta(aln_file, raw_seqs)
+        elif this_args.align_method == "clustal":
             os.system(
                 f"clustalo -i '{raw_fa_file}' -o '{aln_file}' --threads=1 --force",
-            )  # --verbose
-        else:
-            os.system(f"mafft --thread 1 --quiet --anysymbol '{raw_fa_file}' > '{aln_file}'")
+            )
+        elif this_args.align_method == "mafft":
+            os.system(f"mafft --quiet --anysymbol --legacygappenalty --thread 1 '{raw_fa_file}' > '{aln_file}'")
+        if this_args.align_method == "famsa":  
+            famsa_sequences = [pyfamsa.Sequence(header.encode(),  seq.encode()) for header, seq in raw_seqs]
+            aligner = pyfamsa.Aligner(threads=1)
+            msa = aligner.align(famsa_sequences)
+            aligned_seqs = [(sequence.id.decode(), sequence.sequence.decode()) for sequence in msa]
 
     aligned_result = []
     aligned_dict = {}
-    for header, seq in parseFasta(aln_file, True):
+    for header, seq in aligned_seqs if aligned_seqs is not None and this_args.align_method == "famsa" else parseFasta(aln_file, True):
         header = trimmed_header_to_full[header[:127]]
         aligned_result.append((header, seq.upper()))
 
     writeFasta(aln_file, aligned_result, False)
-    
-    aligned_result = [aligned_record(header.split(" ")[0], seq, gene) for header, seq in aligned_result]
-    
+
+    aligned_result = [aligned_record(header.split(" ")[0], seq, this_args.gene) for header, seq in aligned_result]
+
     duped_headers = set()
     seq_hashes = set()
     for record in aligned_result:
@@ -953,34 +1030,40 @@ def aln_function(
 
     if duped_headers:
         aligned_result = [i for i in aligned_result if i.header not in duped_headers]
-        
+
     cand_consensus = defaultdict(list)
     for record in aligned_result:
         for i, let in enumerate(record.seq[record.start: record.end], record.start):
             if let != "-":
                 cand_consensus[i].append(let)
-        
+
     splice_log = []
-    if not skip_splice:
-        allowed_adjacency = 3 # Allow x bp of non-overlapping adjacent bp to merge
+    if not this_args.skip_splice:
+        allowed_adjacency = 3  # Allow x bp of non-overlapping adjacent bp to merge
         maximum_overlap = 0.5
         aligned_result, merged_header, splice_log = splice_overlap(aligned_result, cand_consensus, allowed_adjacency, maximum_overlap)
 
         for seq in sequences:
             if seq.header in merged_header:
                 seq.header = merged_header[seq.header]
-                
+    lengths = []
+    for node in aligned_result:
+        lengths.append(len(node.seq) - node.seq.count("-"))
+
+    median_length = median(lengths)
+
+    aligned_result = [node for node in aligned_result if len(node.seq) - node.seq.count("-") >= median_length * min_length]
+
     cull_result = {}
-    if do_cull:
-        cull_result, aligned_result = cull(aligned_result, cull_percent, has_nt)
+    if this_args.do_cull:
+        cull_result, aligned_result = cull(aligned_result, this_args.cull_percent, this_args.has_nt)
 
+    aligned_result, violation_log = severe_violation(aligned_result)
+    
     internal_result = {}
-    if do_internal:
-        internal_result, aligned_result = internal_cull(aligned_result, cull_internal, has_nt)
+    if this_args.do_internal:
+        internal_result, aligned_result = internal_cull(aligned_result, this_args.cull_internal, this_args.has_nt)
 
-    # aligned_result = [i for i in aligned_result if len(i[1]) != i[1].count("-")]
-
-    # aligned_result = do_merge(aligned_result)
     aligned_dict = {rec.header: rec.seq for rec in aligned_result}
 
     output = []
@@ -988,8 +1071,8 @@ def aln_function(
     for seq in sequences:
         if seq.header in aligned_dict:
             seq.aa_sequence = aligned_dict[seq.header]
-            
-            if has_nt:
+
+            if this_args.has_nt:
                 if cull_result:
                     left_bp_remove, right_bp_remove = cull_result.get(seq.header, (0, 0))
                     if left_bp_remove:
@@ -1005,98 +1088,114 @@ def aln_function(
                 nt_result.append((seq.header, seq.nt_sequence))
 
             output.append(seq)
-            
+
     trimmed_output = [(rec.header, rec.seq) for rec in aligned_result]
     writeFasta(trimmed_path, trimmed_output, False)
     if nt_result:
         writeFasta(nt_trimmed_path, nt_result, False)
-        
-    # increasing the exponent will increase penalty on high distance scores
-    # lowering will decrease the penalty
+
     FULLSEQ_DISTANCE_EXPONENT = 2.0
     HALFSEQ_DISTANCE_EXPONENT = 2.0
-    # increasing the iqr coefficient will raise the acceptable distance score
-    # lower the iqr coefficient will raise the acceptable distance score
     FULLSEQ_IQR_COEFFICIENT = 2
     HALFSEQ_IQR_COEFFICIENT = 2
-    # floor is the minimum cutoff value
-    # raising this will make lower distance files pass more sequences
     FULLSEQ_CUTOFF_FLOOR = 0.03
     HALFSEQ_CUTOFF_FLOOR = 0.05
 
-    # repeats is the number of times a check will rerun numbers if a seq is kicked
-    # if no seq is kicked, the loop will always terminate
     FULLSEQ_REPEATS = 2
     HALFSEQ_REPEATS = 1
-    # minimum distance between start and end indices
     MIN_AA = 15
 
     log = []
     passed = aligned_result
-    if not skip_deviation_filter:
+    failed = []
+    to_keep = None
+    to_keep2 = None
+    if not this_args.skip_deviation_filter:
         passed, failed = filter_deviation(aligned_result, FULLSEQ_REPEATS, FULLSEQ_DISTANCE_EXPONENT, FULLSEQ_IQR_COEFFICIENT, FULLSEQ_CUTOFF_FLOOR, MIN_AA)
         for fail in failed:
             fail.fail = "full"
         to_keep = delete_empty_columns(passed)
-        if not no_halves:
-            passed, former, latter = check_halves(passed, HALFSEQ_REPEATS, HALFSEQ_DISTANCE_EXPONENT, HALFSEQ_IQR_COEFFICIENT, HALFSEQ_CUTOFF_FLOOR, MIN_AA,cleaned_path,gene+'.fa', debug_halves)
-            failed.extend(former)
-            failed.extend(latter)
-            to_keep2 = delete_empty_columns(passed)
         
-        clean_dict = {rec.header: rec.seq for rec in passed}
-        
-        output = []
-        nt_result = []
-        for seq in sequences:
-            if seq.header in clean_dict:
-                seq.aa_sequence = clean_dict[seq.header]
-                
-                if has_nt:
-                    nt_result.append((seq.header, seq.nt_sequence))
+    if this_args.realign:
+        if len(passed) == 1:
+            realigned_sequences = {rec.header: rec.seq for rec in passed}
+        elif this_args.align_method == "famsa":
+            pyfamsa_sequences = [pyfamsa.Sequence(rec.header.encode(),  rec.seq.encode()) for rec in passed]
+            aligner = pyfamsa.Aligner(threads=1)
+            msa = aligner.align(pyfamsa_sequences)
+            realigned_sequences = {sequence.id.decode(): sequence.sequence.decode() for sequence in msa}
+        else:
+            with NamedTemporaryFile(dir=gettempdir()) as temp, NamedTemporaryFile(dir=gettempdir()) as final_file:
+                writeFasta(temp.name, [(rec.header, rec.seq.replace("-","")) for rec in passed], False)
 
-                output.append(seq)
-        if nt_result:
+                if this_args.align_method == "clustal":
+                    os.system(
+                        f"clustalo -i '{temp.name}' -o '{final_file.name}' --threads=1 --force",
+                    )
+                elif this_args.align_method == "mafft":
+                    os.system(f"mafft --quiet --anysymbol --legacygappenalty --thread 1 '{temp.name}' > '{final_file.name}'")
+                        
+                realigned_sequences = {}
+                for header, seq in parseFasta(final_file.name, True):
+                    realigned_sequences[header] = seq
+                    
+        cull_result = {}
+        if this_args.do_cull:
+            cull_result, passed = cull(passed, this_args.cull_percent, this_args.has_nt)
+                    
+        for record in passed:
+            if cull_result:
+                left_bp_remove, right_bp_remove = cull_result.get(record.header, (0, 0))
+                if left_bp_remove:
+                    record.nt_sequence = record.nt_sequence[left_bp_remove:]
+                if right_bp_remove:
+                    record.nt_sequence = record.nt_sequence[:-right_bp_remove]
+            record.seq = realigned_sequences[record.header]
+            record.remake_indices()
+        
+    if not this_args.skip_deviation_filter and not this_args.no_halves:
+        passed, former, latter = check_halves(passed, HALFSEQ_REPEATS, HALFSEQ_DISTANCE_EXPONENT, HALFSEQ_IQR_COEFFICIENT, HALFSEQ_CUTOFF_FLOOR, MIN_AA, this_args.cleaned_path, this_args.gene+'.fa', this_args.debug_halves)
+        failed.extend(former)
+        failed.extend(latter)
+        to_keep2 = delete_empty_columns(passed)
+
+    clean_dict = {rec.header: rec.seq for rec in passed}
+
+    output = []
+    nt_result = []
+    for seq in sequences:
+        if seq.header in clean_dict:
+            seq.aa_sequence = clean_dict[seq.header]
+
+            if this_args.has_nt:
+                nt_result.append((seq.header, seq.nt_sequence))
+
+            output.append(seq)
+    if nt_result:
+        if to_keep is not None:
             nt_result = delete_nt_columns(nt_result, to_keep)
-            if not no_halves:
-                nt_result = delete_nt_columns(nt_result, to_keep2)
-        clean_file = cleaned_path.joinpath(gene + ".aln.fa")
-        clean_nt_file = cleaned_nt_path.joinpath(gene + ".nt.aln.fa")
-        
-        writeFasta(clean_file, [(rec.header, rec.seq) for rec in passed], False)
-        if nt_result:
-            writeFasta(clean_nt_file, nt_result, False)
-            
-        log = [f"{r.header.split()[0]},{r.end-r.start},{r.fail},{r.mean},{r.all_mean},{r.gene}\n" for r in failed]
+        if not this_args.no_halves and to_keep2 is not None:
+            nt_result = delete_nt_columns(nt_result, to_keep2)
+    clean_file = this_args.cleaned_path.joinpath(this_args.gene + ".aln.fa")
+    clean_nt_file = this_args.cleaned_nt_path.joinpath(this_args.gene + ".nt.aln.fa")
 
-        if realign:
-            final_file = final_path.joinpath(gene + ".aln.fa")
-            if len(list(parseFasta(raw_fa_file))) == 1:
-                writeFasta(final_file, [(rec.header, rec.seq.replace("-","")) for rec in passed])
-            else:
-                with NamedTemporaryFile(dir=gettempdir()) as temp:
-                    writeFasta(temp.name, [(rec.header, rec.seq.replace("-","")) for rec in passed], False)
+    writeFasta(clean_file, [(rec.header, rec.seq) for rec in passed], False)
+    if nt_result:
+        writeFasta(clean_nt_file, nt_result, False)
 
-                    if align_method == "clustal":
-                        os.system(
-                            f"clustalo -i '{temp.name}' -o '{final_file}' --threads=1 --force",
-                        )  # --verbose
-                    else:
-                        os.system(f"mafft --quiet --anysymbol --thread 1 '{temp.name}' > '{final_file}'")
+    log = [f"{r.header.split()[0]},{r.end-r.start},{r.fail},{r.mean},{r.all_mean},{r.gene}\n" for r in failed]
 
-            aligned_dict = {}
-            for header, seq in parseFasta(final_file, True):
-                aligned_dict[header] = seq
+    aligned_dict = {rec.header: rec.seq for rec in passed}
 
-            output = []
-            nt_result = []
-            for seq in sequences:
-                if seq.header in aligned_dict:
-                    seq.aa_sequence = aligned_dict[seq.header]
+    output = []
+    nt_result = []
+    for seq in sequences:
+        if seq.header in aligned_dict:
+            seq.aa_sequence = aligned_dict[seq.header]
+            output.append(seq)
 
-                    output.append(seq)
+    return this_args.gene, output, duped_headers, log, violation_log, splice_log
 
-    return gene, output, duped_headers, log, splice_log
 
 
 def make_diamonddb(set: Sequence_Set, processes):
@@ -1124,7 +1223,7 @@ def make_diamonddb(set: Sequence_Set, processes):
 SETS_DIR = None
 
 
-def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, nt_input: str = None):
+def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, gfm, nt_input: str = None):
     """
     Grabs alls sequences in a fasta file and inserts them into a subset.
     """
@@ -1141,7 +1240,7 @@ def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, nt_input
         temp_file = None
         if raw_file.endswith(".gz"):
             with NamedTemporaryFile(dir=gettempdir(), delete=False) as temp_file:
-                with gzip.open(raw_file, 'rb') as f_in, open(temp_file.name, 'wb') as f_out:
+                with isal_gzip.open(raw_file, 'rb') as f_in, open(temp_file.name, 'wb') as f_out:
                     copyfileobj(f_in, f_out)
                 file = temp_file.name
         else:
@@ -1152,7 +1251,7 @@ def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, nt_input
         #Grab headers
         headers = set()
         multiheaders = set()
-        if not skip_multi_headers:
+        if not gfm and not skip_multi_headers:
             with open(file) as fp:
                 for line in fp:
                     if line[0] != ">" or line[-1] == ".":
@@ -1161,6 +1260,8 @@ def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, nt_input
                         header = line.split(" ")[0]
                     elif "|" in line:
                         header = line.split("|")[2]
+                    else:
+                        header = None
                         
                     if header in headers:
                         multiheaders.add(header)
@@ -1169,7 +1270,29 @@ def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, nt_input
                     headers.add(header)
 
         for seq_record in SeqIO.parse(file, "fasta"):
-            if "|" in seq_record.description and " " not in seq_record.description:
+            if gfm: 
+                seq = str(seq_record.seq)
+                taxon = seq_record.description.replace(" ","_").replace("|","-")
+                gene = os.path.basename(file).split(".")[0]
+                header = f"{gene}_{taxon}"
+                
+                if header in multiheaders:
+                    this_counter[header] += 1
+                    header = f"{header}_{this_counter[header]}"
+                    
+                multiheaders.add(header)
+
+                subset.add_sequence(
+                    Sequence(
+                        None,
+                        header,
+                        seq,
+                        nt_seqs.get(seq_record.description),
+                        taxon,
+                        gene,
+                    )
+                )
+            elif "|" in seq_record.description and " " not in seq_record.description:
                 #Assuming legacy GENE|TAXON|ID
                 if seq_record.description.endswith("."):
                     continue
@@ -1180,44 +1303,45 @@ def generate_subset(file_paths, taxon_to_kick: set, skip_multi_headers, nt_input
                     header = f"{header}_{this_counter[header]}"
                     
                 # header = gene+"_"+header
-                if taxon.lower() not in taxon_to_kick:
-                    subset.add_sequence(
-                        Sequence(
-                            None, # Want to generate new style
-                            header,
-                            str(seq_record.seq),
-                            nt_seqs.get(seq_record.description),
-                            taxon,
-                            gene,
-                            next(index),
-                        )
+                if taxon.lower().strip() in taxon_to_kick:
+                    continue
+                
+                subset.add_sequence(
+                    Sequence(
+                        None, # Want to generate new style
+                        header,
+                        str(seq_record.seq),
+                        nt_seqs.get(seq_record.description),
+                        taxon,
+                        gene,
                     )
+                )
             else:
                 header, data = seq_record.description.split(" ", 1)
                 if header in multiheaders:
                     this_counter[header] += 1
                     header = f"{header}_{this_counter[header]}"
                 #Assuming ID {JSON}
-                data = json.decode(data)
+                data = json.decode(data.replace("'", '"'))
                 seq = str(seq_record.seq)
                 taxon = data["organism_name"].replace(" ", "_")
                 if (
-                    taxon.lower() not in taxon_to_kick
-                    and data["organism_name"].lower() not in taxon_to_kick
+                    taxon.lower().strip() in taxon_to_kick
+                    or data["organism_name"].lower().strip() in taxon_to_kick
                 ):
-                    gene = data["pub_og_id"]
+                    continue
+                gene = data["pub_og_id"]
 
-                    subset.add_sequence(
-                        Sequence(
-                            f"{header} {data}",
-                            header,
-                            seq,
-                            nt_seqs.get(seq_record.description),
-                            taxon,
-                            gene,
-                            next(index),
-                        )
+                subset.add_sequence(
+                    Sequence(
+                        f"{header} {data}",
+                        header,
+                        seq,
+                        nt_seqs.get(seq_record.description),
+                        taxon,
+                        gene,
                     )
+                )
         del temp_file
     return subset
 
@@ -1250,7 +1374,7 @@ def main(args):
             kick = set()
         else:
             with open(kick) as fp:
-                kick = {line.lower() for line in fp.read().splitlines() if line.strip()}
+                kick = {line.lower().strip() for line in fp.read().splitlines() if line.strip()}
             printv(f"Found {len(kick)} taxon to kick.", verbosity)
     else:
         kick = set()
@@ -1272,6 +1396,7 @@ def main(args):
         nc_genes = set()
 
     input_file = args.INPUT  # "Ortholog_set_Mecopterida_v4.sqlite"
+    print(input_file)
     if not input_file or not os.path.exists(input_file):
         printv("Fatal: Input file not defined or does not exist (-i)", verbosity, 0)
         return False
@@ -1305,6 +1430,9 @@ def main(args):
     if os.path.exists(os.path.join(input_file, "aa_merged")):
         nt_input = os.path.join(input_file, "nt_merged")
         input_file = os.path.join(input_file, "aa_merged")
+    elif os.path.exists(os.path.join(input_file, "align")):
+        nt_input = os.path.join(input_file, "nt_aligned")
+        input_file = os.path.join(input_file, "align")
     else:
         #detect super dir
         if any(os.path.exists(os.path.join(input_file, i, "aa_merged")) for i in os.listdir(input_file)):
@@ -1325,7 +1453,7 @@ def main(args):
         printv(f"Reading files from {input_file}", verbosity)
         if input_file.split(".")[-1] == "fa" and os.path.isfile(input_file):
             printv("Input Detected: Single fasta", verbosity)
-            subset = generate_subset([input_file], kick, args.skip_multi_headers)
+            subset = generate_subset([input_file], kick, args.skip_multi_headers, args.gene_finding_mode)
             this_set.absorb(subset)
 
         elif input_file.split(".")[-1] in {
@@ -1379,7 +1507,7 @@ def main(args):
             printv("Input Detected: Folder containing Fasta", verbosity)
             file_paths = []
             for file in os.listdir(input_file):
-                if file.endswith(".fa") or file.endswith(".fa.gz"):
+                if file.endswith(".fa") or file.endswith(".fasta") or file.endswith(".fa.gz"):
                     file_paths.append(os.path.join(input_file, file))
 
             per_thread = ceil(len(file_paths) / processes)
@@ -1388,6 +1516,7 @@ def main(args):
                     file_paths[i : i + per_thread],
                     kick,
                     args.skip_multi_headers,
+                    args.gene_finding_mode,
                     nt_input,
                 )
                 for i in range(0, len(file_paths), per_thread)
@@ -1406,14 +1535,7 @@ def main(args):
 
     printv("Got input!", verbosity)
 
-    if do_count:
-        printv("Generating taxon stats", verbosity)
-        with open(os.path.join(set_path, "taxon_stats.csv"), "w") as fp:
-            fp.write("taxon,count\n")
-            counter = this_set.get_gene_taxon_count()
-
-            for taxon, tcount in counter.most_common():
-                fp.write(f"{taxon},{tcount}\n")
+    taxon_set = this_set.get_taxon_present()
 
     raw_path = set_path.joinpath("raw")
     raw_path.mkdir(exist_ok=True)
@@ -1452,6 +1574,8 @@ def main(args):
             no_halves,
             skip_deviation_filter,
             realign,
+            taxon_set,
+            args.kick_genes,
             args.debug,
             args.skip_splice,
         )
@@ -1463,6 +1587,13 @@ def main(args):
         target_to_taxon, taxon_to_sequences = make_diamonddb(
             this_set, processes
         )
+    if do_count:
+        taxon_counts = this_set.get_gene_taxon_count()
+        printv("Generating taxon stats", verbosity)
+        with open(os.path.join(set_path, "taxon_stats.csv"), "w") as fp:
+            fp.write("taxon,count\n")
+            for taxon, tcount in taxon_counts.most_common():
+                fp.write(f"{taxon},{tcount}\n")
 
     printv("Writing core sequences to RocksDB", verbosity, 1)
     rocks_db_path = set_path.joinpath("rocksdb")

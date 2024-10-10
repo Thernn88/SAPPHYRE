@@ -7,6 +7,7 @@ from math import ceil
 from multiprocessing.pool import Pool
 from pathlib import Path
 from shutil import rmtree
+from sapphyre_tools import find_index_pair
 
 import requests
 from bs4 import BeautifulSoup
@@ -40,13 +41,15 @@ class GeneConfig:
     generating_names: bool
     no_references: bool
     compress: bool
+    internal_char: str
 
 
 def kick_taxa(content: list[tuple, tuple], to_kick: set) -> list:
     out = []
     for header, sequence in content:
-        taxon = header.split("|")[1]
-        if taxon not in to_kick:
+        taxon = header.split("|")[1].lower()
+        taxa = header.split("|")[2].lower()
+        if taxon not in to_kick and taxa not in to_kick:
             out.append((header, sequence))
     return out
 
@@ -195,6 +198,23 @@ def kick_gene(present_taxa, minimum_percentage, global_total_taxon):
     return (len(present_taxa) / len(global_total_taxon)) <= minimum_percentage
 
 
+def convert_gaps(aa_content, nt_content, internal_char):
+    out_aa = []
+    out_nt = []
+    coords = {}
+    for header, sequence in aa_content:
+        start, end = find_index_pair(sequence, "-")
+        coords[header] = start * 3, end * 3
+        sequence = sequence[:start] + sequence[start:end].replace("-", internal_char) + sequence[end:]
+        out_aa.append((header, sequence))
+    
+    for header, sequence in nt_content:
+        start, end = coords[header]
+        sequence = sequence[:start] + sequence[start:end].replace("-", internal_char) + sequence[end:]
+        out_nt.append((header, sequence))
+    
+    return out_aa, out_nt
+
 def clean_gene(gene_config: GeneConfig):
     printv(f"Doing: {gene_config.gene}", gene_config.verbose, 2)
     if not gene_config.no_references:
@@ -230,6 +250,8 @@ def clean_gene(gene_config: GeneConfig):
         )
         nt_content = align_kick_nt(nt_content, cols_to_kick, aa_kicks)
 
+    aa_content, nt_content = convert_gaps(aa_content, nt_content, gene_config.internal_char)
+
     processed_folder = gene_config.taxa_folder.joinpath("Processed")
 
     on_target = Path(processed_folder).joinpath("Target")
@@ -256,12 +278,12 @@ def clean_gene(gene_config: GeneConfig):
             )
 
         col_dict = defaultdict(list)
-        for header, sequence in aa_content:
+        for header, sequence in nt_content:
             if not header.endswith("."):
                 candidate_count += 1
 
             for i, char in enumerate(sequence):
-                col_dict[i].append(char.replace("X", "-"))
+                col_dict[i].append(char.replace("X", "-").replace("?","-"))
 
         for col, chars in col_dict.items():
             this_most_common = Counter(chars).most_common()
@@ -273,9 +295,9 @@ def clean_gene(gene_config: GeneConfig):
                     most_common_AA_count = this_most_common[0][1]
             else:
                 most_common_AA_count = (
-                    this_most_common[0][1]
+                    this_most_common[1][1]
                     if this_most_common[0][0] == "-"
-                    else this_most_common[1][1]
+                    else this_most_common[0][1]
                 )
             column_stats[col] = (
                 len(chars),
@@ -341,7 +363,7 @@ def taxon_present(aa_content: list) -> dict:
             taxa_present.add(taxa)
 
         taxonc_present[taxon]["p"] += 1
-        taxonc_present[taxon]["bp"] += len(sequence) - sequence.count("-")
+        taxonc_present[taxon]["bp"] += len(sequence) - sequence.count("-") - sequence.count("X") - sequence.count("?")
 
     return taxonc_present, gene_taxon_to_taxa, taxa_present
 
@@ -425,7 +447,7 @@ def process_folder(args, input_path):
     if args.kick:
         with open(taxa_folder.joinpath(args.kick), encoding="utf-8-sig") as fp:
             for line in fp:
-                to_kick.add(line.strip())
+                to_kick.add(line.strip().lower())
 
     target = set()
     if args.target_file:
@@ -474,6 +496,7 @@ def process_folder(args, input_path):
             generate_names,
             args.no_references,
             args.compress,
+            args.replace_internals,
         )
         arguments.append((this_config,))
 
@@ -546,6 +569,16 @@ def process_folder(args, input_path):
         _,
         _,
     ) in to_write:
+        if args.gene_kick:
+            if kick_gene(taxa_local, gene_kick, taxa_global):
+                aa_path, nt_path = path_to
+                aa_glob = aa_path.replace(".gz", "") + "*"
+                nt_glob = nt_path.replace(".gz", "") + "*"
+                for fasta in glob(aa_glob):
+                    os.remove(fasta)
+                for fasta in glob(nt_glob):
+                    os.remove(fasta)
+                continue
         this_lax = 0
         this_strict = 0
         this_inform = 0
@@ -575,21 +608,11 @@ def process_folder(args, input_path):
 
         column_stats_res.append(
             (
-                this_strict,
+                gene,
                 f"{gene},{str(this_lax)},{str(this_strict)},{str(this_inform)},{str(this_inform_lax)}",
             )
         )
 
-        if args.gene_kick:
-            if kick_gene(taxa_local, gene_kick, taxa_global):
-                aa_path, nt_path = path_to
-                aa_glob = aa_path.replace(".gz", "") + "*"
-                nt_glob = nt_path.replace(".gz", "") + "*"
-                for fasta in glob(aa_glob):
-                    os.remove(fasta)
-                for fasta in glob(nt_glob):
-                    os.remove(fasta)
-                continue
         if args.count:
             taxon_to_taxa.update(gene_taxon_to_taxa)
             for taxon, count in taxon_count.items():

@@ -18,7 +18,7 @@ class cluster_rec:
     def get_first_id(self):
         return min(self.get_ids)
 
-def determine_direction(start, end, current_start, current_end, current_direction, debug = False):
+def determine_direction(start, end, current_start, current_end, current_direction):
     this_direction = None
     if start == current_start and end == current_end:
         this_direction =  current_direction

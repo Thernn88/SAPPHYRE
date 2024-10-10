@@ -1,4 +1,5 @@
 from collections import Counter, defaultdict
+from isal import igzip as isal_gzip
 import os
 import re
 from collections.abc import Generator
@@ -12,6 +13,7 @@ import sapphyre_tools
 import wrap_rocks
 import xxhash
 from msgspec import json
+from needletail import NeedletailError
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv
@@ -37,7 +39,7 @@ def truncate_taxa(taxa: str, extension=None) -> str:
     """
 
     result = taxa.replace("_001", "")
-    m = re.search(r"(_\d.fa)|(_R\d.fa)|(_part\d.fa)", result + extension)
+    m = re.search(r"(_\d{1,2}.fa)|(_R\d{1,2}.fa)|(_I\d{1,2}.fa)|(_part\d{1,2}.fa)", result + extension)
 
     if m:
         tail_length = m.end() - m.start() - len(extension)
@@ -81,6 +83,15 @@ def group_taxa_in_glob(
 
     return taxa_runs
 
+
+def gz_size(fname):
+    if fname.suffix == ".gz":
+        with isal_gzip.open(fname, 'rb') as f:
+            return f.seek(0, whence=2)
+    else:
+        return fname.stat().st_size
+
+
 class SeqDeduplicator:
     def __init__(
         self,
@@ -90,9 +101,9 @@ class SeqDeduplicator:
         rename,
         skip_ntrim,
         prepared_output,
+        assembly_mode,
     ) -> None:
         self.original_coords = {}
-        self.original_positions = {}
         self.original_inputs = []
         self.lines = []
         self.prepared_output = prepared_output
@@ -100,11 +111,12 @@ class SeqDeduplicator:
         self.minimum_sequence_length = minimum_sequence_length
         self.verbose = verbose
         self.this_assembly = False
-        self.this_genome = False
+        self.is_genome = False
         self.overlap_length = overlap_length
         self.skip_ntrim = skip_ntrim
         self.rename = rename
         self.transcript_mapped_to = defaultdict(dict)
+        self.assembly_mode = assembly_mode
 
     def __call__(
         self,
@@ -120,12 +132,20 @@ class SeqDeduplicator:
 
         self.original_inputs.append(str(fa_file_path))
 
-        if not self.this_genome:
-            for _, seq in parseFasta(fa_file_path, True):
-                if len(seq) > CHOMP_CUTOFF:
-                    self.this_genome = True
-                    self.this_assembly = False
-                    break
+        if  self.assembly_mode:
+            self.this_assembly = True
+            self.is_genome = False
+            
+        elif not self.assembly_mode and not self.is_genome:
+            try:
+                for _, seq in parseFasta(fa_file_path, True):
+                    if len(seq) > CHOMP_CUTOFF:
+                        self.is_genome = True
+                        self.this_assembly = False
+                        break
+            except NeedletailError as e:
+                printv("Failed to parse {} with error:\n\t{}\n".format(fa_file_path, e), self.verbose, 0)
+                return
 
                     
 
@@ -139,8 +159,8 @@ class SeqDeduplicator:
         requires = False
         for line_index, (raw_header, parent_seq) in for_loop:
             raw_header = raw_header.replace(" |", "|").replace("| ", "|").replace(" ", "_")
-            if line_index == 0:
-                requires = any(l.islower() for l in parent_seq)
+            if line_index == 0 or self.is_genome:
+                requires = any(l.islower() for l in parent_seq) or requires
             if len(parent_seq) < self.minimum_sequence_length:
                 continue
 
@@ -182,7 +202,7 @@ class SeqDeduplicator:
                 else:
                     header = raw_header.split(" ")[0]
 
-                if not self.this_genome:
+                if not self.is_genome:
                     seq_hash = xxhash.xxh3_64(seq).hexdigest()
 
                     this_hash_subset = self.transcript_mapped_to[seq_len]
@@ -217,8 +237,6 @@ class SeqDeduplicator:
                     if not self.rename and len(n_sequences) > 1:
                         this_header = append_index_template.format(header, individual_index)
                         next(individual_index)
-
-                    self.original_positions[this_header] = (self.file_index, line_index)
 
                     self.lines.append(sequence_template.format(this_header, seq))
                     if self.prepared_output is not None:
@@ -257,9 +275,9 @@ def map_taxa_runs(
     components,
     keep_prepared,
     chunk_size,
-    force_entropy,
     skip_entropy,
     skip_ntrim,
+    assembly_mode,
 ):
     """
     Removes duplicate sequences, renames them and inserts them into the taxa database.
@@ -309,6 +327,7 @@ def map_taxa_runs(
         rename,
         skip_ntrim,
         prepared_file,
+        assembly_mode,
     )
     for fa_file_path in components:
         deduper(
@@ -324,12 +343,11 @@ def map_taxa_runs(
 
     fa_file_out = deduper.lines
     this_is_assembly = deduper.this_assembly
-    this_is_genome = deduper.this_genome
+    this_is_genome = deduper.is_genome
     original_coords = deduper.original_coords
-    original_positions = deduper.original_positions
     original_inputs = deduper.original_inputs
     del deduper
-    run_entropy = force_entropy or (not skip_entropy and not this_is_genome)
+    run_entropy = not skip_entropy and not this_is_genome
     if run_entropy:
         fa_file_out = sapphyre_tools.entropy_filter(fa_file_out, 0.7)
     recipe = []
@@ -379,10 +397,8 @@ def map_taxa_runs(
     )
 
     # Store the original positions
-    if not (this_is_assembly or this_is_genome):
-        nt_db.put_bytes("getall:original_positions", json.encode(original_positions))
+    if this_is_genome:
         nt_db.put_bytes("getall:original_inputs", json.encode(original_inputs))
-    elif this_is_genome:
         nt_db.put_bytes("getall:original_coords", json.encode(original_coords))
 
     # Store the count of dupes in the database
@@ -417,6 +433,10 @@ def main(args):
     taxa_runs = group_taxa_in_glob(globbed)
 
     for formatted_taxa_out, components in taxa_runs.items():
+        components = [i for i in components if gz_size(i) > 0]
+        if not components:
+            printv(f"Skipping {formatted_taxa_out} due to empty files.", args.verbose)
+            continue
         map_taxa_runs(
             formatted_taxa_out,
             secondary_directory,
@@ -428,9 +448,9 @@ def main(args):
             components,
             args.keep_prepared,
             args.chunk_size,
-            args.force_entropy,
             args.skip_entropy,
             args.skip_ntrim,
+            args.assembly or args.gene_finding_mode == 2,
         )
 
     printv(
