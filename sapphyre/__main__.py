@@ -584,6 +584,13 @@ def subcmd_Exonerate(subparsers):
 
 def exonerate_args(par):
     par.add_argument(
+        "-d",
+        "--debug",
+        action="count",
+        default=0,
+        help="Enable debug. When enabled Output log of culls.",
+    )
+    par.add_argument(
         "-cd",
         "--chomp_max_distance",
         type=int,

@@ -60,13 +60,14 @@ class Node:
 
 
 class exonerate:
-    def __init__(self, folder, chomp_max_distance, orthoset_raw_path, exonerate_path, max_extend, target_to_taxon, entropy_percent) -> None:
+    def __init__(self, folder, chomp_max_distance, orthoset_raw_path, exonerate_path, max_extend, target_to_taxon, debug, entropy_percent) -> None:
         self.folder = folder
         self.chomp_max_distance = chomp_max_distance
         self.orthoset_raw_path = orthoset_raw_path
         self.exonerate_path = exonerate_path
         self.max_extend = max_extend
         self.target_to_taxon = target_to_taxon
+        self.debug = debug
         self.entropy_percent = entropy_percent
         
     def run(self, batches, temp_source_file):
@@ -135,8 +136,14 @@ class exonerate:
                         cluster_seqs.append((i, head_to_seq[str(i)]))
                     
                 cluster_name = path.join(self.exonerate_path, f"{gene_name}_{cluster[0]}-{cluster[1]}.txt")
-                with NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir()) as f, open(cluster_name, "w") as result:
+                if self.debug:
+                    f = open(path.join(self.exonerate_path, f"{gene_name}_{cluster[0]}-{cluster[1]}.fa"), "w")
+                else:
+                    f = NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir())
+                    
+                with open(cluster_name, "w") as result:
                     writeFasta(f.name, cluster_seqs)
+                    f.flush()
                     command = [
                         "exonerate",
                         "--geneticcode", "1",
@@ -221,7 +228,7 @@ class exonerate:
                             uid=round(time()),
                             seq = node.seq
                         ))
-
+                del f
             batch_result.append((gene, final_output))
         return batch_result, additions
 
@@ -305,13 +312,13 @@ def do_folder(folder, args):
     )
     batch_result = []
     if args.processes <= 1:
-        exonerate_obj = exonerate(folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend, target_to_taxon, args.entropy_percent)
+        exonerate_obj = exonerate(folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend, target_to_taxon, args.debug, args.entropy_percent)
         for batch in batches:
             batch_result.append(exonerate_obj.run(*batch))
     else:
         with Pool(args.processes) as pool:
             batch_result.extend(pool.starmap(
-                exonerate(folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend, target_to_taxon, args.entropy_percent).run,
+                exonerate(folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend, target_to_taxon, args.debug, args.entropy_percent).run,
                 batches,
             ))
             
