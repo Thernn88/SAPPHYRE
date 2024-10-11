@@ -438,6 +438,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                         continue
                     if hit.gene in gene_done:
                         continue
+                    gene_done.add(hit.gene)
                     output[hit.gene].append(hit)
             else:
                 top_hit = hits[indices[0]]
