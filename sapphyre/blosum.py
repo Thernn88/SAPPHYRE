@@ -791,6 +791,9 @@ def do_folder(folder, args, is_genome, gene_source):
     if wanted_aa_path.exists():
         aa_input = wanted_aa_path
         nt_input = Path(folder, "outlier", gene_source, "nt")
+    elif gene_source == "align":
+        aa_input = Path(folder, "align")
+        nt_input = Path(folder, "nt_aligned")
     elif gene_source == "trimmed" or gene_source == "motif":
         aa_input = Path(folder, gene_source, "aa")
         nt_input = Path(folder, gene_source, "nt")
@@ -798,9 +801,6 @@ def do_folder(folder, args, is_genome, gene_source):
             if gene_source == "motif":
                 aa_input = Path(folder, "trimmed", "aa")
                 nt_input = Path(folder, "trimmed", "nt")
-            else:
-                aa_input = Path(folder, "align")
-                nt_input = Path(folder, "nt_aligned")
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
     if not rocks_db_path.exists():
         err = f"cannot find dupe databases for {folder}"
