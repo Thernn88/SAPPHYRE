@@ -308,7 +308,7 @@ def get_results(hmm_output):
     return data.items()
 
 
-def add_new_result(new_uid_template, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template, debug):
+def add_new_result(new_uid_template, gfm, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template, debug):
     node, frame = query.split("|")
     id = int(node)
     if id in cluster_full:
@@ -319,7 +319,13 @@ def add_new_result(new_uid_template, gene, query, results, is_full, cluster_full
                 start = start * 3
                 end = end * 3
 
-                sequence = nt_sequences[query][start: end]
+                if gfm == 2:
+                    sequence = nt_sequences[query]
+                    if len(sequence) % 3 != 0:
+                        sequence += ("N" * (3 - len(sequence) % 3))
+                    start = 0
+                else:
+                    sequence = nt_sequences[query][start: end]
 
                 new_qstart = start
                 if frame < 0:
@@ -376,7 +382,7 @@ def add_new_result(new_uid_template, gene, query, results, is_full, cluster_full
             output.append(new_hit)
 
 
-def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_ref_location, overwrite, debug, verbose, evalue_threshold, chomp_max_distance, edge_margin):
+def hmm_search(batches, source_seqs, is_full, is_genome, gfm, hmm_output_folder, aln_ref_location, overwrite, debug, verbose, evalue_threshold, chomp_max_distance, edge_margin):
     batch_result = []
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     this_seqs = {}
@@ -536,7 +542,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, hmm_output_folder, aln_
             queries = get_results(this_hmm_output)
         
         for query, results in queries:
-            add_new_result(new_uid_template, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template, debug)
+            add_new_result(new_uid_template, gfm, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template, debug)
 
         diamond_kicks = []
         for hit in diamond_hits:
@@ -725,7 +731,7 @@ def do_folder(input_folder, args):
 
     per_batch = math.ceil(len(transcripts_mapped_to) / args.processes)
 
-    batches = [(transcripts_mapped_to[i:i + per_batch], seq_source, is_full, is_genome, hmm_output_folder, aln_ref_location, args.overwrite, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance, args.edge_margin) for i in range(0, len(transcripts_mapped_to), per_batch)]
+    batches = [(transcripts_mapped_to[i:i + per_batch], seq_source, is_full, is_genome, args.gene_finding_mode, hmm_output_folder, aln_ref_location, args.overwrite, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance, args.edge_margin) for i in range(0, len(transcripts_mapped_to), per_batch)]
 
     if args.processes <= 1:
         all_hits = []
