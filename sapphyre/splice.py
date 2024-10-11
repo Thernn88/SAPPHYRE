@@ -2077,8 +2077,14 @@ def main(args, sub_dir):
                 line = line.strip().split("\t")
                 #AGOUTI_SCAF_51|6429119BP|CTG001940_1,CTG001110_1,CTG004120_1	Sapphyre	exon	4815540	4815717	.	-	.	Name=136854;Parent=1.aa.fa;Note=-2;
                 parent = line[0]
-                id = line[-1].split(";")[0].split("=")[1]
                 start = int(line[3])
+                
+                fields = line[-1].split(";")
+                for field in fields:
+                    if field.startswith("Description="):
+                        id = field.split("=")[1]
+                        break
+                
                 if not parent in parent_gff_output:
                     continue
                 
