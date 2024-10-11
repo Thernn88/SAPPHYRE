@@ -1243,13 +1243,6 @@ def subcmd_makeref(sp):
         default=False,
     )
     par.add_argument(
-        "-hmm",
-        "--hmmer",
-        action="store_true",
-        help="Generate diamond database.",
-        default=False,
-    )
-    par.add_argument(
         "-all",
         "--all",
         action="store_true",
