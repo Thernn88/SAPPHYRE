@@ -13,7 +13,8 @@ from .__main__ import (
     pal2nal_args,
     prepare_args,
     reporter_args,
-    hmmsearch_args
+    hmmsearch_args,
+    exonerate_args,
 )
 from .timekeeper import KeeperMode, TimeKeeper
 
@@ -33,6 +34,7 @@ def main(args):
     default_config = {
         "prepare": get_args(prepare_args),
         "diamond": get_args(diamond_args),
+        "exonerate": get_args(exonerate_args),
         "hmmsearch": get_args(hmmsearch_args),
         "reporter": get_args(reporter_args),
         "align": get_args(align_args),
@@ -115,6 +117,11 @@ def main(args):
                 if not diamond.main(this_args):
                     print("Error in Diamond.")
                 gc.collect()
+            elif script == "exonerate":
+                from . import exonerate
+
+                if not exonerate.main(this_args):
+                    print("Error in Exonerate.")
             elif script == "hmmsearch":
                 from . import hmmsearch
 
