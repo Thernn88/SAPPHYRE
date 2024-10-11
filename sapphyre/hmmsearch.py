@@ -696,7 +696,7 @@ def do_folder(input_folder, args):
     is_genome = is_genome == "True"
     is_assembly = seq_db.get("get:isassembly")
     is_assembly = is_assembly == "True"
-    is_full = is_genome or is_assembly or args.full
+    is_full = is_genome or args.full
     if is_full:
         temp_source_file = None
         if args.processes > 1:
