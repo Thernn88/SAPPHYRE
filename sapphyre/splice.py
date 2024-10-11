@@ -1742,7 +1742,7 @@ def log_excised_consensus(
                                     ends[parent] = input_len
                                     
                                 strand = "+" if prev_node.frame > 0 else "-"
-                                gff_out[parent][prev_id] = ((prev_start), f"{parent}\tSapphyre\texon\t{prev_start}\t{prev_end}\t.\t{strand}\t.\tDescription={prev_id};Name={gene_name};ID={gene_name};Note={prev_node.frame};")
+                                gff_out[parent][prev_id] = (prev_start, prev_id, f"{parent}\tSapphyre\texon\t{prev_start}\t{prev_end}\t.\t{strand}\t.\tParent={prev_id};Note={prev_node.frame};")
                                 
                             node_id = get_id(node.header)
                             tup = original_coords.get(node_id.split("&&")[0].split("_")[0], None)
@@ -1756,7 +1756,7 @@ def log_excised_consensus(
                                     ends[parent] = input_len
                                     
                                 strand = "+" if node.frame > 0 else "-"
-                                gff_out[parent][node_id] = ((node_start), f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tDescription={node_id};Name={gene_name};ID={gene_name};Note={node.frame};")
+                                gff_out[parent][node_id] = (node_start, node_id, f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tParent={node_id};Note={node.frame};")
                 if True and not splice_found:    
                     scan_log.append(f">{prev_node.header}_orf")
                     # print(prev_start_index, node_end_index)
@@ -1881,8 +1881,8 @@ def log_excised_consensus(
             final_nt_out.append((header, seq))
         writeFasta(nt_out, final_nt_out, compress_intermediates)
 
-        return log_output, had_region, False, False, gene, len(kicked_headers), this_rescues, scan_log, combo_log, multi_log, ends, gff_out, debug_out, rescue_jank_log
-    return log_output, had_region, gene, False, None, len(kicked_headers), this_rescues, scan_log, combo_log, multi_log, ends, gff_out, debug_out, rescue_jank_log
+        return log_output, had_region, False, False, gene, len(kicked_headers), this_rescues, scan_log, combo_log, multi_log, ends, gff_out, debug_out, rescue_jank_log, gene_name, cluster_sets
+    return log_output, had_region, gene, False, None, len(kicked_headers), this_rescues, scan_log, combo_log, multi_log, ends, gff_out, debug_out, rescue_jank_log, gene_name, cluster_sets
 
 ### USED BY __main__
 def do_move(from_, to_):
@@ -2034,7 +2034,12 @@ def main(args, sub_dir):
     parent_gff_output = defaultdict(dict)
     end_bp = {}
 
-    for glog, ghas_ambig, ghas_no_resolution, gcoverage_kick, g_has_resolution, gkicked_seq, grescues, slog, clog, dlog, input_lengths, gff_result, debug_lines, jlog in results:
+    clusters_to_gene = []
+    cluster_index = 1
+    for glog, ghas_ambig, ghas_no_resolution, gcoverage_kick, g_has_resolution, gkicked_seq, grescues, slog, clog, dlog, input_lengths, gff_result, debug_lines, jlog, gene, cluster_sets in results:
+        for set in cluster_sets: # TODO Instead of just making a tuple of each set make a dict of each id
+            clusters_to_gene.append((set, gene, cluster_index))
+            cluster_index += 1
         for parent, node_values in gff_result.items():
             for id, value in node_values.items():
                 parent_gff_output[parent][id] = value
@@ -2075,13 +2080,12 @@ def main(args, sub_dir):
                 if line.startswith("#"):
                     continue
                 line = line.strip().split("\t")
-                #AGOUTI_SCAF_51|6429119BP|CTG001940_1,CTG001110_1,CTG004120_1	Sapphyre	exon	4815540	4815717	.	-	.	Name=136854;Parent=1.aa.fa;Note=-2;
                 parent = line[0]
                 start = int(line[3])
                 
                 fields = line[-1].split(";")
                 for field in fields:
-                    if field.startswith("Description="):
+                    if field.startswith("Parent="):
                         id = field.split("=")[1]
                         break
                 
@@ -2092,19 +2096,29 @@ def main(args, sub_dir):
                     continue
                 
                 if parent_gff_output[parent][id] is None:
-                    parent_gff_output[parent][id] = (start, "\t".join(line))
+                    parent_gff_output[parent][id] = (start, id, "\t".join(line))
     else:
         printv("No reporter coords found. Unable to fill in the blank.", args.verbose, 0)
     
     gff_output= []
     for parent, rows in parent_gff_output.items():
-            
+        
         rows = [i for i in rows.values() if i]
         end = end_bp[parent]
         gff_output.append(f"##sequence-region\t{parent}\t{1}\t{end}")
         rows.sort(key = lambda x: (x[0]))
-        gff_output.extend(i[1] for i in rows)
-    
+        for row in rows:
+            _, id, line = row
+            new_id = None
+            for set, gene, index in clusters_to_gene:
+                if within_distance(node_to_ids(id), set, 0):
+                    crange = f"{min(set)}-{max(set)}"
+                    new_id = f"{gene}_{index}"
+            if new_id is None:
+                print(f"WARNING: No cluster found for {id}")
+                
+            gff_output.append(line+f"ID={new_id};Name={new_id};Description={crange};")
+
     if gff_output:
         with open(path.join(coords_path, "splice.gff"), "w") as fp:
             fp.write("\n".join(gff_output))

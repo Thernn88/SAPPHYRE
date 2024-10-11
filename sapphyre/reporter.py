@@ -677,7 +677,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace):
                     out_data[parent].append((node, chomp_start, chomp_end))
                 
             for parent, node, act_start, act_end, strand, frame in gff:
-                parent_gff_output[parent].append(((act_start), f"{parent}\tSapphyre\texon\t{act_start}\t{act_end}\t.\t{strand}\t.\tID={gene};Name={gene};Description={node};Note={frame};"))
+                parent_gff_output[parent].append(((act_start), f"{parent}\tSapphyre\texon\t{act_start}\t{act_end}\t.\t{strand}\t.\tParent={node};Note={frame};"))
                     
         
             if out_data:
