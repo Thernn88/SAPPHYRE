@@ -50,6 +50,7 @@ class ProcessingArgs(Struct, frozen=True):
     i: int
     grouped_data: DataFrame
     target_to_taxon: dict[str, tuple[str, str, int]]
+    gene_taxons: dict[str, set[str]]
     debug: bool
     is_assembly_or_genome: bool
     is_genome: bool
@@ -359,6 +360,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
             frame = row[2]
             qstart = row[5]
             qend = row[6]
+            ref_taxa = row[9]
             if i == 0:
                 has_gene_key = "|" in key
 
@@ -374,9 +376,8 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
 
             gene, ref, _ = pargs.target_to_taxon[key]
             
-            # if not ref in pargs.top_ref:
-            #     continue
-
+            if not ref_taxa in pargs.gene_taxons[gene]:
+                continue
 
             this_hit = Hit(
                 row[0],
@@ -1042,11 +1043,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
     else:
         top_ref_result = [top_reference_realign(*arg) for arg in arguments]
 
-    top_ref_in_order = dict(top_ref_result)
-    top_ref = set()
+    top_ref_picked = dict(top_ref_result)
+    quick_top_ref = set()
     for gene in present_genes:
-        top_ref.update(top_ref_in_order[gene])
-    nt_db.put_bytes("getall:valid_refs", json.encode(top_ref_in_order))
+        quick_top_ref.update(top_ref_picked[gene])
+    nt_db.put_bytes("getall:valid_refs", json.encode(top_ref_picked))
     
     printv(
         f"Wrote top refs. Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Processing data.",
@@ -1054,7 +1055,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     )
     
     df = df[df["evalue"] <= precision]
-    df = df[df["ref_taxa"].isin(top_ref)]
+    df = df[df["ref_taxa"].isin(quick_top_ref)] # Quickly filter out hits that are not in the top refs
     headers = df["header"].unique()
     
     if len(headers) > 0:
@@ -1126,6 +1127,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
                 i,
                 df.iloc[index[0] : index[1] + 1],
                 target_to_taxon,
+                top_ref_picked,
                 args.debug,
                 is_assembly_or_genome,
                 dbis_genome,
