@@ -180,12 +180,11 @@ def print_core_sequences(
     result = []
     for taxon, taxa_id, seq in sorted(core_sequences):
         # Filter out non-target hits and variants
+        if taxon not in top_refs:
+            continue
         if target_taxon:
             if f"{gene}|{taxa_id}" not in target_taxon and taxa_id not in target_taxon: #TODO: Slow to handle both 
-                continue
-        else:
-            if taxon not in top_refs:
-                continue
+                continue  
         
 
         header = gene + "|" + taxon + "|" + taxa_id + "|."
