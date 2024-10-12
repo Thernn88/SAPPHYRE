@@ -945,22 +945,11 @@ def run_process(args: Namespace, input_path: str) -> bool:
     print("Average evalue: ", df["evalue"].mean())
     most_common = count_taxa(df, gfm, genome_score_filter, is_assembly_or_genome)
     
-    top_refs = set()
     with open(path.join(input_path, "diamond_top_ref.csv"), "w") as fp:
         fp.write("Global count\n")
         for k, v in most_common:
             fp.write(f"{k},{v}\n")
 
-    if args.top_ref == -1:
-        target_count = 0
-    else:
-        target_count = min(most_common[0:args.top_ref], key=lambda x: x[1])[1]
-
-    #target_count = min_count * (1 - args.top_ref)
-    for taxa, count in most_common:
-        if count >= target_count:
-            top_refs.add(taxa)
-            
     # DOING VARIANT FILTER
     target_has_hit = set(df["target"].unique())
     valid_variants = defaultdict(list)
@@ -1321,7 +1310,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
         data = json_encoder.encode(gene_dupe_count)  # type=dict[str, dict[str, int]]
         nt_db.put_bytes(key, data)
 
-    del top_refs
     del db
     del nt_db
 
