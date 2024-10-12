@@ -718,6 +718,39 @@ def parse_csv(out_path: str) -> DataFrame:
             )
 
 
+def get_valid_variants(df, target_to_taxon):
+    target_has_hit = set(df["target"].unique())
+    gene_targets = defaultdict(list)
+    valid_variants = defaultdict(list)
+
+    present_genes = set()
+    genes_to_check_variants = set()
+    gene_to_taxons = defaultdict(set)
+    for target, (gene, taxon, _) in target_to_taxon.items():
+        present_genes.add(gene)
+        if taxon not in gene_to_taxons[gene]:
+            gene_to_taxons[gene].add(taxon)
+        else:
+            genes_to_check_variants.add(gene)
+        gene_targets[gene].append((taxon, target))
+        
+    for gene in genes_to_check_variants:
+        taxon_to_targets = defaultdict(list)
+        for taxon, target in gene_targets[gene]:
+            taxon_to_targets[taxon].append(target)
+        
+        for taxon, targets in taxon_to_targets.items():
+            if len(targets) == 1:
+                continue
+            for target in targets:
+                if target in target_has_hit:
+                    continue
+                gene_targets[gene].remove((taxon, target))
+        
+        valid_variants[gene] = [target for _, target in gene_targets[gene]]
+
+    return valid_variants, present_genes
+
 def run_process(args: Namespace, input_path: str) -> bool:
     """Run the main process on the input path.
 
@@ -951,16 +984,8 @@ def run_process(args: Namespace, input_path: str) -> bool:
             fp.write(f"{k},{v}\n")
 
     # DOING VARIANT FILTER
-    target_has_hit = set(df["target"].unique())
-    valid_variants = defaultdict(list)
+    valid_variants, present_genes = get_valid_variants(df, target_to_taxon)
 
-    present_genes = set()
-    for target, (gene, _, _) in target_to_taxon.items():
-        if not target in target_has_hit:
-            continue
-        present_genes.add(gene)
-        valid_variants[gene].append(target)
-        
     printv(
         f"Got Targets. Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Writing top reference alignment.",
         args.verbose,
