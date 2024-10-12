@@ -572,7 +572,7 @@ def top_reference_realign(ortho_path, suffix, most_common_taxa, target_to_taxon,
     for header, seq in source:
         header = header.split(" ", 1)[0]
         key = f"{gene}|{header}"
-        if valid_variants and not key in valid_variants:
+        if not key in valid_variants:
             continue
         
         taxon = target_to_taxon.get(header) or target_to_taxon.get(key)
@@ -963,46 +963,15 @@ def run_process(args: Namespace, input_path: str) -> bool:
             
     # DOING VARIANT FILTER
     target_has_hit = set(df["target"].unique())
-    variant_filter = defaultdict(list)
+    valid_variants = defaultdict(list)
 
     present_genes = set()
-    for target, ref_tuple in target_to_taxon.items():
-        gene, ref_taxon, data_length = ref_tuple
-        if target in target_has_hit:
-            present_genes.add(gene)
-        if ref_taxon in top_refs:
-            variant_filter[gene].append((ref_taxon, target, data_length))
-
-    dict_items = list(variant_filter.items())
-    for gene, targets in dict_items:
-        target_taxons = [i[0] for i in targets]
-        if len(target_taxons) != len(list(set(target_taxons))):
-            this_counts = Counter(target_taxons)
-            out_targets = [i[1] for i in targets if this_counts[i[0]] == 1]
-            for target, count in this_counts.most_common():
-                if count == 1:
-                    continue
-
-                this_targets = [i for i in targets if i[0] == target]
-                variants_with_hits = sum(
-                    i[1] in target_has_hit for i in this_targets
-                )
-                all_variants_kicked = variants_with_hits == 0
-                if all_variants_kicked:
-                    reintroduce = max(this_targets, key=lambda x: x[2])
-                    out_targets.append(reintroduce[1])
-                    continue
-
-                out_targets.extend(
-                    [i[1] for i in this_targets if i[1] in target_has_hit],
-                )
-
-            variant_filter[gene] = out_targets
-        else:
-            variant_filter.pop(gene, -1)
-
-    variant_filter = {k: list(v) for k, v in variant_filter.items()}
-
+    for target, (gene, _, _) in target_to_taxon.items():
+        if not target in target_has_hit:
+            continue
+        present_genes.add(gene)
+        valid_variants[gene].append(target)
+        
     printv(
         f"Got Targets. Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Writing top reference alignment.",
         args.verbose,
@@ -1036,7 +1005,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     arguments = []
     for gene in present_genes:
         arguments.append(
-            (ortho_path, suffix, most_common, gene_target_to_taxa[gene], variant_filter.get(gene, []), top_path, gene, args.skip_realign, args.top_ref, args.align_method)
+            (ortho_path, suffix, most_common, gene_target_to_taxa[gene], valid_variants[gene], top_path, gene, args.skip_realign, args.top_ref, args.align_method)
         )
     if post_threads > 1:
         top_ref_result = pool.starmap(top_reference_realign, arguments)
@@ -1228,9 +1197,9 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
         db.put_bytes(
             "getall:target_variants",
-            json_encoder.encode(variant_filter),
+            json_encoder.encode(valid_variants),
         )
-        del variant_filter
+        del valid_variants
 
         head_to_seq = get_head_to_seq(nt_db, recipe, nodes_in_gene)
 
