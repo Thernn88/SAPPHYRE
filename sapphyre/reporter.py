@@ -367,7 +367,7 @@ def check_minimum_bp(hits, minimum_bp):
     return out_hits
 
 
-def do_dupe_check(hits, header_template, is_assembly_or_genome, dupe_debug_fp, taxa_id):
+def do_dupe_check(hits, header_template, is_assembly_or_genome, taxa_id):
     base_header_template = "{}_{}"
     header_mapped_x_times = Counter()
     base_header_mapped_already = {}
@@ -387,10 +387,6 @@ def do_dupe_check(hits, header_template, is_assembly_or_genome, dupe_debug_fp, t
             if nt_seq_hash in seq_mapped_already:
                 mapped_to = seq_mapped_already[nt_seq_hash]
                 dupes.setdefault(mapped_to, []).append(base_header)
-                if dupe_debug_fp:
-                    dupe_debug_fp.write(
-                        f"{hit.header}\n{hit.seq}\nis an nt dupe of\n{mapped_to}\n\n",
-                    )
                 hits[i] = None
                 continue
             seq_mapped_already[nt_seq_hash] = base_header
@@ -405,7 +401,6 @@ def do_dupe_check(hits, header_template, is_assembly_or_genome, dupe_debug_fp, t
                 ) = base_header_mapped_already[base_header]
                 # Dont kick if assembly
                 if not is_assembly_or_genome:
-                    already_mapped_header = already_mapped_hit.header
                     already_mapped_sequence = already_mapped_hit.aa_sequence
                     if len(hit.aa_sequence) > len(already_mapped_sequence):
                         if already_mapped_sequence in hit.aa_sequence:
@@ -413,10 +408,6 @@ def do_dupe_check(hits, header_template, is_assembly_or_genome, dupe_debug_fp, t
                             continue
                     else:
                         if hit.aa_sequence in already_mapped_sequence:
-                            if dupe_debug_fp:
-                                dupe_debug_fp.write(
-                                    f"{hit.header}\n{hit.aa_sequence}\nis an aa dupe of\n{already_mapped_header}\n\n",
-                                )
                             hits[i] = None
                             continue
 
@@ -465,18 +456,13 @@ def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     )
    
     this_aa_path = path.join(oargs.aa_out_path, oargs.gene + ".aa.fa")
-    debug_dupes = None
-    if oargs.debug:
-        makedirs(f"align_debug/{oargs.gene}", exist_ok=True)
-        debug_dupes = open(f"align_debug/{oargs.gene}/{oargs.taxa_id}.dupes", "w")
-
     header_template = "{}|{}|{}|NODE_{}|{}"
         
     translate_sequences(this_hits)
     
     this_hits = check_minimum_bp(this_hits, oargs.minimum_bp)
         
-    this_hits, this_gene_dupes = do_dupe_check(this_hits, header_template, oargs.is_assembly_or_genome, debug_dupes, oargs.taxa_id)
+    this_hits, this_gene_dupes = do_dupe_check(this_hits, header_template, oargs.is_assembly_or_genome, oargs.taxa_id)
         
     merge_log = []
     if oargs.is_genome or False: # Set False to disable
@@ -492,8 +478,6 @@ def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         this_hits,
         oargs.is_assembly_or_genome,
     )
-    if debug_dupes:
-        debug_dupes.close()
 
     aa_output = tag(aa_output, oargs.prepare_dupes, this_gene_dupes)
     nt_output = tag(nt_output, oargs.prepare_dupes, this_gene_dupes)
@@ -641,9 +625,6 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace):
                     ),
                 ),
             )
-    if args.debug:
-        makedirs("align_debug", exist_ok=True)
-
     if num_threads > 1:
         with Pool(num_threads) as pool:
             recovered = pool.starmap(merge_and_write, arguments, chunksize=1)
