@@ -726,29 +726,47 @@ def get_valid_variants(df, target_to_taxon):
     present_genes = set()
     genes_to_check_variants = set()
     gene_to_taxons = defaultdict(set)
+
+    # Collect genes and their associated taxa/targets
     for target, (gene, taxon, _) in target_to_taxon.items():
         present_genes.add(gene)
         if taxon not in gene_to_taxons[gene]:
             gene_to_taxons[gene].add(taxon)
         else:
-            genes_to_check_variants.add(gene)
+            genes_to_check_variants.add(gene)  # Gene needs variant checking
         gene_targets[gene].append((taxon, target))
-        
+
+    # Ensure that all genes, including those without variants, are labeled as valid
+    for gene in present_genes:
+        if gene not in genes_to_check_variants:
+            # If the gene does not need variant checking, all its targets are valid
+            valid_variants[gene] = [target for _, target in gene_targets[gene]]
+
+    # Re-enable variant processing for genes that need variant checking
     for gene in genes_to_check_variants:
         taxon_to_targets = defaultdict(list)
+        
+        # Group targets by taxon
         for taxon, target in gene_targets[gene]:
             taxon_to_targets[taxon].append(target)
         
+        # Process each taxon
         for taxon, targets in taxon_to_targets.items():
+            # If only one target, skip further processing
             if len(targets) == 1:
                 continue
+            
+            # If there are multiple targets, check if they are in target_has_hit
             for target in targets:
                 if target in target_has_hit:
                     continue
+                # Remove targets not found in target_has_hit
                 gene_targets[gene].remove((taxon, target))
         
+        # Store the valid variants for this gene
         valid_variants[gene] = [target for _, target in gene_targets[gene]]
 
+    # Return the valid variants and present genes
     return valid_variants, present_genes
 
 def run_process(args: Namespace, input_path: str) -> bool:
