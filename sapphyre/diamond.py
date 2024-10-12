@@ -982,7 +982,13 @@ def run_process(args: Namespace, input_path: str) -> bool:
         fp.write("Global count\n")
         for k, v in most_common:
             fp.write(f"{k},{v}\n")
+            
+    if args.top_ref == -1:
+        raw_top_ref = {k for k, _ in sorted(most_common, reverse=True, key=lambda x: x[1])}
+    else:
+        raw_top_ref = {k for k, _ in sorted(most_common, reverse=True, key=lambda x: x[1])[:args.top_ref]}
 
+    
     # DOING VARIANT FILTER
     valid_variants, present_genes = get_valid_variants(df, target_to_taxon)
 
@@ -1038,7 +1044,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     )
     
     df = df[df["evalue"] <= precision]
-    df = df[df["ref_taxa"].isin(quick_top_ref)] # Quickly filter out hits that are not in the top refs
+    df = df[df["ref_taxa"].isin(raw_top_ref)] # Quickly filter out hits that are not in the top refs
     headers = df["header"].unique()
     
     if len(headers) > 0:
