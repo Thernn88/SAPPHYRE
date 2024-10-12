@@ -486,7 +486,7 @@ def outlier_args(par):
     par.add_argument(
         "-ema",
         "--excise_minimum_ambig",
-        default=5,
+        default=6,
         type=int,
         help="Minimum ambigous characters for excise to consider a region for assembly",
     )
