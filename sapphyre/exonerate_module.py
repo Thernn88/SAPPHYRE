@@ -120,7 +120,7 @@ class exonerate:
             this_seqs = [(f"{hit.node}_{hit.frame}",hit.seq) for hit in diamond_hits]
             raw_path = path.join(self.orthoset_raw_path, gene_name+".fa")
             final_output = []
-            with open(f"{gene_name}.txt", "w") as result:
+            with open(path.join(self.exonerate_path, f"{gene_name}.txt"), "w") as result:
                 writeFasta(f.name, this_seqs)
                 f.flush()
                 command = [
@@ -294,7 +294,7 @@ def do_folder(folder, args):
             batch_result.append(exonerate_obj.run(batch))
     else:
         with Pool(args.processes) as pool:
-            batch_result.extend(pool.starmap(
+            batch_result.extend(pool.map(
                 exonerate(folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend, target_to_taxon, args.debug, args.entropy_percent).run,
                 batches,
             ))
