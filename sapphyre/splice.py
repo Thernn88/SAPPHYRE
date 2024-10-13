@@ -524,41 +524,41 @@ def do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, 
                                 sub_x_positions[sub_aa_nodes[node_index].header].add(x * 3)
 
 
-            #refresh aa
-            if sub_x_positions:
-                for node in sub_aa_nodes:
-                    node.sequence = del_cols(node.sequence, sub_x_positions[node.header])
-                    node.start, node.end = find_index_pair(node.sequence, "-")
-                    x_positions[node.header].update(sub_x_positions[node.header])
+            # #refresh aa
+            # if sub_x_positions:
+            #     for node in sub_aa_nodes:
+            #         node.sequence = del_cols(node.sequence, sub_x_positions[node.header])
+            #         node.start, node.end = find_index_pair(node.sequence, "-")
+            #         x_positions[node.header].update(sub_x_positions[node.header])
 
-            if no_dupes:
-                aa_sequences = [x.sequence for x in sub_aa_nodes if x.header not in kicked_headers]
-                consensus_seq = dumb_consensus(aa_sequences, excise_trim_consensus, 0)
-            else:
-                current_raw_aa = [(node.header, node.sequence) for node in sub_aa_nodes if node.header not in kicked_headers]
-                consensus_seq = make_duped_consensus(
-                    current_raw_aa, excise_trim_consensus
-                )
+            # if no_dupes:
+            #     aa_sequences = [x.sequence for x in sub_aa_nodes if x.header not in kicked_headers]
+            #     consensus_seq = dumb_consensus(aa_sequences, excise_trim_consensus, 0)
+            # else:
+            #     current_raw_aa = [(node.header, node.sequence) for node in sub_aa_nodes if node.header not in kicked_headers]
+            #     consensus_seq = make_duped_consensus(
+            #         current_raw_aa, excise_trim_consensus
+            #     )
   
 
-            for node in sub_aa_nodes:
-                i = None
-                for poss_i in range(node.start, node.start + 3):
-                    if node.sequence[poss_i] != consensus_seq[poss_i]:
-                        i = poss_i
+            # for node in sub_aa_nodes:
+            #     i = None
+            #     for poss_i in range(node.start, node.start + 3):
+            #         if node.sequence[poss_i] != consensus_seq[poss_i]:
+            #             i = poss_i
 
-                if not i is None:
-                    for x in range(node.start , i + 1):
-                        x_positions[node.header].add(x * 3)
+            #     if not i is None:
+            #         for x in range(node.start , i + 1):
+            #             x_positions[node.header].add(x * 3)
 
-                i = None
-                for poss_i in range(node.end -1, node.end - 4, -1):
-                    if node.sequence[poss_i] != consensus_seq[poss_i]:
-                        i = poss_i
+            #     i = None
+            #     for poss_i in range(node.end -1, node.end - 4, -1):
+            #         if node.sequence[poss_i] != consensus_seq[poss_i]:
+            #             i = poss_i
 
-                if not i is None:
-                    for x in range(i, node.end):
-                        x_positions[node.header].add(x * 3)
+            #     if not i is None:
+            #         for x in range(i, node.end):
+            #             x_positions[node.header].add(x * 3)
 
 
 def insert_gaps(input_string, positions, offset):
@@ -1182,6 +1182,7 @@ def log_excised_consensus(
     excise_consensus,
     excise_minimum_ambig,
     excise_rescue_match,
+    excise_trim_consensus,
     no_dupes,
     head_to_seq,
     original_coords,
@@ -1346,14 +1347,14 @@ def log_excised_consensus(
         if recursion_max <= 0:
             break
         
-    # do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, no_dupes, excise_trim_consensus)
-    # for node in aa_nodes:
-    #     if node.header in kicked_headers:
-    #         continue
+    do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, no_dupes, excise_trim_consensus)
+    for node in aa_nodes:
+        if node.header in kicked_headers:
+            continue
         
-    #     node.sequence = del_cols(node.sequence, x_positions[node.header])
-    #     node.nt_sequence = del_cols(node.nt_sequence, x_positions[node.header], True)
-    #     node.start, node.end = find_index_pair(node.sequence, "-")
+        node.sequence = del_cols(node.sequence, x_positions[node.header])
+        node.nt_sequence = del_cols(node.nt_sequence, x_positions[node.header], True)
+        node.start, node.end = find_index_pair(node.sequence, "-")
           
     move_dict = defaultdict(list)
     debug_out = []
@@ -1919,6 +1920,7 @@ def get_args(args, genes, head_to_seq, input_folder, output_folder, compress, no
             output_folder,
             compress,
             args.excise_consensus,
+            args.excise_trim_consensus,
             args.excise_minimum_ambig,
             args.excise_rescue_match,
             no_dupes,
