@@ -118,9 +118,9 @@ def main(args):
                     print("Error in Diamond.")
                 gc.collect()
             elif script == "exonerate":
-                from . import exonerate
+                from . import exonerate_module
 
-                if not exonerate.main(this_args):
+                if not exonerate_module.main(this_args):
                     print("Error in Exonerate.")
             elif script == "hmmsearch":
                 from . import hmmsearch
