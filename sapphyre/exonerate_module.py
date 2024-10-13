@@ -59,6 +59,40 @@ class Node:
 
 
 
+def calculate_new_frame(start, end, original_frame):
+    """
+    Calculate the new frame based on the original frame and the positions on the sequence.
+    
+    Parameters:
+    start (int): The start position of the new sequence (inclusive).
+    end (int): The end position of the new sequence (inclusive).
+    original_frame (int): The original reading frame (can be positive or negative).
+    
+    Returns:
+    int: The new frame adjusted for the given positions.
+    """
+    # Ensure the start is always less than or equal to end
+    if start > end:
+        start, end = end, start
+    
+    # Determine the shift in frame caused by moving from the start to end
+    frame_shift = (end - start) % 3
+    
+    # Adjust the original frame
+    if original_frame < 0:
+        # Negative strand, we reverse the frame shift
+        new_frame = original_frame - frame_shift
+        if new_frame < -3:
+            new_frame = -((abs(new_frame) % 3) + 1)
+    else:
+        # Positive strand, normal frame shift
+        new_frame = original_frame + frame_shift
+        if new_frame > 3:
+            new_frame = (new_frame % 3) or 3  # Reset to 1, 2, or 3 if it goes beyond 3
+    
+    return new_frame
+
+
 class exonerate:
     def __init__(self, folder, chomp_max_distance, orthoset_raw_path, exonerate_path, max_extend, target_to_taxon, debug, entropy_percent) -> None:
         self.folder = folder
@@ -70,8 +104,7 @@ class exonerate:
         self.debug = debug
         self.entropy_percent = entropy_percent
         
-    def run(self, batches, temp_source_file):
-        head_to_seq = dict(parseFasta(temp_source_file))
+    def run(self, batches):
         batch_result = []
         additions = 0
         for gene, hits in batches:
@@ -79,156 +112,106 @@ class exonerate:
             gene_name = gene.split(".")[0]
             print(gene)
             
-            diamond_ids = [hit.node for hit in diamond_hits]
-
-            diamond_ids.sort()
-            clusters = []
-            current_cluster = []
-
-            for child_index in diamond_ids:
-                if not current_cluster:
-                    current_cluster.append(child_index)
-                    current_index = child_index
-                else:
-                    if child_index - current_index <= self.chomp_max_distance:
-                        current_cluster.append(child_index)
-                        current_index = child_index
-                    else:
-                        if len(current_cluster) > 2:
-                            clusters.append((current_cluster[0], current_cluster[-1]))
-                        current_cluster = [child_index]
-                        current_index = child_index
-            
-            if current_cluster:
-                if len(current_cluster) > 2:
-                    clusters.append((current_cluster[0], current_cluster[-1]))
-            
-            cluster_sets = [set(range(a, b+1)) for a, b in clusters]
+            if self.debug:
+                f = open(path.join(self.exonerate_path, f"{gene_name}.fa"), "w")
+            else:
+                f = NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir())
+                
+            this_seqs = [(f"{hit.node}_{hit.frame}",hit.seq) for hit in diamond_hits]
             raw_path = path.join(self.orthoset_raw_path, gene_name+".fa")
-            # max_cluster = max(clusters, key=lambda x: x[1] - x[0])
-            # cluster = max_cluster
-            final_output = diamond_hits.copy()
+            final_output = []
+            with open(f"{gene_name}.txt", "w") as result:
+                writeFasta(f.name, this_seqs)
+                f.flush()
+                command = [
+                    "exonerate",
+                    "--geneticcode", "1",
+                    "--ryo", '>%ti|%tcb/%tce|%s|%qcb/%qce|%qi\n%tcs\n',
+                    "--score", "50",
+                    #"--model", "protein2genome",
+                    #"--showcigar", "no",
+                    "--showvulgar", "no",
+                    "--showalignment", "no",
+                    "--verbose", "0",
+                    raw_path,
+                    f.name
+                ]
+                                    
+                subprocess.run(command, stdout=result)
+                if path.getsize(result.name) == 0:
+                    continue
 
-            for cluster_i, cluster in enumerate(clusters):
-                cluster_seqs = []
-                
-                outside_cluster = set()
-                for x, cset in enumerate(cluster_sets):
-                    if x != cluster_i:
-                        outside_cluster.update(cset)
-                
-                cluster_start = cluster[0]
-                for i in range(self.max_extend):
-                    if cluster_start - i in outside_cluster:
-                        break
-                    cluster_start -= i
+                this_results = defaultdict(list)
+                for header, sequence in parseFasta(result.name, True):
+                    header, coords, score, ref_coords, ref_id = header.split("|")
                     
-                cluster_end = cluster[1]
-                for i in range(self.max_extend):
-                    if cluster_end + i in outside_cluster:
-                        break
-                    cluster_end += i
-                
-                for x, i in enumerate(range(cluster_start, cluster_end + 1)):
-                    if i in diamond_ids:
-                        continue
-                    if str(i) in head_to_seq:
-                        cluster_seqs.append((i, head_to_seq[str(i)]))
+                    header, original_frame = header.split("_")
+                    original_frame = int(original_frame)
+                    start, end = map(int, coords.split("/"))
+                    ref_start, ref_end = map(int, ref_coords.split("/"))
                     
-                cluster_name = path.join(self.exonerate_path, f"{gene_name}_{cluster[0]}-{cluster[1]}.txt")
-                if self.debug:
-                    f = open(path.join(self.exonerate_path, f"{gene_name}_{cluster[0]}-{cluster[1]}.fa"), "w")
-                else:
-                    f = NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir())
+                    frame = calculate_new_frame(start, end, original_frame)
+                      
+                    this_results[header].append(Node(int(header), sequence, start, end, int(score), frame, ref_start, ref_end, ref_id))
                     
-                with open(cluster_name, "w") as result:
-                    writeFasta(f.name, cluster_seqs)
-                    f.flush()
-                    command = [
-                        "exonerate",
-                        "--geneticcode", "1",
-                        "--ryo", '>%ti|%tcb/%tce|%s|%qcb/%qce|%qi\n%tcs\n',
-                        "--score", "50",
-                        #"--model", "protein2genome",
-                        #"--showcigar", "no",
-                        "--showvulgar", "no",
-                        "--showalignment", "no",
-                        "--verbose", "0",
-                        raw_path,
-                        f.name
-                    ]
-                                        
-                    subprocess.run(command, stdout=result)
-                    if path.getsize(result.name) == 0:
-                        continue
-                    
-                    this_results = defaultdict(list)
-                    for header, sequence in parseFasta(result.name, True):
-                        header, coords, score, ref_coords, ref_id = header.split("|")
-                        start, end = map(int, coords.split("/"))
-                        ref_start, ref_end = map(int, ref_coords.split("/"))
-                        if start > end:
-                            start, end = end, start
-                            frame = -((start % 3) + 1)
-                        else:
-                            frame = (start % 3) + 1
-                        this_results[header].append(Node(int(header), sequence, start, end, int(score), frame, ref_start, ref_end, ref_id))
-                        
-                    this_nodes = []
-                    for header, nodes in this_results.items():
-                        for frame in range(1, 4):
-                            frame_nodes = [node for node in nodes if abs(node.frame) == frame]
-                            if frame_nodes:
-                                this_nodes.append(max(frame_nodes, key=lambda x: x.score))
-          
-                    # kicked_ids = set()
-                    # overlap_min = 0.1
-                    # for node_a, node_b in combinations(this_nodes, 2):
-                    #     if node_a.head in kicked_ids or node_b.head in kicked_ids:
-                    #         continue
-                    #     overlap = get_overlap(node_a.start, node_a.end, node_b.start, node_b.end, 1)
-                    #     if overlap:
-                    #         amount = overlap[1] - overlap[0]
-                    #         percent = amount / min((node_a.end - node_a.start), (node_b.end - node_b.start))
-
-                            
-                    #         if percent > overlap_min:
-                    #             if node_a.score > node_b.score:
-                    #                 kicked_ids.add(node_b.head)
-                    #             else:
-                    #                 kicked_ids.add(node_a.head)
-                    
-                    # this_nodes = [node for node in this_nodes if node.head not in kicked_ids]
-                    
-                    sequence_template = ">{}|{}\n{}\n"
-                    as_fasta = [sequence_template.format(node.head, node.frame, node.seq) for node in this_nodes]
-                    passing_fasta = entropy_filter(as_fasta, self.entropy_percent)
-                    passing_headers = set()
-                    for header, _ in passing_fasta:
-                        passing_headers.add(header.strip()[1:])
-                            
-
-                    for node in this_nodes:
-                        if not f"{node.head}|{node.frame}" in passing_headers:
+                this_nodes = []
+                for header, nodes in this_results.items():
+                    for frame in range(-3, 4):
+                        if frame == 0:
                             continue
                         
-                        target = node.ref_name
-                        key = f"{gene_name}|{target}"
+                        frame_nodes = [node for node in nodes if abs(node.frame) == frame]
+                        if frame_nodes:
+                            this_nodes.append(max(frame_nodes, key=lambda x: x.score))
+        
+                # kicked_ids = set()
+                # overlap_min = 0.1
+                # for node_a, node_b in combinations(this_nodes, 2):
+                #     if node_a.head in kicked_ids or node_b.head in kicked_ids:
+                #         continue
+                #     overlap = get_overlap(node_a.start, node_a.end, node_b.start, node_b.end, 1)
+                #     if overlap:
+                #         amount = overlap[1] - overlap[0]
+                #         percent = amount / min((node_a.end - node_a.start), (node_b.end - node_b.start))
+
                         
-                        _, ref, _ = self.target_to_taxon[key]
-                        additions += 1
-                        final_output.append(Hit(
-                            node=node.head,
-                            frame=node.frame,
-                            evalue=0,
-                            qstart=node.start,
-                            qend=node.end,
-                            gene=gene_name,
-                            query=ref,
-                            uid=round(time()),
-                            seq = node.seq
-                        ))
-                del f
+                #         if percent > overlap_min:
+                #             if node_a.score > node_b.score:
+                #                 kicked_ids.add(node_b.head)
+                #             else:
+                #                 kicked_ids.add(node_a.head)
+                
+                # this_nodes = [node for node in this_nodes if node.head not in kicked_ids]
+                
+                sequence_template = ">{}|{}\n{}\n"
+                as_fasta = [sequence_template.format(node.head, node.frame, node.seq) for node in this_nodes]
+                passing_fasta = entropy_filter(as_fasta, self.entropy_percent)
+                passing_headers = set()
+                for header, _ in passing_fasta:
+                    passing_headers.add(header.strip()[1:])
+                        
+
+                for node in this_nodes:
+                    if not f"{node.head}|{node.frame}" in passing_headers:
+                        continue
+                    
+                    target = node.ref_name
+                    key = f"{gene_name}|{target}"
+                    
+                    _, ref, _ = self.target_to_taxon[key]
+                    additions += 1
+                    final_output.append(Hit(
+                        node=node.head,
+                        frame=node.frame,
+                        evalue=0,
+                        qstart=node.start,
+                        qend=node.end,
+                        gene=gene_name,
+                        query=ref,
+                        uid=round(time()),
+                        seq = node.seq
+                    ))
+            del f
             batch_result.append((gene, final_output))
         return batch_result, additions
 
@@ -284,12 +267,6 @@ def do_folder(folder, args):
     # for gene in listdir(aa_input):
     #     genes.append(gene)
     
-    nt_db_path = path.join(folder, "rocksdb", "sequences", "nt")
-    nt_db = RocksDB(nt_db_path)
-    head_to_seq = get_head_to_seq(nt_db)
-
-    temp_source_file = NamedTemporaryFile(dir=gettempdir(), prefix="seqs_", suffix=".fa")
-    writeFasta(temp_source_file.name, head_to_seq.items())
 
     orthoset_path = path.join(args.orthoset_input, args.orthoset)
     orthoset_raw_path = path.join(orthoset_path, "raw")
@@ -300,7 +277,7 @@ def do_folder(folder, args):
     )
     
     per_batch = ceil(len(diamond_genes) / args.processes)
-    batches = [(transcripts_mapped_to[i : i + per_batch], temp_source_file.name) for i in range(0, len(diamond_genes), per_batch)]
+    batches = [transcripts_mapped_to[i : i + per_batch] for i in range(0, len(diamond_genes), per_batch)]
     
     orthoset_db_path = path.join(args.orthoset_input, args.orthoset, "rocksdb")
     orthoset_db = RocksDB(orthoset_db_path)
@@ -314,7 +291,7 @@ def do_folder(folder, args):
     if args.processes <= 1:
         exonerate_obj = exonerate(folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend, target_to_taxon, args.debug, args.entropy_percent)
         for batch in batches:
-            batch_result.append(exonerate_obj.run(*batch))
+            batch_result.append(exonerate_obj.run(batch))
     else:
         with Pool(args.processes) as pool:
             batch_result.extend(pool.starmap(
@@ -329,9 +306,8 @@ def do_folder(folder, args):
         for gene, hits in batchr:
             hits_db.put_bytes(f"get_exoneratehits:{gene}", encoder.encode(hits))
 
-    printv(f"Added {total_new_seqs} new sequences", args.verbose, 1)
+    printv(f"Found {total_new_seqs} sequences", args.verbose, 1)
 
-    del temp_source_file
 
     return True    
 
