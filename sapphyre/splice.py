@@ -524,41 +524,41 @@ def do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, 
                                 sub_x_positions[sub_aa_nodes[node_index].header].add(x * 3)
 
 
-            #refresh aa
-            if sub_x_positions:
-                for node in sub_aa_nodes:
-                    node.sequence = del_cols(node.sequence, sub_x_positions[node.header])
-                    node.start, node.end = find_index_pair(node.sequence, "-")
-                    x_positions[node.header].update(sub_x_positions[node.header])
+            # #refresh aa
+            # if sub_x_positions:
+            #     for node in sub_aa_nodes:
+            #         node.sequence = del_cols(node.sequence, sub_x_positions[node.header])
+            #         node.start, node.end = find_index_pair(node.sequence, "-")
+            #         x_positions[node.header].update(sub_x_positions[node.header])
 
-            if no_dupes:
-                aa_sequences = [x.sequence for x in sub_aa_nodes if x.header not in kicked_headers]
-                consensus_seq = dumb_consensus(aa_sequences, excise_trim_consensus, 0)
-            else:
-                current_raw_aa = [(node.header, node.sequence) for node in sub_aa_nodes if node.header not in kicked_headers]
-                consensus_seq = make_duped_consensus(
-                    current_raw_aa, excise_trim_consensus
-                )
+            # if no_dupes:
+            #     aa_sequences = [x.sequence for x in sub_aa_nodes if x.header not in kicked_headers]
+            #     consensus_seq = dumb_consensus(aa_sequences, excise_trim_consensus, 0)
+            # else:
+            #     current_raw_aa = [(node.header, node.sequence) for node in sub_aa_nodes if node.header not in kicked_headers]
+            #     consensus_seq = make_duped_consensus(
+            #         current_raw_aa, excise_trim_consensus
+            #     )
   
 
-            for node in sub_aa_nodes:
-                i = None
-                for poss_i in range(node.start, node.start + 3):
-                    if node.sequence[poss_i] != consensus_seq[poss_i]:
-                        i = poss_i
+            # for node in sub_aa_nodes:
+            #     i = None
+            #     for poss_i in range(node.start, node.start + 3):
+            #         if node.sequence[poss_i] != consensus_seq[poss_i]:
+            #             i = poss_i
 
-                if not i is None:
-                    for x in range(node.start , i + 1):
-                        x_positions[node.header].add(x * 3)
+            #     if not i is None:
+            #         for x in range(node.start , i + 1):
+            #             x_positions[node.header].add(x * 3)
 
-                i = None
-                for poss_i in range(node.end -1, node.end - 4, -1):
-                    if node.sequence[poss_i] != consensus_seq[poss_i]:
-                        i = poss_i
+            #     i = None
+            #     for poss_i in range(node.end -1, node.end - 4, -1):
+            #         if node.sequence[poss_i] != consensus_seq[poss_i]:
+            #             i = poss_i
 
-                if not i is None:
-                    for x in range(i, node.end):
-                        x_positions[node.header].add(x * 3)
+            #     if not i is None:
+            #         for x in range(i, node.end):
+            #             x_positions[node.header].add(x * 3)
 
 
 def insert_gaps(input_string, positions, offset):
@@ -1182,6 +1182,7 @@ def log_excised_consensus(
     excise_consensus,
     excise_minimum_ambig,
     excise_rescue_match,
+    excise_trim_consensus,
     no_dupes,
     head_to_seq,
     original_coords,
@@ -1346,14 +1347,14 @@ def log_excised_consensus(
         if recursion_max <= 0:
             break
         
-    # do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, no_dupes, excise_trim_consensus)
-    # for node in aa_nodes:
-    #     if node.header in kicked_headers:
-    #         continue
+    do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, no_dupes, excise_trim_consensus)
+    for node in aa_nodes:
+        if node.header in kicked_headers:
+            continue
         
-    #     node.sequence = del_cols(node.sequence, x_positions[node.header])
-    #     node.nt_sequence = del_cols(node.nt_sequence, x_positions[node.header], True)
-    #     node.start, node.end = find_index_pair(node.sequence, "-")
+        node.sequence = del_cols(node.sequence, x_positions[node.header])
+        node.nt_sequence = del_cols(node.nt_sequence, x_positions[node.header], True)
+        node.start, node.end = find_index_pair(node.sequence, "-")
           
     move_dict = defaultdict(list)
     debug_out = []
@@ -1742,7 +1743,7 @@ def log_excised_consensus(
                                     ends[parent] = input_len
                                     
                                 strand = "+" if prev_node.frame > 0 else "-"
-                                gff_out[parent][prev_id] = ((prev_start), f"{parent}\tSapphyre\texon\t{prev_start}\t{prev_end}\t.\t{strand}\t.\tDescription={prev_id};Name={gene_name};ID={gene_name};Note={prev_node.frame};")
+                                gff_out[parent][prev_id] = (prev_start, prev_id, f"{parent}\tSapphyre\texon\t{prev_start}\t{prev_end}\t.\t{strand}\t.\tParent={prev_id};Note={prev_node.frame};")
                                 
                             node_id = get_id(node.header)
                             tup = original_coords.get(node_id.split("&&")[0].split("_")[0], None)
@@ -1756,7 +1757,7 @@ def log_excised_consensus(
                                     ends[parent] = input_len
                                     
                                 strand = "+" if node.frame > 0 else "-"
-                                gff_out[parent][node_id] = ((node_start), f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tDescription={node_id};Name={gene_name};ID={gene_name};Note={node.frame};")
+                                gff_out[parent][node_id] = (node_start, node_id, f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tParent={node_id};Note={node.frame};")
                 if True and not splice_found:    
                     scan_log.append(f">{prev_node.header}_orf")
                     # print(prev_start_index, node_end_index)
@@ -1881,8 +1882,8 @@ def log_excised_consensus(
             final_nt_out.append((header, seq))
         writeFasta(nt_out, final_nt_out, compress_intermediates)
 
-        return log_output, had_region, False, False, gene, len(kicked_headers), this_rescues, scan_log, combo_log, multi_log, ends, gff_out, debug_out, rescue_jank_log
-    return log_output, had_region, gene, False, None, len(kicked_headers), this_rescues, scan_log, combo_log, multi_log, ends, gff_out, debug_out, rescue_jank_log
+        return log_output, had_region, False, False, gene, len(kicked_headers), this_rescues, scan_log, combo_log, multi_log, ends, gff_out, debug_out, rescue_jank_log, gene_name, cluster_sets
+    return log_output, had_region, gene, False, None, len(kicked_headers), this_rescues, scan_log, combo_log, multi_log, ends, gff_out, debug_out, rescue_jank_log, gene_name, cluster_sets
 
 ### USED BY __main__
 def do_move(from_, to_):
@@ -1919,6 +1920,7 @@ def get_args(args, genes, head_to_seq, input_folder, output_folder, compress, no
             output_folder,
             compress,
             args.excise_consensus,
+            args.excise_trim_consensus,
             args.excise_minimum_ambig,
             args.excise_rescue_match,
             no_dupes,
@@ -2034,7 +2036,12 @@ def main(args, sub_dir):
     parent_gff_output = defaultdict(dict)
     end_bp = {}
 
-    for glog, ghas_ambig, ghas_no_resolution, gcoverage_kick, g_has_resolution, gkicked_seq, grescues, slog, clog, dlog, input_lengths, gff_result, debug_lines, jlog in results:
+    clusters_to_gene = []
+    cluster_index = 1
+    for glog, ghas_ambig, ghas_no_resolution, gcoverage_kick, g_has_resolution, gkicked_seq, grescues, slog, clog, dlog, input_lengths, gff_result, debug_lines, jlog, gene, cluster_sets in results:
+        for set in cluster_sets: # TODO Instead of just making a tuple of each set make a dict of each id
+            clusters_to_gene.append((set, gene, cluster_index))
+            cluster_index += 1
         for parent, node_values in gff_result.items():
             for id, value in node_values.items():
                 parent_gff_output[parent][id] = value
@@ -2075,10 +2082,15 @@ def main(args, sub_dir):
                 if line.startswith("#"):
                     continue
                 line = line.strip().split("\t")
-                #AGOUTI_SCAF_51|6429119BP|CTG001940_1,CTG001110_1,CTG004120_1	Sapphyre	exon	4815540	4815717	.	-	.	Name=136854;Parent=1.aa.fa;Note=-2;
                 parent = line[0]
-                id = line[-1].split(";")[0].split("=")[1]
                 start = int(line[3])
+                
+                fields = line[-1].split(";")
+                for field in fields:
+                    if field.startswith("Parent="):
+                        id = field.split("=")[1]
+                        break
+                
                 if not parent in parent_gff_output:
                     continue
                 
@@ -2086,19 +2098,29 @@ def main(args, sub_dir):
                     continue
                 
                 if parent_gff_output[parent][id] is None:
-                    parent_gff_output[parent][id] = (start, "\t".join(line))
+                    parent_gff_output[parent][id] = (start, id, "\t".join(line))
     else:
         printv("No reporter coords found. Unable to fill in the blank.", args.verbose, 0)
     
     gff_output= []
     for parent, rows in parent_gff_output.items():
-            
+        
         rows = [i for i in rows.values() if i]
         end = end_bp[parent]
         gff_output.append(f"##sequence-region\t{parent}\t{1}\t{end}")
         rows.sort(key = lambda x: (x[0]))
-        gff_output.extend(i[1] for i in rows)
-    
+        for row in rows:
+            _, id, line = row
+            new_id = None
+            for set, gene, index in clusters_to_gene:
+                if within_distance(node_to_ids(id), set, 0):
+                    crange = f"{min(set)}-{max(set)}"
+                    new_id = f"{gene}_{index}"
+            if new_id is None:
+                print(f"WARNING: No cluster found for {id}")
+                
+            gff_output.append(line+f"ID={new_id};Name={new_id};Description={crange};")
+
     if gff_output:
         with open(path.join(coords_path, "splice.gff"), "w") as fp:
             fp.write("\n".join(gff_output))

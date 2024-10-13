@@ -59,7 +59,10 @@ def main(argsobj):
         else:
             printv(f"Processing: {folder}", argsobj.verbose)
             rmtree(os.path.join(folder, "outlier"), ignore_errors=True)
-            from_folder = "trimmed"
+            if argsobj.gene_finding_mode == 2:
+                from_folder = "align"
+            else:
+                from_folder = "trimmed"
 
             printv("Blosum62 Outlier Removal.", argsobj.verbose)
             blosum_passed = blosum.main(this_args, is_genome, from_folder)

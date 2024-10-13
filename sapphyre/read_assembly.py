@@ -468,7 +468,7 @@ def do_gene(gene, aa_input, nt_input, aa_output, nt_output, no_dupes, compress, 
     contig_depth_reward = 0.001 # Reward for each child a contig has
     tie_breaker_percent = 1.15 # If top contig scores are within 15% trigger tie breaker which merges non ambig reads into the contigs to see if they can continue merging
     min_contig_bp = 100 # Minimum contig bp
-    contig_read_overlap = 0.01 # Min overlap between reads and contigs for kick
+    contig_read_overlap = 0.1 # Min overlap between reads and contigs for kick
     min_overlap_percent = 0.15 # Min overlap percent for reads in simple assembly
     min_overlap_chars = 10 # Min overlap chars for reads in simple assembly
     min_ambig_overlap_chars = 10 # Min overlap chars for reads into regions

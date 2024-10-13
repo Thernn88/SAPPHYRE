@@ -360,36 +360,6 @@ def cull(records, percent, has_nt):
 
     return cull_result, out
 
-
-def generate_hmm(set: Sequence_Set, processes, verbosity, set_path):
-    """
-    Generates the .hmm files for each gene in the set.
-    """
-    aligned_sequences = set.get_aligned_sequences()
-    hmm_path = set_path.joinpath("hmms")
-    hmm_path.mkdir(exist_ok=True)
-
-    arguments = []
-    for gene, sequences in aligned_sequences.items():
-        arguments.append((gene, sequences, hmm_path, verbosity))
-
-    with Pool(processes) as pool:
-        pool.starmap(hmm_function, arguments)
-
-
-def hmm_function(gene, sequences, hmm_path, verbosity):
-    """
-    Calls the hmm build function and returns the result.
-    """
-    hmm_file = hmm_path.joinpath(gene + ".hmm")
-    printv(f"Generating: {gene}", verbosity, 2)
-    with NamedTemporaryFile(mode="w") as fp:
-        fp.write("".join([i.seq_with_regen_data() for i in sequences]))
-        fp.flush()
-
-        os.system(f"hmmbuild '{hmm_file}' '{fp.name}'")
-
-
 def generate_raw(
     set: Sequence_Set,
     overwrite,
@@ -1407,7 +1377,6 @@ def main(args):
     do_align = args.align or args.all
     do_count = args.count or args.all
     do_diamond = args.diamond or args.all
-    do_hmm = args.hmmer or args.all
     no_halves = args.no_halves
     skip_deviation_filter = args.skip_deviation_filter
     realign = args.realign
@@ -1556,7 +1525,7 @@ def main(args):
         raw_nt_path,
     )
 
-    if do_align or do_cull or do_hmm:
+    if do_align or do_cull:
         printv("Generating aln", verbosity)
         this_set = generate_aln(
             this_set,
@@ -1579,9 +1548,6 @@ def main(args):
             args.debug,
             args.skip_splice,
         )
-    if do_hmm:
-        generate_hmm(this_set, overwrite, processes, verbosity, set_path)
-
     if do_diamond:
         printv("Making Diamond DB", verbosity)
         target_to_taxon, taxon_to_sequences = make_diamonddb(

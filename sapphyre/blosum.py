@@ -279,7 +279,7 @@ def compare_means(
             #if IQR <= .2: margin = .025
             #if IQR <= .1: margin = .05
             IQR = max(IQR, 0.02)
-            upper_bound = Q3 + (threshold * IQR)
+            upper_bound = min (Q3 + (threshold * IQR),.75)
         else:  # if no ref_distances, reject
             upper_bound = "N/A"
             IQR = "N/A"
@@ -791,6 +791,9 @@ def do_folder(folder, args, is_genome, gene_source):
     if wanted_aa_path.exists():
         aa_input = wanted_aa_path
         nt_input = Path(folder, "outlier", gene_source, "nt")
+    elif gene_source == "align":
+        aa_input = Path(folder, "align")
+        nt_input = Path(folder, "nt_aligned")
     elif gene_source == "trimmed" or gene_source == "motif":
         aa_input = Path(folder, gene_source, "aa")
         nt_input = Path(folder, gene_source, "nt")
@@ -798,9 +801,6 @@ def do_folder(folder, args, is_genome, gene_source):
             if gene_source == "motif":
                 aa_input = Path(folder, "trimmed", "aa")
                 nt_input = Path(folder, "trimmed", "nt")
-            else:
-                aa_input = Path(folder, "align")
-                nt_input = Path(folder, "nt_aligned")
     rocks_db_path = Path(folder, "rocksdb", "sequences", "nt")
     if not rocks_db_path.exists():
         err = f"cannot find dupe databases for {folder}"

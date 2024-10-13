@@ -439,6 +439,7 @@ def process_lines(pargs: ProcessingArgs) -> tuple[dict[str, Hit], int, list[str]
                         continue
                     if hit.gene in gene_done:
                         continue
+                    gene_done.add(hit.gene)
                     output[hit.gene].append(hit)
             else:
                 top_hit = hits[indices[0]]
@@ -717,6 +718,57 @@ def parse_csv(out_path: str) -> DataFrame:
             )
 
 
+def get_valid_variants(df, target_to_taxon):
+    target_has_hit = set(df["target"].unique())
+    gene_targets = defaultdict(list)
+    valid_variants = defaultdict(list)
+
+    present_genes = set()
+    genes_to_check_variants = set()
+    gene_to_taxons = defaultdict(set)
+
+    # Collect genes and their associated taxa/targets
+    for target, (gene, taxon, _) in target_to_taxon.items():
+        present_genes.add(gene)
+        if taxon not in gene_to_taxons[gene]:
+            gene_to_taxons[gene].add(taxon)
+        else:
+            genes_to_check_variants.add(gene)  # Gene needs variant checking
+        gene_targets[gene].append((taxon, target))
+
+    # Ensure that all genes, including those without variants, are labeled as valid
+    for gene in present_genes:
+        if gene not in genes_to_check_variants:
+            # If the gene does not need variant checking, all its targets are valid
+            valid_variants[gene] = [target for _, target in gene_targets[gene]]
+
+    # Re-enable variant processing for genes that need variant checking
+    for gene in genes_to_check_variants:
+        taxon_to_targets = defaultdict(list)
+        
+        # Group targets by taxon
+        for taxon, target in gene_targets[gene]:
+            taxon_to_targets[taxon].append(target)
+        
+        # Process each taxon
+        for taxon, targets in taxon_to_targets.items():
+            # If only one target, skip further processing
+            if len(targets) == 1:
+                continue
+            
+            # If there are multiple targets, check if they are in target_has_hit
+            for target in targets:
+                if target in target_has_hit:
+                    continue
+                # Remove targets not found in target_has_hit
+                gene_targets[gene].remove((taxon, target))
+        
+        # Store the valid variants for this gene
+        valid_variants[gene] = [target for _, target in gene_targets[gene]]
+
+    # Return the valid variants and present genes
+    return valid_variants, present_genes
+
 def run_process(args: Namespace, input_path: str) -> bool:
     """Run the main process on the input path.
 
@@ -944,33 +996,20 @@ def run_process(args: Namespace, input_path: str) -> bool:
     print("Average evalue: ", df["evalue"].mean())
     most_common = count_taxa(df, gfm, genome_score_filter, is_assembly_or_genome)
     
-    top_refs = set()
     with open(path.join(input_path, "diamond_top_ref.csv"), "w") as fp:
         fp.write("Global count\n")
         for k, v in most_common:
             fp.write(f"{k},{v}\n")
-
-    if args.top_ref == -1:
-        target_count = 0
-    else:
-        target_count = min(most_common[0:args.top_ref], key=lambda x: x[1])[1]
-
-    #target_count = min_count * (1 - args.top_ref)
-    for taxa, count in most_common:
-        if count >= target_count:
-            top_refs.add(taxa)
             
-    # DOING VARIANT FILTER
-    target_has_hit = set(df["target"].unique())
-    valid_variants = defaultdict(list)
+    if args.top_ref == -1:
+        raw_top_ref = {k for k, _ in sorted(most_common, reverse=True, key=lambda x: x[1])}
+    else:
+        raw_top_ref = {k for k, _ in sorted(most_common, reverse=True, key=lambda x: x[1])[:args.top_ref]}
 
-    present_genes = set()
-    for target, (gene, _, _) in target_to_taxon.items():
-        if not target in target_has_hit:
-            continue
-        present_genes.add(gene)
-        valid_variants[gene].append(target)
-        
+    
+    # DOING VARIANT FILTER
+    valid_variants, present_genes = get_valid_variants(df, target_to_taxon)
+
     printv(
         f"Got Targets. Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Writing top reference alignment.",
         args.verbose,
@@ -1023,7 +1062,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     )
     
     df = df[df["evalue"] <= precision]
-    df = df[df["ref_taxa"].isin(quick_top_ref)] # Quickly filter out hits that are not in the top refs
+    df = df[df["ref_taxa"].isin(raw_top_ref)] # Quickly filter out hits that are not in the top refs
     headers = df["header"].unique()
     
     if len(headers) > 0:
@@ -1320,7 +1359,6 @@ def run_process(args: Namespace, input_path: str) -> bool:
         data = json_encoder.encode(gene_dupe_count)  # type=dict[str, dict[str, int]]
         nt_db.put_bytes(key, data)
 
-    del top_refs
     del db
     del nt_db
 
