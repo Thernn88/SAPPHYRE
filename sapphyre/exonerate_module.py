@@ -14,7 +14,7 @@ from sapphyre_tools import (
 )
 from multiprocessing import Pool
 from msgspec import json
-from .diamond import ReporterHit as Hit
+from .hmmsearch import HmmHit as Hit
 
 def get_head_to_seq(nt_db):
     """Get a dictionary of headers to sequences.
@@ -200,8 +200,10 @@ class exonerate:
                     
                     _, ref, _ = self.target_to_taxon[key]
                     additions += 1
+                    
                     final_output.append(Hit(
                         node=node.head,
+                        score=node.score,
                         frame=node.frame,
                         evalue=0,
                         qstart=node.start,
@@ -236,7 +238,7 @@ def get_diamondhits(
 
     gene_based_results = []
     for gene in genes_to_process:
-        gene_result = rocks_hits_db.get_bytes(f"gethits:{gene}")
+        gene_result = rocks_hits_db.get_bytes(f"gethmmhits:{gene}")
         if not gene_result:
             printv(
                 f"WARNING: No hits found for {gene}. If you are using a gene list file this may be a non-issue",

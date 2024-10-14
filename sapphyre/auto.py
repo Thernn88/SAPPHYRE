@@ -34,8 +34,8 @@ def main(args):
     default_config = {
         "prepare": get_args(prepare_args),
         "diamond": get_args(diamond_args),
-        "exonerate": get_args(exonerate_args),
         "hmmsearch": get_args(hmmsearch_args),
+        "exonerate": get_args(exonerate_args),
         "reporter": get_args(reporter_args),
         "align": get_args(align_args),
         "pal2nal": get_args(pal2nal_args),
@@ -117,17 +117,17 @@ def main(args):
                 if not diamond.main(this_args):
                     print("Error in Diamond.")
                 gc.collect()
-            elif script == "exonerate":
-                from . import exonerate_module
-
-                if not exonerate_module.main(this_args):
-                    print("Error in Exonerate.")
             elif script == "hmmsearch":
                 from . import hmmsearch
 
                 if not hmmsearch.main(this_args):
                     print("Error in Hmmsearch.")
                 gc.collect()
+            elif script == "exonerate":
+                from . import exonerate_module
+
+                if not exonerate_module.main(this_args):
+                    print("Error in Exonerate.")
             elif script == "reporter":
                 from . import reporter
 

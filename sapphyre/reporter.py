@@ -79,7 +79,7 @@ def get_hmmresults(
 
     gene_based_results = []
     for gene in genes_to_process:
-        gene_result = rocks_hits_db.get_bytes(f"gethmmhits:{gene}")
+        gene_result = rocks_hits_db.get_bytes(f"get_exoneratehits:{gene}")
         if not gene_result:
             printv(
                 f"WARNING: No hits found for {gene}. If you are using a gene list file this may be a non-issue",
