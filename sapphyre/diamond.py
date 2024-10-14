@@ -795,7 +795,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     # Default min orf value
     NORMAL_MIN_ORF = 15
     
-    gfm = args.gene_finding_mode == 1
+    gfm = args.gene_finding_mode > 0
     if gfm:
         print("Gene finding mode is enabled. Skipping top reference filters.")
         args.genome_score_filter = 0.0
