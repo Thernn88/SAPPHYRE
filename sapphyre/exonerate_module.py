@@ -128,7 +128,7 @@ class exonerate:
                     "--geneticcode", "1",
                     "--ryo", '>%ti|%tcb/%tce|%s|%qcb/%qce|%qi\n%tcs\n',
                     "--score", "50",
-                    #"--model", "protein2genome",
+                    "--model", "protein2genome",
                     #"--showcigar", "no",
                     "--showvulgar", "no",
                     "--showalignment", "no",
