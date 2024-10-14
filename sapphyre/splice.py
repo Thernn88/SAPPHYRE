@@ -2113,9 +2113,14 @@ def main(args, sub_dir):
             _, id, line = row
             new_id = None
             for set, gene, index in clusters_to_gene:
-                if within_distance(node_to_ids(id), set, 0):
+                if set is None:
+                    crange = "None"
+                    new_id = f"{gene}_{index}"
+                    break
+                elif within_distance(node_to_ids(id), set, 0):
                     crange = f"{min(set)}-{max(set)}"
                     new_id = f"{gene}_{index}"
+                    break
             if new_id is None:
                 print(f"WARNING: No cluster found for {id}")
                 
