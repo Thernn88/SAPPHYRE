@@ -463,6 +463,8 @@ def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         
     this_hits, this_gene_dupes = do_dupe_check(this_hits, header_template, oargs.is_assembly_or_genome, oargs.taxa_id)
         
+    before_merge_count = len(this_hits)
+        
     merge_log = []
     if oargs.is_genome or False: # Set False to disable
         this_hits, merge_log = merge_hits(this_hits)
@@ -500,7 +502,7 @@ def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.verbose,
         2,
     )
-    return oargs.gene, len(aa_output), header_to_score, gene_nodes, [(hit.parent, hit.get_merge_header(), hit.chomp_start, hit.chomp_end, hit.strand, hit.frame) for hit in this_hits], merge_log
+    return oargs.gene, before_merge_count, header_to_score, gene_nodes, [(hit.parent, hit.get_merge_header(), hit.chomp_start, hit.chomp_end, hit.strand, hit.frame) for hit in this_hits], merge_log
 
 
 def get_prepare_dupes(rocks_nt_db: RocksDB) -> dict[str, dict[str, int]]:
