@@ -117,7 +117,7 @@ class exonerate:
             else:
                 f = NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir())
                 
-            this_seqs = [(f"{hit.node}_{hit.frame}",hit.seq) for hit in diamond_hits]
+            this_seqs = [(f"{hit.node}_{hit.frame}_{hit.qstart}_{hit.qend}",hit.seq) for hit in diamond_hits]
             raw_path = path.join(self.orthoset_raw_path, gene_name+".fa")
             final_output = []
             with open(path.join(self.exonerate_path, f"{gene_name}.txt"), "w") as result:
@@ -145,14 +145,15 @@ class exonerate:
                 for header, sequence in parseFasta(result.name, True):
                     header, coords, score, ref_coords, ref_id = header.split("|")
                     
-                    header, original_frame = header.split("_")
-                    original_frame = int(original_frame)
+                    header, original_frame, original_start, original_end = header.split("_")
+                    original_frame, original_start, original_end = map(int, (original_frame, original_start, original_end))
                     start, end = map(int, coords.split("/"))
                     ref_start, ref_end = map(int, ref_coords.split("/"))
                     
                     frame = calculate_new_frame(start, end, original_frame)
                       
-                    this_results[header].append(Node(int(header), sequence, start, end, int(score), frame, ref_start, ref_end, ref_id))
+                    
+                    this_results[header].append(Node(int(header), sequence, start + original_start, end + original_start, int(score), frame, ref_start, ref_end, ref_id))
                     
                 this_nodes = []
                 for header, nodes in this_results.items():
@@ -191,7 +192,7 @@ class exonerate:
                     passing_headers.add(header.strip()[1:])
                         
 
-                for node in this_nodes:
+                for node in this_nodes:      
                     if not f"{node.head}|{node.frame}" in passing_headers:
                         continue
                     
