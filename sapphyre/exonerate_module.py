@@ -303,11 +303,14 @@ def do_folder(folder, args):
             
     encoder = json.Encoder()
     total_new_seqs = 0
+    genes_processed = []
     for batchr, additions in batch_result:
         total_new_seqs += additions
         for gene, hits in batchr:
+            genes_processed.append(gene)
             hits_db.put_bytes(f"get_exoneratehits:{gene}", encoder.encode(hits))
 
+    hits_db.put("getall:presentgenes", ",".join(genes_processed))
     printv(f"Found {total_new_seqs} sequences", args.verbose, 1)
 
 
