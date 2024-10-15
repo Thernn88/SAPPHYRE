@@ -718,7 +718,7 @@ def parse_csv(out_path: str) -> DataFrame:
             )
 
 
-def get_valid_variants(df, target_to_taxon):
+def get_valid_variants(df, gfm, target_to_taxon):
     target_has_hit = set(df["target"].unique())
     gene_targets = defaultdict(list)
     valid_variants = defaultdict(list)
@@ -733,7 +733,8 @@ def get_valid_variants(df, target_to_taxon):
         if taxon not in gene_to_taxons[gene]:
             gene_to_taxons[gene].add(taxon)
         else:
-            genes_to_check_variants.add(gene)  # Gene needs variant checking
+            if not gfm:
+                genes_to_check_variants.add(gene)  # Gene needs variant checking
         gene_targets[gene].append((taxon, target))
 
     # Ensure that all genes, including those without variants, are labeled as valid
@@ -1008,7 +1009,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
 
     
     # DOING VARIANT FILTER
-    valid_variants, present_genes = get_valid_variants(df, target_to_taxon)
+    valid_variants, present_genes = get_valid_variants(df, gfm, target_to_taxon)
 
     printv(
         f"Got Targets. Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Writing top reference alignment.",
