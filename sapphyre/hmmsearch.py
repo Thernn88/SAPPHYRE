@@ -194,7 +194,7 @@ def load_Sequences(source_seqs):
 
     return this_seqs
 
-def shift_targets(is_full, query_template, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp):
+def shift_targets(is_full, gfm, query_template, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp):
     if is_full:
         for node in nodes_in_gene:
             parent_seq = this_seqs.get(node)
@@ -249,12 +249,21 @@ def shift_targets(is_full, query_template, nodes_in_gene, diamond_hits, cluster_
                     children[new_query] = fallback[node]
     else:
         for hit in diamond_hits:
-            raw_sequence = hit.seq
-            frame = hit.frame
+            if gfm:
+                frame = 1
+                if query_template.format(hit.node, frame) in parents:
+                    continue
+                raw_sequence = this_seqs.get(hit.node)
+                if isinstance(raw_sequence, bytes):
+                    raw_sequence = raw_sequence.decode()
+            else:
+                raw_sequence = hit.seq
+                frame = hit.frame
             query = query_template.format(hit.node, frame)
             unaligned_sequences.append((query, raw_sequence))
             parents[query] = hit
-
+            if gfm:
+                continue
             for shift_by in [1, 2]:
                 shifted = shift(frame, shift_by)
                 if not shifted in hits_have_frames_already[hit.node]:
@@ -319,13 +328,7 @@ def add_new_result(new_uid_template, gfm, gene, query, results, is_full, cluster
                 start = start * 3
                 end = end * 3
 
-                if gfm == 2:
-                    sequence = nt_sequences[query]
-                    if len(sequence) % 3 != 0:
-                        sequence += ("N" * (3 - len(sequence) % 3))
-                    start = 0
-                else:
-                    sequence = nt_sequences[query][start: end]
+                sequence = nt_sequences[query][start: end]
 
                 new_qstart = start
                 if frame < 0:
@@ -361,7 +364,13 @@ def add_new_result(new_uid_template, gfm, gene, query, results, is_full, cluster
             start = start * 3
             end = end * 3
 
-            sequence = nt_sequences[query][start: end]
+            if gfm:
+                sequence = nt_sequences[query]
+                if len(sequence) % 3 != 0:
+                    sequence += ("N" * (3 - len(sequence) % 3))
+                start = 0
+            else:
+                sequence = nt_sequences[query][start: end]
 
             if is_full:
                 new_qstart = start
@@ -386,7 +395,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, gfm, hmm_output_folder,
     batch_result = []
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     this_seqs = {}
-    if is_full:
+    if is_full or gfm:
         this_seqs = load_Sequences(source_seqs)
     decoder = json.Decoder(type=list[Hit])
     
@@ -475,7 +484,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, gfm, hmm_output_folder,
                 cluster_queries = {k: max(set(v), key=v.count) for k, v in cluster_queries.items()}
                 add_full_cluster_search(clusters, edge_margin, source_clusters, cluster_full, nodes_in_gene, cluster_dict)
                       
-        shift_targets(is_full, query_template, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp)
+        shift_targets(is_full, gfm, query_template, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp)
         del hits_have_frames_already
         aln_file = path.join(aln_ref_location, f"{gene}.aln.fa")
         output = []
@@ -694,10 +703,9 @@ def do_folder(input_folder, args):
     seq_db = RocksDB(path.join(input_folder, "rocksdb", "sequences", "nt"))
     is_genome = seq_db.get("get:isgenome")
     is_genome = is_genome == "True"
-    is_assembly = seq_db.get("get:isassembly")
-    is_assembly = is_assembly == "True"
     is_full = is_genome or args.full
-    if is_full:
+    gfm = args.gene_finding_mode == 2
+    if is_full or gfm:
         temp_source_file = None
         if args.processes > 1:
             recipe = seq_db.get("getall:batches").split(",")
@@ -731,7 +739,7 @@ def do_folder(input_folder, args):
 
     per_batch = math.ceil(len(transcripts_mapped_to) / args.processes)
 
-    batches = [(transcripts_mapped_to[i:i + per_batch], seq_source, is_full, is_genome, args.gene_finding_mode, hmm_output_folder, aln_ref_location, args.overwrite, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance, args.edge_margin) for i in range(0, len(transcripts_mapped_to), per_batch)]
+    batches = [(transcripts_mapped_to[i:i + per_batch], seq_source, is_full, is_genome, gfm, hmm_output_folder, aln_ref_location, args.overwrite, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance, args.edge_margin) for i in range(0, len(transcripts_mapped_to), per_batch)]
 
     if args.processes <= 1:
         all_hits = []
