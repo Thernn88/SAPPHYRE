@@ -71,6 +71,9 @@ def main(argsobj):
                 print(argsobj.formathelp())
                 return
             from_folder = "blosum"
+            
+            if argsobj.gene_finding_mode == 2:
+                return
 
             if is_assembly:
                 printv("Filtering Using Hmmsearch Scores.", argsobj.verbose)
