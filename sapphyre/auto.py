@@ -30,6 +30,7 @@ def get_args(arg_function):
 
 
 def main(args):
+    gfm = args.gene_finding_mode == 2
     default_config = {
         "prepare": get_args(prepare_args),
         "diamond": get_args(diamond_args),
@@ -73,8 +74,10 @@ def main(args):
 
     time = TimeKeeper(KeeperMode.DIRECT)
     for script in scripts:
+        if gfm and (script == "merge" or script == "flexcull"):
+            continue
         sargs = config[script]
-        if script != "motif" and not (args.gene_finding_mode == 2 and script == "flexcull"):
+        if script != "motif":
             print(f"\nExecuting: {script.title()}")
         this_args = global_args.copy()
         this_args.update(sargs)
@@ -140,8 +143,6 @@ def main(args):
                     print("Error in Pal2Nal.")
                 gc.collect()
             elif script == "flexcull":
-                if args.gene_finding_mode == 2:
-                    continue
                 from . import flexcull
 
                 if not flexcull.main(this_args):
