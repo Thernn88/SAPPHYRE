@@ -262,8 +262,7 @@ def shift_targets(is_full, gfm, query_template, nodes_in_gene, diamond_hits, clu
             query = query_template.format(hit.node, frame)
             unaligned_sequences.append((query, raw_sequence))
             parents[query] = hit
-            if gfm:
-                continue
+
             for shift_by in [1, 2]:
                 shifted = shift(frame, shift_by)
                 if not shifted in hits_have_frames_already[hit.node]:
@@ -413,7 +412,8 @@ def hmm_search(batches, source_seqs, is_full, is_genome, gfm, hmm_output_folder,
         diamond_ids = []
         for hit in diamond_hits:
             diamond_ids.append((hit.node, hit.frame))
-            hits_have_frames_already[hit.node].add(hit.frame)
+            if not gfm:
+                hits_have_frames_already[hit.node].add(hit.frame)
 
         if is_genome:
             diamond_ids.sort()
