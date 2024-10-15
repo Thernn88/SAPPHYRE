@@ -194,7 +194,7 @@ def load_Sequences(source_seqs):
 
     return this_seqs
 
-def shift_targets(is_full, gfm, query_template, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp):
+def shift_targets(is_full, query_template, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp):
     if is_full:
         for node in nodes_in_gene:
             parent_seq = this_seqs.get(node)
@@ -249,16 +249,8 @@ def shift_targets(is_full, gfm, query_template, nodes_in_gene, diamond_hits, clu
                     children[new_query] = fallback[node]
     else:
         for hit in diamond_hits:
-            if gfm:
-                frame = 1
-                if query_template.format(hit.node, frame) in parents:
-                    continue
-                raw_sequence = this_seqs.get(hit.node)
-                if isinstance(raw_sequence, bytes):
-                    raw_sequence = raw_sequence.decode()
-            else:
-                raw_sequence = hit.seq
-                frame = hit.frame
+            raw_sequence = hit.seq
+            frame = hit.frame
             query = query_template.format(hit.node, frame)
             unaligned_sequences.append((query, raw_sequence))
             parents[query] = hit
@@ -394,7 +386,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, gfm, hmm_output_folder,
     batch_result = []
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     this_seqs = {}
-    if is_full or gfm:
+    if is_full:
         this_seqs = load_Sequences(source_seqs)
     decoder = json.Decoder(type=list[Hit])
     
@@ -412,8 +404,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, gfm, hmm_output_folder,
         diamond_ids = []
         for hit in diamond_hits:
             diamond_ids.append((hit.node, hit.frame))
-            if not gfm:
-                hits_have_frames_already[hit.node].add(hit.frame)
+            hits_have_frames_already[hit.node].add(hit.frame)
 
         if is_genome:
             diamond_ids.sort()
@@ -484,7 +475,7 @@ def hmm_search(batches, source_seqs, is_full, is_genome, gfm, hmm_output_folder,
                 cluster_queries = {k: max(set(v), key=v.count) for k, v in cluster_queries.items()}
                 add_full_cluster_search(clusters, edge_margin, source_clusters, cluster_full, nodes_in_gene, cluster_dict)
                       
-        shift_targets(is_full, gfm, query_template, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp)
+        shift_targets(is_full, query_template, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp)
         del hits_have_frames_already
         aln_file = path.join(aln_ref_location, f"{gene}.aln.fa")
         output = []
@@ -705,7 +696,7 @@ def do_folder(input_folder, args):
     is_genome = is_genome == "True"
     is_full = is_genome or args.full
     gfm = args.gene_finding_mode == 2
-    if is_full or gfm:
+    if is_full:
         temp_source_file = None
         if args.processes > 1:
             recipe = seq_db.get("getall:batches").split(",")
