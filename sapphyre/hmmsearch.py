@@ -319,13 +319,7 @@ def add_new_result(new_uid_template, gfm, gene, query, results, is_full, cluster
                 start = start * 3
                 end = end * 3
 
-                if gfm == 2:
-                    sequence = nt_sequences[query]
-                    if len(sequence) % 3 != 0:
-                        sequence += ("N" * (3 - len(sequence) % 3))
-                    start = 0
-                else:
-                    sequence = nt_sequences[query][start: end]
+                sequence = nt_sequences[query][start: end]
 
                 new_qstart = start
                 if frame < 0:
@@ -361,7 +355,13 @@ def add_new_result(new_uid_template, gfm, gene, query, results, is_full, cluster
             start = start * 3
             end = end * 3
 
-            sequence = nt_sequences[query][start: end]
+            if gfm:
+                sequence = nt_sequences[query]
+                if len(sequence) % 3 != 0:
+                    sequence += ("N" * (3 - len(sequence) % 3))
+                start = 0
+            else:
+                sequence = nt_sequences[query][start: end]
 
             if is_full:
                 new_qstart = start
@@ -694,9 +694,8 @@ def do_folder(input_folder, args):
     seq_db = RocksDB(path.join(input_folder, "rocksdb", "sequences", "nt"))
     is_genome = seq_db.get("get:isgenome")
     is_genome = is_genome == "True"
-    is_assembly = seq_db.get("get:isassembly")
-    is_assembly = is_assembly == "True"
     is_full = is_genome or args.full
+    gfm = args.gene_finding_mode == 2
     if is_full:
         temp_source_file = None
         if args.processes > 1:
@@ -731,7 +730,7 @@ def do_folder(input_folder, args):
 
     per_batch = math.ceil(len(transcripts_mapped_to) / args.processes)
 
-    batches = [(transcripts_mapped_to[i:i + per_batch], seq_source, is_full, is_genome, args.gene_finding_mode, hmm_output_folder, aln_ref_location, args.overwrite, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance, args.edge_margin) for i in range(0, len(transcripts_mapped_to), per_batch)]
+    batches = [(transcripts_mapped_to[i:i + per_batch], seq_source, is_full, is_genome, gfm, hmm_output_folder, aln_ref_location, args.overwrite, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance, args.edge_margin) for i in range(0, len(transcripts_mapped_to), per_batch)]
 
     if args.processes <= 1:
         all_hits = []
