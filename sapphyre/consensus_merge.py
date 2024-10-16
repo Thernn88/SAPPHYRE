@@ -290,6 +290,11 @@ class do_gene():
 
             if clusters:
                 cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
+            else:
+                cluster_sets = None
+                
+        if cluster_sets is None:
+            return []
 
         for cluster_set in cluster_sets:
             aa_subset = [node for node in aa_candidates if (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
