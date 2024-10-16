@@ -599,13 +599,6 @@ def merge_args(par, skip_reconcile_overlap=False):
             help="Enable second run logic",
         )
         par.add_argument(
-            "-nm",
-            "--no_merge",
-            action="store_true",
-            default=False,
-            help="Combine will grab from blosum instead of merge and reconcile will skip last merge.",
-        )
-        par.add_argument(
             "-io",
             "--ignore_overlap_chunks",
             action="store_true",
@@ -678,14 +671,6 @@ def subcmd_Combine(subparsers):
     par.set_defaults(func=Combine, formathelp=par.format_help)
 
 def combine_args(par, skip_reconcile_overlap=False):
-    if not skip_reconcile_overlap:
-        par.add_argument(
-            "-nm",
-            "--no_merge",
-            action="store_true",
-            default=False,
-            help="Combine will grab from blosum instead of merge and reconcile will skip last merge.",
-        )
     par.add_argument(
         "-pd",
         "--prepend-directory",
@@ -1317,13 +1302,6 @@ def subcmd_wrap_final(sp):
         help="Enable second run logic",
     )
     par.add_argument(
-        "-nm",
-        "--no_merge",
-        action="store_true",
-        default=False,
-        help="Combine will grab from blosum instead of merge and reconcile will skip last merge.",
-    )
-    par.add_argument(
         "-io",
         "--ignore_overlap_chunks",
         action="store_false",
@@ -1357,7 +1335,7 @@ def wrap_final(argsobj):
     if not pal2nal.main(next_args):
         print()
         print(argsobj.formathelp())
-    if not current_args["no_merge"]:
+    if argsobj.gene_finding_mode == 0:
         print("Triggering Merge")
         if not merge.main(next_args):
             print()

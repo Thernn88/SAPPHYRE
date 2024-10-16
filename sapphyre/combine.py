@@ -59,7 +59,7 @@ def main(args):
         for item in inputs:
             printv(f"Merging directory: {item}", args.verbose, 0)
             for taxa in item.iterdir():
-                if args.no_merge:
+                if args.gene_finding_mode == 2:
                     aa_path = Path(taxa, "outlier", "blosum", "aa")
                     nt_path = Path(taxa, "outlier", "blosum", "nt")
                 else:
