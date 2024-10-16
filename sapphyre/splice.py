@@ -2112,17 +2112,19 @@ def main(args, sub_dir):
         for row in rows:
             _, id, line = row
             new_id = None
+            crange = "None"
             for set, gene, index in clusters_to_gene:
                 if set is None:
-                    crange = "None"
                     new_id = f"{gene}_{index}"
                     break
                 elif within_distance(node_to_ids(id), set, 0):
                     crange = f"{min(set)}-{max(set)}"
                     new_id = f"{gene}_{index}"
                     break
-            if new_id is None:
-                print(f"WARNING: No cluster found for {id}")
+                else:
+                    print(f"WARNING: No cluster found for {id}")
+                    new_id = f"{gene}_{cluster_index}"
+                    cluster_index += 1
                 
             gff_output.append(line+f"ID={new_id};Name={new_id};Description={crange};")
 
