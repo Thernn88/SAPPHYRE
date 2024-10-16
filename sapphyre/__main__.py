@@ -613,6 +613,13 @@ def merge_args(par, skip_reconcile_overlap=False):
             help="Ignore overlapping chunks and merge all candidates for a reference taxon.",
         )
     par.add_argument(
+        "-cmc",
+        "--cluster_min_coverage",
+        type=float,
+        default=0.5,
+        help="Minimum coverage required for a cluster to be processed in the merge.",
+    )
+    par.add_argument(
         "-min",
         "--min_count",
         type=int,

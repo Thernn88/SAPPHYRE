@@ -224,7 +224,7 @@ def detect_ambig_with_gaps(nodes, gap_percentage=0.25):
     return regions
 
 class do_gene():
-    def __init__(self, aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, is_genome, is_gfm, compress, debug, threshold) -> None:
+    def __init__(self, aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, is_genome, is_gfm, compress, debug, threshold, req_seq_coverage) -> None:
         self.aa_gene_input = aa_gene_input
         self.nt_gene_input = nt_gene_input
 
@@ -237,6 +237,7 @@ class do_gene():
         self.threshold = threshold
         self.is_gfm = is_gfm
         self.is_genome = is_genome
+        self.req_seq_coverage = req_seq_coverage
 
     def __call__(self, *args: Any, **kwds: Any) -> Any:
         return self.do_gene(*args, **kwds)
@@ -285,7 +286,7 @@ class do_gene():
             ids = [quick_rec(node.header.split("|")[3], None, node.sequence, node.start, node.end) for node in aa_candidates]
             max_gap_size = round(len(aa_candidates[0].sequence) * 0.3) # Half MSA length
     
-            clusters, _ = cluster_ids(ids, 100, max_gap_size, reference_cluster_data, req_seq_coverage=0) #TODO: Make distance an arg
+            clusters, _ = cluster_ids(ids, 100, max_gap_size, reference_cluster_data, self.req_seq_coverage) #TODO: Make distance an arg
 
             if clusters:
                 cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
@@ -480,7 +481,7 @@ def do_folder(input_folder, args):
     
     alternative_gene_finding_mode = args.gene_finding_mode == 1
 
-    gene_func = do_gene(aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, is_genome, alternative_gene_finding_mode, args.compress, args.debug, args.consensus_threshold)
+    gene_func = do_gene(aa_gene_input, nt_gene_input, aa_gene_output, nt_gene_output, is_genome, alternative_gene_finding_mode, args.compress, args.debug, args.consensus_threshold, args.cluster_min_coverage)
 
     arguments = []
     for aa_gene in listdir(aa_gene_input):
