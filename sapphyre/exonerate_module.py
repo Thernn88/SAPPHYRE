@@ -11,6 +11,7 @@ from os import mkdir, path
 from .utils import gettempdir, parseFasta, printv, writeFasta
 from sapphyre_tools import (
     entropy_filter,
+    get_overlap,
 )
 from multiprocessing import Pool
 from msgspec import json
@@ -93,6 +94,45 @@ def calculate_new_frame(start, end, original_frame):
     return new_frame
 
 
+def expand_region(original: tuple, expansion: tuple) -> tuple:
+    """Expands two (start, end) tuples to cover the entire region."""
+    start = min(original[0], expansion[0])
+    end = max(original[1], expansion[1])
+    return start, end
+
+
+def disperse_into_overlap_groups(taxa_pair: list, deviation_allowed = 12) -> list[tuple]:
+    """Splits list of (header,sequence) into overlap based groups.
+
+    Returns (overlap region, sequences in overlap region)
+    """
+    result = []
+    current_group = []
+    current_region = None
+
+    for sequence in taxa_pair:
+        if (
+            current_region is None
+            or get_overlap(
+                sequence.start, sequence.end, current_region[0], current_region[1], -deviation_allowed
+            )
+            is None
+        ):
+            if current_group:
+                result.append((current_region, current_group))
+            current_region = (sequence.start, sequence.end)
+            current_group = [sequence]
+        else:
+            current_group.append(sequence)
+            current_region = expand_region(
+                current_region, (sequence.start, sequence.end)
+            )
+
+    if current_group:
+        result.append((current_region, current_group))
+
+    return result
+
 class exonerate:
     def __init__(self, folder, chomp_max_distance, orthoset_raw_path, exonerate_path, max_extend, target_to_taxon, debug, entropy_percent) -> None:
         self.folder = folder
@@ -153,7 +193,7 @@ class exonerate:
                     frame = calculate_new_frame(start, end, original_frame)
                       
                     
-                    this_results[original_header].append(Node(int(header), sequence, start + original_start, end + original_start, int(score), frame, ref_start, ref_end, ref_id))
+                    this_results[int(header)].append(Node(int(header), sequence, start + original_start, end + original_start, int(score), frame, ref_start, ref_end, ref_id))
                     
                 this_nodes = []
                 for header, nodes in this_results.items():
@@ -161,10 +201,12 @@ class exonerate:
                         if frame == 0:
                             continue
                         
-                        frame_nodes = [node for node in nodes if abs(node.frame) == frame]
+                        frame_nodes = [node for node in nodes if node.frame == frame]
                         if frame_nodes:
-                            top_score = max(frame_nodes, key=lambda x: x.score).score * 0.7
-                            this_nodes.extend([node for node in frame_nodes if node.score >= top_score])        
+                            frame_nodes.sort(key=lambda x: x.start)
+                            overlap_groups = disperse_into_overlap_groups(frame_nodes)
+                            for _, group in overlap_groups:
+                                this_nodes.append(max(group, key=lambda x: x.score))
                 # kicked_ids = set()
                 # overlap_min = 0.1
                 # for node_a, node_b in combinations(this_nodes, 2):
