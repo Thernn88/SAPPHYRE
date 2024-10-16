@@ -15,7 +15,7 @@ from sapphyre_tools import (
 )
 from multiprocessing import Pool
 from msgspec import json
-from .hmmsearch import HmmHit as Hit
+from .hmmsearch import HmmHit as Hit, get
 
 def get_head_to_seq(nt_db):
     """Get a dictionary of headers to sequences.
@@ -263,6 +263,7 @@ class exonerate:
        
 def get_diamondhits(
     rocks_hits_db: RocksDB,
+    get_full=False
 ) -> dict[str, list[Hit]]:
     """Returns a dictionary of gene to corresponding hits.
 
@@ -280,8 +281,13 @@ def get_diamondhits(
     genes_to_process = present_genes.split(",")
 
     gene_based_results = []
+    
     for gene in genes_to_process:
-        gene_result = rocks_hits_db.get_bytes(f"gethmmhits:{gene}")
+        if get_full:
+            key = f'gethits:{gene}'
+        else:
+            key = f'gethits:{gene}'
+        gene_result = rocks_hits_db.get_bytes(key)
         if not gene_result:
             printv(
                 f"WARNING: No hits found for {gene}. If you are using a gene list file this may be a non-issue",
@@ -315,10 +321,9 @@ def do_folder(folder, args):
 
     orthoset_path = path.join(args.orthoset_input, args.orthoset)
     orthoset_raw_path = path.join(orthoset_path, "raw")
-    
     hits_db = RocksDB(path.join(folder, "rocksdb", "hits"))
     diamond_genes, transcripts_mapped_to = get_diamondhits(
-        hits_db
+        hits_db, args.full
     )
     
     per_batch = ceil(len(diamond_genes) / args.processes)
