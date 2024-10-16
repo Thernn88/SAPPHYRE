@@ -142,8 +142,8 @@ class exonerate:
                     continue
 
                 this_results = defaultdict(list)
-                for header, sequence in parseFasta(result.name, True):
-                    header, coords, score, ref_coords, ref_id = header.split("|")
+                for original_header, sequence in parseFasta(result.name, True):
+                    header, coords, score, ref_coords, ref_id = original_header.split("|")
                     
                     header, original_frame, original_start, original_end = header.split("_")
                     original_frame, original_start, original_end = map(int, (original_frame, original_start, original_end))
@@ -153,7 +153,7 @@ class exonerate:
                     frame = calculate_new_frame(start, end, original_frame)
                       
                     
-                    this_results[header].append(Node(int(header), sequence, start + original_start, end + original_start, int(score), frame, ref_start, ref_end, ref_id))
+                    this_results[original_header].append(Node(int(header), sequence, start + original_start, end + original_start, int(score), frame, ref_start, ref_end, ref_id))
                     
                 this_nodes = []
                 for header, nodes in this_results.items():
@@ -163,8 +163,8 @@ class exonerate:
                         
                         frame_nodes = [node for node in nodes if abs(node.frame) == frame]
                         if frame_nodes:
-                            this_nodes.append(max(frame_nodes, key=lambda x: x.score))
-        
+                            top_score = max(frame_nodes, key=lambda x: x.score).score * 0.7
+                            this_nodes.extend([node for node in frame_nodes if node.score >= top_score])        
                 # kicked_ids = set()
                 # overlap_min = 0.1
                 # for node_a, node_b in combinations(this_nodes, 2):
