@@ -5,8 +5,10 @@ from collections import Counter, defaultdict, namedtuple
 from itertools import combinations, groupby, product
 from multiprocessing.pool import Pool
 from operator import itemgetter
-from os import makedirs, path
+from os import makedirs, path, system
 from shutil import rmtree
+import subprocess
+from tempfile import NamedTemporaryFile
 
 from msgspec import json
 from wrap_rocks import RocksDB
@@ -18,7 +20,7 @@ from sapphyre_tools import (
 from . import rocky
 from .hmmsearch import HmmHit
 from .timekeeper import KeeperMode, TimeKeeper
-from .utils import printv, writeFasta
+from .utils import gettempdir, parseFasta, printv, writeFasta
 from Bio.Seq import Seq
 from parasail import blosum62, sw_trace_scan_profile_16, profile_create_16
 import pyfamsa
@@ -436,7 +438,7 @@ def do_dupe_check(hits, header_template, is_assembly_or_genome, taxa_id):
 def pairwise_sequences(hits, ref_seqs, min_gaps=10):
     ref_dict = {taxa: seq for taxa, _, seq in ref_seqs}
     internal_introns_removed = []
-    aligner = pyfamsa.Aligner(threads=1)
+    # aligner = pyfamsa.Aligner(threads=1)
     for hit in hits:
         ref_seq = ref_dict[hit.query]
         
@@ -452,11 +454,27 @@ def pairwise_sequences(hits, ref_seqs, min_gaps=10):
         #     continue #alignment failed, to investigate
         # this_aa, ref_seq = result.traceback.query, result.traceback.ref
         
-        famsa_sequences = [pyfamsa.Sequence(b"query",  ref_seq.encode()), pyfamsa.Sequence(b"hit", hit.aa_sequence.encode())]
-        msa = aligner.align(famsa_sequences)
-        aligned_seqs = {sequence.id.decode(): sequence.sequence.decode() for sequence in msa}
+        with NamedTemporaryFile("w", dir=gettempdir()) as in_file,  NamedTemporaryFile("w", dir=gettempdir()) as out_file:
+            in_file.write(f">hit\n{hit.aa_sequence}\n>query\n{ref_seq}\n")
+            in_file.flush()
+            
+            cmd = ["clustalo", "-i", in_file.name, "-o", out_file.name, "--thread=1", "--force"]
+            subprocess.run(cmd, stdout=subprocess.DEVNULL)
+            
+            # system(
+            #     f"mafft --localpair --quiet --thread 1 --anysymbol '{in_file.name}' > '{out_file.name}'"
+            # )
+            
+            
+            aligned_seqs = dict(parseFasta(out_file.name, True))
+    
         ref_seq = aligned_seqs["query"]
         this_aa = aligned_seqs["hit"]
+        
+        # if "NODE_167479&&167480" in hit.header:
+        #     print(this_aa)
+        #     print(ref_seq)
+        #     input()
         
         ref_start, ref_end = find_index_pair(ref_seq, "-")
         internal_ref_gaps = [i for i in range(ref_start, ref_end) if ref_seq[i] == "-"]
