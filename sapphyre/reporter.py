@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from argparse import Namespace
 from collections import Counter, defaultdict, namedtuple
-from itertools import combinations, product
+from itertools import combinations, groupby, product
 from multiprocessing.pool import Pool
+from operator import itemgetter
 from os import makedirs, path
 from shutil import rmtree
 
@@ -19,6 +20,7 @@ from .hmmsearch import HmmHit
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import printv, writeFasta
 from Bio.Seq import Seq
+from parasail import blosum62, nw_trace_scan_profile_16, profile_create_16
 
 MainArgs = namedtuple(
     "MainArgs",
@@ -430,6 +432,44 @@ def do_dupe_check(hits, header_template, is_assembly_or_genome, taxa_id):
     return [i for i in hits if i is not None], dupes
 
 
+def pairwise_sequences(hits, ref_seqs, min_gaps=10):
+    ref_dict = {taxa: seq for taxa, _, seq in ref_seqs}
+    for hit in hits:
+        ref_seq = ref_dict[hit.query]
+        
+        
+        
+        this_aa = hit.aa_sequence
+        profile = profile_create_16(this_aa, blosum62)
+        result = nw_trace_scan_profile_16(
+            profile,
+            ref_seq,
+            2,
+            1,
+        )
+        if not hasattr(result, "traceback"):
+            continue #alignment failed, to investigate
+        this_aa, ref_seq = result.traceback.query, result.traceback.ref
+        ref_start, ref_end = find_index_pair(ref_seq, "-")
+        if "NODE_167479&&167480" in hit.header:
+            print(this_aa)
+            print(ref_seq)
+        internal_ref_gaps = [i for i in range(ref_start, ref_end) if ref_seq[i] == "-"]
+        
+        # group consecutive gaps
+        for k,g in groupby(enumerate(internal_ref_gaps),lambda x:x[0]-x[1]):
+            group = (map(itemgetter(1),g))
+            group = list(map(int,group))
+            if len(group) >= min_gaps:
+                print(hit.header,"has a group of size", len(group), "on", hit.query)
+                aa_seq = "".join([this_aa[i] for i in range(len(this_aa)) if i not in group])
+                nt_seq = "".join([hit.seq[i] for i in range(len(hit.seq)) if i//3 not in group])
+                
+                hit.aa_sequence = aa_seq
+                hit.seq = nt_seq
+                # median_gap_index = group[len(group)//2]
+                    # input(median_gap_index  )
+
 def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     """Merges, dedupes and writes the output for a given gene.
 
@@ -473,6 +513,9 @@ def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
 
         # Refresh translation
         translate_sequences(this_hits)
+        
+    # input(core_sequences)
+    pairwise_sequences(this_hits, core_sequences)
         
     # Trim and save the sequences
     aa_output, nt_output, header_to_score = print_unmerged_sequences(
