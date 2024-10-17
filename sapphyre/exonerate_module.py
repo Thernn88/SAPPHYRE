@@ -134,8 +134,9 @@ def disperse_into_overlap_groups(taxa_pair: list, deviation_allowed = 12) -> lis
     return result
 
 class exonerate:
-    def __init__(self, folder, chomp_max_distance, orthoset_raw_path, exonerate_path, max_extend, target_to_taxon, debug, entropy_percent) -> None:
+    def __init__(self, folder, seq_source, chomp_max_distance, orthoset_raw_path, exonerate_path, max_extend, target_to_taxon, debug, entropy_percent) -> None:
         self.folder = folder
+        self.seq_source = seq_source
         self.chomp_max_distance = chomp_max_distance
         self.orthoset_raw_path = orthoset_raw_path
         self.exonerate_path = exonerate_path
@@ -147,6 +148,7 @@ class exonerate:
     def run(self, batches):
         batch_result = []
         additions = 0
+        this_raw_seqs = {int(header): seq for header, seq in parseFasta(self.seq_source)}
         for gene, hits in batches:
             diamond_hits = json.decode(hits, type=list[Hit])
             gene_name = gene.split(".")[0]
@@ -156,8 +158,10 @@ class exonerate:
                 f = open(path.join(self.exonerate_path, f"{gene_name}.fa"), "w")
             else:
                 f = NamedTemporaryFile(prefix=f"{gene_name}_", suffix=".fa", dir=gettempdir())
+            #(f"{hit.node}_{hit.frame}_{hit.qstart}_{hit.qend}",hit.seq)
                 
-            this_seqs = [(f"{hit.node}_{hit.frame}_{hit.qstart}_{hit.qend}",hit.seq) for hit in diamond_hits]
+            diamond_nodes = {hit.node for hit in diamond_hits}
+            this_seqs = [(node, this_raw_seqs[node]) for node in diamond_nodes]
             raw_path = path.join(self.orthoset_raw_path, gene_name+".fa")
             final_output = []
             with open(path.join(self.exonerate_path, f"{gene_name}.txt"), "w") as result:
@@ -185,15 +189,15 @@ class exonerate:
                 for original_header, sequence in parseFasta(result.name, True):
                     header, coords, score, ref_coords, ref_id = original_header.split("|")
                     
-                    header, original_frame, original_start, original_end = header.split("_")
-                    original_frame, original_start, original_end = map(int, (original_frame, original_start, original_end))
+                    #header, original_frame, original_start, original_end = header.split("_")
+                    #original_frame, original_start, original_end = map(int, (original_frame, original_start, original_end))
                     start, end = map(int, coords.split("/"))
                     ref_start, ref_end = map(int, ref_coords.split("/"))
                     
-                    frame = calculate_new_frame(start, end, original_frame)
+                    frame = calculate_new_frame(start, end, 1)
                       
                     
-                    this_results[int(header)].append(Node(int(header), sequence, start + original_start, end + original_start, int(score), frame, ref_start, ref_end, ref_id))
+                    this_results[int(header)].append(Node(int(header), sequence, start, end, int(score), frame, ref_start, ref_end, ref_id))
                     
                 this_nodes = []
                 for header, nodes in this_results.items():
@@ -321,6 +325,14 @@ def do_folder(folder, args):
         hits_db
     )
     
+    seq_db = RocksDB(path.join(folder, "rocksdb", "sequences", "nt"))
+    recipe = seq_db.get("getall:batches").split(",")
+    temp_source_file = NamedTemporaryFile(dir=gettempdir(), prefix="seqs_", suffix=".fa")
+    for i in recipe:
+        temp_source_file.write(seq_db.get_bytes(f"ntbatch:{i}"))
+    temp_source_file.flush()
+    seq_source = temp_source_file.name
+    
     per_batch = ceil(len(diamond_genes) / args.processes)
     batches = [transcripts_mapped_to[i : i + per_batch] for i in range(0, len(diamond_genes), per_batch)]
     
@@ -334,13 +346,13 @@ def do_folder(folder, args):
     )
     batch_result = []
     if args.processes <= 1:
-        exonerate_obj = exonerate(folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend, target_to_taxon, args.debug, args.entropy_percent)
+        exonerate_obj = exonerate(folder, seq_source, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend, target_to_taxon, args.debug, args.entropy_percent)
         for batch in batches:
             batch_result.append(exonerate_obj.run(batch))
     else:
         with Pool(args.processes) as pool:
             batch_result.extend(pool.map(
-                exonerate(folder, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend, target_to_taxon, args.debug, args.entropy_percent).run,
+                exonerate(folder, seq_source, args.chomp_max_distance, orthoset_raw_path, exonerate_path, args.max_extend, target_to_taxon, args.debug, args.entropy_percent).run,
                 batches,
             ))
             
