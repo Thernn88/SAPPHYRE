@@ -451,22 +451,31 @@ def pairwise_sequences(hits, ref_seqs, min_gaps=10):
             continue #alignment failed, to investigate
         this_aa, ref_seq = result.traceback.query, result.traceback.ref
         ref_start, ref_end = find_index_pair(ref_seq, "-")
-        if "NODE_167479&&167480" in hit.header:
-            print(this_aa)
-            print(ref_seq)
         internal_ref_gaps = [i for i in range(ref_start, ref_end) if ref_seq[i] == "-"]
         
         # group consecutive gaps
+        to_remove = []
         for k,g in groupby(enumerate(internal_ref_gaps),lambda x:x[0]-x[1]):
             group = (map(itemgetter(1),g))
             group = list(map(int,group))
             if len(group) >= min_gaps:
-                print(hit.header,"has a group of size", len(group), "on", hit.query)
-                aa_seq = "".join([this_aa[i] for i in range(len(this_aa)) if i not in group])
-                nt_seq = "".join([hit.seq[i] for i in range(len(hit.seq)) if i//3 not in group])
+                to_remove.extend(group)
+
+        current_non_aligned = 0
+        to_remove_unaligned = []
+        for i, let in enumerate(this_aa):
+            if let != "-":
+                current_non_aligned += 1
+    
+            if i in to_remove:
+                to_remove_unaligned.append(current_non_aligned)
                 
-                hit.aa_sequence = aa_seq
-                hit.seq = nt_seq
+        
+        aa_seq = "".join([let for i, let in enumerate(hit.aa_sequence) if i not in to_remove_unaligned])
+        nt_seq = "".join([let for i, let in enumerate(hit.seq) if i//3 not in to_remove_unaligned])
+        
+        hit.aa_sequence = aa_seq
+        hit.seq = nt_seq
                 # median_gap_index = group[len(group)//2]
                     # input(median_gap_index  )
 
