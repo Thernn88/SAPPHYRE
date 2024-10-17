@@ -20,7 +20,8 @@ from .hmmsearch import HmmHit
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import printv, writeFasta
 from Bio.Seq import Seq
-from parasail import blosum62, nw_trace_scan_profile_16, profile_create_16
+from parasail import blosum62, sw_trace_scan_profile_16, profile_create_16
+import pyfamsa
 
 MainArgs = namedtuple(
     "MainArgs",
@@ -434,22 +435,29 @@ def do_dupe_check(hits, header_template, is_assembly_or_genome, taxa_id):
 
 def pairwise_sequences(hits, ref_seqs, min_gaps=10):
     ref_dict = {taxa: seq for taxa, _, seq in ref_seqs}
+    internal_introns_removed = []
+    aligner = pyfamsa.Aligner(threads=1)
     for hit in hits:
         ref_seq = ref_dict[hit.query]
         
+        # this_aa = hit.aa_sequence
+        # profile = profile_create_16(this_aa, blosum62)
+        # result = sw_trace_scan_profile_16(
+        #     profile,
+        #     ref_seq,
+        #     2,
+        #     1,
+        # )
+        # if not hasattr(result, "traceback"):
+        #     continue #alignment failed, to investigate
+        # this_aa, ref_seq = result.traceback.query, result.traceback.ref
         
+        famsa_sequences = [pyfamsa.Sequence(b"query",  ref_seq.encode()), pyfamsa.Sequence(b"hit", hit.aa_sequence.encode())]
+        msa = aligner.align(famsa_sequences)
+        aligned_seqs = {sequence.id.decode(): sequence.sequence.decode() for sequence in msa}
+        ref_seq = aligned_seqs["query"]
+        this_aa = aligned_seqs["hit"]
         
-        this_aa = hit.aa_sequence
-        profile = profile_create_16(this_aa, blosum62)
-        result = nw_trace_scan_profile_16(
-            profile,
-            ref_seq,
-            2,
-            1,
-        )
-        if not hasattr(result, "traceback"):
-            continue #alignment failed, to investigate
-        this_aa, ref_seq = result.traceback.query, result.traceback.ref
         ref_start, ref_end = find_index_pair(ref_seq, "-")
         internal_ref_gaps = [i for i in range(ref_start, ref_end) if ref_seq[i] == "-"]
         
@@ -459,6 +467,7 @@ def pairwise_sequences(hits, ref_seqs, min_gaps=10):
             group = (map(itemgetter(1),g))
             group = list(map(int,group))
             if len(group) >= min_gaps:
+                internal_introns_removed.append(f"{hit.header}\n{hit.query}\nRemoved group of size {len(group)} at {group[0]}-{group[-1]} on pairwise alignment\n")
                 to_remove.extend(group)
 
         current_non_aligned = 0
@@ -478,6 +487,7 @@ def pairwise_sequences(hits, ref_seqs, min_gaps=10):
         hit.seq = nt_seq
                 # median_gap_index = group[len(group)//2]
                     # input(median_gap_index  )
+    return internal_introns_removed
 
 def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     """Merges, dedupes and writes the output for a given gene.
@@ -524,7 +534,7 @@ def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         translate_sequences(this_hits)
         
     # input(core_sequences)
-    pairwise_sequences(this_hits, core_sequences)
+    removed_introns = pairwise_sequences(this_hits, core_sequences)
         
     # Trim and save the sequences
     aa_output, nt_output, header_to_score = print_unmerged_sequences(
@@ -554,7 +564,7 @@ def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.verbose,
         2,
     )
-    return oargs.gene, before_merge_count, header_to_score, gene_nodes, [(hit.parent, hit.get_merge_header(), hit.chomp_start, hit.chomp_end, hit.strand, hit.frame) for hit in this_hits], merge_log
+    return oargs.gene, removed_introns, before_merge_count, header_to_score, gene_nodes, [(hit.parent, hit.get_merge_header(), hit.chomp_start, hit.chomp_end, hit.strand, hit.frame) for hit in this_hits], merge_log
 
 
 def get_prepare_dupes(rocks_nt_db: RocksDB) -> dict[str, dict[str, int]]:
@@ -691,6 +701,8 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace):
     )    
         
     final_count = 0
+    removed_total = 0
+    intron_removal_log = []
     this_gene_based_scores = {}
     global_out = []
     parent_gff_output = defaultdict(list)
@@ -698,7 +710,9 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace):
     gff_output = ["##gff-version\t3"]
     global_merge_log = []
     
-    for gene, amount, scores, nodes, gff, merge_log in recovered:
+    for gene, remove_introns, amount, scores, nodes, gff, merge_log in recovered:
+        intron_removal_log.extend(remove_introns)
+        removed_total += len(remove_introns)
         global_merge_log.extend(merge_log)
         out_data = defaultdict(list)
         if original_coords:
@@ -728,6 +742,9 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace):
     with open(path.join(coords_path,"Diamond_merges.txt"), "w") as fp:
         fp.write("\n".join(global_merge_log))
         
+    with open(path.join(taxa_path,"Intron_removal.txt"), "w") as fp:
+        fp.write("\n".join(intron_removal_log))
+        
     if is_genome:
         
         for parent, rows in parent_gff_output.items():
@@ -748,7 +765,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace):
     rocky.get_rock("rocks_nt_db").put_bytes(key, data)
 
     printv(
-        f"Done! Took {time_keeper.differential():.2f}s overall. Coords took {time_keeper.lap():.2f}s. Found {final_count} sequences.",
+        f"Done! Took {time_keeper.differential():.2f}s overall. Coords took {time_keeper.lap():.2f}s. Found {final_count} sequences. Removed {removed_total} introns.",
         args.verbose,
     )
 
