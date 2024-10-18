@@ -479,31 +479,78 @@ def pairwise_sequences(hits, debug_fp, ref_seqs, min_gaps=10):
         internal_ref_gaps = [i for i in range(ref_start, ref_end) if ref_seq[i] == "-"]
         
         # group consecutive gaps
-        to_remove = []
+        to_remove = {}
         for k,g in groupby(enumerate(internal_ref_gaps),lambda x:x[0]-x[1]):
             group = (map(itemgetter(1),g))
             group = list(map(int,group))
             if len(group) >= min_gaps:
                 internal_introns_removed.append(f"{hit.header}\n{hit.query}\nRemoved group of size {len(group)} at {group[0]}-{group[-1]} on pairwise alignment\n")
-                to_remove.extend(group)
+                for i in group:
+                    to_remove[i] = k
 
         current_non_aligned = 0
-        to_remove_unaligned = []
+        to_remove_unaligned = defaultdict(list)
         for i, let in enumerate(this_aa):
             if let != "-":
                 current_non_aligned += 1
     
             if i in to_remove:
-                to_remove_unaligned.append(current_non_aligned)
+                group = to_remove[i]
+                to_remove_unaligned[group].append(current_non_aligned)
+          
+        to_remove_final = []      
+        for group in to_remove_unaligned.values():
+            
+            left_stops = []
+            right_stops = []
+            for i in range(0, max(group) + 1):
+                if hit.aa_sequence[i] == "*":
+                    left_stops.append(i * 3)
+                    
+            for i in range(min(group) - 1, len(hit.aa_sequence)):
+                if hit.aa_sequence[i] == "*":
+                    right_stops.append(i * 3)
+                  
+            middle_of_gap = group[len(group) // 2] * 3
+            left_most_codon = [i for i in left_stops if max(i, middle_of_gap) - min(i, middle_of_gap) <= 30 + len(group)] # Within 30 bp of middle
+            
+            start_left_scan = left_most_codon[0] if left_most_codon else max(group) * 3
+            
+            right_most_codon = [i for i in right_stops if max(i, middle_of_gap) - min(i, middle_of_gap) <= 30 + len(group)] # Within 30 bp of middle
+            
+            start_right_scan = right_most_codon[-1] if right_most_codon else min(group) * 3
+
+            gt_coords = []
+            ag_coords = []
+            for i in range(0, start_left_scan):
+                if hit.seq[i:i+2] == "GT":
+                    gt_coords.append(i)
+            
+            for i in range(start_right_scan, len(hit.seq) - 2):
+                if hit.seq[i:i+2] == "AG":
+                    ag_coords.append(i + 2)
+                    
+            gt_coords.reverse()
+            
+            for gt_coord, ag_coord in product(gt_coords, ag_coords):
+                if gt_coord >= ag_coord:
+                    continue
                 
-        
-        aa_seq = "".join([let for i, let in enumerate(hit.aa_sequence) if i not in to_remove_unaligned])
-        nt_seq = "".join([let for i, let in enumerate(hit.seq) if i//3 not in to_remove_unaligned])
+                if (ag_coord - gt_coord) % 3 != 0:
+                    continue
+                
+                if ag_coord - gt_coord < 30:
+                    continue
+
+            for i in range(gt_coord, ag_coord + 2):
+                to_remove_final.append(i)
+            
+        aa_seq = "".join([let for i, let in enumerate(hit.aa_sequence) if i * 3 not in to_remove_unaligned])
+        nt_seq = "".join([let for i, let in enumerate(hit.seq) if i not in to_remove_unaligned])
         
         hit.aa_sequence = aa_seq
         hit.seq = nt_seq
-                # median_gap_index = group[len(group)//2]
-                    # input(median_gap_index  )
+
     return internal_introns_removed
 
 def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
