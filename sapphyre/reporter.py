@@ -542,13 +542,13 @@ def pairwise_sequences(hits, debug_fp, ref_seqs, min_gaps=10):
                 if ag_coord - gt_coord < 30:
                     continue
 
-            for i in range(gt_coord, ag_coord + 2):
-                to_remove_final.append(i)
+                for i in range(gt_coord, ag_coord):
+                    to_remove_final.append(i)
+                
+                break
             
-        aa_seq = "".join([let for i, let in enumerate(hit.aa_sequence) if i * 3 not in to_remove_unaligned])
-        nt_seq = "".join([let for i, let in enumerate(hit.seq) if i not in to_remove_unaligned])
-        
-        hit.aa_sequence = aa_seq
+        nt_seq = "".join([let for i, let in enumerate(hit.seq) if i not in to_remove_final])
+
         hit.seq = nt_seq
 
     return internal_introns_removed
@@ -597,12 +597,13 @@ def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         # Refresh translation
         translate_sequences(this_hits)
         
-    # input(core_sequences)
     if oargs.debug:
         debug_fp = open(path.join(oargs.debug_path, oargs.gene + ".debug"), "w")
     else:
         debug_fp = None
     removed_introns = pairwise_sequences(this_hits, debug_fp, core_sequences)
+    
+    translate_sequences(this_hits)
         
     # Trim and save the sequences
     aa_output, nt_output, header_to_score = print_unmerged_sequences(
