@@ -480,11 +480,32 @@ def pairwise_sequences(hits, debug_fp, ref_seqs, min_gaps=10):
         
         # group consecutive gaps
         to_remove = {}
-        for k,g in groupby(enumerate(internal_ref_gaps),lambda x:x[0]-x[1]):
-            group = (map(itemgetter(1),g))
-            group = list(map(int,group))
+        
+        groups = [(id, list(map(int,map(itemgetter(1),g)))) for id, g in groupby(enumerate(internal_ref_gaps),lambda x:x[0]-x[1])]
+        merge_occured = True
+        while merge_occured:
+            
+            merge_occured = False
+            for i in range(len(groups)-1):
+                if groups[i] is None or groups[i+1] is None:
+                    continue
+                
+                key_a, group_a = groups[i]
+                group_b = groups[i+1][1]
+                if len(group_a) >= min_gaps and len(group_b) >= min_gaps:
+                    continue
+                if min(group_b) - max(group_a) > 5:
+                    continue
+                
+                for x in range(max(group_a), min(group_b)):
+                    if this_aa[x] == "*":
+                        groups[i] = (key_a, list(range(min(group_a), max(group_b))))
+                        groups[i+1] = None
+                        merge_occured = True
+                        break
+            groups = [i for i in groups if i is not None]
+        for k, group in groups:
             if len(group) >= min_gaps:
-                internal_introns_removed.append(f"{hit.header}\n{hit.query}\nRemoved group of size {len(group)} at {group[0]}-{group[-1]} on pairwise alignment\n")
                 for i in group:
                     to_remove[i] = k
 
@@ -497,7 +518,7 @@ def pairwise_sequences(hits, debug_fp, ref_seqs, min_gaps=10):
             if i in to_remove:
                 group = to_remove[i]
                 to_remove_unaligned[group].append(current_non_aligned)
-          
+                  
         to_remove_final = []      
         for group in to_remove_unaligned.values():
             
@@ -532,7 +553,9 @@ def pairwise_sequences(hits, debug_fp, ref_seqs, min_gaps=10):
                     
             gt_coords.reverse()
             
+            intron = ""
             for gt_coord, ag_coord in product(gt_coords, ag_coords):
+                intron = hit.seq[gt_coord:ag_coord]
                 if gt_coord >= ag_coord:
                     continue
                 
@@ -544,8 +567,9 @@ def pairwise_sequences(hits, debug_fp, ref_seqs, min_gaps=10):
 
                 for i in range(gt_coord, ag_coord):
                     to_remove_final.append(i)
-                
                 break
+            
+            internal_introns_removed.append(f"{hit.header}\n{hit.query}\nRemoved group of size {len(group)} at {group[0]}-{group[-1]} on pairwise alignment\n{intron}\n")
             
         nt_seq = "".join([let for i, let in enumerate(hit.seq) if i not in to_remove_final])
 
@@ -585,7 +609,6 @@ def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     this_hits = check_minimum_bp(this_hits, oargs.minimum_bp)
         
     this_hits, this_gene_dupes = do_dupe_check(this_hits, header_template, oargs.is_assembly_or_genome, oargs.taxa_id)
-        
     before_merge_count = len(this_hits)
         
     merge_log = []
