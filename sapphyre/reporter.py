@@ -223,6 +223,7 @@ OutputArgs = namedtuple(
         "gene",
         "list_of_hits",
         "aa_out_path",
+        "debug_path",
         "taxa_id",
         "nt_out_path",
         "verbose",
@@ -435,9 +436,10 @@ def do_dupe_check(hits, header_template, is_assembly_or_genome, taxa_id):
     return [i for i in hits if i is not None], dupes
 
 
-def pairwise_sequences(hits, ref_seqs, min_gaps=10):
+def pairwise_sequences(hits, debug_fp, ref_seqs, min_gaps=10):
     ref_dict = {taxa: seq for taxa, _, seq in ref_seqs}
     internal_introns_removed = []
+    
     # aligner = pyfamsa.Aligner(threads=1)
     for hit in hits:
         ref_seq = ref_dict[hit.query]
@@ -465,16 +467,13 @@ def pairwise_sequences(hits, ref_seqs, min_gaps=10):
             #     f"mafft --localpair --quiet --thread 1 --anysymbol '{in_file.name}' > '{out_file.name}'"
             # )
             
-            
             aligned_seqs = dict(parseFasta(out_file.name, True))
     
         ref_seq = aligned_seqs["query"]
         this_aa = aligned_seqs["hit"]
-        
-        # if "NODE_167479&&167480" in hit.header:
-        #     print(this_aa)
-        #     print(ref_seq)
-        #     input()
+
+        if debug_fp:
+            debug_fp.write(f">{hit.header}\n{this_aa}\n>{hit.query}\n{ref_seq}\n\n")
         
         ref_start, ref_end = find_index_pair(ref_seq, "-")
         internal_ref_gaps = [i for i in range(ref_start, ref_end) if ref_seq[i] == "-"]
@@ -552,7 +551,11 @@ def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         translate_sequences(this_hits)
         
     # input(core_sequences)
-    removed_introns = pairwise_sequences(this_hits, core_sequences)
+    if oargs.debug:
+        debug_fp = open(path.join(oargs.debug_path, oargs.gene + ".debug"), "w")
+    else:
+        debug_fp = None
+    removed_introns = pairwise_sequences(this_hits, debug_fp, core_sequences)
         
     # Trim and save the sequences
     aa_output, nt_output, header_to_score = print_unmerged_sequences(
@@ -656,6 +659,12 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace):
         rmtree(coords_path)
 
     makedirs(coords_path, exist_ok=True)
+    
+    debug_path = path.join(taxa_path, "pairwise_debug")
+    if path.exists(debug_path):
+        rmtree(debug_path)
+    if args.debug:
+        makedirs(debug_path, exist_ok=True)
 
     printv(
         f"Got reference data. Elapsed time {time_keeper.differential():.2f}s. Took {time_keeper.lap():.2f}s. Writing sequences.",
@@ -692,6 +701,7 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace):
                         gene,
                         transcript_hits,
                         aa_out_path,
+                        debug_path,
                         taxa_id,
                         nt_out_path,
                         args.verbose,
@@ -759,9 +769,10 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace):
         
     with open(path.join(coords_path,"Diamond_merges.txt"), "w") as fp:
         fp.write("\n".join(global_merge_log))
-        
-    with open(path.join(taxa_path,"Intron_removal.txt"), "w") as fp:
-        fp.write("\n".join(intron_removal_log))
+    
+    if args.debug:
+        with open(path.join(taxa_path,"Intron_removal.txt"), "w") as fp:
+            fp.write("\n".join(intron_removal_log))
         
     if is_genome:
         
