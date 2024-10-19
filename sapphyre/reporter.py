@@ -291,30 +291,32 @@ def merge_hits(hits: list[Hit], minimum_bp_overlap = 30) -> tuple[list[Hit], lis
             
         for indices in clusters:
             for i, j in combinations(indices, 2):
-                if hits[i] is None or hits[j] is None:
+                hit_a = hits[i]
+                hit_b = hits[j]
+                if hit_a is None or hit_b is None:
                     continue
                 
-                if hits[i].strand != hits[j].strand:
+                if hit_a.strand != hit_b.strand:
                     continue
                 
-                if get_overlap(hits[i].chomp_start, hits[i].chomp_end, hits[j].chomp_start, hits[j].chomp_end, minimum_bp_overlap) is None:
+                if get_overlap(hit_a.chomp_start, hit_a.chomp_end, hit_b.chomp_start, hit_b.chomp_end, minimum_bp_overlap) is None:
                     continue
                 
-                if not any(b - a <= 1 for a, b in product([hits[i].raw_node] + hits[i].raw_children, [hits[j].raw_node] + hits[j].raw_children)):
+                if not any(b - a <= 1 for a, b in product([hit_a.raw_node] + hit_a.raw_children, [hit_b.raw_node] + hit_b.raw_children)):
                     continue
                 
-                if abs(hits[i].chomp_start - hits[j].chomp_start) % 3 != 0:
+                if abs(hit_a.chomp_start - hit_b.chomp_start) % 3 != 0:
                     continue # different frame same seq
                 
-                if hits[i].strand == "-":
-                    gaps_a_start = max(hits[j].chomp_end - hits[i].chomp_end, 0)
-                    gaps_b_start = max(hits[i].chomp_end - hits[j].chomp_end, 0)
+                if hit_a.strand == "-":
+                    gaps_a_start = max(hit_b.chomp_end - hit_a.chomp_end, 0)
+                    gaps_b_start = max(hit_a.chomp_end - hit_b.chomp_end, 0)
                 else:
-                    gaps_a_start = max(hits[i].chomp_start - hits[j].chomp_start, 0)
-                    gaps_b_start = max(hits[j].chomp_start - hits[i].chomp_start, 0)
+                    gaps_a_start = max(hit_a.chomp_start - hit_b.chomp_start, 0)
+                    gaps_b_start = max(hit_b.chomp_start - hit_a.chomp_start, 0)
 
-                a_align_seq = ("-" * gaps_a_start) + hits[i].seq
-                b_align_seq = "-" * gaps_b_start + hits[j].seq
+                a_align_seq = ("-" * gaps_a_start) + hit_a.seq
+                b_align_seq = "-" * gaps_b_start + hit_b.seq
 
                 alignment_length = max(len(b_align_seq),len(a_align_seq))
                 a_align_seq += "-" * (alignment_length - len(a_align_seq))
@@ -335,20 +337,27 @@ def merge_hits(hits: list[Hit], minimum_bp_overlap = 30) -> tuple[list[Hit], lis
                 
                 merged_seq = "".join([a_align_seq[i] if a_align_seq[i] != "-" else b_align_seq[i] for i in range(len(a_align_seq))])
 
-                if hits[i].raw_node == hits[j].raw_node:
-                    log.append("WARNING: {} and {} same base node merge".format(hits[i].node, hits[j].node))
+                if hit_a.raw_node == hit_b.raw_node:
+                    log.append("WARNING: {} and {} same base node merge".format(hit_a.node, hit_b.node))
                 
-                hits[i].children.append(hits[j].node)
-                hits[i].raw_children.append(hits[j].raw_node)
+                if hit_a.evalue != 0 and hit_b.evalue != 0:
+                    hit_a.evalue = min(hit_a.evalue, hit_b.evalue)
+                    hit_a.query = min((hit_a.query, hit_a.evalue), (hit_b.query, hit_b.evalue), key = lambda x: x[1])[0]
+                elif hit_a.evalue == 0:
+                    hit_a.evalue = hit_b.evalue
+                    hit_a.query = hit_b.query
                 
-                hits[i].children.extend(hits[j].children)
-                hits[i].raw_children.extend(hits[j].raw_children)
+                hit_a.children.append(hit_b.node)
+                hit_a.raw_children.append(hit_b.raw_node)
                 
-                hits[i].seq = merged_seq
+                hit_a.children.extend(hit_b.children)
+                hit_a.raw_children.extend(hit_b.raw_children)
+                
+                hit_a.seq = merged_seq
                 
                 # Update coords
-                hits[i].chomp_start = min(hits[i].chomp_start, hits[j].chomp_start)
-                hits[i].chomp_end = max(hits[i].chomp_end, hits[j].chomp_end)
+                hit_a.chomp_start = min(hit_a.chomp_start, hit_b.chomp_start)
+                hit_a.chomp_end = max(hit_a.chomp_end, hit_b.chomp_end)
                 
                 hits[j] = None
                 merge_occured = True
