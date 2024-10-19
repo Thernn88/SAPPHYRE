@@ -12,6 +12,8 @@ Post-processing:
     10. Combine.
 """
 import argparse
+import glob
+import os
 from shutil import which
 
 
@@ -1663,6 +1665,15 @@ def main():
     subcmd_toolset(subparsers)
 
     args = parser.parse_args()
+    
+    if len(args.INPUT) == 1:
+        this_input = args.INPUT[0]
+        if os.path.isdir(this_input):
+            if os.path.exists(os.path.join(this_input, "rocksdb")):
+                args.INPUT = [this_input]
+            else:
+                args.INPUT = glob.glob(os.path.join(this_input, "*.fa"))
+    
     if not hasattr(args, "func"):
         parser.print_help()
         parser.exit()
