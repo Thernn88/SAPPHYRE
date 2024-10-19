@@ -612,6 +612,7 @@ def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     before_merge_count = len(this_hits)
         
     merge_log = []
+    removed_introns = []
     if oargs.is_genome or False: # Set False to disable
         this_hits, merge_log = merge_hits(this_hits)
         for hit in this_hits:
@@ -620,12 +621,12 @@ def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         # Refresh translation
         translate_sequences(this_hits)
         
-    if oargs.debug:
-        debug_fp = open(path.join(oargs.debug_path, oargs.gene + ".debug"), "w")
-    else:
-        debug_fp = None
-    removed_introns = pairwise_sequences(this_hits, debug_fp, core_sequences)
-    
+        if oargs.debug:
+            debug_fp = open(path.join(oargs.debug_path, oargs.gene + ".debug"), "w")
+        else:
+            debug_fp = None
+        removed_introns = pairwise_sequences(this_hits, debug_fp, core_sequences)
+        
     translate_sequences(this_hits)
         
     # Trim and save the sequences
