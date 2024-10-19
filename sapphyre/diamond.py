@@ -1056,6 +1056,7 @@ def run_process(args: Namespace, input_path: str) -> bool:
     for gene in present_genes:
         quick_top_ref.update(top_ref_picked[gene])
     nt_db.put_bytes("getall:valid_refs", json.encode(top_ref_picked))
+    nt_db.put_bytes("getall:ref_counts", json.encode(dict(most_common)))
     
     printv(
         f"Wrote top refs. Took: {time_keeper.lap():.2f}s. Elapsed: {time_keeper.differential():.2f}s. Processing data.",
