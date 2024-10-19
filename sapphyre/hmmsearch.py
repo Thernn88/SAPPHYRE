@@ -822,16 +822,17 @@ def do_folder(input_folder, args):
 
     del temp_source_file
     del hits_db
-    if klog:
-        with open(path.join(input_folder, "hmmsearch_log.log"), "w") as f:
-            f.write("\n".join(klog))
-    if kick_log:
-        with open(path.join(input_folder, "hmmsearch_kick.log"), "w") as f:
-            f.write("\n".join(kick_log))
-    with open(path.join(input_folder, "hmmsearch_multi.log"), "w") as f:
-        f.write("\n".join(mlog))
-    with open(path.join(input_folder, "hmmsearch_zero_multis.log"), "w") as f:
-        f.write("\n".join(multi_causing_log))
+    if args.debug:
+        if klog:
+            with open(path.join(input_folder, "hmmsearch_log.log"), "w") as f:
+                f.write("\n".join(klog))
+        if kick_log:
+            with open(path.join(input_folder, "hmmsearch_kick.log"), "w") as f:
+                f.write("\n".join(kick_log))
+        with open(path.join(input_folder, "hmmsearch_multi.log"), "w") as f:
+            f.write("\n".join(mlog))
+        with open(path.join(input_folder, "hmmsearch_zero_multis.log"), "w") as f:
+            f.write("\n".join(multi_causing_log))
 
     printv(f"Done with {input_folder}. Took {tk.lap():.2f}s", args.verbose, 1)
     return True
