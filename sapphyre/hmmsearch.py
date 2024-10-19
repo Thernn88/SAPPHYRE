@@ -382,7 +382,7 @@ def add_new_result(new_uid_template, gfm, gene, query, results, is_full, cluster
             output.append(new_hit)
 
 
-def hmm_search(batches, most_common_count, source_seqs, is_full, is_genome, gfm, hmm_output_folder, aln_ref_location, overwrite, debug, verbose, evalue_threshold, chomp_max_distance, edge_margin):
+def hmm_search(batches, source_seqs, is_full, is_genome, gfm, hmm_output_folder, aln_ref_location, overwrite, debug, verbose, evalue_threshold, chomp_max_distance, edge_margin):
     batch_result = []
     warnings.filterwarnings("ignore", category=BiopythonWarning)
     this_seqs = {}
@@ -391,7 +391,7 @@ def hmm_search(batches, most_common_count, source_seqs, is_full, is_genome, gfm,
     decoder = json.Decoder(type=list[Hit])
     
     new_uid_template = "{}_{}{}"
-
+    
     for _ in range(len(batches)):
         gene, raw_hits = batches.pop(0)
         diamond_hits = decoder.decode(raw_hits)
@@ -446,9 +446,8 @@ def hmm_search(batches, most_common_count, source_seqs, is_full, is_genome, gfm,
         parents = {}
 
         cluster_full = {}
-        queries_in_cluster = defaultdict(set)
+        cluster_queries = defaultdict(list)
         source_clusters = {}
-        cluster_queries = {}
         
         children = {}
         unaligned_sequences = []
@@ -470,12 +469,11 @@ def hmm_search(batches, most_common_count, source_seqs, is_full, is_genome, gfm,
 
                 this_crange, _ = cluster_dict.get(hit.node, (None, None))
                 if this_crange:
-                    queries_in_cluster[this_crange].add(hit.query)
+                    cluster_queries[this_crange].append(hit.query)
                 
             if is_genome and clusters:
+                cluster_queries = {k: max(set(v), key=v.count) for k, v in cluster_queries.items()}
                 add_full_cluster_search(clusters, edge_margin, source_clusters, cluster_full, nodes_in_gene, cluster_dict)
-                 
-            cluster_queries = {k: max(v, key=most_common_count.get) for k, v in queries_in_cluster.items()}
                       
         shift_targets(is_full, query_template, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp)
         del hits_have_frames_already
@@ -694,8 +692,6 @@ def do_folder(input_folder, args):
     seq_source = None
     temp_source_file = None
     seq_db = RocksDB(path.join(input_folder, "rocksdb", "sequences", "nt"))
-    most_common_count = json.decode(seq_db.get("getall:ref_counts"), type=dict[str, int])
-
     is_genome = seq_db.get("get:isgenome")
     is_genome = is_genome == "True"
     is_full = is_genome or args.full
@@ -733,7 +729,8 @@ def do_folder(input_folder, args):
         return False
 
     per_batch = math.ceil(len(transcripts_mapped_to) / args.processes)
-    batches = [(transcripts_mapped_to[i:i + per_batch], most_common_count, seq_source, is_full, is_genome, gfm, hmm_output_folder, aln_ref_location, args.overwrite, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance, args.edge_margin) for i in range(0, len(transcripts_mapped_to), per_batch)]
+
+    batches = [(transcripts_mapped_to[i:i + per_batch], seq_source, is_full, is_genome, gfm, hmm_output_folder, aln_ref_location, args.overwrite, args.debug, args.verbose, args.evalue_threshold, args.chomp_max_distance, args.edge_margin) for i in range(0, len(transcripts_mapped_to), per_batch)]
 
     if args.processes <= 1:
         all_hits = []
