@@ -469,11 +469,12 @@ def hmm_search(batches, source_seqs, is_full, is_genome, gfm, hmm_output_folder,
 
                 this_crange, _ = cluster_dict.get(hit.node, (None, None))
                 if this_crange:
-                    cluster_queries[this_crange].append(hit.query)
+                    cluster_queries[this_crange].append((hit.query, hit.evalue))
                 
             if is_genome and clusters:
-                cluster_queries = {k: max(set(v), key=v.count) for k, v in cluster_queries.items()}
                 add_full_cluster_search(clusters, edge_margin, source_clusters, cluster_full, nodes_in_gene, cluster_dict)
+                
+            cluster_queries = {k : min(v, key=lambda x: x[1])[0] for k, v in cluster_queries.items()}
                       
         shift_targets(is_full, query_template, nodes_in_gene, diamond_hits, cluster_full, fallback, hits_have_frames_already, unaligned_sequences, nt_sequences, parents, children, required_frames, this_seqs, bio_revcomp)
         del hits_have_frames_already
