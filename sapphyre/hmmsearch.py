@@ -308,7 +308,7 @@ def get_results(hmm_output):
     return data.items()
 
 
-def add_new_result(new_uid_template, gfm, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template, debug):
+def add_new_result(new_uid_template, gfm, gene, query, results, is_full, cluster_to_genes_recovered, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template, debug):
     node, frame = query.split("|")
     id = int(node)
     if id in cluster_full:
@@ -331,6 +331,7 @@ def add_new_result(new_uid_template, gfm, gene, query, results, is_full, cluster
                 parents_done.add(query)
 
                 cluster_range = source_clusters[id]
+                cluster_to_genes_recovered[cluster_range].add(gene)
                 where_from = "Cluster Full"
                 cquery = cluster_queries[cluster_range]
 
@@ -542,8 +543,10 @@ def hmm_search(batches, source_seqs, is_full, is_genome, gfm, hmm_output_folder,
         if queries is None:
             queries = get_results(this_hmm_output)
         
+        cluster_to_genes_recovered = defaultdict(set)
+        
         for query, results in queries:
-            add_new_result(new_uid_template, gfm, gene, query, results, is_full, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template, debug)
+            add_new_result(new_uid_template, gfm, gene, query, results, is_full, cluster_to_genes_recovered, cluster_full, cluster_queries, source_clusters, nt_sequences, parents, children, parents_done, passed_ids, output, hmm_log, hmm_log_template, debug)
 
         diamond_kicks = []
         for hit in diamond_hits:
@@ -579,7 +582,9 @@ def hmm_search(batches, source_seqs, is_full, is_genome, gfm, hmm_output_folder,
                 if debug:
                     diamond_kicks.append(hmm_log_template.format(hit.gene, hit.node, hit.frame, f"Kicked. Evalue: {hit.evalue}"))
                 
-        batch_result.append((gene, output, new_outs, hmm_log, diamond_kicks))
+        cluster_to_genes_recovered = {k: list(v)[0] for k, v in cluster_to_genes_recovered.items() if len(v) == 1} 
+                
+        batch_result.append((gene, output, cluster_to_genes_recovered, new_outs, hmm_log, diamond_kicks))
     return batch_result
 
 def get_head_to_seq(nt_db, recipe):
@@ -622,7 +627,7 @@ def get_head_to_seq(nt_db, recipe):
     return head_to_seq
 
 
-def miniscule_multi_filter(hits, debug):
+def miniscule_multi_filter(hits, debug, global_cluster_genes):
     hits.sort(key=lambda hit: hit.score, reverse=True)
     
     MULTI_PERCENTAGE_OF_OVERLAP = 0.3
@@ -666,10 +671,18 @@ def miniscule_multi_filter(hits, debug):
                     # If the score difference is not greater than 10% trigger miniscule score.
                     # Miniscule score means hits map to loosely to multiple genes thus
                     # we can't determine a viable hit on a single gene and must kick all.
+                    
+                    hits_with_cluster_genes = [hit for hit in hits if hit and global_cluster_genes.get(hit.node) == hit.gene]
+                    saved_hits = {hit.uid for hit in hits_with_cluster_genes}
+                    kicked_hits = [hit for hit in hits if hit and hit.uid not in saved_hits]
+                    
+                    # for hit in hits_with_cluster_genes:
+                    #     print("Rescued:",hit)
+                    
                     if debug:
-                        log = [internal_template.format(hit.gene, hit.node, hit.score, hit.qstart, hit.qend, master.gene, master.node, master.score, master.qstart, master.qend) for hit in hits if hit]
+                        log = [internal_template.format(hit.gene, hit.node, hit.score, hit.qstart, hit.qend, master.gene, master.node, master.score, master.qstart, master.qend) for hit in kicked_hits]
 
-                    return [], len(hits), log, edge_log
+                    return hits_with_cluster_genes, len(hits) - len(hits_with_cluster_genes), log, edge_log
             else:
                 edge_log.append(f"{candidate.gene},{candidate.node},{candidate.frame},{candidate.evalue},{master.gene}")
 
@@ -748,12 +761,20 @@ def do_folder(input_folder, args):
     kick_log = ["Gene,Node,Frame"]
     multi_causing_log = ["Gene,Node,Frame,Evalue,Master Gene"]
     header_based_results = defaultdict(list)
+    global_cluster_genes = {}
     printv("Processing results", args.verbose, 1)
     for batch in all_hits:
         for _ in range(len(batch)):
-            gene, hits, logs, klogs, dkicks = batch.pop(0)
+            gene, hits, clusters_to_genes, logs, klogs, dkicks = batch.pop(0)
             if not gene:
                 continue
+            
+            for (cstart, cend), gene in clusters_to_genes.items():
+                for i in range(cstart, cend + 1):
+                    if i in global_cluster_genes:
+                        global_cluster_genes[i] = None
+                        continue
+                    global_cluster_genes[i] = gene
 
             for _ in range(len(hits)):
                 hit = hits.pop(0)
@@ -762,7 +783,6 @@ def do_folder(input_folder, args):
             log.extend(logs)
             klog.extend(klogs)
             kick_log.extend(dkicks)
-
     mlog = ["Gene,Node,Score,Start,End,Reason,Master Gene,Header,Score,Start,End"]
     mkicks = 0
 
@@ -772,15 +792,15 @@ def do_folder(input_folder, args):
     for hits in header_based_results.values():
         genes_present = {hit.gene for hit in hits}
         if len(genes_present) > 1:
-            multi_filter_args.append((hits, args.debug))
+            multi_filter_args.append((hits, args.debug, global_cluster_genes))
         else:
             for hit in hits:
                 gene_based_results[hit.gene].append(hit)
     del header_based_results
     if args.processes <= 1:
         result = []
-        for hits, debug in multi_filter_args:
-            result.append(miniscule_multi_filter(hits, debug))
+        for hits, debug, cgenes in multi_filter_args:
+            result.append(miniscule_multi_filter(hits, debug, cgenes))
     else:
         with Pool(args.processes) as p:
             result = p.starmap(miniscule_multi_filter, multi_filter_args)
