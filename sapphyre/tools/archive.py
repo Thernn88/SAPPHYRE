@@ -16,7 +16,8 @@ def archive_worker(folder_to_archive, verbosity, keep_original) -> None:
                 tf.add(str(folder_to_archive), arcname=os.path.split(folder_to_archive)[-1])
         except:
             printv(f"Failed to archive {folder_to_archive}, retrying", verbosity, 0)
-            os.remove(tar_path, ignore_errors=True)
+            if os.path.exists(tar_path):
+                os.remove(tar_path)
             with tarfile.open(tar_path, "w:gz") as tf:
                 tf.add(str(folder_to_archive), arcname=os.path.split(folder_to_archive)[-1])
 
