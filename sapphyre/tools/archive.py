@@ -37,6 +37,18 @@ def unarchive_worker(file_to_unarchive, verbosity, _) -> None:
 
 def process_folder(args, superfolder_path):
     if not args.specific_directories:
+        sub_folders = {
+            "blosum",
+            "blosum",
+            "hmmfilter",
+            "clusters",
+            "excise",
+            "internal",
+            "recovered",
+            "trimmed",
+            "motif",
+            "miniprot",
+        }
         directories_to_archive = {
             "align",
             "nt_aligned",
@@ -83,7 +95,7 @@ def process_folder(args, superfolder_path):
                     )
         #  archive logic
         elif os.path.basename(root) in directories_to_archive:
-            if os.path.basename(os.path.split(root)[0]) in directories_to_archive:
+            if os.path.basename(os.path.split(root)[0]) in sub_folders:
                 continue
             if (
                 os.path.basename(os.path.split(root)[0]) == "sequences"
