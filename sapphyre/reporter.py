@@ -46,6 +46,7 @@ MainArgs = namedtuple(
 class Hit(HmmHit):#, frozen=True):
     raw_node: int = None
     header: str = None
+    coords: list[tuple[int, int]] = None
     base_header: str = None
     aa_sequence: str = None
     parent: str = None
@@ -580,6 +581,29 @@ def pairwise_sequences(hits, debug_fp, ref_seqs, min_gaps=10):
             
             internal_introns_removed.append(f"{hit.header}\n{hit.query}\nRemoved group of size {len(group)} at {group[0]}-{group[-1]} on pairwise alignment\n{intron}\n")
             
+        final_groups = [list(map(int,map(itemgetter(1),g))) for _, g in groupby(enumerate(internal_ref_gaps),lambda x:x[0]-x[1])]
+            
+        # TODO instead of traversing the whole list just check the first and last element of the group
+        exons = []
+        exon_start = None
+
+        for i in range(hit.chomp_start, hit.chomp_end + 1):
+            relative_index = i - hit.chomp_start  # Convert to zero-based index relative to the start coordinate
+
+            if relative_index not in to_remove_final:  # Check if this index is not in the gaps
+                if exon_start is None:
+                    exon_start = i  # Start a new exon
+            else:
+                if exon_start is not None:
+                    # If we're in a gap and an exon was ongoing, close it
+                    exons.append((exon_start, i - 1))  # End the current exon
+                    exon_start = None
+
+        # Step 3: If the last exon continues to the end, close it
+        if exon_start is not None:
+            exons.append((exon_start, hit.chomp_end))
+        
+        hit.coords = exons
         nt_seq = "".join([let for i, let in enumerate(hit.seq) if i not in to_remove_final])
 
         hit.seq = nt_seq
@@ -630,10 +654,14 @@ def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         # Refresh translation
         translate_sequences(this_hits)
         
+        for hit in this_hits:
+            hit.coords = [(hit.chomp_start, hit.chomp_end)]
+        
         if oargs.debug:
             debug_fp = open(path.join(oargs.debug_path, oargs.gene + ".debug"), "w")
         else:
             debug_fp = None
+            
         removed_introns = pairwise_sequences(this_hits, debug_fp, core_sequences)
         
     translate_sequences(this_hits)
@@ -666,7 +694,7 @@ def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.verbose,
         2,
     )
-    return oargs.gene, removed_introns, before_merge_count, header_to_score, gene_nodes, [(hit.parent, hit.get_merge_header(), hit.chomp_start, hit.chomp_end, hit.strand, hit.frame) for hit in this_hits], merge_log
+    return oargs.gene, removed_introns, before_merge_count, header_to_score, gene_nodes, [(hit.parent, hit.get_merge_header(), hit.coords, hit.strand, hit.frame) for hit in this_hits], merge_log
 
 
 def get_prepare_dupes(rocks_nt_db: RocksDB) -> dict[str, dict[str, int]]:
@@ -833,8 +861,14 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace):
                         end_bp[parent] = input_len
                     out_data[parent].append((node, chomp_start, chomp_end))
                 
-            for parent, node, act_start, act_end, strand, frame in gff:
-                parent_gff_output[parent].append(((act_start), f"{parent}\tSapphyre\texon\t{act_start}\t{act_end}\t.\t{strand}\t.\tParent={node};Note={frame};"))
+            for parent, node, coords, strand, frame in gff:
+                if len(coords) > 1:
+                    for i, (act_start, act_end) in enumerate(coords):
+                        let = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")[i]
+                        parent_gff_output[parent].append(((act_start), f"{parent}\tSapphyre\texon\t{act_start}\t{act_end}\t.\t{strand}\t.\tName={node} Exon {let};Parent={node};Note={frame};"))
+                else:
+                    act_start, act_end = coords[0]
+                    parent_gff_output[parent].append(((act_start), f"{parent}\tSapphyre\texon\t{act_start}\t{act_end}\t.\t{strand}\t.\tParent={node};Note={frame};"))
                     
         
             if out_data:
