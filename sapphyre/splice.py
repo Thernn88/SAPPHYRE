@@ -733,7 +733,7 @@ def get_combo_results(gt_positions, ag_positions, prev_node, node, FRANKENSTEIN_
                 else:
                     continue
                 
-            else:
+            elif right_incomplete or left_incomplete:
                 continue
                 
 
