@@ -283,7 +283,7 @@ class do_gene():
         if not self.is_gfm:
             cluster_sets = [None]
         else:
-            ids = [quick_rec(node.header.split("|")[3], None, node.sequence, node.start, node.end) for node in aa_candidates]
+            ids = [quick_rec(node.header.split("|")[3], int(node.header.split("|")[4]), node.sequence, node.start, node.end) for node in aa_candidates]
             max_gap_size = round(len(aa_candidates[0].sequence) * 0.3) # Half MSA length
     
             clusters, _ = cluster_ids(ids, 100, max_gap_size, reference_cluster_data, self.req_seq_coverage) #TODO: Make distance an arg
