@@ -281,7 +281,7 @@ class do_gene():
                 candidates.append(Node(header, seq, count, *find_index_pair(seq, "-")))
                 
         if not self.is_gfm:
-            clusters = [(None, None)]
+            clusters = [(None, None, None)]
         else:
             ids = [quick_rec(node.header.split("|")[3], int(node.header.split("|")[4]), node.sequence, node.start, node.end) for node in aa_candidates]
             max_gap_size = round(len(aa_candidates[0].sequence) * 0.3) # Half MSA length
@@ -440,8 +440,9 @@ class do_gene():
                     for node in group:
                         aa_out.append((node.header.split("|")[3], node.sequence))
 
-        writeFasta(path.join(self.nt_gene_output, nt_gene), nt_out, self.compress)
-        writeFasta(path.join(self.aa_gene_output, aa_gene), aa_out, self.compress)
+        if nt_out:
+            writeFasta(path.join(self.nt_gene_output, nt_gene), nt_out, self.compress)
+            writeFasta(path.join(self.aa_gene_output, aa_gene), aa_out, self.compress)
 
         return move_log
 
