@@ -14,10 +14,6 @@ from bs4 import BeautifulSoup
 
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
-
-AA_FOLDER = "aa_merged"
-NT_FOLDER = "nt_merged"
-
 STOPCODON = "*"
 AA_REPLACE = "X"
 NT_REPLACE = "N"
@@ -411,8 +407,11 @@ def process_folder(args, input_path):
     basename = os.path.basename(taxa_folder)
     no_suffix = basename.split(".")[0]
     print(f"Processing: {basename}")
-    aa_folder = taxa_folder.joinpath(AA_FOLDER)
-    nt_folder = taxa_folder.joinpath(NT_FOLDER)
+    for pos_aa, pos_nt in [("aa_merged", "nt_merged"), ("align", "nt_aligned"), ("aa", "nt")]:
+        if taxa_folder.joinpath(pos_aa).exists() and taxa_folder.joinpath(pos_nt).exists():
+            aa_folder = taxa_folder.joinpath(pos_aa)
+            nt_folder = taxa_folder.joinpath(pos_nt)
+            break
 
     def makent(gene, aa_path):
         name = gene + ".nt.fa"
