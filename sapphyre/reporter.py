@@ -502,9 +502,7 @@ def pairwise_sequences(hits, debug_fp, ref_seqs, min_gaps=10):
                 
                 key_a, group_a = groups[i]
                 group_b = groups[i+1][1]
-                if len(group_a) >= min_gaps and len(group_b) >= min_gaps:
-                    continue
-                if min(group_b) - max(group_a) > 5:
+                if min(group_b) - max(group_a) > 10:
                     continue
                 
                 groups[i] = (key_a, list(range(min(group_a), max(group_b))))
