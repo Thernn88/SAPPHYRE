@@ -221,12 +221,12 @@ def clean_gene(gene_config: GeneConfig):
         aa_content = parseFasta(str(gene_config.aa_file))
         nt_content = parseFasta(str(gene_config.nt_file))
     else:
-        aa_content = (
-            pair for pair in parseFasta(str(gene_config.aa_file)) if pair[0][-1] != "."
-        )
-        nt_content = (
-            pair for pair in parseFasta(str(gene_config.nt_file)) if pair[0][-1] != "."
-        )
+        aa_content = [
+            pair for pair in parseFasta(str(gene_config.aa_file)) if not pair[0].endswith(".")
+        ]
+        nt_content = [
+            pair for pair in parseFasta(str(gene_config.nt_file)) if not pair[0].endswith(".")
+        ]
 
     if gene_config.stopcodon:
         aa_content, nt_content = stopcodon(aa_content, nt_content)
