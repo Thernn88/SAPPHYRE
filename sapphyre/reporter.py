@@ -507,12 +507,11 @@ def pairwise_sequences(hits, debug_fp, ref_seqs, min_gaps=10):
                 if min(group_b) - max(group_a) > 5:
                     continue
                 
-                for x in range(max(group_a), min(group_b)):
-                    if this_aa[x] == "*":
-                        groups[i] = (key_a, list(range(min(group_a), max(group_b))))
-                        groups[i+1] = None
-                        merge_occured = True
-                        break
+                groups[i] = (key_a, list(range(min(group_a), max(group_b))))
+                groups[i+1] = None
+                merge_occured = True
+                break
+                
             groups = [i for i in groups if i is not None]
         for k, group in groups:
             if len(group) >= min_gaps:
