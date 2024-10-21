@@ -12,7 +12,7 @@ from sapphyre_tools import (
     get_overlap,
     bio_revcomp,
 )
-from .directional_cluster import cluster_ids, within_distance, node_to_ids, quick_rec
+from .directional_cluster import cluster_ids, node_to_ids, quick_rec
 from wrap_rocks import RocksDB
 from Bio.Seq import Seq
 from Bio import BiopythonWarning
@@ -487,7 +487,7 @@ def reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_o
             id_count[id] += 1
 
     for cluster_set in cluster_sets:
-        aa_subset = [node for node in aa_nodes if (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
+        aa_subset = [node for node in aa_nodes if (cluster_set is None or node.header.split("|")[3] in cluster_set)]
         if aa_subset[0].frame < 0:
             aa_subset.sort(key=lambda x: x.start, reverse=True)
         else:
@@ -637,7 +637,7 @@ def do_gene(gene, input_aa, input_nt, head_to_seq, out_aa_path, out_nt_path, com
     clusters, _ = cluster_ids(ids, 100, max_gap_bp_size, reference_cluster_data, req_seq_coverage=0) #TODO: Make distance an arg
     
     if clusters:
-        cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
+        cluster_sets = [i[0] for i in clusters]
        
     new_nt, new_aa = reverse_pwm_splice(aa_nodes, cluster_sets, ref_consensus, head_to_seq, log_output, ref_count, ref_median_start, ref_median_end)
     

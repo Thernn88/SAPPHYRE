@@ -12,7 +12,7 @@ from typing import Any
 
 from msgspec import Struct
 from sapphyre_tools import find_index_pair, get_overlap
-from .directional_cluster import cluster_ids, within_distance, node_to_ids, quick_rec
+from .directional_cluster import cluster_ids, quick_rec
 from wrap_rocks import RocksDB
 
 from .timekeeper import KeeperMode, TimeKeeper
@@ -281,25 +281,19 @@ class do_gene():
                 candidates.append(Node(header, seq, count, *find_index_pair(seq, "-")))
                 
         if not self.is_gfm:
-            cluster_sets = [None]
+            clusters = [(None, None)]
         else:
             ids = [quick_rec(node.header.split("|")[3], int(node.header.split("|")[4]), node.sequence, node.start, node.end) for node in aa_candidates]
             max_gap_size = round(len(aa_candidates[0].sequence) * 0.3) # Half MSA length
     
             clusters, _ = cluster_ids(ids, 100, max_gap_size, reference_cluster_data, self.req_seq_coverage) #TODO: Make distance an arg
 
-            if clusters:
-                cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
-            else:
-                cluster_sets = None
-                
-        if cluster_sets is None:
+        if clusters is None:
             return []
-
-        for cluster_set in cluster_sets:
-            aa_subset = [node for node in aa_candidates if (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
+    
+        for cluster_set, _, _ in clusters:
+            aa_subset = [node for node in aa_candidates if (cluster_set is None or node.header.split("|")[3] in cluster_set)]
             aa_subset.sort(key=lambda x: x.start)
-
             if self.is_gfm:
                 aa_overlap_groups = [aa_subset]
             else:
@@ -350,7 +344,7 @@ class do_gene():
                                 node.sequence = "".join(this_sequence)
                                 node.start, node.end = find_index_pair(node.sequence, "-")
 
-            candidates_subset = [node for node in candidates if (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
+            candidates_subset = [node for node in candidates if (cluster_set is None or node.header.split("|")[3] in cluster_set)]
             
             for node in candidates_subset:
                 header = node.header

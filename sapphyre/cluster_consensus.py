@@ -2,25 +2,35 @@ from collections import defaultdict
 from itertools import combinations
 from multiprocessing import Pool
 from os import listdir, makedirs, path
+from msgspec import Struct
 from sapphyre_tools import (
     find_index_pair,
 )
-from .directional_cluster import cluster_ids, quick_rec, within_distance, node_to_ids
+from .directional_cluster import cluster_ids, quick_rec
 from .timekeeper import KeeperMode, TimeKeeper
 from .utils import parseFasta, printv, writeFasta
 
-def within_highest_coverage(logs, clusters, overlap_perc, within=0.1): # kick 10% less coverage
-    highest_cluster = max(clusters, key = lambda x: x[2])
-    highest_coverage_cluster = highest_cluster[2]
+class cluster_obj(Struct):
+    cluster_set: set
+    start: int
+    end: int
+    coverage: float
+    seq_data: list
+    seq_data_coords: set
+    
 
-    highest_data_coords = highest_cluster[4]
+def within_highest_coverage(logs, clusters, overlap_perc, within=0.1): # kick 10% less coverage
+    highest_cluster = max(clusters, key = lambda x: x.coverage)
+    highest_coverage_cluster = highest_cluster.coverage
+
+    highest_data_coords = highest_cluster.seq_data_coords
 
     req_coverage = highest_coverage_cluster - within
 
     within = []
     for cluster in clusters:
 
-        cluster_data_coords = cluster[4]
+        cluster_data_coords = cluster.seq_data_coords
         overlap = highest_data_coords.intersection(cluster_data_coords)
 
         percent = 0
@@ -31,8 +41,8 @@ def within_highest_coverage(logs, clusters, overlap_perc, within=0.1): # kick 10
             percent = amount / (min((end-start), (highest_end-highest_start)) + 1)
 
         if percent >= overlap_perc:
-            if cluster[2] < req_coverage:
-                logs.append(f"Kicked due to not within 10% of max coverage:\n{cluster[0]}-{cluster[1]}\nOverlap percent: {percent:.2f}\nCluster coverage: {cluster[2]:.2f}\nHighest coverage: {highest_coverage_cluster:.2f}")
+            if cluster.coverage < req_coverage:
+                logs.append(f"Kicked due to not within 10% of max coverage:\n{cluster.start}-{cluster.end}\nOverlap percent: {percent:.2f}\nCluster coverage: {cluster.coverage:.2f}\nHighest coverage: {highest_coverage_cluster:.2f}")
                 continue
         
         within.append(cluster)
@@ -71,14 +81,13 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
     clusters, _ = cluster_ids(ids, 100, max_gap_size, reference_data_cols, req_seq_coverage=0)
 
     final_clusters = []
-    for cluster in clusters:
-        cluster_set = set(range(cluster[0], cluster[1] + 1))
+    for cluster_set, cluster_range, cluster_coverage in clusters:
         this_cluster_seq = []
 
         cluster_min_start = None
         cluster_min_end = None
         for header, seq in sequences:
-            if within_distance(node_to_ids(header.split("|")[3]), cluster_set, 0):
+            if header.split("|")[3] in cluster_set:
                 this_cluster_seq.append((header, seq, start, end))
                 start, end = find_index_pair(seq, "-")
                 if cluster_min_start is None:
@@ -90,7 +99,7 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
                     
         this_cluster_coords = set(range(cluster_min_start, cluster_min_end))
         
-        final_clusters.append((cluster[0], cluster[1], cluster[2], this_cluster_seq, this_cluster_coords))
+        final_clusters.append(cluster_obj(cluster_set, cluster_range[0], cluster_range[1], cluster_coverage, this_cluster_seq, this_cluster_coords))
 
     if not clusters:
         if logs:
@@ -108,7 +117,7 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
 
         for x, cluster in enumerate(final_clusters):
             cluster_consensus = defaultdict(set)
-            for _, seq, start, end in cluster[3]:
+            for _, seq, start, end in cluster.seq_data:
                 for i, let in enumerate(seq[start:end], start):
                     if let != "-":
                         cluster_consensus[i].add(let)
@@ -122,7 +131,7 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
             
             cluster_consensi[x] = cluster_consensus
             percent = 0 if cluster_cols == 0 else cluster_match / cluster_cols
-            cluster_percents.append((x, cluster[4], percent))
+            cluster_percents.append((x, cluster.seq_data_coords, percent))
 
         max_cluster = max(cluster_percents, key = lambda x: x[2])
         max_percent = max_cluster[2]
@@ -200,7 +209,7 @@ def do_gene(gene: str, aa_gene_input_path: str, nt_gene_input_path: str, aa_gene
     allowed = set()
     for i in cluster_consensi:
         cluster = final_clusters[i]
-        for header, _, _, _ in cluster[3]:
+        for header, _, _, _ in cluster.seq_data:
             allowed.add(header)
 
     aa_out = []

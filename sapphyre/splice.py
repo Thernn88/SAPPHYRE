@@ -19,7 +19,7 @@ from sapphyre_tools import (
     join_with_exclusions,
     join_triplets_with_exclusions,
 )
-from .directional_cluster import cluster_ids, within_distance, node_to_ids, quick_rec
+from .directional_cluster import cluster_ids, quick_rec
 from wrap_rocks import RocksDB
 
 from .timekeeper import KeeperMode, TimeKeeper
@@ -470,7 +470,7 @@ def calculate_split(node_a: str, node_b: str, overlapping_coords: tuple, ref_con
 def do_trim(aa_nodes, cluster_sets, x_positions, ref_consensus, kicked_headers, no_dupes, excise_trim_consensus):
     for cluster_set in cluster_sets:
         
-        sub_aa_nodes = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
+        sub_aa_nodes = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or node.header.split("|")[3] in cluster_set)]
         sub_x_positions = defaultdict(set)
         aa_sequences = [node.sequence for node in sub_aa_nodes]
         if aa_sequences:
@@ -1115,7 +1115,7 @@ def splice_combo(add_results,
 
 def edge_check(aa_nodes, cluster_sets, kicked_headers, log_output, min_overlap_amount = 0.85, min_matching_percent = 0.95):
     for cluster_set in cluster_sets:
-        aa_subset = [node for node in aa_nodes if (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
+        aa_subset = [node for node in aa_nodes if (cluster_set is None or node.header.split("|")[3] in cluster_set)]
         if aa_subset[0].frame < 0:
             aa_subset.sort(key=lambda x: x.start, reverse=True)
         else:
@@ -1269,7 +1269,7 @@ def log_excised_consensus(
     clusters, _ = cluster_ids(ids, 100, max_gap_size, reference_cluster_data) #TODO: Make distance an arg
 
     if clusters:
-        cluster_sets = [set(range(a, b+1)) for a, b, _ in clusters]
+        cluster_sets = [i[0] for i in clusters]
         
     edge_check(aa_nodes, cluster_sets, kicked_headers, log_output)
 
@@ -1312,7 +1312,7 @@ def log_excised_consensus(
         
         for cluster_i, cluster_set in enumerate(cluster_sets):
 
-            aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
+            aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or node.header.split("|")[3] in cluster_set)]
 
             sequences = [node.nt_sequence for node in aa_subset]
             if not sequences:
@@ -1378,7 +1378,7 @@ def log_excised_consensus(
         merged.append((start, end + 1))
         
     for cluster_i, cluster_set in enumerate(cluster_sets):
-        aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
+        aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or node.header.split("|")[3] in cluster_set)]
         
         for start, end in merged:
             gap_size = end - start
@@ -1592,7 +1592,7 @@ def log_excised_consensus(
     DELETION_PENALTY = 0
     int_first_id = lambda x: int(x.split("_")[0])
     for cluster_i, cluster_set in enumerate(cluster_sets):
-        aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or within_distance(node_to_ids(node.header.split("|")[3]), cluster_set, 0))]
+        aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and (cluster_set is None or node.header.split("|")[3] in cluster_set)]
         aa_subset.sort(key = lambda x: x.start)
         for prev_node, node in combinations(aa_subset, 2):
             overlapping_coords = get_overlap(node.start, node.end, prev_node.start, prev_node.end, -40)
@@ -2118,7 +2118,7 @@ def main(args, sub_dir):
                 if set is None:
                     new_id = f"{gene}_{index}"
                     break
-                elif within_distance(node_to_ids(id), set, 0):
+                elif "NODE_"+id in set:
                     crange = f"{min(set)}-{max(set)}"
                     new_id = f"{gene}_{index}"
                     cluster_found = True

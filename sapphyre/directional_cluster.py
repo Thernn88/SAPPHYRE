@@ -43,10 +43,13 @@ def quick_rec(node, frame, seq, start, end):
     strand = None if frame is None else "-" if frame < 0 else "+"
     return cluster_rec(node, start, end, data_cols, strand)
 
-def node_to_ids(node):
+def node_to_components(node):
     if "NODE_" in node:
         node = node.replace("NODE_","")
-    return list(map(lambda x: int(x.split("_")[0]), node.split("&&")))
+    return node.split("&&")
+
+def node_to_ids(node):
+    return list(map(lambda x: int(x.split("_")[0]), node_to_components(node)))
    
 def get_min_distance(a: set, b: set) -> int:
     """Get the minimum distance between two sets."""
@@ -76,13 +79,13 @@ def finalize_cluster(current_cluster, current_indices, ref_coords, clusters, kic
             cluster_data_cols.update(rec.seq_data_coords)
             
         cluster_coverage = len(cluster_data_cols.intersection(ref_coords)) / len(ref_coords)
-        clusters.append((min(current_indices), max(current_indices), cluster_coverage))
+        clusters.append(({i.node for i in current_cluster}, (min(current_indices), max(current_indices)), cluster_coverage))
     elif len(current_cluster) == 1:
         cluster_rec = current_cluster[0]
         cluster_coverage = len(cluster_rec.seq_data_coords.intersection(ref_coords)) / len(ref_coords)
         
         if cluster_coverage > req_seq_coverage:
-            clusters.append((min(current_indices), max(current_indices), cluster_coverage))
+            clusters.append(({i.node for i in current_cluster}, (min(current_indices), max(current_indices)), cluster_coverage))
         else:
             kicks.add(cluster_rec.node)
 
@@ -92,9 +95,7 @@ def cluster_ids(ids, max_id_distance, max_gap, ref_coords, req_seq_coverage = 0.
     kicks = set()
     ids.sort(key=lambda x: x.get_first_id())
     current_cluster = None
-    
     for x, rec in enumerate(ids):
-        
         if current_cluster is None:
             current_cluster = [rec]
             current_indices = set(rec.get_ids)
@@ -159,7 +160,9 @@ def cluster_ids(ids, max_id_distance, max_gap, ref_coords, req_seq_coverage = 0.
                     while kick_occured:
                         kick_occured = False
                         for rec_in in current_cluster:
-                            if get_min_distance(new_indices, rec_in.get_ids) == 0:
+                            if get_min_distance(new_indices, rec_in.get_ids) != 0:
+                                continue
+                            if get_overlap(rec.start, rec.end, rec_in.start, rec_in.end, -(max_gap)+1):
                                 current_cluster.remove(rec_in)
                                 current_indices.difference_update(rec_in.get_ids)
                                 new_cluster.append(rec_in)
@@ -171,7 +174,10 @@ def cluster_ids(ids, max_id_distance, max_gap, ref_coords, req_seq_coverage = 0.
                     
                     current_cluster = new_cluster
                     current_indices = new_indices
-                    current_direction = determine_direction(rec.start, rec.end, current_rec.start, current_rec.end, "bi")
+                    if len(current_cluster) >= 2:
+                        current_direction = determine_direction(current_cluster[0].start, current_cluster[0].end, current_cluster[1].start, current_cluster[1].end, current_direction)
+                    else:
+                        current_direction = "bi"
                 else:
                     finalize_cluster(current_cluster, current_indices, ref_coords, clusters, kicks, req_seq_coverage)
                     current_cluster = [rec]
