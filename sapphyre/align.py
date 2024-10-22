@@ -1061,38 +1061,41 @@ def run_command(args: CmdArgs) -> None:
         writeFasta(args.result_file, references + to_write, compress=args.compress)
         
         ids = []
-        for header, seq in to_write:
-            start, end = find_index_pair(seq, "-")
-            data_cols = {i for i, let in enumerate(seq[start:end], start) if let != "-"}
-            ids.append((get_id(header), data_cols, start, end))
-        ref_coords = set()
-        for _, seq in references:
-            start, end = find_index_pair(seq, "-")
-            for i, let in enumerate(seq[start:end], start):
-                if let != "-":
-                    ref_coords.add(i)
-    else:
-        ids = []
-        ref_coords = set()
-        for header, seq in parseFasta(args.result_file):
-            if header.endswith("."):
+        if debug:
+            for header, seq in to_write:
+                start, end = find_index_pair(seq, "-")
+                data_cols = {i for i, let in enumerate(seq[start:end], start) if let != "-"}
+                ids.append((get_id(header), data_cols, start, end))
+            ref_coords = set()
+            for _, seq in references:
                 start, end = find_index_pair(seq, "-")
                 for i, let in enumerate(seq[start:end], start):
                     if let != "-":
                         ref_coords.add(i)
-                continue
+    else:
+        ids = []
+        if debug:
+            ref_coords = set()
+            for header, seq in parseFasta(args.result_file):
+                if header.endswith("."):
+                    start, end = find_index_pair(seq, "-")
+                    for i, let in enumerate(seq[start:end], start):
+                        if let != "-":
+                            ref_coords.add(i)
+                    continue
 
-            start, end = find_index_pair(seq, "-")
-            data_cols = {i for i, let in enumerate(seq[start:end], start) if let != "-"}
-            ids.append((get_id(header), data_cols, start, end))
+                start, end = find_index_pair(seq, "-")
+                data_cols = {i for i, let in enumerate(seq[start:end], start) if let != "-"}
+                ids.append((get_id(header), data_cols, start, end))
 
-    clusters = []
-    if args.is_genome:
-        clusters = do_cluster(ids, ref_coords, args.chomp_max_distance)
+    if ids:
+        clusters = []
+        if args.is_genome:
+            clusters = do_cluster(ids, ref_coords, args.chomp_max_distance)
 
         cluster_string = ", ".join([f"{cluster[0]}-{cluster[1]} {(cluster[2]*100):.2f}%" for cluster in clusters])         
             
-    printv(f"Done. Took {keeper.differential():.2f}", args.verbose, 3)  # Debug
+        printv(f"Done. Took {keeper.differential():.2f}", args.verbose, 3)  # Debug
 
     if not args.is_genome:
         return
