@@ -23,16 +23,13 @@ def determine_direction(start, end, current_start, current_end, current_directio
     if start == current_start and end == current_end:
         this_direction =  current_direction
     else:
-        if start == current_start or current_direction == "reverse":
-            if end >= current_end:
-                this_direction = "forward"
-            else:
-                this_direction = "reverse"
+        middle = (start + end) / 2
+        current_middle = (current_start + current_end) / 2
+        
+        if middle >= current_middle:
+            this_direction = "forward"
         else:
-            if start >= current_start:
-                this_direction = "forward"
-            else:
-                this_direction = "reverse"
+            this_direction = "reverse"
 
     if current_direction == "bi" or this_direction == "bi" or this_direction == current_direction:
         return this_direction
