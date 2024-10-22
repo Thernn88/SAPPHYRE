@@ -157,6 +157,7 @@ def cluster_ids(ids, max_id_distance, max_gap, ref_coords, req_seq_coverage = 0.
                     new_cluster = [rec]
                     new_indices = set(rec.get_ids)
                     kick_occured = True
+                    changes_made = False
                     while kick_occured:
                         kick_occured = False
                         for rec_in in current_cluster:
@@ -164,11 +165,14 @@ def cluster_ids(ids, max_id_distance, max_gap, ref_coords, req_seq_coverage = 0.
                                 continue
                             if get_overlap(rec.start, rec.end, rec_in.start, rec_in.end, -(max_gap)+1):
                                 current_cluster.remove(rec_in)
-                                current_indices.difference_update(rec_in.get_ids)
+                                changes_made = True
                                 new_cluster.append(rec_in)
                                 new_indices.update(rec_in.get_ids)
                                 kick_occured = True
-                            
+                           
+                    if changes_made: 
+                        current_indices = {id_ for rec in current_cluster for id_ in rec.get_ids}
+
                     if current_cluster:
                         finalize_cluster(current_cluster, current_indices, ref_coords, clusters, kicks, req_seq_coverage)
                     
