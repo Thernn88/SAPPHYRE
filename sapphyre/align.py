@@ -809,7 +809,8 @@ def run_command(args: CmdArgs) -> None:
     printv(f"Doing: {args.gene} ", args.verbose, 2)
 
     temp_dir = gettempdir()
-
+    clusters = []
+    cluster_string = ""
     aligned_ingredients = []
     if args.is_genome:
         get_id = lambda header: header.split("|")[3].split("&&")[0].replace("NODE_","")
@@ -1089,7 +1090,6 @@ def run_command(args: CmdArgs) -> None:
                 ids.append((get_id(header), data_cols, start, end))
 
     if ids:
-        clusters = []
         if args.is_genome:
             clusters = do_cluster(ids, ref_coords, args.chomp_max_distance)
 
@@ -1191,7 +1191,7 @@ def do_folder(folder, args):
     else:
         cluster_logs = [run_command(arg[0]) for arg in func_args]
 
-    if any(cluster_logs):
+    if args.debug:
         cluster_logs.sort(key=lambda x: x[0])
         cluster_logs = [x[1] for x in cluster_logs]
             
