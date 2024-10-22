@@ -1285,7 +1285,43 @@ def log_excised_consensus(
         if data_bp < 15:
             log_output.append(f"Kicking {node.header} due to < 15 bp after trimming")
             kicked_headers.add(node.header)
+         
+    MAX_SCORE = 10   
+    if cluster_sets[0] is not None:
+        for cluster_i, cluster_set in enumerate(cluster_sets):
+            aa_subset = [node for node in aa_nodes if node.header not in kicked_headers and node.header.split("|")[3] in cluster_set]
+            for node_a, node_b in combinations(aa_subset, 2):
+                # overlap by 90%
+                overlap = get_overlap(node_a.start, node_a.end, node_b.start, node_b.end, 1)
+                if not overlap:
+                    continue
+                
+                amount = overlap[1] - overlap[0]
+                if amount / min((node_a.end - node_a.start), (node_b.end - node_b.start)) < 0.9:
+                    continue
+                    
+                node_a_motif_score = 0
+                for i, let in enumerate(node_a.sequence[node_a.start:node_a.end], node_a.start):
+                    node_a_motif_score += min(ref_consensus[i].count(let), MAX_SCORE)
+                    
+                node_b_motif_score = 0
+                for i, let in enumerate(node_b.sequence[node_b.start:node_b.end], node_b.start):
+                    node_b_motif_score += min(ref_consensus[i].count(let), MAX_SCORE)
             
+                if min(node_a_motif_score, node_b_motif_score) == 0:
+                    continue
+                
+                if max(node_a_motif_score, node_b_motif_score) / min(node_a_motif_score, node_b_motif_score) < 1.2:
+                    continue
+                    
+                if node_a_motif_score > node_b_motif_score:
+                    kicked_headers.add(node_b.header)
+                    log_output.append(f"Kicking {node_b.header} due to lower motif score ({node_b_motif_score}) than {node_a.header} ({node_b_motif_score})")
+                else:
+                    kicked_headers.add(node_a.header)
+                    log_output.append(f"Kicking {node_a.header} due to lower motif score ({node_a_motif_score}) than {node_b.header} ({node_a_motif_score})")
+
+        
     aa_nodes = [node for node in aa_nodes if node.header not in kicked_headers]
 
     raw_sequences = {header: del_cols(seq, x_positions[header], True) for header, seq in parseFasta(str(nt_in)) if header not in kicked_headers}
