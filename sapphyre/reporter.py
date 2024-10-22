@@ -526,7 +526,7 @@ def pairwise_sequences(hits, debug_fp, ref_seqs, min_gaps=10):
                 group = to_remove[i]
                 to_remove_unaligned[group].append(current_non_aligned)
                   
-        to_remove_final = []      
+        to_remove_final = set() 
         for group in to_remove_unaligned.values():
             
             left_stops = []
@@ -572,8 +572,11 @@ def pairwise_sequences(hits, debug_fp, ref_seqs, min_gaps=10):
                 if ag_coord - gt_coord < 30:
                     continue
 
-                for i in range(gt_coord, ag_coord):
-                    to_remove_final.append(i)
+                this_to_remove = set(range(gt_coord, ag_coord))
+                if this_to_remove.intersection(to_remove_final):
+                    continue
+                
+                to_remove_final.update(this_to_remove)
                 break
             
             internal_introns_removed.append(f"{hit.header}\n{hit.query}\nRemoved group of size {len(group)} at {group[0]}-{group[-1]} on pairwise alignment\n{intron}\n")
