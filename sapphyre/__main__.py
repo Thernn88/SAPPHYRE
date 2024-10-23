@@ -120,6 +120,7 @@ def prepare_args(par):
     )
 
 
+
 def prepare(args):
     from . import prepare
 
@@ -1053,6 +1054,12 @@ def subcmd_finalize(subparsers):
         "--concat",
         action="store_true",
         help="Merge resulting on target genes into a final fasta file.",
+    )
+    par.add_argument(
+        "-rt",
+        "--root",
+        type=str,
+        help="Root taxa used to start the concatenated aligment"
     )
     par.set_defaults(func=finalize, formathelp=par.format_help)
 

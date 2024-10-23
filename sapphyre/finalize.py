@@ -38,6 +38,7 @@ class GeneConfig:
     no_references: bool
     compress: bool
     internal_char: str
+    root_taxa: str
 
 
 def kick_taxa(content: list[tuple, tuple], to_kick: set) -> list:
@@ -132,7 +133,7 @@ def stopcodon(aa_content: list, nt_content: list) -> tuple:
     return aa_out, nt_out
 
 
-def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict) -> tuple:
+def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict, root_taxa: optional[str]) -> tuple:
     new_aa_content = []
     new_nt_content = []
     aa_candidates = []
@@ -166,7 +167,10 @@ def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict) -> tup
 
             aa_header = "|".join(aa_components)
             nt_header = "|".join(nt_components)
-
+            if root_taxa:
+                aa_header = root_taxa + aa_header
+                nt_header = root_taxa + nt_header
+                
         new_aa_content.append((aa_header, aa_line))
         new_nt_content.append((nt_header, nt_line))
 
@@ -232,6 +236,7 @@ def clean_gene(gene_config: GeneConfig):
             aa_content,
             nt_content,
             gene_config.taxa_to_taxon,
+            gene_config.root,
         )
 
     if gene_config.to_kick:
@@ -496,6 +501,7 @@ def process_folder(args, input_path):
             args.no_references,
             args.compress,
             args.replace_internals,
+            args.root
         )
         arguments.append((this_config,))
 
