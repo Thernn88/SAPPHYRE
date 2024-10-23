@@ -1,7 +1,8 @@
 from collections import defaultdict
-from itertools import combinations, product
+from itertools import combinations, groupby, product
 from math import ceil, floor
 from multiprocessing import Pool
+from operator import itemgetter
 from os import listdir, makedirs, path
 from pathlib import Path
 from shutil import move
@@ -19,7 +20,7 @@ from sapphyre_tools import (
     join_with_exclusions,
     join_triplets_with_exclusions,
 )
-from .directional_cluster import cluster_ids, quick_rec
+from .directional_cluster import cluster_ids, node_to_ids, quick_rec, within_distance
 from wrap_rocks import RocksDB
 
 from .timekeeper import KeeperMode, TimeKeeper
@@ -1249,6 +1250,7 @@ def log_excised_consensus(
     kicked_headers = set()
 
     cluster_sets = [None]
+    cluster_indices = [None]
     get_id = lambda header: header.split("|")[3].replace("NODE_","")
     ids = []
     for node in aa_nodes:
@@ -1262,7 +1264,8 @@ def log_excised_consensus(
 
     if clusters:
         cluster_sets = [i[0] for i in clusters]
-        
+        cluster_indices = [set(range(i[1][0],i[1][1]+1)) for i in clusters]
+    
     edge_check(aa_nodes, cluster_sets, kicked_headers, log_output)
 
     head_to_node = {}
@@ -1545,6 +1548,7 @@ def log_excised_consensus(
     gff_out = defaultdict(dict)
     gff_coords = {}
     formed_seqs = {}
+    exon_coords = defaultdict(list)
     has_exisiting_result = defaultdict(dict)
 
     DNA_CODONS = {
@@ -1684,7 +1688,7 @@ def log_excised_consensus(
                             rev_end = prev_len - prev_start_reporter
                             prev_start_reporter = rev_start
                             prev_end_reporter = rev_end
-
+                
                         prev_intron_removed = "".join([let for i, let in enumerate(prev_og[prev_start_reporter:prev_end_reporter]) if i not in prev_removed_coords])
                         prev_start_offset = prev_intron_removed.find(prev_kmer)
                         if prev_start_offset == -1:
@@ -1693,6 +1697,29 @@ def log_excised_consensus(
                             continue
                         
                         remove_on_og = {i + prev_start_reporter for i in prev_removed_coords}
+                        
+                        consecutive_groups = [list(map(int,map(itemgetter(1),g))) for _, g in groupby(enumerate(sorted(list(remove_on_og))),lambda x:x[0]-x[1])]
+                        exons = []
+                        if consecutive_groups:
+                            for i in range(len(consecutive_groups)):
+                                if i == 0:
+                                    exons.append((0, consecutive_groups[i][0] - 1))
+                                else:
+                                    exons.append((consecutive_groups[i-1][-1] + 1, consecutive_groups[i][0] - 1))
+                            exons.append((consecutive_groups[-1][-1] + 1, 0))
+                            
+                            if prev_node.frame < 0:
+                                if "194165&&194166&&194167" in prev_node.header:
+                                    print(len(prev_removed_coords))
+                                    
+                                exons = [(prev_len - end if end != 0 else 0, 
+                                        prev_len - start if start != 0 else len(prev_removed_coords)) 
+                                        for start, end in exons[::-1]]
+                                
+                                
+                            
+                            exon_coords[prev_node.header] = exons
+                            
                         prev_og = "".join([let for i, let in enumerate(prev_og) if i not in remove_on_og])
                         formed_seqs[prev_node.header] = prev_og
                     else:
@@ -1729,8 +1756,29 @@ def log_excised_consensus(
                             continue
                             
                         remove_on_og = {i + node_start_reporter for i in node_removed_coords}
+                        
+                        consecutive_groups = [list(map(int,map(itemgetter(1),g))) for _, g in groupby(enumerate(sorted(list(remove_on_og))),lambda x:x[0]-x[1])]
+                        exons = []
+                        if consecutive_groups:
+                            for i in range(len(consecutive_groups)):
+                                if i == 0:
+                                    exons.append((0, consecutive_groups[i][0] - 1))
+                                else:
+                                    exons.append((consecutive_groups[i-1][-1] + 1, consecutive_groups[i][0] - 1))
+                            exons.append((consecutive_groups[-1][-1] + 1, 0))   
+                            
+                            if node.frame < 0:
+                                exons = [(node_len - end if end != 0 else 0, 
+                                        node_len - start if start != 0 else len(node_removed_coords)) 
+                                        for start, end in exons[::-1]]
+                            
+                            exon_coords[node.header] = exons
+                            
+                            
+                        
                         node_og = "".join([let for i, let in enumerate(node_og) if i not in remove_on_og])
                         formed_seqs[node.header] = node_og
+                        
                     else:
                         formed_seqs[node.header] = node_og
                         
@@ -1819,30 +1867,75 @@ def log_excised_consensus(
                             prev_id = get_id(prev_node.header)
                             tup = original_coords.get(prev_id.split("&&")[0].split("_")[0], None)
                             if tup:
-                                parent, chomp_start, _, input_len, _ = tup
-                                
-                                prev_start = prev_gff[0] + chomp_start
-                                prev_end = prev_gff[1] + chomp_start
-                                
-                                if parent not in ends:
-                                    ends[parent] = input_len
+                                if prev_node.header in exon_coords:
+                                    parent, chomp_start, _, input_len, _ = tup
+                                    if parent not in ends:
+                                        ends[parent] = input_len
+                                    strand = "+" if prev_node.frame > 0 else "-"
+
+                                    for i, coords in enumerate(exon_coords[prev_node.header]):
+                                        let = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")[i]
+                                        if i == 0:
+                                            prev_start = prev_gff[0] + coords[0] + chomp_start
+                                            prev_end = coords[1] + chomp_start
+                                            gff_out[parent][prev_id] = [(prev_start, prev_id, f"{parent}\tSapphyre\texon\t{prev_start}\t{prev_end}\t.\t{strand}\t.\tAlias={prev_id} Exon {let};Parent={prev_id};Note={prev_node.frame};")]
+                                        elif i != len(coords) - 1:
+                                            prev_start = coords[0] + chomp_start
+                                            prev_end = coords[1] + chomp_start
+                                            gff_out[parent][prev_id].append((prev_start, prev_id, f"{parent}\tSapphyre\texon\t{prev_start}\t{prev_end}\t.\t{strand}\t.\tAlias={prev_id} Exon {let};Parent={prev_id};Note={prev_node.frame};"))
+                                        else:
+                                            prev_start = coords[0] + chomp_start
+                                            prev_end = prev_gff[1] + coords[1] + chomp_start
+                                            gff_out[parent][prev_id].append((prev_start, prev_id, f"{parent}\tSapphyre\texon\t{prev_start}\t{prev_end}\t.\t{strand}\t.\tAlias={prev_id} Exon {let};Parent={prev_id};Note={prev_node.frame};"))
                                     
-                                strand = "+" if prev_node.frame > 0 else "-"
-                                gff_out[parent][prev_id] = (prev_start, prev_id, f"{parent}\tSapphyre\texon\t{prev_start}\t{prev_end}\t.\t{strand}\t.\tParent={prev_id};Note={prev_node.frame};")
+                                else:
+                                    parent, chomp_start, _, input_len, _ = tup
+                                    
+                                    prev_start = prev_gff[0] + chomp_start
+                                    prev_end = prev_gff[1] + chomp_start
+                                    
+                                    if parent not in ends:
+                                        ends[parent] = input_len
+                                        
+                                    strand = "+" if prev_node.frame > 0 else "-"
+                                    gff_out[parent][prev_id] = [(prev_start, prev_id, f"{parent}\tSapphyre\texon\t{prev_start}\t{prev_end}\t.\t{strand}\t.\tParent={prev_id};Note={prev_node.frame};")]
                                 
                             node_id = get_id(node.header)
                             tup = original_coords.get(node_id.split("&&")[0].split("_")[0], None)
                             if tup:
-                                parent, chomp_start, _, input_len, _ = tup
-                                
-                                node_start = node_gff[0] + chomp_start
-                                node_end = node_gff[1] + chomp_start
-                                
-                                if parent not in ends:
-                                    ends[parent] = input_len
+                                if node.header in exon_coords:
+                                    parent, chomp_start, _, input_len, _ = tup
+                                    if parent not in ends:
+                                        ends[parent] = input_len
+                                    strand = "+" if node.frame > 0 else "-"
                                     
-                                strand = "+" if node.frame > 0 else "-"
-                                gff_out[parent][node_id] = (node_start, node_id, f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tParent={node_id};Note={node.frame};")
+                                    
+                                    for i, coords in enumerate(exon_coords[node.header]):
+                                        let = list("ABCDEFGHIJKLMNOPQRSTUVWXYZ")[i]
+                                        if i == 0:
+                                            node_start = node_gff[0] + coords[0] + chomp_start
+                                            node_end = coords[1] + chomp_start
+                                            gff_out[parent][node_id] = [(node_start, node_id, f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tAlias={node_id} Exon {let};Parent={node_id};Note={node.frame};")]
+                                        elif i != len(coords):
+                                            node_start = coords[0] + chomp_start
+                                            node_end = coords[1] + chomp_start
+                                            gff_out[parent][node_id].append((node_start, node_id, f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tAlias={node_id} Exon {let};Parent={node_id};Note={node.frame};"))
+                                        else:
+                                            node_start = coords[0] + chomp_start
+                                            node_end = node_gff[1] + coords[1] + chomp_start
+                                            gff_out[parent][node_id].append((node_start, node_id, f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tAlias={node_id} Exon {let};Parent={node_id};Note={node.frame};"))
+                                    
+                                else:
+                                    parent, chomp_start, _, input_len, _ = tup
+                                    
+                                    node_start = node_gff[0] + chomp_start
+                                    node_end = node_gff[1] + chomp_start
+                                    
+                                    if parent not in ends:
+                                        ends[parent] = input_len
+                                        
+                                    strand = "+" if node.frame > 0 else "-"
+                                    gff_out[parent][node_id] = [(node_start, node_id, f"{parent}\tSapphyre\texon\t{node_start}\t{node_end}\t.\t{strand}\t.\tParent={node_id};Note={node.frame};")]
                 if True and not splice_found:    
                     scan_log.append(f">{prev_node.header}_orf")
                     # print(prev_start_index, node_end_index)
@@ -1967,8 +2060,8 @@ def log_excised_consensus(
             final_nt_out.append((header, seq))
         writeFasta(nt_out, final_nt_out, compress_intermediates)
 
-        return log_output, had_region, False, False, gene, len(kicked_headers), this_rescues, scan_log, combo_log, multi_log, ends, gff_out, debug_out, rescue_jank_log, gene_name, cluster_sets
-    return log_output, had_region, gene, False, None, len(kicked_headers), this_rescues, scan_log, combo_log, multi_log, ends, gff_out, debug_out, rescue_jank_log, gene_name, cluster_sets
+        return log_output, had_region, False, False, gene, len(kicked_headers), this_rescues, scan_log, combo_log, multi_log, ends, gff_out, debug_out, rescue_jank_log, gene_name, cluster_indices
+    return log_output, had_region, gene, False, None, len(kicked_headers), this_rescues, scan_log, combo_log, multi_log, ends, gff_out, debug_out, rescue_jank_log, gene_name, cluster_indices
 
 ### USED BY __main__
 def do_move(from_, to_):
@@ -2012,7 +2105,7 @@ def get_args(args, genes, head_to_seq, gene_introns, input_folder, output_folder
             no_dupes,
             this_seqs,
             this_original_coords,
-            this_gene_introns
+            this_gene_introns,
         )
     
 def get_head_to_seq(nt_db):
@@ -2084,7 +2177,7 @@ def main(args, sub_dir):
     
     if raw_introns:
         introns = json.decode(raw_introns, type = dict[str, dict[str, tuple[int, int, list[int]]]])
-        
+
     head_to_seq = get_head_to_seq(nt_db)
     del nt_db
 
@@ -2126,7 +2219,7 @@ def main(args, sub_dir):
     gt_hits = 0
     gc_hits = 0
 
-    parent_gff_output = defaultdict(dict)
+    parent_gff_output = defaultdict(lambda: defaultdict(list))
     end_bp = {}
 
     clusters_to_gene = []
@@ -2136,8 +2229,8 @@ def main(args, sub_dir):
             clusters_to_gene.append((set, gene, cluster_index))
             cluster_index += 1
         for parent, node_values in gff_result.items():
-            for id, value in node_values.items():
-                parent_gff_output[parent][id] = value
+            for id, values in node_values.items():
+                parent_gff_output[parent][id] = values
                 
         end_bp.update(input_lengths)
         
@@ -2169,7 +2262,8 @@ def main(args, sub_dir):
                 no_ambig.append(g_has_resolution)
 
     reporter_coords_path = coords_path.joinpath("coords.gff")
-    if reporter_coords_path.exists():
+    reporter_fill_in = defaultdict(lambda: defaultdict(list))
+    if False:#reporter_coords_path.exists():
         with open(reporter_coords_path, "r") as fp:
             for line in fp:
                 if line.startswith("#"):
@@ -2191,27 +2285,34 @@ def main(args, sub_dir):
                     continue
                 
                 if parent_gff_output[parent][id] is None:
-                    parent_gff_output[parent][id] = (start, id, "\t".join(line))
+                    reporter_fill_in[parent][id].append((start, id, "\t".join(line)))
     else:
         printv("No reporter coords found. Unable to fill in the blank.", args.verbose, 0)
     
+    for parent, values in reporter_fill_in.items():
+        for id, lines in values.items():
+            parent_gff_output[parent][id] = lines
+    
+    
     gff_output= []
     for parent, rows in parent_gff_output.items():
-        
-        rows = [i for i in rows.values() if i]
+        rows = [row for rows in rows.values() if rows is not None for row in rows if row]
+        rows.sort(key = lambda x: x[0])
         end = end_bp[parent]
         gff_output.append(f"##sequence-region\t{parent}\t{1}\t{end}")
-        rows.sort(key = lambda x: (x[0]))
+        # Unpack all_rows into rows
+        
         for row in rows:
             _, id, line = row
             new_id = None
             crange = "None"
             cluster_found = False
+            
             for set, gene, index in clusters_to_gene:
                 if set is None:
                     new_id = f"{gene}_{index}"
                     break
-                elif "NODE_"+id in set:
+                elif within_distance(node_to_ids(id), set, 0):
                     crange = f"{min(set)}-{max(set)}"
                     new_id = f"{gene}_{index}"
                     cluster_found = True
