@@ -39,6 +39,7 @@ class GeneConfig:
     compress: bool
     internal_char: str
     root_taxa: str
+    id_for_rename: dict
 
 
 def kick_taxa(content: list[tuple, tuple], to_kick: set) -> list:
@@ -133,7 +134,7 @@ def stopcodon(aa_content: list, nt_content: list) -> tuple:
     return aa_out, nt_out
 
 
-def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict, root_taxa: optional[str]) -> tuple:
+def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict, ids_for_gfm: dict, root_taxa: str) -> tuple:
     new_aa_content = []
     new_nt_content = []
     aa_candidates = []
@@ -142,6 +143,9 @@ def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict, root_t
             new_aa_content.append((header, seq))
         else:
             aa_candidates.append((header, seq))
+    
+    gene = aa_candidates[0][0].split("|")[0]        
+    
     nt_candidates = []
     for header, seq in nt_content:
         if header.endswith("."):
@@ -162,6 +166,10 @@ def rename_taxon(aa_content: list, nt_content: list, taxa_to_taxon: dict, root_t
 
             taxon = taxa_to_taxon[taxa]
             # print(taxon)
+            
+            if ids_for_gfm is not None:
+                taxon = f"{taxon}_OR{ids_for_gfm.get(aa_header, 'ERROR')}_{gene}"
+            
             aa_components[1] = taxon
             nt_components[1] = taxon
 
@@ -236,7 +244,8 @@ def clean_gene(gene_config: GeneConfig):
             aa_content,
             nt_content,
             gene_config.taxa_to_taxon,
-            gene_config.root,
+            gene_config.id_for_rename,
+            gene_config.root_taxa,
         )
 
     if gene_config.to_kick:
@@ -479,6 +488,20 @@ def process_folder(args, input_path):
             )
             generate_names = True
 
+    id_generation = None    
+    if args.gene_finding_mode == 1:
+        id_generation = defaultdict(dict)
+        id_counter = defaultdict(dict)
+        for aa_file in aa_folder.glob("*.fa*"):
+            gene = aa_file.name.split(".")[0]
+            for header, _ in parseFasta(str(aa_file)):
+                id = header.split("|")[2]
+                if id not in id_counter:
+                    id_counter[id] = 0
+                    
+                id_counter[id] += 1
+                id_generation[gene][header] = id_counter[id]
+
     arguments = []
     for aa_file in aa_folder.glob("*.fa*"):
         gene = aa_file.name.split(".")[0]
@@ -501,7 +524,8 @@ def process_folder(args, input_path):
             args.no_references,
             args.compress,
             args.replace_internals,
-            args.root
+            args.root,
+            id_generation[gene],
         )
         arguments.append((this_config,))
 
