@@ -590,27 +590,19 @@ def pairwise_sequences(hits, debug_fp, ref_seqs, min_gaps=10):
             triplets = {nt_seq[i:i+3] for i in range(0, len(nt_seq), 3)}
             if not "TAG" in triplets and not "TAA" in triplets  and not "TGA" in triplets:
                 break
-            
-         # TODO instead of traversing the whole list just check the first and last element of the group
-        exons = []
-        exon_start = None
-
-        for i in range(hit.chomp_start, hit.chomp_end + 1):
-            relative_index = i - hit.chomp_start  # Convert to zero-based index relative to the start coordinate
-
-            if relative_index not in to_remove_final:  # Check if this index is not in the gaps
-                if exon_start is None:
-                    exon_start = i  # Start a new exon
-            else:
-                if exon_start is not None:
-                    # If we're in a gap and an exon was ongoing, close it
-                    exons.append((exon_start, i - 1))  # End the current exon
-                    exon_start = None
-
-        # Step 3: If the last exon continues to the end, close it
-        if exon_start is not None:
-            exons.append((exon_start, hit.chomp_end))
         
+        consecutive_groups = [list(map(int,map(itemgetter(1),g))) for _, g in groupby(enumerate(sorted(to_remove_final)),lambda x:x[0]-x[1])]
+        exons = []
+        if not consecutive_groups:
+            exons = [(hit.chomp_start, hit.chomp_end)]
+        else:
+            for i in range(len(consecutive_groups)):
+                if i == 0:
+                    exons.append((hit.chomp_start, hit.chomp_start + consecutive_groups[i][0] - 1))
+                else:
+                    exons.append((hit.chomp_start + consecutive_groups[i-1][-1] + 1, hit.chomp_start + consecutive_groups[i][0] - 1))
+            exons.append((hit.chomp_start + consecutive_groups[-1][-1] + 1, hit.chomp_end))                   
+
         hit.coords = exons
             
         to_remove_parent = set()
