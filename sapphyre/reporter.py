@@ -468,125 +468,130 @@ def pairwise_sequences(hits, debug_fp, ref_seqs, min_gaps=10):
         # if not hasattr(result, "traceback"):
         #     continue #alignment failed, to investigate
         # this_aa, ref_seq = result.traceback.query, result.traceback.ref
-        
-        with NamedTemporaryFile("w", dir=gettempdir()) as in_file,  NamedTemporaryFile("w", dir=gettempdir()) as out_file:
-            in_file.write(f">hit\n{hit.aa_sequence}\n>query\n{ref_seq}\n")
-            in_file.flush()
-            
-            cmd = ["clustalo", "-i", in_file.name, "-o", out_file.name, "--thread=1", "--force"]
-            subprocess.run(cmd, stdout=subprocess.DEVNULL)
-            
-            # system(
-            #     f"mafft --localpair --quiet --thread 1 --anysymbol '{in_file.name}' > '{out_file.name}'"
-            # )
-            
-            aligned_seqs = dict(parseFasta(out_file.name, True))
-    
-        ref_seq = aligned_seqs["query"]
-        this_aa = aligned_seqs["hit"]
-
-        if debug_fp:
-            debug_fp.write(f">{hit.header}\n{this_aa}\n>{hit.query}\n{ref_seq}\n\n")
-        
-        ref_start, ref_end = find_index_pair(ref_seq, "-")
-        internal_ref_gaps = [i for i in range(ref_start, ref_end) if ref_seq[i] == "-"]
-        
-        # group consecutive gaps
-        to_remove = {}
-        
-        groups = [(id, list(map(int,map(itemgetter(1),g)))) for id, g in groupby(enumerate(internal_ref_gaps),lambda x:x[0]-x[1])]
-        merge_occured = True
-        while merge_occured:
-            
-            merge_occured = False
-            for i in range(len(groups)-1):
-                if groups[i] is None or groups[i+1] is None:
-                    continue
-                
-                key_a, group_a = groups[i]
-                group_b = groups[i+1][1]
-                if min(group_b) - max(group_a) > 10:
-                    continue
-                
-                groups[i] = (key_a, list(range(min(group_a), max(group_b))))
-                groups[i+1] = None
-                merge_occured = True
-                break
-                
-            groups = [i for i in groups if i is not None]
-        for k, group in groups:
-            if len(group) >= min_gaps:
-                for i in group:
-                    to_remove[i] = k
-
-        current_non_aligned = 0
-        to_remove_unaligned = defaultdict(list)
-        for i, let in enumerate(this_aa):
-            if let != "-":
-                current_non_aligned += 1
-    
-            if i in to_remove:
-                group = to_remove[i]
-                to_remove_unaligned[group].append(current_non_aligned)
-                  
         to_remove_final = set() 
-        for group in to_remove_unaligned.values():
-            
-            left_stops = []
-            right_stops = []
-            for i in range(0, max(group) + 1):
-                if hit.aa_sequence[i] == "*":
-                    left_stops.append(i * 3)
-                    
-            for i in range(min(group) - 1, len(hit.aa_sequence)):
-                if hit.aa_sequence[i] == "*":
-                    right_stops.append(i * 3)
-                  
-            middle_of_gap = group[len(group) // 2] * 3
-            left_most_codon = [i for i in left_stops if max(i, middle_of_gap) - min(i, middle_of_gap) <= 30 + len(group)] # Within 30 bp of middle
-            
-            start_left_scan = left_most_codon[0] if left_most_codon else max(group) * 3
-            
-            right_most_codon = [i for i in right_stops if max(i, middle_of_gap) - min(i, middle_of_gap) <= 30 + len(group)] # Within 30 bp of middle
-            
-            start_right_scan = right_most_codon[-1] if right_most_codon else min(group) * 3
+        for alignment_method in ["clustalo", "mafft"]:
+            with NamedTemporaryFile("w", dir=gettempdir()) as in_file,  NamedTemporaryFile("w", dir=gettempdir()) as out_file:
+                in_file.write(f">hit\n{hit.aa_sequence}\n>query\n{ref_seq}\n")
+                in_file.flush()
+                
+                if alignment_method == "clustalo":
+                    cmd = ["clustalo", "-i", in_file.name, "-o", out_file.name, "--thread=1", "--force"]
+                    subprocess.run(cmd, stdout=subprocess.DEVNULL)
+                else:
+                    system(
+                        f"mafft --localpair --quiet --thread 1 --anysymbol '{in_file.name}' > '{out_file.name}'"
+                    )
+                
+                aligned_seqs = dict(parseFasta(out_file.name, True))
+        
+            ref_seq = aligned_seqs["query"]
+            this_aa = aligned_seqs["hit"]
 
-            gt_coords = []
-            ag_coords = []
-            for i in range(0, start_left_scan):
-                if hit.seq[i:i+2] == "GT":
-                    gt_coords.append(i)
+            if debug_fp:
+                debug_fp.write(f">{alignment_method}: {hit.header}\n{this_aa}\n>{hit.query}\n{ref_seq}\n\n")
             
-            for i in range(start_right_scan, len(hit.seq) - 2):
-                if hit.seq[i:i+2] == "AG":
-                    ag_coords.append(i + 2)
+            ref_start, ref_end = find_index_pair(ref_seq, "-")
+            internal_ref_gaps = [i for i in range(ref_start, ref_end) if ref_seq[i] == "-"]
+            
+            # group consecutive gaps
+            to_remove = {}
+            
+            groups = [(id, list(map(int,map(itemgetter(1),g)))) for id, g in groupby(enumerate(internal_ref_gaps),lambda x:x[0]-x[1])]
+            merge_occured = True
+            while merge_occured:
+                
+                merge_occured = False
+                for i in range(len(groups)-1):
+                    if groups[i] is None or groups[i+1] is None:
+                        continue
                     
-            gt_coords.reverse()
-            
-            intron = ""
-            for gt_coord, ag_coord in product(gt_coords, ag_coords):
-                intron = hit.seq[gt_coord:ag_coord]
-                if gt_coord >= ag_coord:
-                    continue
-                
-                if (ag_coord - gt_coord) % 3 != 0:
-                    continue
-                
-                if ag_coord - gt_coord < 30:
-                    continue
+                    key_a, group_a = groups[i]
+                    group_b = groups[i+1][1]
+                    if min(group_b) - max(group_a) > 10:
+                        continue
+                    
+                    groups[i] = (key_a, list(range(min(group_a), max(group_b))))
+                    groups[i+1] = None
+                    merge_occured = True
+                    break
+                    
+                groups = [i for i in groups if i is not None]
+            for k, group in groups:
+                if len(group) >= min_gaps:
+                    for i in group:
+                        to_remove[i] = k
 
-                this_to_remove = set(range(gt_coord, ag_coord))
-                if this_to_remove.intersection(to_remove_final):
-                    continue
+            current_non_aligned = 0
+            to_remove_unaligned = defaultdict(list)
+            for i, let in enumerate(this_aa):
+                if let != "-":
+                    current_non_aligned += 1
+        
+                if i in to_remove:
+                    group = to_remove[i]
+                    to_remove_unaligned[group].append(current_non_aligned)
+                    
+            for group in to_remove_unaligned.values():
                 
-                to_remove_final.update(this_to_remove)
+                left_stops = []
+                right_stops = []
+                for i in range(0, max(group) + 1):
+                    if hit.aa_sequence[i] == "*":
+                        left_stops.append(i * 3)
+                        
+                for i in range(min(group) - 1, len(hit.aa_sequence)):
+                    if hit.aa_sequence[i] == "*":
+                        right_stops.append(i * 3)
+                    
+                middle_of_gap = group[len(group) // 2] * 3
+                left_most_codon = [i for i in left_stops if max(i, middle_of_gap) - min(i, middle_of_gap) <= 30 + len(group)] # Within 30 bp of middle
+                
+                start_left_scan = left_most_codon[0] if left_most_codon else max(group) * 3
+                
+                right_most_codon = [i for i in right_stops if max(i, middle_of_gap) - min(i, middle_of_gap) <= 30 + len(group)] # Within 30 bp of middle
+                
+                start_right_scan = right_most_codon[-1] if right_most_codon else min(group) * 3
+
+                gt_coords = []
+                ag_coords = []
+                for i in range(0, start_left_scan):
+                    if hit.seq[i:i+2] == "GT":
+                        gt_coords.append(i)
+                
+                for i in range(start_right_scan, len(hit.seq) - 2):
+                    if hit.seq[i:i+2] == "AG":
+                        ag_coords.append(i + 2)
+                        
+                gt_coords.reverse()
+                
+                intron = ""
+                for gt_coord, ag_coord in product(gt_coords, ag_coords):
+                    intron = hit.seq[gt_coord:ag_coord]
+                    if gt_coord >= ag_coord:
+                        continue
+                    
+                    if (ag_coord - gt_coord) % 3 != 0:
+                        continue
+                    
+                    if ag_coord - gt_coord < 30:
+                        continue
+
+                    this_to_remove = set(range(gt_coord, ag_coord))
+                    if this_to_remove.intersection(to_remove_final):
+                        continue
+                    
+                    to_remove_final.update(this_to_remove)
+                    break
+                
+                internal_introns_removed.append(f"{hit.header}\n{hit.query}\nRemoved group of size {len(group)} at {group[0]}-{group[-1]} on pairwise alignment\n{intron}\n")
+            
+            nt_seq = "".join([let for i, let in enumerate(hit.seq) if i not in to_remove_final])
+            
+            triplets = {nt_seq[i:i+3] for i in range(0, len(nt_seq), 3)}
+            if not "TAG" in triplets and not "TAA" in triplets  and not "TGA" in triplets:
                 break
             
-            internal_introns_removed.append(f"{hit.header}\n{hit.query}\nRemoved group of size {len(group)} at {group[0]}-{group[-1]} on pairwise alignment\n{intron}\n")
-            
-        final_groups = [list(map(int,map(itemgetter(1),g))) for _, g in groupby(enumerate(internal_ref_gaps),lambda x:x[0]-x[1])]
-            
-        # TODO instead of traversing the whole list just check the first and last element of the group
+         # TODO instead of traversing the whole list just check the first and last element of the group
         exons = []
         exon_start = None
 
@@ -607,14 +612,14 @@ def pairwise_sequences(hits, debug_fp, ref_seqs, min_gaps=10):
             exons.append((exon_start, hit.chomp_end))
         
         hit.coords = exons
-        nt_seq = "".join([let for i, let in enumerate(hit.seq) if i not in to_remove_final])
-        
+            
         to_remove_parent = set()
         for i in to_remove_final:
             to_remove_parent.add(i + hit.chomp_start - hit.parent_start)
         
         if to_remove_final:
             intron_coordinates[hit.header] = (hit.chomp_start - hit.parent_start - 1, hit.chomp_end - hit.parent_start, to_remove_final)
+        
         hit.seq = nt_seq
     
     return internal_introns_removed, intron_coordinates
