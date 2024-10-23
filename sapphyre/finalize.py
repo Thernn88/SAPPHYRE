@@ -42,11 +42,13 @@ class GeneConfig:
     id_for_rename: dict
 
 
-def kick_taxa(content: list[tuple, tuple], to_kick: set) -> list:
+def kick_taxa(content: list[tuple, tuple], to_kick: set, is_gfm) -> list:
     out = []
     for header, sequence in content:
         taxon = header.split("|")[1].lower()
         taxa = header.split("|")[2].lower()
+        if is_gfm:
+            taxon = taxon.split("_OR")[0]
         if taxon not in to_kick and taxa not in to_kick:
             out.append((header, sequence))
     return out
@@ -249,8 +251,9 @@ def clean_gene(gene_config: GeneConfig):
         )
 
     if gene_config.to_kick:
-        aa_content = kick_taxa(aa_content, gene_config.to_kick)
-        nt_content = kick_taxa(nt_content, gene_config.to_kick)
+        is_gfm = gene_config.id_for_rename is not None
+        aa_content = kick_taxa(aa_content, gene_config.to_kick, is_gfm)
+        nt_content = kick_taxa(nt_content, gene_config.to_kick, is_gfm)
 
     if gene_config.kick_columns:
         aa_content, aa_kicks, cols_to_kick = kick_empty_columns(
