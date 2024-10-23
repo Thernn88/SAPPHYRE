@@ -48,7 +48,7 @@ def kick_taxa(content: list[tuple, tuple], to_kick: set, is_gfm) -> list:
         taxon = header.split("|")[1].lower()
         taxa = header.split("|")[2].lower()
         if is_gfm:
-            taxon = taxon.split("_OR")[0]
+            taxon = taxon.split("_or")[0]
         if taxon not in to_kick and taxa not in to_kick:
             out.append((header, sequence))
     return out
