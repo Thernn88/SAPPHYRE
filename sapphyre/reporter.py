@@ -51,6 +51,7 @@ class Hit(HmmHit):#, frozen=True):
     aa_sequence: str = None
     parent: str = None
     strand: str = None
+    parent_start: int = None
     chomp_start: int = None
     chomp_end: int = None
     children: list = []
@@ -356,6 +357,8 @@ def merge_hits(hits: list[Hit], minimum_bp_overlap = 30) -> tuple[list[Hit], lis
                 
                 hit_a.seq = merged_seq
                 
+                hit_a.parent_start = min(hit_a.parent_start, hit_b.parent_start)
+                
                 # Update coords
                 hit_a.chomp_start = min(hit_a.chomp_start, hit_b.chomp_start)
                 hit_a.chomp_end = max(hit_a.chomp_end, hit_b.chomp_end)
@@ -449,11 +452,11 @@ def do_dupe_check(hits, header_template, is_assembly_or_genome, taxa_id):
 def pairwise_sequences(hits, debug_fp, ref_seqs, min_gaps=10):
     ref_dict = {taxa: seq for taxa, _, seq in ref_seqs}
     internal_introns_removed = []
+    intron_coordinates = defaultdict(list)
     
     # aligner = pyfamsa.Aligner(threads=1)
     for hit in hits:
         ref_seq = ref_dict[hit.query]
-        
         # this_aa = hit.aa_sequence
         # profile = profile_create_16(this_aa, blosum62)
         # result = sw_trace_scan_profile_16(
@@ -605,10 +608,16 @@ def pairwise_sequences(hits, debug_fp, ref_seqs, min_gaps=10):
         
         hit.coords = exons
         nt_seq = "".join([let for i, let in enumerate(hit.seq) if i not in to_remove_final])
-
+        
+        to_remove_parent = set()
+        for i in to_remove_final:
+            to_remove_parent.add(i + hit.chomp_start - hit.parent_start)
+        
+        if to_remove_final:
+            intron_coordinates[hit.header] = (hit.chomp_start - hit.parent_start - 1, hit.chomp_end - hit.parent_start, to_remove_final)
         hit.seq = nt_seq
-
-    return internal_introns_removed
+    
+    return internal_introns_removed, intron_coordinates
 
 def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     """Merges, dedupes and writes the output for a given gene.
@@ -646,6 +655,7 @@ def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         
     merge_log = []
     removed_introns = []
+    intron_coordinates = {}
     if oargs.is_genome or False: # Set False to disable
         this_hits, merge_log = merge_hits(this_hits)
         for hit in this_hits:
@@ -662,7 +672,7 @@ def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         else:
             debug_fp = None
             
-        removed_introns = pairwise_sequences(this_hits, debug_fp, core_sequences)
+        removed_introns, intron_coordinates = pairwise_sequences(this_hits, debug_fp, core_sequences)
         
     translate_sequences(this_hits)
         
@@ -694,7 +704,16 @@ def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         oargs.verbose,
         2,
     )
-    return oargs.gene, removed_introns, before_merge_count, header_to_score, gene_nodes, [(hit.parent, hit.get_merge_header(), hit.coords, hit.strand, hit.frame) for hit in this_hits], merge_log
+    return (
+        oargs.gene,
+        removed_introns,
+        before_merge_count,
+        header_to_score,
+        gene_nodes,
+        [(hit.parent, hit.get_merge_header(), hit.coords, hit.strand, hit.frame) for hit in this_hits],
+        merge_log,
+        intron_coordinates
+    )
 
 
 def get_prepare_dupes(rocks_nt_db: RocksDB) -> dict[str, dict[str, int]]:
@@ -797,10 +816,12 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace):
                     hit.raw_node = hit.node
                     if hit.frame < 0:
                         hit.strand = "-"
+                        hit.parent_start = chomp_start
                         hit.chomp_start = (chomp_len - hit.qend) + chomp_start
                         hit.chomp_end = (chomp_len - hit.qstart) + chomp_start - 1
                     else:
                         hit.strand = "+"
+                        hit.parent_start = chomp_start
                         hit.chomp_start = hit.qstart + chomp_start
                         hit.chomp_end = hit.qend + chomp_start - 1
                     
@@ -841,13 +862,15 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace):
     removed_total = 0
     intron_removal_log = []
     this_gene_based_scores = {}
+    this_gene_based_intron_removals = {}
     global_out = []
     parent_gff_output = defaultdict(list)
     end_bp = {}
     gff_output = ["##gff-version\t3"]
     global_merge_log = []
     
-    for gene, remove_introns, amount, scores, nodes, gff, merge_log in recovered:
+    for gene, remove_introns, amount, scores, nodes, gff, merge_log, gene_intron_coordinates in recovered:
+        this_gene_based_intron_removals[gene] = gene_intron_coordinates
         intron_removal_log.extend(remove_introns)
         removed_total += len(remove_introns)
         global_merge_log.extend(merge_log)
@@ -906,6 +929,10 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace):
 
     key = "getall:hmm_gene_scores"
     data = json.encode(this_gene_based_scores)
+    rocky.get_rock("rocks_nt_db").put_bytes(key, data)
+    
+    key = "getall:intron_removals"
+    data = json.encode(this_gene_based_intron_removals)
     rocky.get_rock("rocks_nt_db").put_bytes(key, data)
 
     printv(

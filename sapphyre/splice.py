@@ -270,14 +270,6 @@ class NODE(Struct):
 
             self.start = node_2.start
 
-        if (self.start*3, self.end*3) != find_index_pair(self.nt_sequence, "-"):
-            print("ERROR")
-            print(self.header)
-            print(self.nt_sequence)
-            print(self.start, self.end,"/",self.start*3, self.end*3)
-            print(find_index_pair(self.nt_sequence, "-"))
-            print("ERROR")
-
         # Save node_2 and the children of node_2 to self
         self.children.append(node_2.header)
         self.children.extend(node_2.children)
@@ -983,15 +975,14 @@ def splice_combo(add_results,
         for i, x in enumerate(range(right_end_codon, right_end_codon + 3)):
             node_nt_seq[x] = orphan_codon[i]
             if add_results:
-                node_og[node_start_index + x - (node.start * 3) - node_insertions] = orphan_codon[i]
-
+                node_og[node_start_index + x - (node.start * 3) + node_insertions] = orphan_codon[i]
 
         prev_og = "".join(prev_og)
         node_og = "".join(node_og)
-        
-        formed_seqs[prev_node.header] = prev_og.replace("-", "")
-        formed_seqs[node.header] = node_og.replace("-", "")
-        
+        if add_results:
+            formed_seqs[prev_node.header] = prev_og.replace("-", "")
+            formed_seqs[node.header] = node_og.replace("-", "")
+            
     node_nt_seq = "".join(node_nt_seq)
     prev_nt_seq = "".join(prev_nt_seq)
 
@@ -1186,6 +1177,7 @@ def log_excised_consensus(
     no_dupes,
     head_to_seq,
     original_coords,
+    introns_removals,
     true_cluster_threshold = 24,
 ):
     """
@@ -1391,7 +1383,7 @@ def log_excised_consensus(
         node.sequence = del_cols(node.sequence, x_positions[node.header])
         node.nt_sequence = del_cols(node.nt_sequence, x_positions[node.header], True)
         node.start, node.end = find_index_pair(node.sequence, "-")
-          
+
     move_dict = defaultdict(list)
     debug_out = []
     merged = []
@@ -1441,11 +1433,12 @@ def log_excised_consensus(
                 
                 this_seq = list(node.sequence)
                 this_nt_seq = list(node.nt_sequence)
+                change_made = False
 
                 if overlap[0] == start and internal_gap_offset[0] == 0: # Left side
                     match = True
                     for i, let in enumerate(data_in_gap, overlap[0]+gap_size):
-                        if node.sequence[i] != "-" and let != node.sequence[i]:
+                        if node.sequence[i] != "-":
                             match = False
                             break
                         if not let in ref_consensus[i]:
@@ -1456,16 +1449,15 @@ def log_excised_consensus(
                         for new_i, original_i in enumerate(range(overlap[0], overlap[0]+len(data_in_gap)), overlap[0] + gap_size):
                             this_seq[new_i] = this_seq[original_i]
                             this_seq[original_i] = "-"
-                            
                             this_nt_seq[(new_i*3):(new_i*3)+3] = this_nt_seq[(original_i*3):(original_i*3)+3]
                             this_nt_seq[(original_i*3):(original_i*3)+3] = ["-","-","-"]
                             
-                            move_dict[node.header].append((original_i, new_i))          
+                            move_dict[node.header].append((original_i, new_i))   
+                            change_made = True       
                 else: # Right side
                     match = True
                     for i, let in enumerate(data_in_gap, start-len(data_in_gap)):
-                        
-                        if node.sequence[i] != "-" and let != node.sequence[i]:
+                        if node.sequence[i] != "-":
                             match = False
                             break
                         
@@ -1477,16 +1469,17 @@ def log_excised_consensus(
                         for new_i, original_i in enumerate(range(overlap[0] + internal_gap_offset[0], overlap[0] + internal_gap_offset[1]), start - len(data_in_gap)):
                             this_seq[new_i] = this_seq[original_i]
                             this_seq[original_i] = "-"
-                            
-                            
+
                             this_nt_seq[(new_i*3):(new_i*3)+3] = this_nt_seq[(original_i*3):(original_i*3)+3]
                             this_nt_seq[(original_i*3):(original_i*3)+3] = ["-","-","-"]
                             
                             move_dict[node.header].append((original_i, new_i))
+                            change_made = True
 
-                node.sequence = "".join(this_seq)
-                node.nt_sequence = "".join(this_nt_seq)
-                node.start, node.end = find_index_pair(node.sequence, "-")
+                if change_made:
+                    node.sequence = "".join(this_seq)
+                    node.nt_sequence = "".join(this_nt_seq)
+                    node.start, node.end = find_index_pair(node.sequence, "-")
 
     if had_region:
         after_data = []
@@ -1679,8 +1672,31 @@ def log_excised_consensus(
 
                     if prev_node.frame < 0:
                         prev_og = bio_revcomp(prev_og)
-                
-                    formed_seqs[prev_node.header] = prev_og
+                        
+                    #TODO THIS IS REPEATED IN NODE MAKE A FUNCTION
+                    prev_header_wt = "|".join(prev_node.header.split("|")[:-1]) #without tag
+                    if prev_header_wt in introns_removals:
+                        prev_start_reporter, prev_end_reporter, prev_removed_coords = introns_removals[prev_header_wt]
+                        
+                        if prev_node.frame < 0:
+                            prev_len = len(prev_og)
+                            rev_start = prev_len - prev_end_reporter
+                            rev_end = prev_len - prev_start_reporter
+                            prev_start_reporter = rev_start
+                            prev_end_reporter = rev_end
+
+                        prev_intron_removed = "".join([let for i, let in enumerate(prev_og[prev_start_reporter:prev_end_reporter]) if i not in prev_removed_coords])
+                        prev_start_offset = prev_intron_removed.find(prev_kmer)
+                        if prev_start_offset == -1:
+                            print("Error at part 1",prev_node.header)
+                            prev_start_index = -1
+                            continue
+                        
+                        remove_on_og = {i + prev_start_reporter for i in prev_removed_coords}
+                        prev_og = "".join([let for i, let in enumerate(prev_og) if i not in remove_on_og])
+                        formed_seqs[prev_node.header] = prev_og
+                    else:
+                        formed_seqs[prev_node.header] = prev_og
                 else:
                     prev_og = formed_seqs[prev_node.header]
                     
@@ -1694,19 +1710,52 @@ def log_excised_consensus(
 
                     if node.frame < 0:
                         node_og = bio_revcomp(node_og)
-                    formed_seqs[node.header] = node_og
+                        
+                    node_header_wt = "|".join(node.header.split("|")[:-1]) #without tag
+                    if node_header_wt in introns_removals:
+                        node_start_reporter, node_end_reporter, node_removed_coords = introns_removals[node_header_wt]
+                        
+                        if node.frame < 0:
+                            node_len = len(node_og)
+                            rev_start = node_len - node_end_reporter
+                            rev_end = node_len - node_start_reporter
+                            node_start_reporter = rev_start
+                            node_end_reporter = rev_end
+
+                        node_intron_removed = "".join([let for i, let in enumerate(node_og[node_start_reporter:node_end_reporter]) if i not in node_removed_coords])
+                        node_start_offset = node_intron_removed.find(kmer)
+                        if node_start_offset == -1:
+                            print("Error at part 2", node.header)
+                            continue
+                            
+                        remove_on_og = {i + node_start_reporter for i in node_removed_coords}
+                        node_og = "".join([let for i, let in enumerate(node_og) if i not in remove_on_og])
+                        formed_seqs[node.header] = node_og
+                    else:
+                        formed_seqs[node.header] = node_og
+                        
                 else:
                     node_og = formed_seqs[node.header]
-                
+
+                    
                 prev_start_index = prev_og.find(prev_kmer)
+                    
                 if prev_start_index == -1:
+                    print("Error at part 3")
+                    print(prev_node.header)
                     continue
 
                 prev_og = insert_gaps(prev_og, prev_internal_gaps, prev_start_index)
                 prev_end_index = prev_start_index + len(prev_kmer) + len(prev_internal_gaps)
 
-                node_start_index = node_og.find(kmer)
+                node_header_wt = "|".join(node.header.split("|")[:-1]) #without tag
+                if node_header_wt in introns_removals:
+                    node_removed_coords = introns_removals[node_header_wt]
+                    continue
+                else:
+                    node_start_index = node_og.find(kmer)
                 if node_start_index == -1:
+                    print("Error at part 4", node.header)
                     continue
 
                 
@@ -1935,7 +1984,7 @@ def move_flagged(to_move, processes):
             pool.starmap(do_move, to_move)
 
 
-def get_args(args, genes, head_to_seq, input_folder, output_folder, compress, no_dupes, original_coords):
+def get_args(args, genes, head_to_seq, gene_introns, input_folder, output_folder, compress, no_dupes, original_coords):
     get_id = lambda x: int(x.split("_")[0]) 
     for gene in genes:
         this_headers = []
@@ -1948,7 +1997,8 @@ def get_args(args, genes, head_to_seq, input_folder, output_folder, compress, no
 
             this_seqs = {i: head_to_seq[i] for i in set(this_headers)}
             this_original_coords = {str(i): original_coords[str(i)] for i in set(this_headers)}
-    
+            
+        this_gene_introns = gene_introns.get(gene.split(".")[0], {})
         yield (
             args.verbose,
             gene,
@@ -1962,6 +2012,7 @@ def get_args(args, genes, head_to_seq, input_folder, output_folder, compress, no
             no_dupes,
             this_seqs,
             this_original_coords,
+            this_gene_introns
         )
     
 def get_head_to_seq(nt_db):
@@ -2028,6 +2079,12 @@ def main(args, sub_dir):
     
     if raw_data:
         original_coords = json.decode(raw_data, type = dict[str, tuple[str, int, int, int, int]])
+        
+    raw_introns = nt_db.get("getall:intron_removals")
+    
+    if raw_introns:
+        introns = json.decode(raw_introns, type = dict[str, dict[str, tuple[int, int, list[int]]]])
+        
     head_to_seq = get_head_to_seq(nt_db)
     del nt_db
 
@@ -2040,7 +2097,7 @@ def main(args, sub_dir):
     gene_log_path = Path(output_folder, "excise_genes.txt")
     new_rescue_path = Path(output_folder, "new_rescues.txt")
     coords_path = Path(folder, "coords")
-    arguments = get_args(args, genes, head_to_seq, input_folder, output_folder, args.compress, args.no_dupes, original_coords)
+    arguments = get_args(args, genes, head_to_seq, introns, input_folder, output_folder, args.compress, args.no_dupes, original_coords)
     if args.processes > 1:
         with Pool(args.processes) as pool:
             results = pool.starmap(log_excised_consensus, arguments)
