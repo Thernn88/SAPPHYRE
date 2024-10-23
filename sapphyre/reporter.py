@@ -619,6 +619,98 @@ def pairwise_sequences(hits, debug_fp, ref_seqs, min_gaps=10):
     
     return internal_introns_removed, intron_coordinates
 
+
+def detect_repeat_nucleotides(hits: list[Hit], min_bp = 9) -> list[Hit]:
+    repeats_removed = []
+    for hit in hits:
+        before = hit.seq
+        before = (hit.chomp_start, hit.chomp_end)
+        change_made = False
+        # single bp
+        #start
+        possible = hit.seq[0]
+        repeat_bp = 1
+        for i in range(1, len(hit.seq)):
+            if hit.seq[i] == possible:
+                repeat_bp += 1
+            else:
+                break
+            
+        if repeat_bp >= min_bp:
+            repeat_bp = repeat_bp - (repeat_bp % 3)
+            hit.seq = hit.seq[repeat_bp:]
+            hit.aa_sequence = hit.aa_sequence[repeat_bp//3:]
+            if hit.frame < 0: # Todo fix coords in splice or do this prior to coord flip to stop this jank
+                hit.chomp_end -= repeat_bp
+            else:
+                hit.chomp_start += repeat_bp
+            change_made = True
+            
+            
+        # end
+        possible = hit.seq[-1]
+        repeat_bp = 1
+        for i in range(len(hit.seq) - 2, -1, -1):
+            if hit.seq[i] == possible:
+                repeat_bp += 1
+            else:
+                break
+        
+        if repeat_bp >= min_bp:
+            repeat_bp = repeat_bp - (repeat_bp % 3)
+            hit.seq = hit.seq[:-repeat_bp]
+            hit.aa_sequence = hit.aa_sequence[:-repeat_bp//3]
+            if hit.frame < 0: # Todo fix coords in splice or do this prior to coord flip to stop this jank
+                hit.chomp_start += repeat_bp
+            else:
+                hit.chomp_end -= repeat_bp
+            change_made = True
+        
+        # two bp
+        
+        # start
+        possible = hit.seq[:2]
+        repeat_bp = 2
+        for i in range(2, len(hit.seq) - 1, 2):
+            if hit.seq[i:i+2] == possible:
+                repeat_bp += 2
+            else:
+                break
+            
+        if repeat_bp >= min_bp:
+            repeat_bp = repeat_bp - (repeat_bp % 3)
+            hit.seq = hit.seq[repeat_bp:]
+            hit.aa_sequence = hit.aa_sequence[repeat_bp//3:]
+            if hit.frame < 0: # Todo fix coords in splice or do this prior to coord flip to stop this jank
+                hit.chomp_end -= repeat_bp
+            else:
+                hit.chomp_start += repeat_bp
+            change_made = True
+            
+        # end
+        possible = hit.seq[-2:]
+        repeat_bp = 2
+        for i in range(len(hit.seq) - 4, -1, -2):
+            if hit.seq[i:i+2] == possible:
+                repeat_bp += 2
+            else:
+                break
+            
+        if repeat_bp >= min_bp:
+            repeat_bp = repeat_bp - (repeat_bp % 3)
+            hit.seq = hit.seq[:-repeat_bp]
+            hit.aa_sequence = hit.aa_sequence[:-repeat_bp//3]
+            if hit.frame < 0: # Todo fix coords in splice or do this prior to coord flip to stop this jank
+                hit.chomp_start += repeat_bp
+            else:
+                hit.chomp_end -= repeat_bp
+            change_made = True
+            
+        if change_made:
+            repeats_removed.append(f"{hit.header}\n{before}\n{hit.seq}\n")
+
+    return hits, repeats_removed
+
 def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
     """Merges, dedupes and writes the output for a given gene.
 
@@ -655,8 +747,11 @@ def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         
     merge_log = []
     removed_introns = []
+    repeats_removed = []
     intron_coordinates = {}
     if oargs.is_genome or False: # Set False to disable
+        this_hits, repeats_removed = detect_repeat_nucleotides(this_hits)
+        
         this_hits, merge_log = merge_hits(this_hits)
         for hit in this_hits:
             hit.header = header_template.format(hit.gene, hit.query, oargs.taxa_id, hit.get_merge_header(), hit.frame)
@@ -712,7 +807,8 @@ def merge_and_write(oargs: OutputArgs) -> tuple[str, dict, int]:
         gene_nodes,
         [(hit.parent, hit.get_merge_header(), hit.coords, hit.strand, hit.frame) for hit in this_hits],
         merge_log,
-        intron_coordinates
+        intron_coordinates,
+        repeats_removed
     )
 
 
@@ -868,12 +964,14 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace):
     end_bp = {}
     gff_output = ["##gff-version\t3"]
     global_merge_log = []
+    global_repeats_log = []
     
-    for gene, remove_introns, amount, scores, nodes, gff, merge_log, gene_intron_coordinates in recovered:
+    for gene, remove_introns, amount, scores, nodes, gff, merge_log, gene_intron_coordinates, gene_repeats in recovered:
         this_gene_based_intron_removals[gene] = gene_intron_coordinates
         intron_removal_log.extend(remove_introns)
         removed_total += len(remove_introns)
         global_merge_log.extend(merge_log)
+        global_repeats_log.extend(gene_repeats)
         out_data = defaultdict(list)
         if original_coords:
             for node in nodes:
@@ -911,6 +1009,8 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace):
     if args.debug:
         with open(path.join(taxa_path,"Intron_removal.txt"), "w") as fp:
             fp.write("\n".join(intron_removal_log))
+        with open(path.join(taxa_path,"Repeats_removed.txt"), "w") as fp:
+            fp.write("\n".join(global_repeats_log))
         
     if is_genome:
         
