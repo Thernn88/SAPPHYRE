@@ -1061,6 +1061,13 @@ def subcmd_finalize(subparsers):
         type=str,
         help="Root taxa used to start the concatenated aligment"
     )
+    par.add_argument(
+        "-cov",
+        "--coverage",
+        type=int,
+        default=0,
+        help="Minimum coverage percent needed for a sequence to pass the post kick-column filter."
+    )
     par.set_defaults(func=finalize, formathelp=par.format_help)
 
 
