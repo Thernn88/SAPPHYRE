@@ -23,6 +23,7 @@ NT_REPLACE = "N"
 class GeneConfig:
     gene: str
     kick_columns: float
+    coverage: float
     minimum_bp: int
     stopcodon: bool
     rename: bool
@@ -53,6 +54,15 @@ def kick_taxa(content: list[tuple, tuple], to_kick: set, is_gfm) -> list:
             out.append((header, sequence))
     return out
 
+
+def coverage_kick(candiates: list[tuple[str, str]], required_coverage: float) -> list[tuple[str, str]]:
+    NONDATA_CHARS = ['-','?','X']
+
+    def data_char_percent(sequence: str) -> float:
+        return 1 - sum(map(lambda char: 1 if char in NONDATA_CHARS else 0)) / len(sequence)
+
+    return [seq_tuple for seq_tuple in candidates if data_char_percent(seq_tuple[1]) >= required_coverage]
+    
 
 def align_kick_nt(
     fasta_content: list,
@@ -263,6 +273,10 @@ def clean_gene(gene_config: GeneConfig):
         )
         nt_content = align_kick_nt(nt_content, cols_to_kick, aa_kicks)
 
+    if gene_config.coverage:
+        aa_content = coverage_kick(aa_content, gene_config.coverage)
+        nt_content = coverage_kick(aa_content, gene_config.coverage)
+        
     aa_content, nt_content = convert_gaps(aa_content, nt_content, gene_config.internal_char)
 
     processed_folder = gene_config.taxa_folder.joinpath("Processed")
@@ -509,9 +523,13 @@ def process_folder(args, input_path):
     for aa_file in aa_folder.glob("*.fa*"):
         gene = aa_file.name.split(".")[0]
         nt_file = nt_folder.joinpath(makent(gene, aa_file))
+        coverage = args.coverage
+        if coverage:
+            coverage /= 100
         this_config = GeneConfig(
             gene,
             args.kick_columns if args.kick_columns <= 1 else args.kick_columns / 100,
+            coverage,
             args.minimum_bp,
             args.stopcodon,
             args.rename,
