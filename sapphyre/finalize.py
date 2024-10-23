@@ -55,11 +55,11 @@ def kick_taxa(content: list[tuple, tuple], to_kick: set, is_gfm) -> list:
     return out
 
 
-def coverage_kick(candiates: list[tuple[str, str]], required_coverage: float) -> list[tuple[str, str]]:
+def coverage_kick(candidates: list[tuple[str, str]], required_coverage: float) -> list[tuple[str, str]]:
     NONDATA_CHARS = ['-','?','X']
 
     def data_char_percent(sequence: str) -> float:
-        return 1 - sum(map(lambda char: 1 if char in NONDATA_CHARS else 0)) / len(sequence)
+        return 1 - sum(map(lambda char: 1 if char in NONDATA_CHARS else 0, sequence)) / len(sequence)
 
     return [seq_tuple for seq_tuple in candidates if data_char_percent(seq_tuple[1]) >= required_coverage]
     
@@ -276,7 +276,7 @@ def clean_gene(gene_config: GeneConfig):
     if gene_config.coverage:
         aa_content = coverage_kick(aa_content, gene_config.coverage)
         nt_content = coverage_kick(aa_content, gene_config.coverage)
-        
+
     aa_content, nt_content = convert_gaps(aa_content, nt_content, gene_config.internal_char)
 
     processed_folder = gene_config.taxa_folder.joinpath("Processed")
