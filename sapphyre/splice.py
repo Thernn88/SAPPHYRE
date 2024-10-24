@@ -1703,18 +1703,17 @@ def log_excised_consensus(
                         if consecutive_groups:
                             for i in range(len(consecutive_groups)):
                                 if i == 0:
-                                    exons.append((0, consecutive_groups[i][0] - 1))
+                                    exons.append((0, consecutive_groups[i][0]))
                                 else:
                                     exons.append((consecutive_groups[i-1][-1] + 1, consecutive_groups[i][0] - 1))
-                            exons.append((consecutive_groups[-1][-1] + 1, 0))
+                            exons.append((consecutive_groups[-1][-1] + 2, 0))
                             
                             if prev_node.frame < 0:
-                                if "194165&&194166&&194167" in prev_node.header:
-                                    print(len(prev_removed_coords))
-                                    
                                 exons = [(prev_len - end if end != 0 else 0, 
                                         prev_len - start if start != 0 else len(prev_removed_coords)) 
                                         for start, end in exons[::-1]]
+                            else:
+                                exons[-1] = (exons[-1][0], len(prev_removed_coords) + 1)
                                 
                                 
                             
@@ -1762,15 +1761,17 @@ def log_excised_consensus(
                         if consecutive_groups:
                             for i in range(len(consecutive_groups)):
                                 if i == 0:
-                                    exons.append((0, consecutive_groups[i][0] - 1))
+                                    exons.append((0, consecutive_groups[i][0]))
                                 else:
                                     exons.append((consecutive_groups[i-1][-1] + 1, consecutive_groups[i][0] - 1))
-                            exons.append((consecutive_groups[-1][-1] + 1, 0))   
+                            exons.append((consecutive_groups[-1][-1] + 2, 0))   
                             
                             if node.frame < 0:
                                 exons = [(node_len - end if end != 0 else 0, 
                                         node_len - start if start != 0 else len(node_removed_coords)) 
                                         for start, end in exons[::-1]]
+                            else:
+                                exons[-1] = (exons[-1][0], len(node_removed_coords) + 1)
                             
                             exon_coords[node.header] = exons
                             
