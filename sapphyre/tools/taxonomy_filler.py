@@ -35,7 +35,7 @@ def main(args):
                         order.append(val)
                     
                     if column_name not in order:
-                        target_col = list(map(lambda x: x.lower(), order)).index(column_name.lower())
+                        target_col = list(map(lambda x: str(x).lower(), order)).index(column_name.lower())
                         if target_col == -1:
                             printv(f"Column {column_name} not found in the input file. Use -col to set organism col", verbose)
                             return False
@@ -56,7 +56,7 @@ def main(args):
                     order.append(col.value)
 
                 if column_name not in order:
-                    target_col = list(map(lambda x: x.lower(), order)).index(column_name.lower())
+                    target_col = list(map(lambda x: str(x).lower(), order)).index(column_name.lower())
                     if target_col == -1:
                         printv(f"Column {column_name} not found in the input file. Use -col to set organism col", verbose)
                         return False
@@ -105,7 +105,7 @@ def main(args):
         this_out = final_dict.get(organism_name, {})
 
         for x,col in enumerate(order):
-            col = col.lower()
+            col = str(col).lower()
             if col in this_out:
                 val = this_out[col]
                 if input_type == "csv":
