@@ -61,7 +61,15 @@ def coverage_kick(candidates: list[tuple[str, str]], required_coverage: float) -
     def data_char_percent(sequence: str) -> float:
         return 1 - sum(map(lambda char: 1 if char in NONDATA_CHARS else 0, sequence)) / len(sequence)
 
-    return [seq_tuple for seq_tuple in candidates if data_char_percent(seq_tuple[1]) >= required_coverage]
+    kicks = []
+    passed = []
+    for header, sequence in candidates:
+        if data_char_percent(sequence) < required_coverage:
+            kicks.append(header)
+        else:
+            passed.append((header, sequence))
+
+    return passed, kicks
     
 
 def align_kick_nt(
@@ -273,9 +281,10 @@ def clean_gene(gene_config: GeneConfig):
         )
         nt_content = align_kick_nt(nt_content, cols_to_kick, aa_kicks)
 
+    coverage_kicks = []
     if gene_config.coverage:
-        aa_content = coverage_kick(aa_content, gene_config.coverage)
-        nt_content = coverage_kick(aa_content, gene_config.coverage)
+        aa_content, coverage_kicks = coverage_kick(aa_content, gene_config.coverage)
+        nt_content, _ = coverage_kick(aa_content, gene_config.coverage)
 
     aa_content, nt_content = convert_gaps(aa_content, nt_content, gene_config.internal_char)
 
@@ -366,6 +375,7 @@ def clean_gene(gene_config: GeneConfig):
         column_stats,
         candidate_count,
         gene_taxa_present,
+        coverage_kicks,
     )
 
 
@@ -431,6 +441,24 @@ def scrape_taxa(taxas):
 
     return json.dumps(result)
 
+
+def generate_stats(counter_dict, codon_dict, kick_dict, taxons_present):
+    genes_present = counter_dict.keys()
+    this_stats = [[""] + list(genes_present) + ["Total", "Stops", "Kicks"]]
+    taxon_totals = Counter()
+    gene_totals = Counter()
+    
+    for taxon in taxons_present:
+        this_line = [taxon]
+        for gene in genes_present:
+            this_line.append(str(counter_dict[gene][taxon]))
+            taxon_totals[taxon] += counter_dict[gene][taxon]
+            gene_totals[gene] += counter_dict[gene][taxon]
+        this_stats.append(this_line + [str(taxon_totals[taxon]), str(codon_dict[taxon]), str(kick_dict[taxon])])
+        
+    this_stats.append(["Total"] + [str(gene_totals[gene]) for gene in genes_present] + [str(sum(gene_totals.values())), str(sum(codon_dict.values())), str(sum(kick_dict.values()))])
+
+    return this_stats
 
 def process_folder(args, input_path):
     tk = TimeKeeper(KeeperMode.DIRECT)
@@ -559,7 +587,7 @@ def process_folder(args, input_path):
     taxa_global = set()
     to_scrape = set()
     max_candidate_count = 0
-    for _, taxa_local, _, _, _, _, _, _, candidate_count, taxa_present in to_write:
+    for _, taxa_local, _, _, _, _, _, _, candidate_count, taxa_present, _ in to_write:
         taxa_global.update(taxa_local)
         if generate_names:
             to_scrape.update(taxa_present)
@@ -606,6 +634,11 @@ def process_folder(args, input_path):
     total_inform_lax = 0
     column_stats_res = []
     MISMATCHES = 2
+    
+    gene_kicks = Counter()
+    gene_recovered = defaultdict(Counter)
+    gene_cluster_with_codons = Counter()
+    taxons_present = set()
 
     for (
         gene,
@@ -618,6 +651,7 @@ def process_folder(args, input_path):
         column_stats,
         _,
         _,
+        coverage_kicks,
     ) in to_write:
         if args.gene_kick:
             if kick_gene(taxa_local, gene_kick, taxa_global):
@@ -629,6 +663,19 @@ def process_folder(args, input_path):
                 for fasta in glob(nt_glob):
                     os.remove(fasta)
                 continue
+            
+        for (header, seq) in aa_content:
+            taxon = header.split("|")[1]
+            taxon = taxon.split("_OR")[0]
+            taxons_present.add(taxon)
+            gene_recovered[gene][taxon] += 1
+            if "*" in seq:
+                gene_cluster_with_codons[taxon] += 1
+                
+        for header in coverage_kicks:
+            taxon = header.split("|")[1].split("_OR")[0]
+            gene_kicks[taxon] += 1
+            
         this_lax = 0
         this_strict = 0
         this_inform = 0
@@ -737,6 +784,12 @@ def process_folder(args, input_path):
 
                 fp.write("end;\n")
 
+    ors_stats = generate_stats(gene_recovered, gene_cluster_with_codons, gene_kicks, taxons_present)
+    
+    with open(str(processed_folder.joinpath("OrsStats.csv")), "w") as fwcsv:
+        for line in ors_stats:
+            fwcsv.write(",".join(line) + "\n") 
+    
     column_stats_res.sort(key=lambda x: x[0], reverse=True)
     column_stats_res = [
         "Gene,Lax Count,Strict Count,Informative Count,Lax Informative Count"
