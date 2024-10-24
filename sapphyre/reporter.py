@@ -51,7 +51,6 @@ class Hit(HmmHit):#, frozen=True):
     aa_sequence: str = None
     parent: str = None
     strand: str = None
-    parent_start: int = None
     chomp_start: int = None
     chomp_end: int = None
     children: list = []
@@ -357,8 +356,6 @@ def merge_hits(hits: list[Hit], minimum_bp_overlap = 30) -> tuple[list[Hit], lis
                 
                 hit_a.seq = merged_seq
                 
-                hit_a.parent_start = min(hit_a.parent_start, hit_b.parent_start)
-                
                 # Update coords
                 hit_a.chomp_start = min(hit_a.chomp_start, hit_b.chomp_start)
                 hit_a.chomp_end = max(hit_a.chomp_end, hit_b.chomp_end)
@@ -607,10 +604,10 @@ def pairwise_sequences(hits, debug_fp, ref_seqs, min_gaps=10):
             
         to_remove_parent = set()
         for i in to_remove_final:
-            to_remove_parent.add(i + hit.chomp_start - hit.parent_start)
+            to_remove_parent.add(i + hit.chomp_start)
         
         if to_remove_final:
-            intron_coordinates[hit.header] = (hit.chomp_start - hit.parent_start - 1, hit.chomp_end - hit.parent_start, to_remove_final)
+            intron_coordinates[hit.header] = (hit.chomp_start - 1, hit.chomp_end, to_remove_final)
         
         hit.seq = nt_seq
     
@@ -909,12 +906,10 @@ def do_taxa(taxa_path: str, taxa_id: str, args: Namespace):
                     hit.raw_node = hit.node
                     if hit.frame < 0:
                         hit.strand = "-"
-                        hit.parent_start = chomp_start
                         hit.chomp_start = (chomp_len - hit.qend) + chomp_start
                         hit.chomp_end = (chomp_len - hit.qstart) + chomp_start - 1
                     else:
                         hit.strand = "+"
-                        hit.parent_start = chomp_start
                         hit.chomp_start = hit.qstart + chomp_start
                         hit.chomp_end = hit.qend + chomp_start - 1
                     

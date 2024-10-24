@@ -1667,7 +1667,7 @@ def log_excised_consensus(
                 kmer = kmer.replace("-","")
                 
                 if prev_node.header not in formed_seqs:
-                    children = list(map(int_first_id, prev_node.header.split("|")[3].replace("NODE_", "").split("&&")))
+                    children = sorted(list(set(node_to_ids(prev_node.header.split("|")[3]))))
                     prev_og = head_to_seq[children[0]]
                     for i, child in enumerate(children):
                         if i == 0:
@@ -1681,6 +1681,10 @@ def log_excised_consensus(
                     prev_header_wt = "|".join(prev_node.header.split("|")[:-1]) #without tag
                     if prev_header_wt in introns_removals:
                         prev_start_reporter, prev_end_reporter, prev_removed_coords = introns_removals[prev_header_wt]
+                        parent_start = original_coords.get(str(children[0]), None)[1]
+                        
+                        prev_start_reporter = prev_start_reporter - parent_start
+                        prev_end_reporter = prev_end_reporter - parent_start
                         
                         if prev_node.frame < 0:
                             prev_len = len(prev_og)
@@ -1692,7 +1696,6 @@ def log_excised_consensus(
                         prev_intron_removed = "".join([let for i, let in enumerate(prev_og[prev_start_reporter:prev_end_reporter]) if i not in prev_removed_coords])
                         prev_start_offset = prev_intron_removed.find(prev_kmer)
                         if prev_start_offset == -1:
-                            print("Error at part 1",prev_node.header)
                             prev_start_index = -1
                             continue
                         
@@ -1727,7 +1730,7 @@ def log_excised_consensus(
                     prev_og = formed_seqs[prev_node.header]
                     
                 if node.header not in formed_seqs:
-                    children = list(map(int_first_id, node.header.split("|")[3].replace("NODE_", "").split("&&")))
+                    children = sorted(list(set(node_to_ids(node.header.split("|")[3]))))
                     node_og = head_to_seq[children[0]]
                     for i, child in enumerate(children):
                         if i == 0:
@@ -1740,6 +1743,10 @@ def log_excised_consensus(
                     node_header_wt = "|".join(node.header.split("|")[:-1]) #without tag
                     if node_header_wt in introns_removals:
                         node_start_reporter, node_end_reporter, node_removed_coords = introns_removals[node_header_wt]
+                        parent_start = original_coords.get(str(children[0]), None)[1]
+                        
+                        node_start_reporter = node_start_reporter - parent_start
+                        node_end_reporter = node_end_reporter - parent_start
                         
                         if node.frame < 0:
                             node_len = len(node_og)
@@ -2079,14 +2086,13 @@ def move_flagged(to_move, processes):
 
 
 def get_args(args, genes, head_to_seq, gene_introns, input_folder, output_folder, compress, no_dupes, original_coords):
-    get_id = lambda x: int(x.split("_")[0]) 
     for gene in genes:
         this_headers = []
         for header, _ in parseFasta(str(Path(input_folder, "aa", gene))):
             if header.endswith("."):
                 continue
             this_headers.extend(
-                map(get_id, header.split("|")[3].replace("NODE_", "").split("&&"))
+                node_to_ids(header.split("|")[3])
             )
 
             this_seqs = {i: head_to_seq[i] for i in set(this_headers)}
