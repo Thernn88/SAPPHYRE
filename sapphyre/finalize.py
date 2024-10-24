@@ -443,7 +443,8 @@ def scrape_taxa(taxas):
 
 
 def generate_stats(counter_dict, codon_dict, kick_dict, taxons_present):
-    genes_present = counter_dict.keys()
+    taxons_present = sorted(list(taxons_present))
+    genes_present = sorted(list(counter_dict.keys()))
     this_stats = [[""] + list(genes_present) + ["Total", "Stops", "Kicks"]]
     taxon_totals = Counter()
     gene_totals = Counter()
